@@ -58,6 +58,14 @@ public class ChatMessage {
     @Column(name = "token_count")
     private Integer tokenCount;
 
+    /** 流式回答关联 ID（用于 Redis Stream 断线续传） */
+    @Column(name = "run_id")
+    private UUID runId;
+
+    /** 流式状态：streaming / completed / cancelled / error（仅 ASSISTANT 消息） */
+    @Column(name = "stream_status", length = 20)
+    private String streamStatus;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

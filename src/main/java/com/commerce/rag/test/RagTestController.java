@@ -62,7 +62,7 @@ public class RagTestController {
                 recall,
                 mrr,
                 results.size(),
-                results.stream().map(r -> Map.of(
+                results.stream().map(r -> Map.<String, Object>of(
                         "chunkId", r.chunkId(),
                         "headingPath", r.headingPath() != null ? r.headingPath() : "",
                         "score", r.score()

@@ -44,7 +44,7 @@ services:
 
   # ── MinIO（Milvus 对象存储依赖） ──
   minio:
-    image: minio/minio:RELEASE.2024-09-22T00-33-43Z
+    image: pgsty/minio:latest
     container_name: rag-minio
     restart: unless-stopped
     environment:

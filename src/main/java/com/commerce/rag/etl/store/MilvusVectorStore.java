@@ -9,7 +9,8 @@ import io.milvus.param.collection.*;
 import io.milvus.param.dml.DeleteParam;
 import io.milvus.param.dml.InsertParam;
 import io.milvus.param.index.CreateIndexParam;
-import io.milvus.response.MutationResultWrapper;
+import io.milvus.param.IndexType;
+import io.milvus.param.MetricType;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -179,8 +180,8 @@ public class MilvusVectorStore {
             throw new RuntimeException("Milvus 写入失败: " + result.getMessage());
         }
 
-        MutationResultWrapper wrapper = new MutationResultWrapper(result.getData());
-        log.info("Milvus 写入成功: {} 条", wrapper.getInsertCnt());
+        // ponytail: 直接用 gRPC 返回对象的 getInsertCnt()，避免 MutationResultWrapper API 兼容问题
+        log.info("Milvus 写入成功: {} 条", result.getData().getInsertCnt());
     }
 
     /**

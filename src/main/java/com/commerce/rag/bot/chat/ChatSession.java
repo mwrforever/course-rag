@@ -38,6 +38,10 @@ public class ChatSession {
     @Column(nullable = false, length = 20)
     private String status;
 
+    /** 上下文压缩摘要（长对话触发 70% 阈值时生成，避免每次重新压缩） */
+    @Column(name = "context_summary", columnDefinition = "TEXT")
+    private String contextSummary;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

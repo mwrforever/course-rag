@@ -1,48 +1,34 @@
 package com.commerce.rag.bot.mode;
 
-import com.commerce.rag.retrieval.search.SearchResult;
+import com.commerce.rag.bot.prompt.PromptTemplateService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 
-import java.util.List;
+import java.util.Map;
 
 /**
- * 三种对话模式的处理器
+ * 课程询问模式
  *
- * 每个模式对应不同的提示词和检索策略：
- * - CourseInquiryMode: 课程信息询问，结合课程数据生成推荐
- * - HeuristicMode: 启发式解答，分析问题原因并引导解决
- * - QaMode: QA 问答，基于 RAG 检索结果生成答案
+ * 针对课程相关问题，结合检索到的课程信息生成专业、友好的回答。
+ * 使用 PromptTemplateService 获取模板，system prompt 静态可缓存。
  */
 @Slf4j
 @Component
 public class CourseInquiryMode {
 
     private final ChatClient chatClient;
+    private final PromptTemplateService promptService;
 
-    private static final String PROMPT = """
-            你是一个专业的课程顾问 AI 助手。根据以下信息回答用户关于课程的问题。
-            
-            回答要求：
-            1. 提供详细的课程介绍，包括课程内容、适合人群、学习目标等
-            2. 如果用户需要推荐课程，根据其需求匹配合适的课程
-            3. 语气友好专业，突出课程价值
-            4. 如果没有相关课程信息，诚实告知并建议联系人工客服
-            
-            参考信息：
-            {context}
-            
-            用户问题：{query}
-            """;
-
-    public CourseInquiryMode(ChatModel chatModel) {
+    public CourseInquiryMode(ChatModel chatModel, PromptTemplateService promptService) {
         this.chatClient = ChatClient.builder(chatModel).build();
+        this.promptService = promptService;
     }
 
     /**
-     * 处理课程询问
+     * 处理课程询问（同步）
      *
      * @param query   用户问题
      * @param context 课程相关上下文信息
@@ -50,9 +36,26 @@ public class CourseInquiryMode {
      */
     public String answer(String query, String context) {
         return chatClient.prompt()
-                .user(PROMPT.replace("{query}", query)
-                        .replace("{context}", context != null ? context : "暂无课程信息"))
+                .system(promptService.getSystemPrompt())
+                .user(promptService.getUserPromptWithReminder("course-inquiry",
+                        Map.of("query", query, "context", context != null ? context : "暂无课程信息")))
                 .call()
+                .content();
+    }
+
+    /**
+     * 处理课程询问（流式）
+     *
+     * @param query   用户问题
+     * @param context 课程相关上下文信息
+     * @return 文本增量流
+     */
+    public Flux<String> answerStream(String query, String context) {
+        return chatClient.prompt()
+                .system(promptService.getSystemPrompt())
+                .user(promptService.getUserPromptWithReminder("course-inquiry",
+                        Map.of("query", query, "context", context != null ? context : "暂无课程信息")))
+                .stream()
                 .content();
     }
 }

@@ -10,7 +10,10 @@ import com.commerce.rag.etl.store.MilvusVectorStore;
 import com.commerce.rag.knowledge.entity.Document;
 import com.commerce.rag.knowledge.entity.DocumentRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.embedding.Embedding;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.embedding.EmbeddingRequest;
+import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -145,9 +148,11 @@ public class EtlPipeline {
                     .toList();
 
             try {
-                float[][] batchVectors = embeddingModel.embed(
-                        batchTexts.toArray(new String[0]));
-                for (float[] vector : batchVectors) {
+                // Spring AI 1.0.0 使用 call() + EmbeddingRequest 替代已移除的 embed(String[])
+                EmbeddingResponse response = embeddingModel.call(
+                        new EmbeddingRequest(batchTexts, null));
+                for (Embedding embedding : response.getResults()) {
+                    float[] vector = embedding.getOutput();
                     List<Float> floatList = new ArrayList<>(vector.length);
                     for (float v : vector) {
                         floatList.add(v);

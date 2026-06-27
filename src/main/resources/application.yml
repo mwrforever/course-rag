@@ -107,6 +107,34 @@ chat:
   # 保留最近对话轮数
   max-history-rounds: 10
 
+# ── 上下文窗口管理 ──
+context:
+  # 模型上下文窗口总 token 数（qwen-plus 约 32K）
+  max-tokens: 32000
+  # 压缩触发阈值（0~1），达到此比例时触发历史压缩
+  threshold: 0.7
+  # 压缩后保留的最近消息条数
+  keep-recent: 6
+  # 摘要用小模型（节省成本，可选 qwen-turbo）
+  summary-model: qwen-turbo
+
+# ── SSE 流式 + Worker Queue 配置 ──
+stream:
+  # 请求队列名称（全局 Redis Stream，Worker 消费）
+  request-stream: chat:request
+  # Consumer Group 名称
+  consumer-group: chat-workers
+  # Worker 每轮消费批次大小
+  batch-size: 10
+  # XREAD BLOCK 超时（毫秒）
+  poll-timeout: 2000
+  # 响应流 + meta 完成后 TTL（秒），到期 Redis 自动清理
+  response-ttl: 300
+  # SSE 心跳间隔（秒），防止中间代理关闭长连接
+  heartbeat-interval: 15
+  # 增量持久化阈值（每多少个 delta 触发一次 PG 写入）
+  incremental-save-threshold: 50
+
 logging:
   level:
     com.commerce.rag: INFO

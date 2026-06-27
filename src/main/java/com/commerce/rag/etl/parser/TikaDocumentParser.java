@@ -10,6 +10,8 @@ import org.apache.tika.parser.ParseContext;
 import org.apache.tika.sax.BodyContentHandler;
 import org.springframework.stereotype.Component;
 
+import org.xml.sax.SAXException;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -94,7 +96,7 @@ public class TikaDocumentParser implements DocumentParser {
                     fileName, sections.size(), System.currentTimeMillis() - startTime);
             return new ParsedDocument(title, sections);
 
-        } catch (IOException | TikaException e) {
+        } catch (IOException | TikaException | SAXException e) {
             log.error("文档解析失败: {}", fileName, e);
             throw new RuntimeException("文档解析失败: " + fileName, e);
         }

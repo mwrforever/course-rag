@@ -1,12 +1,15 @@
 package com.commerce.rag.bot.mode;
 
+import com.commerce.rag.bot.prompt.PromptTemplateService;
 import com.commerce.rag.retrieval.search.SearchResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * QA 问题解答模式（RAG 核心链路）
@@ -14,55 +17,65 @@ import java.util.List;
  * 完整的 RAG 回答流程：
  * 1. 检索相关文档片段
  * 2. 将文档片段作为上下文注入 prompt
- * 3. LLM 基于上下文生成答案
+ * 3. LLM 基于上下文生成答案（支持流式输出）
  * 4. 标注信息来源引用
+ *
+ * 使用 PromptTemplateService 获取模板，system prompt 静态可缓存，
+ * user prompt 动态注入 context/history/query。
  */
 @Slf4j
 @Component
 public class QaMode {
 
     private final ChatClient chatClient;
+    private final PromptTemplateService promptService;
 
-    private static final String PROMPT = """
-            你是一个专业的知识库问答 AI 助手。基于提供的参考文档回答用户问题。
-            
-            回答规则：
-            1. 严格基于参考文档内容回答，不要编造信息
-            2. 如果参考文档中没有相关内容，明确告知"根据现有知识库未找到相关信息"
-            3. 回答时标注信息来源，格式为 [来源: 文档标题 > 章节路径]
-            4. 如果多个文档包含相关信息，综合回答并分别标注来源
-            5. 回答要准确、简洁、有条理
-            
-            参考文档：
-            {context}
-            
-            对话历史摘要：
-            {history}
-            
-            用户问题：{query}
-            """;
-
-    public QaMode(ChatModel chatModel) {
+    public QaMode(ChatModel chatModel, PromptTemplateService promptService) {
         this.chatClient = ChatClient.builder(chatModel).build();
+        this.promptService = promptService;
     }
 
     /**
-     * 基于 RAG 检索结果生成回答
+     * 基于 RAG 检索结果生成回答（同步）
      *
      * @param query          用户问题
      * @param searchResults  检索到的相关文档片段
      * @param historySummary 对话历史摘要
-     * @return AI 回答 + 来源引用
+     * @return AI 回答文本
      */
     public String answer(String query, List<SearchResult> searchResults, String historySummary) {
-        // 构建上下文文本
         String context = buildContext(searchResults);
+        String systemPrompt = promptService.getSystemPrompt();
+        String userPrompt = promptService.getUserPromptWithReminder("qa-answer",
+                Map.of("query", query, "context", context, "history",
+                        historySummary != null ? historySummary : "无"));
 
         return chatClient.prompt()
-                .user(PROMPT.replace("{query}", query)
-                        .replace("{context}", context)
-                        .replace("{history}", historySummary != null ? historySummary : "无"))
+                .system(systemPrompt)
+                .user(userPrompt)
                 .call()
+                .content();
+    }
+
+    /**
+     * 基于 RAG 检索结果生成流式回答（SSE 打字效果）
+     *
+     * @param query          用户问题
+     * @param searchResults  检索到的相关文档片段
+     * @param historySummary 对话历史摘要
+     * @return 文本增量流，每个元素是一个 token
+     */
+    public Flux<String> answerStream(String query, List<SearchResult> searchResults, String historySummary) {
+        String context = buildContext(searchResults);
+        String systemPrompt = promptService.getSystemPrompt();
+        String userPrompt = promptService.getUserPromptWithReminder("qa-answer",
+                Map.of("query", query, "context", context, "history",
+                        historySummary != null ? historySummary : "无"));
+
+        return chatClient.prompt()
+                .system(systemPrompt)
+                .user(userPrompt)
+                .stream()
                 .content();
     }
 
