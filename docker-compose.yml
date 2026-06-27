@@ -11,7 +11,7 @@ services:
     environment:
       POSTGRES_DB: commerce_rag
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: rag_pg_2024
     ports:
       - "5432:5432"
     volumes:
@@ -26,6 +26,7 @@ services:
       - "6379:6379"
     volumes:
       - ./appdata/redis:/data
+    command: redis-server --requirepass rag_redis_2024
 
   # ── etcd（Milvus 元数据存储依赖） ──
   etcd:
@@ -47,8 +48,8 @@ services:
     container_name: rag-minio
     restart: unless-stopped
     environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      MINIO_ROOT_USER: rag_minio
+      MINIO_ROOT_PASSWORD: rag_minio_2024
     volumes:
       - ./appdata/minio:/minio_data
     command: minio server /minio_data --console-address ":9001"
@@ -66,6 +67,8 @@ services:
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY: rag_minio
+      MINIO_SECRET_KEY: rag_minio_2024
     volumes:
       - ./appdata/milvus:/var/lib/milvus
     ports:
