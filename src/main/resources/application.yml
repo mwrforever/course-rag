@@ -1,0 +1,103 @@
+# 企业级 RAG 知识库系统 - 主配置
+# 所有环境共享的基础配置，环境变量通过 ${VAR} 注入
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: commerce-rag
+
+  # ── DashScope AI 模型配置 ──
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY:}
+      chat:
+        options:
+          model: qwen-plus
+          temperature: 0.7
+      embedding:
+        options:
+          model: text-embedding-v3
+
+  # ── PostgreSQL 数据源 ──
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:commerce_rag}
+    username: ${PG_USER:postgres}
+    password: ${PG_PASSWORD:postgres}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+
+  # ── JPA 配置 ──
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # ── Flyway 数据库迁移 ──
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  # ── 文件上传限制 ──
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+  # ── 异步线程池 ──
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 16
+        queue-capacity: 100
+      thread-name-prefix: rag-async-
+
+# ── Milvus 向量数据库配置 ──
+milvus:
+  host: ${MILVUS_HOST:localhost}
+  port: ${MILVUS_PORT:19530}
+  collection-name: knowledge_chunks
+  # text-embedding-v3 输出维度
+  embedding-dim: 1024
+
+# ── RAG 检索参数 ──
+retrieval:
+  # 分数传播：子 85% + 父 15%
+  score-propagation-alpha: 0.85
+  # 语义 85% + 热度 15%
+  hotness-alpha: 0.15
+  # 热度衰减半衰期（天）
+  half-life-days: 7
+  # 默认返回结果数
+  default-top-k: 5
+  # 预取倍数
+  prefetch-multiplier: 4
+  # RRF 融合常数 k
+  rrf-k: 60
+  # rerank 阈值
+  rerank-threshold: 0.30
+
+# ── ETL 分块参数 ──
+etl:
+  chunk-size: 512
+  chunk-overlap: 64
+  max-file-size-mb: 100
+
+# ── 对话配置 ──
+chat:
+  # 保留最近对话轮数
+  max-history-rounds: 10
+
+logging:
+  level:
+    com.commerce.rag: INFO
+    org.springframework.ai: DEBUG
+    io.milvus: WARN

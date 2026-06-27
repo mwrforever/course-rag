@@ -1,0 +1,12 @@
+# 生产环境配置
+# 激活方式: --spring.profiles.active=prod
+
+spring:
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    com.commerce.rag: INFO
+    org.springframework.ai: WARN
+    io.milvus: WARN
