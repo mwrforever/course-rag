@@ -114,6 +114,100 @@ class SseEventTransformerTest {
         assertTrue(result.isEmpty());
     }
 
+    @Test
+    @DisplayName("thinking→text 切换：补发 THINKING_END，且位于首条 DELTA 之前")
+    void transform_thinkingThenText_emitsThinkingEndBeforeDelta() {
+        // Given: 先推 thinking chunk，再推 text chunk（同一 runState）
+        AssistantMessage thinkingMsg = mock(AssistantMessage.class);
+        StreamingOutput<?> thinkingOutput = mock(StreamingOutput.class);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+        when(thinkingOutput.getOutputType()).thenReturn(OutputType.AGENT_MODEL_STREAMING);
+        when(thinkingOutput.message()).thenReturn(thinkingMsg);
+        when(thinkingMsg.getMetadata()).thenReturn(Map.of("reasoningContent", "思考中"));
+
+        AssistantMessage textMsg = mock(AssistantMessage.class);
+        StreamingOutput<?> textOutput = mock(StreamingOutput.class);
+        when(textOutput.getOutputType()).thenReturn(OutputType.AGENT_MODEL_STREAMING);
+        when(textOutput.message()).thenReturn(textMsg);
+        when(textMsg.getMetadata()).thenReturn(Map.of());
+        when(textMsg.getText()).thenReturn("答案是42");
+
+        // When
+        List<SseEvent> first = transformer.transform(thinkingOutput, runState);
+        List<SseEvent> second = transformer.transform(textOutput, runState);
+
+        // Then: THINKING → THINKING_END → DELTA
+        assertEquals(1, first.size());
+        assertEquals(SseEventType.THINKING, first.get(0).type());
+        assertEquals(2, second.size());
+        assertEquals(SseEventType.THINKING_END, second.get(0).type());
+        assertEquals("{}", second.get(0).payload());
+        assertEquals(SseEventType.DELTA, second.get(1).type());
+    }
+
+    @Test
+    @DisplayName("纯文本流（无 thinking）：text 与 FINISHED 均不产生 THINKING_END")
+    void transform_textOnly_noThinkingEnd() {
+        // Given: 先推 text chunk（无 thinking 历史），再推 FINISHED（无 reasoning）
+        AssistantMessage textMsg = mock(AssistantMessage.class);
+        StreamingOutput<?> textOutput = mock(StreamingOutput.class);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+        when(textOutput.getOutputType()).thenReturn(OutputType.AGENT_MODEL_STREAMING);
+        when(textOutput.message()).thenReturn(textMsg);
+        when(textMsg.getMetadata()).thenReturn(Map.of());
+        when(textMsg.getText()).thenReturn("直接回答");
+
+        AssistantMessage finMsg = mock(AssistantMessage.class);
+        StreamingOutput<?> finOutput = mock(StreamingOutput.class);
+        when(finOutput.getOutputType()).thenReturn(OutputType.AGENT_MODEL_FINISHED);
+        when(finOutput.message()).thenReturn(finMsg);
+        when(finMsg.getMetadata()).thenReturn(Map.of());
+        lenient().when(finMsg.hasToolCalls()).thenReturn(false);
+
+        // When
+        List<SseEvent> streamingEvents = transformer.transform(textOutput, runState);
+        List<SseEvent> finishedEvents = transformer.transform(finOutput, runState);
+
+        // Then: 无 THINKING_END
+        assertEquals(1, streamingEvents.size());
+        assertEquals(SseEventType.DELTA, streamingEvents.get(0).type());
+        assertTrue(finishedEvents.stream().noneMatch(e -> e.type() == SseEventType.THINKING_END));
+    }
+
+    @Test
+    @DisplayName("流式已补发 THINKING_END 后，FINISHED 带 reasoning 不重复发")
+    void transform_finishedAfterStreamingThinkingEnd_noDuplicate() {
+        // Given: thinking → text（已补发 THINKING_END）→ FINISHED 仍带 reasoningContent
+        AssistantMessage thinkingMsg = mock(AssistantMessage.class);
+        StreamingOutput<?> thinkingOutput = mock(StreamingOutput.class);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+        when(thinkingOutput.getOutputType()).thenReturn(OutputType.AGENT_MODEL_STREAMING);
+        when(thinkingOutput.message()).thenReturn(thinkingMsg);
+        when(thinkingMsg.getMetadata()).thenReturn(Map.of("reasoningContent", "思考中"));
+
+        AssistantMessage textMsg = mock(AssistantMessage.class);
+        StreamingOutput<?> textOutput = mock(StreamingOutput.class);
+        when(textOutput.getOutputType()).thenReturn(OutputType.AGENT_MODEL_STREAMING);
+        when(textOutput.message()).thenReturn(textMsg);
+        when(textMsg.getMetadata()).thenReturn(Map.of());
+        when(textMsg.getText()).thenReturn("答案");
+
+        AssistantMessage finMsg = mock(AssistantMessage.class);
+        StreamingOutput<?> finOutput = mock(StreamingOutput.class);
+        when(finOutput.getOutputType()).thenReturn(OutputType.AGENT_MODEL_FINISHED);
+        when(finOutput.message()).thenReturn(finMsg);
+        when(finMsg.getMetadata()).thenReturn(Map.of("reasoningContent", "思考完毕"));
+        lenient().when(finMsg.hasToolCalls()).thenReturn(false);
+
+        // When
+        transformer.transform(thinkingOutput, runState);
+        transformer.transform(textOutput, runState);
+        List<SseEvent> finishedEvents = transformer.transform(finOutput, runState);
+
+        // Then: FINISHED 不再重复发 THINKING_END（无事件）
+        assertTrue(finishedEvents.isEmpty());
+    }
+
     // ==================== AGENT_MODEL_FINISHED ====================
 
     @Test
