@@ -6,9 +6,13 @@ import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -91,8 +95,21 @@ public class AuthInterceptor implements HandlerInterceptor {
         request.setAttribute(ATTR_ROLE, role);
         request.setAttribute(ATTR_JTI, jti);
 
+        // 6. 权限桥接：将 JWT 鉴权结果写入 Spring Security 上下文，
+        //    供 @PreAuthorize 方法级鉴权读取（hasAnyRole 自动补 ROLE_ 前缀）
+        SecurityContextHolder.getContext()
+                .setAuthentication(new UsernamePasswordAuthenticationToken(
+                        userId, null, List.of(new SimpleGrantedAuthority("ROLE_" + role))));
+
         log.debug("认证通过: userId={}, role={}, jti={}", userId, role, jti);
         return true;
+    }
+
+    @Override
+    public void afterCompletion(
+            HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        // 清理 SecurityContext：请求结束后必须清空，防止线程池复用串上下文
+        SecurityContextHolder.clearContext();
     }
 
     /**

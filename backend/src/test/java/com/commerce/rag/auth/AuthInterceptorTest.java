@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * AuthInterceptor 单元测试 —— 请求拦截鉴权逻辑
@@ -157,5 +158,29 @@ class AuthInterceptorTest {
 
         assertFalse(result);
         verify(response).setStatus(HttpStatus.UNAUTHORIZED.value());
+    }
+
+    @Test
+    @DisplayName("preHandle 校验通过后 SecurityContext 写入 ROLE_ 前缀 authority")
+    void preHandle_writesSecurityContext() throws Exception {
+        String token = "valid.token";
+        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
+        Claims claims = mock(Claims.class);
+        when(tokenService.validateToken(token)).thenReturn(claims);
+        when(tokenService.extractTokenType(claims)).thenReturn("ACCESS");
+        when(deviceKickService.isBlacklisted(anyString())).thenReturn(false);
+        when(tokenService.extractUserId(claims)).thenReturn(123L);
+        when(tokenService.extractRole(claims)).thenReturn("TEACHER");
+        when(tokenService.extractJti(claims)).thenReturn("jti-abc");
+
+        boolean result = authInterceptor.preHandle(request, response, null);
+
+        assertTrue(result);
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertNotNull(authentication, "校验通过后应写入 SecurityContext");
+        assertTrue(authentication.getAuthorities().stream().anyMatch(a -> "ROLE_TEACHER".equals(a.getAuthority())));
+        // 清理（afterCompletion 的行为单独断言）
+        authInterceptor.afterCompletion(request, response, null, null);
+        assertNull(SecurityContextHolder.getContext().getAuthentication(), "afterCompletion 应清空 SecurityContext");
     }
 }
