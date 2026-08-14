@@ -7,7 +7,7 @@ import java.util.List;
  *
  * <p>聚合课程摘要、排期、讲师与课程正文四 Tab 内容。
  * 四 Tab 字段与 db-schema course_content.content_type 枚举一一对应：
- * intro / syllabus / instructor / faq（本 spec S3 语义对齐，废弃 prerequisites/targetAudience 错位字段）。
+ * intro / syllabus / instructor / faq（本 spec S3 语义对齐，废弃旧版错位字段命名，四 Tab 字段与 DB 枚举一一对应）。
  *
  * @param summary            课程摘要（与列表页同类型）
  * @param schedule           排期信息（含课时时长）

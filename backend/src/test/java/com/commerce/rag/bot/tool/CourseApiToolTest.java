@@ -98,7 +98,7 @@ class CourseApiToolTest {
         // When
         CourseDetailResult result = tool.queryCourseDetail("123");
 
-        // Then: 每个 DTO 字段内容 = 对应 Tab 内容（不再有 prerequisites/targetAudience 错位）
+        // Then: 每个 DTO 字段内容 = 对应 Tab 内容（不再有字段错位）
         assertNotNull(result);
         assertEquals("123", result.summary().courseId());
         assertEquals("Java入门到精通", result.summary().title());
