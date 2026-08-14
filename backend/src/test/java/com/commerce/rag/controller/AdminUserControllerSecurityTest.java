@@ -69,9 +69,9 @@ class AdminUserControllerSecurityTest {
     @DisplayName("TEACHER 携带合法 token 访问 admin 端点 → 200")
     void teacherWithValidToken_returns200() throws Exception {
         stubToken("TEACHER");
-        // 注意：本任务执行时 SysUserService.findPage 仍为 5 参旧签名（Task 3 才改 6 参），
-        // 按当前签名 stub；Task 3 会同步此 stub 为 6 参（该文件列入 Task 3 提交清单）
-        when(sysUserService.findPage(anyInt(), anyInt(), isNull(), isNull())).thenReturn(new Page<>());
+        // P0-2f：findPage 为 6 参新签名（含 currentUserId / operatorRole）
+        when(sysUserService.findPage(anyInt(), anyInt(), isNull(), isNull(), any(), any()))
+                .thenReturn(new Page<>());
 
         mockMvc.perform(get("/api/v1/admin/users").header("Authorization", "Bearer test-token"))
                 .andExpect(status().isOk());
