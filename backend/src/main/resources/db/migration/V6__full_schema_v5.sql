@@ -307,6 +307,7 @@ CREATE INDEX idx_chat_message_run_type     ON chat_message(run_id, message_type)
 -- 15. user_feedback ── 用户反馈
 CREATE TABLE user_feedback (
     id         BIGINT       PRIMARY KEY,
+    user_id    BIGINT       NOT NULL,
     session_id BIGINT       NOT NULL,
     message_id BIGINT       NOT NULL,
     is_liked   BOOLEAN,
@@ -314,7 +315,9 @@ CREATE TABLE user_feedback (
     deleted    BIGINT       DEFAULT 0,
     created_at TIMESTAMPTZ  DEFAULT now()
 );
-CREATE UNIQUE INDEX uniq_feedback_message      ON user_feedback(session_id, message_id) WHERE deleted = 0;
+
+-- 同一用户对同一消息只允许一条反馈（P0-2h：加 user_id 归属）
+CREATE UNIQUE INDEX uniq_feedback_message      ON user_feedback(user_id, message_id) WHERE deleted = 0;
 CREATE INDEX        idx_user_feedback_intent_liked ON user_feedback(intent_type, is_liked) WHERE deleted = 0;
 CREATE INDEX        idx_user_feedback_session      ON user_feedback(session_id) WHERE deleted = 0;
 
