@@ -413,8 +413,13 @@ public class ChatRequestWorker {
         } catch (Exception e) {
             log.error("processRequest 致命错误 runId={}", runId, e);
             errored.set(true);
-            // P0-4b 修复：补齐终态——推送 ERROR 事件 + 持久化已收集消息（与 onErrorResume 分支对齐）
-            handleError(runIdStr, runId, runState, e);
+            // P0-4b 修复：补齐终态——推送 ERROR 事件 + 持久化已收集消息（与 onErrorResume 分支对齐）。
+            // handleError 单独兜底：其内部状态更新失败不得阻断消息持久化（修复审查 finding）
+            try {
+                handleError(runIdStr, runId, runState, e);
+            } catch (Exception errorEx) {
+                log.error("handleError 执行失败 runId={}", runId, errorEx);
+            }
             persistMessages(
                     runId,
                     sessionId,

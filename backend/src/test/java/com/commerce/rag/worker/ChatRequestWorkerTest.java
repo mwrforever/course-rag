@@ -330,4 +330,22 @@ class ChatRequestWorkerTest {
         assertEquals("USER", inserted.get(0).getRole());
         assertEquals("本轮回答", inserted.get(1).getContent());
     }
+
+    // ==================== catch 分支 handleError 失败兜底（P0-4b 复合故障） ====================
+
+    @Test
+    @DisplayName("catch 分支 handleError 失败 → 仍持久化用户消息（P0-4b 复合故障兜底）")
+    void processRequest_handleErrorFails_stillPersists() throws Exception {
+        // Given: 图流启动即抛异常（进入 catch 分支），且 updateStatus(ERROR) 抛异常模拟 handleError 内部失败
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenThrow(new RuntimeException("图流启动失败"));
+        doThrow(new RuntimeException("数据库不可用")).when(chatRunService).updateStatus(anyLong(), eq("ERROR"));
+
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: handleError 失败不阻断持久化——用户消息仍批量落库
+        verify(chatMessageService).batchInsert(anyList());
+    }
 }

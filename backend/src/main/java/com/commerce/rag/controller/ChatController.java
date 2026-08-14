@@ -182,10 +182,16 @@ public class ChatController {
             redisTemplate.opsForStream().add(streamProperties.requestStream(), message);
         } catch (Exception e) {
             // P0-4c 修复：入队失败回滚 run 状态（解除 uniq_active_run_per_session 唯一索引锁死）
-            // + 清理 ring，避免 QUEUED 残留与 ring map 泄漏
+            // + 清理 ring。复合故障（Redis+DB 双挂）下 updateStatus 抛异常也必须清理 ring，
+            // 故 removeRing 放 finally（修复审查 finding：锁死未解除 + ring 泄漏）
             log.error("XADD 入队失败，回滚 run: runId={}", runId, e);
-            chatRunService.updateStatus(run.getId(), "ERROR");
-            bridge.removeRing(runId);
+            try {
+                chatRunService.updateStatus(run.getId(), "ERROR");
+            } catch (Exception dbEx) {
+                log.error("XADD 失败后回滚 run 状态失败: runId={}", runId, dbEx);
+            } finally {
+                bridge.removeRing(runId);
+            }
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "消息队列暂不可用，请稍后重试");
         }
 

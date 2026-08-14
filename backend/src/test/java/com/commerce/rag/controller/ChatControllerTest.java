@@ -210,6 +210,31 @@ class ChatControllerTest {
         verify(bridge).removeRing("123");
     }
 
+    @Test
+    @DisplayName("XADD 与 DB 双挂 → updateStatus 失败仍 removeRing + 503（P0-4c 复合故障兜底）")
+    void chat_xaddAndDbBothFail_stillRemovesRing() {
+        // Given: 会话与 run 创建成功；XADD 与 run 状态回滚均抛异常（Redis+DB 双挂）
+        ChatSession mockSession = mock(ChatSession.class);
+        when(mockSession.getId()).thenReturn(456L);
+        when(chatSessionService.createSession(eq(123L), anyString())).thenReturn(mockSession);
+
+        ChatRun mockRun = mock(ChatRun.class);
+        when(mockRun.getId()).thenReturn(123L);
+        when(chatRunService.createRun(456L, 123L)).thenReturn(mockRun);
+
+        doThrow(new RuntimeException("Redis 不可用")).when(streamOps).add(anyString(), anyMap());
+        doThrow(new RuntimeException("数据库不可用")).when(chatRunService).updateStatus(anyLong(), anyString());
+
+        // When / Then: 仍抛 503（不因回滚失败变 500），且 ring 必清理
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class,
+                () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好")));
+
+        assertEquals(503, ex.getStatusCode().value());
+        verify(chatRunService).updateStatus(123L, "ERROR");
+        verify(bridge).removeRing("123");
+    }
+
     // ==================== cancel() 测试 ====================
 
     @Test
