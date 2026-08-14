@@ -325,7 +325,10 @@ public class SysUserService {
             if (targetUser.getCreatedBy() == null || !targetUser.getCreatedBy().equals(currentUserId)) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "教师只能操作自己创建的学生");
             }
+            return;
         }
+        // 非超管/教师角色一律拒绝（fail-closed：角色变更后旧 token 不得获得操作权）
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权操作");
     }
 
     /**

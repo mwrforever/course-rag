@@ -93,7 +93,11 @@ class DocumentServiceTest {
         when(documentMapper.selectById(1L)).thenReturn(mockDoc(1L, 100L));
 
         // 操作者 200 不是创建者 100 → 403
-        assertThrows(ResponseStatusException.class, () -> documentService.update(1L, "新标题", 200L, false));
+        ResponseStatusException ex =
+                assertThrows(ResponseStatusException.class, () -> documentService.update(1L, "新标题", 200L, false));
+        assertEquals(403, ex.getStatusCode().value());
+        // 403 路径零写入副作用：不得触发任何 DB 更新
+        verify(documentMapper, never()).update(any(), any());
         // 超管旁路：不抛异常
         assertDoesNotThrow(() -> documentService.update(1L, "新标题", 200L, true));
     }
@@ -103,7 +107,11 @@ class DocumentServiceTest {
     void download_notOwner_throws403() {
         when(documentMapper.selectById(1L)).thenReturn(mockDoc(1L, 100L));
 
-        assertThrows(ResponseStatusException.class, () -> documentService.download(1L, 200L, false));
+        ResponseStatusException ex =
+                assertThrows(ResponseStatusException.class, () -> documentService.download(1L, 200L, false));
+        assertEquals(403, ex.getStatusCode().value());
+        // 403 路径零副作用：不得从 MinIO 读取文件
+        verify(minioStorageService, never()).downloadFile(anyString());
     }
 
     @Test
@@ -115,10 +123,13 @@ class DocumentServiceTest {
         when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
 
         // 用户 200 向 createdBy=100 的知识库上传 → 403
-        assertThrows(
+        ResponseStatusException ex = assertThrows(
                 ResponseStatusException.class,
                 () -> documentService.upload(
                         1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, 200L, false));
+        assertEquals(403, ex.getStatusCode().value());
+        // 403 路径零副作用：documentMapper 零交互（未落库）
+        verifyNoInteractions(documentMapper);
     }
 
     @Test

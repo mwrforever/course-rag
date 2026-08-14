@@ -284,4 +284,22 @@ class SysUserServiceTest {
 
         assertNull(sysUserService.findById(2L, 100L, "TEACHER"));
     }
+
+    @Test
+    @DisplayName("checkTeacherPermission → operator 角色为 STUDENT 时抛出 403（fail-closed）")
+    void operatorWithStudentRole_throws403() {
+        SysUser target = new SysUser();
+        target.setId(2L);
+        target.setRole("STUDENT");
+        SysUser operator = new SysUser();
+        operator.setId(100L);
+        operator.setRole("STUDENT");
+        when(userMapper.selectById(100L)).thenReturn(operator);
+        when(userMapper.selectById(2L)).thenReturn(target);
+
+        // 非超管/教师角色一律拒绝，不得 fall-through 放行
+        ResponseStatusException ex =
+                assertThrows(ResponseStatusException.class, () -> sysUserService.updateStatus(2L, "DISABLED", 100L));
+        assertEquals(403, ex.getStatusCode().value());
+    }
 }
