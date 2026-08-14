@@ -50,7 +50,7 @@ public class AuthSessionService {
      * 创建登录记录（登录成功时调用）
      *
      * <p>构建 status=ACTIVE 的 sys_login_record，expiresAt = now + RT 有效期（7d），
-     * insert 后返回记录（含数据库回填的自增 ID），供调用方执行设备互踢。
+     * insert 后返回登录记录主键 ID（Entity 不出 service 边界），供调用方执行设备互踢。
      *
      * @param userId     用户 ID（来自 SysUser.id，非空）
      * @param jtiAt      本次登录 AT 的 jti（系统生成，非空）
@@ -58,9 +58,9 @@ public class AuthSessionService {
      * @param deviceType 设备类型（默认 WEB_DESKTOP）
      * @param deviceInfo 设备信息（请求 User-Agent，允许为空）
      * @param ipAddress  客户端 IP（允许为空）
-     * @return 插入后的 SysLoginRecord（含 id）
+     * @return 插入后的登录记录主键 ID（数据库回填）
      */
-    public SysLoginRecord createLoginRecord(
+    public Long createLoginRecord(
             Long userId, String jtiAt, String jtiRt, String deviceType, String deviceInfo, String ipAddress) {
         SysLoginRecord loginRecord = new SysLoginRecord();
         loginRecord.setUserId(userId);
@@ -72,14 +72,15 @@ public class AuthSessionService {
         loginRecord.setExpiresAt(LocalDateTime.now().plusSeconds(authProperties.refreshTokenExpiry()));
         loginRecord.setStatus("ACTIVE");
         loginRecordMapper.insert(loginRecord);
-        return loginRecord;
+        return loginRecord.getId();
     }
 
     /**
      * RT 一次性旋转后更新 login_record（刷新成功时调用）
      *
-     * <p>按 userId + 旧 jti_rt + ACTIVE 定位记录，覆盖 jti_at/jti_rt/updated_at。
-     * 更新失败仅 warn 降级（不阻断刷新主流程），语义与原 AuthController.updateLoginRecordOnRefresh 一致。
+     * <p>按 userId + 旧 jti_rt + ACTIVE 定位记录，覆盖 jti_at/jti_rt/expires_at/updated_at。
+     * expires_at 随 RT 旋转同步滑动（now + RT 有效期），保证登出时 RT 黑名单 TTL
+     * 能完整覆盖旋转后 RT 的密码学生命周期。更新失败仅 warn 降级（不阻断刷新主流程）。
      *
      * @param userId    用户 ID
      * @param oldJtiRt  旧 RT 的 jti（用于定位记录）
@@ -94,6 +95,9 @@ public class AuthSessionService {
                     .eq(SysLoginRecord::getStatus, "ACTIVE")
                     .set(SysLoginRecord::getJtiAt, newJtiAt)
                     .set(SysLoginRecord::getJtiRt, newJtiRt)
+                    .set(
+                            SysLoginRecord::getExpiresAt,
+                            LocalDateTime.now().plusSeconds(authProperties.refreshTokenExpiry()))
                     .set(SysLoginRecord::getUpdatedAt, LocalDateTime.now());
             loginRecordMapper.update(null, wrapper);
         } catch (Exception e) {
@@ -111,7 +115,7 @@ public class AuthSessionService {
      * <ol>
      *   <li>AT jti 入黑名单（ACCESS/MANUAL_REVOKE，TTL = AT 有效期）</li>
      *   <li>查该会话 ACTIVE login_record 取 jti_rt，RT 入黑名单
-     *       （REFRESH/MANUAL_REVOKE，TTL 取记录真实过期时间）</li>
+     *       （REFRESH/MANUAL_REVOKE，TTL 取记录真实过期时间，且不超过 now+7d 上限）</li>
      *   <li>login_record → REVOKED（update 失败仅 warn 降级，幂等）</li>
      * </ol>
      *
@@ -135,16 +139,19 @@ public class AuthSessionService {
                 .eq(SysLoginRecord::getStatus, "ACTIVE")
                 .last("LIMIT 1"));
         if (record != null && record.getJtiRt() != null && !record.getJtiRt().isEmpty()) {
-            // RT 入黑名单，TTL 取 login_record 记录的真实过期时间
+            // RT 入黑名单，TTL 取 login_record 记录的真实过期时间，
+            // 并以 now+RT 有效期（7d）为上限兜底：防止历史脏数据导致黑名单超期，
+            // 确保 RT 完整密码学生命周期内始终被吊销
+            LocalDateTime rtExpiry = LocalDateTime.now().plusSeconds(authProperties.refreshTokenExpiry());
             deviceKickService.addToBlacklist(
                     record.getJtiRt(),
                     "REFRESH",
                     userId,
                     userId,
                     "MANUAL_REVOKE",
-                    record.getExpiresAt() != null
+                    record.getExpiresAt() != null && record.getExpiresAt().isBefore(rtExpiry)
                             ? record.getExpiresAt()
-                            : LocalDateTime.now().plusSeconds(authProperties.refreshTokenExpiry()));
+                            : rtExpiry);
         }
 
         // 3. login_record → REVOKED（update 失败仅 warn 降级，幂等）

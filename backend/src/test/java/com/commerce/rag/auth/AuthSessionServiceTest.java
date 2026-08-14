@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.commerce.rag.config.AuthProperties;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.mapper.SysLoginRecordMapper;
@@ -22,8 +23,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 /**
  * AuthSessionService 单元测试 —— 登录记录编排（创建/刷新更新/登出吊销）
  *
- * <p>覆盖 createLoginRecord 字段正确性、updateLoginRecordOnRefresh 降级、
- * revokeOnLogout 三场景（ACTIVE record 双入黑名单+REVOKED / 无 record 仅 AT / mapper 异常不抛出）。
+ * <p>覆盖 createLoginRecord 字段正确性与主键返回、updateLoginRecordOnRefresh 降级与 expires_at 滑动、
+ * revokeOnLogout 场景（ACTIVE record 双入黑名单+REVOKED / RT 黑名单 TTL 上限兜底 / 无 record 仅 AT /
+ * mapper 异常不抛出）。
  *
  * @author commerce-rag
  */
@@ -58,9 +60,18 @@ class AuthSessionServiceTest {
     }
 
     @Test
-    @DisplayName("createLoginRecord → 构建 ACTIVE 记录并 insert，字段完整正确")
+    @DisplayName("createLoginRecord → 构建 ACTIVE 记录并 insert，返回主键")
     void createLoginRecord_buildsActiveRecordAndInserts() {
-        SysLoginRecord result = authSessionService.createLoginRecord(
+        // mock insert 回填主键（模拟 MyBatis-Plus IdType.ASSIGN_ID 行为）
+        doAnswer(inv -> {
+                    SysLoginRecord rec = inv.getArgument(0);
+                    rec.setId(10L);
+                    return 1;
+                })
+                .when(loginRecordMapper)
+                .insert(any(SysLoginRecord.class));
+
+        Long result = authSessionService.createLoginRecord(
                 123L, "jti-at", "jti-rt", "WEB_DESKTOP", "test-agent", "127.0.0.1");
 
         ArgumentCaptor<SysLoginRecord> captor = ArgumentCaptor.forClass(SysLoginRecord.class);
@@ -76,15 +87,22 @@ class AuthSessionServiceTest {
         assertNotNull(record.getExpiresAt());
         // expiresAt = now + RT 有效期（7d），允许秒级误差
         assertTrue(record.getExpiresAt().isAfter(LocalDateTime.now().plusSeconds(604700)));
-        assertSame(record, result);
+        // 返回值为登录记录主键（Entity 不出 service 边界）
+        assertEquals(10L, result);
+        assertEquals(10L, record.getId());
     }
 
     @Test
-    @DisplayName("updateLoginRecordOnRefresh → 调用 mapper.update 更新 jti_at/jti_rt")
+    @DisplayName("updateLoginRecordOnRefresh → 更新 jti_at/jti_rt/expires_at（RT 旋转后滑动过期时间）")
     void updateLoginRecordOnRefresh_updatesLoginRecord() {
         authSessionService.updateLoginRecordOnRefresh(123L, "old-jti-rt", "new-jti-at", "new-jti-rt");
 
-        verify(loginRecordMapper).update(isNull(), any());
+        ArgumentCaptor<LambdaUpdateWrapper> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(loginRecordMapper).update(isNull(), captor.capture());
+        String setSql = captor.getValue().getSqlSet();
+        assertTrue(setSql.contains("jti_at"), "SET 应包含 jti_at");
+        assertTrue(setSql.contains("jti_rt"), "SET 应包含 jti_rt");
+        assertTrue(setSql.contains("expires_at"), "SET 应包含 expires_at（rotation 滑动 RT 有效期）");
     }
 
     @Test
@@ -120,6 +138,31 @@ class AuthSessionServiceTest {
                 .addToBlacklist(eq("jti-rt"), eq("REFRESH"), eq(123L), eq(123L), eq("MANUAL_REVOKE"), eq(rtExpiresAt));
         // login_record → REVOKED
         verify(loginRecordMapper).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("revokeOnLogout → record.expiresAt 晚于 now+7d：RT 黑名单 TTL 取上限兜底")
+    void revokeOnLogout_expiresAtBeyondCap_capsRtBlacklistTtl() {
+        SysLoginRecord record = new SysLoginRecord();
+        record.setId(11L);
+        record.setUserId(123L);
+        record.setJtiAt("jti-at");
+        record.setJtiRt("jti-rt");
+        record.setStatus("ACTIVE");
+        // 构造晚于 now+7d 的过期时间（模拟历史脏数据），兜底应截断到 now+7d
+        record.setExpiresAt(LocalDateTime.now().plusDays(30));
+        when(loginRecordMapper.selectOne(any())).thenReturn(record);
+
+        authSessionService.revokeOnLogout(123L, "jti-at");
+
+        ArgumentCaptor<LocalDateTime> expiresCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(deviceKickService, times(2))
+                .addToBlacklist(anyString(), anyString(), anyLong(), anyLong(), anyString(), expiresCaptor.capture());
+        // 第 2 次调用为 RT 黑名单，TTL 应被截断到 now+7d 上限（而非 30d）
+        LocalDateTime rtBlacklistExpiry = expiresCaptor.getAllValues().get(1);
+        LocalDateTime cap = LocalDateTime.now().plusSeconds(604800L);
+        assertTrue(rtBlacklistExpiry.isAfter(cap.minusSeconds(5)), "RT 黑名单 TTL 应接近 now+7d 上限");
+        assertTrue(rtBlacklistExpiry.isBefore(cap.plusSeconds(5)), "RT 黑名单 TTL 不应晚于 now+7d 上限");
     }
 
     @Test

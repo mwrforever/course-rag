@@ -9,7 +9,6 @@ import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.LoginRequest;
 import com.commerce.rag.controller.dto.LoginResponse;
 import com.commerce.rag.controller.dto.RefreshRequest;
-import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysUser;
 import com.commerce.rag.service.SysUserService;
 import io.jsonwebtoken.Claims;
@@ -119,12 +118,12 @@ public class AuthController {
             deviceType = "WEB_DESKTOP";
         }
 
-        // 6. 创建登录记录（下沉 AuthSessionService，controller 不直调 mapper）
-        SysLoginRecord loginRecord = authSessionService.createLoginRecord(
+        // 6. 创建登录记录（下沉 AuthSessionService，controller 不直调 mapper、不接触 Entity）
+        Long loginRecordId = authSessionService.createLoginRecord(
                 user.getId(), jtiAt, jtiRt, deviceType, httpRequest.getHeader("User-Agent"), getClientIp(httpRequest));
 
         // 7. 设备互踢
-        deviceKickService.kickAndLogin(user.getId(), deviceType, jtiAt, jtiRt, loginRecord.getId());
+        deviceKickService.kickAndLogin(user.getId(), deviceType, jtiAt, jtiRt, loginRecordId);
 
         // 8. 设置 httpOnly cookie
         setCookie(httpResponse, accessToken);

@@ -11,7 +11,6 @@ import com.commerce.rag.config.AuthProperties;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.LoginRequest;
 import com.commerce.rag.controller.dto.LoginResponse;
-import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysUser;
 import com.commerce.rag.service.SysUserService;
 import io.jsonwebtoken.Claims;
@@ -96,11 +95,10 @@ class AuthControllerTest {
         when(tokenService.generateJti()).thenReturn("jti-at", "jti-rt");
         when(tokenService.generateAccessToken(1L, "STUDENT", "jti-at")).thenReturn("access-token");
         when(tokenService.generateRefreshToken(1L, "jti-rt")).thenReturn("refresh-token");
-        SysLoginRecord loginRecord = new SysLoginRecord();
-        loginRecord.setId(10L);
+        // createLoginRecord 返回登录记录主键（Entity 不出 service 边界）
         when(authSessionService.createLoginRecord(
                         eq(1L), eq("jti-at"), eq("jti-rt"), eq("WEB_DESKTOP"), eq("test-agent"), eq("127.0.0.1")))
-                .thenReturn(loginRecord);
+                .thenReturn(10L);
 
         ApiResponse<LoginResponse> result =
                 authController.login(new LoginRequest("testuser", "password123", null), httpRequest, httpResponse);
