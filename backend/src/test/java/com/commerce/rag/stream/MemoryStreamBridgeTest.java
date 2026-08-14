@@ -1,18 +1,15 @@
 package com.commerce.rag.stream;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.commerce.rag.config.StreamProperties;
+import java.io.IOException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 /**
  * MemoryStreamBridge 单元测试 —— 验证 ring buffer 的 push/replay/subscribe/cleanup 逻辑
@@ -30,9 +27,7 @@ class MemoryStreamBridgeTest {
 
     @BeforeEach
     void setUp() {
-        StreamProperties props = new StreamProperties(
-                "chat:request", "chat-workers", 10, 2000, 300, 15, BUFFER_SIZE
-        );
+        StreamProperties props = new StreamProperties("chat:request", "chat-workers", 10, 2000, 300, 15, BUFFER_SIZE);
         bridge = new MemoryStreamBridge(props);
     }
 
@@ -164,8 +159,7 @@ class MemoryStreamBridgeTest {
         bridge.subscribe("run1", mockEmitter);
 
         // stub send 抛 IOException
-        doThrow(new IOException("broken pipe"))
-                .when(mockEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        doThrow(new IOException("broken pipe")).when(mockEmitter).send(any(SseEmitter.SseEventBuilder.class));
 
         // When: push 1 个事件 → send 失败 → emitter 被移除
         bridge.push("run1", event(0));

@@ -1,14 +1,22 @@
 package com.commerce.rag.controller;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.config.StreamProperties;
 import com.commerce.rag.controller.dto.ChatRequest;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.entity.ChatSession;
+import com.commerce.rag.service.ChatMessageService;
 import com.commerce.rag.service.ChatRunService;
 import com.commerce.rag.service.ChatSessionService;
 import com.commerce.rag.service.ConcurrentRunException;
 import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.worker.ChatRequestWorker;
+import jakarta.servlet.http.HttpServletRequest;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -16,18 +24,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.StreamOperations;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 /**
  * ChatController 单元测试 —— Mock 所有 Service/Worker/Bridge，验证 SSE 端点逻辑
@@ -42,11 +44,23 @@ import static org.mockito.Mockito.*;
 @DisplayName("ChatController SSE 端点测试")
 class ChatControllerTest {
 
-    @Mock private ChatRequestWorker worker;
-    @Mock private MemoryStreamBridge bridge;
-    @Mock private ChatRunService chatRunService;
-    @Mock private ChatSessionService chatSessionService;
-    @Mock private StringRedisTemplate redisTemplate;
+    @Mock
+    private ChatRequestWorker worker;
+
+    @Mock
+    private MemoryStreamBridge bridge;
+
+    @Mock
+    private ChatRunService chatRunService;
+
+    @Mock
+    private ChatSessionService chatSessionService;
+
+    @Mock
+    private ChatMessageService chatMessageService;
+
+    @Mock
+    private StringRedisTemplate redisTemplate;
 
     private ChatController controller;
     private StreamProperties streamProperties;
@@ -54,16 +68,25 @@ class ChatControllerTest {
     @SuppressWarnings("unchecked")
     private StreamOperations<String, Object, Object> streamOps;
 
+    /** 创建模拟 HttpServletRequest，getAttribute("currentUserId") 返回 123L */
+    private HttpServletRequest mockRequestWithUserId(Long userId) {
+        HttpServletRequest mockRequest = mock(HttpServletRequest.class);
+        when(mockRequest.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(userId);
+        return mockRequest;
+    }
+
     @BeforeEach
     void setUp() {
-        streamProperties = new StreamProperties(
-                "test-stream", "test-group", 10, 1000, 300, 15, 256
-        );
+        streamProperties = new StreamProperties("test-stream", "test-group", 10, 1000, 300, 15, 256);
 
         controller = new ChatController(
-                worker, bridge, chatRunService, chatSessionService,
-                redisTemplate, streamProperties
-        );
+                worker,
+                bridge,
+                chatRunService,
+                chatSessionService,
+                chatMessageService,
+                redisTemplate,
+                streamProperties);
 
         // 调用 @PostConstruct 创建心跳调度器
         controller.init();
@@ -94,7 +117,7 @@ class ChatControllerTest {
         when(chatRunService.createRun(456L, 123L)).thenReturn(mockRun);
 
         // When
-        SseEmitter emitter = controller.chat(123L, new ChatRequest(null, "你好"));
+        SseEmitter emitter = controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好"));
 
         // Then: 验证完整流程
         verify(chatSessionService).createSession(eq(123L), anyString());
@@ -115,7 +138,7 @@ class ChatControllerTest {
         when(chatRunService.createRun(456L, 123L)).thenReturn(mockRun);
 
         // When
-        SseEmitter emitter = controller.chat(123L, new ChatRequest(456L, "你好"));
+        SseEmitter emitter = controller.chat(mockRequestWithUserId(123L), new ChatRequest(456L, "你好"));
 
         // Then: 不调用 createSession
         verify(chatSessionService, never()).createSession(anyLong(), anyString());
@@ -127,16 +150,18 @@ class ChatControllerTest {
     @Test
     @DisplayName("chat 空查询 → 抛出 400 ResponseStatusException")
     void chat_blankQuery_throws400() {
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> controller.chat(123L, new ChatRequest(null, "")));
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class,
+                () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, "")));
         assertEquals(400, ex.getStatusCode().value());
     }
 
     @Test
     @DisplayName("chat null 查询 → 抛出 400 ResponseStatusException")
     void chat_nullQuery_throws400() {
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> controller.chat(123L, new ChatRequest(null, null)));
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class,
+                () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, null)));
         assertEquals(400, ex.getStatusCode().value());
     }
 

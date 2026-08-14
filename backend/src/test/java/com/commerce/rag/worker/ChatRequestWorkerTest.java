@@ -1,10 +1,13 @@
 package com.commerce.rag.worker;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
-import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
 import com.commerce.rag.config.StreamProperties;
 import com.commerce.rag.service.ChatMessageService;
 import com.commerce.rag.service.ChatRunService;
@@ -13,18 +16,6 @@ import com.commerce.rag.stream.SseEvent;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.SseEventType;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.connection.stream.MapRecord;
-import org.springframework.data.redis.connection.stream.RecordId;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.StreamOperations;
-import reactor.core.publisher.Flux;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -33,10 +24,17 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.RecordId;
+import org.springframework.data.redis.core.StreamOperations;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import reactor.core.publisher.Flux;
 
 /**
  * ChatRequestWorker 单元测试 —— 验证取消机制和错误处理逻辑
@@ -50,23 +48,36 @@ import static org.mockito.Mockito.*;
 @DisplayName("ChatRequestWorker 核心引擎测试")
 class ChatRequestWorkerTest {
 
-    @Mock private StringRedisTemplate redisTemplate;
-    @Mock private CompiledGraph compiledGraph;
-    @Mock private BaseCheckpointSaver saver;
-    @Mock private SseEventTransformer transformer;
-    @Mock private MemoryStreamBridge bridge;
-    @Mock private ChatRunService chatRunService;
-    @Mock private ChatMessageService chatMessageService;
-    @Mock private ThreadPoolExecutor runPool;
+    @Mock
+    private StringRedisTemplate redisTemplate;
+
+    @Mock
+    private CompiledGraph compiledGraph;
+
+    @Mock
+    private BaseCheckpointSaver saver;
+
+    @Mock
+    private SseEventTransformer transformer;
+
+    @Mock
+    private MemoryStreamBridge bridge;
+
+    @Mock
+    private ChatRunService chatRunService;
+
+    @Mock
+    private ChatMessageService chatMessageService;
+
+    @Mock
+    private ThreadPoolExecutor runPool;
 
     private ChatRequestWorker worker;
     private StreamProperties streamProperties;
 
     @BeforeEach
     void setUp() throws Exception {
-        streamProperties = new StreamProperties(
-                "chat:request", "chat-workers", 10, 2000, 300, 15, 256
-        );
+        streamProperties = new StreamProperties("chat:request", "chat-workers", 10, 2000, 300, 15, 256);
 
         worker = new ChatRequestWorker(
                 redisTemplate,
@@ -79,8 +90,7 @@ class ChatRequestWorkerTest {
                 streamProperties,
                 runPool,
                 new ObjectMapper(),
-                30
-        );
+                30);
 
         // 公共 stub：saver.get 返回空 Optional（无历史 checkpoint）
         lenient().when(saver.get(any(RunnableConfig.class))).thenReturn(Optional.empty());
@@ -95,14 +105,17 @@ class ChatRequestWorkerTest {
         // 公共 stub：redisTemplate.opsForStream() 链式调用
         StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
         lenient().when(redisTemplate.opsForStream()).thenReturn(streamOps);
-        lenient().when(streamOps.acknowledge(anyString(), anyString(), anyString())).thenReturn(0L);
+        lenient()
+                .when(streamOps.acknowledge(anyString(), anyString(), anyString()))
+                .thenReturn(0L);
     }
 
     // ==================== 辅助方法 ====================
 
     /** 创建 mock MapRecord，模拟 Redis Stream 消息 */
     @SuppressWarnings("unchecked")
-    private MapRecord<String, Object, Object> createMockRecord(String runId, String sessionId, String userId, String query) {
+    private MapRecord<String, Object, Object> createMockRecord(
+            String runId, String sessionId, String userId, String query) {
         MapRecord<String, Object, Object> mockRecord = mock(MapRecord.class);
         RecordId mockRecordId = mock(RecordId.class);
         lenient().when(mockRecordId.getValue()).thenReturn("123-0");
@@ -178,8 +191,7 @@ class ChatRequestWorkerTest {
         // Given
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null); // 无 state，persistMessages 只存用户消息
-        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
-                .thenReturn(Flux.just(mockChunk));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
 
         MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
 
@@ -207,8 +219,7 @@ class ChatRequestWorkerTest {
 
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
-        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
-                .thenReturn(Flux.just(mockChunk));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
 
         MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
 
@@ -266,8 +277,7 @@ class ChatRequestWorkerTest {
     void processRequest_finallyCleanup() throws Exception {
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
-        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
-                .thenReturn(Flux.just(mockChunk));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
 
         MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
 
