@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -55,6 +56,12 @@ class AuthInterceptorTest {
         // response.getWriter() mock（lenient，非所有测试都用到）
         StringWriter sw = new StringWriter();
         lenient().when(response.getWriter()).thenReturn(new PrintWriter(sw));
+    }
+
+    /** 每个用例结束后清理 SecurityContext，防止断言失败时 ThreadLocal 泄漏污染其他测试 */
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
