@@ -1,0 +1,146 @@
+package com.commerce.rag.controller;
+
+import com.commerce.rag.auth.AuthInterceptor;
+import com.commerce.rag.controller.dto.ApiResponse;
+import com.commerce.rag.controller.dto.DocumentUpdateRequest;
+import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.entity.Document;
+import com.commerce.rag.service.DocumentService;
+import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.io.InputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+/**
+ * 文档管理 Controller（C1-C7）
+ *
+ * <p>B 端管理接口，教师/超级管理员可操作。
+ * 上传文档后自动触发 ETL 异步管道。
+ *
+ * @author commerce-rag
+ */
+@RestController
+@RequestMapping("/api/v1/admin/documents")
+@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TEACHER')")
+public class AdminDocumentController {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminDocumentController.class);
+
+    private final DocumentService documentService;
+
+    public AdminDocumentController(DocumentService documentService) {
+        this.documentService = documentService;
+    }
+
+    /** C1: 上传文档 */
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<Document> upload(
+            HttpServletRequest request,
+            @RequestParam("kbId") Long kbId,
+            @RequestParam("title") String title,
+            @RequestParam("file") MultipartFile file)
+            throws IOException {
+
+        Long userId = AuthInterceptor.getCurrentUserId(request);
+        String role = AuthInterceptor.getCurrentRole(request);
+        String originalFilename = file.getOriginalFilename();
+        String fileType = extractFileExtension(originalFilename);
+        Long fileSize = file.getSize();
+
+        try (InputStream inputStream = file.getInputStream()) {
+            Document doc = documentService.upload(
+                    kbId, title, inputStream, fileType, fileSize, userId, "SUPER_ADMIN".equals(role));
+            return ApiResponse.ok(doc);
+        }
+    }
+
+    /** C2: 查询文档详情 */
+    @GetMapping("/{id}")
+    public ApiResponse<Document> findById(HttpServletRequest request, @PathVariable Long id) {
+        Long userId = AuthInterceptor.getCurrentUserId(request);
+        String role = AuthInterceptor.getCurrentRole(request);
+        Document doc = documentService.findById(id, userId, role);
+        if (doc == null) {
+            return ApiResponse.error(404, "文档不存在");
+        }
+        return ApiResponse.ok(doc);
+    }
+
+    /** C3: 分页查询文档 */
+    @GetMapping
+    public ApiResponse<PageResponse<Document>> findPage(
+            HttpServletRequest request,
+            @RequestParam(required = false) Long kbId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Long userId = AuthInterceptor.getCurrentUserId(request);
+        String role = AuthInterceptor.getCurrentRole(request);
+        return ApiResponse.ok(PageResponse.of(documentService.findPage(kbId, page, size, userId, role)));
+    }
+
+    /** C4: 更新文档标题 */
+    @PutMapping("/{id}")
+    public ApiResponse<Void> update(
+            HttpServletRequest request, @PathVariable Long id, @RequestBody DocumentUpdateRequest request2) {
+        Long userId = AuthInterceptor.getCurrentUserId(request);
+        boolean isAdmin = "SUPER_ADMIN".equals(AuthInterceptor.getCurrentRole(request));
+        documentService.update(id, request2.title(), userId, isAdmin);
+        return ApiResponse.ok();
+    }
+
+    /** C5: 删除文档（级联） */
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(HttpServletRequest request, @PathVariable Long id) {
+        Long userId = AuthInterceptor.getCurrentUserId(request);
+        boolean isAdmin = "SUPER_ADMIN".equals(AuthInterceptor.getCurrentRole(request));
+        documentService.delete(id, userId, isAdmin);
+        return ApiResponse.ok();
+    }
+
+    /** C6: 重新解析文档 */
+    @PostMapping("/{id}/reparse")
+    public ApiResponse<Void> reparse(HttpServletRequest request, @PathVariable Long id) {
+        Long userId = AuthInterceptor.getCurrentUserId(request);
+        boolean isAdmin = "SUPER_ADMIN".equals(AuthInterceptor.getCurrentRole(request));
+        documentService.reparse(id, userId, isAdmin);
+        return ApiResponse.ok();
+    }
+
+    /** C7: 下载文档原始文件 */
+    @GetMapping("/{id}/download")
+    public org.springframework.core.io.Resource download(HttpServletRequest request, @PathVariable Long id) {
+        Long userId = AuthInterceptor.getCurrentUserId(request);
+        boolean isAdmin = "SUPER_ADMIN".equals(AuthInterceptor.getCurrentRole(request));
+        InputStream inputStream = documentService.download(id, userId, isAdmin);
+        String fileType = documentService.getFileType(id);
+        return new org.springframework.core.io.InputStreamResource(inputStream) {
+            @Override
+            public String getFilename() {
+                return "document-" + id + (fileType != null ? "." + fileType : "");
+            }
+        };
+    }
+
+    /**
+     * 从文件名提取扩展名（小写）
+     */
+    private String extractFileExtension(String filename) {
+        if (filename == null || !filename.contains(".")) {
+            return "bin";
+        }
+        return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+    }
+}
