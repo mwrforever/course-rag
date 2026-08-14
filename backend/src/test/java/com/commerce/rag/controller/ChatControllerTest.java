@@ -132,7 +132,11 @@ class ChatControllerTest {
     @Test
     @DisplayName("chat sessionId=456 → 不创建新会话，直接创建 run")
     void chat_existingSessionId_doesNotCreateSession() {
-        // Given
+        // Given: 会话 456 属于当前用户（P0-3 归属校验通过）
+        ChatSession existingSession = mock(ChatSession.class);
+        when(existingSession.getUserId()).thenReturn(123L);
+        when(chatSessionService.findById(456L)).thenReturn(existingSession);
+
         ChatRun mockRun = mock(ChatRun.class);
         when(mockRun.getId()).thenReturn(789L);
         when(chatRunService.createRun(456L, 123L)).thenReturn(mockRun);
@@ -165,15 +169,77 @@ class ChatControllerTest {
         assertEquals(400, ex.getStatusCode().value());
     }
 
+    @Test
+    @DisplayName("chat → 传入他人 sessionId 抛出 403")
+    void chat_withOthersSession_throws403() {
+        // 现有 mock：AuthInterceptor attribute userId=1（本测试用 123）
+        ChatSession othersSession = new ChatSession();
+        othersSession.setId(99L);
+        othersSession.setUserId(2L); // 属于用户 2
+        when(chatSessionService.findById(99L)).thenReturn(othersSession);
+
+        ChatRequest request = new ChatRequest(99L, "你好");
+
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class, () -> controller.chat(mockRequestWithUserId(123L), request));
+        assertEquals(403, ex.getStatusCode().value());
+        verify(chatRunService, never()).createRun(any(), any());
+    }
+
     // ==================== cancel() 测试 ====================
 
     @Test
     @DisplayName("cancel → 调用 worker.cancel，返回 200")
     void cancel_callsWorkerCancel_returns200() {
-        ResponseEntity<Void> response = controller.cancel("run-123");
+        // Given: run 123 属于当前用户（P0-3 归属校验通过）
+        ChatRun ownRun = new ChatRun();
+        ownRun.setId(123L);
+        ownRun.setUserId(123L);
+        when(chatRunService.findById(123L)).thenReturn(ownRun);
 
-        verify(worker).cancel("run-123");
+        // When
+        ResponseEntity<Void> response = controller.cancel("123", mockRequestWithUserId(123L));
+
+        // Then
+        verify(worker).cancel("123");
         assertEquals(HttpStatus.OK, response.getStatusCode());
+    }
+
+    @Test
+    @DisplayName("cancel → 他人 runId 返回 404（不泄露存在性）")
+    void cancel_withOthersRun_returns404() {
+        // Given: run 1 属于用户 2，当前用户为 123
+        ChatRun othersRun = new ChatRun();
+        othersRun.setId(1L);
+        othersRun.setUserId(2L);
+        when(chatRunService.findById(1L)).thenReturn(othersRun);
+
+        // When / Then: checkRunOwnership 抛 ResponseStatusException(404)
+        ResponseStatusException ex =
+                assertThrows(ResponseStatusException.class, () -> controller.cancel("1", mockRequestWithUserId(123L)));
+        assertEquals(404, ex.getStatusCode().value());
+        verify(worker, never()).cancel(anyString());
+    }
+
+    @Test
+    @DisplayName("cancel → 非数字 runId 返回 404")
+    void cancel_withNonNumericRunId_returns404() {
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class, () -> controller.cancel("run-abc", mockRequestWithUserId(123L)));
+        assertEquals(404, ex.getStatusCode().value());
+        verify(worker, never()).cancel(anyString());
+        verify(chatRunService, never()).findById(anyLong());
+    }
+
+    @Test
+    @DisplayName("cancel → run 不存在返回 404")
+    void cancel_withUnknownRun_returns404() {
+        when(chatRunService.findById(456L)).thenReturn(null);
+
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class, () -> controller.cancel("456", mockRequestWithUserId(123L)));
+        assertEquals(404, ex.getStatusCode().value());
+        verify(worker, never()).cancel(anyString());
     }
 
     // ==================== reconnect() 测试 ====================
@@ -181,29 +247,53 @@ class ChatControllerTest {
     @Test
     @DisplayName("reconnect replay 成功 → subscribe 被调用，返回 SseEmitter")
     void reconnect_replaySuccess_subscribesAndReturnsEmitter() {
-        // Given: replay 返回 true
-        when(bridge.replay(eq("run-123"), eq(5L), any(SseEmitter.class))).thenReturn(true);
+        // Given: run 123 属于当前用户 + replay 返回 true
+        ChatRun ownRun = new ChatRun();
+        ownRun.setId(123L);
+        ownRun.setUserId(123L);
+        when(chatRunService.findById(123L)).thenReturn(ownRun);
+        when(bridge.replay(eq("123"), eq(5L), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = controller.reconnect("run-123", 5L);
+        SseEmitter emitter = controller.reconnect("123", 5L, mockRequestWithUserId(123L));
 
         // Then: subscribe 被调用
-        verify(bridge).subscribe(eq("run-123"), any(SseEmitter.class));
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
         assertNotNull(emitter);
     }
 
     @Test
     @DisplayName("reconnect replay 失败 → 不 subscribe，返回 SseEmitter（含 error 事件）")
     void reconnect_replayFailure_doesNotSubscribe() {
-        // Given: replay 返回 false（ring buffer 已覆盖）
-        when(bridge.replay(eq("run-123"), eq(0L), any(SseEmitter.class))).thenReturn(false);
+        // Given: run 123 属于当前用户 + replay 返回 false（ring buffer 已覆盖）
+        ChatRun ownRun = new ChatRun();
+        ownRun.setId(123L);
+        ownRun.setUserId(123L);
+        when(chatRunService.findById(123L)).thenReturn(ownRun);
+        when(bridge.replay(eq("123"), eq(0L), any(SseEmitter.class))).thenReturn(false);
 
         // When
-        SseEmitter emitter = controller.reconnect("run-123", 0L);
+        SseEmitter emitter = controller.reconnect("123", 0L, mockRequestWithUserId(123L));
 
         // Then: 不调用 subscribe
         verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
         assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("reconnect → 他人 runId 返回 404")
+    void reconnect_withOthersRun_returns404() {
+        // Given: run 1 属于用户 2，当前用户为 123
+        ChatRun othersRun = new ChatRun();
+        othersRun.setId(1L);
+        othersRun.setUserId(2L);
+        when(chatRunService.findById(1L)).thenReturn(othersRun);
+
+        // When / Then
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class, () -> controller.reconnect("1", 0, mockRequestWithUserId(123L)));
+        assertEquals(404, ex.getStatusCode().value());
+        verify(bridge, never()).replay(anyString(), anyLong(), any(SseEmitter.class));
     }
 
     // ==================== ExceptionHandler 测试 ====================
