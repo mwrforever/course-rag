@@ -178,7 +178,16 @@ public class ChatController {
                 "sessionId", sessionId.toString(),
                 "userId", userId.toString(),
                 "query", request.query());
-        redisTemplate.opsForStream().add(streamProperties.requestStream(), message);
+        try {
+            redisTemplate.opsForStream().add(streamProperties.requestStream(), message);
+        } catch (Exception e) {
+            // P0-4c 修复：入队失败回滚 run 状态（解除 uniq_active_run_per_session 唯一索引锁死）
+            // + 清理 ring，避免 QUEUED 残留与 ring map 泄漏
+            log.error("XADD 入队失败，回滚 run: runId={}", runId, e);
+            chatRunService.updateStatus(run.getId(), "ERROR");
+            bridge.removeRing(runId);
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "消息队列暂不可用，请稍后重试");
+        }
 
         // 6. 心跳定时器
         startHeartbeat(emitter);

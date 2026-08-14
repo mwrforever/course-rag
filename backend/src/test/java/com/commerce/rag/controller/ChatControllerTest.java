@@ -186,6 +186,30 @@ class ChatControllerTest {
         verify(chatRunService, never()).createRun(any(), any());
     }
 
+    @Test
+    @DisplayName("XADD 失败 → run 状态回滚 ERROR + removeRing + 503（P0-4c）")
+    void chat_xaddFailure_rollsBackRun() {
+        // Given: 会话与 run 创建成功（复用既有 mock 构造），XADD 抛异常模拟 Redis 不可用
+        ChatSession mockSession = mock(ChatSession.class);
+        when(mockSession.getId()).thenReturn(456L);
+        when(chatSessionService.createSession(eq(123L), anyString())).thenReturn(mockSession);
+
+        ChatRun mockRun = mock(ChatRun.class);
+        when(mockRun.getId()).thenReturn(123L);
+        when(chatRunService.createRun(456L, 123L)).thenReturn(mockRun);
+
+        doThrow(new RuntimeException("Redis 不可用")).when(streamOps).add(anyString(), anyMap());
+
+        // When / Then: chat() 抛 503，run 状态回滚为 ERROR + 清理 ring
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class,
+                () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好")));
+
+        assertEquals(503, ex.getStatusCode().value());
+        verify(chatRunService).updateStatus(123L, "ERROR");
+        verify(bridge).removeRing("123");
+    }
+
     // ==================== cancel() 测试 ====================
 
     @Test

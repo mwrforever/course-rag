@@ -6,9 +6,11 @@ import static org.mockito.Mockito.*;
 
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.NodeOutput;
+import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.commerce.rag.config.StreamProperties;
+import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.service.ChatMessageService;
 import com.commerce.rag.service.ChatRunService;
 import com.commerce.rag.stream.MemoryStreamBridge;
@@ -19,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,8 +31,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.core.StreamOperations;
@@ -148,6 +154,15 @@ class ChatRequestWorkerTest {
         Field f = ChatRequestWorker.class.getDeclaredField("cancelFlags");
         f.setAccessible(true);
         return (ConcurrentHashMap<String, AtomicBoolean>) f.get(worker);
+    }
+
+    /** 通过反射调用 private persistMessages（P0-4a 游标去重用例：验证仅持久化游标后的新增消息） */
+    private void invokePersistMessages(
+            Long runId, Long sessionId, String userQuery, int historyCursor, NodeOutput lastOutput) throws Exception {
+        Method method = ChatRequestWorker.class.getDeclaredMethod(
+                "persistMessages", Long.class, Long.class, String.class, int.class, NodeOutput.class);
+        method.setAccessible(true);
+        method.invoke(worker, runId, sessionId, userQuery, historyCursor, lastOutput);
     }
 
     // ==================== cancel() 测试 ====================
@@ -287,5 +302,32 @@ class ChatRequestWorkerTest {
         verify(bridge).removeRing("100");
         // ACK 被调用
         verify(redisTemplate.opsForStream()).acknowledge(eq("chat:request"), eq("chat-workers"), eq("123-0"));
+    }
+
+    // ==================== persistMessages 游标去重（P0-4a） ====================
+
+    @Test
+    @DisplayName("persistMessages → 游标跳过历史消息，仅持久化本轮新增（P0-4a）")
+    void persistMessages_withHistoryCursor_skipsHistory() throws Exception {
+        // Given: rawList 含 2 条历史（index 0/1）+ 1 条本轮新增（index 2）
+        UserMessage historyUser = new UserMessage("历史问题");
+        AssistantMessage historyAssistant = new AssistantMessage("历史回答");
+        AssistantMessage newAssistant = new AssistantMessage("本轮回答");
+
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        // SAA OverAllState.data() 返回不可变视图，改用 Map 构造器构建 state（构造器内部拷贝为可变 map）
+        OverAllState state = new OverAllState(Map.of("messages", List.of(historyUser, historyAssistant, newAssistant)));
+        when(lastOutput.state()).thenReturn(state);
+
+        // When: 游标=2（历史 2 条）
+        invokePersistMessages(1L, 1L, "本轮问题", 2, lastOutput);
+
+        // Then: 仅持久化本轮（USER 用户消息 + 本轮新增 assistant）
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> inserted = captor.getValue();
+        assertEquals(2, inserted.size()); // USER + 本轮 assistant
+        assertEquals("USER", inserted.get(0).getRole());
+        assertEquals("本轮回答", inserted.get(1).getContent());
     }
 }
