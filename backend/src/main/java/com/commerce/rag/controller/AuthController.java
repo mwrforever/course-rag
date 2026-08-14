@@ -1,7 +1,7 @@
 package com.commerce.rag.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.commerce.rag.auth.AuthInterceptor;
+import com.commerce.rag.auth.AuthSessionService;
 import com.commerce.rag.auth.DeviceKickService;
 import com.commerce.rag.auth.TokenService;
 import com.commerce.rag.config.AuthProperties;
@@ -11,7 +11,6 @@ import com.commerce.rag.controller.dto.LoginResponse;
 import com.commerce.rag.controller.dto.RefreshRequest;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysUser;
-import com.commerce.rag.mapper.SysLoginRecordMapper;
 import com.commerce.rag.service.SysUserService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.Cookie;
@@ -40,6 +39,9 @@ import org.springframework.web.server.ResponseStatusException;
  *   <li>POST /api/v1/auth/logout — 登出（jti 入黑名单 + cookie 清除）</li>
  * </ul>
  *
+ * <p>分层约束：login_record 的创建/刷新更新/登出吊销编排下沉至
+ * {@link AuthSessionService}（controller → service → mapper），本类不直调 mapper。
+ *
  * @author commerce-rag
  */
 @RestController
@@ -53,7 +55,7 @@ public class AuthController {
     private final DeviceKickService deviceKickService;
     private final AuthProperties authProperties;
     private final PasswordEncoder passwordEncoder;
-    private final SysLoginRecordMapper loginRecordMapper;
+    private final AuthSessionService authSessionService;
 
     public AuthController(
             SysUserService sysUserService,
@@ -61,13 +63,13 @@ public class AuthController {
             DeviceKickService deviceKickService,
             AuthProperties authProperties,
             PasswordEncoder passwordEncoder,
-            SysLoginRecordMapper loginRecordMapper) {
+            AuthSessionService authSessionService) {
         this.sysUserService = sysUserService;
         this.tokenService = tokenService;
         this.deviceKickService = deviceKickService;
         this.authProperties = authProperties;
         this.passwordEncoder = passwordEncoder;
-        this.loginRecordMapper = loginRecordMapper;
+        this.authSessionService = authSessionService;
     }
 
     /**
@@ -117,17 +119,9 @@ public class AuthController {
             deviceType = "WEB_DESKTOP";
         }
 
-        // 6. 创建登录记录
-        SysLoginRecord loginRecord = new SysLoginRecord();
-        loginRecord.setUserId(user.getId());
-        loginRecord.setJtiAt(jtiAt);
-        loginRecord.setJtiRt(jtiRt);
-        loginRecord.setDeviceType(deviceType);
-        loginRecord.setDeviceInfo(httpRequest.getHeader("User-Agent"));
-        loginRecord.setIpAddress(getClientIp(httpRequest));
-        loginRecord.setExpiresAt(LocalDateTime.now().plusSeconds(authProperties.refreshTokenExpiry()));
-        loginRecord.setStatus("ACTIVE");
-        loginRecordMapper.insert(loginRecord);
+        // 6. 创建登录记录（下沉 AuthSessionService，controller 不直调 mapper）
+        SysLoginRecord loginRecord = authSessionService.createLoginRecord(
+                user.getId(), jtiAt, jtiRt, deviceType, httpRequest.getHeader("User-Agent"), getClientIp(httpRequest));
 
         // 7. 设备互踢
         deviceKickService.kickAndLogin(user.getId(), deviceType, jtiAt, jtiRt, loginRecord.getId());
@@ -211,8 +205,8 @@ public class AuthController {
                 "TOKEN_REUSE",
                 LocalDateTime.ofInstant(claims.getExpiration().toInstant(), ZoneId.systemDefault()));
 
-        // 9. 更新 login_record
-        updateLoginRecordOnRefresh(userId, oldJtiRt, newJtiAt, newJtiRt);
+        // 9. 更新 login_record（下沉 AuthSessionService）
+        authSessionService.updateLoginRecordOnRefresh(userId, oldJtiRt, newJtiAt, newJtiRt);
 
         // 10. 设置 cookie
         setCookie(httpResponse, newAccessToken);
@@ -243,10 +237,11 @@ public class AuthController {
             try {
                 Claims claims = tokenService.parseClaimsLoose(token);
                 if ("ACCESS".equals(tokenService.extractTokenType(claims))) {
-                    revokeTokensOnLogout(tokenService.extractUserId(claims), tokenService.extractJti(claims));
+                    authSessionService.revokeOnLogout(
+                            tokenService.extractUserId(claims), tokenService.extractJti(claims));
                 }
             } catch (Exception e) {
-                log.warn("登出 token 解析失败，仅清除 cookie: {}", e.getMessage());
+                log.warn("登出 token 解析失败，仅清除 cookie", e);
             }
         }
 
@@ -294,80 +289,5 @@ public class AuthController {
             ip = request.getRemoteAddr();
         }
         return ip;
-    }
-
-    private void updateLoginRecordOnRefresh(Long userId, String oldJtiRt, String newJtiAt, String newJtiRt) {
-        try {
-            com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<SysLoginRecord> wrapper =
-                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<SysLoginRecord>()
-                            .eq(SysLoginRecord::getUserId, userId)
-                            .eq(SysLoginRecord::getJtiRt, oldJtiRt)
-                            .eq(SysLoginRecord::getStatus, "ACTIVE")
-                            .set(SysLoginRecord::getJtiAt, newJtiAt)
-                            .set(SysLoginRecord::getJtiRt, newJtiRt)
-                            .set(SysLoginRecord::getUpdatedAt, LocalDateTime.now());
-            loginRecordMapper.update(null, wrapper);
-        } catch (Exception e) {
-            log.warn("刷新时更新 login_record 失败: userId={}, oldJtiRt={}", userId, oldJtiRt, e);
-        }
-    }
-
-    /**
-     * 登出吊销：AT jti + 同会话 RT jti 双入黑名单，login_record 置 REVOKED
-     *
-     * <p>RT 必须吊销：RT 有效期（7d）远长于 AT（15min），
-     * 否则登出后旧 RT 仍可 refresh 出全新 Token 对。
-     *
-     * @param userId 用户 ID（来自 AT claims）
-     * @param jtiAt  AT 的 jti（来自 AT claims）
-     */
-    private void revokeTokensOnLogout(Long userId, String jtiAt) {
-        // 1. AT jti 入黑名单
-        deviceKickService.addToBlacklist(
-                jtiAt,
-                "ACCESS",
-                userId,
-                userId,
-                "MANUAL_REVOKE",
-                LocalDateTime.now().plusSeconds(authProperties.accessTokenExpiry()));
-
-        // 2. 查该会话 ACTIVE login_record 取 jti_rt（软删由 @TableLogic 自动过滤）
-        SysLoginRecord record = loginRecordMapper.selectOne(new LambdaQueryWrapper<SysLoginRecord>()
-                .eq(SysLoginRecord::getUserId, userId)
-                .eq(SysLoginRecord::getJtiAt, jtiAt)
-                .eq(SysLoginRecord::getStatus, "ACTIVE")
-                .last("LIMIT 1"));
-        if (record != null && record.getJtiRt() != null && !record.getJtiRt().isEmpty()) {
-            // RT 入黑名单，TTL 取 login_record 记录的真实过期时间
-            deviceKickService.addToBlacklist(
-                    record.getJtiRt(),
-                    "REFRESH",
-                    userId,
-                    userId,
-                    "MANUAL_REVOKE",
-                    record.getExpiresAt() != null
-                            ? record.getExpiresAt()
-                            : LocalDateTime.now().plusSeconds(authProperties.refreshTokenExpiry()));
-        }
-
-        // 3. login_record → REVOKED（复用现有方法，幂等）
-        revokeLoginRecord(userId, jtiAt);
-
-        log.info("用户登出: userId={}, jtiAt={}", userId, jtiAt);
-    }
-
-    private void revokeLoginRecord(Long userId, String jtiAt) {
-        try {
-            com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<SysLoginRecord> wrapper =
-                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<SysLoginRecord>()
-                            .eq(SysLoginRecord::getUserId, userId)
-                            .eq(SysLoginRecord::getJtiAt, jtiAt)
-                            .eq(SysLoginRecord::getStatus, "ACTIVE")
-                            .set(SysLoginRecord::getStatus, "REVOKED")
-                            .set(SysLoginRecord::getUpdatedAt, LocalDateTime.now());
-            loginRecordMapper.update(null, wrapper);
-        } catch (Exception e) {
-            log.warn("登出时更新 login_record 失败: userId={}, jtiAt={}", userId, jtiAt, e);
-        }
     }
 }

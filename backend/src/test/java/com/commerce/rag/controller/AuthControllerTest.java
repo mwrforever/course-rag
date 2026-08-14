@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.commerce.rag.auth.AuthSessionService;
 import com.commerce.rag.auth.DeviceKickService;
 import com.commerce.rag.auth.TokenService;
 import com.commerce.rag.config.AuthProperties;
@@ -12,17 +13,13 @@ import com.commerce.rag.controller.dto.LoginRequest;
 import com.commerce.rag.controller.dto.LoginResponse;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysUser;
-import com.commerce.rag.mapper.SysLoginRecordMapper;
 import com.commerce.rag.service.SysUserService;
-import com.commerce.rag.test.MybatisPlusTestHelper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.time.LocalDateTime;
 import java.util.List;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,7 +51,7 @@ class AuthControllerTest {
     private PasswordEncoder passwordEncoder;
 
     @Mock
-    private SysLoginRecordMapper loginRecordMapper;
+    private AuthSessionService authSessionService;
 
     @Mock
     private HttpServletRequest httpRequest;
@@ -64,12 +61,6 @@ class AuthControllerTest {
 
     private AuthController authController;
     private AuthProperties authProperties;
-
-    /** 初始化 MyBatis-Plus TableInfo 缓存（LambdaUpdateWrapper 列名解析依赖，项目测试惯例） */
-    @BeforeAll
-    static void initMybatisPlus() {
-        MybatisPlusTestHelper.initTableInfo();
-    }
 
     @BeforeEach
     void setUp() {
@@ -81,7 +72,7 @@ class AuthControllerTest {
                 "localhost",
                 List.of("WEB_DESKTOP"));
         authController = new AuthController(
-                sysUserService, tokenService, deviceKickService, authProperties, passwordEncoder, loginRecordMapper);
+                sysUserService, tokenService, deviceKickService, authProperties, passwordEncoder, authSessionService);
 
         lenient().when(httpRequest.getHeader("User-Agent")).thenReturn("test-agent");
         lenient().when(httpRequest.getRemoteAddr()).thenReturn("127.0.0.1");
@@ -105,6 +96,11 @@ class AuthControllerTest {
         when(tokenService.generateJti()).thenReturn("jti-at", "jti-rt");
         when(tokenService.generateAccessToken(1L, "STUDENT", "jti-at")).thenReturn("access-token");
         when(tokenService.generateRefreshToken(1L, "jti-rt")).thenReturn("refresh-token");
+        SysLoginRecord loginRecord = new SysLoginRecord();
+        loginRecord.setId(10L);
+        when(authSessionService.createLoginRecord(
+                        eq(1L), eq("jti-at"), eq("jti-rt"), eq("WEB_DESKTOP"), eq("test-agent"), eq("127.0.0.1")))
+                .thenReturn(loginRecord);
 
         ApiResponse<LoginResponse> result =
                 authController.login(new LoginRequest("testuser", "password123", null), httpRequest, httpResponse);
@@ -114,8 +110,11 @@ class AuthControllerTest {
         assertEquals("refresh-token", result.data().refreshToken());
         assertEquals(1L, result.data().userId());
         assertEquals("STUDENT", result.data().role());
-        verify(deviceKickService).kickAndLogin(eq(1L), eq("WEB_DESKTOP"), anyString(), anyString(), any());
-        verify(loginRecordMapper).insert(any(SysLoginRecord.class));
+        verify(deviceKickService).kickAndLogin(eq(1L), eq("WEB_DESKTOP"), anyString(), anyString(), eq(10L));
+        // 登录记录创建下沉 AuthSessionService
+        verify(authSessionService)
+                .createLoginRecord(
+                        eq(1L), eq("jti-at"), eq("jti-rt"), eq("WEB_DESKTOP"), eq("test-agent"), eq("127.0.0.1"));
         verify(httpResponse).addCookie(any(Cookie.class));
     }
 
@@ -167,8 +166,8 @@ class AuthControllerTest {
     // ==================== logout() 测试 ====================
 
     @Test
-    @DisplayName("logout → Bearer AT 解析成功：AT+RT 双入黑名单 + login_record REVOKED + 清 cookie")
-    void logout_withBearerToken_revokesAtAndRt() {
+    @DisplayName("logout → Bearer AT 解析成功：调用 revokeOnLogout 吊销会话 + 清 cookie")
+    void logout_withBearerToken_callsRevokeOnLogout() {
         Claims claims = mock(Claims.class);
         when(httpRequest.getHeader("Authorization")).thenReturn("Bearer access-token");
         when(tokenService.parseClaimsLoose("access-token")).thenReturn(claims);
@@ -176,29 +175,12 @@ class AuthControllerTest {
         when(tokenService.extractUserId(claims)).thenReturn(123L);
         when(tokenService.extractJti(claims)).thenReturn("jti-at");
 
-        SysLoginRecord record = new SysLoginRecord();
-        record.setId(10L);
-        record.setUserId(123L);
-        record.setJtiAt("jti-at");
-        record.setJtiRt("jti-rt");
-        record.setStatus("ACTIVE");
-        record.setExpiresAt(LocalDateTime.now().plusDays(7));
-        when(loginRecordMapper.selectOne(any())).thenReturn(record);
-
         ApiResponse<Void> result = authController.logout(httpRequest, httpResponse);
 
         assertNotNull(result);
         assertEquals(0, result.code());
-        // AT 吊销
-        verify(deviceKickService)
-                .addToBlacklist(
-                        eq("jti-at"), eq("ACCESS"), eq(123L), eq(123L), eq("MANUAL_REVOKE"), any(LocalDateTime.class));
-        // RT 吊销（同会话 login_record 的 jti_rt）
-        verify(deviceKickService)
-                .addToBlacklist(
-                        eq("jti-rt"), eq("REFRESH"), eq(123L), eq(123L), eq("MANUAL_REVOKE"), any(LocalDateTime.class));
-        // login_record → REVOKED
-        verify(loginRecordMapper).update(isNull(), any());
+        // 会话吊销编排下沉 AuthSessionService（黑名单/REVOKED 细节由 AuthSessionServiceTest 覆盖）
+        verify(authSessionService).revokeOnLogout(eq(123L), eq("jti-at"));
         // 清除 cookie
         verify(httpResponse).addCookie(any(Cookie.class));
     }
@@ -213,9 +195,7 @@ class AuthControllerTest {
 
         assertNotNull(result);
         assertEquals(0, result.code());
-        verify(deviceKickService, never())
-                .addToBlacklist(anyString(), anyString(), anyLong(), anyLong(), anyString(), any());
-        verify(loginRecordMapper, never()).update(any(), any());
+        verify(authSessionService, never()).revokeOnLogout(any(), any());
         verify(httpResponse).addCookie(any(Cookie.class));
     }
 
@@ -231,8 +211,7 @@ class AuthControllerTest {
 
         assertNotNull(result);
         assertEquals(0, result.code());
-        verify(deviceKickService, never())
-                .addToBlacklist(anyString(), anyString(), anyLong(), anyLong(), anyString(), any());
+        verify(authSessionService, never()).revokeOnLogout(any(), any());
         verify(httpResponse).addCookie(any(Cookie.class));
     }
 
@@ -246,8 +225,7 @@ class AuthControllerTest {
 
         assertNotNull(result);
         assertEquals(0, result.code());
-        verify(deviceKickService, never())
-                .addToBlacklist(anyString(), anyString(), anyLong(), anyLong(), anyString(), any());
+        verify(authSessionService, never()).revokeOnLogout(any(), any());
         verify(httpResponse).addCookie(any(Cookie.class));
     }
 }
