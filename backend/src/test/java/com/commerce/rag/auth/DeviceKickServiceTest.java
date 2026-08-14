@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -78,8 +79,22 @@ class DeviceKickServiceTest {
         assertTrue(result.kicked());
         // 旧 login_record 置 REVOKED
         verify(jdbcTemplate).update(contains("sys_login_record SET status = 'REVOKED'"), eq(1L), eq("old-at"));
-        // 旧 AT/RT 双写 PG 黑名单
-        verify(tokenBlacklistMapper, times(2)).insert(any(SysTokenBlacklist.class));
+        // 旧 AT/RT 双写 PG 黑名单：捕获两次 insert 的实体，断言审计载荷完整（jti/类型/原因/操作人，非仅次数）
+        ArgumentCaptor<SysTokenBlacklist> captor = ArgumentCaptor.forClass(SysTokenBlacklist.class);
+        verify(tokenBlacklistMapper, times(2)).insert(captor.capture());
+        List<SysTokenBlacklist> inserted = captor.getAllValues();
+        assertTrue(inserted.stream()
+                .anyMatch(b -> "old-at".equals(b.getJti())
+                        && "ACCESS".equals(b.getTokenType())
+                        && "DEVICE_KICKED".equals(b.getReason())
+                        && Long.valueOf(1L).equals(b.getUserId())
+                        && b.getBlacklistedBy() == null));
+        assertTrue(inserted.stream()
+                .anyMatch(b -> "old-rt".equals(b.getJti())
+                        && "REFRESH".equals(b.getTokenType())
+                        && "DEVICE_KICKED".equals(b.getReason())
+                        && Long.valueOf(1L).equals(b.getUserId())
+                        && b.getBlacklistedBy() == null));
     }
 
     @Test
