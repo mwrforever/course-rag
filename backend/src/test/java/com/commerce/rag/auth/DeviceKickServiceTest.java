@@ -127,4 +127,42 @@ class DeviceKickServiceTest {
 
         assertTrue(result.kicked());
     }
+
+    // ==================== markRefreshTokenUsedAtomic（P3 A11 原子标记）测试 ====================
+
+    @Test
+    @DisplayName("markRefreshTokenUsedAtomic — Lua 返回 1 → 首次使用抢占成功（true）")
+    void markRefreshTokenUsedAtomic_firstUse_returnsTrue() {
+        when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
+                .thenReturn(1L);
+
+        assertTrue(service.markRefreshTokenUsedAtomic("jti-1"));
+    }
+
+    @Test
+    @DisplayName("markRefreshTokenUsedAtomic — Lua 返回 0 → 已被使用（false）")
+    void markRefreshTokenUsedAtomic_reuse_returnsFalse() {
+        when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
+                .thenReturn(0L);
+
+        assertFalse(service.markRefreshTokenUsedAtomic("jti-1"));
+    }
+
+    @Test
+    @DisplayName("markRefreshTokenUsedAtomic — Redis 异常降级放行并写 PG 黑名单兜底")
+    void markRefreshTokenUsedAtomic_redisFail_fallbackOpen() {
+        when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
+                .thenThrow(new RuntimeException("redis down"));
+
+        // 降级放行（与原宽松降级语义一致），不抛异常
+        assertTrue(service.markRefreshTokenUsedAtomic("jti-1"));
+        // addToBlacklistPg 为 private 无法直接 verify，断言其公共可观察行为：PG 黑名单兜底写入
+        ArgumentCaptor<SysTokenBlacklist> captor = ArgumentCaptor.forClass(SysTokenBlacklist.class);
+        verify(tokenBlacklistMapper).insert(captor.capture());
+        SysTokenBlacklist inserted = captor.getValue();
+        assertEquals("jti-1", inserted.getJti());
+        assertEquals("REFRESH", inserted.getTokenType());
+        assertEquals("TOKEN_REUSE", inserted.getReason());
+        assertNull(inserted.getUserId());
+    }
 }

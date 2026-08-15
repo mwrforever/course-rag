@@ -11,6 +11,8 @@ import com.commerce.rag.config.AuthProperties;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.LoginRequest;
 import com.commerce.rag.controller.dto.LoginResponse;
+import com.commerce.rag.controller.dto.RefreshRequest;
+import com.commerce.rag.controller.dto.UserDTO;
 import com.commerce.rag.entity.SysUser;
 import com.commerce.rag.service.SysUserService;
 import io.jsonwebtoken.Claims;
@@ -18,6 +20,9 @@ import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -225,5 +230,67 @@ class AuthControllerTest {
         assertEquals(0, result.code());
         verify(authSessionService, never()).revokeOnLogout(any(), any());
         verify(httpResponse).addCookie(any(Cookie.class));
+    }
+
+    // ==================== refresh() 测试 ====================
+
+    @Test
+    @DisplayName("refresh → RT 有效且未使用：原子标记成功 + 黑名单检查通过，返回新 Token 对")
+    void refresh_validRt_returnsNewTokens() {
+        Claims claims = mock(Claims.class);
+        when(tokenService.validateToken("valid-rt")).thenReturn(claims);
+        when(tokenService.extractTokenType(claims)).thenReturn("REFRESH");
+        when(tokenService.extractJti(claims)).thenReturn("old-jti-rt");
+        when(tokenService.extractUserId(claims)).thenReturn(1L);
+        // 原子检查+置位成功（首次使用抢占成功）
+        when(deviceKickService.markRefreshTokenUsedAtomic("old-jti-rt")).thenReturn(true);
+        when(deviceKickService.isBlacklisted("old-jti-rt")).thenReturn(false);
+        when(sysUserService.findById(1L))
+                .thenReturn(new UserDTO(1L, "testuser", "测试用户", "STUDENT", "ACTIVE", LocalDateTime.now()));
+        when(tokenService.generateJti()).thenReturn("new-jti-at", "new-jti-rt");
+        when(tokenService.generateAccessToken(1L, "STUDENT", "new-jti-at")).thenReturn("new-access-token");
+        when(tokenService.generateRefreshToken(1L, "new-jti-rt")).thenReturn("new-refresh-token");
+        when(claims.getExpiration()).thenReturn(Date.from(Instant.now().plusSeconds(604800L)));
+
+        ApiResponse<LoginResponse> result = authController.refresh(new RefreshRequest("valid-rt"), httpResponse);
+
+        assertNotNull(result);
+        assertEquals("new-access-token", result.data().accessToken());
+        assertEquals("new-refresh-token", result.data().refreshToken());
+        // 步骤 3：原子检查并标记 RT 已使用（先于黑名单检查）
+        verify(deviceKickService).markRefreshTokenUsedAtomic("old-jti-rt");
+        // 步骤 4：黑名单检查保留在原子标记之后
+        verify(deviceKickService).isBlacklisted("old-jti-rt");
+        // 步骤 8：旧 RT 入黑名单
+        verify(deviceKickService)
+                .addToBlacklist(
+                        eq("old-jti-rt"), eq("REFRESH"), eq(1L), eq(1L), eq("TOKEN_REUSE"), any(LocalDateTime.class));
+        // 步骤 9：登录记录更新下沉 AuthSessionService
+        verify(authSessionService)
+                .updateLoginRecordOnRefresh(eq(1L), eq("old-jti-rt"), eq("new-jti-at"), eq("new-jti-rt"));
+        verify(httpResponse).addCookie(any(Cookie.class));
+    }
+
+    @Test
+    @DisplayName("refresh → RT 复用（原子标记失败）：401 + disableUser 全量作废")
+    void refresh_rtReuse_throws401AndDisablesUser() {
+        Claims claims = mock(Claims.class);
+        when(tokenService.validateToken("reused-rt")).thenReturn(claims);
+        when(tokenService.extractTokenType(claims)).thenReturn("REFRESH");
+        when(tokenService.extractJti(claims)).thenReturn("old-jti-rt");
+        when(tokenService.extractUserId(claims)).thenReturn(1L);
+        // 原子标记返回 false（RT 已被使用）
+        when(deviceKickService.markRefreshTokenUsedAtomic("old-jti-rt")).thenReturn(false);
+
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class,
+                () -> authController.refresh(new RefreshRequest("reused-rt"), httpResponse));
+
+        assertEquals(401, ex.getStatusCode().value());
+        // RT 复用 → 全量作废该用户所有 Token
+        verify(deviceKickService).disableUser(1L, 1L);
+        // 短路：黑名单检查不再执行、未生成新 Token
+        verify(deviceKickService, never()).isBlacklisted(anyString());
+        verify(tokenService, never()).generateJti();
     }
 }

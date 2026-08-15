@@ -9,6 +9,7 @@ import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.LoginRequest;
 import com.commerce.rag.controller.dto.LoginResponse;
 import com.commerce.rag.controller.dto.RefreshRequest;
+import com.commerce.rag.controller.dto.UserDTO;
 import com.commerce.rag.entity.SysUser;
 import com.commerce.rag.service.SysUserService;
 import io.jsonwebtoken.Claims;
@@ -140,8 +141,8 @@ public class AuthController {
      * <p>流程：
      * <ol>
      *   <li>验证 RT 签名 + 过期</li>
-     *   <li>检查 RT 是否已被使用（一次性旋转）</li>
-     *   <li>标记旧 RT 为已使用</li>
+     *   <li>原子检查并标记旧 RT 已使用（一次性旋转，P3 A11 Lua 单条脚本消除 TOCTOU）</li>
+     *   <li>检查 RT 是否在黑名单中</li>
      *   <li>生成新 AT + RT</li>
      *   <li>更新 login_record 的 jti_at + jti_rt</li>
      *   <li>旧 jti 入黑名单</li>
@@ -168,24 +169,23 @@ public class AuthController {
         String oldJtiRt = tokenService.extractJti(claims);
         Long userId = tokenService.extractUserId(claims);
 
-        // 3. 检查 RT 是否已被使用（一次性旋转）
-        if (deviceKickService.isRefreshTokenUsed(oldJtiRt)) {
+        // 3. 原子检查并标记 RT 已使用（P3 A11：Lua 单条脚本消除检查/置位 TOCTOU——并发 refresh 仅一个成功）
+        if (!deviceKickService.markRefreshTokenUsedAtomic(oldJtiRt)) {
             // RT 复用 → 全量作废该用户所有 Token
             log.warn("RT 复用检测: userId={}, jtiRt={}", userId, oldJtiRt);
             deviceKickService.disableUser(userId, userId);
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh Token 已被使用，请重新登录");
         }
 
-        // 4. 检查 RT 是否在黑名单中
+        // 4. 检查 RT 是否在黑名单中（保留）
         if (deviceKickService.isBlacklisted(oldJtiRt)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh Token 已被吊销");
         }
 
-        // 5. 标记旧 RT 为已使用
-        deviceKickService.markRefreshTokenUsed(oldJtiRt);
+        // 5.（原 markRefreshTokenUsed 已合并进步骤 3 的原子脚本）
 
         // 6. 获取用户最新信息（角色可能已变更）
-        com.commerce.rag.controller.dto.UserDTO userDto = sysUserService.findById(userId);
+        UserDTO userDto = sysUserService.findById(userId);
         String role = userDto.role();
         String displayName = userDto.displayName();
 

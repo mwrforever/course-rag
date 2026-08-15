@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,6 +25,11 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Redis 是执法层（纳秒级生效），PG 是审计层（持久化记录）。
  * <p>降级策略：Redis 不可用时用 PG FOR UPDATE 行锁事务保证原子性。
+ * <p>P3 A11：RT 一次性旋转的「检查 + 置位」原子化于单条 Lua 脚本（mark_rt_used.lua），
+ * 消除并发 refresh 的 TOCTOU 双签窗口。
+ *
+ * <p>注：本类构造器为手写（非 Lombok），因需在构造器内加载 Lua 脚本
+ * （DefaultRedisScript 设置 location/resultType），属工程宪法「特殊场景允许手写」的合法场景。
  *
  * @author commerce-rag
  */
@@ -49,6 +55,7 @@ public class DeviceKickService {
 
     private final DefaultRedisScript<String> kickAndLoginScript;
     private final DefaultRedisScript<String> disableUserScript;
+    private final DefaultRedisScript<Long> markRtUsedScript;
 
     public DeviceKickService(
             StringRedisTemplate redisTemplate,
@@ -67,13 +74,17 @@ public class DeviceKickService {
 
         // 加载 Lua 脚本
         this.kickAndLoginScript = new DefaultRedisScript<>();
-        this.kickAndLoginScript.setLocation(
-                new org.springframework.core.io.ClassPathResource("lua/kick_and_login.lua"));
+        this.kickAndLoginScript.setLocation(new ClassPathResource("lua/kick_and_login.lua"));
         this.kickAndLoginScript.setResultType(String.class);
 
         this.disableUserScript = new DefaultRedisScript<>();
-        this.disableUserScript.setLocation(new org.springframework.core.io.ClassPathResource("lua/disable_user.lua"));
+        this.disableUserScript.setLocation(new ClassPathResource("lua/disable_user.lua"));
         this.disableUserScript.setResultType(String.class);
+
+        // P3 A11: RT 一次性旋转原子标记脚本（检查+置位单条 Lua，消除 TOCTOU）
+        this.markRtUsedScript = new DefaultRedisScript<>();
+        this.markRtUsedScript.setLocation(new ClassPathResource("lua/mark_rt_used.lua"));
+        this.markRtUsedScript.setResultType(Long.class);
     }
 
     /**
@@ -174,42 +185,28 @@ public class DeviceKickService {
     }
 
     /**
-     * 检查 RT 是否已被使用（一次性旋转检测）
+     * 原子检查并标记 RT 为已使用（一次性旋转，P3 A11 Lua 化消除 TOCTOU）
      *
-     * @param jtiRt RT 的 JWT ID
-     * @return true=已被使用（应拒绝）
+     * <p>单条 Lua（mark_rt_used.lua）完成「检查是否已标记 + 置位」，并发 refresh 仅一个能抢占成功；
+     * Redis 异常降级放行并写 PG 黑名单兜底（与原宽松降级语义一致）。
+     *
+     * @param jtiRt RT 的 JWT ID（不允许为空）
+     * @return true=首次使用（本次抢占成功）；false=已被使用（应拒绝）；jtiRt 为空时返回 false
      */
-    public boolean isRefreshTokenUsed(String jtiRt) {
+    public boolean markRefreshTokenUsedAtomic(String jtiRt) {
         if (jtiRt == null || jtiRt.isEmpty()) {
             return false;
         }
         try {
-            Boolean exists = redisTemplate.hasKey(RT_USED_KEY_PREFIX + jtiRt);
-            return exists != null && exists;
+            Long result = redisTemplate.execute(
+                    markRtUsedScript,
+                    List.of(RT_USED_KEY_PREFIX + jtiRt),
+                    String.valueOf(authProperties.refreshTokenExpiry()));
+            return result != null && result == 1L;
         } catch (Exception e) {
-            log.warn("Redis RT 使用标记查询失败，降级到 PG: jtiRt={}", jtiRt);
-            // 降级：检查 PG 黑名单中是否有此 RT jti
-            return isBlacklisted(jtiRt);
-        }
-    }
-
-    /**
-     * 标记 RT 为已使用（一次性旋转）
-     *
-     * @param jtiRt RT 的 JWT ID
-     */
-    public void markRefreshTokenUsed(String jtiRt) {
-        if (jtiRt == null || jtiRt.isEmpty()) {
-            return;
-        }
-        try {
-            redisTemplate
-                    .opsForValue()
-                    .set(RT_USED_KEY_PREFIX + jtiRt, "1", authProperties.refreshTokenExpiry(), TimeUnit.SECONDS);
-        } catch (Exception e) {
-            log.warn("Redis RT 使用标记失败，降级到 PG: jtiRt={}", jtiRt);
-            // 降级：写入 PG 黑名单
+            log.warn("Redis RT 原子标记失败，降级放行并写 PG 黑名单: jtiRt={}", jtiRt, e);
             addToBlacklistPg(jtiRt, "REFRESH", null, null, "TOKEN_REUSE");
+            return true;
         }
     }
 
