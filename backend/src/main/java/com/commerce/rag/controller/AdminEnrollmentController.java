@@ -5,12 +5,9 @@ import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.CourseDTO;
 import com.commerce.rag.controller.dto.EnrollmentRequest;
 import com.commerce.rag.controller.dto.StudentDTO;
-import com.commerce.rag.entity.CourseInfo;
-import com.commerce.rag.service.CourseService;
 import com.commerce.rag.service.EnrollmentService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,11 +30,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminEnrollmentController {
 
     private final EnrollmentService enrollmentService;
-    private final CourseService courseService;
 
-    public AdminEnrollmentController(EnrollmentService enrollmentService, CourseService courseService) {
+    public AdminEnrollmentController(EnrollmentService enrollmentService) {
         this.enrollmentService = enrollmentService;
-        this.courseService = courseService;
     }
 
     /**
@@ -80,9 +75,6 @@ public class AdminEnrollmentController {
      */
     @GetMapping("/students/{id}/courses")
     public ApiResponse<List<CourseDTO>> studentCourses(@PathVariable Long id) {
-        List<CourseInfo> courses = enrollmentService.findStudentCourses(id);
-        List<CourseDTO> dtos =
-                courses.stream().map(c -> courseService.toDTO(c, false)).collect(Collectors.toList());
-        return ApiResponse.ok(dtos);
+        return ApiResponse.ok(enrollmentService.findStudentCoursesAsDTO(id));
     }
 }

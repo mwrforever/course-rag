@@ -8,14 +8,17 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.controller.vo.ChatMessageVO;
+import com.commerce.rag.controller.vo.ChatSessionDetailVO;
+import com.commerce.rag.controller.vo.ChatSessionVO;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.service.ChatMessageService;
+import com.commerce.rag.service.ChatSessionConverter;
 import com.commerce.rag.service.ChatSessionService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,11 +43,14 @@ class AdminSessionControllerTest {
     @Mock
     private ChatMessageService messageService;
 
+    @Mock
+    private ChatSessionConverter converter;
+
     private AdminSessionController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AdminSessionController(sessionService, messageService);
+        controller = new AdminSessionController(sessionService, messageService, converter);
     }
 
     private ChatSession session(Long id) {
@@ -73,22 +79,34 @@ class AdminSessionControllerTest {
         return m;
     }
 
+    private ChatSessionVO sessionVO(Long id) {
+        return new ChatSessionVO(
+                id, 5L, "会话" + id, "ACTIVE", LocalDateTime.of(2026, 8, 15, 10, 0), "qwen3.8-max",
+                LocalDateTime.of(2026, 8, 15, 9, 0));
+    }
+
+    private ChatMessageVO messageVO(Long id) {
+        return new ChatMessageVO(id, "user", "问题" + id, "TEXT", "knowledge_question", 10L, 1,
+                LocalDateTime.of(2026, 8, 15, 9, 1));
+    }
+
     @Test
-    @DisplayName("H1 list → 分页返回会话摘要列表")
+    @DisplayName("H1 list → 分页返回会话摘要列表（VO）")
     void list_returnsPagedSessions() {
         Page<ChatSession> paged = new Page<>(1, 20);
         paged.setRecords(List.of(session(1L)));
         paged.setTotal(1);
         when(sessionService.findAllSessions(1, 20)).thenReturn(paged);
+        when(converter.toSummaryVO(any(ChatSession.class))).thenReturn(sessionVO(1L));
 
-        ApiResponse<PageResponse<Map<String, Object>>> result = controller.list(1, 20);
+        ApiResponse<PageResponse<ChatSessionVO>> result = controller.list(1, 20);
 
-        Map<String, Object> record = result.data().records().get(0);
-        assertEquals(1L, record.get("id"));
-        assertEquals(5L, record.get("userId"));
-        assertEquals("会话1", record.get("title"));
-        assertEquals("qwen3.8-max", record.get("model"));
-        assertNotNull(record.get("lastMessageAt"));
+        ChatSessionVO record = result.data().records().get(0);
+        assertEquals(1L, record.id());
+        assertEquals(5L, record.userId());
+        assertEquals("会话1", record.title());
+        assertEquals("qwen3.8-max", record.model());
+        assertNotNull(record.lastMessageAt());
     }
 
     @Test
@@ -104,22 +122,25 @@ class AdminSessionControllerTest {
     }
 
     @Test
-    @DisplayName("H2 detail → 返回会话摘要与消息列表")
+    @DisplayName("H2 detail → 返回会话摘要与消息列表（VO）")
     void detail_returnsSessionWithMessages() {
         when(sessionService.findById(1L)).thenReturn(session(1L));
         when(messageService.findBySessionId(1L)).thenReturn(List.of(message(1L)));
+        when(converter.toDetailVO(any(ChatSession.class), anyList()))
+                .thenReturn(new ChatSessionDetailVO(
+                        1L, 5L, "会话1", "ACTIVE", LocalDateTime.of(2026, 8, 15, 10, 0), "qwen3.8-max",
+                        LocalDateTime.of(2026, 8, 15, 9, 0), List.of(messageVO(1L))));
 
-        ApiResponse<Map<String, Object>> result = controller.detail(1L);
+        ApiResponse<ChatSessionDetailVO> result = controller.detail(1L);
 
-        Map<String, Object> data = result.data();
-        assertEquals("会话1", data.get("title"));
-        List<?> messages = (List<?>) data.get("messages");
-        assertEquals(1, messages.size());
-        Map<?, ?> msg = (Map<?, ?>) messages.get(0);
-        assertEquals("user", msg.get("role"));
-        assertEquals("问题1", msg.get("content"));
-        assertEquals("knowledge_question", msg.get("intentType"));
-        assertEquals(10L, msg.get("runId"));
+        ChatSessionDetailVO data = result.data();
+        assertEquals("会话1", data.title());
+        assertEquals(1, data.messages().size());
+        ChatMessageVO msg = data.messages().get(0);
+        assertEquals("user", msg.role());
+        assertEquals("问题1", msg.content());
+        assertEquals("knowledge_question", msg.intentType());
+        assertEquals(10L, msg.runId());
     }
 
     @Test

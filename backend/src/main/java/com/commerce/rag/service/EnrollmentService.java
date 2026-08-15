@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.commerce.rag.controller.dto.CourseDTO;
 import com.commerce.rag.controller.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
 import com.commerce.rag.entity.CourseInfo;
@@ -149,6 +150,16 @@ public class EnrollmentService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "选课记录不存在");
         }
         log.info("移除学生: courseId={}, studentId={}, operator={}", courseId, studentId, currentUserId);
+    }
+
+    /**
+     * 查询学生已选课程列表（不含关联数据，与选课列表接口契约一致）
+     *
+     * @param studentId 学生 ID
+     * @return 课程 DTO 列表
+     */
+    public List<CourseDTO> findStudentCoursesAsDTO(Long studentId) {
+        return findStudentCourses(studentId).stream().map(c -> courseService.toDTO(c, false)).toList();
     }
 
     /**

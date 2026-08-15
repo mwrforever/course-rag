@@ -3,7 +3,9 @@ package com.commerce.rag.controller;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.FeedbackRequest;
+import com.commerce.rag.controller.vo.UserFeedbackVO;
 import com.commerce.rag.entity.UserFeedback;
+import com.commerce.rag.service.UserFeedbackConverter;
 import com.commerce.rag.service.UserFeedbackService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -31,14 +33,16 @@ public class FeedbackController {
     private static final Logger log = LoggerFactory.getLogger(FeedbackController.class);
 
     private final UserFeedbackService feedbackService;
+    private final UserFeedbackConverter converter;
 
-    public FeedbackController(UserFeedbackService feedbackService) {
+    public FeedbackController(UserFeedbackService feedbackService, UserFeedbackConverter converter) {
         this.feedbackService = feedbackService;
+        this.converter = converter;
     }
 
     /** J5: 提交反馈（user_id 取当前登录用户，防止跨用户伪造） */
     @PostMapping
-    public ApiResponse<UserFeedback> create(HttpServletRequest request, @RequestBody FeedbackRequest feedbackRequest) {
+    public ApiResponse<UserFeedbackVO> create(HttpServletRequest request, @RequestBody FeedbackRequest feedbackRequest) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         UserFeedback feedback = feedbackService.create(
                 userId,
@@ -46,6 +50,6 @@ public class FeedbackController {
                 feedbackRequest.messageId(),
                 feedbackRequest.isLiked(),
                 feedbackRequest.intentType());
-        return ApiResponse.ok(feedback);
+        return ApiResponse.ok(converter.toVO(feedback));
     }
 }

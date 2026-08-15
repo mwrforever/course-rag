@@ -9,13 +9,18 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.ChatRequest;
 import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.controller.vo.ChunkBriefVO;
+import com.commerce.rag.controller.vo.ChunkContextVO;
+import com.commerce.rag.controller.vo.ChunkVO;
+import com.commerce.rag.controller.vo.SessionVO;
+import com.commerce.rag.controller.vo.StudentCourseVO;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.service.ChatSessionService;
-import com.commerce.rag.service.CourseService;
 import com.commerce.rag.service.DocumentChunkService;
 import com.commerce.rag.service.EnrollmentService;
+import com.commerce.rag.service.StudentConverter;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -44,9 +49,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 class StudentControllerTest {
 
     @Mock
-    private CourseService courseService;
-
-    @Mock
     private EnrollmentService enrollmentService;
 
     @Mock
@@ -58,12 +60,15 @@ class StudentControllerTest {
     @Mock
     private ChatController chatController;
 
+    @Mock
+    private StudentConverter converter;
+
     private StudentController controller;
 
     @BeforeEach
     void setUp() {
         controller = new StudentController(
-                courseService, enrollmentService, sessionService, documentChunkService, chatController);
+                enrollmentService, sessionService, documentChunkService, chatController, converter);
     }
 
     private HttpServletRequest studentRequest(Long userId) {
@@ -98,26 +103,47 @@ class StudentControllerTest {
         return c;
     }
 
+    private StudentCourseVO courseVO(Long id, String title) {
+        return new StudentCourseVO(
+                id, title, "cover.png", "编程", "张老师", "10h", new BigDecimal("4.5"), 100);
+    }
+
+    private ChunkVO chunkVO(Long id) {
+        return new ChunkVO(id, "内容-" + id, "第一章", 1, "小节", 1, 2);
+    }
+
+    private ChunkBriefVO chunkBriefVO(Long id) {
+        return new ChunkBriefVO(id, "内容-" + id, "第一章", 1, "小节");
+    }
+
+    private SessionVO sessionVO(Long id, String title) {
+        return new SessionVO(id, title, "ACTIVE", LocalDateTime.of(2026, 8, 15, 10, 0), LocalDateTime.of(2026, 8, 15, 9, 0));
+    }
+
     // ==================== J1: 我的课程 ====================
 
     @Test
-    @DisplayName("J1 myCourses → 返回已选课列表（字段映射完整）")
+    @DisplayName("J1 myCourses → 返回已选课列表（VO 字段映射完整）")
     void myCourses_returnsEnrolledCourses() {
         when(enrollmentService.findStudentCourses(5L)).thenReturn(List.of(course(1L, "Java 入门"), course(2L, "Spring")));
+        when(converter.toCourseVO(any(CourseInfo.class))).thenAnswer(inv -> {
+            CourseInfo c = inv.getArgument(0);
+            return courseVO(c.getId(), c.getTitle());
+        });
 
-        ApiResponse<List<Map<String, Object>>> result = controller.myCourses(studentRequest(5L));
+        ApiResponse<List<StudentCourseVO>> result = controller.myCourses(studentRequest(5L));
 
         assertEquals(0, result.code());
         assertEquals(2, result.data().size());
-        Map<String, Object> first = result.data().get(0);
-        assertEquals(1L, first.get("id"));
-        assertEquals("Java 入门", first.get("title"));
-        assertEquals("cover.png", first.get("coverImage"));
-        assertEquals("编程", first.get("category"));
-        assertEquals("张老师", first.get("instructorName"));
-        assertEquals("10h", first.get("duration"));
-        assertEquals(new BigDecimal("4.5"), first.get("rating"));
-        assertEquals(100, first.get("learningCount"));
+        StudentCourseVO first = result.data().get(0);
+        assertEquals(1L, first.id());
+        assertEquals("Java 入门", first.title());
+        assertEquals("cover.png", first.coverImage());
+        assertEquals("编程", first.category());
+        assertEquals("张老师", first.instructorName());
+        assertEquals("10h", first.duration());
+        assertEquals(new BigDecimal("4.5"), first.rating());
+        assertEquals(100, first.learningCount());
     }
 
     @Test
@@ -125,7 +151,7 @@ class StudentControllerTest {
     void myCourses_noEnrollment_returnsEmpty() {
         when(enrollmentService.findStudentCourses(5L)).thenReturn(List.of());
 
-        ApiResponse<List<Map<String, Object>>> result = controller.myCourses(studentRequest(5L));
+        ApiResponse<List<StudentCourseVO>> result = controller.myCourses(studentRequest(5L));
 
         assertTrue(result.data().isEmpty());
     }
@@ -145,43 +171,45 @@ class StudentControllerTest {
     }
 
     @Test
-    @DisplayName("J2 courseMaterials → 已选课返回课程专属 chunk 列表")
+    @DisplayName("J2 courseMaterials → 已选课返回课程专属 chunk 列表（VO）")
     void courseMaterials_enrolled_returnsChunks() {
         when(enrollmentService.isEnrolled(10L, 5L)).thenReturn(true);
         DocumentChunk c = chunk(1L, "10");
         c.setParentChunkId(0L);
         when(documentChunkService.findByCourseId(10L)).thenReturn(List.of(c));
+        when(converter.toChunkVO(any(DocumentChunk.class))).thenReturn(chunkVO(1L));
 
-        ApiResponse<List<Map<String, Object>>> result = controller.courseMaterials(studentRequest(5L), 10L);
+        ApiResponse<List<ChunkVO>> result = controller.courseMaterials(studentRequest(5L), 10L);
 
-        Map<String, Object> first = result.data().get(0);
-        assertEquals(1L, first.get("id"));
-        assertEquals("内容-1", first.get("content"));
-        assertEquals("第一章", first.get("headingPath"));
-        assertEquals(1, first.get("chunkIndex"));
-        assertEquals("小节", first.get("parentTitle"));
-        assertEquals(1, first.get("startPage"));
-        assertEquals(2, first.get("endPage"));
+        ChunkVO first = result.data().get(0);
+        assertEquals(1L, first.id());
+        assertEquals("内容-1", first.content());
+        assertEquals("第一章", first.headingPath());
+        assertEquals(1, first.chunkIndex());
+        assertEquals("小节", first.parentTitle());
+        assertEquals(1, first.startPage());
+        assertEquals(2, first.endPage());
     }
 
     // ==================== J3: 通用资料库 ====================
 
     @Test
-    @DisplayName("J3 knowledgeBase → 分页返回 DEFAULT 通用库 chunk")
+    @DisplayName("J3 knowledgeBase → 分页返回 DEFAULT 通用库 chunk（VO）")
     void knowledgeBase_returnsPagedChunks() {
         Page<DocumentChunk> paged = new Page<>(2, 20);
         paged.setRecords(List.of(chunk(1L, "DEFAULT")));
         paged.setTotal(1);
         when(documentChunkService.findByCourseIdDefault(2, 20)).thenReturn(paged);
+        when(converter.toChunkBriefVO(any(DocumentChunk.class))).thenReturn(chunkBriefVO(1L));
 
-        ApiResponse<PageResponse<Map<String, Object>>> result = controller.knowledgeBase(2, 20);
+        ApiResponse<PageResponse<ChunkBriefVO>> result = controller.knowledgeBase(2, 20);
 
-        PageResponse<Map<String, Object>> data = result.data();
+        PageResponse<ChunkBriefVO> data = result.data();
         assertEquals(1, data.records().size());
         assertEquals(1L, data.total());
         assertEquals(2, data.page());
         assertEquals(20, data.size());
-        assertEquals("内容-1", data.records().get(0).get("content"));
+        assertEquals("内容-1", data.records().get(0).content());
     }
 
     // ==================== J4: 分片上下文 ====================
@@ -210,22 +238,25 @@ class StudentControllerTest {
     }
 
     @Test
-    @DisplayName("J4 chunkContext → DEFAULT 分片免选课校验，返回上下文")
+    @DisplayName("J4 chunkContext → DEFAULT 分片免选课校验，返回上下文（无关联分片）")
     void chunkContext_defaultChunk_returnsContext() {
         DocumentChunk c = chunk(1L, "DEFAULT");
         c.setDocId(1L);
         c.setKbId(1L);
         when(documentChunkService.findById(1L)).thenReturn(c);
+        when(converter.toChunkContextVO(any(DocumentChunk.class), any(), any(), any()))
+                .thenReturn(new ChunkContextVO(
+                        1L, 1L, 1L, "内容-1", "第一章", 1, "DEFAULT", null, null, null, null, null, null));
 
-        ApiResponse<Map<String, Object>> result = controller.chunkContext(studentRequest(5L), 1L);
+        ApiResponse<ChunkContextVO> result = controller.chunkContext(studentRequest(5L), 1L);
 
-        assertEquals("DEFAULT", result.data().get("courseId"));
-        assertEquals(1L, result.data().get("docId"));
-        assertEquals(1L, result.data().get("kbId"));
-        // 无关联 chunk 时不出现 parent/prev/next 键
-        assertFalse(result.data().containsKey("parent"));
-        assertFalse(result.data().containsKey("prev"));
-        assertFalse(result.data().containsKey("next"));
+        assertEquals("DEFAULT", result.data().courseId());
+        assertEquals(1L, result.data().docId());
+        assertEquals(1L, result.data().kbId());
+        // 无关联 chunk 时关联字段为 null
+        assertNull(result.data().parent());
+        assertNull(result.data().prev());
+        assertNull(result.data().next());
         verify(enrollmentService, never()).isEnrolled(anyLong(), anyLong());
     }
 
@@ -241,35 +272,41 @@ class StudentControllerTest {
         when(documentChunkService.findById(100L)).thenReturn(chunk(100L, "10"));
         when(documentChunkService.findById(101L)).thenReturn(chunk(101L, "10"));
         when(documentChunkService.findById(102L)).thenReturn(chunk(102L, "10"));
+        when(converter.toChunkContextVO(any(DocumentChunk.class), any(), any(), any()))
+                .thenReturn(new ChunkContextVO(
+                        1L, null, null, "内容-1", "第一章", 1, "10", 100L, 101L, 102L,
+                        chunkBriefVO(100L), chunkBriefVO(101L), chunkBriefVO(102L)));
 
-        ApiResponse<Map<String, Object>> result = controller.chunkContext(studentRequest(5L), 1L);
+        ApiResponse<ChunkContextVO> result = controller.chunkContext(studentRequest(5L), 1L);
 
-        Map<String, Object> data = result.data();
-        assertEquals(100L, ((Map<?, ?>) data.get("parent")).get("id"));
-        assertEquals(101L, ((Map<?, ?>) data.get("prev")).get("id"));
-        assertEquals(102L, ((Map<?, ?>) data.get("next")).get("id"));
-        // 关联 chunk 只输出摘要字段
-        assertEquals("内容-100", ((Map<?, ?>) data.get("parent")).get("content"));
-        assertFalse(((Map<?, ?>) data.get("parent")).containsKey("courseId"));
+        ChunkContextVO data = result.data();
+        assertEquals(100L, data.parent().id());
+        assertEquals(101L, data.prev().id());
+        assertEquals(102L, data.next().id());
+        // 关联 chunk 只输出摘要字段（VO 类型保证不含 courseId 等内部字段）
+        assertEquals("内容-100", data.parent().content());
     }
 
     @Test
-    @DisplayName("J4 chunkContext → 关联 chunk 缺失时静默跳过该键")
+    @DisplayName("J4 chunkContext → 关联 chunk 缺失时关联字段为 null（不中断）")
     void chunkContext_missingNeighbor_omitsKey() {
         DocumentChunk c = chunk(1L, "DEFAULT");
         c.setParentChunkId(100L);
         when(documentChunkService.findById(1L)).thenReturn(c);
         when(documentChunkService.findById(100L)).thenReturn(null);
+        when(converter.toChunkContextVO(any(DocumentChunk.class), any(), any(), any()))
+                .thenReturn(new ChunkContextVO(
+                        1L, null, null, "内容-1", "第一章", 1, "DEFAULT", 100L, null, null, null, null, null));
 
-        ApiResponse<Map<String, Object>> result = controller.chunkContext(studentRequest(5L), 1L);
+        ApiResponse<ChunkContextVO> result = controller.chunkContext(studentRequest(5L), 1L);
 
-        assertFalse(result.data().containsKey("parent"));
+        assertNull(result.data().parent());
     }
 
     // ==================== J6: 我的会话 ====================
 
     @Test
-    @DisplayName("J6 mySessions → 分页返回会话列表")
+    @DisplayName("J6 mySessions → 分页返回会话列表（VO）")
     void mySessions_returnsPagedSessions() {
         Page<ChatSession> paged = new Page<>(1, 20);
         ChatSession s = new ChatSession();
@@ -282,14 +319,15 @@ class StudentControllerTest {
         paged.setRecords(List.of(s));
         paged.setTotal(1);
         when(sessionService.findSessionsByUser(5L, 1, 20)).thenReturn(paged);
+        when(converter.toSessionVO(any(ChatSession.class))).thenReturn(sessionVO(1L, "会话一"));
 
-        ApiResponse<PageResponse<Map<String, Object>>> result = controller.mySessions(studentRequest(5L), 1, 20);
+        ApiResponse<PageResponse<SessionVO>> result = controller.mySessions(studentRequest(5L), 1, 20);
 
-        Map<String, Object> record = result.data().records().get(0);
-        assertEquals("会话一", record.get("title"));
-        assertEquals("ACTIVE", record.get("status"));
-        assertNotNull(record.get("lastMessageAt"));
-        assertNotNull(record.get("createdAt"));
+        SessionVO record = result.data().records().get(0);
+        assertEquals("会话一", record.title());
+        assertEquals("ACTIVE", record.status());
+        assertNotNull(record.lastMessageAt());
+        assertNotNull(record.createdAt());
     }
 
     // ==================== J7: 创建会话 ====================
@@ -303,10 +341,11 @@ class StudentControllerTest {
         s.setStatus("ACTIVE");
         s.setCreatedAt(LocalDateTime.now());
         when(sessionService.createSession(5L, "新对话")).thenReturn(s);
+        when(converter.toSessionVO(s)).thenReturn(sessionVO(1L, "新对话"));
 
-        ApiResponse<Map<String, Object>> result = controller.createSession(studentRequest(5L), Map.of());
+        ApiResponse<SessionVO> result = controller.createSession(studentRequest(5L), Map.of());
 
-        assertEquals("新对话", result.data().get("title"));
+        assertEquals("新对话", result.data().title());
         verify(sessionService).createSession(5L, "新对话");
     }
 
@@ -318,11 +357,12 @@ class StudentControllerTest {
         s.setTitle("自定义标题");
         s.setStatus("ACTIVE");
         when(sessionService.createSession(5L, "自定义标题")).thenReturn(s);
+        when(converter.toSessionVO(s)).thenReturn(sessionVO(2L, "自定义标题"));
 
-        ApiResponse<Map<String, Object>> result =
+        ApiResponse<SessionVO> result =
                 controller.createSession(studentRequest(5L), Map.of("title", "自定义标题"));
 
-        assertEquals("自定义标题", result.data().get("title"));
+        assertEquals("自定义标题", result.data().title());
     }
 
     // ==================== J8: SSE 流式对话 ====================

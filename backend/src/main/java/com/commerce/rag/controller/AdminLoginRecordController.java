@@ -4,11 +4,15 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.controller.vo.SysLoginRecordVO;
+import com.commerce.rag.controller.vo.SysTokenBlacklistVO;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysTokenBlacklist;
+import com.commerce.rag.service.AdminLoginRecordConverter;
 import com.commerce.rag.service.SysLoginRecordService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,9 +36,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminLoginRecordController {
 
     private final SysLoginRecordService sysLoginRecordService;
+    private final AdminLoginRecordConverter converter;
 
-    public AdminLoginRecordController(SysLoginRecordService sysLoginRecordService) {
+    public AdminLoginRecordController(SysLoginRecordService sysLoginRecordService, AdminLoginRecordConverter converter) {
         this.sysLoginRecordService = sysLoginRecordService;
+        this.converter = converter;
     }
 
     // ========================================================================
@@ -43,7 +49,7 @@ public class AdminLoginRecordController {
 
     /** K1: 登录记录列表（分页 + 用户/设备/状态筛选） */
     @GetMapping("/login-records")
-    public ApiResponse<PageResponse<SysLoginRecord>> listLoginRecords(
+    public ApiResponse<PageResponse<SysLoginRecordVO>> listLoginRecords(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) Long userId,
@@ -51,14 +57,14 @@ public class AdminLoginRecordController {
             @RequestParam(required = false) String status) {
 
         IPage<SysLoginRecord> result = sysLoginRecordService.findPage(page, size, userId, deviceType, status);
-        PageResponse<SysLoginRecord> response = new PageResponse<>(result.getRecords(), result.getTotal(), page, size);
-        return ApiResponse.ok(response);
+        List<SysLoginRecordVO> records = result.getRecords().stream().map(converter::toLoginRecordVO).toList();
+        return ApiResponse.ok(new PageResponse<>(records, result.getTotal(), page, size));
     }
 
     /** K2: 查看登录记录详情 */
     @GetMapping("/login-records/{id}")
-    public ApiResponse<SysLoginRecord> getLoginRecord(@PathVariable Long id) {
-        return ApiResponse.ok(sysLoginRecordService.findById(id));
+    public ApiResponse<SysLoginRecordVO> getLoginRecord(@PathVariable Long id) {
+        return ApiResponse.ok(converter.toLoginRecordVO(sysLoginRecordService.findById(id)));
     }
 
     /** K3: 踢出设备（标记 REVOKED + jti 入黑名单） */
@@ -75,7 +81,7 @@ public class AdminLoginRecordController {
 
     /** K4: 黑名单列表（分页 + 用户/jti/类型筛选） */
     @GetMapping("/token-blacklist")
-    public ApiResponse<PageResponse<SysTokenBlacklist>> listBlacklist(
+    public ApiResponse<PageResponse<SysTokenBlacklistVO>> listBlacklist(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) Long userId,
@@ -83,9 +89,8 @@ public class AdminLoginRecordController {
             @RequestParam(required = false) String tokenType) {
 
         IPage<SysTokenBlacklist> result = sysLoginRecordService.findBlacklistPage(page, size, userId, jti, tokenType);
-        PageResponse<SysTokenBlacklist> response =
-                new PageResponse<>(result.getRecords(), result.getTotal(), page, size);
-        return ApiResponse.ok(response);
+        List<SysTokenBlacklistVO> records = result.getRecords().stream().map(converter::toBlacklistVO).toList();
+        return ApiResponse.ok(new PageResponse<>(records, result.getTotal(), page, size));
     }
 
     /** K5: 手动添加黑名单 */

@@ -6,7 +6,9 @@ import static org.mockito.Mockito.*;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.FeedbackRequest;
+import com.commerce.rag.controller.vo.UserFeedbackVO;
 import com.commerce.rag.entity.UserFeedback;
+import com.commerce.rag.service.UserFeedbackConverter;
 import com.commerce.rag.service.UserFeedbackService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
@@ -31,15 +33,18 @@ class FeedbackControllerTest {
     @Mock
     private UserFeedbackService feedbackService;
 
+    @Mock
+    private UserFeedbackConverter converter;
+
     private FeedbackController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new FeedbackController(feedbackService);
+        controller = new FeedbackController(feedbackService, converter);
     }
 
     @Test
-    @DisplayName("J5 create → 以登录用户身份提交反馈并返回记录")
+    @DisplayName("J5 create → 以登录用户身份提交反馈并返回记录（VO）")
     void create_usesLoginUserAndReturnsFeedback() {
         HttpServletRequest req = mock(HttpServletRequest.class);
         when(req.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(5L);
@@ -54,10 +59,13 @@ class FeedbackControllerTest {
         feedback.setIntentType("knowledge_question");
         feedback.setCreatedAt(LocalDateTime.now());
         when(feedbackService.create(5L, 1L, 2L, true, "knowledge_question")).thenReturn(feedback);
+        when(converter.toVO(feedback))
+                .thenReturn(new UserFeedbackVO(1L, 1L, 2L, 5L, true, "knowledge_question", feedback.getCreatedAt()));
 
-        ApiResponse<UserFeedback> result = controller.create(req, feedbackRequest);
+        ApiResponse<UserFeedbackVO> result = controller.create(req, feedbackRequest);
 
-        assertEquals(5L, result.data().getUserId());
+        assertEquals(5L, result.data().userId());
+        assertEquals(Boolean.TRUE, result.data().isLiked());
         verify(feedbackService).create(5L, 1L, 2L, true, "knowledge_question");
     }
 
@@ -73,9 +81,10 @@ class FeedbackControllerTest {
         feedback.setUserId(5L);
         feedback.setIsLiked(false);
         when(feedbackService.create(5L, 1L, 3L, false, "chat")).thenReturn(feedback);
+        when(converter.toVO(feedback)).thenReturn(new UserFeedbackVO(2L, 1L, 3L, 5L, false, "chat", null));
 
-        ApiResponse<UserFeedback> result = controller.create(req, feedbackRequest);
+        ApiResponse<UserFeedbackVO> result = controller.create(req, feedbackRequest);
 
-        assertEquals(Boolean.FALSE, result.data().getIsLiked());
+        assertEquals(Boolean.FALSE, result.data().isLiked());
     }
 }

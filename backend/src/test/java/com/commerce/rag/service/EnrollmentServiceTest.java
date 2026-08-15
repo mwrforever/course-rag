@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.commerce.rag.controller.dto.CourseDTO;
 import com.commerce.rag.controller.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
 import com.commerce.rag.entity.CourseInfo;
@@ -179,6 +180,37 @@ class EnrollmentServiceTest {
 
         assertTrue(result.isEmpty());
         verify(courseService, never()).findByIds(anyList());
+    }
+
+    @Test
+    @DisplayName("findStudentCoursesAsDTO → 经 courseService.toDTO 转换为 DTO 列表（转换下沉 service）")
+    void findStudentCoursesAsDTO_convertsViaCourseService() {
+        when(enrollmentMapper.selectList(any())).thenReturn(List.of(enrollment(1L, 5L, "ACTIVE")));
+        CourseInfo c1 = new CourseInfo();
+        c1.setId(1L);
+        c1.setTitle("Java");
+        when(courseService.findByIds(List.of(1L))).thenReturn(List.of(c1));
+        when(courseService.toDTO(c1, false))
+                .thenReturn(new CourseDTO(
+                        1L, "Java", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                        null, null));
+
+        var result = enrollmentService.findStudentCoursesAsDTO(5L);
+
+        assertEquals(1, result.size());
+        assertEquals("Java", result.get(0).title());
+        verify(courseService).toDTO(c1, false);
+    }
+
+    @Test
+    @DisplayName("findStudentCoursesAsDTO → 无选课时返回空列表（不触发转换）")
+    void findStudentCoursesAsDTO_noEnrollment_returnsEmpty() {
+        when(enrollmentMapper.selectList(any())).thenReturn(List.of());
+
+        var result = enrollmentService.findStudentCoursesAsDTO(5L);
+
+        assertTrue(result.isEmpty());
+        verify(courseService, never()).toDTO(any(), anyBoolean());
     }
 
     // ==================== isEnrolled ====================

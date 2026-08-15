@@ -9,8 +9,6 @@ import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.CourseDTO;
 import com.commerce.rag.controller.dto.EnrollmentRequest;
 import com.commerce.rag.controller.dto.StudentDTO;
-import com.commerce.rag.entity.CourseInfo;
-import com.commerce.rag.service.CourseService;
 import com.commerce.rag.service.EnrollmentService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
@@ -34,14 +32,11 @@ class AdminEnrollmentControllerTest {
     @Mock
     private EnrollmentService enrollmentService;
 
-    @Mock
-    private CourseService courseService;
-
     private AdminEnrollmentController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AdminEnrollmentController(enrollmentService, courseService);
+        controller = new AdminEnrollmentController(enrollmentService);
     }
 
     private HttpServletRequest request(String role, Long userId) {
@@ -94,16 +89,12 @@ class AdminEnrollmentControllerTest {
     }
 
     @Test
-    @DisplayName("G4 studentCourses → 返回学生选课 DTO 列表")
+    @DisplayName("G4 studentCourses → 返回学生选课 DTO 列表（service 转换）")
     void studentCourses_returnsDTOs() {
-        CourseInfo course = new CourseInfo();
-        course.setId(1L);
-        course.setTitle("Java");
-        when(enrollmentService.findStudentCourses(5L)).thenReturn(List.of(course));
-        when(courseService.toDTO(course, false))
-                .thenReturn(new CourseDTO(
+        when(enrollmentService.findStudentCoursesAsDTO(5L))
+                .thenReturn(List.of(new CourseDTO(
                         1L, "Java", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                        null, null));
+                        null, null)));
 
         ApiResponse<List<CourseDTO>> result = controller.studentCourses(5L);
 

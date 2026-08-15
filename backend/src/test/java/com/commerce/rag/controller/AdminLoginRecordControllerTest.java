@@ -8,8 +8,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.controller.vo.SysLoginRecordVO;
+import com.commerce.rag.controller.vo.SysTokenBlacklistVO;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysTokenBlacklist;
+import com.commerce.rag.service.AdminLoginRecordConverter;
 import com.commerce.rag.service.SysLoginRecordService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
@@ -35,11 +38,14 @@ class AdminLoginRecordControllerTest {
     @Mock
     private SysLoginRecordService sysLoginRecordService;
 
+    @Mock
+    private AdminLoginRecordConverter converter;
+
     private AdminLoginRecordController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AdminLoginRecordController(sysLoginRecordService);
+        controller = new AdminLoginRecordController(sysLoginRecordService, converter);
     }
 
     private SysLoginRecord loginRecord(Long id) {
@@ -69,28 +75,42 @@ class AdminLoginRecordControllerTest {
         return b;
     }
 
+    private SysLoginRecordVO loginRecordVO(Long id) {
+        return new SysLoginRecordVO(
+                id, 5L, "jti-at-1", "jti-rt-1", "PC", "Chrome", "127.0.0.1",
+                LocalDateTime.now().plusDays(1), "ACTIVE", LocalDateTime.now(), null);
+    }
+
+    private SysTokenBlacklistVO blacklistVO(Long id) {
+        return new SysTokenBlacklistVO(
+                id, "jti-1", "ACCESS", 5L, 1L, "MANUAL_REVOKE", LocalDateTime.now().plusDays(7), null);
+    }
+
     @Test
-    @DisplayName("K1 listLoginRecords → 透传筛选条件返回分页记录")
+    @DisplayName("K1 listLoginRecords → 透传筛选条件返回分页记录（VO）")
     void listLoginRecords_returnsPaged() {
         Page<SysLoginRecord> paged = new Page<>(1, 20);
         paged.setRecords(List.of(loginRecord(1L)));
         paged.setTotal(1);
         when(sysLoginRecordService.findPage(1, 20, 5L, "PC", "ACTIVE")).thenReturn(paged);
+        when(converter.toLoginRecordVO(any(SysLoginRecord.class))).thenReturn(loginRecordVO(1L));
 
-        ApiResponse<PageResponse<SysLoginRecord>> result = controller.listLoginRecords(1, 20, 5L, "PC", "ACTIVE");
+        ApiResponse<PageResponse<SysLoginRecordVO>> result = controller.listLoginRecords(1, 20, 5L, "PC", "ACTIVE");
 
         assertEquals(1, result.data().records().size());
-        assertEquals(5L, result.data().records().get(0).getUserId());
+        assertEquals(5L, result.data().records().get(0).userId());
+        assertEquals("jti-at-1", result.data().records().get(0).jtiAt());
     }
 
     @Test
-    @DisplayName("K2 getLoginRecord → 返回记录详情")
+    @DisplayName("K2 getLoginRecord → 返回记录详情（VO）")
     void getLoginRecord_returnsRecord() {
         when(sysLoginRecordService.findById(1L)).thenReturn(loginRecord(1L));
+        when(converter.toLoginRecordVO(any(SysLoginRecord.class))).thenReturn(loginRecordVO(1L));
 
-        ApiResponse<SysLoginRecord> result = controller.getLoginRecord(1L);
+        ApiResponse<SysLoginRecordVO> result = controller.getLoginRecord(1L);
 
-        assertEquals("jti-at-1", result.data().getJtiAt());
+        assertEquals("jti-at-1", result.data().jtiAt());
     }
 
     @Test
@@ -105,18 +125,19 @@ class AdminLoginRecordControllerTest {
     }
 
     @Test
-    @DisplayName("K4 listBlacklist → 透传筛选条件返回分页黑名单")
+    @DisplayName("K4 listBlacklist → 透传筛选条件返回分页黑名单（VO）")
     void listBlacklist_returnsPaged() {
         Page<SysTokenBlacklist> paged = new Page<>(1, 20);
         paged.setRecords(List.of(blacklist(1L)));
         paged.setTotal(1);
         when(sysLoginRecordService.findBlacklistPage(1, 20, 5L, "jti-1", "ACCESS"))
                 .thenReturn(paged);
+        when(converter.toBlacklistVO(any(SysTokenBlacklist.class))).thenReturn(blacklistVO(1L));
 
-        ApiResponse<PageResponse<SysTokenBlacklist>> result = controller.listBlacklist(1, 20, 5L, "jti-1", "ACCESS");
+        ApiResponse<PageResponse<SysTokenBlacklistVO>> result = controller.listBlacklist(1, 20, 5L, "jti-1", "ACCESS");
 
         assertEquals(1, result.data().records().size());
-        assertEquals("jti-1", result.data().records().get(0).getJti());
+        assertEquals("jti-1", result.data().records().get(0).jti());
     }
 
     @Test
