@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
+import java.io.Serial;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -26,6 +27,7 @@ import lombok.Data;
 @TableName("chat_message")
 public class ChatMessage implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     /** 主键 ID（雪花算法生成） */
