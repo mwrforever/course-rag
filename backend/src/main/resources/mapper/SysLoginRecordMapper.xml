@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.commerce.rag.mapper.SysLoginRecordMapper">
+
+    <!-- 锁定用户+设备类型的活跃记录（FOR UPDATE 行锁，PG 降级互踢的原子性保障） -->
+    <select id="selectActiveForUpdate" resultType="com.commerce.rag.entity.SysLoginRecord">
+        SELECT id, user_id, jti_at, jti_rt, device_type, device_info, ip_address, expires_at, status
+        FROM sys_login_record
+        WHERE user_id = #{userId} AND device_type = #{deviceType} AND status = 'ACTIVE' AND deleted = 0
+        FOR UPDATE
+    </select>
+
+    <!-- 按 id 置 REVOKED（updated_at 由数据库生成） -->
+    <update id="updateStatusById">
+        UPDATE sys_login_record SET status = 'REVOKED', updated_at = now() WHERE id = #{id}
+    </update>
+
+    <!-- 按 id 置 REVOKED（仅 ACTIVE，幂等） -->
+    <update id="updateStatusByIdIfActive">
+        UPDATE sys_login_record SET status = 'REVOKED', updated_at = now()
+        WHERE id = #{id} AND status = 'ACTIVE'
+    </update>
+
+    <!-- 按 user_id + jti_at 置 REVOKED（仅 ACTIVE，幂等） -->
+    <update id="updateStatusByUserAndJtiActive">
+        UPDATE sys_login_record SET status = 'REVOKED', updated_at = now()
+        WHERE user_id = #{userId} AND jti_at = #{jtiAt} AND status = 'ACTIVE'
+    </update>
+
+    <!-- 查询用户全部活跃登录记录（禁用用户时收集 jti） -->
+    <select id="selectActiveByUserId" resultType="com.commerce.rag.entity.SysLoginRecord">
+        SELECT id, user_id, jti_at, jti_rt, device_type, device_info, ip_address, expires_at, status
+        FROM sys_login_record
+        WHERE user_id = #{userId} AND status = 'ACTIVE' AND deleted = 0
+    </select>
+</mapper>

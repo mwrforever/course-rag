@@ -18,7 +18,6 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Redis 是执法层（纳秒级生效），PG 是审计层（持久化记录）。
  * <p>降级策略：Redis 不可用时用 PG FOR UPDATE 行锁事务保证原子性。
+ * <p>PG 降级与审计的全部 SQL 走 MyBatis mapper XML（SysLoginRecordMapper /
+ * SysTokenBlacklistMapper），业务层不拼 SQL；FOR UPDATE 行锁、status='ACTIVE'
+ * 条件、updated_at = now() 语义与 XML 逐字等价。
  * <p>P3 A11：RT 一次性旋转的「检查 + 置位」原子化于单条 Lua 脚本（mark_rt_used.lua），
  * 消除并发 refresh 的 TOCTOU 双签窗口。
  *
@@ -52,7 +54,6 @@ public class DeviceKickService {
     private final AuthProperties authProperties;
     private final SysLoginRecordMapper loginRecordMapper;
     private final SysTokenBlacklistMapper tokenBlacklistMapper;
-    private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
     /** 自身代理（P0-5：@Transactional 基于 JDK 代理，同类自调用不经过代理导致注解失效；@Lazy 延迟解析避免循环依赖） */
@@ -68,14 +69,12 @@ public class DeviceKickService {
             AuthProperties authProperties,
             SysLoginRecordMapper loginRecordMapper,
             SysTokenBlacklistMapper tokenBlacklistMapper,
-            JdbcTemplate jdbcTemplate,
             @Lazy DeviceKickService self) {
         this.redisTemplate = redisTemplate;
         this.tokenService = tokenService;
         this.authProperties = authProperties;
         this.loginRecordMapper = loginRecordMapper;
         this.tokenBlacklistMapper = tokenBlacklistMapper;
-        this.jdbcTemplate = jdbcTemplate;
         this.self = self;
         this.objectMapper = new ObjectMapper();
 
@@ -181,10 +180,9 @@ public class DeviceKickService {
             log.warn("Redis 黑名单查询失败，降级到 PG: jti={}", jti);
         }
 
-        // 降级查 PG
+        // 降级查 PG（mapper XML：COUNT(*) WHERE jti = ? AND deleted = 0）
         try {
-            Long count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM sys_token_blacklist WHERE jti = ? AND deleted = 0", Long.class, jti);
+            Long count = tokenBlacklistMapper.countByJti(jti);
             return count != null && count > 0;
         } catch (Exception e) {
             log.error("PG 黑名单查询失败: jti={}", jti, e);
@@ -307,14 +305,8 @@ public class DeviceKickService {
     @Transactional
     public KickResult kickAndLoginPgFallback(
             Long userId, String deviceType, String newJtiAt, String newJtiRt, Long newLoginId) {
-        // 行锁：锁定该用户+设备类型的活跃记录
-        List<SysLoginRecord> oldRecords = jdbcTemplate.query(
-                "SELECT * FROM sys_login_record "
-                        + "WHERE user_id = ? AND device_type = ? AND status = 'ACTIVE' AND deleted = 0 "
-                        + "FOR UPDATE",
-                (rs, rowNum) -> mapLoginRecord(rs),
-                userId,
-                deviceType);
+        // 行锁：锁定该用户+设备类型的活跃记录（XML 内 FOR UPDATE 行锁）
+        List<SysLoginRecord> oldRecords = loginRecordMapper.selectActiveForUpdate(userId, deviceType);
 
         String oldJtiAt = "";
         String oldJtiRt = "";
@@ -326,10 +318,8 @@ public class DeviceKickService {
             oldJtiRt = oldRecord.getJtiRt();
             kicked = true;
 
-            // 标记旧记录为 REVOKED
-            jdbcTemplate.update(
-                    "UPDATE sys_login_record SET status = 'REVOKED', updated_at = now() " + "WHERE id = ?",
-                    oldRecord.getId());
+            // 标记旧记录为 REVOKED（updated_at 数据库生成）
+            loginRecordMapper.updateStatusById(oldRecord.getId());
 
             // 旧 jti 写入黑名单
             if (!oldJtiAt.isEmpty()) {
@@ -351,10 +341,8 @@ public class DeviceKickService {
     public int disableUserPgFallback(Long userId, Long adminUserId, List<SysLoginRecord> activeRecords) {
         int count = 0;
         for (SysLoginRecord record : activeRecords) {
-            // 标记记录为 REVOKED
-            jdbcTemplate.update(
-                    "UPDATE sys_login_record SET status = 'REVOKED', updated_at = now() " + "WHERE id = ?",
-                    record.getId());
+            // 标记记录为 REVOKED（updated_at 数据库生成）
+            loginRecordMapper.updateStatusById(record.getId());
 
             // jti 写入黑名单
             if (record.getJtiAt() != null && !record.getJtiAt().isEmpty()) {
@@ -376,11 +364,8 @@ public class DeviceKickService {
      */
     private void disableUserPgAudit(Long userId, Long adminUserId, List<SysLoginRecord> activeRecords) {
         for (SysLoginRecord record : activeRecords) {
-            // 标记记录为 REVOKED
-            jdbcTemplate.update(
-                    "UPDATE sys_login_record SET status = 'REVOKED', updated_at = now() "
-                            + "WHERE id = ? AND status = 'ACTIVE'",
-                    record.getId());
+            // 标记记录为 REVOKED（仅 ACTIVE，幂等）
+            loginRecordMapper.updateStatusByIdIfActive(record.getId());
 
             if (record.getJtiAt() != null && !record.getJtiAt().isEmpty()) {
                 addToBlacklistPg(record.getJtiAt(), "ACCESS", userId, adminUserId, "USER_DISABLED");
@@ -403,11 +388,7 @@ public class DeviceKickService {
     private void kickPgAudit(Long userId, KickResult result) {
         try {
             // 1. 旧 login_record → REVOKED（条件 status='ACTIVE'，幂等）
-            jdbcTemplate.update(
-                    "UPDATE sys_login_record SET status = 'REVOKED', updated_at = now() "
-                            + "WHERE user_id = ? AND jti_at = ? AND status = 'ACTIVE'",
-                    userId,
-                    result.oldJtiAt());
+            loginRecordMapper.updateStatusByUserAndJtiActive(userId, result.oldJtiAt());
 
             // 2. 旧 jti 双写 PG 黑名单（addToBlacklistPg 已忽略唯一索引冲突）
             if (!result.oldJtiAt().isEmpty()) {
@@ -455,27 +436,7 @@ public class DeviceKickService {
     // ========================================================================
 
     private List<SysLoginRecord> findActiveLoginRecords(Long userId) {
-        return jdbcTemplate.query(
-                "SELECT * FROM sys_login_record " + "WHERE user_id = ? AND status = 'ACTIVE' AND deleted = 0",
-                (rs, rowNum) -> mapLoginRecord(rs),
-                userId);
-    }
-
-    private SysLoginRecord mapLoginRecord(java.sql.ResultSet rs) throws java.sql.SQLException {
-        SysLoginRecord record = new SysLoginRecord();
-        record.setId(rs.getLong("id"));
-        record.setUserId(rs.getLong("user_id"));
-        record.setJtiAt(rs.getString("jti_at"));
-        record.setJtiRt(rs.getString("jti_rt"));
-        record.setDeviceType(rs.getString("device_type"));
-        record.setDeviceInfo(rs.getString("device_info"));
-        record.setIpAddress(rs.getString("ip_address"));
-        record.setExpiresAt(
-                rs.getTimestamp("expires_at") != null
-                        ? rs.getTimestamp("expires_at").toLocalDateTime()
-                        : null);
-        record.setStatus(rs.getString("status"));
-        return record;
+        return loginRecordMapper.selectActiveByUserId(userId);
     }
 
     private KickResult parseKickResult(String json) {

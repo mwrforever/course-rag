@@ -19,7 +19,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * DeviceKickService 单元测试 —— 设备互踢 Redis 成功路径的 PG 审计落盘
@@ -45,9 +44,6 @@ class DeviceKickServiceTest {
     @Mock
     private SysTokenBlacklistMapper tokenBlacklistMapper;
 
-    @Mock
-    private JdbcTemplate jdbcTemplate;
-
     private AuthProperties authProperties;
     private DeviceKickService service;
 
@@ -59,9 +55,12 @@ class DeviceKickServiceTest {
                 604800L,
                 "commerce_token",
                 "localhost",
+                false,
                 List.of("WEB_DESKTOP"));
+        // self 代理传 null（P0-5）：本测试不触发 Redis 降级路径（fallback 经 self 调用），
+        // 降级方法已由 mapper mock 直测，代理注入由 Spring 容器负责
         service = new DeviceKickService(
-                redisTemplate, tokenService, authProperties, loginRecordMapper, tokenBlacklistMapper, jdbcTemplate);
+                redisTemplate, tokenService, authProperties, loginRecordMapper, tokenBlacklistMapper, null);
     }
 
     @Test
@@ -77,8 +76,8 @@ class DeviceKickServiceTest {
         DeviceKickService.KickResult result = service.kickAndLogin(1L, "WEB_DESKTOP", "new-at", "new-rt", 99L);
 
         assertTrue(result.kicked());
-        // 旧 login_record 置 REVOKED
-        verify(jdbcTemplate).update(contains("sys_login_record SET status = 'REVOKED'"), eq(1L), eq("old-at"));
+        // 旧 login_record 置 REVOKED（updateStatusByUserAndJtiActive: user_id + jti_at + ACTIVE）
+        verify(loginRecordMapper).updateStatusByUserAndJtiActive(1L, "old-at");
         // 旧 AT/RT 双写 PG 黑名单：捕获两次 insert 的实体，断言审计载荷完整（jti/类型/原因/操作人，非仅次数）
         ArgumentCaptor<SysTokenBlacklist> captor = ArgumentCaptor.forClass(SysTokenBlacklist.class);
         verify(tokenBlacklistMapper, times(2)).insert(captor.capture());
@@ -108,7 +107,7 @@ class DeviceKickServiceTest {
         DeviceKickService.KickResult result = service.kickAndLogin(1L, "WEB_DESKTOP", "new-at", "new-rt", 99L);
 
         assertFalse(result.kicked());
-        verifyNoInteractions(jdbcTemplate);
+        verifyNoInteractions(loginRecordMapper);
         verifyNoInteractions(tokenBlacklistMapper);
     }
 
@@ -120,7 +119,9 @@ class DeviceKickServiceTest {
         when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
                 .thenReturn("{\"kicked\":true,\"old_jti_at\":\"old-at\",\"old_jti_rt\":\"old-rt\"}");
         // PG 审计落盘时 DB 故障
-        doThrow(new RuntimeException("DB 故障")).when(jdbcTemplate).update(anyString(), any(), any());
+        doThrow(new RuntimeException("DB 故障"))
+                .when(loginRecordMapper)
+                .updateStatusByUserAndJtiActive(anyLong(), anyString());
 
         DeviceKickService.KickResult result =
                 assertDoesNotThrow(() -> service.kickAndLogin(1L, "WEB_DESKTOP", "new-at", "new-rt", 99L));

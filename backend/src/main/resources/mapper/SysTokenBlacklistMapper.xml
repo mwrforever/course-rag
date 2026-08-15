@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.commerce.rag.mapper.SysTokenBlacklistMapper">
+
+    <!-- 按 jti 统计黑名单记录数（PG 降级查询，与 Redis 黑名单互补） -->
+    <select id="countByJti" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM sys_token_blacklist WHERE jti = #{jti} AND deleted = 0
+    </select>
+</mapper>
