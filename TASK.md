@@ -22,9 +22,17 @@
 
 ---
 
-## 2. JaCoCo 覆盖率补测路线图（当前 37% → 门禁 80%）
+## 2. JaCoCo 覆盖率补测路线图（~~37% → 80%~~ ✅ 已完成 2026-08-15 晚，实测 80.1%）
 
-**现状**（2026-08-12 全量实测，行覆盖率，门禁已配置 80%，当前 CI 因此为红）：
+**达成记录**：`mvn verify` 全绿（spotless/checkstyle/spotbugs/jacoco LINE 80.1%）；全量测试 480/480。
+4 批次 11 提交（af1ccc2..7952066）：批次A config+controller 0% 类 → 62.4%；批次B service 0% 五类 → 67.8%；
+批次C FusionService+bot（QueryRewriter/Graph/Interceptor/Hook）→ 73.1%；批次D 低覆盖大块扩展 → 80.1%。
+
+**遗留低覆盖类**（非门禁阻塞，后续可选补测）：DeviceKickService 44%、EtlPipeline 37%（chunkDocument/splitLargeParagraph 等需构造长文本）、
+CustomSummarizationHook 35%、CourseQueryService 20%（Db 静态工具需 mockStatic）、ChatController 69%（reconnect/replayFromPg 需 SAA 流 mock）、
+GraphConfig.postgresSaver 与 MilvusConfig 已豁免（构造器真实建连，外部依赖）。
+
+**历史路线图存档**（2026-08-12 基线 37%）：
 
 | 包 | 覆盖率 | 行数(覆盖/总) |
 |---|---|---|
