@@ -228,18 +228,21 @@ public class ChatController {
     // ========================================================================
 
     /**
-     * 断线重连：从 ring buffer 回放 lastEventId 之后的事件。
+     * 断线重连：原子「回放 + 订阅」恢复事件流。
      *
      * <p>归属校验：run 必须属于当前用户（P0-3，不匹配 404 不泄露存在性）。
      *
      * <p>流程：
      * <ol>
      *   <li>创建新 SseEmitter</li>
-     *   <li>bridge.replay(runId, lastEventId, emitter)
-     *       → true：回放成功，继续 subscribe 接收后续事件</li>
-     *   <li>bridge.replay → false：lastEventId 太旧（ring buffer 已覆盖）
-     *       → F2-9: 降级查 PG chat_message 表，replay 历史消息到 emitter（§3.6）
-     *       → 降级不终止，继续 subscribe 接收后续事件</li>
+     *   <li>bridge.replayAndSubscribe(runId, lastEventId, emitter)
+     *       → true：回放 lastEventId 之后的事件并注册 emitter（P1-2，回放与订阅原子，
+     *       与 Worker 推送并发下不丢不重），启动心跳即可，无需再 subscribe</li>
+     *   <li>返回 false：ring 不存在或 lastEventId 已被覆盖
+     *       → F2-9: 降级查 PG chat_message 表，回放历史消息（§3.6）</li>
+     *   <li>PG 回放成功 + run 已终态（COMPLETED/CANCELLED/ERROR，ring 已被 Worker 移除）
+     *       → 补发 end 事件 + complete（P1-2，避免前端状态机永久停在"生成中"）</li>
+     *   <li>PG 回放成功 + run 仍活跃 → 继续 subscribe 接收后续事件 + 启动心跳</li>
      * </ol>
      */
     @GetMapping("/{runId}/reconnect")
@@ -253,13 +256,14 @@ public class ChatController {
 
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT);
 
-        boolean success = bridge.replay(runId, lastEventId, emitter);
+        // P1-2: 原子「回放 + 订阅」——回放 lastEventId 之后的事件并注册 emitter，
+        // 与 Worker 推送并发下不丢不重（消除旧 replay→subscribe 两步之间的窗口竞态）
+        boolean success = bridge.replayAndSubscribe(runId, lastEventId, emitter);
         if (!success) {
-            // F2-9: ring buffer 已覆盖 → 降级查 PG chat_message 表，replay 历史消息（§3.6）
-            // 降级不终止 run，记 warn，继续 subscribe 接收后续事件
-            log.warn("ring buffer 回放失败，降级查 PG: runId={}, lastEventId={}", runId, lastEventId);
-            boolean pgOk = replayFromPg(runId, lastEventId, emitter);
-            if (!pgOk) {
+            // F2-9: ring buffer 已覆盖/不存在 → 降级查 PG chat_message 表，replay 历史消息（§3.6）
+            log.warn("ring 回放失败，降级查 PG: runId={}, lastEventId={}", runId, lastEventId);
+            long lastSeq = replayFromPg(runId, lastEventId, emitter);
+            if (lastSeq < 0) {
                 // PG 也无数据，返回 error 事件
                 try {
                     emitter.send(SseEmitter.event()
@@ -271,15 +275,32 @@ public class ChatController {
                 }
                 return emitter;
             }
-            // PG 降级回放成功，继续订阅后续事件
+            // P1-2 终态判定：run 已完成（ring 已移除）→ 补发 end 事件 + complete，
+            // 否则新 emitter 收不到 end，前端状态机永久停在"生成中"
+            ChatRun run = chatRunService.findById(Long.parseLong(runId));
+            if (run != null && isTerminalStatus(run.getStatus())) {
+                // runId/status 均来自服务端白名单值（数字 ID + 枚举状态），拼接安全
+                String payload = "{\"runId\":\"" + runId + "\",\"status\":\"" + run.getStatus() + "\"}";
+                try {
+                    emitter.send(SseEmitter.event()
+                            .id(String.valueOf(lastSeq + 1))
+                            .name(SseEventType.END.getEventName())
+                            .data(payload));
+                    emitter.complete();
+                } catch (IOException e) {
+                    // emitter 已关闭，忽略
+                }
+                log.info("run 已终态，补发 end 事件收尾: runId={}, status={}", runId, run.getStatus());
+                return emitter;
+            }
+            // 非终态：run 仍在执行，继续订阅接收后续事件
             bridge.subscribe(runId, emitter);
             startHeartbeat(emitter);
             log.info("PG 降级回放成功: runId={}, lastEventId={}", runId, lastEventId);
             return emitter;
         }
 
-        // 回放成功，继续订阅后续事件
-        bridge.subscribe(runId, emitter);
+        // 回放成功：replayAndSubscribe 已注册 emitter，无需再 subscribe；启动心跳
         startHeartbeat(emitter);
 
         log.info("断线重连成功: runId={}, lastEventId={}", runId, lastEventId);
@@ -352,22 +373,22 @@ public class ChatController {
     /**
      * F2-9: 从 PG chat_message 表降级回放历史消息到 emitter（§3.6）。
      *
-     * <p>当 ring buffer 已覆盖（lastEventId 太旧）时，查 PG chat_message 表
+     * <p>当 ring buffer 已覆盖（lastEventId 太旧）或 ring 不存在时，查 PG chat_message 表
      * 按 runId 获取历史消息，转换为 SSE 事件推送到 emitter。
      * 降级不终止，记 warn。
      *
      * @param runId       Run 唯一标识（字符串）
      * @param lastEventId 客户端最后收到的 eventId（用于 seq 续编号）
      * @param emitter     SSE 订阅者
-     * @return true=至少回放了一条消息；false=PG 无数据或回放失败
+     * @return 最后回放的 seq（回放成功）；-1=PG 无数据或回放失败
      */
-    private boolean replayFromPg(String runId, long lastEventId, SseEmitter emitter) {
+    private long replayFromPg(String runId, long lastEventId, SseEmitter emitter) {
         try {
             Long runIdLong = Long.parseLong(runId);
             List<ChatMessage> messages = chatMessageService.findByRunId(runIdLong);
             if (messages == null || messages.isEmpty()) {
                 log.warn("PG 降级回放: runId={} 无历史消息", runId);
-                return false;
+                return -1;
             }
 
             long seq = lastEventId;
@@ -408,14 +429,24 @@ public class ChatController {
             }
 
             log.info("PG 降级回放完成: runId={}, 消息数={}", runId, messages.size());
-            return true;
+            return seq;
         } catch (NumberFormatException e) {
             log.warn("PG 降级回放: runId 解析失败 runId={}", runId);
-            return false;
+            return -1;
         } catch (Exception e) {
             log.warn("PG 降级回放失败: runId={}", runId, e);
-            return false;
+            return -1;
         }
+    }
+
+    /**
+     * 判断 run 是否已处于终态（COMPLETED/CANCELLED/ERROR）。
+     *
+     * <p>终态 run 的 ring 已被 Worker 移除，重连时无法通过事件流收到 end 事件，
+     * 需由服务端按 run 状态补发（P1-2）。
+     */
+    private boolean isTerminalStatus(String status) {
+        return "COMPLETED".equals(status) || "CANCELLED".equals(status) || "ERROR".equals(status);
     }
 
     /**

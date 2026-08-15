@@ -96,34 +96,6 @@ public class MemoryStreamBridge {
     }
 
     /**
-     * O(1) 回放：从 lastEventId 之后的所有事件推送给 subscriber。
-     * 用于断线重连：GET /api/v1/student/chat/{runId}/reconnect?lastEventId=xxx
-     *
-     * <p>若 lastEventId 超出 ring buffer 范围 → 返回 false（降级查 PG chat_message 表）
-     */
-    public boolean replay(String runId, long lastEventId, SseEmitter emitter) {
-        Ring ring = rings.get(runId);
-        if (ring == null) return false;
-        return ring.replay(lastEventId, emitter);
-    }
-
-    /**
-     * replayFrom —— 设计文档 §3.2 API 兼容方法。
-     *
-     * <p>委托到 {@link #replay(String, long, SseEmitter)}，语义完全一致：
-     * 从 lastEventId 之后的所有事件推送给 subscriber。
-     * 提供此方法是为了与设计文档中的 {@code MemoryStreamBridge.replayFrom(lastEventId)} 命名一致。
-     *
-     * @param runId       Run 唯一标识
-     * @param lastEventId 客户端最后收到的 eventId
-     * @param emitter     SSE 订阅者
-     * @return true=回放成功；false=lastEventId 超出 ring buffer 范围（需降级查 PG）
-     */
-    public boolean replayFrom(String runId, long lastEventId, SseEmitter emitter) {
-        return replay(runId, lastEventId, emitter);
-    }
-
-    /**
      * 移除 ring（run 结束后清理）。
      */
     public void removeRing(String runId) {
@@ -200,42 +172,6 @@ public class MemoryStreamBridge {
             emitter.onCompletion(() -> subscribers.remove(emitter));
             emitter.onTimeout(() -> subscribers.remove(emitter));
             emitter.onError(e -> subscribers.remove(emitter));
-        }
-
-        boolean replay(long lastEventId, SseEmitter emitter) {
-            // 降级路径：遍历 queue（O(n)，降级场景可接受）
-            if (fallback != null) {
-                for (SseEvent event : fallback) {
-                    if (event.seqId() > lastEventId) {
-                        if (!sendEvent(emitter, event)) return false;
-                    }
-                }
-                return true;
-            }
-
-            // 正常路径：O(1) ring buffer 回放
-            long currentHead = head.get();
-            long oldestSeq = Math.max(0, currentHead - capacity);
-
-            if (lastEventId < oldestSeq) {
-                // lastEventId 太旧，ring buffer 已覆盖 → 需要降级查 PG
-                log.warn("replay 失败 runId={}: lastEventId={} < oldestSeq={}", runId, lastEventId, oldestSeq);
-                return false;
-            }
-            if (lastEventId > currentHead) {
-                // lastEventId 超出当前 head（客户端误传或并发）→ 无需回放
-                return true;
-            }
-
-            // 从 lastEventId+1 开始回放到 currentHead
-            for (long seq = lastEventId + 1; seq <= currentHead; seq++) {
-                int slot = (int) (seq % capacity);
-                SseEvent event = buffer[slot];
-                if (event != null && event.seqId() == seq) {
-                    if (!sendEvent(emitter, event)) return false;
-                }
-            }
-            return true;
         }
 
         /**

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.config.StreamProperties;
 import com.commerce.rag.controller.dto.ChatRequest;
+import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.service.ChatMessageService;
@@ -16,6 +17,7 @@ import com.commerce.rag.service.ConcurrentRunException;
 import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.worker.ChatRequestWorker;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -291,35 +293,39 @@ class ChatControllerTest {
         verify(worker, never()).cancel(anyString());
     }
 
-    // ==================== reconnect() 测试 ====================
+    // ==================== reconnect() 测试（P1-2 终态判定 + replayAndSubscribe） ====================
 
     @Test
-    @DisplayName("reconnect replay 成功 → subscribe 被调用，返回 SseEmitter")
-    void reconnect_replaySuccess_subscribesAndReturnsEmitter() {
-        // Given: run 123 属于当前用户 + replay 返回 true
+    @DisplayName("reconnect ring 回放成功 → replayAndSubscribe 被调用，不再单独 subscribe")
+    void reconnect_replaySuccess_replayAndSubscribe() {
+        // Given: run 123 属于当前用户 + replayAndSubscribe 返回 true
         ChatRun ownRun = new ChatRun();
         ownRun.setId(123L);
         ownRun.setUserId(123L);
         when(chatRunService.findById(123L)).thenReturn(ownRun);
-        when(bridge.replay(eq("123"), eq(5L), any(SseEmitter.class))).thenReturn(true);
+        when(bridge.replayAndSubscribe(eq("123"), eq(5L), any(SseEmitter.class)))
+                .thenReturn(true);
 
         // When
         SseEmitter emitter = controller.reconnect("123", 5L, mockRequestWithUserId(123L));
 
-        // Then: subscribe 被调用
-        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        // Then: 原子回放+订阅已注册，不单独 subscribe；启动心跳
+        verify(bridge).replayAndSubscribe(eq("123"), eq(5L), any(SseEmitter.class));
+        verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
         assertNotNull(emitter);
     }
 
     @Test
-    @DisplayName("reconnect replay 失败 → 不 subscribe，返回 SseEmitter（含 error 事件）")
-    void reconnect_replayFailure_doesNotSubscribe() {
-        // Given: run 123 属于当前用户 + replay 返回 false（ring buffer 已覆盖）
+    @DisplayName("reconnect PG 回放失败 → 返回 SseEmitter（含 error 事件），不 subscribe")
+    void reconnect_pgReplayFailure_doesNotSubscribe() {
+        // Given: run 123 属于当前用户 + replayAndSubscribe 返回 false + PG 无历史消息
         ChatRun ownRun = new ChatRun();
         ownRun.setId(123L);
         ownRun.setUserId(123L);
         when(chatRunService.findById(123L)).thenReturn(ownRun);
-        when(bridge.replay(eq("123"), eq(0L), any(SseEmitter.class))).thenReturn(false);
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L)).thenReturn(null);
 
         // When
         SseEmitter emitter = controller.reconnect("123", 0L, mockRequestWithUserId(123L));
@@ -330,19 +336,70 @@ class ChatControllerTest {
     }
 
     @Test
+    @DisplayName("reconnect PG 回放成功 + run 已终态 → 补发 end 事件收尾，不 subscribe 不心跳")
+    void reconnect_terminalRun_sendsEndAndCompletes() {
+        // Given: run 123 属于当前用户且状态 COMPLETED；replayAndSubscribe 失败（ring 已移除）；PG 有历史消息
+        ChatRun ownRun = new ChatRun();
+        ownRun.setId(123L);
+        ownRun.setUserId(123L);
+        ownRun.setStatus("COMPLETED");
+        when(chatRunService.findById(123L)).thenReturn(ownRun);
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+
+        ChatMessage assistantMsg = new ChatMessage();
+        assistantMsg.setRole("ASSISTANT");
+        assistantMsg.setMessageType("thinking");
+        assistantMsg.setContent("历史思考内容");
+        when(chatMessageService.findByRunId(123L)).thenReturn(List.of(assistantMsg));
+
+        // When
+        SseEmitter emitter = controller.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 终态分支——不 subscribe、不启动心跳（无额外 push）；PG 回放已执行
+        verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
+        verify(chatMessageService).findByRunId(123L);
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("reconnect PG 回放成功 + run 仍活跃 → 继续 subscribe + 心跳")
+    void reconnect_activeRun_continuesSubscribe() {
+        // Given: run 123 属于当前用户且状态 ACTIVE；replayAndSubscribe 失败（ring 覆盖）；PG 有历史消息
+        ChatRun ownRun = new ChatRun();
+        ownRun.setId(123L);
+        ownRun.setUserId(123L);
+        ownRun.setStatus("ACTIVE");
+        when(chatRunService.findById(123L)).thenReturn(ownRun);
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+
+        ChatMessage assistantMsg = new ChatMessage();
+        assistantMsg.setRole("ASSISTANT");
+        assistantMsg.setMessageType("thinking");
+        assistantMsg.setContent("历史思考内容");
+        when(chatMessageService.findByRunId(123L)).thenReturn(List.of(assistantMsg));
+
+        // When
+        SseEmitter emitter = controller.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 非终态分支——继续订阅接收后续事件
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
     @DisplayName("reconnect → 他人 runId 返回 404")
     void reconnect_withOthersRun_returns404() {
-        // Given: run 1 属于用户 2，当前用户为 123
         ChatRun othersRun = new ChatRun();
         othersRun.setId(1L);
         othersRun.setUserId(2L);
         when(chatRunService.findById(1L)).thenReturn(othersRun);
 
-        // When / Then
         ResponseStatusException ex = assertThrows(
                 ResponseStatusException.class, () -> controller.reconnect("1", 0, mockRequestWithUserId(123L)));
         assertEquals(404, ex.getStatusCode().value());
-        verify(bridge, never()).replay(anyString(), anyLong(), any(SseEmitter.class));
+        verify(bridge, never()).replayAndSubscribe(anyString(), anyLong(), any(SseEmitter.class));
     }
 
     // ==================== ExceptionHandler 测试 ====================
