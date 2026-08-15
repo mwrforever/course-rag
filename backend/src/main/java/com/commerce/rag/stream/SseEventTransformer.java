@@ -90,7 +90,12 @@ public class SseEventTransformer {
      * 处理 {@link OutputType#AGENT_MODEL_STREAMING}：中间 delta chunk。
      *
      * <p>优先检查 reasoningContent（思考内容），有值则产出 THINKING 事件；
-     * 否则取文本 delta 产出 DELTA 事件；两者皆空则跳过。
+     * 否则取文本 delta 产出 DELTA 事件；带 toolCalls 的 chunk 产出 TOOL_CALL 事件；两者皆空则跳过。
+     *
+     * <p>P3-1 调研实证（SAA 1.1.2.0 源码 NodeExecutor.transformFluxToGraphResponse）：
+     * AGENT_MODEL_FINISHED 事件对 agent model 节点 message 恒为 null
+     * （shouldOmitMessageOnStreamCompletion 省略 message），因此 TOOL_CALL 只能在
+     * STREAMING 分支提取（模型输出工具调用时最后 chunk 携带完整 toolCalls）。
      */
     private List<SseEvent> transformModelStreaming(StreamingOutput<?> chunk, RunState runState) {
         Message message = chunk.message();
@@ -105,10 +110,11 @@ public class SseEventTransformer {
             return List.of(makeEvent(SseEventType.THINKING, runState, Map.of("delta", reasoning)));
         }
 
+        List<SseEvent> events = new ArrayList<>();
+
         // 2. 取文本 delta → 先补 THINKING_END（若有思考且未发），再发 DELTA
         String text = message.getText();
         if (text != null && !text.isEmpty()) {
-            List<SseEvent> events = new ArrayList<>();
             // qwen 思考模型 thinking/text 两阶段互斥：首条 text 即思考结束信号，
             // 必须补发 THINKING_END 再发 DELTA，保证前端退出"思考中"状态
             if (runState.isThinkingSent() && runState.markThinkingEndSent()) {
@@ -116,11 +122,21 @@ public class SseEventTransformer {
             }
             runState.markDeltaSent(); // 标记本 run 已发 DELTA，FINISHED 时不再补发
             events.add(makeEvent(SseEventType.DELTA, runState, Map.of("text", text)));
-            return events;
         }
 
-        // 3. 空 delta（仅有 toolCalls 的中间 chunk 等），跳过
-        return List.of();
+        // 3. 工具调用 → TOOL_CALL 事件（P3-1 实证：FINISHED 分支 message=null 不可用，
+        //    toolCalls 只在 STREAMING chunk 携带；按 chunk 去重由前端按 toolCallId 配对）
+        if (message instanceof AssistantMessage am && am.hasToolCalls()) {
+            for (AssistantMessage.ToolCall toolCall : am.getToolCalls()) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("toolCallId", toolCall.id());
+                payload.put("toolName", toolCall.name());
+                payload.put("input", toolCall.arguments());
+                events.add(makeEvent(SseEventType.TOOL_CALL, runState, payload));
+            }
+        }
+
+        return events;
     }
 
     // ========================================================================
@@ -129,6 +145,12 @@ public class SseEventTransformer {
 
     /**
      * 处理 {@link OutputType#AGENT_MODEL_FINISHED}：流结束的累积完整结果。
+     *
+     * <p>⚠️ P3-1 调研实证（SAA 1.1.2.0 源码）：本分支在真实链路恒空转——NodeExecutor
+     * transformFluxToGraphResponse 对 agent model 节点的 FINISHED 事件显式省略 message
+     * （shouldOmitMessageOnStreamCompletion 返回 true，message=null），故 message==null 早退。
+     * THINKING_END 由 STREAMING 的 text 分支补发、TOOL_CALL 已移到 STREAMING 分支，均不受影响。
+     * 本方法保留为防御性（SAA 未来版本若恢复 FINISHED message，以下逻辑仍正确）。
      *
      * <p>设计文档 §3.7：FINISHED 携带累积完整 AssistantMessage。文本内容通常已通过
      * AGENT_MODEL_STREAMING 的 DELTA 事件逐步发送。但若本次 run 未发过任何 DELTA

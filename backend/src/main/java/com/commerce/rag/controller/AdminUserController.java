@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 用户管理 Controller —— CRUD A1-A7
@@ -56,18 +58,17 @@ public class AdminUserController {
             HttpServletRequest request) {
 
         Long currentUserId = AuthInterceptor.getCurrentUserId(request);
-        String operatorRole = AuthInterceptor.getCurrentRole(request);
-        IPage<UserDTO> result = sysUserService.findPage(page, size, role, status, currentUserId, operatorRole);
+        // P2-2: 教师过滤按 DB 最新角色（service 内 resolveDbRole），token 角色不参与权限判定
+        IPage<UserDTO> result = sysUserService.findPage(page, size, role, status, currentUserId);
         PageResponse<UserDTO> response = new PageResponse<>(result.getRecords(), result.getTotal(), page, size);
         return ApiResponse.ok(response);
     }
 
-    /** A2: 创建用户（超管唯一性校验，教师仅可创建学生） */
+    /** A2: 创建用户（超管唯一性校验，教师仅可创建学生——P2-2：角色判定按 DB 最新角色） */
     @PostMapping
     public ApiResponse<UserDTO> create(@Valid @RequestBody CreateUserRequest request, HttpServletRequest httpRequest) {
         Long currentUserId = (Long) httpRequest.getAttribute(AuthInterceptor.ATTR_USER_ID);
-        return ApiResponse.ok(
-                sysUserService.create(request, currentUserId, AuthInterceptor.getCurrentRole(httpRequest)));
+        return ApiResponse.ok(sysUserService.create(request, currentUserId));
     }
 
     /** A3: 查看用户（教师仅见自己创建的学生） */
@@ -77,7 +78,8 @@ public class AdminUserController {
         String operatorRole = AuthInterceptor.getCurrentRole(request);
         UserDTO user = sysUserService.findById(id, currentUserId, operatorRole);
         if (user == null) {
-            return ApiResponse.error(404, "用户不存在");
+            // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
         }
         return ApiResponse.ok(user);
     }

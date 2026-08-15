@@ -15,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * AdminUserController 单元测试 —— 用户管理 CRUD 端点
@@ -39,9 +40,9 @@ class AdminUserControllerTest {
     void create_callsServiceCreate() {
         CreateUserRequest request = new CreateUserRequest("newuser", "pass123", "新用户", "STUDENT");
         UserDTO dto = new UserDTO(1L, "newuser", "新用户", "STUDENT", "ACTIVE", null);
+        // P2-2: create 不再读取 token 角色（按 DB 最新角色判定），仅注入 userId
         when(httpRequest.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(100L);
-        when(httpRequest.getAttribute(AuthInterceptor.ATTR_ROLE)).thenReturn("SUPER_ADMIN");
-        when(sysUserService.create(request, 100L, "SUPER_ADMIN")).thenReturn(dto);
+        when(sysUserService.create(request, 100L)).thenReturn(dto);
 
         ApiResponse<UserDTO> result = controller.create(request, httpRequest);
 
@@ -63,29 +64,30 @@ class AdminUserControllerTest {
     }
 
     @Test
-    @DisplayName("get → 服务返回 null（不存在/无归属权）时返回 404")
-    void get_serviceReturnsNull_returns404() {
+    @DisplayName("get → 服务返回 null（不存在/无归属权）时抛 ResponseStatusException 404（P1-3 真实 HTTP 状态码）")
+    void get_serviceReturnsNull_throws404() {
         when(httpRequest.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(100L);
         when(httpRequest.getAttribute(AuthInterceptor.ATTR_ROLE)).thenReturn("TEACHER");
         when(sysUserService.findById(999L, 100L, "TEACHER")).thenReturn(null);
 
-        ApiResponse<UserDTO> result = controller.get(999L, httpRequest);
+        ResponseStatusException ex =
+                assertThrows(ResponseStatusException.class, () -> controller.get(999L, httpRequest));
 
-        assertEquals(404, result.code());
-        assertEquals("用户不存在", result.message());
+        assertEquals(404, ex.getStatusCode().value());
+        assertEquals("用户不存在", ex.getReason());
     }
 
     @Test
     @DisplayName("list → 调用 sysUserService.findPage 传入 userId/role")
     void list_callsServiceFindPage() {
+        // P2-2: findPage 不再读取 token 角色（按 DB 最新角色判定），仅注入 userId
         when(httpRequest.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(100L);
-        when(httpRequest.getAttribute(AuthInterceptor.ATTR_ROLE)).thenReturn("TEACHER");
-        when(sysUserService.findPage(1, 20, null, null, 100L, "TEACHER")).thenReturn(new Page<UserDTO>(1, 20));
+        when(sysUserService.findPage(1, 20, null, null, 100L)).thenReturn(new Page<UserDTO>(1, 20));
 
         ApiResponse<PageResponse<UserDTO>> result = controller.list(1, 20, null, null, httpRequest);
 
         assertEquals(0, result.code());
-        verify(sysUserService).findPage(1, 20, null, null, 100L, "TEACHER");
+        verify(sysUserService).findPage(1, 20, null, null, 100L);
     }
 
     @Test

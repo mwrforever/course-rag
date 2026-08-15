@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+    Checkstyle 规则集（基于 Sun Checks 放宽定制，贴合本项目风格）
+
+    定制说明：
+    - 不强制 Javadoc：项目注释为中文风格，Javadoc 结构性校验（首句句点等）不适用
+    - 行长 120 列，但忽略 import/package 行与注释行（palantir-java-format 不自动重排注释文本）
+    - 核心约束：命名规范、未使用/冗余 import、禁止星号导入、空白与括号、花括号、修饰符顺序
+    - 格式化类规则（缩进/换行/运算符换行）交由 Spotless 负责，此处不重复约束
+-->
+<module name="Checker">
+    <property name="severity" value="warning"/>
+    <property name="charset" value="UTF-8"/>
+    <property name="fileExtensions" value="java"/>
+
+    <!-- 跳过 module-info.java（本项目无，预留） -->
+    <module name="BeforeExecutionExclusionFileFilter">
+        <property name="fileNamePattern" value="module\-info\.java$"/>
+    </module>
+
+    <!-- 禁止 Tab 缩进 -->
+    <module name="FileTabCharacter">
+        <property name="eachLine" value="true"/>
+    </module>
+
+    <!-- 文件末尾必须有换行符 -->
+    <module name="NewlineAtEndOfFile"/>
+
+    <!-- 行长 120 列；忽略 package/import 行与注释行（含 Javadoc 与行注释，中文注释不受限） -->
+    <module name="LineLength">
+        <property name="max" value="120"/>
+        <property name="ignorePattern" value="^(package|import) .*|^\s*(\*|/\*|//).*"/>
+    </module>
+
+    <module name="TreeWalker">
+
+        <!-- ==================== 命名规范 ==================== -->
+        <module name="PackageName"/>
+        <module name="TypeName"/>
+        <module name="MemberName"/>
+        <module name="ParameterName"/>
+        <module name="LambdaParameterName"/>
+        <module name="LocalVariableName"/>
+        <module name="ClassTypeParameterName"/>
+        <module name="MethodTypeParameterName"/>
+        <module name="InterfaceTypeParameterName"/>
+        <module name="StaticVariableName"/>
+        <!-- ConstantName 允许 SLF4J 惯例的 log/logger 字段名 -->
+        <module name="ConstantName">
+            <property name="format" value="^(log|logger|[A-Z][A-Z0-9]*(_[A-Z0-9]+)*)$"/>
+        </module>
+        <module name="MethodName"/>
+        <module name="RecordComponentName"/>
+        <module name="RecordTypeParameterName"/>
+        <module name="PatternVariableName"/>
+        <module name="CatchParameterName"/>
+
+        <!-- ==================== import 管理 ==================== -->
+        <!-- 禁止星号导入（通配 import） -->
+        <module name="AvoidStarImport"/>
+        <!-- 禁止 sun.* / java.awt.* 等内部包 -->
+        <module name="IllegalImport"/>
+        <!-- 禁止重复 import -->
+        <module name="RedundantImport"/>
+        <!-- 禁止未使用 import（Javadoc 中引用的视为已使用） -->
+        <module name="UnusedImports">
+            <property name="processJavadoc" value="true"/>
+        </module>
+
+        <!-- ==================== 空白与括号 ==================== -->
+        <module name="NoWhitespaceBefore"/>
+        <module name="NoWhitespaceAfter"/>
+        <module name="GenericWhitespace"/>
+        <module name="MethodParamPad"/>
+        <module name="NoWhitespaceBeforeCaseDefaultColon"/>
+        <module name="ParenPad"/>
+        <module name="TypecastParenPad"/>
+        <module name="WhitespaceAfter"/>
+        <module name="WhitespaceAround">
+            <property name="allowEmptyConstructors" value="true"/>
+            <property name="allowEmptyMethods" value="true"/>
+            <property name="allowEmptyTypes" value="true"/>
+            <property name="allowEmptyLoops" value="true"/>
+            <property name="allowEmptyLambdas" value="true"/>
+            <property name="allowEmptyCatches" value="true"/>
+        </module>
+
+        <!-- ==================== 花括号 ==================== -->
+        <module name="LeftCurly"/>
+        <module name="RightCurly"/>
+        <module name="EmptyBlock">
+            <property name="option" value="text"/>
+        </module>
+        <!-- 空 catch 块必须带注释或使用 expected/ignore 命名的异常变量 -->
+        <module name="EmptyCatchBlock">
+            <property name="exceptionVariableName" value="expected|ignore"/>
+        </module>
+
+        <!-- ==================== 修饰符与声明 ==================== -->
+        <module name="ModifierOrder"/>
+        <module name="RedundantModifier"/>
+        <!-- 声明顺序：仍强制 static 先于 instance、字段先于构造器/方法；
+             ignoreModifiers 允许项目惯例（log 声明在公开常量之前） -->
+        <module name="DeclarationOrder">
+            <property name="ignoreModifiers" value="true"/>
+        </module>
+        <module name="MultipleVariableDeclarations"/>
+        <module name="OneStatementPerLine"/>
+        <module name="ArrayTypeStyle"/>
+
+        <!-- ==================== 逻辑与健壮性 ==================== -->
+        <module name="DefaultComesLast"/>
+        <module name="EmptyStatement"/>
+        <module name="EqualsHashCode"/>
+        <module name="FallThrough"/>
+        <module name="InnerAssignment"/>
+        <module name="IllegalInstantiation"/>
+        <module name="MissingSwitchDefault"/>
+        <module name="SimplifyBooleanExpression"/>
+        <module name="SimplifyBooleanReturn"/>
+        <module name="StringLiteralEquality"/>
+        <module name="UnnecessaryParentheses"/>
+        <module name="UpperEll"/>
+        <module name="PackageDeclaration"/>
+        <!-- 可见性：仍禁止 public 可变字段；packageAllowed 允许包级可见性
+             （测试直取字段、内部数据结构 Ring/分片上下文等场景） -->
+        <module name="VisibilityModifier">
+            <property name="packageAllowed" value="true"/>
+        </module>
+        <module name="FinalClass"/>
+    </module>
+</module>

@@ -26,8 +26,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -39,7 +37,6 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
@@ -83,20 +80,11 @@ public class ChatRequestWorker {
     private final StreamProperties streamProperties;
     private final ThreadPoolExecutor runPool;
     private final ObjectMapper objectMapper;
-    private final int staleLeaseMinutes;
-
     /** per-run 取消标记 */
     private final ConcurrentHashMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
 
     /** Consumer 运行标志 */
     private volatile boolean running = false;
-
-    /** Pending 回收调度器 */
-    private final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(1, r -> {
-        Thread t = new Thread(r, "chat-pending-reclaim");
-        t.setDaemon(true);
-        return t;
-    });
 
     public ChatRequestWorker(
             StringRedisTemplate redisTemplate,
@@ -108,8 +96,7 @@ public class ChatRequestWorker {
             ChatMessageService chatMessageService,
             StreamProperties streamProperties,
             @Qualifier("runPool") ThreadPoolExecutor runPool,
-            ObjectMapper objectMapper,
-            @Value("${rag.agent.stale-lease-minutes:30}") int staleLeaseMinutes) {
+            ObjectMapper objectMapper) {
         this.redisTemplate = redisTemplate;
         this.compiledGraph = compiledGraph;
         this.saver = saver;
@@ -120,7 +107,6 @@ public class ChatRequestWorker {
         this.streamProperties = streamProperties;
         this.runPool = runPool;
         this.objectMapper = objectMapper;
-        this.staleLeaseMinutes = staleLeaseMinutes;
     }
 
     // ========================================================================
@@ -138,7 +124,6 @@ public class ChatRequestWorker {
         consumer.setDaemon(true);
         consumer.start();
 
-        scheduler.scheduleWithFixedDelay(this::reclaimPending, 1, 1, TimeUnit.MINUTES);
         log.info(
                 "ChatRequestWorker 启动: stream={}, group={}",
                 streamProperties.requestStream(),
@@ -152,7 +137,6 @@ public class ChatRequestWorker {
     public void stop() {
         log.info("ChatRequestWorker 关闭中...");
         running = false;
-        scheduler.shutdownNow();
         runPool.shutdown();
         try {
             if (!runPool.awaitTermination(30, TimeUnit.SECONDS)) {
@@ -198,6 +182,10 @@ public class ChatRequestWorker {
                 }
 
                 for (MapRecord<String, Object, Object> msg : messages) {
+                    // P3-2（用户 2026-08-15 裁决）：读到即 ACK，不等执行完成——
+                    // 消费组不积累 pending，删除 reclaimPending/XCLAIM 重投机制（消除双跑窗口）；
+                    // run 执行结果由 chat_run 状态兜底（失败可见，可手动重试）
+                    ackMessage(msg.getId().getValue());
                     runPool.submit(() -> processRequest(msg));
                 }
             } catch (Exception e) {
@@ -225,63 +213,6 @@ public class ChatRequestWorker {
         } catch (Exception e) {
             // BUSYGROUP: 消费组已存在，正常情况
             log.debug("消费组已存在或创建失败: stream={}, group={}, msg={}", streamKey, group, e.getMessage());
-        }
-    }
-
-    // ========================================================================
-    // Pending 回收
-    // ========================================================================
-
-    /**
-     * 定时扫描 pending 列表，XCLAIM 超过 staleLeaseMinutes 的消息。
-     * 简化实现：使用 XPENDING + XCLAIM 基本操作。
-     */
-    private void reclaimPending() {
-        String streamKey = streamProperties.requestStream();
-        String group = streamProperties.consumerGroup();
-
-        try {
-            // 使用 raw 命令执行 XPENDING 概要
-            // 返回格式: [totalPending, minId, maxId, consumers...]
-            org.springframework.data.redis.connection.stream.PendingMessagesSummary summary =
-                    redisTemplate.opsForStream().pending(streamKey, group);
-            if (summary == null || summary.getTotalPendingMessages() == 0) {
-                return;
-            }
-
-            log.info("Pending 消息数: {}, 开始回收超时租约", summary.getTotalPendingMessages());
-
-            // 获取详细 pending 列表
-            org.springframework.data.redis.connection.stream.PendingMessages pending = redisTemplate
-                    .opsForStream()
-                    .pending(streamKey, group, org.springframework.data.domain.Range.unbounded(), 100);
-
-            String consumer = "reclaim-" + UUID.randomUUID().toString().substring(0, 8);
-            long staleThresholdMs = staleLeaseMinutes * 60_000L;
-
-            for (org.springframework.data.redis.connection.stream.PendingMessage pm : pending) {
-                // getElapsedTimeSinceLastDelivery() 已返回空闲时长，直接使用
-                long idleTime = pm.getElapsedTimeSinceLastDelivery().toMillis();
-                if (idleTime > staleThresholdMs) {
-                    try {
-                        // XCLAIM 超时消息（minIdleTime = staleLeaseMinutes）
-                        List<MapRecord<String, Object, Object>> claimedRecords = redisTemplate
-                                .opsForStream()
-                                .claim(streamKey, group, consumer, Duration.ofMinutes(staleLeaseMinutes), pm.getId());
-                        log.warn("回收 stale pending 消息: id={}, idleMs={}", pm.getId(), idleTime);
-                        // 将回收的消息重新提交到 runPool 处理，避免永久丢失
-                        if (claimedRecords != null) {
-                            for (MapRecord<String, Object, Object> record : claimedRecords) {
-                                runPool.submit(() -> processRequest(record));
-                            }
-                        }
-                    } catch (Exception e) {
-                        log.warn("XCLAIM 失败: id={}, err={}", pm.getId(), e.getMessage());
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.error("reclaimPending 异常", e);
         }
     }
 
@@ -372,10 +303,17 @@ public class ChatRequestWorker {
                     })
                     .onErrorResume(e -> {
                         errored.set(true);
-                        if (e instanceof CancelledException) {
-                            handleCancelled(runIdStr, runId, runState, config, snapshot);
-                        } else {
-                            handleError(runIdStr, runId, runState, e);
+                        // P0-7: 与 catch 分支对齐的兜底——handleCancelled/handleError 内部
+                        // （bridge.push / updateStatus）再抛异常不得从 Reactor 链传播，
+                        // 否则 blockLast 抛出 → 落入 catch 分支二次 handleError（双终态）+ 重复持久化
+                        try {
+                            if (e instanceof CancelledException) {
+                                handleCancelled(runIdStr, runId, runState, config, snapshot);
+                            } else {
+                                handleError(runIdStr, runId, runState, e);
+                            }
+                        } catch (Exception errorEx) {
+                            log.error("onErrorResume 分支终态处理失败 runId={}", runId, errorEx);
                         }
                         // 持久化已收集的消息（游标 = pre-run checkpoint 消息数，只落本轮新增）
                         persistMessages(
@@ -425,7 +363,6 @@ public class ChatRequestWorker {
         } finally {
             bridge.removeRing(runIdStr);
             cancelFlags.remove(runIdStr);
-            ackMessage(msgId);
         }
     }
 
@@ -664,7 +601,7 @@ public class ChatRequestWorker {
                 cm.setSourcesJson("[]");
                 result.add(cm);
             }
-            // 工具调用 —— 设计文档 §3.5: {"tool":"searchKnowledge","args":{...}}
+            // 工具调用 —— 实时 TOOL_CALL 事件 schema 一致化（P1-2）：toolCallId/toolName/input
             if (am.hasToolCalls()) {
                 for (AssistantMessage.ToolCall tc : am.getToolCalls()) {
                     ChatMessage cm = new ChatMessage();
@@ -672,8 +609,7 @@ public class ChatRequestWorker {
                     cm.setRunId(runId);
                     cm.setRole("ASSISTANT");
                     cm.setMessageType("TOOL_CALL");
-                    // 构建设计要求的 JSON 格式: {"tool":"<name>","args":<arguments>}
-                    cm.setContent(buildToolCallContent(tc.name(), tc.arguments()));
+                    cm.setContent(buildToolCallContent(tc.id(), tc.name(), tc.arguments()));
                     cm.setSourcesJson("[]");
                     result.add(cm);
                 }
@@ -685,8 +621,8 @@ public class ChatRequestWorker {
                 cm.setRunId(runId);
                 cm.setRole("ASSISTANT");
                 cm.setMessageType("TOOL_RESULT");
-                // 构建设计要求的 JSON 格式: {"tool":"<name>","result":"<responseData>"}
-                cm.setContent(buildToolResultContent(tr.name(), tr.responseData()));
+                // 实时 TOOL_RESULT 事件 schema 一致化（P1-2）：toolCallId/status/output
+                cm.setContent(buildToolResultContent(tr.id(), tr.responseData()));
                 cm.setSourcesJson("[]");
                 result.add(cm);
             }
@@ -702,11 +638,15 @@ public class ChatRequestWorker {
 
     /**
      * 处理正常完成：END 事件 + 状态 COMPLETED。
+     *
+     * <p>P1-5：updateStatus 走短重试（3 次递增退避）——完成时刻 DB 瞬时故障若直接上抛，
+     * run 滞留 ACTIVE，uniq_active_run_per_session 使该会话后续 chat() 永久 409 锁死；
+     * 瞬时故障恢复后重试可收敛到 COMPLETED。
      */
     private void handleCompleted(String runIdStr, Long runId, SseEventTransformer.RunState runState) {
         String payload = toJson(Map.of("runId", runIdStr, "status", "COMPLETED"));
         bridge.push(runIdStr, new SseEvent(SseEventType.END, runState.nextSeq(), payload, System.currentTimeMillis()));
-        chatRunService.updateStatus(runId, "COMPLETED");
+        updateStatusWithRetry(runId, "COMPLETED");
     }
 
     /**
@@ -729,7 +669,7 @@ public class ChatRequestWorker {
             RunSnapshot snapshot) {
         String payload = toJson(Map.of("runId", runIdStr, "status", "CANCELLED"));
         bridge.push(runIdStr, new SseEvent(SseEventType.END, runState.nextSeq(), payload, System.currentTimeMillis()));
-        chatRunService.updateStatus(runId, "CANCELLED");
+        updateStatusWithRetry(runId, "CANCELLED");
 
         // 回滚 checkpoint：写新 checkpoint（新 id/ts），恢复快照状态，不删旧 checkpoint
         if (snapshot != null) {
@@ -769,6 +709,33 @@ public class ChatRequestWorker {
     }
 
     /**
+     * 更新 Run 状态（P1-5：短重试 3 次 + 递增退避，消除完成时刻 DB 瞬时故障导致
+     * run 滞留 ACTIVE 的会话锁死；3 次仍失败上抛由调用方兜底）
+     *
+     * @param runId  Run ID
+     * @param status 新状态（ACTIVE/COMPLETED/CANCELLED/ERROR）
+     */
+    private void updateStatusWithRetry(Long runId, String status) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                chatRunService.updateStatus(runId, status);
+                return;
+            } catch (Exception e) {
+                log.warn("更新 Run 状态失败（第 {} 次）: runId={}, status={}", attempt, runId, status, e);
+                if (attempt < 3) {
+                    try {
+                        Thread.sleep(500L * attempt);
+                    } catch (InterruptedException interruptedEx) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+        }
+        throw new IllegalStateException("更新 Run 状态失败: runId=" + runId + ", status=" + status);
+    }
+
+    /**
      * 处理异常：ERROR 事件 + 状态 ERROR + 错误信息。
      */
     private void handleError(String runIdStr, Long runId, SseEventTransformer.RunState runState, Throwable e) {
@@ -781,7 +748,7 @@ public class ChatRequestWorker {
         bridge.push(
                 runIdStr,
                 new SseEvent(SseEventType.ERROR, runState.nextSeq(), toJson(payload), System.currentTimeMillis()));
-        chatRunService.updateStatus(runId, "ERROR");
+        updateStatusWithRetry(runId, "ERROR");
         log.error("Run 执行异常: runId={}", runId, e);
     }
 
@@ -860,50 +827,59 @@ public class ChatRequestWorker {
     }
 
     /**
-     * 构建 TOOL_CALL 消息内容 JSON —— 设计文档 §3.5 要求格式：
-     * {@code {"tool":"searchKnowledge","args":{...}}}
+     * 构建 TOOL_CALL 消息内容 JSON —— 与实时 TOOL_CALL 事件（SseEventTransformer）schema 一致：
+     * {@code {"toolCallId":"...","toolName":"...","input":{...}}}
      *
-     * @param toolName  工具名称
-     * @param arguments 工具参数 JSON 字符串（可能为 null/空）
-     * @return 符合设计格式的 JSON 字符串
+     * <p>P1-2：原格式 {@code {"tool","args"}} 与实时事件字段名不一致——PG 降级回放时
+     * 前端 ToolCallCard 按 toolCallId 配对 tool_call↔tool_result 无法工作；统一后
+     * 回放路径可原样透传 content，且历史旧格式由回放侧兼容重建。
+     *
+     * @param toolCallId 工具调用 ID（模型生成）
+     * @param toolName   工具名称
+     * @param arguments  工具参数 JSON 字符串（可能为 null/空）
+     * @return 符合实时事件 schema 的 JSON 字符串
      */
-    private String buildToolCallContent(String toolName, String arguments) {
+    private String buildToolCallContent(String toolCallId, String toolName, String arguments) {
         Map<String, Object> content = new LinkedHashMap<>();
-        content.put("tool", toolName != null ? toolName : "");
+        content.put("toolCallId", toolCallId != null ? toolCallId : "");
+        content.put("toolName", toolName != null ? toolName : "");
         // arguments 本身是 JSON 字符串，直接嵌入；若解析失败则作为纯文本
         if (arguments != null && !arguments.isBlank()) {
             try {
-                content.put("args", objectMapper.readTree(arguments));
+                content.put("input", objectMapper.readTree(arguments));
             } catch (JsonProcessingException e) {
                 // arguments 非合法 JSON，作为字符串保留
-                content.put("args", arguments);
+                content.put("input", arguments);
             }
         } else {
-            content.put("args", Map.of());
+            content.put("input", Map.of());
         }
         try {
             return objectMapper.writeValueAsString(content);
         } catch (JsonProcessingException e) {
-            return "{\"tool\":\"" + toolName + "\",\"args\":{}}";
+            return "{\"toolCallId\":\"" + toolCallId + "\",\"toolName\":\"" + toolName + "\",\"input\":{}}";
         }
     }
 
     /**
-     * 构建 TOOL_RESULT 消息内容 JSON —— 设计文档 §3.5 要求格式：
-     * {@code {"tool":"searchKnowledge","result":"..."}}
+     * 构建 TOOL_RESULT 消息内容 JSON —— 与实时 TOOL_RESULT 事件（SseEventTransformer）schema 一致：
+     * {@code {"toolCallId":"...","status":"success","output":"..."}}
      *
-     * @param toolName     工具名称
+     * <p>P1-2：与 {@link #buildToolCallContent} 同理，统一落库格式与实时事件。
+     *
+     * @param toolCallId   工具调用 ID（模型生成）
      * @param responseData 工具返回数据字符串
-     * @return 符合设计格式的 JSON 字符串
+     * @return 符合实时事件 schema 的 JSON 字符串
      */
-    private String buildToolResultContent(String toolName, String responseData) {
+    private String buildToolResultContent(String toolCallId, String responseData) {
         Map<String, Object> content = new LinkedHashMap<>();
-        content.put("tool", toolName != null ? toolName : "");
-        content.put("result", responseData != null ? responseData : "");
+        content.put("toolCallId", toolCallId != null ? toolCallId : "");
+        content.put("status", "success");
+        content.put("output", responseData != null ? responseData : "");
         try {
             return objectMapper.writeValueAsString(content);
         } catch (JsonProcessingException e) {
-            return "{\"tool\":\"" + toolName + "\",\"result\":\"\"}";
+            return "{\"toolCallId\":\"" + toolCallId + "\",\"status\":\"success\",\"output\":\"\"}";
         }
     }
 }

@@ -258,4 +258,39 @@ class MemoryStreamBridgeTest {
         assertNull(pushError.get());
         verify(mockEmitter, times(total)).send(any(SseEmitter.SseEventBuilder.class));
     }
+
+    // ==================== P1-4 / P1-1 修复测试 ====================
+
+    @Test
+    @DisplayName("P1-4 subscribe 已关闭的 ring → 返回 false（调用方补发终态，防永久生成中）")
+    void subscribe_closedRing_returnsFalse() {
+        bridge.createRing("run1");
+        bridge.removeRing("run1"); // close 清空订阅者
+
+        SseEmitter emitter = mock(SseEmitter.class);
+        assertFalse(bridge.subscribe("run1", emitter), "已关闭 ring 的 subscribe 应返回 false");
+    }
+
+    @Test
+    @DisplayName("P1-1 回放事件在 replayAndSubscribe 返回前已全部发送（锁内发送，实时事件不可能插队）")
+    void replayAndSubscribe_replayEventsDeliveredBeforeLiveEvents() throws Exception {
+        bridge.createRing("run1");
+        SseEmitter first = mock(SseEmitter.class);
+        bridge.subscribe("run1", first);
+        // 先推入 3 个历史事件（seqId 0-2 与 ring slot 对齐，客户端已收到 seq 0）
+        for (long seq = 0; seq <= 2; seq++) {
+            bridge.push("run1", event(seq));
+        }
+        // 重连 emitter：回放 seq 1-2
+        SseEmitter reconnected = mock(SseEmitter.class);
+        assertTrue(bridge.replayAndSubscribe("run1", 0L, reconnected));
+
+        // 阶段 1：replayAndSubscribe 返回时回放事件（2 个）必须已全部发送——
+        // 若回放 send 在锁外延迟执行，此处 verify 即失败（回放先于任何实时事件的机制保证）
+        verify(reconnected, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+
+        // 阶段 2：实时事件（seq 3）随后到达，总数为 3（2 回放 + 1 实时），顺序由阶段划分保证
+        bridge.push("run1", event(3));
+        verify(reconnected, times(3)).send(any(SseEmitter.SseEventBuilder.class));
+    }
 }

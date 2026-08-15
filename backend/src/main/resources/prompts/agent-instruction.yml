@@ -1,0 +1,19 @@
+# Agent 指令 —— 作为 UserMessage prepend 到对话
+# 直接注入为 AgentInstructionMessage（UserMessage 子类型）
+
+instruction:
+  text: |
+    ## 当前任务
+    请根据学员的问题，使用可用的工具来完成以下步骤：
+    1. 理解学员意图（询问课程还是技术问题）
+    2. 调用合适的工具获取信息
+    3. 整合检索结果和工具返回，给出清晰、完整的回答
+    4. 如果工具返回的信息不足，诚实地告知学员并提供建议
+
+    ## 课程查询优先级
+    - 优先调用课程 API 工具（listCourses / queryCourseDetail / queryEnrollment）
+    - API 无法回答时，再使用 searchKnowledge 检索知识库
+
+    ## 技术问答优先级
+    - 优先使用 searchKnowledge 检索知识库
+    - 引用知识库结果时标注来源

@@ -1,0 +1,97 @@
+# 企业级 RAG 知识库系统 - 开发环境基础设施编排（单 MinIO 合并版）
+#
+# 与 docker-compose.yml 的区别：
+#   1. Milvus 存储与业务文档存储合并为单个 MinIO 实例（省一个容器，~200MB 内存）
+#   2. etcd 版本从 v3.5.18 更新为 v3.5.25（Milvus 官方推荐版本，v3.5.18 镜像不可用）
+#   3. 后端 application.yml 零修改 —— 端口/凭证/bucket 名全部保持一致
+#
+# 使用方式：
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml down
+
+services:
+  # ── PostgreSQL 数据库 ──
+  postgres:
+    image: postgres:latest
+    container_name: rag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: commerce_rag
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: rag_pg_2024
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./appdata/postgres:/var/lib/postgresql
+
+  # ── Redis 缓存 ──
+  redis:
+    image: redis:latest
+    container_name: rag-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./appdata/redis:/data
+    command: redis-server --requirepass rag_redis_2024
+
+  # ── etcd（Milvus 元数据存储依赖） ──
+  # 版本说明：v3.5.18 镜像不可用，更新为 Milvus 官方推荐的 v3.5.25
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.25
+    container_name: rag-etcd
+    restart: unless-stopped
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    volumes:
+      - ./appdata/etcd:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+
+  # ── MinIO 对象存储（Milvus + 业务文档 共用） ──
+  # 合并说明：
+  #   - Milvus 通过 Docker 内网 minio:9000 访问，使用 bucket: a-bucket（Milvus 启动时自动创建）
+  #   - Spring Boot 通过 localhost:9002 访问，使用 bucket: rag-documents（MinioStorageService @PostConstruct 自动创建）
+  #   - 统一凭证 rag_storage / rag_storage_2024（与 application.yml 默认值一致）
+  #   - 镜像保持 pgsty/minio（与 docker-compose.yml 一致，不更换供应商）
+  minio:
+    image: pgsty/minio:latest
+    container_name: rag-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: rag_storage
+      MINIO_ROOT_PASSWORD: rag_storage_2024
+    ports:
+      - "9002:9000"    # S3 API（Spring Boot 连接端口，保持与 application.yml 一致）
+      - "9003:9001"    # MinIO Console（浏览器访问 http://localhost:9003）
+    volumes:
+      - ./appdata/minio:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ── Milvus 向量数据库 ──
+  milvus:
+    image: milvusdb/milvus:v2.6.19
+    container_name: rag-milvus
+    restart: unless-stopped
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      # Milvus 2.6.x 环境变量名变更：MINIO_ACCESS_KEY → MINIO_ACCESS_KEY_ID
+      MINIO_ACCESS_KEY_ID: rag_storage
+      MINIO_SECRET_ACCESS_KEY: rag_storage_2024
+    volumes:
+      - ./appdata/milvus:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - etcd
+      - minio
+    command: ["milvus", "run", "standalone"]

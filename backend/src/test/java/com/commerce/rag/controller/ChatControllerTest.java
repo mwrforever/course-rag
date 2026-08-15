@@ -16,6 +16,7 @@ import com.commerce.rag.service.ChatSessionService;
 import com.commerce.rag.service.ConcurrentRunException;
 import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.worker.ChatRequestWorker;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
@@ -88,7 +89,8 @@ class ChatControllerTest {
                 chatSessionService,
                 chatMessageService,
                 redisTemplate,
-                streamProperties);
+                streamProperties,
+                new ObjectMapper());
 
         // 调用 @PostConstruct 创建心跳调度器
         controller.init();
@@ -316,12 +318,13 @@ class ChatControllerTest {
     }
 
     @Test
-    @DisplayName("reconnect PG 回放失败 → 返回 SseEmitter（含 error 事件），不 subscribe")
-    void reconnect_pgReplayFailure_doesNotSubscribe() {
-        // Given: run 123 属于当前用户 + replayAndSubscribe 返回 false + PG 无历史消息
+    @DisplayName("reconnect PG 回放失败 + run 已终态 → error 事件收尾，不 subscribe（P2-10 真失败）")
+    void reconnect_pgReplayFailure_terminalRun_doesNotSubscribe() {
+        // Given: run 123 属于当前用户且终态（COMPLETED）+ replayAndSubscribe 返回 false + PG 无历史消息
         ChatRun ownRun = new ChatRun();
         ownRun.setId(123L);
         ownRun.setUserId(123L);
+        ownRun.setStatus("COMPLETED");
         when(chatRunService.findById(123L)).thenReturn(ownRun);
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
@@ -330,8 +333,30 @@ class ChatControllerTest {
         // When
         SseEmitter emitter = controller.reconnect("123", 0L, mockRequestWithUserId(123L));
 
-        // Then: 不调用 subscribe
+        // Then: 不调用 subscribe（run 已结束，历史不可恢复是真失败）
         verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("reconnect PG 回放失败 + run 仍活跃 → 仅订阅实时事件，不误报 REPLAY_FAILED（P2-10）")
+    void reconnect_pgReplayFailure_activeRun_subscribesOnly() {
+        // Given: run 123 属于当前用户且活跃（ACTIVE）+ replayAndSubscribe 返回 false + PG 无历史消息
+        ChatRun ownRun = new ChatRun();
+        ownRun.setId(123L);
+        ownRun.setUserId(123L);
+        ownRun.setStatus("ACTIVE");
+        when(chatRunService.findById(123L)).thenReturn(ownRun);
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L)).thenReturn(null);
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = controller.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 订阅实时事件（不报错不 complete）
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
         assertNotNull(emitter);
     }
 
@@ -414,5 +439,14 @@ class ChatControllerTest {
         assertNotNull(response.getBody());
         assertEquals("CONFLICT", response.getBody().get("error"));
         assertEquals("该会话已有正在进行的对话", response.getBody().get("message"));
+    }
+
+    @Test
+    @DisplayName("P2-4 类级 @PreAuthorize 允许学生与 B 端角色使用对话")
+    void classLevel_hasRoleGateForStudentTeacherSuperAdmin() throws Exception {
+        var annotation =
+                ChatController.class.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class);
+        assertNotNull(annotation, "ChatController 必须声明 @PreAuthorize");
+        assertEquals("hasAnyRole('STUDENT', 'TEACHER', 'SUPER_ADMIN')", annotation.value(), "角色门禁应显式允许 C 端学生与 B 端角色");
     }
 }

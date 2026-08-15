@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SpotBugs 误报排除清单
+
+    使用规则：仅允许排除「经人工确认为误报或无法修复」的告警，每条须附中文说明原因。
+    新增排除前必须先运行 `mvn spotbugs:spotbugs` 并人工复核对应告警，禁止批量盲排除。
+-->
+<FindBugsFilter>
+
+    <!--
+        EI_EXPOSE_REP / EI_EXPOSE_REP2（可变对象表示泄露）
+        排除原因（经逐条复核，共 82 条）：
+        1. Spring 构造器注入的 Bean 由容器管理生命周期，外部调用方无法通过已注入引用执行
+           "有害的" 就地修改（如 AuthInterceptor 持有 TokenService、SearchKnowledgeTool
+           持有 MilvusClientV2 等），属 Spring 框架标准写法；
+        2. Lombok @Data / record 形式的 DTO（KnowledgeSearchResult、CourseListResult、
+           TypedQuery、AuthProperties 等）作为 Jackson 序列化/反序列化载体，getter 直接
+           返回集合是框架要求的标准形态，做防御性拷贝反而破坏 JSON 绑定语义。
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!--
+        CT_CONSTRUCTOR_THROW（构造器抛异常 → 部分初始化对象）
+        排除原因：TokenService 构造器内 Keys.hmacShaKeyFor 对配置密钥做强度校验（弱密钥抛
+        WeakKeyException），属于启动期 fail-fast 校验。该类是 Spring 单例，构造失败即启动
+        失败，不存在被攻击者利用部分初始化对象的场景。
+    -->
+    <Match>
+        <Class name="com.commerce.rag.auth.TokenService"/>
+        <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    </Match>
+
+</FindBugsFilter>

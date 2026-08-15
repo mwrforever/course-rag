@@ -70,7 +70,7 @@ class AdminUserControllerSecurityTest {
     void teacherWithValidToken_returns200() throws Exception {
         stubToken("TEACHER");
         // P0-2f：findPage 为 6 参新签名（含 currentUserId / operatorRole）
-        when(sysUserService.findPage(anyInt(), anyInt(), isNull(), isNull(), any(), any()))
+        when(sysUserService.findPage(anyInt(), anyInt(), isNull(), isNull(), any()))
                 .thenReturn(new Page<>());
 
         mockMvc.perform(get("/api/v1/admin/users").header("Authorization", "Bearer test-token"))

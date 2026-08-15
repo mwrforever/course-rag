@@ -39,6 +39,7 @@ CREATE TABLE document (
     chunk_count    INT          DEFAULT 0,
     error_message  TEXT,
     metadata_json  TEXT        DEFAULT '{}',
+    course_id      VARCHAR(64) DEFAULT 'DEFAULT',
     created_by     BIGINT       NOT NULL,
     deleted        BIGINT       DEFAULT 0,
     created_at     TIMESTAMP  DEFAULT now(),
@@ -48,6 +49,7 @@ CREATE INDEX idx_document_kb_id           ON document(kb_id) WHERE deleted = 0;
 CREATE INDEX idx_document_parse_status    ON document(parse_status) WHERE deleted = 0;
 CREATE INDEX idx_document_kb_type_status  ON document(kb_id, file_type, parse_status) WHERE deleted = 0;
 CREATE INDEX idx_document_created_by      ON document(created_by) WHERE deleted = 0;
+CREATE INDEX idx_document_course_id       ON document(course_id) WHERE deleted = 0;
 CREATE INDEX idx_document_title_trgm      ON document USING gin(title gin_trgm_ops) WHERE deleted = 0;
 
 -- 3. document_chunk ── 文档分片（核心表）

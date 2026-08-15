@@ -257,7 +257,8 @@ public class AuthController {
     private void setCookie(HttpServletResponse response, String token) {
         Cookie cookie = new Cookie(authProperties.cookieName(), token);
         cookie.setHttpOnly(true);
-        cookie.setSecure(false);
+        // P2-11: Secure 标记配置化（生产 HTTPS 环境配 auth.cookie-secure=true，防止 AT 明文经 HTTP 传输被窃取）
+        cookie.setSecure(authProperties.cookieSecure());
         cookie.setPath("/");
         if (authProperties.cookieDomain() != null
                 && !authProperties.cookieDomain().isEmpty()) {

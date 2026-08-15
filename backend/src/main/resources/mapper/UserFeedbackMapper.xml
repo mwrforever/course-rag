@@ -2,13 +2,56 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.commerce.rag.mapper.UserFeedbackMapper">
 
-    <!-- 按天分组统计反馈数（Dashboard 趋势图，P2-2）：deleted=0 过滤软删，日期升序 -->
+    <!-- 按天分组统计反馈数（Dashboard 趋势图，P2-2）：deleted=0 过滤软删，日期升序；
+         createdBy 非空时仅统计该教师创建的学生产生的反馈（教师数据隔离，用户 2026-08-15 裁决） -->
     <select id="selectDailyFeedbackCount" resultType="map">
         SELECT to_char(created_at, 'YYYY-MM-DD') AS d, COUNT(*) AS c
         FROM user_feedback
         WHERE deleted = 0 AND created_at &gt;= #{start}
+        <if test="createdBy != null">
+            AND user_id IN (SELECT id FROM sys_user WHERE deleted = 0 AND created_by = #{createdBy})
+        </if>
         GROUP BY to_char(created_at, 'YYYY-MM-DD')
         ORDER BY d
+    </select>
+
+    <!-- 按意图类型分组统计赞/踩数（perf P3-1）：单条 SQL 替代逐意图 2 次 count；
+         createdBy 非空时仅统计该教师的学生（教师数据隔离） -->
+    <select id="selectIntentStats" resultType="map">
+        SELECT intent_type AS intent_type,
+               SUM(CASE WHEN is_liked = TRUE THEN 1 ELSE 0 END)  AS liked_count,
+               SUM(CASE WHEN is_liked = FALSE THEN 1 ELSE 0 END) AS disliked_count
+        FROM user_feedback
+        WHERE deleted = 0 AND intent_type IS NOT NULL
+        <if test="createdBy != null">
+            AND user_id IN (SELECT id FROM sys_user WHERE deleted = 0 AND created_by = #{createdBy})
+        </if>
+        GROUP BY intent_type
+        ORDER BY intent_type
+    </select>
+
+    <!-- 周期内反馈总数 + 点赞数（dashboard feedbackStats 单条 SQL，替代 2 次 count）：
+         createdBy 非空时仅统计该教师的学生 -->
+    <select id="selectFeedbackStatsByPeriod" resultType="map">
+        SELECT COUNT(*) AS total_count,
+               SUM(CASE WHEN is_liked = TRUE THEN 1 ELSE 0 END) AS liked_count
+        FROM user_feedback
+        WHERE deleted = 0 AND created_at &gt;= #{start}
+        <if test="createdBy != null">
+            AND user_id IN (SELECT id FROM sys_user WHERE deleted = 0 AND created_by = #{createdBy})
+        </if>
+    </select>
+
+    <!-- 教师数据权限分页（反馈管理 I1：教师仅见自己创建学生的反馈；deleted=0 显式过滤） -->
+    <select id="selectPageFilteredByTeacher" resultType="com.commerce.rag.entity.UserFeedback">
+        SELECT id, user_id, session_id, message_id, is_liked, intent_type, deleted, created_at, updated_at
+        FROM user_feedback
+        WHERE deleted = 0
+        <if test="intentType != null and intentType != ''">
+            AND intent_type = #{intentType}
+        </if>
+        AND user_id IN (SELECT id FROM sys_user WHERE deleted = 0 AND created_by = #{createdBy})
+        ORDER BY created_at DESC
     </select>
 
 </mapper>

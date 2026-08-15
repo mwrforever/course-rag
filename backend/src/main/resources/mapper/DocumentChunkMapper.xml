@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.commerce.rag.mapper.DocumentChunkMapper">
+
+    <!-- 教师数据权限分页查询（perf P3-2）：doc_id IN 子查询替代「应用层取全量 doc id + IN 列表」——
+         教师文档数千时 IN 列表超长、执行计划退化；子查询在 DB 侧完成过滤（document.created_by 已有索引），
+         应用层零搬运。deleted=0 由 SQL 显式过滤（自定义 SQL 不经过 @TableLogic 生成）。 -->
+    <select id="selectPageFilteredByTeacher" resultType="com.commerce.rag.entity.DocumentChunk">
+        SELECT id, doc_id, kb_id, chunk_index, content, heading_path, parent_title,
+               start_page, end_page, token_count, collection_type, course_id, metadata_json,
+               milvus_pk, parent_chunk_id, prev_chunk_id, next_chunk_id,
+               char_offset_start, char_offset_end, correction_status, dense_vector,
+               deleted, created_at, updated_at
+        FROM document_chunk
+        WHERE deleted = 0
+        <if test="docId != null">
+            AND doc_id = #{docId}
+        </if>
+        <if test="kbId != null">
+            AND kb_id = #{kbId}
+        </if>
+        <if test="pendingOnly">
+            AND correction_status = 'PENDING'
+        </if>
+        AND doc_id IN (SELECT id FROM document WHERE deleted = 0 AND created_by = #{userId})
+        ORDER BY chunk_index
+    </select>
+
+    <!-- 教师待修正分片计数（dashboard：教师视角经 document.created_by 子查询隔离，超管走 MP count） -->
+    <select id="selectPendingChunkCountByTeacher" resultType="long">
+        SELECT COUNT(*)
+        FROM document_chunk
+        WHERE deleted = 0 AND correction_status = 'PENDING'
+          AND doc_id IN (SELECT id FROM document WHERE deleted = 0 AND created_by = #{createdBy})
+    </select>
+
+</mapper>

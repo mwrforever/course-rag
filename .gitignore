@@ -1,3 +1,6 @@
+# ── Windows 保留设备名文件 ──
+nul
+
 # ── Qoder IDE 配置 ──
 .qoder/
 
@@ -20,6 +23,19 @@ target/
 .gradle/
 build/
 
+# ── Node.js / 前端 ──
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+
+# ── 环境变量（含 Next.js） ──
+.env
+.env.local
+.env.*.local
+.env.production
+
 # ── 数据卷（Docker 挂载目录） ──
 appdata/
 
@@ -28,7 +44,16 @@ appdata/
 Thumbs.db
 desktop.ini
 
-# ── 环境变量 ──
-.env
-.env.local
-.env.*.local
+# ── Superpowers SDD 工作区 ──
+.superpowers/
+
+# ── 工具状态目录（不入库） ──
+.zcode/
+.workbuddy/
+.claude/
+
+# ── Maven 本地调试输出 ──
+backend/mvn-log.txt
+backend/mvn-clean.txt
+backend/cp.txt
+mvn-test-output.txt

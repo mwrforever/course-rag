@@ -1,0 +1,14 @@
+# 动态上下文模板 —— 每 turn 变化内容，通过 ReminderHook 以 <system-reminder> 注入
+# 动态通道：rewrittenQueries 等每 run 变化
+
+reminder:
+  template: |
+    <system-reminder>
+    ## 查询重写结果
+    ${rewritten_queries}
+
+    ## 重要提醒
+    - 当前时间为 ${current_time}
+    - 这是一个新的对话轮次，请基于以上重写查询进行检索
+    - 如果前序对话中有未完成的任务，请继续完成
+    </system-reminder>

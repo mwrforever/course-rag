@@ -36,6 +36,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.RecordId;
@@ -96,8 +97,7 @@ class ChatRequestWorkerTest {
                 chatMessageService,
                 streamProperties,
                 runPool,
-                new ObjectMapper(),
-                30);
+                new ObjectMapper());
 
         // 公共 stub：saver.get 返回空 Optional（无历史 checkpoint）
         lenient().when(saver.get(any(RunnableConfig.class))).thenReturn(Optional.empty());
@@ -382,5 +382,50 @@ class ChatRequestWorkerTest {
         assertEquals(2, messages.size());
         assertTrue(messages.get(0) instanceof UserMessage, "回滚后 messages[0] 应为 UserMessage");
         assertTrue(messages.get(1) instanceof AssistantMessage, "回滚后 messages[1] 应为 AssistantMessage");
+    }
+
+    // ==================== P1-2 工具消息落库格式（与实时事件 schema 一致） ====================
+
+    @Test
+    @DisplayName("P1-2 TOOL_CALL/TOOL_RESULT 落库格式 = 实时事件 schema（toolCallId/toolName/input + toolCallId/status/output）")
+    void persistMessages_toolMessages_useLiveEventSchema() throws Exception {
+        // Given: 图状态含一条带 toolCall 的 AssistantMessage + 一条 ToolResponseMessage
+        // （构造器为 protected，用 mock 构造；ToolCall/ToolResponse record 可直 new）
+        AssistantMessage toolAssistant = mock(AssistantMessage.class);
+        when(toolAssistant.getText()).thenReturn("");
+        when(toolAssistant.hasToolCalls()).thenReturn(true);
+        when(toolAssistant.getToolCalls())
+                .thenReturn(List.of(new AssistantMessage.ToolCall(
+                        "call-123", "function", "searchKnowledge", "{\"query\":\"Java 课程\"}")));
+        ToolResponseMessage toolResponse = mock(ToolResponseMessage.class);
+        when(toolResponse.getResponses())
+                .thenReturn(List.of(
+                        new ToolResponseMessage.ToolResponse("call-123", "searchKnowledge", "{\"chunks\":[]}")));
+        OverAllState state = new OverAllState(Map.of("messages", List.of(toolAssistant, toolResponse)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        // When: 游标=0（全部新增）
+        invokePersistMessages(1L, 1L, "课程问题", 0, lastOutput);
+
+        // Then: TOOL_CALL 落库 content 为实时 schema（toolCallId/toolName/input）
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> inserted = captor.getValue();
+
+        ChatMessage toolCallMsg = inserted.stream()
+                .filter(m -> "TOOL_CALL".equals(m.getMessageType()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应落库 TOOL_CALL 消息"));
+        assertTrue(toolCallMsg.getContent().contains("\"toolCallId\":\"call-123\""), "应含 toolCallId");
+        assertTrue(toolCallMsg.getContent().contains("\"toolName\":\"searchKnowledge\""), "应含 toolName");
+        assertFalse(toolCallMsg.getContent().contains("\"tool\":\"searchKnowledge\""), "不得再使用旧 tool 字段");
+
+        ChatMessage toolResultMsg = inserted.stream()
+                .filter(m -> "TOOL_RESULT".equals(m.getMessageType()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应落库 TOOL_RESULT 消息"));
+        assertTrue(toolResultMsg.getContent().contains("\"toolCallId\":\"call-123\""), "应含 toolCallId");
+        assertTrue(toolResultMsg.getContent().contains("\"status\":\"success\""), "应含 status=success");
     }
 }

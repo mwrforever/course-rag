@@ -107,6 +107,9 @@ class CourseApiToolTest {
         assertEquals("张老师：10年大型系统架构经验", result.instructorContent());
         assertEquals("Q1：需要什么基础？\nA1：无基础要求", result.faqContent());
         assertEquals("12周", result.schedule().duration());
+        // P2-5: schedule 字段为授课模式的人类可读描述（非原始枚举），totalLessons 无数据源保持 0
+        assertEquals("线上授课", result.schedule().schedule());
+        assertEquals(0, result.schedule().totalLessons());
         assertNotNull(result.enrollmentUrl());
         assertEquals("https://enroll.example.com/course/123", result.enrollmentUrl());
         assertEquals("张老师", result.instructor().name());

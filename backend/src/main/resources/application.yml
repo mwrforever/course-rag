@@ -1,0 +1,254 @@
+# 企业级 RAG 知识库系统 - 主配置（全量重写）
+# 版本基线: Spring Boot 3.5.8 + Spring AI 1.1.2 + SAA 1.1.2.0
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: commerce-rag
+
+  # ── 加载 backend/.env（DASHSCOPE_API_KEY 等环境变量；optional 保证文件缺失不阻断启动）──
+  config:
+    import: optional:file:.env[.properties]
+
+  # ── DashScope AI 模型配置 ──
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY:}
+      chat:
+        options:
+          model: qwen3.7-max
+          temperature: 0.7
+      embedding:
+        options:
+          model: text-embedding-v4
+      rerank:
+        options:
+          model: qwen3-rerank
+
+  # ── PostgreSQL 数据源 ──
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:commerce_rag}
+    username: ${PG_USER:postgres}
+    password: ${PG_PASSWORD:rag_pg_2024}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+
+  # ── Flyway 数据库迁移 ──
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  # ── 文件上传限制 ──
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+  # ── Redis（SSE 流缓冲 + Token 黑名单 + 设备互踢）──
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:rag_redis_2024}
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+
+  # ── 异步线程池（通用）──
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 16
+        queue-capacity: 100
+      thread-name-prefix: rag-async-
+
+# ── MyBatis-Plus 配置（替代 JPA）──
+mybatis-plus:
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+      logic-delete-field: deleted
+      logic-not-delete-value: "0"
+      logic-delete-value: "1"
+    # 雪花算法 worker-id（多实例需唯一，生产环境从 Redis/DB 获取）
+    worker-id: 1
+    datacenter-id: 1
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  # XML 映射文件位置（多表/复杂查询）
+  mapper-locations: classpath*:mapper/**/*.xml
+
+# ── CORS 跨域配置（与 httpOnly cookie 协同需 allowCredentials=true）──
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+
+# ── MinIO 业务文件存储 ──
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9002}
+  access-key: ${MINIO_ACCESS_KEY:rag_storage}
+  secret-key: ${MINIO_SECRET_KEY:rag_storage_2024}
+  bucket: ${MINIO_BUCKET:rag-documents}
+
+# ── Milvus 向量数据库配置 ──
+milvus:
+  host: ${MILVUS_HOST:localhost}
+  port: ${MILVUS_PORT:19530}
+  collection-name: knowledge_chunks
+  # text-embedding-v4 输出维度
+  embedding-dim: 1024
+  # HNSW 索引参数
+  hnsw-m: 16
+  hnsw-ef-construction: 200
+  hnsw-ef: 64
+  # RRF 融合常数（混合检索 dense+sparse 融合参数）
+  sparse-bm25-k: 60
+  # 启动时自动创建 Collection（幂等，存在则跳过）
+  auto-create-collection: true
+
+# ── RAG 检索参数 ──
+retrieval:
+  # 分数传播：子 85% + 父 15%
+  score-propagation-alpha: 0.85
+  # 语义 85% + 热度 15%
+  hotness-alpha: 0.15
+  # 热度衰减半衰期（天）
+  half-life-days: 7
+  # 默认返回结果数
+  default-top-k: 5
+  # 预取倍数
+  prefetch-multiplier: 4
+  # RRF 融合常数 k
+  rrf-k: 60
+  # rerank 阈值
+  rerank-threshold: 0.30
+
+# ── ETL 分块参数 ──
+etl:
+  max-file-size-mb: 100
+  executor:
+    core-size: 2
+    max-size: 4
+    queue-capacity: 20
+    thread-name-prefix: etl-
+  chunk:
+    size: 768
+    overlap: 128
+
+# ── 对话配置 ──
+chat:
+  max-history-rounds: 10
+
+# ── 模型配置（全链路模型独立配置）──
+model:
+  # 主对话模型最大上下文窗口（qwen3.8-max 官方 1M；实际按部署模型调整）
+  max-context-tokens: 128000
+
+# ── 上下文窗口管理（CustomSummarizationHook 用）──
+context:
+  # 压缩目标窗口比例：目标窗口 = model.max-context-tokens × window-ratio（预留安全余量）
+  window-ratio: 0.7
+  # 压缩触发阈值（0~1），达到压缩目标窗口的此比例时触发历史压缩
+  threshold: 0.7
+  # 压缩后保留的最近消息条数
+  keep-recent: 6
+  # 摘要用小模型（qwen3.7-flash；旧 qwen-turbo 已下线）
+  summary-model: qwen3.7-flash
+
+# ── SSE 流式 + Worker Queue 配置 ──
+stream:
+  # 请求队列名称（全局 Redis Stream，Worker 消费）
+  request-stream: chat:request
+  # Consumer Group 名称
+  consumer-group: chat-workers
+  # Worker 每轮消费批次大小
+  batch-size: 10
+  # XREAD BLOCK 超时（毫秒）
+  poll-timeout: 2000
+  # 响应流 + meta 完成后 TTL（秒）
+  response-ttl: 300
+  # SSE 心跳间隔（秒）
+  heartbeat-interval: 15
+  # 内存 ring buffer 大小
+  ring-buffer-size: 256
+
+# ── Agent 配置（F#1 + F#3）──
+rag:
+  agent:
+    # ModelCallLimitHook runLimit（防单 run 无限迭代）
+    run-limit: 15
+    # 僵死 ACTIVE run 回收租约（分钟）
+
+  # ── F#3 死循环检测（LoopDetectionProperties）──
+  loop-detection:
+    # Layer 1: hash 滑动窗口（检测重复内容）
+    hash:
+      window-size: 20
+      warn: 3
+      hard-stop: 5
+    # Layer 2: per-tool 调用频率计数
+    per-tool:
+      default:
+        warn: 15
+        hard-stop: 25
+      overrides:
+        searchKnowledge:
+          warn: 25
+          hard-stop: 40
+        listCourses:
+          warn: 5
+          hard-stop: 10
+
+  # ── F#3 Token 预算（TokenBudgetProperties）──
+  token-budget:
+    max-tokens-per-run: 200000
+    warn-ratio: 0.8
+    hard-stop-ratio: 1.0
+
+  # ── F#3 置信度（ConfidenceProperties）──
+  confidence:
+    search-high-threshold: 0.8
+    search-medium-threshold: 0.5
+    multi-source-min: 2
+
+# ── 认证安全配置（F#4 双 Token + 设备互踢）──
+auth:
+  # JWT 签名密钥（HS256，至少 256 bits）
+  secret: ${JWT_SECRET:commerce-rag-secret-key-2026-must-be-at-least-256-bits-long-for-hs256}
+  # AT 有效期（秒，默认 900=15min）
+  access-token-expiry: 900
+  # RT 有效期（秒，默认 604800=7d）
+  refresh-token-expiry: 604800
+  # Cookie 名称
+  cookie-name: commerce_token
+  # Cookie 域名
+  cookie-domain: localhost
+  # Cookie Secure 标记（生产 HTTPS 必须配 true，防 AT 经 HTTP 明文传输被中间人窃取）
+  cookie-secure: false
+  # 设备类型枚举（当前仅 WEB_DESKTOP）
+  device-types:
+    - WEB_DESKTOP
+
+# ── Worker 线程池（对话执行，与 ETL 独立）──
+# 设计文档 §3.3: core=CPU*2, max=CPU*2, queue=100
+# core-size/max-size 由 WorkerConfig 动态计算（Runtime.availableProcessors()*2），
+# 此处值仅作 fallback，实际不读取 core/max（仅 queue-capacity / thread-name-prefix 生效）
+worker:
+  run-pool:
+    core-size: 8
+    max-size: 8
+    queue-capacity: 100
+    thread-name-prefix: chat-worker-
+
+logging:
+  level:
+    com.commerce.rag: INFO
+    org.springframework.ai: DEBUG
+    io.milvus: WARN

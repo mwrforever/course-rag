@@ -35,6 +35,7 @@ class TokenServiceTest {
                 604800L, // 7d
                 "commerce_token",
                 "localhost",
+                false,
                 List.of("WEB_DESKTOP"));
         tokenService = new TokenService(authProperties);
         signingKey = Keys.hmacShaKeyFor(authProperties.secret().getBytes(StandardCharsets.UTF_8));

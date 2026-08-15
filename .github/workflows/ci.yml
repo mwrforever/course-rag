@@ -1,0 +1,43 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI 硬门禁（push/PR 触发）：后端全量质量校验
+#
+# 校验链（按 Maven verify 执行顺序）：
+#   1. Spotless    — 代码格式（palantir-java-format）
+#   2. Checkstyle  — 代码规范（自定义规则集 backend/config/checkstyle/checkstyle.xml）
+#   3. JUnit 5     — 全量单元测试（168 个，Mockito Mock）
+#   4. SpotBugs    — 静态分析（误报排除见 backend/config/spotbugs/exclude.xml）
+#   5. JaCoCo      — 覆盖率门禁（全局行覆盖率 ≥ 80%，当前基线 37%，补测路线见 TASK.md）
+#
+# 任何一步失败 → 构建失败 → 阻断合并（AGENTS.md：禁止人工绕过）
+# ─────────────────────────────────────────────────────────────────────────────
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend-quality:
+    name: 后端质量门禁（Spotless/Checkstyle/SpotBugs/单测/JaCoCo）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 17（temurin）+ Maven 缓存
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: 全量校验（格式化/规范/静态分析/单测/覆盖率门禁）
+        run: mvn -B -f backend/pom.xml verify
+
+      - name: 上传 JaCoCo 覆盖率报告
+        if: always() # 即使校验失败也保留报告，便于定位缺口
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-coverage-report
+          path: backend/target/site/jacoco
+          if-no-files-found: ignore

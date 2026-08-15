@@ -208,6 +208,33 @@ class SseEventTransformerTest {
         assertTrue(finishedEvents.isEmpty());
     }
 
+    @Test
+    @DisplayName("P3-1 AGENT_MODEL_STREAMING + 带 toolCalls → TOOL_CALL 事件（FINISHED message=null 实证后 TOOL_CALL 移至流式分支）")
+    void transform_modelStreamingWithToolCalls_returnsToolCallEvent() {
+        // Given: 流式 chunk 携带完整 toolCall（模型输出工具调用时的最后 chunk）
+        AssistantMessage mockMsg = mock(AssistantMessage.class);
+        StreamingOutput<?> mockOutput = mock(StreamingOutput.class);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        when(mockOutput.getOutputType()).thenReturn(OutputType.AGENT_MODEL_STREAMING);
+        when(mockOutput.message()).thenReturn(mockMsg);
+        when(mockMsg.getText()).thenReturn("");
+        when(mockMsg.getMetadata()).thenReturn(Map.of());
+        when(mockMsg.hasToolCalls()).thenReturn(true);
+        when(mockMsg.getToolCalls())
+                .thenReturn(List.of(
+                        new AssistantMessage.ToolCall("call-1", "function", "searchKnowledge", "{\"query\":\"课程\"}")));
+
+        // When
+        List<SseEvent> result = transformer.transform(mockOutput, runState);
+
+        // Then: TOOL_CALL 事件，payload 与实时契约一致（toolCallId/toolName/input）
+        assertEquals(1, result.size());
+        assertEquals(SseEventType.TOOL_CALL, result.get(0).type());
+        assertTrue(result.get(0).payload().contains("\"toolCallId\":\"call-1\""));
+        assertTrue(result.get(0).payload().contains("\"toolName\":\"searchKnowledge\""));
+    }
+
     // ==================== AGENT_MODEL_FINISHED ====================
 
     @Test

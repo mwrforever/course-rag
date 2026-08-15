@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# pre-commit 本地质量门禁（AGENTS.md 第八节：CI/CD 强制集成）
+#
+# 安装（需 Python 3 + Git Bash）：
+#   pip install pre-commit
+#   pre-commit install                     # pre-commit 阶段：通用文件检查 + 快速 lint/format
+#   pre-commit install --hook-type pre-push # pre-push 阶段：全量 mvn verify（单测 + SpotBugs + 覆盖率）
+#
+# 常用命令：
+#   pre-commit run --all-files   # 手动全量执行 pre-commit 阶段
+#   pre-commit run --hook-stage pre-push  # 手动执行 pre-push 阶段
+#   pre-commit autoupdate       # 升级 hooks 版本
+#
+# 云端硬门禁：.github/workflows/ci.yml（GitHub Actions）在 push/PR 时全量校验，
+# 本地 hook 为底线、云端 CI 为最终裁决。
+# ─────────────────────────────────────────────────────────────────────────────
+repos:
+  # 通用文件级检查（trailing whitespace / 行尾 / yaml 校验 / 合并冲突 / 大文件拦截）
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+
+  # 本地 Maven 质量门禁（language: system 直接复用本机 Maven，不重复下载工具链）
+  - repo: local
+    hooks:
+      # pre-commit 阶段（每次提交快速反馈）：格式 + Lint
+      - id: spotless-check
+        name: Spotless 代码格式检查
+        entry: mvn -q -f backend/pom.xml spotless:check
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: checkstyle-check
+        name: Checkstyle 代码规范检查
+        entry: mvn -q -f backend/pom.xml checkstyle:check
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # pre-push 阶段（每次推送全量验证，避免拖慢每次提交）：
+      # 单测(JUnit5+Mockito) + SpotBugs 静态分析 + JaCoCo 覆盖率门禁(≥80%)
+      - id: mvn-verify
+        name: Maven 全量验证（单测+SpotBugs+覆盖率）
+        entry: mvn -B -f backend/pom.xml verify
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

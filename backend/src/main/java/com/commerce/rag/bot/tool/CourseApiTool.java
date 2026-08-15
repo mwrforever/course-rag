@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +44,10 @@ public class CourseApiTool {
 
     /** JSON 解析器（用于解析 tags JSONB 字段） */
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+
+    /** 授课模式枚举 → 人类可读描述（P2-5：schedule 字段语义为「上课节奏描述」，不得传原始枚举） */
+    private static final Map<String, String> SCHEDULE_TYPE_LABELS =
+            Map.of("ONLINE", "线上授课", "OFFLINE", "线下授课", "HYBRID", "线上线下结合");
 
     private final CourseQueryService courseQueryService;
 
@@ -163,16 +168,23 @@ public class CourseApiTool {
 
     /**
      * CourseSchedule + CourseInfo → ScheduleInfo 映射
+     *
+     * <p>P2-5 修复：schedule 字段按 DTO 契约（上课节奏描述）传授课模式的人类可读描述
+     * （如 "线上授课"），不再传原始枚举（ONLINE/OFFLINE/HYBRID——LLM 会向学生传达
+     * "上课节奏：OFFLINE" 的错误语义）。totalLessons 无数据源（course_schedule 无课时数字段），
+     * 保持 0。
      */
     private ScheduleInfo toScheduleInfo(CourseSchedule schedule, CourseInfo info) {
         if (schedule == null) {
             return new ScheduleInfo(null, info.getDuration() != null ? info.getDuration() : "", 0, "");
         }
+        String scheduleType = schedule.getScheduleType();
+        String scheduleDesc = scheduleType != null ? SCHEDULE_TYPE_LABELS.getOrDefault(scheduleType, scheduleType) : "";
         return new ScheduleInfo(
                 schedule.getStartDate() != null ? schedule.getStartDate().toString() : null,
                 info.getDuration() != null ? info.getDuration() : "",
                 0,
-                schedule.getScheduleType() != null ? schedule.getScheduleType() : "");
+                scheduleDesc);
     }
 
     // ==================== 辅助方法 ====================

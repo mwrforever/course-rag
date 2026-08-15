@@ -13,10 +13,13 @@ import com.commerce.rag.service.ConcurrentRunException;
 import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEventType;
 import com.commerce.rag.worker.ChatRequestWorker;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
@@ -29,6 +32,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -51,6 +55,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * </ol>
  *
  * <p>鉴权：通过 AuthInterceptor 注入的 request attribute 获取已认证用户 ID。
+ * 角色门禁（P2-4 用户裁决）：允许 C 端学生与 B 端角色（TEACHER/SUPER_ADMIN）使用对话能力——
+ * 显式声明 hasAnyRole 防止未来误改（原无注解 = 所有已认证角色可访问，语义不变）。
  *
  * <p>线程模型：
  * <ul>
@@ -63,6 +69,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  */
 @RestController
 @RequestMapping("/api/v1/student/chat")
+@PreAuthorize("hasAnyRole('STUDENT', 'TEACHER', 'SUPER_ADMIN')")
 public class ChatController {
 
     private static final Logger log = LoggerFactory.getLogger(ChatController.class);
@@ -77,6 +84,7 @@ public class ChatController {
     private final ChatMessageService chatMessageService;
     private final StringRedisTemplate redisTemplate;
     private final StreamProperties streamProperties;
+    private final ObjectMapper objectMapper;
 
     /** 心跳定时器线程池 */
     private ScheduledExecutorService scheduler;
@@ -88,7 +96,8 @@ public class ChatController {
             ChatSessionService chatSessionService,
             ChatMessageService chatMessageService,
             StringRedisTemplate redisTemplate,
-            StreamProperties streamProperties) {
+            StreamProperties streamProperties,
+            ObjectMapper objectMapper) {
         this.worker = worker;
         this.bridge = bridge;
         this.chatRunService = chatRunService;
@@ -96,6 +105,7 @@ public class ChatController {
         this.chatMessageService = chatMessageService;
         this.redisTemplate = redisTemplate;
         this.streamProperties = streamProperties;
+        this.objectMapper = objectMapper;
     }
 
     @PostConstruct
@@ -264,7 +274,32 @@ public class ChatController {
             log.warn("ring 回放失败，降级查 PG: runId={}, lastEventId={}", runId, lastEventId);
             long lastSeq = replayFromPg(runId, lastEventId, emitter);
             if (lastSeq < 0) {
-                // PG 也无数据，返回 error 事件
+                // P2-10 修复: run 仍在执行时（ring 覆盖、PG 尚无消息——持久化在 run 结束）
+                // 不得误报 REPLAY_FAILED 终态——仅订阅继续收实时事件，历史缺失可接受
+                ChatRun run = chatRunService.findById(Long.parseLong(runId));
+                if (run != null && !isTerminalStatus(run.getStatus())) {
+                    // P1-4: 订阅返回 false 说明 ring 恰在此时被关闭（run 完成）——补查终态补发 end
+                    if (!bridge.subscribe(runId, emitter)) {
+                        ChatRun closedRun = chatRunService.findById(Long.parseLong(runId));
+                        if (closedRun != null && isTerminalStatus(closedRun.getStatus())) {
+                            String payload =
+                                    "{\"runId\":\"" + runId + "\",\"status\":\"" + closedRun.getStatus() + "\"}";
+                            try {
+                                emitter.send(SseEmitter.event()
+                                        .name(SseEventType.END.getEventName())
+                                        .data(payload));
+                            } catch (IOException ex) {
+                                // emitter 已关闭，忽略
+                            }
+                        }
+                        emitter.complete();
+                        return emitter;
+                    }
+                    startHeartbeat(emitter);
+                    log.info("ring 已覆盖且 run 仍活跃，降级为仅订阅实时事件: runId={}", runId);
+                    return emitter;
+                }
+                // run 终态且 PG 也无数据 → 历史不可恢复，返回 error 事件（真失败）
                 try {
                     emitter.send(SseEmitter.event()
                             .name(SseEventType.ERROR.getEventName())
@@ -294,7 +329,25 @@ public class ChatController {
                 return emitter;
             }
             // 非终态：run 仍在执行，继续订阅接收后续事件
-            bridge.subscribe(runId, emitter);
+            // P1-4: subscribe 返回 false 说明 ring 恰在判定与订阅之间被关闭（run 已完成）——
+            // 补查终态并补发 end，避免新 emitter 无事件无 end 永久"生成中"
+            if (!bridge.subscribe(runId, emitter)) {
+                ChatRun closedRun = chatRunService.findById(Long.parseLong(runId));
+                if (closedRun != null && isTerminalStatus(closedRun.getStatus())) {
+                    String payload = "{\"runId\":\"" + runId + "\",\"status\":\"" + closedRun.getStatus() + "\"}";
+                    try {
+                        emitter.send(SseEmitter.event()
+                                .id(String.valueOf(lastSeq + 1))
+                                .name(SseEventType.END.getEventName())
+                                .data(payload));
+                    } catch (IOException ex) {
+                        // emitter 已关闭，忽略
+                    }
+                }
+                emitter.complete();
+                log.info("订阅时 ring 已关闭，补发终态收尾: runId={}", runId);
+                return emitter;
+            }
             startHeartbeat(emitter);
             log.info("PG 降级回放成功: runId={}, lastEventId={}", runId, lastEventId);
             return emitter;
@@ -406,11 +459,14 @@ public class ChatController {
                     eventType = SseEventType.THINKING.getEventName();
                     payload = "{\"delta\":\"" + escapeJson(msg.getContent()) + "\"}";
                 } else if ("TOOL_CALL".equals(msg.getMessageType())) {
+                    // P1-2: 与实时 TOOL_CALL 事件 schema 对齐（toolCallId/toolName/input）——
+                    // 新格式直接透传；历史旧格式（{"tool","args"}）重建，保证前端按 toolCallId 配对
                     eventType = SseEventType.TOOL_CALL.getEventName();
-                    payload = msg.getContent() != null ? msg.getContent() : "{}";
+                    payload = normalizeToolPayload(msg.getContent(), true);
                 } else if ("TOOL_RESULT".equals(msg.getMessageType())) {
+                    // P1-2: 与实时 TOOL_RESULT 事件 schema 对齐（toolCallId/status/output）
                     eventType = SseEventType.TOOL_RESULT.getEventName();
-                    payload = msg.getContent() != null ? msg.getContent() : "{}";
+                    payload = normalizeToolPayload(msg.getContent(), false);
                 } else {
                     // 普通助手消息 → DELTA 事件
                     eventType = SseEventType.DELTA.getEventName();
@@ -467,6 +523,45 @@ public class ChatController {
         ChatRun run = chatRunService.findById(runIdLong);
         if (run == null || !run.getUserId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Run 不存在");
+        }
+    }
+
+    /**
+     * 将落库的工具消息内容归一化为实时事件 schema（P1-2）
+     *
+     * <p>新格式（含 toolCallId）直接透传；历史旧格式（TOOL_CALL: {"tool","args"} /
+     * TOOL_RESULT: {"tool","result"}）重建为实时字段（toolCallId 缺失用空串）。
+     * 解析失败时原样返回（不中断回放）。
+     *
+     * @param content    落库的 content JSON 字符串
+     * @param isToolCall true=TOOL_CALL 事件；false=TOOL_RESULT 事件
+     * @return 实时 schema 的 payload JSON 字符串
+     */
+    private String normalizeToolPayload(String content, boolean isToolCall) {
+        if (content == null || content.isBlank()) {
+            return "{}";
+        }
+        try {
+            JsonNode node = objectMapper.readTree(content);
+            // 新格式已含 toolCallId，直接透传
+            if (node.has("toolCallId")) {
+                return content;
+            }
+            // 旧格式重建：{"tool":"<name>","args":...} / {"tool":"<name>","result":"..."}
+            String toolName = node.path("tool").asText("");
+            Map<String, Object> rebuilt = new LinkedHashMap<>();
+            rebuilt.put("toolCallId", "");
+            if (isToolCall) {
+                rebuilt.put("toolName", toolName);
+                rebuilt.put("input", node.has("args") ? node.get("args") : Map.of());
+            } else {
+                rebuilt.put("status", "success");
+                rebuilt.put("output", node.path("result").asText(""));
+            }
+            return objectMapper.writeValueAsString(rebuilt);
+        } catch (Exception e) {
+            log.warn("工具消息 payload 归一化失败，原样返回: {}", content, e);
+            return content;
         }
     }
 

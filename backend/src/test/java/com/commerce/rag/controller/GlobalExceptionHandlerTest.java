@@ -7,8 +7,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.validation.BeanPropertyBindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -27,6 +32,15 @@ class GlobalExceptionHandlerTest {
     /** 断言方法上的 @ResponseStatus 注解契约（HTTP 状态 = 指定值） */
     private void assertResponseStatus(Class<?>[] paramTypes, HttpStatus expected) throws Exception {
         var method = GlobalExceptionHandler.class.getMethod("handle" + paramTypes[0].getSimpleName(), paramTypes);
+        ResponseStatus responseStatus = method.getAnnotation(ResponseStatus.class);
+        assertNotNull(responseStatus, "handler 必须标注 @ResponseStatus");
+        assertEquals(expected, responseStatus.value(), "@ResponseStatus 应为 " + expected);
+    }
+
+    /** 按方法名直接断言 @ResponseStatus（P0-6 三个 handler 方法名不含异常类全名） */
+    private void assertResponseStatusByMethod(String methodName, Class<?> paramType, HttpStatus expected)
+            throws Exception {
+        var method = GlobalExceptionHandler.class.getMethod(methodName, paramType);
         ResponseStatus responseStatus = method.getAnnotation(ResponseStatus.class);
         assertNotNull(responseStatus, "handler 必须标注 @ResponseStatus");
         assertEquals(expected, responseStatus.value(), "@ResponseStatus 应为 " + expected);
@@ -69,6 +83,42 @@ class GlobalExceptionHandlerTest {
         ApiResponse<Void> result = handler.handleAccessDeniedException(new AccessDeniedException("Access Denied"));
         assertEquals(HttpStatus.FORBIDDEN.value(), result.code(), "业务码应为 403");
         assertEquals("无权操作", result.message());
+    }
+
+    @Test
+    @DisplayName("handleTypeMismatch → @ResponseStatus(400) + body code 400（P0-6 参数类型错误）")
+    void handleTypeMismatch_returns400() throws Exception {
+        assertResponseStatusByMethod(
+                "handleTypeMismatch", MethodArgumentTypeMismatchException.class, HttpStatus.BAD_REQUEST);
+        MethodArgumentTypeMismatchException ex =
+                new MethodArgumentTypeMismatchException("abc", Long.class, "page", null, null);
+        ApiResponse<Void> result = handler.handleTypeMismatch(ex);
+        assertEquals(HttpStatus.BAD_REQUEST.value(), result.code(), "业务码应为 400");
+        assertTrue(result.message().contains("page"), "message 应包含出错的参数名");
+    }
+
+    @Test
+    @DisplayName("handleMessageNotReadable → @ResponseStatus(400) + body code 400（P0-6 请求体解析失败）")
+    void handleMessageNotReadable_returns400() throws Exception {
+        assertResponseStatusByMethod(
+                "handleMessageNotReadable", HttpMessageNotReadableException.class, HttpStatus.BAD_REQUEST);
+        HttpMessageNotReadableException ex = new HttpMessageNotReadableException("JSON parse error");
+        ApiResponse<Void> result = handler.handleMessageNotReadable(ex);
+        assertEquals(HttpStatus.BAD_REQUEST.value(), result.code(), "业务码应为 400");
+        assertEquals("请求体格式错误", result.message());
+    }
+
+    @Test
+    @DisplayName("handleMethodArgumentNotValid → @ResponseStatus(400) + body code 400（P0-6 @Valid 校验失败）")
+    void handleMethodArgumentNotValid_returns400() throws Exception {
+        assertResponseStatusByMethod(
+                "handleMethodArgumentNotValid", MethodArgumentNotValidException.class, HttpStatus.BAD_REQUEST);
+        BeanPropertyBindingResult binding = new BeanPropertyBindingResult(new Object(), "request");
+        binding.addError(new FieldError("request", "name", "名称不能为空"));
+        MethodArgumentNotValidException ex = new MethodArgumentNotValidException(null, binding);
+        ApiResponse<Void> result = handler.handleMethodArgumentNotValid(ex);
+        assertEquals(HttpStatus.BAD_REQUEST.value(), result.code(), "业务码应为 400");
+        assertTrue(result.message().contains("name"), "message 应包含校验失败的字段");
     }
 
     @Test

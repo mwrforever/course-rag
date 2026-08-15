@@ -51,10 +51,10 @@ class AdminDocumentControllerTest {
     void upload_invalidType_throws400() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "virus.exe", "application/octet-stream", new byte[10]);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.upload(adminRequest(), 1L, "doc", file));
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class, () -> controller.upload(adminRequest(), 1L, "doc", null, file));
         assertEquals(400, ex.getStatusCode().value());
-        verify(documentService, never()).upload(any(), any(), any(), any(), any(), any(), anyBoolean());
+        verify(documentService, never()).upload(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
     }
 
     @Test
@@ -64,10 +64,10 @@ class AdminDocumentControllerTest {
         MockMultipartFile file =
                 new MockMultipartFile("file", "big.pdf", "application/pdf", new byte[100 * 1024 * 1024 + 1]);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.upload(adminRequest(), 1L, "doc", file));
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class, () -> controller.upload(adminRequest(), 1L, "doc", null, file));
         assertEquals(400, ex.getStatusCode().value());
-        verify(documentService, never()).upload(any(), any(), any(), any(), any(), any(), anyBoolean());
+        verify(documentService, never()).upload(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
     }
 
     @Test
@@ -76,7 +76,7 @@ class AdminDocumentControllerTest {
         MockMultipartFile file =
                 new MockMultipartFile("file", "doc.pdf", "application/pdf", "内容".getBytes(StandardCharsets.UTF_8));
 
-        assertDoesNotThrow(() -> controller.upload(adminRequest(), 1L, "doc", file));
-        verify(documentService).upload(eq(1L), eq("doc"), any(), eq("pdf"), eq(6L), eq(1L), eq(true));
+        assertDoesNotThrow(() -> controller.upload(adminRequest(), 1L, "doc", null, file));
+        verify(documentService).upload(eq(1L), eq("doc"), any(), eq("pdf"), eq(6L), isNull(), eq(1L), eq(true));
     }
 }

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.commerce.rag.config.AuthProperties;
 import com.commerce.rag.entity.SysLoginRecord;
@@ -55,6 +56,7 @@ class AuthSessionServiceTest {
                 604800L,
                 "commerce_token",
                 "localhost",
+                false,
                 List.of("WEB_DESKTOP"));
         authSessionService = new AuthSessionService(loginRecordMapper, deviceKickService, props);
     }
@@ -191,5 +193,39 @@ class AuthSessionServiceTest {
         verify(deviceKickService)
                 .addToBlacklist(
                         eq("jti-at"), eq("ACCESS"), eq(123L), eq(123L), eq("MANUAL_REVOKE"), any(LocalDateTime.class));
+    }
+
+    @Test
+    @DisplayName("P0-3 revokeOnLogout → 按 userId+ACTIVE 定位（不按 jti_at）——旧 AT 登出时新 RT 仍被吊销")
+    void revokeOnLogout_locateByUserAndActive_notByJtiAt() {
+        // 模拟 refresh 旋转后的场景：login_record.jti_at 已是新值，登出携带旧 AT 的 jti
+        LocalDateTime rtExpiresAt = LocalDateTime.now().plusDays(7);
+        SysLoginRecord record = new SysLoginRecord();
+        record.setId(10L);
+        record.setUserId(123L);
+        record.setJtiAt("new-jti-at"); // 旋转后的新 jti_at，与登出携带的旧 jti 不同
+        record.setJtiRt("rotated-jti-rt");
+        record.setStatus("ACTIVE");
+        record.setExpiresAt(rtExpiresAt);
+        when(loginRecordMapper.selectOne(any())).thenReturn(record);
+
+        authSessionService.revokeOnLogout(123L, "old-jti-at");
+
+        // 定位条件必须按 userId + ACTIVE（而非 jti_at），保证旋转后的 RT 入黑名单
+        ArgumentCaptor<LambdaQueryWrapper> queryCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(loginRecordMapper).selectOne(queryCaptor.capture());
+        String sqlSegment = queryCaptor.getValue().getCustomSqlSegment();
+        assertFalse(sqlSegment.contains("jti_at"), "定位条件不得包含 jti_at（可变字段）");
+        assertTrue(sqlSegment.contains("user_id"), "定位条件应包含 user_id");
+        // MP wrapper 参数化：条件值在 paramNameValuePairs 中（列名在 SQL 段）
+        assertTrue(queryCaptor.getValue().getParamNameValuePairs().containsValue("ACTIVE"), "定位条件应包含 status=ACTIVE");
+        // 旋转后的 RT 必须被吊销（旧 AT 登出攻击场景：攻击者新 RT 不可续命）
+        verify(deviceKickService)
+                .addToBlacklist(eq("rotated-jti-rt"), eq("REFRESH"), eq(123L), eq(123L), eq("MANUAL_REVOKE"), any());
+        // login_record 置 REVOKED 同样按 userId+ACTIVE（不按 jti_at）
+        ArgumentCaptor<LambdaUpdateWrapper> updateCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(loginRecordMapper).update(isNull(), updateCaptor.capture());
+        String updateSql = updateCaptor.getValue().getSqlSet();
+        assertTrue(updateSql.contains("status"), "REVOKED 更新应包含 status");
     }
 }
