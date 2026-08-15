@@ -27,7 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
  * 文档服务 —— 封装 document 表的 CRUD + MinIO 文件管理 + ETL 触发
  *
  * <p>upload：存 MinIO + 创建 document 记录 + 触发 ETL 异步管道。
- * delete：级联软删 chunk + Milvus deleteByDocId + MinIO 删除文件。
+ * delete：MinIO 删除 → Milvus deleteByDocId → 级联软删 chunk + document。
  * reparse：从 MinIO 拉原文件重新 ETL。
  *
  * @author commerce-rag
@@ -189,9 +189,11 @@ public class DocumentService {
     }
 
     /**
-     * 删除文档（级联软删 chunk + Milvus 清理 + MinIO 删除）
+     * 删除文档（级联：MinIO 删除 → Milvus 清理 → 软删 chunk + document）
      *
      * <p>权限校验：operatorId 必须与文档 created_by 一致（TEACHER 只能删除自己的文档）
+     * 删除顺序（P1-4 Bug 3 修复）：先删 MinIO 外部对象，失败上抛阻断，PG 记录保留可重试；
+     * removeObject 幂等，重试可收敛。
      *
      * @param id         文档 ID
      * @param operatorId 操作者 ID（从 AuthInterceptor 注入的 userId 获取）
@@ -206,25 +208,26 @@ public class DocumentService {
         // 权限校验：只有文档创建者才能删除（超管旁路）
         checkOwnership(doc, operatorId, isAdmin);
 
-        // 1. Milvus 清理
+        // 1. MinIO 删除（P1-4 Bug 3 修复：先删外部资源，失败上抛阻断 → PG 记录保留可重试；
+        //    removeObject 幂等，任一侧先失败重试均可收敛到"对象已删 + 记录已删"）
+        if (doc.getSourcePath() != null) {
+            minioStorageService.deleteFile(doc.getSourcePath());
+        }
+
+        // 2. Milvus 清理（filter 直删，失败上抛阻断）
         etlPipeline.deleteFromMilvusByDocId(id);
 
-        // 2. 软删 document_chunk
+        // 3. 软删 document_chunk
         LambdaUpdateWrapper<DocumentChunk> chunkWrapper = new LambdaUpdateWrapper<DocumentChunk>()
                 .eq(DocumentChunk::getDocId, id)
                 .set(DocumentChunk::getDeleted, System.currentTimeMillis());
         chunkMapper.update(null, chunkWrapper);
 
-        // 3. 软删 document
+        // 4. 软删 document
         LambdaUpdateWrapper<Document> docWrapper = new LambdaUpdateWrapper<Document>()
                 .eq(Document::getId, id)
                 .set(Document::getDeleted, System.currentTimeMillis());
         documentMapper.update(null, docWrapper);
-
-        // 4. MinIO 删除文件
-        if (doc.getSourcePath() != null) {
-            minioStorageService.deleteFile(doc.getSourcePath());
-        }
 
         log.info("删除文档（级联）: docId={}, operatorId={}", id, operatorId);
     }

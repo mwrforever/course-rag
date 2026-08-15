@@ -19,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
@@ -143,5 +144,31 @@ class DocumentServiceTest {
         assertDoesNotThrow(() ->
                 documentService.upload(1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, 100L, false));
         verify(documentMapper).insert(any(Document.class));
+    }
+
+    @Test
+    @DisplayName("delete → MinIO 删除先于 PG 软删（失败阻断，记录保留可重试）")
+    void delete_minioFirst_failureBlocksSoftDelete() {
+        // Given
+        when(documentMapper.selectById(1L)).thenReturn(mockDoc(1L, 100L));
+
+        // When（正常路径）
+        documentService.delete(1L, 100L, false);
+
+        // Then: MinIO 删除先于 chunk/doc 软删
+        InOrder inOrder = inOrder(minioStorageService, chunkMapper, documentMapper);
+        inOrder.verify(minioStorageService).deleteFile("kb/1/doc.pdf");
+        inOrder.verify(chunkMapper).update(any(), any());
+        inOrder.verify(documentMapper).update(any(), any());
+
+        // When（MinIO 失败路径）
+        reset(minioStorageService, chunkMapper, documentMapper);
+        when(documentMapper.selectById(1L)).thenReturn(mockDoc(1L, 100L));
+        doThrow(new RuntimeException("MinIO 不可用")).when(minioStorageService).deleteFile("kb/1/doc.pdf");
+
+        // Then: 异常上抛，PG 不软删（对象/记录可重试收敛）
+        assertThrows(RuntimeException.class, () -> documentService.delete(1L, 100L, false));
+        verify(chunkMapper, never()).update(any(), any());
+        verify(documentMapper, never()).update(any(), any());
     }
 }
