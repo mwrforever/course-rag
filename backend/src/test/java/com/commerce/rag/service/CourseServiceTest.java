@@ -51,6 +51,9 @@ class CourseServiceTest {
     @Mock
     private EtlPipeline etlPipeline;
 
+    @Mock
+    private CourseQueryService courseQueryService;
+
     private CourseService courseService;
 
     @BeforeAll
@@ -70,7 +73,8 @@ class CourseServiceTest {
                 courseEnrollmentMapper,
                 documentChunkMapper,
                 etlPipeline,
-                new CourseConverterImpl());
+                new CourseConverterImpl(),
+                courseQueryService);
     }
 
     @Test
@@ -126,5 +130,21 @@ class CourseServiceTest {
 
         assertThrows(RuntimeException.class, () -> courseService.deleteCourse(1L, 100L, false));
         verify(courseInfoMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("deleteCourse → 级联软删完成后按 courseId 失效查询缓存")
+    void deleteCourse_evictsQueryCache() {
+        // Given: 课程 1 属于创建者 100
+        CourseInfo course = new CourseInfo();
+        course.setId(1L);
+        course.setCreatedBy(100L);
+        when(courseInfoMapper.selectById(1L)).thenReturn(course);
+
+        // When
+        courseService.deleteCourse(1L, 100L, false);
+
+        // Then: 软删完成后触发缓存失效（先写 DB 后失效）
+        verify(courseQueryService).evictCourse(1L);
     }
 }

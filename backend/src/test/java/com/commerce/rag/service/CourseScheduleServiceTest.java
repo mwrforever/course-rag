@@ -5,6 +5,8 @@ import static org.mockito.Mockito.*;
 
 import com.commerce.rag.entity.CourseSchedule;
 import com.commerce.rag.mapper.CourseScheduleMapper;
+import com.commerce.rag.test.MybatisPlusTestHelper;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,12 +33,21 @@ class CourseScheduleServiceTest {
     @Mock
     private CourseService courseService;
 
+    @Mock
+    private CourseQueryService courseQueryService;
+
     private CourseScheduleService scheduleService;
+
+    @BeforeAll
+    static void initMybatisPlus() {
+        // 纯 Mockito 单元测试（无 Spring 上下文）需先初始化 LambdaUpdateWrapper 的 TableInfo 缓存
+        MybatisPlusTestHelper.initTableInfo();
+    }
 
     @BeforeEach
     void setUp() {
         // 构造器注入（@RequiredArgsConstructor 按字段声明顺序生成全参构造器）
-        scheduleService = new CourseScheduleService(scheduleMapper, courseService);
+        scheduleService = new CourseScheduleService(scheduleMapper, courseService, courseQueryService);
     }
 
     @Test
@@ -76,5 +87,18 @@ class CourseScheduleServiceTest {
         scheduleService.findByCourseId(55L, 100L, false);
 
         verify(courseService).checkOwnership(55L, 100L, false);
+    }
+
+    @Test
+    @DisplayName("delete → 软删排期后按课程 ID 失效查询缓存")
+    void delete_evictsQueryCache() {
+        CourseSchedule schedule = new CourseSchedule();
+        schedule.setId(1L);
+        schedule.setCourseId(55L);
+        when(scheduleMapper.selectById(1L)).thenReturn(schedule);
+
+        scheduleService.delete(1L, 100L, false);
+
+        verify(courseQueryService).evictCourse(55L);
     }
 }

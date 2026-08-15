@@ -31,6 +31,8 @@ public class CourseScheduleService {
 
     private final CourseScheduleMapper scheduleMapper;
     private final CourseService courseService;
+    /** 课程查询服务（排期写后失效该课程的查询缓存，先写 DB 后失效） */
+    private final CourseQueryService courseQueryService;
 
     /**
      * 创建排期
@@ -55,6 +57,8 @@ public class CourseScheduleService {
         schedule.setStatus("UPCOMING");
         schedule.setCreatedBy(currentUserId);
         scheduleMapper.insert(schedule);
+        // 新排期影响"下一期排期"查询结果，失效该课程缓存键（先写 DB 后失效）
+        courseQueryService.evictCourse(courseId);
         log.info("创建排期: scheduleId={}, courseId={}, operator={}", schedule.getId(), courseId, currentUserId);
         return schedule;
     }
@@ -135,6 +139,8 @@ public class CourseScheduleService {
         if (request.status() != null) wrapper.set(CourseSchedule::getStatus, request.status());
         wrapper.set(CourseSchedule::getUpdatedAt, LocalDateTime.now());
         scheduleMapper.update(null, wrapper);
+        // 排期变更影响"下一期排期"查询结果，失效该课程缓存键（先写 DB 后失效）
+        courseQueryService.evictCourse(schedule.getCourseId());
         log.info("更新排期: scheduleId={}, operator={}", id, currentUserId);
     }
 
@@ -157,6 +163,8 @@ public class CourseScheduleService {
                 .set(CourseSchedule::getDeleted, System.currentTimeMillis())
                 .set(CourseSchedule::getUpdatedAt, LocalDateTime.now());
         scheduleMapper.update(null, wrapper);
+        // 排期删除影响"下一期排期"查询结果，失效该课程缓存键（先写 DB 后失效）
+        courseQueryService.evictCourse(schedule.getCourseId());
         log.info("删除排期: scheduleId={}, operator={}", id, currentUserId);
     }
 }

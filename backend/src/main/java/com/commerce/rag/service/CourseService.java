@@ -73,6 +73,8 @@ public class CourseService {
     private final DocumentChunkMapper documentChunkMapper;
     private final EtlPipeline etlPipeline;
     private final CourseConverter courseConverter;
+    /** 课程查询服务（写后失效查询缓存，一致性铁律：先写 DB 后失效） */
+    private final CourseQueryService courseQueryService;
 
     // ==================== 课程基本信息 CRUD ====================
 
@@ -99,6 +101,8 @@ public class CourseService {
         course.setRating(BigDecimal.ZERO);
         course.setLearningCount(0);
         courseInfoMapper.insert(course);
+        // 新建课程影响搜索列表可见性，失效该课程相关缓存键（先写 DB 后失效）
+        courseQueryService.evictCourse(course.getId());
         log.info("创建课程: courseId={}, title={}, createdBy={}", course.getId(), course.getTitle(), createdBy);
         return course;
     }
@@ -196,6 +200,8 @@ public class CourseService {
         if (request.status() != null) wrapper.set(CourseInfo::getStatus, request.status());
         wrapper.set(CourseInfo::getUpdatedAt, LocalDateTime.now());
         courseInfoMapper.update(null, wrapper);
+        // 课程信息变更影响详情与搜索排序，失效该课程相关缓存键（先写 DB 后失效）
+        courseQueryService.evictCourse(courseId);
         log.info("更新课程: courseId={}, operator={}", courseId, currentUserId);
     }
 
@@ -266,6 +272,8 @@ public class CourseService {
                 .set(CourseInfo::getDeleted, ts)
                 .set(CourseInfo::getUpdatedAt, LocalDateTime.now());
         courseInfoMapper.update(null, wrapper);
+        // 级联软删后课程详情/内容/排期均不可见，失效该课程相关缓存键（先写 DB 后失效）
+        courseQueryService.evictCourse(courseId);
         log.info("级联软删课程: courseId={}, operator={}", courseId, currentUserId);
     }
 
@@ -371,6 +379,8 @@ public class CourseService {
             cc.setSortOrder(CONTENT_SORT_ORDER.getOrDefault(contentType, 0));
             courseContentMapper.insert(cc);
         }
+        // 内容变更影响学生端内容读取，失效该课程相关缓存键（先写 DB 后失效）
+        courseQueryService.evictCourse(courseId);
         log.info("更新课程内容: courseId={}, contentType={}", courseId, contentType);
     }
 
@@ -387,6 +397,8 @@ public class CourseService {
         for (CourseDTO.CourseContentDTO dto : contents) {
             updateContent(courseId, dto.contentType(), dto.content(), currentUserId, isAdmin);
         }
+        // 各 Tab 已分别失效缓存，此处再按 courseId 兜底一次（幂等，先写 DB 后失效）
+        courseQueryService.evictCourse(courseId);
         log.info("批量更新课程内容: courseId={}, tabCount={}", courseId, contents.size());
     }
 
