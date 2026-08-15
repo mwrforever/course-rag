@@ -112,6 +112,7 @@ public class DocumentService {
             documentMapper.insert(doc);
         } catch (Exception e) {
             // 单向补偿：唯一可能残留的方向是「MinIO 已传、DB 未落」→ 删已上传对象（幂等）后上抛
+            log.error("文档落库失败，已补偿删除 MinIO 对象: objectKey={}", objectKey, e);
             minioStorageService.deleteFile(objectKey);
             throw e;
         }

@@ -298,7 +298,7 @@ public class ChatRequestWorker {
      * <p>流程：
      * <ol>
      *   <li>解析请求 → runId, sessionId, userId, userQuery</li>
-     *   <li>pre-run 快照: saver.get(config) → deepCopy</li>
+     *   <li>pre-run 快照: saver.get(config) → 容器级浅拷贝</li>
      *   <li>更新 run 状态: QUEUED → ACTIVE</li>
      *   <li>创建 bridge ring + 推送 metadata 事件</li>
      *   <li>执行 SAA 图流: compiledGraph.stream(inputs, config)</li>
