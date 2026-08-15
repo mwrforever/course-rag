@@ -1,5 +1,7 @@
 package com.commerce.rag.etl;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.commerce.rag.config.MilvusCollectionInitializer;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
@@ -16,6 +18,8 @@ import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import lombok.RequiredArgsConstructor;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
@@ -40,9 +44,14 @@ import org.springframework.stereotype.Component;
  * <p>Milvus upsert 策略：delete-then-insert。
  * PG 冗余 dense_vector（BYTEA）避免回查 Milvus。
  *
+ * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（6 个 private final 依赖：
+ * DocumentMapper / DocumentChunkMapper / MinioStorageService / EmbeddingModel /
+ * MilvusClientV2 / EtlProperties）。
+ *
  * @author commerce-rag
  */
 @Component
+@RequiredArgsConstructor
 public class EtlPipeline {
 
     private static final Logger log = LoggerFactory.getLogger(EtlPipeline.class);
@@ -67,23 +76,7 @@ public class EtlPipeline {
     private final EtlProperties etlProperties;
 
     /** 解析文本内存缓存（docId → text），仅在同一线程内有效 */
-    private final java.util.concurrent.ConcurrentHashMap<Long, String> parsedTextCache =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    public EtlPipeline(
-            DocumentMapper documentMapper,
-            DocumentChunkMapper chunkMapper,
-            MinioStorageService minioStorageService,
-            EmbeddingModel embeddingModel,
-            MilvusClientV2 milvusClientV2,
-            EtlProperties etlProperties) {
-        this.documentMapper = documentMapper;
-        this.chunkMapper = chunkMapper;
-        this.minioStorageService = minioStorageService;
-        this.embeddingModel = embeddingModel;
-        this.milvusClientV2 = milvusClientV2;
-        this.etlProperties = etlProperties;
-    }
+    private final ConcurrentHashMap<Long, String> parsedTextCache = new ConcurrentHashMap<>();
 
     // ========================================================================
     // 完整管道入口
@@ -94,10 +87,32 @@ public class EtlPipeline {
      *
      * <p>流程：parseDocument → chunkDocument → embedAndIndex
      * 任何阶段失败 → 设置 status=FAILED，记录 error_message
+     *
+     * <p>P2-1 状态守卫：入口先做原子抢占（条件 UPDATE，CAS 语义），
+     * 仅 PENDING/FAILED 状态能抢到 PARSING；抢不到（已在执行/已完成）直接跳过，
+     * 从根上消除并发双跑。
      */
     public void process(Long docId) {
         log.info("ETL 管道启动: docId={}", docId);
         try {
+            Document doc = documentMapper.selectById(docId);
+            if (doc == null) {
+                throw new IllegalStateException("文档不存在: docId=" + docId);
+            }
+            // P2-1: 原子抢占状态——仅 PENDING/FAILED 可抢到 PARSING（条件更新返回行数=0
+            // 说明已在执行/已完成，跳过；CAS 语义消除并发双跑）
+            // 合规：Wrappers 静态工厂 + lambda 链式（宪法「Wrapper 一律 lambda 链式构建，禁止 new」）
+            int claimed = documentMapper.update(
+                    null,
+                    Wrappers.<Document>lambdaUpdate()
+                            .eq(Document::getId, docId)
+                            .in(Document::getParseStatus, "PENDING", "FAILED")
+                            .set(Document::getParseStatus, "PARSING")
+                            .set(Document::getUpdatedAt, LocalDateTime.now()));
+            if (claimed == 0) {
+                log.warn("ETL 跳过: docId={} 非 PENDING/FAILED 状态（已在执行或已完成）", docId);
+                return;
+            }
             parseDocument(docId);
             chunkDocument(docId);
             embedAndIndex(docId);
@@ -127,21 +142,21 @@ public class EtlPipeline {
         log.info("开始解析文档: docId={}, title={}", docId, doc.getTitle());
 
         // 从 MinIO 下载文件
-        InputStream inputStream = minioStorageService.downloadFile(doc.getSourcePath());
+        // P2-1: try-with-resources——Tika 解析异常/损坏文件时流必关（防 MinIO 句柄泄漏）
+        try (InputStream inputStream = minioStorageService.downloadFile(doc.getSourcePath())) {
+            // Tika 解析
+            BodyContentHandler handler = new BodyContentHandler(TIKA_WRITE_LIMIT);
+            Metadata metadata = new Metadata();
+            ParseContext context = new ParseContext();
+            AutoDetectParser parser = new AutoDetectParser();
+            parser.parse(inputStream, handler, metadata, context);
 
-        // Tika 解析
-        BodyContentHandler handler = new BodyContentHandler(TIKA_WRITE_LIMIT);
-        Metadata metadata = new Metadata();
-        ParseContext context = new ParseContext();
-        AutoDetectParser parser = new AutoDetectParser();
-        parser.parse(inputStream, handler, metadata, context);
-        inputStream.close();
+            String text = handler.toString();
+            log.info("文档解析完成: docId={}, 字符数={}", docId, text.length());
 
-        String text = handler.toString();
-        log.info("文档解析完成: docId={}, 字符数={}", docId, text.length());
-
-        // 将解析文本暂存到内存缓存（供 chunkDocument 阶段使用）
-        parsedTextCache.put(docId, text);
+            // 将解析文本暂存到内存缓存（供 chunkDocument 阶段使用）
+            parsedTextCache.put(docId, text);
+        }
 
         updateDocStatus(docId, "PARSED", null);
     }
@@ -245,15 +260,15 @@ public class EtlPipeline {
         log.info("开始向量化: docId={}", docId);
 
         // 查询该文档所有分片
-        List<DocumentChunk> chunks = chunkMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<DocumentChunk>()
-                        .eq(DocumentChunk::getDocId, docId)
-                        .orderByAsc(DocumentChunk::getChunkIndex));
+        List<DocumentChunk> chunks = chunkMapper.selectList(Wrappers.<DocumentChunk>lambdaQuery()
+                .eq(DocumentChunk::getDocId, docId)
+                .orderByAsc(DocumentChunk::getChunkIndex));
 
         // 先删除 Milvus 中该文档的旧记录
         deleteFromMilvusByDocId(docId);
 
         // 批量向量化
+        int failedCount = 0;
         for (DocumentChunk chunk : chunks) {
             try {
                 // 调用 Embedding API
@@ -274,9 +289,16 @@ public class EtlPipeline {
             } catch (Exception e) {
                 log.error("分片向量化失败: chunkId={}", chunk.getId(), e);
                 // 继续处理其他分片，不中断
+                failedCount++;
             }
         }
 
+        // P2-1: 部分失败标 FAILED（避免误标 INDEXED 导致检索漏召回），全部成功才 INDEXED
+        if (failedCount > 0) {
+            updateDocStatus(docId, "FAILED", "分片向量化失败: " + failedCount + "/" + chunks.size());
+            log.warn("向量化部分失败: docId={}, 失败={}/{}", docId, failedCount, chunks.size());
+            return;
+        }
         updateDocStatus(docId, "INDEXED", null);
         log.info("向量化完成: docId={}, 分片数={}", docId, chunks.size());
     }
@@ -605,11 +627,10 @@ public class EtlPipeline {
      * 更新文档解析状态
      */
     private void updateDocStatus(Long docId, String status, String errorMessage) {
-        com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Document> wrapper =
-                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Document>()
-                        .eq(Document::getId, docId)
-                        .set(Document::getParseStatus, status)
-                        .set(Document::getUpdatedAt, LocalDateTime.now());
+        LambdaUpdateWrapper<Document> wrapper = Wrappers.<Document>lambdaUpdate()
+                .eq(Document::getId, docId)
+                .set(Document::getParseStatus, status)
+                .set(Document::getUpdatedAt, LocalDateTime.now());
         if (errorMessage != null) {
             wrapper.set(Document::getErrorMessage, errorMessage);
         }
@@ -620,34 +641,32 @@ public class EtlPipeline {
      * 更新文档分片数
      */
     private void updateDocChunkCount(Long docId, int count) {
-        com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Document> wrapper =
-                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Document>()
-                        .eq(Document::getId, docId)
-                        .set(Document::getChunkCount, count);
-        documentMapper.update(null, wrapper);
+        documentMapper.update(
+                null,
+                Wrappers.<Document>lambdaUpdate().eq(Document::getId, docId).set(Document::getChunkCount, count));
     }
 
     /**
      * 更新分片的 dense_vector 和 milvus_pk
      */
     private void updateChunkVector(Long chunkId, byte[] denseVector, String milvusPk) {
-        com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<DocumentChunk> wrapper =
-                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<DocumentChunk>()
+        chunkMapper.update(
+                null,
+                Wrappers.<DocumentChunk>lambdaUpdate()
                         .eq(DocumentChunk::getId, chunkId)
                         .set(DocumentChunk::getDenseVector, denseVector)
-                        .set(DocumentChunk::getMilvusPk, milvusPk);
-        chunkMapper.update(null, wrapper);
+                        .set(DocumentChunk::getMilvusPk, milvusPk));
     }
 
     /**
      * 更新分片的 next_chunk_id
      */
     private void updateChunkNextId(Long chunkId, Long nextChunkId) {
-        com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<DocumentChunk> wrapper =
-                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<DocumentChunk>()
+        chunkMapper.update(
+                null,
+                Wrappers.<DocumentChunk>lambdaUpdate()
                         .eq(DocumentChunk::getId, chunkId)
-                        .set(DocumentChunk::getNextChunkId, nextChunkId);
-        chunkMapper.update(null, wrapper);
+                        .set(DocumentChunk::getNextChunkId, nextChunkId));
     }
 
     // ========================================================================

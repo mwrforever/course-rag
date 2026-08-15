@@ -1,10 +1,14 @@
 package com.commerce.rag.etl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.mapper.DocumentChunkMapper;
@@ -14,6 +18,8 @@ import com.commerce.rag.test.MybatisPlusTestHelper;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.DeleteReq;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -157,5 +163,100 @@ class EtlPipelineTest {
 
         // 验证状态被设为 FAILED
         verify(documentMapper).update(any(), any());
+    }
+
+    // ========================================================================
+    // P2-1 修复波次新增：process 状态守卫 / 部分失败标 FAILED / 流关闭
+    // ========================================================================
+
+    @Test
+    @DisplayName("process 状态守卫 — 抢占失败（非 PENDING/FAILED）直接跳过，不执行解析")
+    void process_claimFailed_skipsExecution() {
+        // Given: document 存在，抢占 update 返回 0（状态为 INDEXED/执行中）
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setKbId(10L);
+        doc.setSourcePath("10/1.pdf");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(0);
+
+        etlPipeline.process(1L);
+
+        // Then: 不下载文件（解析未执行）
+        verify(minioStorageService, never()).downloadFile(anyString());
+    }
+
+    @Test
+    @DisplayName("process 状态守卫 — FAILED 状态可重试（抢占成功继续执行）")
+    void process_claimSuccessFromFailed_continues() throws Exception {
+        // Given: 抢占 update 返回 1（PENDING/FAILED → PARSING 成功）
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setKbId(10L);
+        doc.setSourcePath("10/1.pdf");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        // 以下 stub 用于管道后续阶段（parse/chunk/embed），用 lenient 避免不必要 stub 报错
+        lenient()
+                .when(minioStorageService.downloadFile("10/1.pdf"))
+                .thenReturn(new ByteArrayInputStream("测试内容。\n\n第二段。".getBytes()));
+        lenient().when(chunkMapper.insert(any(DocumentChunk.class))).thenReturn(1);
+        lenient().when(chunkMapper.selectList(any())).thenReturn(List.of());
+
+        etlPipeline.process(1L);
+
+        // Then: 管道继续执行（下载被调用）
+        verify(minioStorageService).downloadFile("10/1.pdf");
+    }
+
+    @Test
+    @DisplayName("embedAndIndex 部分失败 — 标 FAILED 而非 INDEXED")
+    void embedAndIndex_partialFailure_setsFailed() throws Exception {
+        // Given: 1 个 chunk，embedding 抛异常（部分失败）
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setKbId(10L);
+        doc.setSourcePath("10/1.pdf");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        chunk.setDocId(1L);
+        chunk.setKbId(10L);
+        chunk.setContent("内容");
+        when(chunkMapper.selectList(any())).thenReturn(List.of(chunk));
+        when(embeddingModel.embed(anyString())).thenThrow(new RuntimeException("embedding 服务不可用"));
+
+        etlPipeline.embedAndIndex(1L);
+
+        // Then: 状态 FAILED（非 INDEXED）——捕获 update 调用断言 set 值
+        // 注意：MP 3.5.12 的 wrapper.toString() 仅含 #{ew.MPGENVALn} 占位符，实际值存于
+        // paramNameValuePairs，故从值集合断言（而非 SQL 片段）
+        ArgumentCaptor<LambdaUpdateWrapper> wrapperCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(documentMapper, atLeastOnce()).update(any(), wrapperCaptor.capture());
+        String setValues = wrapperCaptor.getAllValues().stream()
+                .map(w -> String.valueOf(w.getParamNameValuePairs().values()))
+                .reduce("", (a, b) -> a + b);
+        assertTrue(setValues.contains("FAILED"), "部分失败应标 FAILED: " + setValues);
+        assertFalse(setValues.contains("INDEXED"), "部分失败不应标 INDEXED: " + setValues);
+    }
+
+    @Test
+    @DisplayName("parseDocument 解析异常 — 输入流仍被关闭（try-with-resources）")
+    void parseDocument_parseFailure_streamClosed() throws Exception {
+        // Given: 下载成功但 Tika 解析抛异常（损坏文件——底层 read 抛 IOException）
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setKbId(10L);
+        doc.setSourcePath("10/bad.pdf");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        InputStream mockStream = mock(InputStream.class);
+        // 损坏文件：读取魔数时抛 IOException（确定性失败，避免 mock 默认返回 0 导致的空读）
+        when(mockStream.read(any(byte[].class), anyInt(), anyInt())).thenThrow(new IOException("损坏文件"));
+        when(minioStorageService.downloadFile("10/bad.pdf")).thenReturn(mockStream);
+
+        // When: 解析抛异常（异常向上传播）
+        assertThrows(Exception.class, () -> etlPipeline.parseDocument(1L));
+        // Then: 流已关闭（try-with-resources 保证）
+        verify(mockStream).close();
     }
 }
