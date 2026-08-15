@@ -6,17 +6,15 @@ import com.commerce.rag.controller.dto.ApiResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * GlobalExceptionHandler 单元测试 —— 5 个异常处理器逐一验证返回的业务码与消息
+ * GlobalExceptionHandler 单元测试 —— 5 个异常处理器逐一验证返回的业务码、消息与真实 HTTP 状态
  *
- * <p>直接 new GlobalExceptionHandler() 调用各 handler 方法（纯逻辑测试，无需 Spring 上下文）。
- * 断言真实业务行为：body 业务码与 message 与各异常类型一一对应。
- * handleAccessDeniedException 额外锁定 @ResponseStatus 注解契约（HTTP 403），
- * 该 HTTP 状态行为由 AdminUserControllerSecurityTest 端到端覆盖。
+ * <p>P2-3 契约统一：所有 handler 的 HTTP 状态码与 body code 一致（原实现 HTTP 恒 200 的双轨问题）。
  *
  * @author commerce-rag
  */
@@ -26,54 +24,58 @@ class GlobalExceptionHandlerTest {
     /** 被测试的异常处理器（无状态，直接实例化） */
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
 
-    @Test
-    @DisplayName("handleResponseStatusException → 404 且 message 含异常原因")
-    void handleResponseStatusException_returns404WithReason() {
-        ApiResponse<Void> result =
-                handler.handleResponseStatusException(new ResponseStatusException(HttpStatus.NOT_FOUND, "不存在"));
-
-        assertEquals(HttpStatus.NOT_FOUND.value(), result.code(), "业务码应为 404");
-        assertTrue(result.message().contains("不存在"), "message 应包含异常原因");
+    /** 断言方法上的 @ResponseStatus 注解契约（HTTP 状态 = 指定值） */
+    private void assertResponseStatus(Class<?>[] paramTypes, HttpStatus expected) throws Exception {
+        var method = GlobalExceptionHandler.class.getMethod("handle" + paramTypes[0].getSimpleName(), paramTypes);
+        ResponseStatus responseStatus = method.getAnnotation(ResponseStatus.class);
+        assertNotNull(responseStatus, "handler 必须标注 @ResponseStatus");
+        assertEquals(expected, responseStatus.value(), "@ResponseStatus 应为 " + expected);
     }
 
     @Test
-    @DisplayName("handleIllegalArgumentException → 400 且 message 透传")
-    void handleIllegalArgumentException_returns400WithMessage() {
-        ApiResponse<Void> result = handler.handleIllegalArgumentException(new IllegalArgumentException("参数错误"));
+    @DisplayName("handleResponseStatusException → ResponseEntity 404 + body code 404")
+    void handleResponseStatusException_returns404WithReason() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleResponseStatusException(new ResponseStatusException(HttpStatus.NOT_FOUND, "不存在"));
 
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode(), "HTTP 状态应为 404");
+        assertNotNull(response.getBody());
+        assertEquals(HttpStatus.NOT_FOUND.value(), response.getBody().code(), "业务码应为 404");
+        assertTrue(response.getBody().message().contains("不存在"), "message 应包含异常原因");
+    }
+
+    @Test
+    @DisplayName("handleIllegalArgumentException → @ResponseStatus(400) + body code 400")
+    void handleIllegalArgumentException_returns400WithMessage() throws Exception {
+        assertResponseStatus(new Class<?>[] {IllegalArgumentException.class}, HttpStatus.BAD_REQUEST);
+        ApiResponse<Void> result = handler.handleIllegalArgumentException(new IllegalArgumentException("参数错误"));
         assertEquals(HttpStatus.BAD_REQUEST.value(), result.code(), "业务码应为 400");
         assertEquals("参数错误", result.message(), "message 应透传异常消息");
     }
 
     @Test
-    @DisplayName("handleSecurityException → 403 且 message=无权操作")
-    void handleSecurityException_returns403() {
+    @DisplayName("handleSecurityException → @ResponseStatus(403) + body code 403")
+    void handleSecurityException_returns403() throws Exception {
+        assertResponseStatus(new Class<?>[] {SecurityException.class}, HttpStatus.FORBIDDEN);
         ApiResponse<Void> result = handler.handleSecurityException(new SecurityException("越权访问"));
-
         assertEquals(HttpStatus.FORBIDDEN.value(), result.code(), "业务码应为 403");
         assertEquals("无权操作", result.message());
     }
 
     @Test
-    @DisplayName("handleAccessDeniedException → 403 且 message=无权操作")
+    @DisplayName("handleAccessDeniedException → @ResponseStatus(403) + body code 403")
     void handleAccessDeniedException_returns403() throws Exception {
+        assertResponseStatus(new Class<?>[] {AccessDeniedException.class}, HttpStatus.FORBIDDEN);
         ApiResponse<Void> result = handler.handleAccessDeniedException(new AccessDeniedException("Access Denied"));
-
         assertEquals(HttpStatus.FORBIDDEN.value(), result.code(), "业务码应为 403");
         assertEquals("无权操作", result.message());
-
-        // 锁定 @ResponseStatus(FORBIDDEN) 注解契约：HTTP 状态必须为 403（本任务对 brief 的必要补充）
-        var method = GlobalExceptionHandler.class.getMethod("handleAccessDeniedException", AccessDeniedException.class);
-        ResponseStatus responseStatus = method.getAnnotation(ResponseStatus.class);
-        assertNotNull(responseStatus, "handleAccessDeniedException 必须标注 @ResponseStatus");
-        assertEquals(HttpStatus.FORBIDDEN, responseStatus.value(), "@ResponseStatus 应为 403");
     }
 
     @Test
-    @DisplayName("handleException → 500 且 message=服务器内部错误")
-    void handleException_returns500() {
+    @DisplayName("handleException → @ResponseStatus(500) + body code 500")
+    void handleException_returns500() throws Exception {
+        assertResponseStatus(new Class<?>[] {Exception.class}, HttpStatus.INTERNAL_SERVER_ERROR);
         ApiResponse<Void> result = handler.handleException(new RuntimeException("boom"));
-
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR.value(), result.code(), "业务码应为 500");
         assertEquals("服务器内部错误", result.message());
     }
