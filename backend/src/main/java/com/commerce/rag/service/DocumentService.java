@@ -14,6 +14,7 @@ import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.storage.MinioStorageService;
+import com.github.benmanes.caffeine.cache.Cache;
 import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -56,6 +57,10 @@ public class DocumentService {
 
     /** 文档转换器 —— Entity 出 service 边界前转 VO（sourcePath 不泄露） */
     private final DocumentConverter documentConverter;
+
+    /** Dashboard 统计缓存（TTL 60 秒；文档增删改/重解析后失效，先写 DB 后失效——一致性铁律） */
+    @Qualifier("dashboardStatsCache")
+    private final Cache<String, Object> dashboardStatsCache;
 
     /**
      * 上传文档
@@ -117,6 +122,9 @@ public class DocumentService {
             minioStorageService.deleteFile(objectKey);
             throw e;
         }
+
+        // 统计失效：文档数已变更（先写 DB 后失效，一致性铁律；ETL 终态由 EtlPipeline 失效）
+        dashboardStatsCache.invalidateAll();
 
         log.info("文档已上传: docId={}, kbId={}, title={}, fileType={}", doc.getId(), kbId, title, fileType);
 
@@ -216,6 +224,8 @@ public class DocumentService {
                 .set(Document::getTitle, title)
                 .set(Document::getUpdatedAt, LocalDateTime.now());
         documentMapper.update(null, wrapper);
+        // 统计失效：文档已变更（先写 DB 后失效，一致性铁律）
+        dashboardStatsCache.invalidateAll();
         log.info("更新文档: docId={}, title={}", id, title);
     }
 
@@ -260,6 +270,9 @@ public class DocumentService {
                 .set(Document::getDeleted, System.currentTimeMillis());
         documentMapper.update(null, docWrapper);
 
+        // 统计失效：文档/分片数已变更（先写 DB 后失效，一致性铁律）
+        dashboardStatsCache.invalidateAll();
+
         log.info("删除文档（级联）: docId={}, operatorId={}", id, operatorId);
     }
 
@@ -298,6 +311,9 @@ public class DocumentService {
 
         // 重新触发 ETL
         etlPool.execute(() -> etlPipeline.process(id));
+
+        // 统计失效：文档状态已重置为 PENDING（先写 DB 后失效，一致性铁律；ETL 终态由 EtlPipeline 失效）
+        dashboardStatsCache.invalidateAll();
 
         log.info("重新解析文档: docId={}, operatorId={}", id, operatorId);
     }

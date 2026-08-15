@@ -15,6 +15,8 @@ import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.DeleteReq;
 import java.io.ByteArrayInputStream;
@@ -59,6 +61,10 @@ class EtlPipelineTest {
     @Mock
     private MilvusClientV2 milvusClientV2;
 
+    /** Dashboard 统计缓存（真实 Caffeine 实例，状态写入失效钩子验证用） */
+    private final Cache<String, Object> dashboardStatsCache =
+            Caffeine.newBuilder().build();
+
     private EtlPipeline etlPipeline;
 
     @BeforeEach
@@ -66,7 +72,13 @@ class EtlPipelineTest {
         EtlProperties props =
                 new EtlProperties(100, new EtlProperties.Executor(2, 4, 20, "etl-"), new EtlProperties.Chunk(768, 128));
         etlPipeline = new EtlPipeline(
-                documentMapper, chunkMapper, minioStorageService, embeddingModel, milvusClientV2, props);
+                documentMapper,
+                chunkMapper,
+                minioStorageService,
+                embeddingModel,
+                milvusClientV2,
+                props,
+                dashboardStatsCache);
     }
 
     @Test
@@ -77,12 +89,11 @@ class EtlPipelineTest {
     }
 
     @Test
-    @DisplayName("deleteFromMilvusByChunkId — Milvus 异常不传播")
-    void deleteFromMilvusByChunkId_exceptionSilent() {
+    @DisplayName("deleteFromMilvusByChunkId — Milvus 删除失败上抛（P0-8：不再吞异常，阻断调用方软删可重试）")
+    void deleteFromMilvusByChunkId_failure_throws() {
         doThrow(new RuntimeException("connection refused")).when(milvusClientV2).delete(any(DeleteReq.class));
 
-        // 不应抛出异常
-        etlPipeline.deleteFromMilvusByChunkId("123");
+        assertThrows(RuntimeException.class, () -> etlPipeline.deleteFromMilvusByChunkId("123"));
     }
 
     @Test
@@ -309,5 +320,23 @@ class EtlPipelineTest {
         assertThrows(Exception.class, () -> etlPipeline.parseDocument(1L));
         // Then: 流已关闭（try-with-resources 保证）
         verify(mockStream).close();
+    }
+
+    @Test
+    @DisplayName("deleteFromMilvusByChunkIds — chunk_id IN 一次删除（P0-1 课程删除按 PG 关联清理）")
+    void deleteFromMilvusByChunkIds_deletesByInFilter() {
+        etlPipeline.deleteFromMilvusByChunkIds(List.of("1", "2", "3"));
+
+        ArgumentCaptor<DeleteReq> captor = ArgumentCaptor.forClass(DeleteReq.class);
+        verify(milvusClientV2).delete(captor.capture());
+        assertEquals("chunk_id in [\"1\", \"2\", \"3\"]", captor.getValue().getFilter());
+    }
+
+    @Test
+    @DisplayName("deleteFromMilvusByChunkIds — 空列表直接返回，不调用 Milvus")
+    void deleteFromMilvusByChunkIds_empty_noop() {
+        etlPipeline.deleteFromMilvusByChunkIds(List.of());
+
+        verify(milvusClientV2, never()).delete(any());
     }
 }

@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.controller.vo.UserFeedbackVO;
 import com.commerce.rag.entity.UserFeedback;
 import com.commerce.rag.mapper.UserFeedbackMapper;
+import com.github.benmanes.caffeine.cache.Cache;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -38,6 +40,10 @@ public class UserFeedbackService {
 
     /** 用户反馈转换器 —— Entity 出 service 边界前转 VO */
     private final UserFeedbackConverter feedbackConverter;
+
+    /** Dashboard 统计缓存（TTL 60 秒；反馈增删改后失效，先写 DB 后失效——一致性铁律） */
+    @Qualifier("dashboardStatsCache")
+    private final Cache<String, Object> dashboardStatsCache;
 
     /**
      * 创建反馈（或更新已有反馈）
@@ -68,6 +74,8 @@ public class UserFeedbackService {
             feedbackMapper.update(null, updateWrapper);
             existing.setIsLiked(isLiked);
             existing.setIntentType(intentType);
+            // 统计失效：点赞状态已变更（先写 DB 后失效，一致性铁律）
+            dashboardStatsCache.invalidateAll();
             log.info("更新反馈: feedbackId={}, isLiked={}", existing.getId(), isLiked);
             return existing;
         }
@@ -80,6 +88,8 @@ public class UserFeedbackService {
         feedback.setIsLiked(isLiked);
         feedback.setIntentType(intentType);
         feedbackMapper.insert(feedback);
+        // 统计失效：反馈数已变更（先写 DB 后失效，一致性铁律）
+        dashboardStatsCache.invalidateAll();
         log.info(
                 "创建反馈: feedbackId={}, userId={}, messageId={}, isLiked={}",
                 feedback.getId(),
@@ -153,6 +163,8 @@ public class UserFeedbackService {
                 .eq(UserFeedback::getId, id)
                 .set(UserFeedback::getDeleted, System.currentTimeMillis());
         feedbackMapper.update(null, wrapper);
+        // 统计失效：反馈已删除（先写 DB 后失效，一致性铁律）
+        dashboardStatsCache.invalidateAll();
         log.info("删除反馈: feedbackId={}, operatorId={}", id, operatorId);
     }
 }

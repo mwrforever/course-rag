@@ -15,6 +15,8 @@ import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import java.io.ByteArrayInputStream;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.junit.jupiter.api.BeforeAll;
@@ -55,6 +57,10 @@ class DocumentServiceTest {
     @Mock
     private ThreadPoolExecutor etlPool;
 
+    /** Dashboard 统计缓存（真实 Caffeine 实例，失效钩子验证用） */
+    private final Cache<String, Object> dashboardStatsCache =
+            Caffeine.newBuilder().build();
+
     private DocumentService documentService;
 
     @BeforeAll
@@ -73,7 +79,8 @@ class DocumentServiceTest {
                 minioStorageService,
                 etlPipeline,
                 etlPool,
-                new DocumentConverterImpl());
+                new DocumentConverterImpl(),
+                dashboardStatsCache);
     }
 
     private Document mockDoc(Long id, Long createdBy) {

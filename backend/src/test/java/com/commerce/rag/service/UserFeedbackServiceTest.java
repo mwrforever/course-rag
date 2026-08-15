@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.commerce.rag.entity.UserFeedback;
 import com.commerce.rag.mapper.UserFeedbackMapper;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.github.benmanes.caffeine.cache.Cache;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeAll;
@@ -39,6 +40,10 @@ class UserFeedbackServiceTest {
     /** 转换器用真实实现（MapStruct 生成类），转换行为由 UserFeedbackConverterTest 单独覆盖 */
     @Spy
     private UserFeedbackConverter feedbackConverter = new UserFeedbackConverterImpl();
+
+    /** Dashboard 统计缓存（mock 即可，create/delete 的 invalidateAll 失效钩子验证用） */
+    @Mock
+    private Cache<String, Object> dashboardStatsCache;
 
     @InjectMocks
     private UserFeedbackService feedbackService;

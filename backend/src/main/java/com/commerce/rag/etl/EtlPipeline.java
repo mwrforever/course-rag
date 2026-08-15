@@ -8,6 +8,7 @@ import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.storage.MinioStorageService;
+import com.github.benmanes.caffeine.cache.Cache;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.milvus.v2.client.MilvusClientV2;
@@ -28,6 +29,7 @@ import org.apache.tika.sax.BodyContentHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 /**
@@ -45,9 +47,9 @@ import org.springframework.stereotype.Component;
  * <p>Milvus upsert 策略：delete-then-insert。
  * PG 冗余 dense_vector（BYTEA）避免回查 Milvus。
  *
- * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（6 个 private final 依赖：
+ * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（7 个 private final 依赖：
  * DocumentMapper / DocumentChunkMapper / MinioStorageService / EmbeddingModel /
- * MilvusClientV2 / EtlProperties）。
+ * MilvusClientV2 / EtlProperties / dashboardStatsCache）。
  *
  * @author commerce-rag
  */
@@ -75,6 +77,10 @@ public class EtlPipeline {
     private final EmbeddingModel embeddingModel;
     private final MilvusClientV2 milvusClientV2;
     private final EtlProperties etlProperties;
+
+    /** Dashboard 统计缓存（TTL 60 秒；ETL 状态写入后失效，覆盖分片数/终态变更，先写 DB 后失效——一致性铁律） */
+    @Qualifier("dashboardStatsCache")
+    private final Cache<String, Object> dashboardStatsCache;
 
     /** 解析文本内存缓存（docId → text），仅在同一线程内有效 */
     private final ConcurrentHashMap<Long, String> parsedTextCache = new ConcurrentHashMap<>();
@@ -750,7 +756,11 @@ public class EtlPipeline {
     }
 
     /**
-     * 更新文档解析状态
+     * 更新文档解析状态（所有状态写入的统一入口：PARSING/PARSED/CHUNKING/CHUNKED/EMBEDDING/INDEXED/FAILED）
+     *
+     * <p>末尾失效 Dashboard 统计缓存：分片落库（CHUNKED，pendingChunkCount 变更）与
+     * INDEXED/FAILED 终态均经此写入；调用频率为每文档每阶段一次（非逐分片），
+     * invalidateAll 成本可忽略（缓存容量 32）。
      */
     private void updateDocStatus(Long docId, String status, String errorMessage) {
         LambdaUpdateWrapper<Document> wrapper = Wrappers.<Document>lambdaUpdate()
@@ -761,6 +771,8 @@ public class EtlPipeline {
             wrapper.set(Document::getErrorMessage, errorMessage);
         }
         documentMapper.update(null, wrapper);
+        // 统计失效：分片数/终态已变更（先写 DB 后失效，一致性铁律）
+        dashboardStatsCache.invalidateAll();
     }
 
     /**

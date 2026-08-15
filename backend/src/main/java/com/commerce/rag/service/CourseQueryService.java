@@ -12,6 +12,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -39,6 +40,7 @@ public class CourseQueryService {
     private static final int PAGE_SIZE = 10;
 
     /** 课程查询缓存（TTL 5 分钟，见 CacheConfig.courseQueryCache bean） */
+    @Qualifier("courseQueryCache")
     private final Cache<String, Object> courseQueryCache;
 
     /**
