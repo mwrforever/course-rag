@@ -289,7 +289,7 @@ class ChatRequestWorkerTest {
     // ==================== processRequest finally 清理 ====================
 
     @Test
-    @DisplayName("finally 清理 — 正常完成后 removeRing + ACK 被调用")
+    @DisplayName("finally 清理 — 正常完成后 removeRing 被调用，ACK 不在 processRequest（P3-2 读即 ACK 在 consumeLoop）")
     void processRequest_finallyCleanup() throws Exception {
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -301,8 +301,8 @@ class ChatRequestWorkerTest {
 
         // finally 块：removeRing 被调用
         verify(bridge).removeRing("100");
-        // ACK 被调用
-        verify(redisTemplate.opsForStream()).acknowledge(eq("chat:request"), eq("chat-workers"), eq("123-0"));
+        // P3-2（用户 2026-08-15 裁决）：ACK 已移至 consumeLoop 读即 ACK，processRequest 不再触发 ACK
+        verify(redisTemplate.opsForStream(), never()).acknowledge(anyString(), anyString(), anyString());
     }
 
     // ==================== persistMessages 游标去重（P0-4a） ====================
