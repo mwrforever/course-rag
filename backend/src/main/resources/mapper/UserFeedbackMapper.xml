@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.commerce.rag.mapper.UserFeedbackMapper">
+
+    <!-- 按天分组统计反馈数（Dashboard 趋势图，P2-2）：deleted=0 过滤软删，日期升序 -->
+    <select id="selectDailyFeedbackCount" resultType="map">
+        SELECT to_char(created_at, 'YYYY-MM-DD') AS d, COUNT(*) AS c
+        FROM user_feedback
+        WHERE deleted = 0 AND created_at &gt;= #{start}
+        GROUP BY to_char(created_at, 'YYYY-MM-DD')
+        ORDER BY d
+    </select>
+
+</mapper>
