@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.KnowledgeBase;
@@ -240,8 +241,19 @@ class DocumentServiceTest {
 
         documentService.findPage(10L, "PENDING", "标题", "updated", 1, 20, 100L, "TEACHER");
 
-        // Then: selectPage 被调用（筛选逻辑经 wrapper 生效）
-        verify(documentMapper).selectPage(any(), any());
+        // Then: 筛选条件真实进入 wrapper（列名 + 参数值双断言，防"条件写了但没生效"回归）
+        ArgumentCaptor<LambdaQueryWrapper<Document>> wrapperCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(documentMapper).selectPage(any(Page.class), wrapperCaptor.capture());
+        LambdaQueryWrapper<Document> wrapper = wrapperCaptor.getValue();
+        String sqlSegment = wrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("parse_status"), "status 筛选应进入 parse_status 条件: " + sqlSegment);
+        assertTrue(sqlSegment.contains("title"), "q 关键词应进入 title LIKE 条件: " + sqlSegment);
+        assertTrue(sqlSegment.contains("created_by"), "TEACHER 过滤应进入 created_by 条件: " + sqlSegment);
+        assertTrue(sqlSegment.contains("updated_at"), "sort=updated 应按 updated_at 排序: " + sqlSegment);
+        String paramValues = String.valueOf(wrapper.getParamNameValuePairs().values());
+        assertTrue(paramValues.contains("PENDING"), "status 参数值应传入: " + paramValues);
+        assertTrue(paramValues.contains("标题"), "q 参数值应传入: " + paramValues);
+        assertTrue(paramValues.contains("100"), "TEACHER 用户 ID 应传入: " + paramValues);
     }
 
     @Test

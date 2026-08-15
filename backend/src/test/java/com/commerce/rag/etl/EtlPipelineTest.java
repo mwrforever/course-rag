@@ -184,6 +184,17 @@ class EtlPipelineTest {
 
         // Then: 不下载文件（解析未执行）
         verify(minioStorageService, never()).downloadFile(anyString());
+        // 守卫语义：抢占 update 的条件必须限定 parse_status IN (PENDING, FAILED)
+        ArgumentCaptor<LambdaUpdateWrapper> claimCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(documentMapper).update(any(), claimCaptor.capture());
+        LambdaUpdateWrapper claimWrapper = claimCaptor.getValue();
+        // 先渲染（getSqlSegment）——IN 占位符参数在渲染时才写入 paramNameValuePairs（MP 3.5.12 惰性）
+        String sqlSegment = claimWrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("parse_status IN"), "抢占条件应限定 parse_status IN (...): " + sqlSegment);
+        String condValues = String.valueOf(claimWrapper.getParamNameValuePairs().values());
+        assertTrue(
+                condValues.contains("PENDING") && condValues.contains("FAILED"),
+                "抢占条件应含 parse_status IN (PENDING, FAILED): " + condValues);
     }
 
     @Test
@@ -207,6 +218,17 @@ class EtlPipelineTest {
 
         // Then: 管道继续执行（下载被调用）
         verify(minioStorageService).downloadFile("10/1.pdf");
+        // 守卫语义：第一次 update 即抢占，条件必须限定 parse_status IN (PENDING, FAILED)
+        ArgumentCaptor<LambdaUpdateWrapper> claimCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(documentMapper, atLeastOnce()).update(any(), claimCaptor.capture());
+        LambdaUpdateWrapper claimWrapper = claimCaptor.getAllValues().get(0);
+        // 先渲染（getSqlSegment）——IN 占位符参数在渲染时才写入 paramNameValuePairs（MP 3.5.12 惰性）
+        String sqlSegment = claimWrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("parse_status IN"), "抢占条件应限定 parse_status IN (...): " + sqlSegment);
+        String condValues = String.valueOf(claimWrapper.getParamNameValuePairs().values());
+        assertTrue(
+                condValues.contains("PENDING") && condValues.contains("FAILED"),
+                "抢占条件应含 parse_status IN (PENDING, FAILED): " + condValues);
     }
 
     @Test
@@ -238,6 +260,35 @@ class EtlPipelineTest {
                 .reduce("", (a, b) -> a + b);
         assertTrue(setValues.contains("FAILED"), "部分失败应标 FAILED: " + setValues);
         assertFalse(setValues.contains("INDEXED"), "部分失败不应标 INDEXED: " + setValues);
+    }
+
+    @Test
+    @DisplayName("embedAndIndex 空向量 — 计入失败标 FAILED（不静默跳过误标 INDEXED）")
+    void embedAndIndex_emptyVector_setsFailed() {
+        // Given: 1 个 chunk，embedding 返回空数组（模型未抛异常但输出为空）
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setKbId(10L);
+        doc.setSourcePath("10/1.pdf");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        chunk.setDocId(1L);
+        chunk.setKbId(10L);
+        chunk.setContent("内容");
+        when(chunkMapper.selectList(any())).thenReturn(List.of(chunk));
+        when(embeddingModel.embed(anyString())).thenReturn(new float[0]);
+
+        etlPipeline.embedAndIndex(1L);
+
+        // Then: 空向量计入失败 → 状态 FAILED（非 INDEXED），断言方式同 partialFailure 测试
+        ArgumentCaptor<LambdaUpdateWrapper> wrapperCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(documentMapper, atLeastOnce()).update(any(), wrapperCaptor.capture());
+        String setValues = wrapperCaptor.getAllValues().stream()
+                .map(w -> String.valueOf(w.getParamNameValuePairs().values()))
+                .reduce("", (a, b) -> a + b);
+        assertTrue(setValues.contains("FAILED"), "空向量应标 FAILED: " + setValues);
+        assertFalse(setValues.contains("INDEXED"), "空向量不应标 INDEXED: " + setValues);
     }
 
     @Test

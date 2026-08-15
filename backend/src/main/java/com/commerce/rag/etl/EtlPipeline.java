@@ -275,6 +275,8 @@ public class EtlPipeline {
                 float[] vector = embeddingModel.embed(chunk.getContent());
                 if (vector == null || vector.length == 0) {
                     log.warn("Embedding 返回空向量: chunkId={}", chunk.getId());
+                    // 空向量计入失败（与 P2-1「部分失败标 FAILED」语义一致，避免静默跳过误标 INDEXED 导致检索漏召回）
+                    failedCount++;
                     continue;
                 }
 
