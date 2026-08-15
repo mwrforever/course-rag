@@ -5,12 +5,16 @@ import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.DocumentUpdateRequest;
 import com.commerce.rag.controller.dto.PageResponse;
 import com.commerce.rag.entity.Document;
+import com.commerce.rag.etl.EtlProperties;
 import com.commerce.rag.service.DocumentService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Set;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -23,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 文档管理 Controller（C1-C7）
@@ -35,15 +40,20 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/v1/admin/documents")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TEACHER')")
+@RequiredArgsConstructor
 public class AdminDocumentController {
 
     private static final Logger log = LoggerFactory.getLogger(AdminDocumentController.class);
 
+    /**
+     * 文件类型白名单（前端设计文档 2.6.2 限定：PDF/PPTX/DOCX/MD/TXT），
+     * 防止 .exe/.zip 等任意类型文件堆积 FAILED 文档
+     */
+    private static final Set<String> ALLOWED_FILE_TYPES = Set.of("pdf", "docx", "pptx", "md", "txt");
+
     private final DocumentService documentService;
 
-    public AdminDocumentController(DocumentService documentService) {
-        this.documentService = documentService;
-    }
+    private final EtlProperties etlProperties;
 
     /** C1: 上传文档 */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -59,6 +69,16 @@ public class AdminDocumentController {
         String originalFilename = file.getOriginalFilename();
         String fileType = extractFileExtension(originalFilename);
         Long fileSize = file.getSize();
+
+        // P2-1: 文件类型白名单（前端文档限定 PDF/PPTX/DOCX/MD/TXT，防 .exe/.zip 等任意类型堆积 FAILED）
+        if (!ALLOWED_FILE_TYPES.contains(fileType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不支持的文件类型: " + fileType);
+        }
+        // P2-1: 大小校验（引用 etl.max-file-size-mb 配置，修复死配置）
+        if (fileSize > etlProperties.maxFileSizeMb() * 1024 * 1024L) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "文件大小超过限制: " + etlProperties.maxFileSizeMb() + "MB");
+        }
 
         try (InputStream inputStream = file.getInputStream()) {
             Document doc = documentService.upload(
