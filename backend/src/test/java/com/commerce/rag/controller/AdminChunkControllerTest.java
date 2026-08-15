@@ -60,8 +60,28 @@ class AdminChunkControllerTest {
 
     private DocumentChunkVO chunkVO(Long id) {
         return new DocumentChunkVO(
-                id, 1L, 1L, 1, "内容", "第一章", "小节", 1, 2, 10, "TECHNICAL_QA", "DEFAULT",
-                null, "milvus-pk", null, null, null, null, null, "NONE", LocalDateTime.now(), null);
+                id,
+                1L,
+                1L,
+                1,
+                "内容",
+                "第一章",
+                "小节",
+                1,
+                2,
+                10,
+                "TECHNICAL_QA",
+                "DEFAULT",
+                null,
+                "milvus-pk",
+                null,
+                null,
+                null,
+                null,
+                null,
+                "NONE",
+                LocalDateTime.now(),
+                null);
     }
 
     // ==================== 契约断言 ====================
@@ -198,7 +218,8 @@ class AdminChunkControllerTest {
         Page<DocumentChunkVO> paged = new Page<>(1, 20);
         when(chunkService.findPending(1L, 2L, 1, 20, 7L, "TEACHER")).thenReturn(paged);
 
-        ApiResponse<PageResponse<DocumentChunkVO>> result = controller.findPending(request("TEACHER", 7L), 1L, 2L, 1, 20);
+        ApiResponse<PageResponse<DocumentChunkVO>> result =
+                controller.findPending(request("TEACHER", 7L), 1L, 2L, 1, 20);
 
         assertNotNull(result.data());
         verify(chunkService).findPending(1L, 2L, 1, 20, 7L, "TEACHER");

@@ -505,10 +505,12 @@ class SseEventTransformerTest {
     @DisplayName("AGENT_TOOL_FINISHED + searchKnowledge 带 chunks → TOOL_RESULT + SOURCES 事件")
     void transform_toolFinishedWithChunks_emitsSourcesEvent() {
         ToolResponseMessage msg = ToolResponseMessage.builder()
-                .responses(List.of(new ToolResponseMessage.ToolResponse(
-                        "call-1",
-                        "searchKnowledge",
-                        "{\"chunks\":[{\"chunkId\":\"c1\",\"source\":\"doc.md\",\"headingPath\":\"第一章\",\"score\":0.85}]}")))
+                .responses(
+                        List.of(
+                                new ToolResponseMessage.ToolResponse(
+                                        "call-1",
+                                        "searchKnowledge",
+                                        "{\"chunks\":[{\"chunkId\":\"c1\",\"source\":\"doc.md\",\"headingPath\":\"第一章\",\"score\":0.85}]}")))
                 .build();
         StreamingOutput<?> mockOutput = mock(StreamingOutput.class);
         when(mockOutput.getOutputType()).thenReturn(OutputType.AGENT_TOOL_FINISHED);
@@ -530,8 +532,8 @@ class SseEventTransformerTest {
     @DisplayName("AGENT_TOOL_FINISHED + searchKnowledge 空 chunks → 仅 TOOL_RESULT")
     void transform_toolFinishedEmptyChunks_noSourcesEvent() {
         ToolResponseMessage msg = ToolResponseMessage.builder()
-                .responses(List.of(new ToolResponseMessage.ToolResponse(
-                        "call-1", "searchKnowledge", "{\"chunks\":[]}")))
+                .responses(
+                        List.of(new ToolResponseMessage.ToolResponse("call-1", "searchKnowledge", "{\"chunks\":[]}")))
                 .build();
         StreamingOutput<?> mockOutput = mock(StreamingOutput.class);
         when(mockOutput.getOutputType()).thenReturn(OutputType.AGENT_TOOL_FINISHED);

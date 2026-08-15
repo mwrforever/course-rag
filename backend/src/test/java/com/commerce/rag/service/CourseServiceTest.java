@@ -166,8 +166,7 @@ class CourseServiceTest {
     @DisplayName("createCourse → 组装默认字段并插入，失效搜索缓存")
     void createCourse_buildsAndInserts() {
         CreateCourseRequest request = new CreateCourseRequest(
-                "Java 入门", "描述", "cover.png", "编程", "张老师",
-                new BigDecimal("99"), "10h", List.of("Java", "入门"), "link");
+                "Java 入门", "描述", "cover.png", "编程", "张老师", new BigDecimal("99"), "10h", List.of("Java", "入门"), "link");
 
         CourseInfo result = courseService.createCourse(request, 7L);
 
@@ -182,8 +181,7 @@ class CourseServiceTest {
     @Test
     @DisplayName("createCourse → tags 为空时序列化为 []")
     void createCourse_emptyTags_serializesEmptyArray() {
-        CreateCourseRequest request = new CreateCourseRequest(
-                "Java", null, null, null, null, null, null, null, null);
+        CreateCourseRequest request = new CreateCourseRequest("Java", null, null, null, null, null, null, null, null);
 
         CourseInfo result = courseService.createCourse(request, 7L);
 
@@ -222,8 +220,8 @@ class CourseServiceTest {
     @DisplayName("updateCourse → 非空字段更新")
     void updateCourse_partialFields() {
         when(courseInfoMapper.selectById(1L)).thenReturn(course(1L, 7L));
-        UpdateCourseRequest request = new UpdateCourseRequest(
-                "新标题", null, null, null, null, null, "20h", null, null, "ACTIVE");
+        UpdateCourseRequest request =
+                new UpdateCourseRequest("新标题", null, null, null, null, null, "20h", null, null, "ACTIVE");
 
         courseService.updateCourse(1L, request, 7L, false);
 

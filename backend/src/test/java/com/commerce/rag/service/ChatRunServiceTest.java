@@ -52,10 +52,11 @@ class ChatRunServiceTest {
     @Test
     @DisplayName("createRun → 同会话并发冲突时抛 ConcurrentRunException")
     void createRun_conflict_throwsConcurrentRunException() {
-        doThrow(new DataIntegrityViolationException("duplicate key")).when(runMapper).insert(any(ChatRun.class));
+        doThrow(new DataIntegrityViolationException("duplicate key"))
+                .when(runMapper)
+                .insert(any(ChatRun.class));
 
-        ConcurrentRunException ex =
-                assertThrows(ConcurrentRunException.class, () -> runService.createRun(1L, 5L));
+        ConcurrentRunException ex = assertThrows(ConcurrentRunException.class, () -> runService.createRun(1L, 5L));
 
         assertTrue(ex.getMessage().contains("已有活跃的 Run"));
     }

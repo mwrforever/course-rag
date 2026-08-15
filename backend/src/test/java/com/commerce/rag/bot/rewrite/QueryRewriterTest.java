@@ -13,9 +13,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 
@@ -33,6 +33,7 @@ class QueryRewriterTest {
 
     @Mock
     private ChatModel chatModel;
+
     @Mock
     private PromptLoader promptLoader;
 
@@ -44,8 +45,7 @@ class QueryRewriterTest {
     }
 
     private void stubTemplate() {
-        when(promptLoader.load("query-rewrite.yml"))
-                .thenReturn("system: 你是一个查询优化专家\ninstruction: 输出覆盖性查询");
+        when(promptLoader.load("query-rewrite.yml")).thenReturn("system: 你是一个查询优化专家\ninstruction: 输出覆盖性查询");
     }
 
     @Test

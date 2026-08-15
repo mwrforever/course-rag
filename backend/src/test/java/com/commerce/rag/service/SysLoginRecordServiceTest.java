@@ -40,8 +40,10 @@ class SysLoginRecordServiceTest {
 
     @Mock
     private SysLoginRecordMapper loginRecordMapper;
+
     @Mock
     private SysTokenBlacklistMapper tokenBlacklistMapper;
+
     @Mock
     private DeviceKickService deviceKickService;
 

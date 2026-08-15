@@ -155,8 +155,8 @@ class CourseScheduleServiceTest {
     void update_notFound_throws404() {
         when(scheduleMapper.selectById(99L)).thenReturn(null);
 
-        UpdateScheduleRequest request = new UpdateScheduleRequest(
-                LocalDate.of(2026, 9, 1), null, null, null, null, null, null, null);
+        UpdateScheduleRequest request =
+                new UpdateScheduleRequest(LocalDate.of(2026, 9, 1), null, null, null, null, null, null, null);
 
         ResponseStatusException ex =
                 assertThrows(ResponseStatusException.class, () -> scheduleService.update(99L, request, 100L, false));
@@ -172,8 +172,7 @@ class CourseScheduleServiceTest {
         schedule.setCourseId(55L);
         when(scheduleMapper.selectById(1L)).thenReturn(schedule);
         // 仅更新 location 与 status，其余字段保持原值
-        UpdateScheduleRequest request = new UpdateScheduleRequest(
-                null, null, null, "新地点", null, null, null, "ACTIVE");
+        UpdateScheduleRequest request = new UpdateScheduleRequest(null, null, null, "新地点", null, null, null, "ACTIVE");
 
         scheduleService.update(1L, request, 100L, false);
 

@@ -91,8 +91,7 @@ class AdminDocumentControllerTest {
     @Test
     @DisplayName("upload 无扩展名文件 → 按 bin 拒绝（400）")
     void upload_noExtension_throws400() throws Exception {
-        MockMultipartFile file =
-                new MockMultipartFile("file", "noext", "application/octet-stream", new byte[10]);
+        MockMultipartFile file = new MockMultipartFile("file", "noext", "application/octet-stream", new byte[10]);
 
         ResponseStatusException ex = assertThrows(
                 ResponseStatusException.class, () -> controller.upload(adminRequest(), 1L, "doc", null, file));
@@ -103,8 +102,7 @@ class AdminDocumentControllerTest {
     @Test
     @DisplayName("C2 findById → 存在时返回文档 VO")
     void findById_returnsVO() {
-        DocumentVO doc = new DocumentVO(
-                1L, 1L, "文档一", "pdf", 100L, "PARSED", 5, null, null, "DEFAULT", 1L, null, null);
+        DocumentVO doc = new DocumentVO(1L, 1L, "文档一", "pdf", 100L, "PARSED", 5, null, null, "DEFAULT", 1L, null, null);
         when(documentService.findById(1L, 1L, "SUPER_ADMIN")).thenReturn(doc);
 
         ApiResponse<DocumentVO> result = controller.findById(adminRequest(), 1L);
@@ -117,8 +115,8 @@ class AdminDocumentControllerTest {
     void findById_notFound_throws404() {
         when(documentService.findById(99L, 1L, "SUPER_ADMIN")).thenReturn(null);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class, () -> controller.findById(adminRequest(), 99L));
+        ResponseStatusException ex =
+                assertThrows(ResponseStatusException.class, () -> controller.findById(adminRequest(), 99L));
 
         assertEquals(404, ex.getStatusCode().value());
         assertEquals("文档不存在", ex.getReason());
@@ -131,7 +129,8 @@ class AdminDocumentControllerTest {
         when(documentService.findPage(1L, "PARSED", "关键词", "created_desc", 1, 20, 1L, "SUPER_ADMIN"))
                 .thenReturn(paged);
 
-        ApiResponse<PageResponse<DocumentVO>> result = controller.findPage(adminRequest(), 1L, "PARSED", "关键词", "created_desc", 1, 20);
+        ApiResponse<PageResponse<DocumentVO>> result =
+                controller.findPage(adminRequest(), 1L, "PARSED", "关键词", "created_desc", 1, 20);
 
         assertNotNull(result.data());
     }

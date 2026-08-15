@@ -33,20 +33,28 @@ class LeadAgentGraphTest {
 
     @Mock
     private ChatModel chatModel;
+
     @Mock
     private PromptLoader promptLoader;
+
     @Mock
     private QueryRewriter queryRewriter;
+
     @Mock
     private SearchKnowledgeTool searchKnowledgeTool;
+
     @Mock
     private CourseApiTool courseApiTool;
+
     @Mock
     private CustomSummarizationHook customSummarizationHook;
+
     @Mock
     private CoalescingInterceptor coalescingInterceptor;
+
     @Mock
     private ReminderHook reminderHook;
+
     @Mock
     private WarningHook warningHook;
 

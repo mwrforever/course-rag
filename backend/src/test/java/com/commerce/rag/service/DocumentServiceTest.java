@@ -332,9 +332,11 @@ class DocumentServiceTest {
         when(documentMapper.selectById(1L)).thenReturn(mockDoc(1L, 100L));
         // etlPool mock：execute 直接同步执行提交的任务，模拟真实线程池行为
         doAnswer(invocation -> {
-            ((Runnable) invocation.getArgument(0)).run();
-            return null;
-        }).when(etlPool).execute(any());
+                    ((Runnable) invocation.getArgument(0)).run();
+                    return null;
+                })
+                .when(etlPool)
+                .execute(any());
 
         documentService.reparse(1L, 100L, false);
 

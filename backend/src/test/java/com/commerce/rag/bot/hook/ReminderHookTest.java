@@ -58,15 +58,19 @@ class ReminderHookTest {
     @Test
     @DisplayName("beforeModel → 已有 reminder 时原位替换")
     void beforeModel_existingReminder_replacesInPlace() throws Exception {
-        List<Message> messages =
-                List.of(new SystemMessage("base"), new SystemMessage("<system-reminder>旧提醒</system-reminder>"), new UserMessage("你好"));
+        List<Message> messages = List.of(
+                new SystemMessage("base"),
+                new SystemMessage("<system-reminder>旧提醒</system-reminder>"),
+                new UserMessage("你好"));
 
         AgentCommand command = hook.beforeModel(messages, mock(RunnableConfig.class));
 
         List<Message> result = getMessagesFromCommand(command);
         assertEquals(3, result.size());
         // 旧 reminder 被替换为新内容
-        assertEquals("<system-reminder>当前时间: 2026-08-15</system-reminder>", result.get(1).getText());
+        assertEquals(
+                "<system-reminder>当前时间: 2026-08-15</system-reminder>",
+                result.get(1).getText());
         // 其余消息保持原顺序
         assertEquals("base", result.get(0).getText());
         assertInstanceOf(UserMessage.class, result.get(2));

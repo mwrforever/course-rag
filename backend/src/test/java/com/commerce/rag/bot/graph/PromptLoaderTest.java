@@ -44,7 +44,9 @@ class PromptLoaderTest {
     @Test
     @DisplayName("loadRawAndReplace → 替换 ${placeholder} 占位符")
     void loadRawAndReplace_replacesPlaceholders() {
-        String result = promptLoader.loadRawAndReplace("dynamic-context.yml", Map.of("current_time", "2026-08-15 12:00:00 +0800", "rewritten_queries", "1. 测试查询"));
+        String result = promptLoader.loadRawAndReplace(
+                "dynamic-context.yml",
+                Map.of("current_time", "2026-08-15 12:00:00 +0800", "rewritten_queries", "1. 测试查询"));
 
         assertTrue(result.contains("2026-08-15 12:00:00 +0800"));
         assertTrue(result.contains("1. 测试查询"));

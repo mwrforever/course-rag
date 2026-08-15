@@ -6,8 +6,6 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.commerce.rag.entity.ChatMessage;
-import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.mapper.ChatMessageMapper;
 import com.commerce.rag.mapper.ChatRunMapper;
@@ -37,8 +35,10 @@ class ChatSessionServiceTest {
 
     @Mock
     private ChatSessionMapper sessionMapper;
+
     @Mock
     private ChatMessageMapper messageMapper;
+
     @Mock
     private ChatRunMapper runMapper;
 

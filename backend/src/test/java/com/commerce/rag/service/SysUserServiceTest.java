@@ -331,8 +331,8 @@ class SysUserServiceTest {
     void resetPassword_userNotFound_throws404() {
         when(userMapper.selectById(99L)).thenReturn(null);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class, () -> sysUserService.resetPassword(99L, "newpass", 100L));
+        ResponseStatusException ex =
+                assertThrows(ResponseStatusException.class, () -> sysUserService.resetPassword(99L, "newpass", 100L));
 
         assertEquals(404, ex.getStatusCode().value());
         verify(userMapper, never()).update(any(), any());
@@ -358,8 +358,8 @@ class SysUserServiceTest {
     void delete_userNotFound_throws404() {
         when(userMapper.selectById(99L)).thenReturn(null);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class, () -> sysUserService.delete(99L, 100L));
+        ResponseStatusException ex =
+                assertThrows(ResponseStatusException.class, () -> sysUserService.delete(99L, 100L));
 
         assertEquals(404, ex.getStatusCode().value());
     }

@@ -61,8 +61,7 @@ class AdminKnowledgeBaseControllerTest {
         when(req.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(1L);
         when(knowledgeBaseService.create("知识库A", "描述", 1L)).thenReturn(kb(1L));
 
-        ApiResponse<KnowledgeBaseVO> result =
-                controller.create(req, new KnowledgeBaseRequest("知识库A", "描述"));
+        ApiResponse<KnowledgeBaseVO> result = controller.create(req, new KnowledgeBaseRequest("知识库A", "描述"));
 
         assertEquals(1L, result.data().id());
         verify(knowledgeBaseService).create("知识库A", "描述", 1L);

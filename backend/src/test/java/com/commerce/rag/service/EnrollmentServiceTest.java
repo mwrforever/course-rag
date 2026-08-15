@@ -40,10 +40,13 @@ class EnrollmentServiceTest {
 
     @Mock
     private CourseEnrollmentMapper enrollmentMapper;
+
     @Mock
     private CourseService courseService;
+
     @Mock
     private SysUserMapper sysUserMapper;
+
     @Spy
     private EnrollmentConverter enrollmentConverter = new EnrollmentConverterImpl();
 
@@ -153,7 +156,8 @@ class EnrollmentServiceTest {
     @Test
     @DisplayName("findStudentCourses → 批量查询学生已选课程")
     void findStudentCourses_returnsCourses() {
-        when(enrollmentMapper.selectList(any())).thenReturn(List.of(enrollment(1L, 5L, "ACTIVE"), enrollment(2L, 5L, "ACTIVE")));
+        when(enrollmentMapper.selectList(any()))
+                .thenReturn(List.of(enrollment(1L, 5L, "ACTIVE"), enrollment(2L, 5L, "ACTIVE")));
         CourseInfo c1 = new CourseInfo();
         c1.setId(1L);
         CourseInfo c2 = new CourseInfo();

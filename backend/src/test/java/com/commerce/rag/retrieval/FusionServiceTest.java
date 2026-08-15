@@ -43,13 +43,15 @@ class FusionServiceTest {
     @Test
     @DisplayName("fuse → 单查询结果按排名计算 RRF 分并降序")
     void fuse_singleQuery_ranksByRRF() {
-        Map<TypedQuery, List<KnowledgeChunk>> results = Map.of(
-                query("q1"), List.of(chunk("a"), chunk("b"), chunk("c")));
+        Map<TypedQuery, List<KnowledgeChunk>> results =
+                Map.of(query("q1"), List.of(chunk("a"), chunk("b"), chunk("c")));
 
         List<KnowledgeChunk> fused = fusionService.fuse(results);
 
         // 排名越靠前分越高：a(1/61) > b(1/62) > c(1/63)
-        assertEquals(List.of("a", "b", "c"), fused.stream().map(KnowledgeChunk::chunkId).toList());
+        assertEquals(
+                List.of("a", "b", "c"),
+                fused.stream().map(KnowledgeChunk::chunkId).toList());
     }
 
     @Test
@@ -61,7 +63,9 @@ class FusionServiceTest {
         // b 的分 = 1/61 + 1/61（两个查询都是第 1 名）= 0.0328 > a(1/61)
         List<KnowledgeChunk> fused = fusionService.fuse(results);
 
-        assertEquals(List.of("b", "a", "c"), fused.stream().map(KnowledgeChunk::chunkId).toList());
+        assertEquals(
+                List.of("b", "a", "c"),
+                fused.stream().map(KnowledgeChunk::chunkId).toList());
         assertEquals("b", fused.get(0).chunkId());
     }
 
