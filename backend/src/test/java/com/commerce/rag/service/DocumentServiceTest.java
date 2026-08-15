@@ -19,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -144,6 +145,64 @@ class DocumentServiceTest {
         assertDoesNotThrow(() ->
                 documentService.upload(1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, 100L, false));
         verify(documentMapper).insert(any(Document.class));
+    }
+
+    @Test
+    @DisplayName("upload → 成功路径：sourcePath 为 {kbId}/{uuid}.{ext}，无第二步 updateById")
+    void upload_success_uuidPath() {
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(1L);
+        kb.setCreatedBy(100L);
+        when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
+        when(minioStorageService.uploadFile(eq(1L), anyString(), any(), eq("pdf")))
+                .thenAnswer(inv -> "1/" + inv.getArgument(1) + ".pdf");
+
+        assertDoesNotThrow(() ->
+                documentService.upload(1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, 100L, false));
+
+        ArgumentCaptor<Document> captor = ArgumentCaptor.forClass(Document.class);
+        verify(documentMapper).insert(captor.capture());
+        String path = captor.getValue().getSourcePath();
+        assertTrue(path.matches("1/[0-9a-f]{32}\\.pdf"), "路径应为 {kbId}/{uuid}.{ext}: " + path);
+        // 无第二步 updateById（DB 记录一步到位）
+        verify(documentMapper, never()).updateById(any(Document.class));
+    }
+
+    @Test
+    @DisplayName("upload → MinIO 上传失败：insert 不被调用（DB 无残留）")
+    void upload_minioFailure_noInsert() {
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(1L);
+        kb.setCreatedBy(100L);
+        when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
+        doThrow(new RuntimeException("MinIO 不可用"))
+                .when(minioStorageService)
+                .uploadFile(anyLong(), anyString(), any(), anyString());
+
+        assertThrows(
+                RuntimeException.class,
+                () -> documentService.upload(
+                        1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, 100L, false));
+        verify(documentMapper, never()).insert(any(Document.class));
+    }
+
+    @Test
+    @DisplayName("upload → insert 失败：删除已上传 MinIO 对象（单向补偿）")
+    void upload_insertFailure_deletesObject() {
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(1L);
+        kb.setCreatedBy(100L);
+        when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
+        when(minioStorageService.uploadFile(anyLong(), anyString(), any(), anyString()))
+                .thenReturn("1/9f8c7b6a5d4c3b2a1f0e9d8c7b6a5d4c.pdf");
+        when(documentMapper.insert(any(Document.class))).thenThrow(new RuntimeException("DB 不可用"));
+
+        assertThrows(
+                RuntimeException.class,
+                () -> documentService.upload(
+                        1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, 100L, false));
+        // 唯一可能的残留方向「MinIO 已传、DB 未落」→ 回收对象（幂等）
+        verify(minioStorageService).deleteFile("1/9f8c7b6a5d4c3b2a1f0e9d8c7b6a5d4c.pdf");
     }
 
     @Test

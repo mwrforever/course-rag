@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
  * MinIO 文件存储服务
  *
  * <p>封装 MinIO 文件上传/下载/删除操作。
- * 文件路径规则：{@code {kb_id}/{doc_id}.{ext}}
+ * 文件路径规则：{@code {kb_id}/{uuid}.{ext}}（uuid 为调用方预生成的 32 位 hex，与业务主键解耦）
  *
  * <p>bucket 名称从配置读取（默认 rag-documents）。
  *
@@ -59,14 +59,17 @@ public class MinioStorageService {
     /**
      * 上传文件到 MinIO
      *
+     * <p>P1-4 Bug 5 修复（用户裁决）：objectKey 用 uuid 标识（{kbId}/{uuid}.{ext}），
+     * 与业务主键 docId 解耦——上传不再依赖 DB 记录先行，外部资源先占、DB 后落。
+     *
      * @param kbId        知识库 ID
-     * @param docId       文档 ID
+     * @param uuid        文件唯一标识（32 位 hex，去横线 UUID，调用方生成）
      * @param inputStream 文件输入流
      * @param ext         文件扩展名（如 pdf、docx）
-     * @return objectKey（{kb_id}/{doc_id}.{ext}）
+     * @return objectKey（{kb_id}/{uuid}.{ext}）
      */
-    public String uploadFile(Long kbId, Long docId, InputStream inputStream, String ext) {
-        String objectKey = buildObjectKey(kbId, docId, ext);
+    public String uploadFile(Long kbId, String uuid, InputStream inputStream, String ext) {
+        String objectKey = buildObjectKey(kbId, uuid, ext);
         try {
             minioClient.putObject(
                     PutObjectArgs.builder().bucket(bucket).object(objectKey).stream(inputStream, -1, 10 * 1024 * 1024)
@@ -121,11 +124,11 @@ public class MinioStorageService {
      * 构造 MinIO objectKey
      *
      * @param kbId  知识库 ID
-     * @param docId 文档 ID
+     * @param uuid  文件唯一标识（32 位 hex）
      * @param ext   文件扩展名
-     * @return {kb_id}/{doc_id}.{ext}
+     * @return {kb_id}/{uuid}.{ext}
      */
-    private String buildObjectKey(Long kbId, Long docId, String ext) {
-        return kbId + "/" + docId + "." + ext;
+    private String buildObjectKey(Long kbId, String uuid, String ext) {
+        return kbId + "/" + uuid + "." + ext;
     }
 }

@@ -14,6 +14,7 @@ import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.storage.MinioStorageService;
 import java.io.InputStream;
 import java.time.LocalDateTime;
+import java.util.UUID;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,7 +92,12 @@ public class DocumentService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权向此知识库上传文档");
         }
 
-        // 创建 document 记录（先插入获取 ID）
+        // uuid 先行（用户裁决，AGENTS.md 一致：先占外部资源再落库，单向补偿即可）：
+        // objectKey 用 uuid（去横线）标识，与 docId 解耦；docId 由 MP 自动生成（ASSIGN_ID 雪花）
+        String uuid = UUID.randomUUID().toString().replace("-", "");
+        String objectKey = minioStorageService.uploadFile(kbId, uuid, inputStream, fileType);
+
+        // 创建 document 记录（sourcePath 一步带入，id 自动生成）
         Document doc = new Document();
         doc.setKbId(kbId);
         doc.setTitle(title);
@@ -101,12 +107,14 @@ public class DocumentService {
         doc.setChunkCount(0);
         doc.setMetadataJson("{}");
         doc.setCreatedBy(createdBy);
-        documentMapper.insert(doc);
-
-        // 上传到 MinIO
-        String objectKey = minioStorageService.uploadFile(kbId, doc.getId(), inputStream, fileType);
         doc.setSourcePath(objectKey);
-        documentMapper.updateById(doc);
+        try {
+            documentMapper.insert(doc);
+        } catch (Exception e) {
+            // 单向补偿：唯一可能残留的方向是「MinIO 已传、DB 未落」→ 删已上传对象（幂等）后上抛
+            minioStorageService.deleteFile(objectKey);
+            throw e;
+        }
 
         log.info("文档已上传: docId={}, kbId={}, title={}, fileType={}", doc.getId(), kbId, title, fileType);
 

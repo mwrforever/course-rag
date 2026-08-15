@@ -36,14 +36,14 @@ class MinioStorageServiceTest {
     }
 
     @Test
-    @DisplayName("uploadFile 上传文件 — 返回 objectKey")
+    @DisplayName("uploadFile 上传文件 — 返回 objectKey（uuid 格式 {kbId}/{uuid}.{ext}）")
     void uploadFile_returnsObjectKey() throws Exception {
         InputStream inputStream = new ByteArrayInputStream("test content".getBytes());
         when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
 
-        String objectKey = storageService.uploadFile(1L, 100L, inputStream, "pdf");
+        String objectKey = storageService.uploadFile(1L, "9f8c7b6a5d4c3b2a1f0e9d8c7b6a5d4c", inputStream, "pdf");
 
-        assertEquals("1/100.pdf", objectKey);
+        assertEquals("1/9f8c7b6a5d4c3b2a1f0e9d8c7b6a5d4c.pdf", objectKey);
         verify(minioClient).putObject(any(PutObjectArgs.class));
     }
 
@@ -53,7 +53,9 @@ class MinioStorageServiceTest {
         InputStream inputStream = new ByteArrayInputStream("test".getBytes());
         when(minioClient.putObject(any(PutObjectArgs.class))).thenThrow(new RuntimeException("connection refused"));
 
-        assertThrows(RuntimeException.class, () -> storageService.uploadFile(1L, 100L, inputStream, "pdf"));
+        assertThrows(
+                RuntimeException.class,
+                () -> storageService.uploadFile(1L, "9f8c7b6a5d4c3b2a1f0e9d8c7b6a5d4c", inputStream, "pdf"));
     }
 
     @Test
