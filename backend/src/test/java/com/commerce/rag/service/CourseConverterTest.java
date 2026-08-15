@@ -2,8 +2,8 @@ package com.commerce.rag.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.commerce.rag.controller.dto.CourseDTO;
-import com.commerce.rag.controller.dto.ScheduleDTO;
+import com.commerce.rag.dto.CourseDTO;
+import com.commerce.rag.dto.ScheduleDTO;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;

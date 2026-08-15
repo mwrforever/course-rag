@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.*;
+import com.commerce.rag.dto.*;
 import com.commerce.rag.service.SysUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.DisplayName;

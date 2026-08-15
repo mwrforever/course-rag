@@ -3,8 +3,8 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.commerce.rag.controller.dto.CourseDTO;
-import com.commerce.rag.controller.dto.StudentDTO;
+import com.commerce.rag.dto.CourseDTO;
+import com.commerce.rag.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.SysUser;
@@ -159,7 +159,9 @@ public class EnrollmentService {
      * @return 课程 DTO 列表
      */
     public List<CourseDTO> findStudentCoursesAsDTO(Long studentId) {
-        return findStudentCourses(studentId).stream().map(c -> courseService.toDTO(c, false)).toList();
+        return findStudentCourses(studentId).stream()
+                .map(c -> courseService.toDTO(c, false))
+                .toList();
     }
 
     /**

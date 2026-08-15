@@ -112,7 +112,8 @@ public class StudentController {
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
         // 通过 DocumentChunkService 按 courseId='DEFAULT' 分页查询
         IPage<DocumentChunk> paged = documentChunkService.findByCourseIdDefault(page, size);
-        List<ChunkBriefVO> result = paged.getRecords().stream().map(converter::toChunkBriefVO).toList();
+        List<ChunkBriefVO> result =
+                paged.getRecords().stream().map(converter::toChunkBriefVO).toList();
         return ApiResponse.ok(new PageResponse<>(result, paged.getTotal(), page, size));
     }
 
@@ -142,9 +143,12 @@ public class StudentController {
         }
 
         // 查询父/前/后 chunk（不存在则传 null，由转换器做空安全映射）
-        DocumentChunk parent = chunk.getParentChunkId() == null ? null : documentChunkService.findById(chunk.getParentChunkId());
-        DocumentChunk prev = chunk.getPrevChunkId() == null ? null : documentChunkService.findById(chunk.getPrevChunkId());
-        DocumentChunk next = chunk.getNextChunkId() == null ? null : documentChunkService.findById(chunk.getNextChunkId());
+        DocumentChunk parent =
+                chunk.getParentChunkId() == null ? null : documentChunkService.findById(chunk.getParentChunkId());
+        DocumentChunk prev =
+                chunk.getPrevChunkId() == null ? null : documentChunkService.findById(chunk.getPrevChunkId());
+        DocumentChunk next =
+                chunk.getNextChunkId() == null ? null : documentChunkService.findById(chunk.getNextChunkId());
         return ApiResponse.ok(converter.toChunkContextVO(chunk, parent, prev, next));
     }
 
@@ -164,7 +168,8 @@ public class StudentController {
             @RequestParam(defaultValue = "20") int size) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         IPage<ChatSession> result = sessionService.findSessionsByUser(userId, page, size);
-        List<SessionVO> records = result.getRecords().stream().map(converter::toSessionVO).toList();
+        List<SessionVO> records =
+                result.getRecords().stream().map(converter::toSessionVO).toList();
         return ApiResponse.ok(
                 new PageResponse<>(records, result.getTotal(), (int) result.getCurrent(), (int) result.getSize()));
     }

@@ -1,4 +1,4 @@
-package com.commerce.rag.controller.dto;
+package com.commerce.rag.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;

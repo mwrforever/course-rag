@@ -2,7 +2,7 @@ package com.commerce.rag.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.commerce.rag.controller.dto.StudentDTO;
+import com.commerce.rag.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
 import com.commerce.rag.entity.SysUser;
 import java.time.LocalDateTime;

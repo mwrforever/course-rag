@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import com.commerce.rag.controller.dto.CourseDTO;
-import com.commerce.rag.controller.dto.StudentDTO;
+import com.commerce.rag.dto.CourseDTO;
+import com.commerce.rag.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.SysUser;

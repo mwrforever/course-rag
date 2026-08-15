@@ -104,8 +104,7 @@ class StudentControllerTest {
     }
 
     private StudentCourseVO courseVO(Long id, String title) {
-        return new StudentCourseVO(
-                id, title, "cover.png", "编程", "张老师", "10h", new BigDecimal("4.5"), 100);
+        return new StudentCourseVO(id, title, "cover.png", "编程", "张老师", "10h", new BigDecimal("4.5"), 100);
     }
 
     private ChunkVO chunkVO(Long id) {
@@ -117,7 +116,8 @@ class StudentControllerTest {
     }
 
     private SessionVO sessionVO(Long id, String title) {
-        return new SessionVO(id, title, "ACTIVE", LocalDateTime.of(2026, 8, 15, 10, 0), LocalDateTime.of(2026, 8, 15, 9, 0));
+        return new SessionVO(
+                id, title, "ACTIVE", LocalDateTime.of(2026, 8, 15, 10, 0), LocalDateTime.of(2026, 8, 15, 9, 0));
     }
 
     // ==================== J1: 我的课程 ====================
@@ -274,8 +274,19 @@ class StudentControllerTest {
         when(documentChunkService.findById(102L)).thenReturn(chunk(102L, "10"));
         when(converter.toChunkContextVO(any(DocumentChunk.class), any(), any(), any()))
                 .thenReturn(new ChunkContextVO(
-                        1L, null, null, "内容-1", "第一章", 1, "10", 100L, 101L, 102L,
-                        chunkBriefVO(100L), chunkBriefVO(101L), chunkBriefVO(102L)));
+                        1L,
+                        null,
+                        null,
+                        "内容-1",
+                        "第一章",
+                        1,
+                        "10",
+                        100L,
+                        101L,
+                        102L,
+                        chunkBriefVO(100L),
+                        chunkBriefVO(101L),
+                        chunkBriefVO(102L)));
 
         ApiResponse<ChunkContextVO> result = controller.chunkContext(studentRequest(5L), 1L);
 
@@ -359,8 +370,7 @@ class StudentControllerTest {
         when(sessionService.createSession(5L, "自定义标题")).thenReturn(s);
         when(converter.toSessionVO(s)).thenReturn(sessionVO(2L, "自定义标题"));
 
-        ApiResponse<SessionVO> result =
-                controller.createSession(studentRequest(5L), Map.of("title", "自定义标题"));
+        ApiResponse<SessionVO> result = controller.createSession(studentRequest(5L), Map.of("title", "自定义标题"));
 
         assertEquals("自定义标题", result.data().title());
     }

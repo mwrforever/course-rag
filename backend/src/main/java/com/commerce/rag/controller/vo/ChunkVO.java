@@ -16,5 +16,10 @@ package com.commerce.rag.controller.vo;
  * @param endPage     结束页
  */
 public record ChunkVO(
-        Long id, String content, String headingPath, Integer chunkIndex, String parentTitle, Integer startPage,
+        Long id,
+        String content,
+        String headingPath,
+        Integer chunkIndex,
+        String parentTitle,
+        Integer startPage,
         Integer endPage) {}

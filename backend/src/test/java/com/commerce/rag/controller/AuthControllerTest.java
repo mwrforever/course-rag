@@ -12,7 +12,7 @@ import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.LoginRequest;
 import com.commerce.rag.controller.dto.LoginResponse;
 import com.commerce.rag.controller.dto.RefreshRequest;
-import com.commerce.rag.controller.dto.UserDTO;
+import com.commerce.rag.dto.UserDTO;
 import com.commerce.rag.service.AuthUserView;
 import com.commerce.rag.service.SysUserService;
 import io.jsonwebtoken.Claims;

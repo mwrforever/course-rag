@@ -2,9 +2,9 @@ package com.commerce.rag.controller;
 
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.controller.dto.CourseDTO;
 import com.commerce.rag.controller.dto.EnrollmentRequest;
-import com.commerce.rag.controller.dto.StudentDTO;
+import com.commerce.rag.dto.CourseDTO;
+import com.commerce.rag.dto.StudentDTO;
 import com.commerce.rag.service.EnrollmentService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;

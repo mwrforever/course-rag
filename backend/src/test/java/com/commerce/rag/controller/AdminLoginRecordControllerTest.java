@@ -77,13 +77,29 @@ class AdminLoginRecordControllerTest {
 
     private SysLoginRecordVO loginRecordVO(Long id) {
         return new SysLoginRecordVO(
-                id, 5L, "jti-at-1", "jti-rt-1", "PC", "Chrome", "127.0.0.1",
-                LocalDateTime.now().plusDays(1), "ACTIVE", LocalDateTime.now(), null);
+                id,
+                5L,
+                "jti-at-1",
+                "jti-rt-1",
+                "PC",
+                "Chrome",
+                "127.0.0.1",
+                LocalDateTime.now().plusDays(1),
+                "ACTIVE",
+                LocalDateTime.now(),
+                null);
     }
 
     private SysTokenBlacklistVO blacklistVO(Long id) {
         return new SysTokenBlacklistVO(
-                id, "jti-1", "ACCESS", 5L, 1L, "MANUAL_REVOKE", LocalDateTime.now().plusDays(7), null);
+                id,
+                "jti-1",
+                "ACCESS",
+                5L,
+                1L,
+                "MANUAL_REVOKE",
+                LocalDateTime.now().plusDays(7),
+                null);
     }
 
     @Test

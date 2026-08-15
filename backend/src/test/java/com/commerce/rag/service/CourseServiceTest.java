@@ -5,9 +5,9 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.commerce.rag.controller.dto.CourseDTO;
-import com.commerce.rag.controller.dto.CreateCourseRequest;
-import com.commerce.rag.controller.dto.UpdateCourseRequest;
+import com.commerce.rag.dto.CourseDTO;
+import com.commerce.rag.dto.CreateCourseRequest;
+import com.commerce.rag.dto.UpdateCourseRequest;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;

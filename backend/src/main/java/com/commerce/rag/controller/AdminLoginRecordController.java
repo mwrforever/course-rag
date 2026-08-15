@@ -38,7 +38,8 @@ public class AdminLoginRecordController {
     private final SysLoginRecordService sysLoginRecordService;
     private final AdminLoginRecordConverter converter;
 
-    public AdminLoginRecordController(SysLoginRecordService sysLoginRecordService, AdminLoginRecordConverter converter) {
+    public AdminLoginRecordController(
+            SysLoginRecordService sysLoginRecordService, AdminLoginRecordConverter converter) {
         this.sysLoginRecordService = sysLoginRecordService;
         this.converter = converter;
     }
@@ -57,7 +58,8 @@ public class AdminLoginRecordController {
             @RequestParam(required = false) String status) {
 
         IPage<SysLoginRecord> result = sysLoginRecordService.findPage(page, size, userId, deviceType, status);
-        List<SysLoginRecordVO> records = result.getRecords().stream().map(converter::toLoginRecordVO).toList();
+        List<SysLoginRecordVO> records =
+                result.getRecords().stream().map(converter::toLoginRecordVO).toList();
         return ApiResponse.ok(new PageResponse<>(records, result.getTotal(), page, size));
     }
 
@@ -89,7 +91,8 @@ public class AdminLoginRecordController {
             @RequestParam(required = false) String tokenType) {
 
         IPage<SysTokenBlacklist> result = sysLoginRecordService.findBlacklistPage(page, size, userId, jti, tokenType);
-        List<SysTokenBlacklistVO> records = result.getRecords().stream().map(converter::toBlacklistVO).toList();
+        List<SysTokenBlacklistVO> records =
+                result.getRecords().stream().map(converter::toBlacklistVO).toList();
         return ApiResponse.ok(new PageResponse<>(records, result.getTotal(), page, size));
     }
 

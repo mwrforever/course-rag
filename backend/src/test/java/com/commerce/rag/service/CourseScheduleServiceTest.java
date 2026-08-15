@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import com.commerce.rag.controller.dto.CreateScheduleRequest;
-import com.commerce.rag.controller.dto.UpdateScheduleRequest;
+import com.commerce.rag.dto.CreateScheduleRequest;
+import com.commerce.rag.dto.UpdateScheduleRequest;
 import com.commerce.rag.entity.CourseSchedule;
 import com.commerce.rag.mapper.CourseScheduleMapper;
 import com.commerce.rag.test.MybatisPlusTestHelper;

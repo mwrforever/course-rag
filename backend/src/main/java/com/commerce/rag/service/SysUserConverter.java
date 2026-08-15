@@ -1,6 +1,6 @@
 package com.commerce.rag.service;
 
-import com.commerce.rag.controller.dto.UserDTO;
+import com.commerce.rag.dto.UserDTO;
 import com.commerce.rag.entity.SysUser;
 import org.mapstruct.Mapper;
 

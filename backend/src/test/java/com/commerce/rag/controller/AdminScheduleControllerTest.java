@@ -6,9 +6,9 @@ import static org.mockito.Mockito.*;
 
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.controller.dto.CreateScheduleRequest;
-import com.commerce.rag.controller.dto.ScheduleDTO;
-import com.commerce.rag.controller.dto.UpdateScheduleRequest;
+import com.commerce.rag.dto.CreateScheduleRequest;
+import com.commerce.rag.dto.ScheduleDTO;
+import com.commerce.rag.dto.UpdateScheduleRequest;
 import com.commerce.rag.entity.CourseSchedule;
 import com.commerce.rag.service.CourseScheduleService;
 import com.commerce.rag.service.ScheduleConverter;

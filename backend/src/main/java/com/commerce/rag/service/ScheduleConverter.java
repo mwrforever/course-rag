@@ -1,6 +1,6 @@
 package com.commerce.rag.service;
 
-import com.commerce.rag.controller.dto.ScheduleDTO;
+import com.commerce.rag.dto.ScheduleDTO;
 import com.commerce.rag.entity.CourseSchedule;
 import org.mapstruct.Mapper;
 

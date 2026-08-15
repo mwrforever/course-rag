@@ -1,6 +1,6 @@
 package com.commerce.rag.service;
 
-import com.commerce.rag.controller.dto.CourseDTO;
+import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;
@@ -20,6 +20,9 @@ import org.slf4j.LoggerFactory;
  * 嵌套 record 列表（CourseContentDTO/ScheduleDTO）按同名字段自动映射。
  * tags 字段为 String(JSON) → List&lt;String&gt;，无内建转换，经默认方法 parseTags 解析（与原
  * CourseService 手写逻辑一致，防止课程标签从 API 响应中丢失）。
+ *
+ * <p>ObjectMapper 以接口常量形式持有（线程安全无状态，MapStruct 1.6.3 生成的 Impl
+ * 只调用无参构造器，抽象类构造注入不可行；注入 Spring bean 方案已实证排除）。
  *
  * @author commerce-rag
  */

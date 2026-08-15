@@ -1,6 +1,6 @@
 package com.commerce.rag.service;
 
-import com.commerce.rag.controller.dto.StudentDTO;
+import com.commerce.rag.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
 import com.commerce.rag.entity.SysUser;
 import org.mapstruct.Mapper;

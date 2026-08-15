@@ -81,13 +81,18 @@ class AdminSessionControllerTest {
 
     private ChatSessionVO sessionVO(Long id) {
         return new ChatSessionVO(
-                id, 5L, "会话" + id, "ACTIVE", LocalDateTime.of(2026, 8, 15, 10, 0), "qwen3.8-max",
+                id,
+                5L,
+                "会话" + id,
+                "ACTIVE",
+                LocalDateTime.of(2026, 8, 15, 10, 0),
+                "qwen3.8-max",
                 LocalDateTime.of(2026, 8, 15, 9, 0));
     }
 
     private ChatMessageVO messageVO(Long id) {
-        return new ChatMessageVO(id, "user", "问题" + id, "TEXT", "knowledge_question", 10L, 1,
-                LocalDateTime.of(2026, 8, 15, 9, 1));
+        return new ChatMessageVO(
+                id, "user", "问题" + id, "TEXT", "knowledge_question", 10L, 1, LocalDateTime.of(2026, 8, 15, 9, 1));
     }
 
     @Test
@@ -128,8 +133,14 @@ class AdminSessionControllerTest {
         when(messageService.findBySessionId(1L)).thenReturn(List.of(message(1L)));
         when(converter.toDetailVO(any(ChatSession.class), anyList()))
                 .thenReturn(new ChatSessionDetailVO(
-                        1L, 5L, "会话1", "ACTIVE", LocalDateTime.of(2026, 8, 15, 10, 0), "qwen3.8-max",
-                        LocalDateTime.of(2026, 8, 15, 9, 0), List.of(messageVO(1L))));
+                        1L,
+                        5L,
+                        "会话1",
+                        "ACTIVE",
+                        LocalDateTime.of(2026, 8, 15, 10, 0),
+                        "qwen3.8-max",
+                        LocalDateTime.of(2026, 8, 15, 9, 0),
+                        List.of(messageVO(1L))));
 
         ApiResponse<ChatSessionDetailVO> result = controller.detail(1L);
 

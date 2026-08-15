@@ -54,7 +54,8 @@ public class AdminSessionController {
     public ApiResponse<PageResponse<ChatSessionVO>> list(
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
         IPage<ChatSession> result = sessionService.findAllSessions(page, size);
-        List<ChatSessionVO> records = result.getRecords().stream().map(converter::toSummaryVO).toList();
+        List<ChatSessionVO> records =
+                result.getRecords().stream().map(converter::toSummaryVO).toList();
         return ApiResponse.ok(
                 new PageResponse<>(records, result.getTotal(), (int) result.getCurrent(), (int) result.getSize()));
     }

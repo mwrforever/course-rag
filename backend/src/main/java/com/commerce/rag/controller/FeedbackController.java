@@ -42,7 +42,8 @@ public class FeedbackController {
 
     /** J5: 提交反馈（user_id 取当前登录用户，防止跨用户伪造） */
     @PostMapping
-    public ApiResponse<UserFeedbackVO> create(HttpServletRequest request, @RequestBody FeedbackRequest feedbackRequest) {
+    public ApiResponse<UserFeedbackVO> create(
+            HttpServletRequest request, @RequestBody FeedbackRequest feedbackRequest) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         UserFeedback feedback = feedbackService.create(
                 userId,

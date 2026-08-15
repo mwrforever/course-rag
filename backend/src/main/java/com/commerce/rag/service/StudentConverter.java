@@ -46,8 +46,7 @@ public interface StudentConverter {
     @Mapping(target = "parent", source = "parent")
     @Mapping(target = "prev", source = "prev")
     @Mapping(target = "next", source = "next")
-    ChunkContextVO toChunkContextVO(
-            DocumentChunk chunk, DocumentChunk parent, DocumentChunk prev, DocumentChunk next);
+    ChunkContextVO toChunkContextVO(DocumentChunk chunk, DocumentChunk parent, DocumentChunk prev, DocumentChunk next);
 
     /** 会话实体 → 会话视图对象 */
     SessionVO toSessionVO(ChatSession session);

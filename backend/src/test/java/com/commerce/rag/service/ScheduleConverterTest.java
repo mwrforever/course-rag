@@ -2,7 +2,7 @@ package com.commerce.rag.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.commerce.rag.controller.dto.ScheduleDTO;
+import com.commerce.rag.dto.ScheduleDTO;
 import com.commerce.rag.entity.CourseSchedule;
 import java.time.LocalDate;
 import org.junit.jupiter.api.DisplayName;
