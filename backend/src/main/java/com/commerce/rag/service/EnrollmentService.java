@@ -66,9 +66,11 @@ public class EnrollmentService {
         List<SysUser> users = sysUserMapper.selectByIdsIn(studentIds);
         Map<Long, CourseEnrollment> enrollmentByUser =
                 enrollments.stream().collect(Collectors.toMap(CourseEnrollment::getStudentId, e -> e));
-        return users.stream()
+        List<StudentDTO> students = users.stream()
                 .map(user -> enrollmentConverter.toDTO(user, enrollmentByUser.get(user.getId())))
                 .toList();
+        log.info("查询选课学生: courseId={}, count={}", courseId, students.size());
+        return students;
     }
 
     /**
