@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.DeviceKickService;
 import com.commerce.rag.controller.dto.CreateUserRequest;
@@ -63,7 +64,7 @@ public class SysUserService {
 
         // 用户名唯一性校验
         LambdaQueryWrapper<SysUser> wrapper =
-                new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, request.username());
+                Wrappers.<SysUser>lambdaQuery().eq(SysUser::getUsername, request.username());
         Long existing = userMapper.selectCount(wrapper);
         if (existing != null && existing > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "用户名已存在");
@@ -72,7 +73,7 @@ public class SysUserService {
         // 超管唯一性校验（全局仅 1 个超管）
         if (UserRole.SUPER_ADMIN.name().equals(request.role())) {
             LambdaQueryWrapper<SysUser> adminWrapper =
-                    new LambdaQueryWrapper<SysUser>().eq(SysUser::getRole, UserRole.SUPER_ADMIN.name());
+                    Wrappers.<SysUser>lambdaQuery().eq(SysUser::getRole, UserRole.SUPER_ADMIN.name());
             Long adminCount = userMapper.selectCount(adminWrapper);
             if (adminCount != null && adminCount > 0) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "超级管理员已存在，全局仅允许 1 个");
@@ -133,7 +134,7 @@ public class SysUserService {
      * 根据用户名查询用户（含密码，用于登录验证）
      */
     public SysUser findByUsername(String username) {
-        LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username);
+        LambdaQueryWrapper<SysUser> wrapper = Wrappers.<SysUser>lambdaQuery().eq(SysUser::getUsername, username);
         return userMapper.selectOne(wrapper);
     }
 
@@ -149,7 +150,7 @@ public class SysUserService {
      */
     public IPage<UserDTO> findPage(int page, int size, String role, String status, Long currentUserId) {
         Page<SysUser> pageObj = new Page<>(page, size);
-        LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<SysUser>().orderByDesc(SysUser::getCreatedAt);
+        LambdaQueryWrapper<SysUser> wrapper = Wrappers.<SysUser>lambdaQuery().orderByDesc(SysUser::getCreatedAt);
         if (role != null && !role.isEmpty()) {
             wrapper.eq(SysUser::getRole, role);
         }
@@ -207,7 +208,7 @@ public class SysUserService {
         // 超管可重置任何用户密码，教师只能重置自己创建的学生
         checkTeacherPermission(user, currentUserId);
 
-        LambdaUpdateWrapper<SysUser> wrapper = new LambdaUpdateWrapper<SysUser>()
+        LambdaUpdateWrapper<SysUser> wrapper = Wrappers.<SysUser>lambdaUpdate()
                 .eq(SysUser::getId, id)
                 .set(SysUser::getPasswordHash, passwordEncoder.encode(newPassword));
         userMapper.update(null, wrapper);
@@ -239,7 +240,7 @@ public class SysUserService {
         checkTeacherPermission(user, currentUserId);
 
         LambdaUpdateWrapper<SysUser> wrapper =
-                new LambdaUpdateWrapper<SysUser>().eq(SysUser::getId, id).set(SysUser::getStatus, status);
+                Wrappers.<SysUser>lambdaUpdate().eq(SysUser::getId, id).set(SysUser::getStatus, status);
         userMapper.update(null, wrapper);
 
         // 禁用用户时，将其所有活跃 session jti 入黑名单
@@ -273,14 +274,14 @@ public class SysUserService {
         checkTeacherPermission(user, currentUserId);
 
         // 软删除用户
-        LambdaUpdateWrapper<SysUser> wrapper = new LambdaUpdateWrapper<SysUser>()
+        LambdaUpdateWrapper<SysUser> wrapper = Wrappers.<SysUser>lambdaUpdate()
                 .eq(SysUser::getId, id)
                 .set(SysUser::getDeleted, System.currentTimeMillis());
         userMapper.update(null, wrapper);
 
         // 级联软删 course_teacher（教师删除时，课程保留由超管重分配）
         if (UserRole.TEACHER.name().equals(user.getRole())) {
-            LambdaUpdateWrapper<CourseTeacher> ctWrapper = new LambdaUpdateWrapper<CourseTeacher>()
+            LambdaUpdateWrapper<CourseTeacher> ctWrapper = Wrappers.<CourseTeacher>lambdaUpdate()
                     .eq(CourseTeacher::getTeacherId, id)
                     .eq(CourseTeacher::getDeleted, 0)
                     .set(CourseTeacher::getDeleted, System.currentTimeMillis());

@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatRun;
@@ -64,7 +65,7 @@ public class ChatSessionService {
     public IPage<ChatSession> findActiveSessions(Long userId, int page) {
         log.info("查询活跃会话: userId={}, page={}", userId, page);
         Page<ChatSession> pageObj = new Page<>(page, DEFAULT_PAGE_SIZE);
-        LambdaQueryWrapper<ChatSession> wrapper = new LambdaQueryWrapper<ChatSession>()
+        LambdaQueryWrapper<ChatSession> wrapper = Wrappers.<ChatSession>lambdaQuery()
                 .eq(ChatSession::getUserId, userId)
                 .eq(ChatSession::getStatus, "ACTIVE")
                 .orderByDesc(ChatSession::getLastMessageAt);
@@ -79,7 +80,7 @@ public class ChatSessionService {
      */
     public void updateTitle(Long sessionId, String title) {
         log.info("更新会话标题: sessionId={}, title={}", sessionId, title);
-        LambdaUpdateWrapper<ChatSession> wrapper = new LambdaUpdateWrapper<ChatSession>()
+        LambdaUpdateWrapper<ChatSession> wrapper = Wrappers.<ChatSession>lambdaUpdate()
                 .eq(ChatSession::getId, sessionId)
                 .set(ChatSession::getTitle, title);
         sessionMapper.update(null, wrapper);
@@ -91,7 +92,7 @@ public class ChatSessionService {
      * @param sessionId 会话 ID
      */
     public void updateLastMessageAt(Long sessionId) {
-        LambdaUpdateWrapper<ChatSession> wrapper = new LambdaUpdateWrapper<ChatSession>()
+        LambdaUpdateWrapper<ChatSession> wrapper = Wrappers.<ChatSession>lambdaUpdate()
                 .eq(ChatSession::getId, sessionId)
                 .set(ChatSession::getLastMessageAt, LocalDateTime.now());
         sessionMapper.update(null, wrapper);
@@ -104,7 +105,7 @@ public class ChatSessionService {
      */
     public void closeSession(Long sessionId) {
         log.info("关闭会话: sessionId={}", sessionId);
-        LambdaUpdateWrapper<ChatSession> wrapper = new LambdaUpdateWrapper<ChatSession>()
+        LambdaUpdateWrapper<ChatSession> wrapper = Wrappers.<ChatSession>lambdaUpdate()
                 .eq(ChatSession::getId, sessionId)
                 .set(ChatSession::getStatus, "CLOSED");
         sessionMapper.update(null, wrapper);
@@ -132,7 +133,7 @@ public class ChatSessionService {
     public IPage<ChatSession> findAllSessions(int page, int size) {
         Page<ChatSession> pageObj = new Page<>(page, size);
         LambdaQueryWrapper<ChatSession> wrapper =
-                new LambdaQueryWrapper<ChatSession>().orderByDesc(ChatSession::getLastMessageAt);
+                Wrappers.<ChatSession>lambdaQuery().orderByDesc(ChatSession::getLastMessageAt);
         return sessionMapper.selectPage(pageObj, wrapper);
     }
 
@@ -146,7 +147,7 @@ public class ChatSessionService {
      */
     public IPage<ChatSession> findSessionsByUser(Long userId, int page, int size) {
         Page<ChatSession> pageObj = new Page<>(page, size);
-        LambdaQueryWrapper<ChatSession> wrapper = new LambdaQueryWrapper<ChatSession>()
+        LambdaQueryWrapper<ChatSession> wrapper = Wrappers.<ChatSession>lambdaQuery()
                 .eq(ChatSession::getUserId, userId)
                 .orderByDesc(ChatSession::getLastMessageAt);
         return sessionMapper.selectPage(pageObj, wrapper);
@@ -163,18 +164,18 @@ public class ChatSessionService {
         // 级联软删 chat_message + chat_run（使用 MyBatis-Plus LambdaUpdateWrapper）
         messageMapper.update(
                 null,
-                new LambdaUpdateWrapper<ChatMessage>()
+                Wrappers.<ChatMessage>lambdaUpdate()
                         .eq(ChatMessage::getSessionId, sessionId)
                         .eq(ChatMessage::getDeleted, 0)
                         .set(ChatMessage::getDeleted, ts));
         runMapper.update(
                 null,
-                new LambdaUpdateWrapper<ChatRun>()
+                Wrappers.<ChatRun>lambdaUpdate()
                         .eq(ChatRun::getSessionId, sessionId)
                         .eq(ChatRun::getDeleted, 0)
                         .set(ChatRun::getDeleted, ts));
         // 软删会话本身
-        LambdaUpdateWrapper<ChatSession> wrapper = new LambdaUpdateWrapper<ChatSession>()
+        LambdaUpdateWrapper<ChatSession> wrapper = Wrappers.<ChatSession>lambdaUpdate()
                 .eq(ChatSession::getId, sessionId)
                 .set(ChatSession::getDeleted, ts)
                 .set(ChatSession::getUpdatedAt, LocalDateTime.now());

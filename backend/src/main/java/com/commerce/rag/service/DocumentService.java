@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -171,7 +172,7 @@ public class DocumentService {
                             .select(KnowledgeBase::getId))
                     .stream()
                     .map(KnowledgeBase::getId)
-                    .collect(java.util.stream.Collectors.toList());
+                    .collect(Collectors.toList());
             if (kbIds.isEmpty()) {
                 wrapper.eq(Document::getCreatedBy, userId);
             } else {
@@ -200,7 +201,7 @@ public class DocumentService {
         // 权限校验：只有文档创建者才能改名（超管旁路）
         checkOwnership(doc, operatorId, isAdmin);
 
-        LambdaUpdateWrapper<Document> wrapper = new LambdaUpdateWrapper<Document>()
+        LambdaUpdateWrapper<Document> wrapper = Wrappers.<Document>lambdaUpdate()
                 .eq(Document::getId, id)
                 .set(Document::getTitle, title)
                 .set(Document::getUpdatedAt, LocalDateTime.now());
@@ -238,13 +239,13 @@ public class DocumentService {
         etlPipeline.deleteFromMilvusByDocId(id);
 
         // 3. 软删 document_chunk
-        LambdaUpdateWrapper<DocumentChunk> chunkWrapper = new LambdaUpdateWrapper<DocumentChunk>()
+        LambdaUpdateWrapper<DocumentChunk> chunkWrapper = Wrappers.<DocumentChunk>lambdaUpdate()
                 .eq(DocumentChunk::getDocId, id)
                 .set(DocumentChunk::getDeleted, System.currentTimeMillis());
         chunkMapper.update(null, chunkWrapper);
 
         // 4. 软删 document
-        LambdaUpdateWrapper<Document> docWrapper = new LambdaUpdateWrapper<Document>()
+        LambdaUpdateWrapper<Document> docWrapper = Wrappers.<Document>lambdaUpdate()
                 .eq(Document::getId, id)
                 .set(Document::getDeleted, System.currentTimeMillis());
         documentMapper.update(null, docWrapper);
@@ -271,13 +272,13 @@ public class DocumentService {
         checkOwnership(doc, operatorId, isAdmin);
 
         // 软删旧分片
-        LambdaUpdateWrapper<DocumentChunk> chunkWrapper = new LambdaUpdateWrapper<DocumentChunk>()
+        LambdaUpdateWrapper<DocumentChunk> chunkWrapper = Wrappers.<DocumentChunk>lambdaUpdate()
                 .eq(DocumentChunk::getDocId, id)
                 .set(DocumentChunk::getDeleted, System.currentTimeMillis());
         chunkMapper.update(null, chunkWrapper);
 
         // 重置状态
-        LambdaUpdateWrapper<Document> docWrapper = new LambdaUpdateWrapper<Document>()
+        LambdaUpdateWrapper<Document> docWrapper = Wrappers.<Document>lambdaUpdate()
                 .eq(Document::getId, id)
                 .set(Document::getParseStatus, "PENDING")
                 .set(Document::getErrorMessage, null)

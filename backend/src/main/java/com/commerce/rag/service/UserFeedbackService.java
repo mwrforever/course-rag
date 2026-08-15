@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.entity.UserFeedback;
 import com.commerce.rag.mapper.UserFeedbackMapper;
@@ -49,14 +50,14 @@ public class UserFeedbackService {
      */
     public UserFeedback create(Long userId, Long sessionId, Long messageId, Boolean isLiked, String intentType) {
         // 查询是否已有该用户的反馈（按 user_id + message_id 唯一定位）
-        LambdaQueryWrapper<UserFeedback> wrapper = new LambdaQueryWrapper<UserFeedback>()
+        LambdaQueryWrapper<UserFeedback> wrapper = Wrappers.<UserFeedback>lambdaQuery()
                 .eq(UserFeedback::getUserId, userId)
                 .eq(UserFeedback::getMessageId, messageId);
         UserFeedback existing = feedbackMapper.selectOne(wrapper);
 
         if (existing != null) {
             // 更新已有反馈
-            LambdaUpdateWrapper<UserFeedback> updateWrapper = new LambdaUpdateWrapper<UserFeedback>()
+            LambdaUpdateWrapper<UserFeedback> updateWrapper = Wrappers.<UserFeedback>lambdaUpdate()
                     .eq(UserFeedback::getId, existing.getId())
                     .set(UserFeedback::getIsLiked, isLiked)
                     .set(UserFeedback::getIntentType, intentType);
@@ -100,7 +101,7 @@ public class UserFeedbackService {
             return feedbackMapper.selectPageFilteredByTeacher(pageObj, intentType, createdBy);
         }
         LambdaQueryWrapper<UserFeedback> wrapper =
-                new LambdaQueryWrapper<UserFeedback>().orderByDesc(UserFeedback::getCreatedAt);
+                Wrappers.<UserFeedback>lambdaQuery().orderByDesc(UserFeedback::getCreatedAt);
         if (intentType != null && !intentType.isBlank()) {
             wrapper.eq(UserFeedback::getIntentType, intentType);
         }
@@ -137,7 +138,7 @@ public class UserFeedbackService {
      * @param operatorId 操作者 ID（用于审计日志）
      */
     public void delete(Long id, Long operatorId) {
-        LambdaUpdateWrapper<UserFeedback> wrapper = new LambdaUpdateWrapper<UserFeedback>()
+        LambdaUpdateWrapper<UserFeedback> wrapper = Wrappers.<UserFeedback>lambdaUpdate()
                 .eq(UserFeedback::getId, id)
                 .set(UserFeedback::getDeleted, System.currentTimeMillis());
         feedbackMapper.update(null, wrapper);

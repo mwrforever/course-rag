@@ -2,6 +2,7 @@ package com.commerce.rag.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.mapper.ChatMessageMapper;
 import java.util.List;
@@ -77,7 +78,7 @@ public class ChatMessageService {
      * @return 消息列表（按 seq 升序）
      */
     public List<ChatMessage> findByRunId(Long runId) {
-        LambdaQueryWrapper<ChatMessage> wrapper = new LambdaQueryWrapper<ChatMessage>()
+        LambdaQueryWrapper<ChatMessage> wrapper = Wrappers.<ChatMessage>lambdaQuery()
                 .eq(ChatMessage::getRunId, runId)
                 .orderByAsc(ChatMessage::getSeq);
         return messageMapper.selectList(wrapper);
@@ -90,7 +91,7 @@ public class ChatMessageService {
      * @return 消息列表
      */
     public List<ChatMessage> findBySessionId(Long sessionId) {
-        LambdaQueryWrapper<ChatMessage> wrapper = new LambdaQueryWrapper<ChatMessage>()
+        LambdaQueryWrapper<ChatMessage> wrapper = Wrappers.<ChatMessage>lambdaQuery()
                 .eq(ChatMessage::getSessionId, sessionId)
                 .orderByAsc(ChatMessage::getCreatedAt);
         return messageMapper.selectList(wrapper);
@@ -104,7 +105,7 @@ public class ChatMessageService {
      */
     public long countByRunId(Long runId) {
         LambdaQueryWrapper<ChatMessage> wrapper =
-                new LambdaQueryWrapper<ChatMessage>().eq(ChatMessage::getRunId, runId);
+                Wrappers.<ChatMessage>lambdaQuery().eq(ChatMessage::getRunId, runId);
         return messageMapper.selectCount(wrapper);
     }
 }

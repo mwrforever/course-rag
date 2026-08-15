@@ -14,6 +14,7 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -55,12 +56,13 @@ public class AdminDocumentController {
 
     private final EtlProperties etlProperties;
 
-    /** C1: 上传文档 */
+    /** C1: 上传文档（courseId 可选：不传则 DEFAULT=通用资料库，传则文档归属该课程，分片继承） */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<Document> upload(
             HttpServletRequest request,
             @RequestParam("kbId") Long kbId,
             @RequestParam("title") String title,
+            @RequestParam(value = "courseId", required = false) String courseId,
             @RequestParam("file") MultipartFile file)
             throws IOException {
 
@@ -82,7 +84,7 @@ public class AdminDocumentController {
 
         try (InputStream inputStream = file.getInputStream()) {
             Document doc = documentService.upload(
-                    kbId, title, inputStream, fileType, fileSize, userId, "SUPER_ADMIN".equals(role));
+                    kbId, title, inputStream, fileType, fileSize, courseId, userId, "SUPER_ADMIN".equals(role));
             return ApiResponse.ok(doc);
         }
     }
@@ -94,7 +96,8 @@ public class AdminDocumentController {
         String role = AuthInterceptor.getCurrentRole(request);
         Document doc = documentService.findById(id, userId, role);
         if (doc == null) {
-            return ApiResponse.error(404, "文档不存在");
+            // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "文档不存在");
         }
         return ApiResponse.ok(doc);
     }
@@ -143,17 +146,16 @@ public class AdminDocumentController {
         return ApiResponse.ok();
     }
 
-    /** C7: 下载文档原始文件 */
+    /** C7: 下载文档原始文件（perf P2-4：download 一次查询取实体，fileType 由实体带出，消除重复主键查询） */
     @GetMapping("/{id}/download")
     public org.springframework.core.io.Resource download(HttpServletRequest request, @PathVariable Long id) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         boolean isAdmin = "SUPER_ADMIN".equals(AuthInterceptor.getCurrentRole(request));
-        InputStream inputStream = documentService.download(id, userId, isAdmin);
-        String fileType = documentService.getFileType(id);
-        return new org.springframework.core.io.InputStreamResource(inputStream) {
+        DocumentService.DocumentDownload download = documentService.downloadWithType(id, userId, isAdmin);
+        return new InputStreamResource(download.inputStream()) {
             @Override
             public String getFilename() {
-                return "document-" + id + (fileType != null ? "." + fileType : "");
+                return "document-" + id + (download.fileType() != null ? "." + download.fileType() : "");
             }
         };
     }

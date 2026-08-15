@@ -2,6 +2,7 @@ package com.commerce.rag.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
@@ -13,6 +14,8 @@ import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.storage.MinioStorageService;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,7 +97,7 @@ public class KnowledgeBaseService {
      */
     public Page<KnowledgeBase> findPage(int page, int size, String keyword, Long userId, String role) {
         Page<KnowledgeBase> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
-        LambdaQueryWrapper<KnowledgeBase> wrapper = new LambdaQueryWrapper<KnowledgeBase>()
+        LambdaQueryWrapper<KnowledgeBase> wrapper = Wrappers.<KnowledgeBase>lambdaQuery()
                 .eq(KnowledgeBase::getStatus, "ACTIVE")
                 .orderByDesc(KnowledgeBase::getCreatedAt);
         if (keyword != null && !keyword.isBlank()) {
@@ -123,7 +126,7 @@ public class KnowledgeBaseService {
         }
         checkPermission(kb, operatorId, isAdmin);
 
-        LambdaUpdateWrapper<KnowledgeBase> wrapper = new LambdaUpdateWrapper<KnowledgeBase>()
+        LambdaUpdateWrapper<KnowledgeBase> wrapper = Wrappers.<KnowledgeBase>lambdaUpdate()
                 .eq(KnowledgeBase::getId, id)
                 .set(KnowledgeBase::getUpdatedAt, LocalDateTime.now());
         if (name != null) {
@@ -157,29 +160,29 @@ public class KnowledgeBaseService {
         // 避免对象孤儿永久占存储；removeObject 幂等，重试收敛）
         // perf P1-2: 批量删除（一次请求删多个对象），替代循环单删 N 次网络往返
         List<Document> docs = documentMapper.selectList(
-                new LambdaQueryWrapper<Document>().eq(Document::getKbId, id).select(Document::getSourcePath));
+                Wrappers.<Document>lambdaQuery().eq(Document::getKbId, id).select(Document::getSourcePath));
         List<String> sourcePaths = docs.stream()
                 .map(Document::getSourcePath)
-                .filter(java.util.Objects::nonNull)
-                .collect(java.util.stream.Collectors.toList());
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
         if (!sourcePaths.isEmpty()) {
             minioStorageService.deleteFiles(sourcePaths);
         }
 
         // 2. 软删 document_chunk
-        LambdaUpdateWrapper<DocumentChunk> chunkWrapper = new LambdaUpdateWrapper<DocumentChunk>()
+        LambdaUpdateWrapper<DocumentChunk> chunkWrapper = Wrappers.<DocumentChunk>lambdaUpdate()
                 .eq(DocumentChunk::getKbId, id)
                 .set(DocumentChunk::getDeleted, System.currentTimeMillis());
         chunkMapper.update(null, chunkWrapper);
 
         // 3. 软删 document
-        LambdaUpdateWrapper<Document> docWrapper = new LambdaUpdateWrapper<Document>()
+        LambdaUpdateWrapper<Document> docWrapper = Wrappers.<Document>lambdaUpdate()
                 .eq(Document::getKbId, id)
                 .set(Document::getDeleted, System.currentTimeMillis());
         documentMapper.update(null, docWrapper);
 
         // 4. 软删 knowledge_base
-        LambdaUpdateWrapper<KnowledgeBase> kbWrapper = new LambdaUpdateWrapper<KnowledgeBase>()
+        LambdaUpdateWrapper<KnowledgeBase> kbWrapper = Wrappers.<KnowledgeBase>lambdaUpdate()
                 .eq(KnowledgeBase::getId, id)
                 .set(KnowledgeBase::getDeleted, System.currentTimeMillis());
         knowledgeBaseMapper.update(null, kbWrapper);

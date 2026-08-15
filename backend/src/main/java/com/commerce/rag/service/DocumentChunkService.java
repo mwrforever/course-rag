@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
@@ -100,7 +101,7 @@ public class DocumentChunkService {
             return chunkMapper.selectPageFilteredByTeacher(pageObj, docId, kbId, false, userId);
         }
         LambdaQueryWrapper<DocumentChunk> wrapper =
-                new LambdaQueryWrapper<DocumentChunk>().orderByAsc(DocumentChunk::getChunkIndex);
+                Wrappers.<DocumentChunk>lambdaQuery().orderByAsc(DocumentChunk::getChunkIndex);
         if (docId != null) {
             wrapper.eq(DocumentChunk::getDocId, docId);
         }
@@ -126,7 +127,7 @@ public class DocumentChunkService {
         checkOwnership(id, userId, isAdmin);
 
         // 更新 PG content
-        LambdaUpdateWrapper<DocumentChunk> wrapper = new LambdaUpdateWrapper<DocumentChunk>()
+        LambdaUpdateWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaUpdate()
                 .eq(DocumentChunk::getId, id)
                 .set(DocumentChunk::getContent, content)
                 .set(DocumentChunk::getUpdatedAt, LocalDateTime.now());
@@ -156,7 +157,7 @@ public class DocumentChunkService {
         etlPipeline.deleteFromMilvusByChunkId(String.valueOf(id));
 
         // 软删
-        LambdaUpdateWrapper<DocumentChunk> wrapper = new LambdaUpdateWrapper<DocumentChunk>()
+        LambdaUpdateWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaUpdate()
                 .eq(DocumentChunk::getId, id)
                 .set(DocumentChunk::getDeleted, System.currentTimeMillis());
         chunkMapper.update(null, wrapper);
@@ -178,7 +179,7 @@ public class DocumentChunkService {
      */
     public void updateCollectionType(Long id, String collectionType, String courseId, Long userId, boolean isAdmin) {
         checkOwnership(id, userId, isAdmin);
-        LambdaUpdateWrapper<DocumentChunk> wrapper = new LambdaUpdateWrapper<DocumentChunk>()
+        LambdaUpdateWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaUpdate()
                 .eq(DocumentChunk::getId, id)
                 .set(DocumentChunk::getUpdatedAt, LocalDateTime.now());
         if (collectionType != null) {
@@ -240,7 +241,7 @@ public class DocumentChunkService {
      * @return 分片列表（按 chunk_index 排序）
      */
     public List<DocumentChunk> findByCourseId(Long courseId) {
-        LambdaQueryWrapper<DocumentChunk> wrapper = new LambdaQueryWrapper<DocumentChunk>()
+        LambdaQueryWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaQuery()
                 .eq(DocumentChunk::getCourseId, String.valueOf(courseId))
                 .orderByAsc(DocumentChunk::getChunkIndex);
         return chunkMapper.selectList(wrapper);
@@ -255,7 +256,7 @@ public class DocumentChunkService {
      */
     public IPage<DocumentChunk> findByCourseIdDefault(int page, int size) {
         Page<DocumentChunk> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
-        LambdaQueryWrapper<DocumentChunk> wrapper = new LambdaQueryWrapper<DocumentChunk>()
+        LambdaQueryWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaQuery()
                 .eq(DocumentChunk::getCourseId, "DEFAULT")
                 .orderByAsc(DocumentChunk::getChunkIndex);
         return chunkMapper.selectPage(pageObj, wrapper);
@@ -277,7 +278,7 @@ public class DocumentChunkService {
         // perf P2-1: 批量校验（2 次批量查询替代逐 id 2N 次主键查询）
         checkOwnershipBatch(ids, userId, isAdmin);
 
-        LambdaUpdateWrapper<DocumentChunk> wrapper = new LambdaUpdateWrapper<DocumentChunk>()
+        LambdaUpdateWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaUpdate()
                 .in(DocumentChunk::getId, ids)
                 .set(DocumentChunk::getUpdatedAt, LocalDateTime.now());
         if (collectionType != null) {
@@ -313,7 +314,7 @@ public class DocumentChunkService {
         // perf P2-1: 批量校验（2 次批量查询替代逐 id 2N 次主键查询）
         checkOwnershipBatch(ids, userId, isAdmin);
 
-        LambdaUpdateWrapper<DocumentChunk> wrapper = new LambdaUpdateWrapper<DocumentChunk>()
+        LambdaUpdateWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaUpdate()
                 .in(DocumentChunk::getId, ids)
                 .set(DocumentChunk::getCorrectionStatus, "CORRECTED")
                 .set(DocumentChunk::getUpdatedAt, LocalDateTime.now());
@@ -338,7 +339,7 @@ public class DocumentChunkService {
         if ("TEACHER".equals(role) && userId != null) {
             return chunkMapper.selectPageFilteredByTeacher(pageObj, docId, kbId, true, userId);
         }
-        LambdaQueryWrapper<DocumentChunk> wrapper = new LambdaQueryWrapper<DocumentChunk>()
+        LambdaQueryWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaQuery()
                 .eq(DocumentChunk::getCorrectionStatus, "PENDING")
                 .orderByAsc(DocumentChunk::getChunkIndex);
         if (kbId != null) {

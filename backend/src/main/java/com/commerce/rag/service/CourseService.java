@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.controller.dto.CourseDTO;
 import com.commerce.rag.controller.dto.CreateCourseRequest;
+import com.commerce.rag.controller.dto.ScheduleDTO;
 import com.commerce.rag.controller.dto.UpdateCourseRequest;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseEnrollment;
@@ -146,7 +147,7 @@ public class CourseService {
         if (courseIds == null || courseIds.isEmpty()) {
             return List.of();
         }
-        LambdaQueryWrapper<CourseInfo> wrapper = new LambdaQueryWrapper<CourseInfo>()
+        LambdaQueryWrapper<CourseInfo> wrapper = Wrappers.<CourseInfo>lambdaQuery()
                 .in(CourseInfo::getId, courseIds)
                 .eq(CourseInfo::getStatus, "ACTIVE")
                 .orderByDesc(CourseInfo::getCreatedAt);
@@ -165,7 +166,7 @@ public class CourseService {
      */
     public IPage<CourseInfo> findPage(int page, int size, String category, String keyword, Long createdBy) {
         Page<CourseInfo> pageObj = new Page<>(page, size);
-        LambdaQueryWrapper<CourseInfo> wrapper = new LambdaQueryWrapper<CourseInfo>()
+        LambdaQueryWrapper<CourseInfo> wrapper = Wrappers.<CourseInfo>lambdaQuery()
                 .eq(StringUtils.hasText(category), CourseInfo::getCategory, category)
                 .like(StringUtils.hasText(keyword), CourseInfo::getTitle, keyword)
                 .eq(createdBy != null, CourseInfo::getCreatedBy, createdBy)
@@ -183,7 +184,8 @@ public class CourseService {
     public void updateCourse(Long courseId, UpdateCourseRequest request, Long currentUserId, boolean isAdmin) {
         checkOwnership(courseId, currentUserId, isAdmin);
 
-        LambdaUpdateWrapper<CourseInfo> wrapper = new LambdaUpdateWrapper<CourseInfo>().eq(CourseInfo::getId, courseId);
+        LambdaUpdateWrapper<CourseInfo> wrapper =
+                Wrappers.<CourseInfo>lambdaUpdate().eq(CourseInfo::getId, courseId);
         if (request.title() != null) wrapper.set(CourseInfo::getTitle, request.title());
         if (request.description() != null) wrapper.set(CourseInfo::getDescription, request.description());
         if (request.coverImage() != null) wrapper.set(CourseInfo::getCoverImage, request.coverImage());
@@ -230,38 +232,38 @@ public class CourseService {
         // 级联软删关联表（使用 MyBatis-Plus LambdaUpdateWrapper，遵循三层架构）
         courseContentMapper.update(
                 null,
-                new LambdaUpdateWrapper<CourseContent>()
+                Wrappers.<CourseContent>lambdaUpdate()
                         .eq(CourseContent::getCourseId, courseId)
                         .eq(CourseContent::getDeleted, 0)
                         .set(CourseContent::getDeleted, ts));
         courseScheduleMapper.update(
                 null,
-                new LambdaUpdateWrapper<CourseSchedule>()
+                Wrappers.<CourseSchedule>lambdaUpdate()
                         .eq(CourseSchedule::getCourseId, courseId)
                         .eq(CourseSchedule::getDeleted, 0)
                         .set(CourseSchedule::getDeleted, ts));
         courseTeacherMapper.update(
                 null,
-                new LambdaUpdateWrapper<CourseTeacher>()
+                Wrappers.<CourseTeacher>lambdaUpdate()
                         .eq(CourseTeacher::getCourseId, courseId)
                         .eq(CourseTeacher::getDeleted, 0)
                         .set(CourseTeacher::getDeleted, ts));
         courseEnrollmentMapper.update(
                 null,
-                new LambdaUpdateWrapper<CourseEnrollment>()
+                Wrappers.<CourseEnrollment>lambdaUpdate()
                         .eq(CourseEnrollment::getCourseId, courseId)
                         .eq(CourseEnrollment::getDeleted, 0)
                         .set(CourseEnrollment::getDeleted, ts));
         // document_chunk：课程专属 chunk（course_id 为字符串类型）
         documentChunkMapper.update(
                 null,
-                new LambdaUpdateWrapper<DocumentChunk>()
+                Wrappers.<DocumentChunk>lambdaUpdate()
                         .eq(DocumentChunk::getCourseId, courseIdStr)
                         .eq(DocumentChunk::getDeleted, 0)
                         .set(DocumentChunk::getDeleted, ts));
 
         // 软删课程本身
-        LambdaUpdateWrapper<CourseInfo> wrapper = new LambdaUpdateWrapper<CourseInfo>()
+        LambdaUpdateWrapper<CourseInfo> wrapper = Wrappers.<CourseInfo>lambdaUpdate()
                 .eq(CourseInfo::getId, courseId)
                 .set(CourseInfo::getDeleted, ts)
                 .set(CourseInfo::getUpdatedAt, LocalDateTime.now());
@@ -281,7 +283,7 @@ public class CourseService {
     public void addTeachers(Long courseId, List<Long> teacherIds, Long currentUserId, boolean isAdmin) {
         checkOwnership(courseId, currentUserId, isAdmin);
         // 查询已存在的教师关联
-        LambdaQueryWrapper<CourseTeacher> existWrapper = new LambdaQueryWrapper<CourseTeacher>()
+        LambdaQueryWrapper<CourseTeacher> existWrapper = Wrappers.<CourseTeacher>lambdaQuery()
                 .eq(CourseTeacher::getCourseId, courseId)
                 .in(CourseTeacher::getTeacherId, teacherIds);
         List<Long> existingTeacherIds = courseTeacherMapper.selectList(existWrapper).stream()
@@ -311,7 +313,7 @@ public class CourseService {
      */
     public void removeTeachers(Long courseId, List<Long> teacherIds, Long currentUserId, boolean isAdmin) {
         checkOwnership(courseId, currentUserId, isAdmin);
-        LambdaUpdateWrapper<CourseTeacher> wrapper = new LambdaUpdateWrapper<CourseTeacher>()
+        LambdaUpdateWrapper<CourseTeacher> wrapper = Wrappers.<CourseTeacher>lambdaUpdate()
                 .eq(CourseTeacher::getCourseId, courseId)
                 .in(CourseTeacher::getTeacherId, teacherIds)
                 .set(CourseTeacher::getDeleted, System.currentTimeMillis());
@@ -323,7 +325,7 @@ public class CourseService {
      * 查询课程的授课教师 ID 列表
      */
     public List<Long> findTeacherIds(Long courseId) {
-        LambdaQueryWrapper<CourseTeacher> wrapper = new LambdaQueryWrapper<CourseTeacher>()
+        LambdaQueryWrapper<CourseTeacher> wrapper = Wrappers.<CourseTeacher>lambdaQuery()
                 .select(CourseTeacher::getTeacherId)
                 .eq(CourseTeacher::getCourseId, courseId);
         return courseTeacherMapper.selectList(wrapper).stream()
@@ -337,7 +339,7 @@ public class CourseService {
      * 查询课程的所有内容 Tab（按 sort_order 排序）
      */
     public List<CourseContent> findContents(Long courseId) {
-        LambdaQueryWrapper<CourseContent> wrapper = new LambdaQueryWrapper<CourseContent>()
+        LambdaQueryWrapper<CourseContent> wrapper = Wrappers.<CourseContent>lambdaQuery()
                 .eq(CourseContent::getCourseId, courseId)
                 .orderByAsc(CourseContent::getSortOrder);
         return courseContentMapper.selectList(wrapper);
@@ -353,12 +355,12 @@ public class CourseService {
      */
     public void updateContent(Long courseId, String contentType, String content, Long currentUserId, boolean isAdmin) {
         checkOwnership(courseId, currentUserId, isAdmin);
-        LambdaQueryWrapper<CourseContent> wrapper = new LambdaQueryWrapper<CourseContent>()
+        LambdaQueryWrapper<CourseContent> wrapper = Wrappers.<CourseContent>lambdaQuery()
                 .eq(CourseContent::getCourseId, courseId)
                 .eq(CourseContent::getContentType, contentType);
         CourseContent existing = courseContentMapper.selectOne(wrapper);
         if (existing != null) {
-            LambdaUpdateWrapper<CourseContent> updateWrapper = new LambdaUpdateWrapper<CourseContent>()
+            LambdaUpdateWrapper<CourseContent> updateWrapper = Wrappers.<CourseContent>lambdaUpdate()
                     .eq(CourseContent::getId, existing.getId())
                     .set(CourseContent::getContent, content)
                     .set(CourseContent::getUpdatedAt, LocalDateTime.now());
@@ -396,7 +398,7 @@ public class CourseService {
      * 查询课程排期列表
      */
     public List<CourseSchedule> findSchedules(Long courseId) {
-        LambdaQueryWrapper<CourseSchedule> wrapper = new LambdaQueryWrapper<CourseSchedule>()
+        LambdaQueryWrapper<CourseSchedule> wrapper = Wrappers.<CourseSchedule>lambdaQuery()
                 .eq(CourseSchedule::getCourseId, courseId)
                 .orderByAsc(CourseSchedule::getStartDate);
         return courseScheduleMapper.selectList(wrapper);
@@ -413,7 +415,7 @@ public class CourseService {
     public CourseDTO toDTO(CourseInfo course, boolean includeRelations) {
         List<CourseDTO.CourseContentDTO> contentDTOs = null;
         List<Long> teacherIds = null;
-        List<com.commerce.rag.controller.dto.ScheduleDTO> scheduleDTOs = null;
+        List<ScheduleDTO> scheduleDTOs = null;
 
         if (includeRelations) {
             List<CourseContent> contents = findContents(course.getId());
@@ -425,7 +427,7 @@ public class CourseService {
 
             List<CourseSchedule> schedules = findSchedules(course.getId());
             scheduleDTOs = schedules.stream()
-                    .map(s -> new com.commerce.rag.controller.dto.ScheduleDTO(
+                    .map(s -> new ScheduleDTO(
                             s.getId(),
                             s.getCourseId(),
                             s.getStartDate(),

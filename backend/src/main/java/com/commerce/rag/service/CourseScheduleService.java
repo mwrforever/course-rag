@@ -2,6 +2,7 @@ package com.commerce.rag.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.commerce.rag.controller.dto.CreateScheduleRequest;
 import com.commerce.rag.controller.dto.UpdateScheduleRequest;
 import com.commerce.rag.entity.CourseSchedule;
@@ -87,7 +88,7 @@ public class CourseScheduleService {
      * 查询课程的所有排期（按开课日期升序）
      */
     public List<CourseSchedule> findByCourseId(Long courseId) {
-        LambdaQueryWrapper<CourseSchedule> wrapper = new LambdaQueryWrapper<CourseSchedule>()
+        LambdaQueryWrapper<CourseSchedule> wrapper = Wrappers.<CourseSchedule>lambdaQuery()
                 .eq(CourseSchedule::getCourseId, courseId)
                 .orderByAsc(CourseSchedule::getStartDate);
         return scheduleMapper.selectList(wrapper);
@@ -123,7 +124,7 @@ public class CourseScheduleService {
         courseService.checkOwnership(schedule.getCourseId(), currentUserId, isAdmin);
 
         LambdaUpdateWrapper<CourseSchedule> wrapper =
-                new LambdaUpdateWrapper<CourseSchedule>().eq(CourseSchedule::getId, id);
+                Wrappers.<CourseSchedule>lambdaUpdate().eq(CourseSchedule::getId, id);
         if (request.startDate() != null) wrapper.set(CourseSchedule::getStartDate, request.startDate());
         if (request.endDate() != null) wrapper.set(CourseSchedule::getEndDate, request.endDate());
         if (request.scheduleType() != null) wrapper.set(CourseSchedule::getScheduleType, request.scheduleType());
@@ -151,7 +152,7 @@ public class CourseScheduleService {
         }
         courseService.checkOwnership(schedule.getCourseId(), currentUserId, isAdmin);
 
-        LambdaUpdateWrapper<CourseSchedule> wrapper = new LambdaUpdateWrapper<CourseSchedule>()
+        LambdaUpdateWrapper<CourseSchedule> wrapper = Wrappers.<CourseSchedule>lambdaUpdate()
                 .eq(CourseSchedule::getId, id)
                 .set(CourseSchedule::getDeleted, System.currentTimeMillis())
                 .set(CourseSchedule::getUpdatedAt, LocalDateTime.now());

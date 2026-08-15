@@ -7,12 +7,14 @@ import com.commerce.rag.mapper.SysLoginRecordMapper;
 import com.commerce.rag.mapper.SysTokenBlacklistMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -53,6 +55,9 @@ public class DeviceKickService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
+    /** 自身代理（P0-5：@Transactional 基于 JDK 代理，同类自调用不经过代理导致注解失效；@Lazy 延迟解析避免循环依赖） */
+    private final DeviceKickService self;
+
     private final DefaultRedisScript<String> kickAndLoginScript;
     private final DefaultRedisScript<String> disableUserScript;
     private final DefaultRedisScript<Long> markRtUsedScript;
@@ -63,13 +68,15 @@ public class DeviceKickService {
             AuthProperties authProperties,
             SysLoginRecordMapper loginRecordMapper,
             SysTokenBlacklistMapper tokenBlacklistMapper,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate,
+            @Lazy DeviceKickService self) {
         this.redisTemplate = redisTemplate;
         this.tokenService = tokenService;
         this.authProperties = authProperties;
         this.loginRecordMapper = loginRecordMapper;
         this.tokenBlacklistMapper = tokenBlacklistMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.self = self;
         this.objectMapper = new ObjectMapper();
 
         // 加载 Lua 脚本
@@ -146,7 +153,8 @@ public class DeviceKickService {
             return kickResult;
         } catch (Exception e) {
             log.warn("Redis 设备互踢失败，降级到 PG 事务: userId={}, deviceType={}", userId, deviceType, e);
-            return kickAndLoginPgFallback(userId, deviceType, newJtiAt, newJtiRt, newLoginId);
+            // P0-5: 经 self 代理调用，保证 @Transactional 生效（同类自调用不经过代理）
+            return self.kickAndLoginPgFallback(userId, deviceType, newJtiAt, newJtiRt, newLoginId);
         }
     }
 
@@ -256,7 +264,8 @@ public class DeviceKickService {
             return parseDisableCount(result);
         } catch (Exception e) {
             log.warn("Redis 禁用用户失败，降级到 PG 事务: userId={}", userId, e);
-            return disableUserPgFallback(userId, adminUserId, activeRecords);
+            // P0-5: 经 self 代理调用，保证 @Transactional 生效（同类自调用不经过代理）
+            return self.disableUserPgFallback(userId, adminUserId, activeRecords);
         }
     }
 
@@ -274,8 +283,7 @@ public class DeviceKickService {
             String jti, String tokenType, Long userId, Long blacklistedBy, String reason, LocalDateTime expiresAt) {
         // 先写 Redis（执法层）
         try {
-            long ttl =
-                    java.time.Duration.between(LocalDateTime.now(), expiresAt).getSeconds();
+            long ttl = Duration.between(LocalDateTime.now(), expiresAt).getSeconds();
             if (ttl > 0) {
                 redisTemplate
                         .opsForValue()

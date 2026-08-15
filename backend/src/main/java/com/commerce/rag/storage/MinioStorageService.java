@@ -6,8 +6,14 @@ import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.RemoveObjectsArgs;
+import io.minio.Result;
+import io.minio.messages.DeleteError;
+import io.minio.messages.DeleteObject;
 import jakarta.annotation.PostConstruct;
 import java.io.InputStream;
+import java.util.List;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +33,9 @@ import org.springframework.stereotype.Service;
 public class MinioStorageService {
 
     private static final Logger log = LoggerFactory.getLogger(MinioStorageService.class);
+
+    /** 批量删除单批大小（MinIO 建议 ≤1000，保守取 100） */
+    private static final int BATCH_DELETE_SIZE = 100;
 
     private final MinioClient minioClient;
 
@@ -117,6 +126,47 @@ public class MinioStorageService {
         } catch (Exception e) {
             log.error("MinIO 删除失败: objectKey={}", objectKey, e);
             throw new RuntimeException("文件删除失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 从 MinIO 批量删除文件（perf P1-2：一次请求批量删多个对象，替代循环单删 N 次网络往返）
+     *
+     * <p>对象列表分批（默认 100 个/批）发送；任一对象删除失败（返回 DeleteError）立即上抛——
+     * 保持与 {@link #deleteFile} 一致的「失败上抛阻断」语义（调用方先删 MinIO 再软删 PG，
+     * 失败可重试收敛，removeObject 幂等）。
+     *
+     * @param objectKeys 文件路径列表（允许为空）
+     * @throws RuntimeException 任一对象删除失败
+     */
+    public void deleteFiles(List<String> objectKeys) {
+        if (objectKeys == null || objectKeys.isEmpty()) {
+            return;
+        }
+        // 分批（MinIO 单次删除对象数有上限，100/批为保守值）
+        for (int start = 0; start < objectKeys.size(); start += BATCH_DELETE_SIZE) {
+            List<String> batch = objectKeys.subList(start, Math.min(start + BATCH_DELETE_SIZE, objectKeys.size()));
+            try {
+                // objects() 需要 DeleteObject 列表（objectKey → DeleteObject 转换）
+                List<DeleteObject> deleteObjects =
+                        batch.stream().map(DeleteObject::new).collect(Collectors.toList());
+                Iterable<Result<DeleteError>> results = minioClient.removeObjects(RemoveObjectsArgs.builder()
+                        .bucket(bucket)
+                        .objects(deleteObjects)
+                        .build());
+                // 遍历结果：任何 DeleteError（对象不存在等）都视为失败上抛
+                for (Result<DeleteError> result : results) {
+                    DeleteError error = result.get();
+                    log.error("MinIO 批量删除失败: objectKey={}, code={}", error.objectName(), error.code());
+                    throw new RuntimeException("文件删除失败: " + error.objectName() + " (" + error.code() + ")");
+                }
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                log.error("MinIO 批量删除失败: batchSize={}", batch.size(), e);
+                throw new RuntimeException("文件删除失败: " + e.getMessage(), e);
+            }
+            log.info("文件已从 MinIO 批量删除: count={}", batch.size());
         }
     }
 

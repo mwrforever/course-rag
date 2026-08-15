@@ -19,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
@@ -120,6 +121,10 @@ public class EtlPipeline {
         } catch (Exception e) {
             log.error("ETL 管道失败: docId={}", docId, e);
             updateDocStatus(docId, "FAILED", e.getMessage());
+        } finally {
+            // perf P3-3: 任何路径（含异常）都清理解析文本缓存——parse 成功但 chunk/embed
+            // 失败时缓存残留会随 docId 递增持续增长（反复 reparse 失败即内存泄漏）
+            parsedTextCache.remove(docId);
         }
     }
 
@@ -187,6 +192,15 @@ public class EtlPipeline {
         int chunkSize = etlProperties.chunk().size();
         int overlap = etlProperties.chunk().overlap();
 
+        // P2-7: delete-then-insert 幂等化——先软删该文档旧 chunk（含上次 FAILED 遗留的半成品），
+        // 再插入新分片。当前 upload/reparse 入口虽已在外层软删，但 FAILED 重跑等预留路径
+        // （process 抢占 PENDING/FAILED 直接重跑）无此步骤时每次重跑会重复堆积一套分片
+        chunkMapper.update(
+                null,
+                Wrappers.<DocumentChunk>lambdaUpdate()
+                        .eq(DocumentChunk::getDocId, docId)
+                        .set(DocumentChunk::getDeleted, System.currentTimeMillis()));
+
         // 递归分片
         List<ChunkInfo> chunks = recursiveSplit(text, chunkSize, overlap);
         log.info("分片完成: docId={}, 分片数={}", docId, chunks.size());
@@ -206,7 +220,9 @@ public class EtlPipeline {
             chunk.setHeadingPath(info.headingPath);
             chunk.setTokenCount(estimateTokens(info.text));
             chunk.setCollectionType("TECHNICAL_QA");
-            chunk.setCourseId("DEFAULT");
+            // 课程归属：优先取文档级 course_id（上传时前端可指定，用户裁决），空则 DEFAULT=通用资料库
+            chunk.setCourseId(
+                    doc.getCourseId() != null && !doc.getCourseId().isBlank() ? doc.getCourseId() : "DEFAULT");
             chunk.setCharOffsetStart(info.start);
             chunk.setCharOffsetEnd(info.end);
             chunk.setCorrectionStatus("PENDING");
@@ -297,6 +313,14 @@ public class EtlPipeline {
 
         // P2-1: 部分失败标 FAILED（避免误标 INDEXED 导致检索漏召回），全部成功才 INDEXED
         if (failedCount > 0) {
+            // P2-6: 清空 Milvus 半成品——旧向量已在开头全删、新向量只插入一部分，
+            // 若不清空则 FAILED 文档的残缺内容在学生端持续被检索命中（漏召回）；
+            // 清空后重试前该文档 fail-closed（不命中任何内容），重跑时 delete-then-insert 幂等收敛
+            try {
+                deleteFromMilvusByDocId(docId);
+            } catch (Exception e) {
+                log.warn("FAILED 文档 Milvus 半成品清理失败（重试/删除时会再次清理）: docId={}", docId, e);
+            }
             updateDocStatus(docId, "FAILED", "分片向量化失败: " + failedCount + "/" + chunks.size());
             log.warn("向量化部分失败: docId={}, 失败={}/{}", docId, failedCount, chunks.size());
             return;
@@ -398,19 +422,107 @@ public class EtlPipeline {
     /**
      * 删除 Milvus 中单个分片（v2 API：DeleteReq + filter）
      *
+     * <p>P0-8 修复：删除失败上抛（不再吞异常）——调用方（DocumentChunkService.delete）
+     * 先删 Milvus 再软删 PG，失败阻断 PG 软删，可重试收敛；吞异常会导致向量永久残留可检索。
+     *
      * @param chunkIdStr 分片 ID 字符串
      */
     public void deleteFromMilvusByChunkId(String chunkIdStr) {
-        try {
-            String filter = "chunk_id == \"" + chunkIdStr + "\"";
-            DeleteReq deleteReq = DeleteReq.builder()
-                    .collectionName(COLLECTION_NAME)
-                    .filter(filter)
-                    .build();
-            milvusClientV2.delete(deleteReq);
-        } catch (Exception e) {
-            log.warn("Milvus 删除失败（忽略）: chunkId={}, error={}", chunkIdStr, e.getMessage());
+        String filter = "chunk_id == \"" + chunkIdStr + "\"";
+        DeleteReq deleteReq = DeleteReq.builder()
+                .collectionName(COLLECTION_NAME)
+                .filter(filter)
+                .build();
+        milvusClientV2.delete(deleteReq);
+        log.info("Milvus 清理完成（按分片）: chunkId={}", chunkIdStr);
+    }
+
+    /**
+     * 按 chunk_id 列表批量删除 Milvus 记录（filter IN 一次删除，P0-1 课程删除按 PG 关联清理用）
+     *
+     * <p>与 {@link #deleteFromMilvusByCourseId} 的差异：Milvus 侧 course_id 标注与 PG 不同步时，
+     * 按 course_id 过滤删不到向量；按 PG 查出的 chunk_id 列表 IN 删除可精确清理。
+     * 删除失败上抛，阻断调用方 PG 软删（失败可见可重试）。
+     *
+     * @param chunkIds 分片 ID 列表（不允许为空）
+     */
+    public void deleteFromMilvusByChunkIds(List<String> chunkIds) {
+        if (chunkIds == null || chunkIds.isEmpty()) {
+            return;
         }
+        String idList = chunkIds.stream().map(id -> "\"" + id + "\"").collect(Collectors.joining(", "));
+        String filter = "chunk_id in [" + idList + "]";
+        DeleteReq deleteReq = DeleteReq.builder()
+                .collectionName(COLLECTION_NAME)
+                .filter(filter)
+                .build();
+        milvusClientV2.delete(deleteReq);
+        log.info("Milvus 清理完成（按分片批量）: count={}", chunkIds.size());
+    }
+
+    /**
+     * 将 PG 分片的标量字段（course_id/collection_type）同步到 Milvus（delete-then-insert）
+     *
+     * <p>P0-1：D5/D7 标注只改 PG 时 Milvus 侧 course_id 恒为 DEFAULT——课程删除按 course_id
+     * 过滤删不到向量、学生端课程维度过滤失效。Milvus v2 SDK 无按 filter 更新的 API，
+     * 采用 delete-then-insert 重建行（向量从 PG dense_vector 恢复，不重新调 embedding API）。
+     *
+     * <p>分片未向量化（dense_vector 为空，PENDING/FAILED 文档）时跳过——无需同步。
+     * 删除/插入失败上抛，阻断 PG 标注更新（可重试收敛）。
+     *
+     * @param chunkId 分片 ID
+     */
+    public void syncChunkToMilvus(Long chunkId) {
+        DocumentChunk chunk = chunkMapper.selectById(chunkId);
+        if (chunk == null) {
+            throw new IllegalStateException("分片不存在: chunkId=" + chunkId);
+        }
+        if (chunk.getDenseVector() == null || chunk.getDenseVector().length == 0) {
+            log.debug("分片未向量化，跳过 Milvus 同步: chunkId={}", chunkId);
+            return;
+        }
+        Document doc = documentMapper.selectById(chunk.getDocId());
+        syncChunkRowToMilvus(chunk, doc != null ? doc.getTitle() : "");
+    }
+
+    /**
+     * 文档级同步：将该文档全部未删分片的标量字段（course_id/collection_type）同步到 Milvus
+     *
+     * <p>用户裁决（2026-08-15）：后台提供文档级同步而非逐 chunk——B 端「把整篇文档标注为
+     * 某课程」时一次调用完成（调用次数 = 文档数，而非分片数）。内部仍逐 chunk
+     * delete-then-insert 重建 Milvus 行（向量从 PG dense_vector 恢复，不重新调 embedding API）。
+     * 未向量化的分片（dense_vector 为空）跳过。失败上抛，阻断调用方（可重试收敛）。
+     *
+     * @param docId 文档 ID
+     */
+    public void syncDocToMilvus(Long docId) {
+        Document doc = documentMapper.selectById(docId);
+        if (doc == null) {
+            throw new IllegalStateException("文档不存在: docId=" + docId);
+        }
+        String docTitle = doc.getTitle();
+        List<DocumentChunk> chunks = chunkMapper.selectList(Wrappers.<DocumentChunk>lambdaQuery()
+                .eq(DocumentChunk::getDocId, docId)
+                .orderByAsc(DocumentChunk::getChunkIndex));
+        int synced = 0;
+        for (DocumentChunk chunk : chunks) {
+            if (chunk.getDenseVector() == null || chunk.getDenseVector().length == 0) {
+                continue;
+            }
+            syncChunkRowToMilvus(chunk, docTitle);
+            synced++;
+        }
+        log.info("文档标注已同步 Milvus: docId={}, 同步分片数={}", docId, synced);
+    }
+
+    /**
+     * 单分片重建 Milvus 行（delete-then-insert，向量从 PG dense_vector 恢复）
+     */
+    private void syncChunkRowToMilvus(DocumentChunk chunk, String docTitle) {
+        float[] vector = bytesToFloatArray(chunk.getDenseVector());
+        deleteFromMilvusByChunkId(String.valueOf(chunk.getId()));
+        insertToMilvus(chunk, vector, docTitle);
+        log.debug("分片标量字段已同步 Milvus: chunkId={}, courseId={}", chunk.getId(), chunk.getCourseId());
     }
 
     // ========================================================================
@@ -623,6 +735,18 @@ public class EtlPipeline {
             buffer.putFloat(f);
         }
         return buffer.array();
+    }
+
+    /**
+     * byte[] → float[]（从 PG BYTEA 恢复向量，供 Milvus 重建行）
+     */
+    private float[] bytesToFloatArray(byte[] bytes) {
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
+        float[] vector = new float[bytes.length / Float.BYTES];
+        for (int i = 0; i < vector.length; i++) {
+            vector[i] = buffer.getFloat();
+        }
+        return vector;
     }
 
     /**

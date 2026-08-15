@@ -1,7 +1,7 @@
 package com.commerce.rag.auth;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.commerce.rag.config.AuthProperties;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.mapper.SysLoginRecordMapper;
@@ -89,7 +89,7 @@ public class AuthSessionService {
      */
     public void updateLoginRecordOnRefresh(Long userId, String oldJtiRt, String newJtiAt, String newJtiRt) {
         try {
-            LambdaUpdateWrapper<SysLoginRecord> wrapper = new LambdaUpdateWrapper<SysLoginRecord>()
+            LambdaUpdateWrapper<SysLoginRecord> wrapper = Wrappers.<SysLoginRecord>lambdaUpdate()
                     .eq(SysLoginRecord::getUserId, userId)
                     .eq(SysLoginRecord::getJtiRt, oldJtiRt)
                     .eq(SysLoginRecord::getStatus, "ACTIVE")
@@ -132,10 +132,13 @@ public class AuthSessionService {
                 "MANUAL_REVOKE",
                 LocalDateTime.now().plusSeconds(authProperties.accessTokenExpiry()));
 
-        // 2. 查该会话 ACTIVE login_record 取 jti_rt（软删由 @TableLogic 自动过滤）
-        SysLoginRecord record = loginRecordMapper.selectOne(new LambdaQueryWrapper<SysLoginRecord>()
+        // 2. 查该会话 ACTIVE login_record 取 jti_rt（软删由 @TableLogic 自动过滤）。
+        //    P0-3 修复：不按 jti_at 定位（RT 旋转会覆盖 jti_at/jti_rt）——旧 AT 登出时
+        //    （15min 内仍有效）jti_at 已不匹配，会导致新 RT 漏吊销而永久续命；
+        //    改为按 userId + ACTIVE 定位当前会话（系统单设备互踢，同一用户最多一条 ACTIVE），
+        //    保证旋转后的新 RT 同样被吊销。
+        SysLoginRecord record = loginRecordMapper.selectOne(Wrappers.<SysLoginRecord>lambdaQuery()
                 .eq(SysLoginRecord::getUserId, userId)
-                .eq(SysLoginRecord::getJtiAt, jtiAt)
                 .eq(SysLoginRecord::getStatus, "ACTIVE")
                 .last("LIMIT 1"));
         if (record != null && record.getJtiRt() != null && !record.getJtiRt().isEmpty()) {
@@ -163,14 +166,15 @@ public class AuthSessionService {
     /**
      * 将指定会话 login_record 置 REVOKED（update 失败仅 warn 降级）
      *
+     * <p>P0-3：与吊销定位一致按 userId + ACTIVE（不按 jti_at），旧 AT 登出时仍能置 REVOKED。
+     *
      * @param userId 用户 ID
-     * @param jtiAt  会话 AT 的 jti
+     * @param jtiAt  会话 AT 的 jti（仅用于日志）
      */
     private void revokeLoginRecord(Long userId, String jtiAt) {
         try {
-            LambdaUpdateWrapper<SysLoginRecord> wrapper = new LambdaUpdateWrapper<SysLoginRecord>()
+            LambdaUpdateWrapper<SysLoginRecord> wrapper = Wrappers.<SysLoginRecord>lambdaUpdate()
                     .eq(SysLoginRecord::getUserId, userId)
-                    .eq(SysLoginRecord::getJtiAt, jtiAt)
                     .eq(SysLoginRecord::getStatus, "ACTIVE")
                     .set(SysLoginRecord::getStatus, "REVOKED")
                     .set(SysLoginRecord::getUpdatedAt, LocalDateTime.now());

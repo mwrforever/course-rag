@@ -2,6 +2,7 @@ package com.commerce.rag.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.commerce.rag.controller.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
 import com.commerce.rag.entity.CourseInfo;
@@ -52,7 +53,7 @@ public class EnrollmentService {
         courseService.checkOwnership(courseId, currentUserId, isAdmin);
 
         // 查询选课记录
-        LambdaQueryWrapper<CourseEnrollment> wrapper = new LambdaQueryWrapper<CourseEnrollment>()
+        LambdaQueryWrapper<CourseEnrollment> wrapper = Wrappers.<CourseEnrollment>lambdaQuery()
                 .eq(CourseEnrollment::getCourseId, courseId)
                 .eq(CourseEnrollment::getStatus, "ACTIVE")
                 .orderByDesc(CourseEnrollment::getEnrolledAt);
@@ -101,7 +102,7 @@ public class EnrollmentService {
         courseService.checkOwnership(courseId, currentUserId, isAdmin);
 
         // 查询已存在的选课记录（包含已退课的，复用记录）
-        LambdaQueryWrapper<CourseEnrollment> existWrapper = new LambdaQueryWrapper<CourseEnrollment>()
+        LambdaQueryWrapper<CourseEnrollment> existWrapper = Wrappers.<CourseEnrollment>lambdaQuery()
                 .eq(CourseEnrollment::getCourseId, courseId)
                 .in(CourseEnrollment::getStudentId, studentIds);
         List<CourseEnrollment> existing = enrollmentMapper.selectList(existWrapper);
@@ -123,7 +124,7 @@ public class EnrollmentService {
             }
             if (droppedStudentIds.contains(studentId)) {
                 // 重新激活退课记录
-                LambdaUpdateWrapper<CourseEnrollment> updateWrapper = new LambdaUpdateWrapper<CourseEnrollment>()
+                LambdaUpdateWrapper<CourseEnrollment> updateWrapper = Wrappers.<CourseEnrollment>lambdaUpdate()
                         .eq(CourseEnrollment::getCourseId, courseId)
                         .eq(CourseEnrollment::getStudentId, studentId)
                         .set(CourseEnrollment::getStatus, "ACTIVE")
@@ -155,7 +156,7 @@ public class EnrollmentService {
     public void removeStudent(Long courseId, Long studentId, Long currentUserId, boolean isAdmin) {
         courseService.checkOwnership(courseId, currentUserId, isAdmin);
 
-        LambdaUpdateWrapper<CourseEnrollment> wrapper = new LambdaUpdateWrapper<CourseEnrollment>()
+        LambdaUpdateWrapper<CourseEnrollment> wrapper = Wrappers.<CourseEnrollment>lambdaUpdate()
                 .eq(CourseEnrollment::getCourseId, courseId)
                 .eq(CourseEnrollment::getStudentId, studentId)
                 .set(CourseEnrollment::getStatus, "DROPPED");
@@ -174,7 +175,7 @@ public class EnrollmentService {
      */
     public List<CourseInfo> findStudentCourses(Long studentId) {
         // 查询学生活跃的选课记录
-        LambdaQueryWrapper<CourseEnrollment> wrapper = new LambdaQueryWrapper<CourseEnrollment>()
+        LambdaQueryWrapper<CourseEnrollment> wrapper = Wrappers.<CourseEnrollment>lambdaQuery()
                 .eq(CourseEnrollment::getStudentId, studentId)
                 .eq(CourseEnrollment::getStatus, "ACTIVE");
         List<CourseEnrollment> enrollments = enrollmentMapper.selectList(wrapper);
@@ -197,7 +198,7 @@ public class EnrollmentService {
      * @return true=已选
      */
     public boolean isEnrolled(Long courseId, Long studentId) {
-        LambdaQueryWrapper<CourseEnrollment> wrapper = new LambdaQueryWrapper<CourseEnrollment>()
+        LambdaQueryWrapper<CourseEnrollment> wrapper = Wrappers.<CourseEnrollment>lambdaQuery()
                 .eq(CourseEnrollment::getCourseId, courseId)
                 .eq(CourseEnrollment::getStudentId, studentId)
                 .eq(CourseEnrollment::getStatus, "ACTIVE");
