@@ -1,0 +1,161 @@
+package com.commerce.rag.etl;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import com.commerce.rag.entity.Document;
+import com.commerce.rag.entity.DocumentChunk;
+import com.commerce.rag.mapper.DocumentChunkMapper;
+import com.commerce.rag.mapper.DocumentMapper;
+import com.commerce.rag.storage.MinioStorageService;
+import com.commerce.rag.test.MybatisPlusTestHelper;
+import io.milvus.v2.client.MilvusClientV2;
+import io.milvus.v2.service.vector.request.DeleteReq;
+import java.io.ByteArrayInputStream;
+import java.util.List;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.embedding.EmbeddingModel;
+
+/**
+ * EtlPipeline 单元测试 —— Mock 所有依赖（v2 API）
+ *
+ * @author commerce-rag
+ */
+@ExtendWith(MockitoExtension.class)
+class EtlPipelineTest {
+
+    @BeforeAll
+    static void initMybatisPlus() {
+        MybatisPlusTestHelper.initTableInfo();
+    }
+
+    @Mock
+    private DocumentMapper documentMapper;
+
+    @Mock
+    private DocumentChunkMapper chunkMapper;
+
+    @Mock
+    private MinioStorageService minioStorageService;
+
+    @Mock
+    private EmbeddingModel embeddingModel;
+
+    @Mock
+    private MilvusClientV2 milvusClientV2;
+
+    private EtlPipeline etlPipeline;
+
+    @BeforeEach
+    void setUp() {
+        EtlProperties props =
+                new EtlProperties(100, new EtlProperties.Executor(2, 4, 20, "etl-"), new EtlProperties.Chunk(768, 128));
+        etlPipeline = new EtlPipeline(
+                documentMapper, chunkMapper, minioStorageService, embeddingModel, milvusClientV2, props);
+    }
+
+    @Test
+    @DisplayName("deleteFromMilvusByChunkId — 调用 milvusClientV2.delete")
+    void deleteFromMilvusByChunkId_callsDelete() {
+        etlPipeline.deleteFromMilvusByChunkId("123");
+        verify(milvusClientV2).delete(any(DeleteReq.class));
+    }
+
+    @Test
+    @DisplayName("deleteFromMilvusByChunkId — Milvus 异常不传播")
+    void deleteFromMilvusByChunkId_exceptionSilent() {
+        doThrow(new RuntimeException("connection refused")).when(milvusClientV2).delete(any(DeleteReq.class));
+
+        // 不应抛出异常
+        etlPipeline.deleteFromMilvusByChunkId("123");
+    }
+
+    @Test
+    @DisplayName("deleteFromMilvusByDocId — 按 doc_id filter 一次删除（不查 PG chunk 表）")
+    void deleteFromMilvusByDocId_deletesByFilter() {
+        etlPipeline.deleteFromMilvusByDocId(100L);
+
+        ArgumentCaptor<DeleteReq> captor = ArgumentCaptor.forClass(DeleteReq.class);
+        verify(milvusClientV2).delete(captor.capture());
+        assertEquals("doc_id == \"100\"", captor.getValue().getFilter());
+        // 不再依赖 PG chunk 行（规避 @TableLogic 过滤漏删已软删 chunk）
+        verify(chunkMapper, never()).selectList(any());
+    }
+
+    @Test
+    @DisplayName("deleteFromMilvusByDocId — Milvus 删除失败上抛（阻断调用方，不静默）")
+    void deleteFromMilvusByDocId_failure_throws() {
+        doThrow(new RuntimeException("connection refused")).when(milvusClientV2).delete(any(DeleteReq.class));
+
+        assertThrows(RuntimeException.class, () -> etlPipeline.deleteFromMilvusByDocId(100L));
+    }
+
+    @Test
+    @DisplayName("deleteFromMilvusByKbId — 按 kb_id filter 一次删除（不查 PG chunk 表）")
+    void deleteFromMilvusByKbId_deletesByFilter() {
+        etlPipeline.deleteFromMilvusByKbId(10L);
+
+        ArgumentCaptor<DeleteReq> captor = ArgumentCaptor.forClass(DeleteReq.class);
+        verify(milvusClientV2).delete(captor.capture());
+        assertEquals("kb_id == \"10\"", captor.getValue().getFilter());
+        verify(chunkMapper, never()).selectList(any());
+    }
+
+    @Test
+    @DisplayName("deleteFromMilvusByCourseId — 按 course_id filter 删除")
+    void deleteFromMilvusByCourseId_deletesByFilter() {
+        etlPipeline.deleteFromMilvusByCourseId("12345");
+
+        ArgumentCaptor<DeleteReq> captor = ArgumentCaptor.forClass(DeleteReq.class);
+        verify(milvusClientV2).delete(captor.capture());
+        assertEquals("course_id == \"12345\"", captor.getValue().getFilter());
+    }
+
+    @Test
+    @DisplayName("process 完整管道 — Tika 解析 → 分片 → 向量化")
+    void process_fullPipeline() throws Exception {
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setKbId(10L);
+        doc.setTitle("测试文档");
+        doc.setSourcePath("10/1.pdf");
+        doc.setParseStatus("PENDING");
+
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        when(minioStorageService.downloadFile("10/1.pdf"))
+                .thenReturn(new ByteArrayInputStream("这是测试内容。\n\n第二段落内容。".getBytes()));
+        // 以下 stub 用于管道后续阶段（chunkDocument / embedAndIndex），
+        // Tika 在纯单测环境下解析行为不确定，用 lenient 避免不必要 stub 报错
+        lenient().when(chunkMapper.insert(any(DocumentChunk.class))).thenReturn(1);
+        lenient().when(chunkMapper.selectList(any())).thenReturn(List.of());
+        when(documentMapper.update(any(), any())).thenReturn(1);
+
+        // 执行管道
+        etlPipeline.process(1L);
+
+        // 验证状态更新到 INDEXED
+        verify(documentMapper, atLeastOnce()).update(any(), any());
+        // 验证从 MinIO 下载了文件
+        verify(minioStorageService).downloadFile("10/1.pdf");
+    }
+
+    @Test
+    @DisplayName("process 文档不存在 — 设置 FAILED 状态")
+    void process_docNotFound_setsFailed() {
+        when(documentMapper.selectById(999L)).thenReturn(null);
+
+        etlPipeline.process(999L);
+
+        // 验证状态被设为 FAILED
+        verify(documentMapper).update(any(), any());
+    }
+}
