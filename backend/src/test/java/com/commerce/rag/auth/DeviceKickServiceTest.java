@@ -328,7 +328,13 @@ class DeviceKickServiceTest {
                 .when(valueOps)
                 .set(anyString(), anyString(), anyLong(), any(TimeUnit.class));
 
-        service.addToBlacklist("jti-1", "ACCESS", 1L, 100L, "MANUAL_REVOKE", LocalDateTime.now().plusDays(1));
+        service.addToBlacklist(
+                "jti-1",
+                "ACCESS",
+                1L,
+                100L,
+                "MANUAL_REVOKE",
+                LocalDateTime.now().plusDays(1));
 
         verify(tokenBlacklistMapper).insert(any(SysTokenBlacklist.class));
     }
@@ -336,7 +342,13 @@ class DeviceKickServiceTest {
     @Test
     @DisplayName("addToBlacklist — TTL 已过期 → 跳过 Redis 写入，仍写 PG")
     void addToBlacklist_expiredTtl_skipsRedisWritesPg() {
-        service.addToBlacklist("jti-1", "ACCESS", 1L, 100L, "MANUAL_REVOKE", LocalDateTime.now().minusDays(1));
+        service.addToBlacklist(
+                "jti-1",
+                "ACCESS",
+                1L,
+                100L,
+                "MANUAL_REVOKE",
+                LocalDateTime.now().minusDays(1));
 
         verify(valueOps, never()).set(anyString(), anyString(), anyLong(), any(TimeUnit.class));
         verify(tokenBlacklistMapper).insert(any(SysTokenBlacklist.class));
