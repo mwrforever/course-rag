@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.controller.vo.KnowledgeBaseVO;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.KnowledgeBase;
@@ -125,5 +126,129 @@ class KnowledgeBaseServiceTest {
 
         verify(etlPipeline, never()).deleteFromMilvusByKbId(any());
         verify(knowledgeBaseMapper, never()).update(any(), any());
+    }
+
+    // ==================== findById / findPage / update ====================
+
+    @Test
+    @DisplayName("findById → 超管可查看任意知识库")
+    void findById_superAdmin_returnsVO() {
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(1L);
+        kb.setName("知识库A");
+        kb.setCreatedBy(1L);
+        when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
+
+        KnowledgeBaseVO result = knowledgeBaseService.findById(1L, 100L, "SUPER_ADMIN");
+
+        assertEquals("知识库A", result.name());
+    }
+
+    @Test
+    @DisplayName("findById → 教师查看非自己创建的知识库返回 null")
+    void findById_teacherOtherKb_returnsNull() {
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(1L);
+        kb.setCreatedBy(1L);
+        when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
+
+        KnowledgeBaseVO result = knowledgeBaseService.findById(1L, 2L, "TEACHER");
+
+        assertNull(result);
+    }
+
+    @Test
+    @DisplayName("findById → 教师查看自己的知识库返回 VO（created_by 为空的历史数据也拒绝）")
+    void findById_teacherOwnKb_returnsVO() {
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(1L);
+        kb.setName("我的库");
+        kb.setCreatedBy(2L);
+        when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
+
+        KnowledgeBaseVO result = knowledgeBaseService.findById(1L, 2L, "TEACHER");
+
+        assertEquals("我的库", result.name());
+    }
+
+    @Test
+    @DisplayName("findById → 知识库不存在返回 null")
+    void findById_notFound_returnsNull() {
+        when(knowledgeBaseMapper.selectById(99L)).thenReturn(null);
+
+        assertNull(knowledgeBaseService.findById(99L, 1L, "SUPER_ADMIN"));
+    }
+
+    @Test
+    @DisplayName("findPage → 超管不带 created_by 过滤，按关键词分页并转换 VO")
+    void findPage_superAdmin_keywordSearch() {
+        Page<KnowledgeBase> entityPage = new Page<>(1, 20, 1);
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(1L);
+        kb.setName("知识库A");
+        entityPage.setRecords(List.of(kb));
+        when(knowledgeBaseMapper.selectPage(any(Page.class), any())).thenReturn(entityPage);
+
+        Page<KnowledgeBaseVO> result = knowledgeBaseService.findPage(1, 20, "知识", 100L, "SUPER_ADMIN");
+
+        assertEquals(1, result.getRecords().size());
+        assertEquals("知识库A", result.getRecords().get(0).name());
+        assertEquals(1, result.getTotal());
+    }
+
+    @Test
+    @DisplayName("findPage → 教师按 created_by=自己 过滤")
+    void findPage_teacher_filtersByCreator() {
+        Page<KnowledgeBase> entityPage = new Page<>(1, 20, 0);
+        when(knowledgeBaseMapper.selectPage(any(Page.class), any())).thenReturn(entityPage);
+
+        Page<KnowledgeBaseVO> result = knowledgeBaseService.findPage(1, 20, null, 2L, "TEACHER");
+
+        assertTrue(result.getRecords().isEmpty());
+        verify(knowledgeBaseMapper).selectPage(any(Page.class), any());
+    }
+
+    @Test
+    @DisplayName("findPage → size<=0 时使用默认每页 20")
+    void findPage_invalidSize_usesDefault() {
+        Page<KnowledgeBase> entityPage = new Page<>(1, 20, 0);
+        when(knowledgeBaseMapper.selectPage(any(Page.class), any())).thenReturn(entityPage);
+
+        knowledgeBaseService.findPage(1, 0, null, 100L, "SUPER_ADMIN");
+
+        verify(knowledgeBaseMapper).selectPage(argThat(p -> p.getSize() == 20), any());
+    }
+
+    @Test
+    @DisplayName("update → 超管更新名称与描述")
+    void update_superAdmin_updatesFields() {
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(1L);
+        kb.setCreatedBy(1L);
+        when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
+
+        knowledgeBaseService.update(1L, "新名称", "新描述", 100L, true);
+
+        verify(knowledgeBaseMapper).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("update → 教师非创建者抛权限异常")
+    void update_teacherOtherKb_throws() {
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(1L);
+        kb.setCreatedBy(1L);
+        when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
+
+        assertThrows(ResponseStatusException.class, () -> knowledgeBaseService.update(1L, "新名", null, 2L, false));
+        verify(knowledgeBaseMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("update → 知识库不存在抛 IllegalArgumentException")
+    void update_notFound_throws() {
+        when(knowledgeBaseMapper.selectById(99L)).thenReturn(null);
+
+        assertThrows(IllegalArgumentException.class, () -> knowledgeBaseService.update(99L, "新名", null, 1L, true));
     }
 }

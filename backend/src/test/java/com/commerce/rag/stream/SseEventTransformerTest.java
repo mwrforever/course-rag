@@ -498,4 +498,96 @@ class SseEventTransformerTest {
         assertEquals(1, result1.get(0).seqId());
         assertEquals(2, result2.get(0).seqId());
     }
+
+    // ==================== AGENT_TOOL_FINISHED（工具结果 + 知识来源） ====================
+
+    @Test
+    @DisplayName("AGENT_TOOL_FINISHED + searchKnowledge 带 chunks → TOOL_RESULT + SOURCES 事件")
+    void transform_toolFinishedWithChunks_emitsSourcesEvent() {
+        ToolResponseMessage msg = ToolResponseMessage.builder()
+                .responses(List.of(new ToolResponseMessage.ToolResponse(
+                        "call-1",
+                        "searchKnowledge",
+                        "{\"chunks\":[{\"chunkId\":\"c1\",\"source\":\"doc.md\",\"headingPath\":\"第一章\",\"score\":0.85}]}")))
+                .build();
+        StreamingOutput<?> mockOutput = mock(StreamingOutput.class);
+        when(mockOutput.getOutputType()).thenReturn(OutputType.AGENT_TOOL_FINISHED);
+        when(mockOutput.message()).thenReturn(msg);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        List<SseEvent> result = transformer.transform(mockOutput, runState);
+
+        // TOOL_RESULT + SOURCES 两个事件
+        assertEquals(2, result.size());
+        assertEquals(SseEventType.TOOL_RESULT, result.get(0).type());
+        assertEquals(SseEventType.SOURCES, result.get(1).type());
+        // SOURCES 载荷包含提取出的来源字段
+        assertTrue(result.get(1).payload().contains("\"chunkId\":\"c1\""));
+        assertTrue(result.get(1).payload().contains("\"score\":0.85"));
+    }
+
+    @Test
+    @DisplayName("AGENT_TOOL_FINISHED + searchKnowledge 空 chunks → 仅 TOOL_RESULT")
+    void transform_toolFinishedEmptyChunks_noSourcesEvent() {
+        ToolResponseMessage msg = ToolResponseMessage.builder()
+                .responses(List.of(new ToolResponseMessage.ToolResponse(
+                        "call-1", "searchKnowledge", "{\"chunks\":[]}")))
+                .build();
+        StreamingOutput<?> mockOutput = mock(StreamingOutput.class);
+        when(mockOutput.getOutputType()).thenReturn(OutputType.AGENT_TOOL_FINISHED);
+        when(mockOutput.message()).thenReturn(msg);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        List<SseEvent> result = transformer.transform(mockOutput, runState);
+
+        assertEquals(1, result.size());
+        assertEquals(SseEventType.TOOL_RESULT, result.get(0).type());
+    }
+
+    @Test
+    @DisplayName("AGENT_TOOL_FINISHED + 非法 JSON → 降级为仅 TOOL_RESULT（不中断流）")
+    void transform_toolFinishedInvalidJson_noSourcesEvent() {
+        ToolResponseMessage msg = ToolResponseMessage.builder()
+                .responses(List.of(new ToolResponseMessage.ToolResponse("call-1", "searchKnowledge", "not-json")))
+                .build();
+        StreamingOutput<?> mockOutput = mock(StreamingOutput.class);
+        when(mockOutput.getOutputType()).thenReturn(OutputType.AGENT_TOOL_FINISHED);
+        when(mockOutput.message()).thenReturn(msg);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        List<SseEvent> result = transformer.transform(mockOutput, runState);
+
+        assertEquals(1, result.size());
+        assertEquals(SseEventType.TOOL_RESULT, result.get(0).type());
+    }
+
+    @Test
+    @DisplayName("AGENT_TOOL_FINISHED + 非 searchKnowledge 工具 → 仅 TOOL_RESULT")
+    void transform_toolFinishedOtherTool_noSourcesEvent() {
+        ToolResponseMessage msg = ToolResponseMessage.builder()
+                .responses(List.of(new ToolResponseMessage.ToolResponse("call-1", "listCourses", "[]")))
+                .build();
+        StreamingOutput<?> mockOutput = mock(StreamingOutput.class);
+        when(mockOutput.getOutputType()).thenReturn(OutputType.AGENT_TOOL_FINISHED);
+        when(mockOutput.message()).thenReturn(msg);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        List<SseEvent> result = transformer.transform(mockOutput, runState);
+
+        assertEquals(1, result.size());
+        assertEquals(SseEventType.TOOL_RESULT, result.get(0).type());
+    }
+
+    @Test
+    @DisplayName("AGENT_TOOL_FINISHED + 非 ToolResponseMessage → 空列表")
+    void transform_toolFinishedWrongMessage_returnsEmpty() {
+        StreamingOutput<?> mockOutput = mock(StreamingOutput.class);
+        when(mockOutput.getOutputType()).thenReturn(OutputType.AGENT_TOOL_FINISHED);
+        when(mockOutput.message()).thenReturn(mock(AssistantMessage.class));
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        List<SseEvent> result = transformer.transform(mockOutput, runState);
+
+        assertTrue(result.isEmpty());
+    }
 }

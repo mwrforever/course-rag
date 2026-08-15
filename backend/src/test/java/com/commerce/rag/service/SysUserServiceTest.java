@@ -323,4 +323,44 @@ class SysUserServiceTest {
                 assertThrows(ResponseStatusException.class, () -> sysUserService.updateStatus(2L, "DISABLED", 100L));
         assertEquals(403, ex.getStatusCode().value());
     }
+
+    // ==================== resetPassword() / delete() 补充 ====================
+
+    @Test
+    @DisplayName("resetPassword → 用户不存在抛 404")
+    void resetPassword_userNotFound_throws404() {
+        when(userMapper.selectById(99L)).thenReturn(null);
+
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class, () -> sysUserService.resetPassword(99L, "newpass", 100L));
+
+        assertEquals(404, ex.getStatusCode().value());
+        verify(userMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("resetPassword → 超管重置任意用户密码并加密存储")
+    void resetPassword_superAdmin_resetsPassword() {
+        SysUser target = new SysUser();
+        target.setId(2L);
+        target.setRole("STUDENT");
+        target.setCreatedBy(1L);
+        when(userMapper.selectById(2L)).thenReturn(target);
+
+        sysUserService.resetPassword(2L, "newpass", 100L);
+
+        verify(passwordEncoder).encode("newpass");
+        verify(userMapper).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("delete → 用户不存在抛 404")
+    void delete_userNotFound_throws404() {
+        when(userMapper.selectById(99L)).thenReturn(null);
+
+        ResponseStatusException ex = assertThrows(
+                ResponseStatusException.class, () -> sysUserService.delete(99L, 100L));
+
+        assertEquals(404, ex.getStatusCode().value());
+    }
 }

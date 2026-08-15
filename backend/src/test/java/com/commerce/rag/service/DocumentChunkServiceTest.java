@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.entity.KnowledgeBase;
@@ -198,5 +200,41 @@ class DocumentChunkServiceTest {
                 () -> chunkService.updateCollectionType(1L, "COURSE_INFO", "55", 200L, false));
         assertEquals(403, ex.getStatusCode().value());
         verify(etlPipeline, never()).syncChunkToMilvus(any());
+    }
+
+    // ==================== C 端查询方法（J2/J3 数据源） ====================
+
+    @Test
+    @DisplayName("findById(无参) → 直接按 ID 查询实体（C 端 J4 数据源）")
+    void findById_noPermission_returnsChunk() {
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        when(chunkMapper.selectById(1L)).thenReturn(chunk);
+
+        DocumentChunk result = chunkService.findById(1L);
+
+        assertEquals(1L, result.getId());
+    }
+
+    @Test
+    @DisplayName("findByCourseId → 按课程 ID 查询分片（chunk_index 升序）")
+    void findByCourseId_returnsChunks() {
+        when(chunkMapper.selectList(any())).thenReturn(List.of(new DocumentChunk()));
+
+        List<DocumentChunk> result = chunkService.findByCourseId(55L);
+
+        assertEquals(1, result.size());
+        verify(chunkMapper).selectList(any());
+    }
+
+    @Test
+    @DisplayName("findByCourseIdDefault → 分页查询 DEFAULT 通用库（size<=0 用默认 20）")
+    void findByCourseIdDefault_returnsPage() {
+        Page<DocumentChunk> page = new Page<>(1, 20);
+        when(chunkMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        IPage<DocumentChunk> result = chunkService.findByCourseIdDefault(1, 0);
+
+        assertSame(page, result);
     }
 }

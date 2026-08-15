@@ -18,6 +18,7 @@ import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,6 +89,7 @@ class DocumentServiceTest {
         doc.setId(id);
         doc.setCreatedBy(createdBy);
         doc.setSourcePath("kb/1/doc.pdf");
+        doc.setFileType("pdf");
         return doc;
     }
 
@@ -320,5 +322,73 @@ class DocumentServiceTest {
         DocumentVO result = documentService.findById(10L, 100L, "TEACHER");
 
         assertNotNull(result, "kb 属主教师应可见库内文档");
+    }
+
+    // ==================== reparse / download 成功路径 ====================
+
+    @Test
+    @DisplayName("reparse → 软删旧分片、重置状态并重新触发 ETL")
+    void reparse_resetsAndTriggersEtl() {
+        when(documentMapper.selectById(1L)).thenReturn(mockDoc(1L, 100L));
+        // etlPool mock：execute 直接同步执行提交的任务，模拟真实线程池行为
+        doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(0)).run();
+            return null;
+        }).when(etlPool).execute(any());
+
+        documentService.reparse(1L, 100L, false);
+
+        // 旧分片软删 + 文档状态重置为 PENDING
+        verify(chunkMapper).update(isNull(), any());
+        verify(documentMapper).update(isNull(), any());
+        // 重新触发 ETL（etlPool mock 直接执行任务）
+        verify(etlPipeline).process(1L);
+        // 统计缓存失效（先写 DB 后失效）
+        assertNull(dashboardStatsCache.getIfPresent("whatever"));
+    }
+
+    @Test
+    @DisplayName("reparse → 文档不存在抛 IllegalArgumentException")
+    void reparse_notFound_throws() {
+        when(documentMapper.selectById(99L)).thenReturn(null);
+
+        assertThrows(IllegalArgumentException.class, () -> documentService.reparse(99L, 1L, true));
+        verify(etlPipeline, never()).process(anyLong());
+    }
+
+    @Test
+    @DisplayName("download → 属主下载返回 MinIO 输入流")
+    void download_owner_returnsStream() {
+        when(documentMapper.selectById(1L)).thenReturn(mockDoc(1L, 100L));
+        InputStream stream = new ByteArrayInputStream(new byte[0]);
+        when(minioStorageService.downloadFile("kb/1/doc.pdf")).thenReturn(stream);
+
+        InputStream result = documentService.download(1L, 100L, false);
+
+        assertSame(stream, result);
+    }
+
+    @Test
+    @DisplayName("download → 源文件路径为空抛 IllegalStateException")
+    void download_noSourcePath_throws() {
+        Document doc = mockDoc(1L, 100L);
+        doc.setSourcePath(null);
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+
+        assertThrows(IllegalStateException.class, () -> documentService.download(1L, 100L, true));
+        verify(minioStorageService, never()).downloadFile(anyString());
+    }
+
+    @Test
+    @DisplayName("downloadWithType → 返回输入流与文件类型")
+    void downloadWithType_returnsStreamAndType() {
+        when(documentMapper.selectById(1L)).thenReturn(mockDoc(1L, 100L));
+        InputStream stream = new ByteArrayInputStream(new byte[0]);
+        when(minioStorageService.downloadFile("kb/1/doc.pdf")).thenReturn(stream);
+
+        DocumentService.DocumentDownload result = documentService.downloadWithType(1L, 100L, false);
+
+        assertSame(stream, result.inputStream());
+        assertEquals("pdf", result.fileType());
     }
 }
