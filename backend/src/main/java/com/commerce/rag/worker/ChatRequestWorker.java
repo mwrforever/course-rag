@@ -88,9 +88,6 @@ public class ChatRequestWorker {
     /** per-run 取消标记 */
     private final ConcurrentHashMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
 
-    /** pre-run 快照 ThreadLocal（同线程内可访问，如 Hook 需要读取） */
-    private final ThreadLocal<RunSnapshot> runSnapshot = new ThreadLocal<>();
-
     /** Consumer 运行标志 */
     private volatile boolean running = false;
 
@@ -353,8 +350,6 @@ public class ChatRequestWorker {
         //    且 catch 分支持久化时可直接读取游标）
         RunSnapshot snapshot = captureSnapshot(runIdStr, config);
         try {
-            runSnapshot.set(snapshot);
-
             // 2. 状态 → ACTIVE
             chatRunService.updateStatus(runId, "ACTIVE");
 
@@ -430,7 +425,6 @@ public class ChatRequestWorker {
         } finally {
             bridge.removeRing(runIdStr);
             cancelFlags.remove(runIdStr);
-            runSnapshot.remove();
             ackMessage(msgId);
         }
     }
