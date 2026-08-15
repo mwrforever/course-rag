@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
@@ -148,25 +149,29 @@ public class DocumentService {
     }
 
     /**
-     * 分页查询文档
+     * 分页查询文档（P2-2 契约对齐：前端文档 :871 支持 status/q/sort 筛选）
      *
      * @param kbId   知识库 ID（可选，null = 查全部）
+     * @param status 解析状态筛选（可选，parse_status 精确匹配）
+     * @param q      标题关键词（可选，title like）
+     * @param sort   排序（created=created_at 降序默认；updated=updated_at 降序；非法值按 created）
      * @param page   页码（1-based）
      * @param size   每页条数
      * @param userId 当前用户 ID（TEACHER 数据权限过滤）
      * @param role   当前用户角色（TEACHER 时按 created_by 过滤）
      * @return 分页结果
      */
-    public IPage<Document> findPage(Long kbId, int page, int size, Long userId, String role) {
+    public IPage<Document> findPage(
+            Long kbId, String status, String q, String sort, int page, int size, Long userId, String role) {
         Page<Document> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
-        LambdaQueryWrapper<Document> wrapper = new LambdaQueryWrapper<Document>().orderByDesc(Document::getCreatedAt);
-        if (kbId != null) {
-            wrapper.eq(Document::getKbId, kbId);
-        }
-        // TEACHER 只能查看自己创建的文档
-        if ("TEACHER".equals(role) && userId != null) {
-            wrapper.eq(Document::getCreatedBy, userId);
-        }
+        // 合规：Wrappers 静态工厂 + lambda 链式（宪法「Wrapper 一律 lambda 链式构建，禁止 new」）
+        LambdaQueryWrapper<Document> wrapper = Wrappers.<Document>lambdaQuery()
+                .eq(kbId != null, Document::getKbId, kbId)
+                .eq(status != null && !status.isBlank(), Document::getParseStatus, status)
+                .like(q != null && !q.isBlank(), Document::getTitle, q)
+                // TEACHER 只能查看自己创建的文档（role 为 null 时条件为 false，链式 eq 不生效、不抛 NPE）
+                .eq("TEACHER".equals(role) && userId != null, Document::getCreatedBy, userId)
+                .orderByDesc("updated".equals(sort) ? Document::getUpdatedAt : Document::getCreatedAt);
         return documentMapper.selectPage(pageObj, wrapper);
     }
 

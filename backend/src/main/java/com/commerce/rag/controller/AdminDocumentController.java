@@ -99,16 +99,20 @@ public class AdminDocumentController {
         return ApiResponse.ok(doc);
     }
 
-    /** C3: 分页查询文档 */
+    /** C3: 分页查询文档（P2-2：status/q/sort 筛选参数对齐前端文档 :871） */
     @GetMapping
     public ApiResponse<PageResponse<Document>> findPage(
             HttpServletRequest request,
             @RequestParam(required = false) Long kbId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         String role = AuthInterceptor.getCurrentRole(request);
-        return ApiResponse.ok(PageResponse.of(documentService.findPage(kbId, page, size, userId, role)));
+        return ApiResponse.ok(
+                PageResponse.of(documentService.findPage(kbId, status, q, sort, page, size, userId, role)));
     }
 
     /** C4: 更新文档标题 */
