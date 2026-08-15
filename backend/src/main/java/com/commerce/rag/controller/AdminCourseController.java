@@ -8,12 +8,14 @@ import com.commerce.rag.controller.dto.CreateCourseRequest;
 import com.commerce.rag.controller.dto.PageResponse;
 import com.commerce.rag.controller.dto.UpdateCourseRequest;
 import com.commerce.rag.entity.CourseInfo;
+import com.commerce.rag.service.CourseConverter;
 import com.commerce.rag.service.CourseService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * B 端课程管理 Controller —— CRUD 端点 E1-E9
@@ -40,9 +43,11 @@ public class AdminCourseController {
     private static final Logger log = LoggerFactory.getLogger(AdminCourseController.class);
 
     private final CourseService courseService;
+    private final CourseConverter courseConverter;
 
-    public AdminCourseController(CourseService courseService) {
+    public AdminCourseController(CourseService courseService, CourseConverter courseConverter) {
         this.courseService = courseService;
+        this.courseConverter = courseConverter;
     }
 
     /**
@@ -89,7 +94,8 @@ public class AdminCourseController {
         Long createdByFilter = "SUPER_ADMIN".equals(role) ? null : userId;
         CourseInfo course = courseService.findById(id, createdByFilter);
         if (course == null) {
-            return ApiResponse.error(404, "课程不存在");
+            // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "课程不存在");
         }
         return ApiResponse.ok(courseService.toDTO(course, true));
     }
@@ -150,9 +156,7 @@ public class AdminCourseController {
         boolean isAdmin = "SUPER_ADMIN".equals(AuthInterceptor.getCurrentRole(request));
         courseService.checkOwnership(id, userId, isAdmin);
         var contents = courseService.findContents(id);
-        var dtos = contents.stream()
-                .map(c -> new CourseDTO.CourseContentDTO(c.getContentType(), c.getContent(), c.getSortOrder()))
-                .collect(Collectors.toList());
+        var dtos = contents.stream().map(courseConverter::toContentDTO).collect(Collectors.toList());
         return ApiResponse.ok(dtos);
     }
 

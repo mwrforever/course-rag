@@ -44,6 +44,7 @@ public class SysUserService {
     private final PasswordEncoder passwordEncoder;
     private final DeviceKickService deviceKickService;
     private final CourseTeacherMapper courseTeacherMapper;
+    private final SysUserConverter sysUserConverter;
 
     /**
      * 创建用户
@@ -95,7 +96,7 @@ public class SysUserService {
                 user.getUsername(),
                 user.getRole(),
                 createdBy);
-        return toDTO(user);
+        return sysUserConverter.toDTO(user);
     }
 
     /**
@@ -106,7 +107,7 @@ public class SysUserService {
         if (user == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
         }
-        return toDTO(user);
+        return sysUserConverter.toDTO(user);
     }
 
     /**
@@ -127,7 +128,7 @@ public class SysUserService {
                 && (user.getCreatedBy() == null || !user.getCreatedBy().equals(currentUserId))) {
             return null;
         }
-        return toDTO(user);
+        return sysUserConverter.toDTO(user);
     }
 
     /**
@@ -164,7 +165,7 @@ public class SysUserService {
 
         IPage<SysUser> userPage = userMapper.selectPage(pageObj, wrapper);
         // 转换为 DTO
-        return userPage.convert(this::toDTO);
+        return userPage.convert(sysUserConverter::toDTO);
     }
 
     /**
@@ -189,7 +190,7 @@ public class SysUserService {
         userMapper.updateById(user);
 
         log.info("更新用户: userId={}, operator={}", id, currentUserId);
-        return toDTO(user);
+        return sysUserConverter.toDTO(user);
     }
 
     /**
@@ -336,18 +337,5 @@ public class SysUserService {
         }
         SysUser operator = userMapper.selectById(operatorId);
         return operator != null ? operator.getRole() : null;
-    }
-
-    /**
-     * Entity → DTO 转换
-     */
-    private UserDTO toDTO(SysUser user) {
-        return new UserDTO(
-                user.getId(),
-                user.getUsername(),
-                user.getDisplayName(),
-                user.getRole(),
-                user.getStatus(),
-                user.getCreatedAt());
     }
 }

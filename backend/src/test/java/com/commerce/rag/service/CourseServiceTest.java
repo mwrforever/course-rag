@@ -69,7 +69,8 @@ class CourseServiceTest {
                 courseTeacherMapper,
                 courseEnrollmentMapper,
                 documentChunkMapper,
-                etlPipeline);
+                etlPipeline,
+                new CourseConverterImpl());
     }
 
     @Test

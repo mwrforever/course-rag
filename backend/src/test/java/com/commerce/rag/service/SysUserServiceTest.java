@@ -22,6 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
@@ -49,6 +50,10 @@ class SysUserServiceTest {
     @Mock
     private DeviceKickService deviceKickService;
 
+    /** 真实转换器实现（MapStruct 生成），保证 toDTO 走真实字段映射而非 mock */
+    @Spy
+    private SysUserConverter sysUserConverter = new SysUserConverterImpl();
+
     @InjectMocks
     private SysUserService sysUserService;
 
@@ -56,6 +61,12 @@ class SysUserServiceTest {
     void setUp() {
         // 公共 stub（lenient 因为非所有测试都用到）
         lenient().when(passwordEncoder.encode(anyString())).thenReturn("hashed-password");
+        // P2-2: create/findPage 按 DB 最新角色判定（resolveDbRole）——默认操作者为超管；
+        // 教师角色用例在各自测试内覆盖此 stub（后 stub 生效）
+        SysUser defaultOperator = new SysUser();
+        defaultOperator.setId(100L);
+        defaultOperator.setRole("SUPER_ADMIN");
+        lenient().when(userMapper.selectById(100L)).thenReturn(defaultOperator);
     }
 
     // ==================== create() 测试 ====================
@@ -67,7 +78,7 @@ class SysUserServiceTest {
 
         CreateUserRequest request = new CreateUserRequest("testuser", "password123", "测试用户", "STUDENT");
 
-        UserDTO result = sysUserService.create(request, 100L, "SUPER_ADMIN");
+        UserDTO result = sysUserService.create(request, 100L);
 
         assertNotNull(result);
         assertEquals("testuser", result.username());
@@ -84,7 +95,7 @@ class SysUserServiceTest {
         CreateUserRequest request = new CreateUserRequest("existinguser", "password123", "已存在", "STUDENT");
 
         ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> sysUserService.create(request, 100L, "SUPER_ADMIN"));
+                assertThrows(ResponseStatusException.class, () -> sysUserService.create(request, 100L));
         assertEquals(409, ex.getStatusCode().value());
     }
 
@@ -98,7 +109,7 @@ class SysUserServiceTest {
         CreateUserRequest request = new CreateUserRequest("newadmin", "password123", "新超管", "SUPER_ADMIN");
 
         ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> sysUserService.create(request, 100L, "SUPER_ADMIN"));
+                assertThrows(ResponseStatusException.class, () -> sysUserService.create(request, 100L));
         assertEquals(409, ex.getStatusCode().value());
     }
 
@@ -231,12 +242,17 @@ class SysUserServiceTest {
     @Test
     @DisplayName("create → 教师创建 TEACHER 账号抛出 403，创建 STUDENT 成功")
     void create_teacherCreatesTeacherRole_throws403() {
+        // P2-2: 角色判定按 DB 最新角色（stub selectById(100L) → TEACHER，覆盖 setUp 的超管 stub）
+        SysUser teacher = new SysUser();
+        teacher.setId(100L);
+        teacher.setRole("TEACHER");
+        when(userMapper.selectById(100L)).thenReturn(teacher);
         CreateUserRequest req = new CreateUserRequest("stu1", "pass123", "学生一", "TEACHER");
 
-        assertThrows(ResponseStatusException.class, () -> sysUserService.create(req, 100L, "TEACHER"));
+        assertThrows(ResponseStatusException.class, () -> sysUserService.create(req, 100L));
 
         CreateUserRequest stuReq = new CreateUserRequest("stu1", "pass123", "学生一", "STUDENT");
-        assertDoesNotThrow(() -> sysUserService.create(stuReq, 100L, "TEACHER"));
+        assertDoesNotThrow(() -> sysUserService.create(stuReq, 100L));
         // 落库用户 created_by = 创建者
         ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
         verify(userMapper).insert(captor.capture());
@@ -262,10 +278,15 @@ class SysUserServiceTest {
     @Test
     @DisplayName("findPage → 教师仅能查到创建者为自己的用户")
     void findPage_teacherFiltersByCreatedBy() {
+        // P2-2: 教师过滤按 DB 最新角色判定（stub selectById(100L) → TEACHER，覆盖 setUp 的超管 stub）
+        SysUser teacher = new SysUser();
+        teacher.setId(100L);
+        teacher.setRole("TEACHER");
+        when(userMapper.selectById(100L)).thenReturn(teacher);
         // stub 分页返回空页（防止 selectPage 默认 null 导致 convert NPE）
         when(userMapper.selectPage(any(), any())).thenReturn(new Page<SysUser>(1, 20));
 
-        sysUserService.findPage(1, 20, null, null, 100L, "TEACHER");
+        sysUserService.findPage(1, 20, null, null, 100L);
         // 校验查询条件带 created_by = 100
         ArgumentCaptor<LambdaQueryWrapper<SysUser>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(userMapper).selectPage(any(), captor.capture());

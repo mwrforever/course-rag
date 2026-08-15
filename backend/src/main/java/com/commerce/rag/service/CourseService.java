@@ -7,7 +7,6 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.controller.dto.CourseDTO;
 import com.commerce.rag.controller.dto.CreateCourseRequest;
-import com.commerce.rag.controller.dto.ScheduleDTO;
 import com.commerce.rag.controller.dto.UpdateCourseRequest;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseEnrollment;
@@ -22,11 +21,9 @@ import com.commerce.rag.mapper.CourseInfoMapper;
 import com.commerce.rag.mapper.CourseScheduleMapper;
 import com.commerce.rag.mapper.CourseTeacherMapper;
 import com.commerce.rag.mapper.DocumentChunkMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -75,6 +72,7 @@ public class CourseService {
     private final CourseEnrollmentMapper courseEnrollmentMapper;
     private final DocumentChunkMapper documentChunkMapper;
     private final EtlPipeline etlPipeline;
+    private final CourseConverter courseConverter;
 
     // ==================== 课程基本信息 CRUD ====================
 
@@ -409,58 +407,20 @@ public class CourseService {
     /**
      * 将 CourseInfo + 关联数据转换为 CourseDTO
      *
-     * @param course          课程实体
+     * @param course           课程实体
      * @param includeRelations 是否包含关联数据（内容、排期、教师）
      */
     public CourseDTO toDTO(CourseInfo course, boolean includeRelations) {
-        List<CourseDTO.CourseContentDTO> contentDTOs = null;
-        List<Long> teacherIds = null;
-        List<ScheduleDTO> scheduleDTOs = null;
-
+        // 关联数据查询留在 service，转换器只做纯映射（includeRelations=false 时传空列表）
+        List<CourseContent> contents = List.of();
+        List<CourseSchedule> schedules = List.of();
+        List<Long> teacherIds = List.of();
         if (includeRelations) {
-            List<CourseContent> contents = findContents(course.getId());
-            contentDTOs = contents.stream()
-                    .map(c -> new CourseDTO.CourseContentDTO(c.getContentType(), c.getContent(), c.getSortOrder()))
-                    .collect(Collectors.toList());
-
+            contents = findContents(course.getId());
+            schedules = findSchedules(course.getId());
             teacherIds = findTeacherIds(course.getId());
-
-            List<CourseSchedule> schedules = findSchedules(course.getId());
-            scheduleDTOs = schedules.stream()
-                    .map(s -> new ScheduleDTO(
-                            s.getId(),
-                            s.getCourseId(),
-                            s.getStartDate(),
-                            s.getEndDate(),
-                            s.getScheduleType(),
-                            s.getLocation(),
-                            s.getInstructorName(),
-                            s.getCapacity(),
-                            s.getEnrolled(),
-                            s.getStatus(),
-                            s.getCreatedBy()))
-                    .collect(Collectors.toList());
         }
-
-        return new CourseDTO(
-                course.getId(),
-                course.getTitle(),
-                course.getDescription(),
-                course.getCoverImage(),
-                course.getCategory(),
-                course.getInstructorName(),
-                course.getPrice(),
-                course.getDuration(),
-                parseTags(course.getTags()),
-                course.getRating(),
-                course.getLearningCount(),
-                course.getEnrollmentLink(),
-                course.getStatus(),
-                course.getCreatedBy(),
-                course.getCreatedAt(),
-                contentDTOs,
-                scheduleDTOs,
-                teacherIds);
+        return courseConverter.toDTO(course, contents, schedules, teacherIds);
     }
 
     // ==================== 权限校验 ====================
@@ -503,21 +463,6 @@ public class CourseService {
         } catch (Exception e) {
             log.warn("序列化标签失败: {}", tags);
             return "[]";
-        }
-    }
-
-    /**
-     * tags JSON 字符串 → List
-     */
-    private List<String> parseTags(String tagsJson) {
-        if (tagsJson == null || tagsJson.isBlank()) {
-            return Collections.emptyList();
-        }
-        try {
-            return JSON_MAPPER.readValue(tagsJson, new TypeReference<List<String>>() {});
-        } catch (Exception e) {
-            log.warn("解析标签失败: tags={}", tagsJson);
-            return Collections.emptyList();
         }
     }
 }
