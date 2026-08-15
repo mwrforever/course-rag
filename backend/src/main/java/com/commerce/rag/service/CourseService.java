@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.controller.dto.CourseDTO;
 import com.commerce.rag.controller.dto.CreateCourseRequest;
@@ -28,9 +29,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -52,6 +53,7 @@ import org.springframework.web.server.ResponseStatusException;
  * @author commerce-rag
  */
 @Service
+@RequiredArgsConstructor
 public class CourseService {
 
     private static final Logger log = LoggerFactory.getLogger(CourseService.class);
@@ -65,26 +67,13 @@ public class CourseService {
             "instructor", 2,
             "faq", 3);
 
-    @Autowired
-    private CourseInfoMapper courseInfoMapper;
-
-    @Autowired
-    private CourseContentMapper courseContentMapper;
-
-    @Autowired
-    private CourseScheduleMapper courseScheduleMapper;
-
-    @Autowired
-    private CourseTeacherMapper courseTeacherMapper;
-
-    @Autowired
-    private CourseEnrollmentMapper courseEnrollmentMapper;
-
-    @Autowired
-    private DocumentChunkMapper documentChunkMapper;
-
-    @Autowired
-    private EtlPipeline etlPipeline;
+    private final CourseInfoMapper courseInfoMapper;
+    private final CourseContentMapper courseContentMapper;
+    private final CourseScheduleMapper courseScheduleMapper;
+    private final CourseTeacherMapper courseTeacherMapper;
+    private final CourseEnrollmentMapper courseEnrollmentMapper;
+    private final DocumentChunkMapper documentChunkMapper;
+    private final EtlPipeline etlPipeline;
 
     // ==================== 课程基本信息 CRUD ====================
 
@@ -226,6 +215,16 @@ public class CourseService {
 
         // P1-4 Bug 2: 同步清理 Milvus 中该课程标注的向量（失败上抛阻断级联，
         // 避免 PG 已删而 Milvus 残留 → 学生端按 course_id 过滤仍命中已删课程内容）
+        // P0-1 修复: Milvus 侧 course_id 标注与 PG 不同步（ETL 写死 DEFAULT、D5/D7 只改 PG），
+        // 仅按 course_id 过滤删不到任何向量——先按 PG 未删 chunk（course_id=该课程）查 chunk_id，
+        // 按 chunk_id IN 精确清理，再保留 ByCourseId 兜底（对已同步标注的历史数据幂等）
+        List<DocumentChunk> courseChunks = documentChunkMapper.selectList(Wrappers.<DocumentChunk>lambdaQuery()
+                .eq(DocumentChunk::getCourseId, courseIdStr)
+                .select(DocumentChunk::getId));
+        if (!courseChunks.isEmpty()) {
+            etlPipeline.deleteFromMilvusByChunkIds(
+                    courseChunks.stream().map(c -> String.valueOf(c.getId())).collect(Collectors.toList()));
+        }
         etlPipeline.deleteFromMilvusByCourseId(courseIdStr);
 
         // 级联软删关联表（使用 MyBatis-Plus LambdaUpdateWrapper，遵循三层架构）

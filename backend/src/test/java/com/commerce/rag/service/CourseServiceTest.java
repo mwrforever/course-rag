@@ -60,26 +60,16 @@ class CourseServiceTest {
     }
 
     @BeforeEach
-    void setUp() throws Exception {
-        courseService = new CourseService();
-        // 字段为 @Autowired 私有字段，通过反射注入 mock
-        for (java.lang.reflect.Field f : CourseService.class.getDeclaredFields()) {
-            f.setAccessible(true);
-            Object value =
-                    switch (f.getName()) {
-                        case "courseInfoMapper" -> courseInfoMapper;
-                        case "courseContentMapper" -> courseContentMapper;
-                        case "courseScheduleMapper" -> courseScheduleMapper;
-                        case "courseTeacherMapper" -> courseTeacherMapper;
-                        case "courseEnrollmentMapper" -> courseEnrollmentMapper;
-                        case "documentChunkMapper" -> documentChunkMapper;
-                        case "etlPipeline" -> etlPipeline;
-                        default -> null;
-                    };
-            if (value != null) {
-                f.set(courseService, value);
-            }
-        }
+    void setUp() {
+        // 构造器注入（@RequiredArgsConstructor 按字段声明顺序生成全参构造器）
+        courseService = new CourseService(
+                courseInfoMapper,
+                courseContentMapper,
+                courseScheduleMapper,
+                courseTeacherMapper,
+                courseEnrollmentMapper,
+                documentChunkMapper,
+                etlPipeline);
     }
 
     @Test

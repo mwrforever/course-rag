@@ -13,6 +13,7 @@ import com.commerce.rag.entity.SysUser;
 import com.commerce.rag.enums.UserRole;
 import com.commerce.rag.mapper.CourseTeacherMapper;
 import com.commerce.rag.mapper.SysUserMapper;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -33,6 +34,7 @@ import org.springframework.web.server.ResponseStatusException;
  * @author commerce-rag
  */
 @Service
+@RequiredArgsConstructor
 public class SysUserService {
 
     private static final Logger log = LoggerFactory.getLogger(SysUserService.class);
@@ -42,26 +44,17 @@ public class SysUserService {
     private final DeviceKickService deviceKickService;
     private final CourseTeacherMapper courseTeacherMapper;
 
-    public SysUserService(
-            SysUserMapper userMapper,
-            PasswordEncoder passwordEncoder,
-            DeviceKickService deviceKickService,
-            CourseTeacherMapper courseTeacherMapper) {
-        this.userMapper = userMapper;
-        this.passwordEncoder = passwordEncoder;
-        this.deviceKickService = deviceKickService;
-        this.courseTeacherMapper = courseTeacherMapper;
-    }
-
     /**
      * 创建用户
      *
-     * @param request      创建请求（role 仅允许 SUPER_ADMIN / TEACHER / STUDENT）
-     * @param createdBy    创建者用户 ID（用于归属记录）
-     * @param operatorRole 操作者角色（TEACHER 只能创建 STUDENT 账号）
+     * @param request   创建请求（role 仅允许 SUPER_ADMIN / TEACHER / STUDENT）
+     * @param createdBy 创建者用户 ID（用于归属记录与角色判定）
      * @return 用户 DTO
      */
-    public UserDTO create(CreateUserRequest request, Long createdBy, String operatorRole) {
+    public UserDTO create(CreateUserRequest request, Long createdBy) {
+        // P2-2: 按 DB 最新角色判定（不用 token 角色）——用户被降级后旧 AT 15min 窗口内
+        // 不得继续创建学生账号，与 checkTeacherPermission 的 fail-closed 判定对齐
+        String operatorRole = resolveDbRole(createdBy);
         // 教师只能创建学生账号（P0-2e：防止教师创建 TEACHER 扩权）
         if (UserRole.TEACHER.name().equals(operatorRole)
                 && !UserRole.STUDENT.name().equals(request.role())) {
@@ -152,11 +145,9 @@ public class SysUserService {
      * @param role          角色筛选（可空）
      * @param status        状态筛选（可空）
      * @param currentUserId 当前操作者 ID（教师过滤用）
-     * @param operatorRole  操作者角色（TEACHER 仅查自己创建的用户）
      * @return 分页结果
      */
-    public IPage<UserDTO> findPage(
-            int page, int size, String role, String status, Long currentUserId, String operatorRole) {
+    public IPage<UserDTO> findPage(int page, int size, String role, String status, Long currentUserId) {
         Page<SysUser> pageObj = new Page<>(page, size);
         LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<SysUser>().orderByDesc(SysUser::getCreatedAt);
         if (role != null && !role.isEmpty()) {
@@ -165,8 +156,8 @@ public class SysUserService {
         if (status != null && !status.isEmpty()) {
             wrapper.eq(SysUser::getStatus, status);
         }
-        // 教师只能查看自己创建的用户（P0-2f）
-        if (UserRole.TEACHER.name().equals(operatorRole)) {
+        // P2-2: 按 DB 最新角色判定（不用 token 角色），降级后旧 AT 窗口内不得继续查看学生列表
+        if (UserRole.TEACHER.name().equals(resolveDbRole(currentUserId))) {
             wrapper.eq(SysUser::getCreatedBy, currentUserId);
         }
 
@@ -329,6 +320,21 @@ public class SysUserService {
         }
         // 非超管/教师角色一律拒绝（fail-closed：角色变更后旧 token 不得获得操作权）
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权操作");
+    }
+
+    /**
+     * 查询操作者 DB 最新角色（P2-2：create/findPage 的权限判定锚点——
+     * 不用 token 角色，角色降级后旧 AT 窗口内立即失效；用户不存在时返回 null（fail-closed））
+     *
+     * @param operatorId 操作者 ID
+     * @return DB 中的最新角色，用户不存在返回 null
+     */
+    private String resolveDbRole(Long operatorId) {
+        if (operatorId == null) {
+            return null;
+        }
+        SysUser operator = userMapper.selectById(operatorId);
+        return operator != null ? operator.getRole() : null;
     }
 
     /**

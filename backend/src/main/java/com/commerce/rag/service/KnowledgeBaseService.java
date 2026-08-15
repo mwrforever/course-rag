@@ -13,9 +13,9 @@ import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.storage.MinioStorageService;
 import java.time.LocalDateTime;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,26 +29,18 @@ import org.springframework.web.server.ResponseStatusException;
  * @author commerce-rag
  */
 @Service
+@RequiredArgsConstructor
 public class KnowledgeBaseService {
 
     private static final Logger log = LoggerFactory.getLogger(KnowledgeBaseService.class);
 
     private static final int DEFAULT_PAGE_SIZE = 20;
 
-    @Autowired
-    private KnowledgeBaseMapper knowledgeBaseMapper;
-
-    @Autowired
-    private DocumentMapper documentMapper;
-
-    @Autowired
-    private DocumentChunkMapper chunkMapper;
-
-    @Autowired
-    private EtlPipeline etlPipeline;
-
-    @Autowired
-    private MinioStorageService minioStorageService;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final DocumentMapper documentMapper;
+    private final DocumentChunkMapper chunkMapper;
+    private final EtlPipeline etlPipeline;
+    private final MinioStorageService minioStorageService;
 
     /**
      * 创建知识库
@@ -82,8 +74,9 @@ public class KnowledgeBaseService {
         if (kb == null) {
             return null;
         }
-        // TEACHER 只能查看自己创建的知识库
-        if ("TEACHER".equals(role) && !kb.getCreatedBy().equals(userId)) {
+        // TEACHER 只能查看自己创建的知识库（P2-3：null 前置防护，历史脏数据返回 null 而非 NPE→500）
+        if ("TEACHER".equals(role)
+                && (kb.getCreatedBy() == null || !kb.getCreatedBy().equals(userId))) {
             return null;
         }
         return kb;
@@ -162,12 +155,15 @@ public class KnowledgeBaseService {
 
         // P1-4 Bug 4: 删除 KB 下所有文档的 MinIO 源文件对象（失败上抛阻断级联，
         // 避免对象孤儿永久占存储；removeObject 幂等，重试收敛）
+        // perf P1-2: 批量删除（一次请求删多个对象），替代循环单删 N 次网络往返
         List<Document> docs = documentMapper.selectList(
                 new LambdaQueryWrapper<Document>().eq(Document::getKbId, id).select(Document::getSourcePath));
-        for (Document d : docs) {
-            if (d.getSourcePath() != null) {
-                minioStorageService.deleteFile(d.getSourcePath());
-            }
+        List<String> sourcePaths = docs.stream()
+                .map(Document::getSourcePath)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toList());
+        if (!sourcePaths.isEmpty()) {
+            minioStorageService.deleteFiles(sourcePaths);
         }
 
         // 2. 软删 document_chunk
@@ -202,7 +198,8 @@ public class KnowledgeBaseService {
         if (isAdmin) {
             return;
         }
-        if (!kb.getCreatedBy().equals(operatorId)) {
+        // P2-3：null 前置防护（历史库 created_by 为 NULL 时按无权处理，403 而非 NPE→500）
+        if (kb.getCreatedBy() == null || !kb.getCreatedBy().equals(operatorId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权操作此知识库: kbId=" + kb.getId());
         }
     }

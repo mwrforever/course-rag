@@ -10,9 +10,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -25,14 +25,14 @@ import org.springframework.stereotype.Service;
  * @author commerce-rag
  */
 @Service
+@RequiredArgsConstructor
 public class UserFeedbackService {
 
     private static final Logger log = LoggerFactory.getLogger(UserFeedbackService.class);
 
     private static final int DEFAULT_PAGE_SIZE = 20;
 
-    @Autowired
-    private UserFeedbackMapper feedbackMapper;
+    private final UserFeedbackMapper feedbackMapper;
 
     /**
      * 创建反馈（或更新已有反馈）
@@ -85,15 +85,20 @@ public class UserFeedbackService {
     }
 
     /**
-     * 分页查询反馈
+     * 分页查询反馈（2026-08-15 用户裁决：教师仅见自己创建学生的反馈，超管不限制）
      *
      * @param page       页码（1-based）
      * @param size       每页条数
      * @param intentType 意图类型筛选（可选）
+     * @param createdBy  教师用户 ID（null=全部，超管视角）
      * @return 分页结果
      */
-    public IPage<UserFeedback> findPage(int page, int size, String intentType) {
+    public IPage<UserFeedback> findPage(int page, int size, String intentType, Long createdBy) {
         Page<UserFeedback> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
+        if (createdBy != null) {
+            // 教师隔离：user_id IN 子查询（mapper XML），仅见自己创建学生的反馈
+            return feedbackMapper.selectPageFilteredByTeacher(pageObj, intentType, createdBy);
+        }
         LambdaQueryWrapper<UserFeedback> wrapper =
                 new LambdaQueryWrapper<UserFeedback>().orderByDesc(UserFeedback::getCreatedAt);
         if (intentType != null && !intentType.isBlank()) {
@@ -105,34 +110,21 @@ public class UserFeedbackService {
     /**
      * 按意图分组统计赞/踩数
      *
+     * <p>perf P3-1：单条 GROUP BY 聚合 SQL（mapper XML）替代「先查意图列表 + 逐类 2 次 count」
+     * 的 1+2N 次查询——意图类型随业务扩展不线性放大查询数。
+     *
      * @return 统计列表，每项包含 intentType, likedCount, dislikedCount
      */
-    public List<Map<String, Object>> findStats() {
-        // 查询所有不重复的 intent_type
-        LambdaQueryWrapper<UserFeedback> typeWrapper = new LambdaQueryWrapper<UserFeedback>()
-                .select(UserFeedback::getIntentType)
-                .groupBy(UserFeedback::getIntentType);
-        List<UserFeedback> types = feedbackMapper.selectList(typeWrapper);
-
+    public List<Map<String, Object>> findStats(Long createdBy) {
+        List<Map<String, Object>> rows = feedbackMapper.selectIntentStats(createdBy);
         List<Map<String, Object>> result = new ArrayList<>();
-        for (UserFeedback type : types) {
-            String intentType = type.getIntentType();
-            if (intentType == null) continue;
-
-            // 统计赞数
-            Long likedCount = feedbackMapper.selectCount(new LambdaQueryWrapper<UserFeedback>()
-                    .eq(UserFeedback::getIntentType, intentType)
-                    .eq(UserFeedback::getIsLiked, true));
-
-            // 统计踩数
-            Long dislikedCount = feedbackMapper.selectCount(new LambdaQueryWrapper<UserFeedback>()
-                    .eq(UserFeedback::getIntentType, intentType)
-                    .eq(UserFeedback::getIsLiked, false));
-
+        for (Map<String, Object> row : rows) {
             Map<String, Object> stat = new HashMap<>();
-            stat.put("intentType", intentType);
-            stat.put("likedCount", likedCount);
-            stat.put("dislikedCount", dislikedCount);
+            stat.put("intentType", row.get("intent_type"));
+            stat.put("likedCount", row.get("liked_count") != null ? ((Number) row.get("liked_count")).longValue() : 0L);
+            stat.put(
+                    "dislikedCount",
+                    row.get("disliked_count") != null ? ((Number) row.get("disliked_count")).longValue() : 0L);
             result.add(stat);
         }
         return result;

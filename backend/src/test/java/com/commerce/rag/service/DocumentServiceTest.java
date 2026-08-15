@@ -62,25 +62,10 @@ class DocumentServiceTest {
     }
 
     @BeforeEach
-    void setUp() throws Exception {
-        documentService = new DocumentService();
-        // 字段为 @Autowired 私有字段，通过反射注入 mock
-        for (java.lang.reflect.Field f : DocumentService.class.getDeclaredFields()) {
-            f.setAccessible(true);
-            Object value =
-                    switch (f.getName()) {
-                        case "documentMapper" -> documentMapper;
-                        case "chunkMapper" -> chunkMapper;
-                        case "knowledgeBaseMapper" -> knowledgeBaseMapper;
-                        case "minioStorageService" -> minioStorageService;
-                        case "etlPipeline" -> etlPipeline;
-                        case "etlPool" -> etlPool;
-                        default -> null;
-                    };
-            if (value != null) {
-                f.set(documentService, value);
-            }
-        }
+    void setUp() {
+        // 构造器注入（@RequiredArgsConstructor 按字段声明顺序生成全参构造器）
+        documentService = new DocumentService(
+                documentMapper, chunkMapper, knowledgeBaseMapper, minioStorageService, etlPipeline, etlPool);
     }
 
     private Document mockDoc(Long id, Long createdBy) {
@@ -130,7 +115,7 @@ class DocumentServiceTest {
         ResponseStatusException ex = assertThrows(
                 ResponseStatusException.class,
                 () -> documentService.upload(
-                        1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, 200L, false));
+                        1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, "DEFAULT", 200L, false));
         assertEquals(403, ex.getStatusCode().value());
         // 403 路径零副作用：documentMapper 零交互（未落库）
         verifyNoInteractions(documentMapper);
@@ -144,8 +129,8 @@ class DocumentServiceTest {
         kb.setCreatedBy(100L);
         when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
 
-        assertDoesNotThrow(() ->
-                documentService.upload(1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, 100L, false));
+        assertDoesNotThrow(() -> documentService.upload(
+                1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, "DEFAULT", 100L, false));
         verify(documentMapper).insert(any(Document.class));
     }
 
@@ -159,8 +144,8 @@ class DocumentServiceTest {
         when(minioStorageService.uploadFile(eq(1L), anyString(), any(), eq("pdf")))
                 .thenAnswer(inv -> "1/" + inv.getArgument(1) + ".pdf");
 
-        assertDoesNotThrow(() ->
-                documentService.upload(1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, 100L, false));
+        assertDoesNotThrow(() -> documentService.upload(
+                1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, "DEFAULT", 100L, false));
 
         ArgumentCaptor<Document> captor = ArgumentCaptor.forClass(Document.class);
         verify(documentMapper).insert(captor.capture());
@@ -184,7 +169,7 @@ class DocumentServiceTest {
         assertThrows(
                 RuntimeException.class,
                 () -> documentService.upload(
-                        1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, 100L, false));
+                        1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, "DEFAULT", 100L, false));
         verify(documentMapper, never()).insert(any(Document.class));
     }
 
@@ -202,7 +187,7 @@ class DocumentServiceTest {
         assertThrows(
                 RuntimeException.class,
                 () -> documentService.upload(
-                        1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, 100L, false));
+                        1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, "DEFAULT", 100L, false));
         // 唯一可能的残留方向「MinIO 已传、DB 未落」→ 回收对象（幂等）
         verify(minioStorageService).deleteFile("1/9f8c7b6a5d4c3b2a1f0e9d8c7b6a5d4c.pdf");
     }
@@ -264,5 +249,61 @@ class DocumentServiceTest {
         // 默认（null sort）与非法值均不抛异常（TEACHER 过滤条件为 false 时不得 NPE）
         assertDoesNotThrow(() -> documentService.findPage(null, null, null, null, 1, 20, null, null));
         assertDoesNotThrow(() -> documentService.findPage(null, null, null, "invalid", 1, 20, null, null));
+    }
+
+    // ==================== P2-1 知识库属主旁路 ====================
+
+    @Test
+    @DisplayName("P2-1 update → 非文档属主但为知识库属主的教师可改名（超管代传文档）")
+    void update_kbOwnerTeacher_canUpdate() {
+        Document doc = new Document();
+        doc.setId(10L);
+        doc.setKbId(7L);
+        doc.setCreatedBy(999L); // 超管代传，createdBy=超管
+        when(documentMapper.selectById(10L)).thenReturn(doc);
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(7L);
+        kb.setCreatedBy(100L); // 知识库属主 = 教师 100
+        when(knowledgeBaseMapper.selectById(7L)).thenReturn(kb);
+
+        // 教师 100 非文档属主（999）但为 kb 属主 → 放行
+        assertDoesNotThrow(() -> documentService.update(10L, "新标题", 100L, false));
+        verify(documentMapper).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("P2-1 update → 非文档属主且非知识库属主仍 403")
+    void update_notOwnerNorKbOwner_throws403() {
+        Document doc = new Document();
+        doc.setId(10L);
+        doc.setKbId(7L);
+        doc.setCreatedBy(999L);
+        when(documentMapper.selectById(10L)).thenReturn(doc);
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(7L);
+        kb.setCreatedBy(100L); // kb 属主是教师 100，操作者 200 无权限
+        when(knowledgeBaseMapper.selectById(7L)).thenReturn(kb);
+
+        ResponseStatusException ex =
+                assertThrows(ResponseStatusException.class, () -> documentService.update(10L, "新标题", 200L, false));
+        assertEquals(403, ex.getStatusCode().value());
+    }
+
+    @Test
+    @DisplayName("P2-1 findById → 教师可见自己知识库内的代传文档（kb 属主旁路）")
+    void findById_kbOwnerTeacher_visible() {
+        Document doc = new Document();
+        doc.setId(10L);
+        doc.setKbId(7L);
+        doc.setCreatedBy(999L);
+        when(documentMapper.selectById(10L)).thenReturn(doc);
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(7L);
+        kb.setCreatedBy(100L);
+        when(knowledgeBaseMapper.selectById(7L)).thenReturn(kb);
+
+        Document result = documentService.findById(10L, 100L, "TEACHER");
+
+        assertNotNull(result, "kb 属主教师应可见库内文档");
     }
 }

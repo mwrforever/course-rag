@@ -15,11 +15,12 @@ import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.storage.MinioStorageService;
 import java.io.InputStream;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadPoolExecutor;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -35,41 +36,33 @@ import org.springframework.web.server.ResponseStatusException;
  * @author commerce-rag
  */
 @Service
+@RequiredArgsConstructor
 public class DocumentService {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentService.class);
 
     private static final int DEFAULT_PAGE_SIZE = 20;
 
-    @Autowired
-    private DocumentMapper documentMapper;
+    private final DocumentMapper documentMapper;
+    private final DocumentChunkMapper chunkMapper;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final MinioStorageService minioStorageService;
+    private final EtlPipeline etlPipeline;
 
-    @Autowired
-    private DocumentChunkMapper chunkMapper;
-
-    @Autowired
-    private KnowledgeBaseMapper knowledgeBaseMapper;
-
-    @Autowired
-    private MinioStorageService minioStorageService;
-
-    @Autowired
-    private EtlPipeline etlPipeline;
-
-    @Autowired
     @Qualifier("etlPool")
-    private ThreadPoolExecutor etlPool;
+    private final ThreadPoolExecutor etlPool;
 
     /**
      * 上传文档
      *
-     * <p>流程：存 MinIO → 创建 document 记录 → 触发 ETL 异步管道
+     * <p>流程：存 MinIO → 创建 document 记录（含 course_id）→ 触发 ETL 异步管道
      *
      * @param kbId        知识库 ID
      * @param title       文档标题
      * @param inputStream 文件输入流
      * @param fileType    文件类型（pdf/docx/pptx/md）
      * @param fileSize    文件大小（字节）
+     * @param courseId    课程 ID（可空，空则 DEFAULT=通用资料库；分片继承该值写入 Milvus course_id）
      * @param createdBy   创建者 ID
      * @param isAdmin     是否为超管（超管旁路）
      * @return 已持久化的文档实体
@@ -80,6 +73,7 @@ public class DocumentService {
             InputStream inputStream,
             String fileType,
             Long fileSize,
+            String courseId,
             Long createdBy,
             boolean isAdmin) {
         // 校验知识库存在
@@ -98,7 +92,7 @@ public class DocumentService {
         String uuid = UUID.randomUUID().toString().replace("-", "");
         String objectKey = minioStorageService.uploadFile(kbId, uuid, inputStream, fileType);
 
-        // 创建 document 记录（sourcePath 一步带入，id 自动生成）
+        // 创建 document 记录（sourcePath 一步带入，id 自动生成；course_id 空则 DEFAULT）
         Document doc = new Document();
         doc.setKbId(kbId);
         doc.setTitle(title);
@@ -107,6 +101,7 @@ public class DocumentService {
         doc.setParseStatus("PENDING");
         doc.setChunkCount(0);
         doc.setMetadataJson("{}");
+        doc.setCourseId(courseId != null && !courseId.isBlank() ? courseId : "DEFAULT");
         doc.setCreatedBy(createdBy);
         doc.setSourcePath(objectKey);
         try {
@@ -139,10 +134,8 @@ public class DocumentService {
         if (doc == null) {
             return null;
         }
-        // TEACHER 只能查看自己创建的文档
-        if ("TEACHER".equals(role)
-                && doc.getCreatedBy() != null
-                && !doc.getCreatedBy().equals(userId)) {
+        // TEACHER 只能查看自己有权的文档（P2-1：文档属主 或 所属知识库属主——超管代传文档教师可管理）
+        if ("TEACHER".equals(role) && !isOwnerOrKbOwner(doc, userId)) {
             return null;
         }
         return doc;
@@ -169,9 +162,22 @@ public class DocumentService {
                 .eq(kbId != null, Document::getKbId, kbId)
                 .eq(status != null && !status.isBlank(), Document::getParseStatus, status)
                 .like(q != null && !q.isBlank(), Document::getTitle, q)
-                // TEACHER 只能查看自己创建的文档（role 为 null 时条件为 false，链式 eq 不生效、不抛 NPE）
-                .eq("TEACHER".equals(role) && userId != null, Document::getCreatedBy, userId)
                 .orderByDesc("updated".equals(sort) ? Document::getUpdatedAt : Document::getCreatedAt);
+        if ("TEACHER".equals(role) && userId != null) {
+            // P2-1: 教师可见 = 自己创建的文档 ∪ 自己知识库内的文档（超管代传文档在教师库内应可见可操作）
+            List<Long> kbIds = knowledgeBaseMapper
+                    .selectList(Wrappers.<KnowledgeBase>lambdaQuery()
+                            .eq(KnowledgeBase::getCreatedBy, userId)
+                            .select(KnowledgeBase::getId))
+                    .stream()
+                    .map(KnowledgeBase::getId)
+                    .collect(java.util.stream.Collectors.toList());
+            if (kbIds.isEmpty()) {
+                wrapper.eq(Document::getCreatedBy, userId);
+            } else {
+                wrapper.and(w -> w.eq(Document::getCreatedBy, userId).or().in(Document::getKbId, kbIds));
+            }
+        }
         return documentMapper.selectPage(pageObj, wrapper);
     }
 
@@ -311,30 +317,75 @@ public class DocumentService {
     }
 
     /**
-     * 获取文档文件类型（用于下载时设置 Content-Type）
+     * 下载文档原始文件（含文件类型，perf P2-4：一次查询取实体，避免 controller 二次主键查询）
+     *
+     * <p>权限校验：operatorId 必须与文档 created_by 一致（超管旁路）。
+     *
+     * @param id         文档 ID
+     * @param operatorId 操作者 ID
+     * @param isAdmin    是否为超管（超管旁路）
+     * @return 下载结果（输入流 + 文件类型），供 controller 设置响应头/文件名
      */
-    public String getFileType(Long id) {
+    public DocumentDownload downloadWithType(Long id, Long operatorId, boolean isAdmin) {
         Document doc = documentMapper.selectById(id);
-        return doc != null ? doc.getFileType() : null;
+        if (doc == null) {
+            throw new IllegalArgumentException("文档不存在: id=" + id);
+        }
+
+        // 权限校验：只有文档创建者才能下载（超管旁路）
+        checkOwnership(doc, operatorId, isAdmin);
+
+        if (doc.getSourcePath() == null) {
+            throw new IllegalStateException("文档源文件路径为空: id=" + id);
+        }
+        return new DocumentDownload(minioStorageService.downloadFile(doc.getSourcePath()), doc.getFileType());
     }
 
     /**
-     * 权限校验 —— 校验操作者是否为文档创建者
+     * 下载结果封装（输入流 + 文件类型）
      *
-     * <p>设计文档要求：TEACHER 只能删除/重新解析自己创建的文档（checkOwnership(created_by)）。
+     * @param inputStream 文件输入流
+     * @param fileType    文件类型（如 pdf/docx，可为 null）
+     */
+    public record DocumentDownload(InputStream inputStream, String fileType) {}
+
+    /**
+     * 权限校验 —— 校验操作者是否为文档属主或所属知识库属主
+     *
+     * <p>设计文档要求：TEACHER 只能操作自己创建的文档（checkOwnership(created_by)）。
      * 超级管理员可操作所有文档（isAdmin 旁路）。
+     * P2-1 修复：增加「知识库属主」旁路——上传校验锚定 kb.createdBy（超管可代传，
+     * doc.createdBy=超管），操作校验若仍只锚定 doc.createdBy，文档会躺在教师自己的
+     * 知识库里却不可操作；两处锚定统一为「文档属主或知识库属主」。
      *
      * @param doc        文档实体（已查询）
      * @param operatorId 操作者 ID
      * @param isAdmin    是否为超管（超管旁路，不校验 ownership）
-     * @throws ResponseStatusException 如果 operatorId 与文档 created_by 不匹配，抛出 403 FORBIDDEN
+     * @throws ResponseStatusException 如果 operatorId 与文档/知识库属主均不匹配，抛出 403 FORBIDDEN
      */
     private void checkOwnership(Document doc, Long operatorId, boolean isAdmin) {
         if (isAdmin) {
             return;
         }
-        if (doc.getCreatedBy() == null || !doc.getCreatedBy().equals(operatorId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权操作此文档: 只有文档创建者可以执行此操作");
+        if (!isOwnerOrKbOwner(doc, operatorId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权操作此文档: 只有文档/知识库属主可以执行此操作");
         }
+    }
+
+    /**
+     * 归属判定：文档属主 或 所属知识库属主（P2-1，findById/checkOwnership 共用）
+     */
+    private boolean isOwnerOrKbOwner(Document doc, Long operatorId) {
+        if (doc.getCreatedBy() != null && doc.getCreatedBy().equals(operatorId)) {
+            return true;
+        }
+        // 知识库属主旁路：超管代传的文档（createdBy=超管）在教师自己库内，教师应可管理
+        if (doc.getKbId() != null) {
+            KnowledgeBase kb = knowledgeBaseMapper.selectById(doc.getKbId());
+            if (kb != null && kb.getCreatedBy() != null && kb.getCreatedBy().equals(operatorId)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
