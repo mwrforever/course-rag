@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 反馈管理 Controller（I1-I3）
  *
  * <p>B 端管理接口，教师/超级管理员可查看反馈列表、统计、删除反馈。
+ * 2026-08-15 用户裁决：全局可见，不区分教师/超管视角（无 created_by 过滤）。
  *
  * @author commerce-rag
  */
@@ -38,24 +39,19 @@ public class AdminFeedbackController {
         this.feedbackService = feedbackService;
     }
 
-    /** I1: 分页查询反馈（2026-08-15 用户裁决：教师仅见自己学生的反馈，超管不限制） */
+    /** I1: 分页查询反馈（2026-08-15 用户裁决：全局可见，不区分教师/超管视角） */
     @GetMapping
     public ApiResponse<PageResponse<UserFeedbackVO>> findPage(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String intentType,
-            HttpServletRequest request) {
-        Long operatorId = AuthInterceptor.getCurrentUserId(request);
-        Long createdBy = "SUPER_ADMIN".equals(AuthInterceptor.getCurrentRole(request)) ? null : operatorId;
-        return ApiResponse.ok(PageResponse.of(feedbackService.findPage(page, size, intentType, createdBy)));
+            @RequestParam(required = false) String intentType) {
+        return ApiResponse.ok(PageResponse.of(feedbackService.findPage(page, size, intentType)));
     }
 
-    /** I2: 反馈统计（按意图分组统计赞/踩数；教师仅统计自己学生的反馈） */
+    /** I2: 反馈统计（按意图分组统计赞/踩数；全局口径） */
     @GetMapping("/stats")
-    public ApiResponse<List<Map<String, Object>>> findStats(HttpServletRequest request) {
-        Long operatorId = AuthInterceptor.getCurrentUserId(request);
-        Long createdBy = "SUPER_ADMIN".equals(AuthInterceptor.getCurrentRole(request)) ? null : operatorId;
-        return ApiResponse.ok(feedbackService.findStats(createdBy));
+    public ApiResponse<List<Map<String, Object>>> findStats() {
+        return ApiResponse.ok(feedbackService.findStats());
     }
 
     /** I3: 删除反馈 */

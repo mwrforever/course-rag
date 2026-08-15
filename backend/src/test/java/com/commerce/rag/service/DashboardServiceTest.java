@@ -22,7 +22,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * DashboardService 单元测试 —— 统计口径（P2-2）
+ * DashboardService 单元测试 —— 统计口径（P2-2；2026-08-15 用户裁决：全局统计，不区分教师/超管视角）
  *
  * @author commerce-rag
  */
@@ -59,88 +59,60 @@ class DashboardServiceTest {
     }
 
     @Test
-    @DisplayName("dashboardStats — 超管统计全部（documentCount/pendingChunkCount/knowledgeBaseCount）")
-    void dashboardStats_admin_seesAll() {
+    @DisplayName("dashboardStats — 全局统计 documentCount/pendingChunkCount/knowledgeBaseCount（无 created_by 过滤）")
+    void dashboardStats_globalCounts() {
         when(documentMapper.selectCount(any())).thenReturn(10L);
         when(chunkMapper.selectCount(any())).thenReturn(3L);
         when(knowledgeBaseMapper.selectCount(any())).thenReturn(2L);
 
-        Map<String, Object> stats = service.dashboardStats(100L, true);
+        Map<String, Object> stats = service.dashboardStats();
 
         assertEquals(10L, stats.get("documentCount"));
         assertEquals(3L, stats.get("pendingChunkCount"));
         assertEquals(2L, stats.get("knowledgeBaseCount"));
-        // 超管不走教师子查询计数
-        verify(chunkMapper, never()).selectPendingChunkCountByTeacher(any());
+        // 全局口径：待修正分片数走 lambda 全局 count，不再有教师子查询计数
+        verify(chunkMapper).selectCount(any());
     }
 
     @Test
-    @DisplayName("dashboardStats — 教师仅统计自己创建的数据（created_by 隔离，用户 2026-08-15 裁决）")
-    void dashboardStats_teacher_seesOwnData() {
-        when(documentMapper.selectCount(any())).thenReturn(4L);
-        when(chunkMapper.selectPendingChunkCountByTeacher(100L)).thenReturn(1L);
-        when(knowledgeBaseMapper.selectCount(any())).thenReturn(1L);
-
-        Map<String, Object> stats = service.dashboardStats(100L, false);
-
-        assertEquals(4L, stats.get("documentCount"));
-        assertEquals(1L, stats.get("pendingChunkCount"));
-        assertEquals(1L, stats.get("knowledgeBaseCount"));
-    }
-
-    @Test
-    @DisplayName("feedbackStats — 超管统计全部学生数 + 反馈数 + 点赞率")
-    void feedbackStats_admin_counts() {
+    @DisplayName("feedbackStats — 全局学生数 + 反馈数 + 点赞率（无 created_by 过滤）")
+    void feedbackStats_globalCounts() {
         when(sysUserMapper.selectCount(any())).thenReturn(30L);
-        when(feedbackMapper.selectFeedbackStatsByPeriod(any(), isNull()))
+        when(feedbackMapper.selectFeedbackStatsByPeriod(any()))
                 .thenReturn(Map.of("total_count", 4L, "liked_count", 3L));
 
-        Map<String, Object> stats = service.feedbackStats("today", 100L, true);
+        Map<String, Object> stats = service.feedbackStats("today");
 
         assertEquals(30L, stats.get("studentCount"));
         assertEquals(4L, stats.get("feedbackCount"));
         assertEquals(0.75, stats.get("likeRate"));
-    }
-
-    @Test
-    @DisplayName("feedbackStats — 教师统计自己学生（createdBy 传入子查询）")
-    void feedbackStats_teacher_filtersByCreatedBy() {
-        when(sysUserMapper.selectCount(any())).thenReturn(5L);
-        when(feedbackMapper.selectFeedbackStatsByPeriod(any(), eq(100L)))
-                .thenReturn(Map.of("total_count", 4L, "liked_count", 3L));
-
-        Map<String, Object> stats = service.feedbackStats("today", 100L, false);
-
-        assertEquals(5L, stats.get("studentCount"));
-        assertEquals(4L, stats.get("feedbackCount"));
-        assertEquals(0.75, stats.get("likeRate"));
-        // 教师过滤必须传入 createdBy（而非 null）
-        verify(feedbackMapper).selectFeedbackStatsByPeriod(any(), eq(100L));
+        // 全局口径：统计 SQL 不传 createdBy
+        verify(feedbackMapper).selectFeedbackStatsByPeriod(any());
     }
 
     @Test
     @DisplayName("feedbackStats — 0 反馈时点赞率为 0（无除零）")
     void feedbackStats_zeroFeedback_likeRateZero() {
         when(sysUserMapper.selectCount(any())).thenReturn(0L);
-        when(feedbackMapper.selectFeedbackStatsByPeriod(any(), isNull()))
+        when(feedbackMapper.selectFeedbackStatsByPeriod(any()))
                 .thenReturn(Map.of("total_count", 0L, "liked_count", 0L));
 
-        Map<String, Object> stats = service.feedbackStats("today", 100L, true);
+        Map<String, Object> stats = service.feedbackStats("today");
 
         assertEquals(0L, stats.get("studentCount"));
         assertEquals(0.0, stats.get("likeRate"));
     }
 
     @Test
-    @DisplayName("feedbackTrend — 近 N 天每日反馈数，0 补位，升序（超管 createdBy=null）")
+    @DisplayName("feedbackTrend — 近 N 天每日反馈数，0 补位，升序（全局口径）")
     void feedbackTrend_zeroFillAscending() {
         // mapper 分组统计返回 2 条记录（间隔日期），其余天补 0（SQL 在 UserFeedbackMapper.xml）
-        when(feedbackMapper.selectDailyFeedbackCount(any(), isNull()))
+        when(feedbackMapper.selectDailyFeedbackCount(any()))
                 .thenReturn(List.of(
                         Map.of("d", LocalDate.now().minusDays(4).toString(), "c", 2L),
                         Map.of("d", LocalDate.now().toString(), "c", 3L)));
 
-        List<Map<String, Object>> trend = service.feedbackTrend(7, 100L, true);
+        List<Map<String, Object>> trend = service.feedbackTrend(7);
 
         assertEquals(7, trend.size());
         assertEquals(LocalDate.now().minusDays(6).toString(), trend.get(0).get("date"));
@@ -150,22 +122,12 @@ class DashboardServiceTest {
     }
 
     @Test
-    @DisplayName("feedbackTrend — 教师传入 createdBy 过滤（自己学生的反馈）")
-    void feedbackTrend_teacher_filtersByCreatedBy() {
-        when(feedbackMapper.selectDailyFeedbackCount(any(), eq(100L))).thenReturn(List.of());
-
-        service.feedbackTrend(7, 100L, false);
-
-        verify(feedbackMapper).selectDailyFeedbackCount(any(), eq(100L));
-    }
-
-    @Test
     @DisplayName("feedbackTrend — days 钳位（1~90），负数按 1")
     void feedbackTrend_clampDays() {
-        when(feedbackMapper.selectDailyFeedbackCount(any(), isNull())).thenReturn(List.of());
+        when(feedbackMapper.selectDailyFeedbackCount(any())).thenReturn(List.of());
 
-        assertEquals(1, service.feedbackTrend(0, 100L, true).size());
-        assertEquals(90, service.feedbackTrend(999, 100L, true).size());
+        assertEquals(1, service.feedbackTrend(0).size());
+        assertEquals(90, service.feedbackTrend(999).size());
     }
 
     // ==================== perf P2-3 统计缓存 ====================
@@ -177,8 +139,8 @@ class DashboardServiceTest {
         when(chunkMapper.selectCount(any())).thenReturn(3L);
         when(knowledgeBaseMapper.selectCount(any())).thenReturn(2L);
 
-        Map<String, Object> first = service.dashboardStats(100L, true);
-        Map<String, Object> second = service.dashboardStats(100L, true);
+        Map<String, Object> first = service.dashboardStats();
+        Map<String, Object> second = service.dashboardStats();
 
         assertEquals(first, second, "同参数两次调用返回一致");
         // 二次调用同参数命中缓存：三个统计各自只查一次 DB
@@ -188,21 +150,29 @@ class DashboardServiceTest {
     }
 
     @Test
-    @DisplayName("dashboardStats — 不同参数键隔离（operatorId/isAdmin 任一不同互不命中）")
-    void dashboardStats_keyIsolatedPerView() {
+    @DisplayName("统计缓存 — 三个端点键互不串扰（dashboardStats / feedbackStats / feedbackTrend 各自独立）")
+    void statsCache_keysIsolatedAcrossEndpoints() {
         when(documentMapper.selectCount(any())).thenReturn(10L);
         when(chunkMapper.selectCount(any())).thenReturn(3L);
-        when(chunkMapper.selectPendingChunkCountByTeacher(anyLong())).thenReturn(1L);
         when(knowledgeBaseMapper.selectCount(any())).thenReturn(2L);
+        when(sysUserMapper.selectCount(any())).thenReturn(1L);
+        when(feedbackMapper.selectFeedbackStatsByPeriod(any()))
+                .thenReturn(Map.of("total_count", 1L, "liked_count", 1L));
+        when(feedbackMapper.selectDailyFeedbackCount(any())).thenReturn(List.of());
 
-        // 三个不同键：超管 100 / 教师 100 / 教师 200，任一参数不同即重新查询
-        service.dashboardStats(100L, true);
-        service.dashboardStats(100L, false);
-        service.dashboardStats(200L, false);
+        // 三端点各调一次 + dashboardStats 再调一次（命中自身缓存，不触发其他端点失效）
+        service.dashboardStats();
+        service.feedbackStats("today");
+        service.feedbackTrend(7);
+        service.dashboardStats();
 
-        verify(documentMapper, times(3)).selectCount(any());
+        // dashboardStats 二次调用命中缓存：三个 count 各只查一次
+        verify(documentMapper, times(1)).selectCount(any());
         verify(chunkMapper, times(1)).selectCount(any());
-        verify(chunkMapper, times(2)).selectPendingChunkCountByTeacher(anyLong());
-        verify(knowledgeBaseMapper, times(3)).selectCount(any());
+        verify(knowledgeBaseMapper, times(1)).selectCount(any());
+        // 其他端点各自只查一次（键隔离，互不命中）
+        verify(sysUserMapper, times(1)).selectCount(any());
+        verify(feedbackMapper, times(1)).selectFeedbackStatsByPeriod(any());
+        verify(feedbackMapper, times(1)).selectDailyFeedbackCount(any());
     }
 }

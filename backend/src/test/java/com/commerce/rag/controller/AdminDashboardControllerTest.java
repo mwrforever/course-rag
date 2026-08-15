@@ -3,9 +3,7 @@ package com.commerce.rag.controller;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.service.DashboardService;
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 /**
- * AdminDashboardController 契约测试 —— 三统计端点与前端文档对齐（P2-2）
+ * AdminDashboardController 契约测试 —— 三统计端点与前端文档对齐（P2-2；2026-08-15 用户裁决全局口径）
  *
  * @author commerce-rag
  */
@@ -32,13 +30,6 @@ class AdminDashboardControllerTest {
     private DashboardService dashboardService;
 
     private AdminDashboardController controller;
-
-    private HttpServletRequest adminRequest() {
-        HttpServletRequest mockRequest = mock(HttpServletRequest.class);
-        when(mockRequest.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(100L);
-        when(mockRequest.getAttribute(AuthInterceptor.ATTR_ROLE)).thenReturn("SUPER_ADMIN");
-        return mockRequest;
-    }
 
     @BeforeEach
     void setUp() {
@@ -58,48 +49,47 @@ class AdminDashboardControllerTest {
         assertTrue(preAuthorize.value().contains("SUPER_ADMIN"), "应允许 SUPER_ADMIN: " + preAuthorize.value());
         // 参数默认值契约：period=today / days=7（前端文档 :784/:786）
         RequestParam periodParam = AdminDashboardController.class
-                .getMethod("feedbackStats", String.class, HttpServletRequest.class)
+                .getMethod("feedbackStats", String.class)
                 .getParameters()[0]
                 .getAnnotation(RequestParam.class);
         assertEquals("today", periodParam.defaultValue(), "period 默认值应为 today");
         RequestParam daysParam = AdminDashboardController.class
-                .getMethod("feedbackTrend", int.class, HttpServletRequest.class)
+                .getMethod("feedbackTrend", int.class)
                 .getParameters()[0]
                 .getAnnotation(RequestParam.class);
         assertEquals("7", daysParam.defaultValue(), "days 默认值应为 7");
     }
 
     @Test
-    @DisplayName("契约 — dashboardStats 映射 GET /dashboard/stats（:783）")
+    @DisplayName("契约 — dashboardStats 映射 GET /dashboard/stats（:783，全局口径无 request 参数）")
     void dashboardStats_mapsToPath() throws Exception {
-        var method = AdminDashboardController.class.getMethod("dashboardStats", HttpServletRequest.class);
+        var method = AdminDashboardController.class.getMethod("dashboardStats");
         GetMapping mapping = method.getAnnotation(GetMapping.class);
         assertNotNull(mapping);
         assertArrayEquals(new String[] {"/dashboard/stats"}, mapping.value());
-        when(dashboardService.dashboardStats(100L, true)).thenReturn(Map.of("documentCount", 1L));
-        assertEquals(1L, controller.dashboardStats(adminRequest()).data().get("documentCount"));
+        when(dashboardService.dashboardStats()).thenReturn(Map.of("documentCount", 1L));
+        assertEquals(1L, controller.dashboardStats().data().get("documentCount"));
     }
 
     @Test
-    @DisplayName("契约 — feedbackStats 映射 GET /feedback/stats 且 period 默认 today（:784）")
+    @DisplayName("契约 — feedbackStats 映射 GET /feedback/stats 且 period 默认 today（:784，全局口径）")
     void feedbackStats_mapsToPath() throws Exception {
-        var method = AdminDashboardController.class.getMethod("feedbackStats", String.class, HttpServletRequest.class);
+        var method = AdminDashboardController.class.getMethod("feedbackStats", String.class);
         GetMapping mapping = method.getAnnotation(GetMapping.class);
         assertNotNull(mapping);
         assertArrayEquals(new String[] {"/feedback/stats"}, mapping.value());
-        when(dashboardService.feedbackStats("today", 100L, true)).thenReturn(Map.of("studentCount", 5L));
-        assertEquals(
-                5L, controller.feedbackStats("today", adminRequest()).data().get("studentCount"));
+        when(dashboardService.feedbackStats("today")).thenReturn(Map.of("studentCount", 5L));
+        assertEquals(5L, controller.feedbackStats("today").data().get("studentCount"));
     }
 
     @Test
-    @DisplayName("契约 — feedbackTrend 映射 GET /feedback/trend 且 days 默认 7（:786）")
+    @DisplayName("契约 — feedbackTrend 映射 GET /feedback/trend 且 days 默认 7（:786，全局口径）")
     void feedbackTrend_mapsToPath() throws Exception {
-        var method = AdminDashboardController.class.getMethod("feedbackTrend", int.class, HttpServletRequest.class);
+        var method = AdminDashboardController.class.getMethod("feedbackTrend", int.class);
         GetMapping mapping = method.getAnnotation(GetMapping.class);
         assertNotNull(mapping);
         assertArrayEquals(new String[] {"/feedback/trend"}, mapping.value());
-        when(dashboardService.feedbackTrend(7, 100L, true)).thenReturn(List.of());
-        assertNotNull(controller.feedbackTrend(7, adminRequest()).data());
+        when(dashboardService.feedbackTrend(7)).thenReturn(List.of());
+        assertNotNull(controller.feedbackTrend(7).data());
     }
 }

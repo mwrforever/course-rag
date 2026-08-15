@@ -37,12 +37,4 @@ public interface DocumentChunkMapper extends BaseMapper<DocumentChunk> {
             @Param("kbId") Long kbId,
             @Param("pendingOnly") boolean pendingOnly,
             @Param("userId") Long userId);
-
-    /**
-     * 教师待修正分片计数（dashboard 教师视角：document.created_by 子查询隔离）
-     *
-     * @param createdBy 教师用户 ID
-     * @return 待修正分片数
-     */
-    long selectPendingChunkCountByTeacher(@Param("createdBy") Long createdBy);
 }

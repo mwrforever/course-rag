@@ -22,13 +22,14 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
- * 管理端 Dashboard 统计服务（P2-2 契约对齐 + 2026-08-15 用户裁决：教师数据隔离）
+ * 管理端 Dashboard 统计服务（P2-2 契约对齐 + 2026-08-15 用户裁决：全局统计口径）
  *
- * <p>统计口径（用户 2026-08-15 裁决，替代原「全局会话数」口径——会话数无业务意义）：
+ * <p>统计口径（用户 2026-08-15 定稿，替代原「全局会话数」口径——会话数无业务意义；
+ * 2026-08-15 晚再裁决：所有人都能看到，不区分是谁的学生，TEACHER 与 SUPER_ADMIN 所见一致）：
  * <ul>
- *   <li>dashboard/stats：文档总数 + 待修正分片数 + 知识库数——教师视角 = 自己创建的数据，超管 = 全部</li>
- *   <li>feedback/stats?period=：周期内学生数 + 反馈数 + 点赞率——教师 = 自己创建的学生及其反馈，超管 = 全部</li>
- *   <li>feedback/trend?days=：近 N 天每日反馈数（0 补位升序）——教师 = 自己学生的反馈，超管 = 全部</li>
+ *   <li>dashboard/stats：文档总数 + 待修正分片数 + 知识库数（全局，无 created_by 过滤）</li>
+ *   <li>feedback/stats?period=：周期内学生数 + 反馈数 + 点赞率（全局）</li>
+ *   <li>feedback/trend?days=：近 N 天每日反馈数（0 补位升序，全局）</li>
  * </ul>
  *
  * @author commerce-rag
@@ -52,42 +53,30 @@ public class DashboardService {
     private final Cache<String, Object> dashboardStatsCache;
 
     /**
-     * 文档/分片/知识库统计（教师视角按 created_by 隔离，超管不限制）
+     * 文档/分片/知识库统计（全局口径，无 created_by 过滤——用户 2026-08-15 裁决）
      *
-     * <p>统计结果缓存 60 秒（键含 operatorId 与 isAdmin，教师/超管视角互不串扰），
-     * 文档上传/删除/重解析时由写方失效。
+     * <p>统计结果缓存 60 秒（单键，全局唯一视图），文档上传/删除/重解析时由写方失效。
      *
-     * @param operatorId 当前操作者 ID（教师过滤用）
-     * @param isAdmin    是否为超管（true=统计全部数据）
+     * @return 统计结果 {documentCount, pendingChunkCount, knowledgeBaseCount}
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> dashboardStats(Long operatorId, boolean isAdmin) {
-        // 缓存读：键 = 操作者 + 视角（教师/超管数据隔离，键不同互不命中）
-        String key = "dashboardStats:" + operatorId + ":" + isAdmin;
+    public Map<String, Object> dashboardStats() {
+        // 缓存读：全局统计单键（教师与超管所见一致）
+        String key = "dashboardStats";
         Map<String, Object> cached = (Map<String, Object>) dashboardStatsCache.getIfPresent(key);
         if (cached != null) {
             return cached;
         }
         Map<String, Object> stats = new LinkedHashMap<>();
-        // 教师仅统计自己创建的文档；超管统计全部
-        stats.put(
-                "documentCount",
-                documentMapper.selectCount(
-                        isAdmin
-                                ? Wrappers.<Document>lambdaQuery()
-                                : Wrappers.<Document>lambdaQuery().eq(Document::getCreatedBy, operatorId)));
+        // 全局统计：文档总数（deleted=0 由 @TableLogic 自动过滤）
+        stats.put("documentCount", documentMapper.selectCount(Wrappers.<Document>lambdaQuery()));
+        // 全局统计：待修正分片数（correction_status=PENDING）
         stats.put(
                 "pendingChunkCount",
-                isAdmin
-                        ? chunkMapper.selectCount(
-                                Wrappers.<DocumentChunk>lambdaQuery().eq(DocumentChunk::getCorrectionStatus, "PENDING"))
-                        : chunkMapper.selectPendingChunkCountByTeacher(operatorId));
-        stats.put(
-                "knowledgeBaseCount",
-                knowledgeBaseMapper.selectCount(
-                        isAdmin
-                                ? Wrappers.<KnowledgeBase>lambdaQuery()
-                                : Wrappers.<KnowledgeBase>lambdaQuery().eq(KnowledgeBase::getCreatedBy, operatorId)));
+                chunkMapper.selectCount(
+                        Wrappers.<DocumentChunk>lambdaQuery().eq(DocumentChunk::getCorrectionStatus, "PENDING")));
+        // 全局统计：知识库总数
+        stats.put("knowledgeBaseCount", knowledgeBaseMapper.selectCount(Wrappers.<KnowledgeBase>lambdaQuery()));
         // 缓存写：Caffeine 禁止 null 值，统计结果不可能为 null，守卫仅防御未来改动
         if (stats != null) {
             dashboardStatsCache.put(key, stats);
@@ -96,36 +85,29 @@ public class DashboardService {
     }
 
     /**
-     * 周期内学生数 + 反馈数 + 点赞率（教师视角 = 自己创建的学生及其反馈，超管不限制）
+     * 周期内学生数 + 反馈数 + 点赞率（全局口径，无 created_by 过滤——用户 2026-08-15 裁决）
      *
-     * <p>统计结果缓存 60 秒（键含 period/operatorId/isAdmin），反馈提交/删除时由写方失效。
+     * <p>统计结果缓存 60 秒（键含 period），反馈提交/删除时由写方失效。
      *
-     * @param period     today/week/month（默认 today）
-     * @param operatorId 当前操作者 ID（教师过滤用）
-     * @param isAdmin    是否为超管（true=统计全部数据）
+     * @param period today/week/month（默认 today）
+     * @return 统计结果 {studentCount, feedbackCount, likeRate}
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> feedbackStats(String period, Long operatorId, boolean isAdmin) {
-        // 缓存读：键 = 周期 + 操作者 + 视角
-        String key = "feedbackStats:" + period + ":" + operatorId + ":" + isAdmin;
+    public Map<String, Object> feedbackStats(String period) {
+        // 缓存读：键 = 周期（全局唯一视图）
+        String key = "feedbackStats:" + period;
         Map<String, Object> cached = (Map<String, Object>) dashboardStatsCache.getIfPresent(key);
         if (cached != null) {
             return cached;
         }
         LocalDateTime start = periodStart(period);
         Map<String, Object> stats = new LinkedHashMap<>();
-        // 学生数：教师 = 自己创建的学生；超管 = 全部学生（用户裁决：替代无业务意义的会话数）
+        // 学生数：全部 STUDENT 角色用户（用户裁决：替代无业务意义的会话数）
         stats.put(
                 "studentCount",
-                sysUserMapper.selectCount(
-                        isAdmin
-                                ? Wrappers.<SysUser>lambdaQuery().eq(SysUser::getRole, "STUDENT")
-                                : Wrappers.<SysUser>lambdaQuery()
-                                        .eq(SysUser::getRole, "STUDENT")
-                                        .eq(SysUser::getCreatedBy, operatorId)));
-        // 反馈数 + 点赞数：单条 SQL（XML），教师按学生归属子查询隔离
-        Map<String, Object> feedbackRow =
-                feedbackMapper.selectFeedbackStatsByPeriod(start, isAdmin ? null : operatorId);
+                sysUserMapper.selectCount(Wrappers.<SysUser>lambdaQuery().eq(SysUser::getRole, "STUDENT")));
+        // 反馈数 + 点赞数：单条 SQL（XML），全局统计
+        Map<String, Object> feedbackRow = feedbackMapper.selectFeedbackStatsByPeriod(start);
         long total = feedbackRow != null && feedbackRow.get("total_count") != null
                 ? ((Number) feedbackRow.get("total_count")).longValue()
                 : 0L;
@@ -143,27 +125,25 @@ public class DashboardService {
     }
 
     /**
-     * 近 N 天每日反馈数（0 补位，日期升序；教师视角 = 自己学生的反馈，超管不限制）
+     * 近 N 天每日反馈数（0 补位，日期升序；全局口径——用户 2026-08-15 裁决）
      *
-     * <p>统计结果缓存 60 秒（键含 days/operatorId/isAdmin），反馈提交/删除时由写方失效。
+     * <p>统计结果缓存 60 秒（键含 days），反馈提交/删除时由写方失效。
      *
-     * @param days       天数（1~90 钳位）
-     * @param operatorId 当前操作者 ID（教师过滤用）
-     * @param isAdmin    是否为超管（true=统计全部数据）
+     * @param days 天数（1~90 钳位）
+     * @return 每日反馈数列表 {date, count}，升序
      */
     @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> feedbackTrend(int days, Long operatorId, boolean isAdmin) {
-        // 缓存读：键 = 天数 + 操作者 + 视角
-        String key = "feedbackTrend:" + days + ":" + operatorId + ":" + isAdmin;
+    public List<Map<String, Object>> feedbackTrend(int days) {
+        // 缓存读：键 = 天数（全局唯一视图）
+        String key = "feedbackTrend:" + days;
         List<Map<String, Object>> cached = (List<Map<String, Object>>) dashboardStatsCache.getIfPresent(key);
         if (cached != null) {
             return cached;
         }
         int clamped = Math.max(1, Math.min(days, 90));
         LocalDate startDate = LocalDate.now().minusDays(clamped - 1L);
-        // 分组聚合 SQL 走 mapper XML 映射（宪法：禁止业务层拼接 SQL 字符串；createdBy 教师隔离）
-        List<Map<String, Object>> rows =
-                feedbackMapper.selectDailyFeedbackCount(startDate.atStartOfDay(), isAdmin ? null : operatorId);
+        // 分组聚合 SQL 走 mapper XML 映射（宪法：禁止业务层拼接 SQL 字符串；全局统计无 created_by 过滤）
+        List<Map<String, Object>> rows = feedbackMapper.selectDailyFeedbackCount(startDate.atStartOfDay());
 
         Map<String, Long> countByDate = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {

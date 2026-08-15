@@ -100,28 +100,21 @@ public class UserFeedbackService {
     }
 
     /**
-     * 分页查询反馈（2026-08-15 用户裁决：教师仅见自己创建学生的反馈，超管不限制）
+     * 分页查询反馈（2026-08-15 用户裁决：全局可见，不区分教师/超管视角）
      *
      * @param page       页码（1-based）
      * @param size       每页条数
      * @param intentType 意图类型筛选（可选）
-     * @param createdBy  教师用户 ID（null=全部，超管视角）
-     * @return 分页结果（records 为用户反馈视图对象）
+     * @return 分页结果（records 为用户反馈视图对象，按创建时间降序）
      */
-    public IPage<UserFeedbackVO> findPage(int page, int size, String intentType, Long createdBy) {
+    public IPage<UserFeedbackVO> findPage(int page, int size, String intentType) {
         Page<UserFeedback> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
-        IPage<UserFeedback> entityPage;
-        if (createdBy != null) {
-            // 教师隔离：user_id IN 子查询（mapper XML），仅见自己创建学生的反馈
-            entityPage = feedbackMapper.selectPageFilteredByTeacher(pageObj, intentType, createdBy);
-        } else {
-            LambdaQueryWrapper<UserFeedback> wrapper =
-                    Wrappers.<UserFeedback>lambdaQuery().orderByDesc(UserFeedback::getCreatedAt);
-            if (intentType != null && !intentType.isBlank()) {
-                wrapper.eq(UserFeedback::getIntentType, intentType);
-            }
-            entityPage = feedbackMapper.selectPage(pageObj, wrapper);
+        LambdaQueryWrapper<UserFeedback> wrapper =
+                Wrappers.<UserFeedback>lambdaQuery().orderByDesc(UserFeedback::getCreatedAt);
+        if (intentType != null && !intentType.isBlank()) {
+            wrapper.eq(UserFeedback::getIntentType, intentType);
         }
+        IPage<UserFeedback> entityPage = feedbackMapper.selectPage(pageObj, wrapper);
         // 实体分页 → VO 分页：records 逐条转换，total/current/size 分页语义保持
         Page<UserFeedbackVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
         voPage.setRecords(
@@ -137,8 +130,8 @@ public class UserFeedbackService {
      *
      * @return 统计列表，每项包含 intentType, likedCount, dislikedCount
      */
-    public List<Map<String, Object>> findStats(Long createdBy) {
-        List<Map<String, Object>> rows = feedbackMapper.selectIntentStats(createdBy);
+    public List<Map<String, Object>> findStats() {
+        List<Map<String, Object>> rows = feedbackMapper.selectIntentStats();
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             Map<String, Object> stat = new HashMap<>();

@@ -107,12 +107,12 @@ class UserFeedbackServiceTest {
         row2.put("intent_type", "COURSE_INFO");
         row2.put("liked_count", 5L);
         row2.put("disliked_count", 1L);
-        when(feedbackMapper.selectIntentStats(isNull())).thenReturn(List.of(row1, row2));
+        when(feedbackMapper.selectIntentStats()).thenReturn(List.of(row1, row2));
 
-        var stats = feedbackService.findStats(null);
+        var stats = feedbackService.findStats();
 
         assertEquals(2, stats.size());
-        verify(feedbackMapper, times(1)).selectIntentStats(isNull());
+        verify(feedbackMapper, times(1)).selectIntentStats();
         // 断言返回结构（intentType/likedCount/dislikedCount）
         Map<String, Object> tech = stats.stream()
                 .filter(m -> "TECHNICAL_QA".equals(m.get("intentType")))

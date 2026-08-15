@@ -26,12 +26,4 @@
         ORDER BY chunk_index
     </select>
 
-    <!-- 教师待修正分片计数（dashboard：教师视角经 document.created_by 子查询隔离，超管走 MP count） -->
-    <select id="selectPendingChunkCountByTeacher" resultType="long">
-        SELECT COUNT(*)
-        FROM document_chunk
-        WHERE deleted = 0 AND correction_status = 'PENDING'
-          AND doc_id IN (SELECT id FROM document WHERE deleted = 0 AND created_by = #{createdBy})
-    </select>
-
 </mapper>
