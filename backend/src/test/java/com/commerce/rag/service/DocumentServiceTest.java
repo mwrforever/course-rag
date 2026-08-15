@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.controller.vo.DocumentVO;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.KnowledgeBase;
 import com.commerce.rag.etl.EtlPipeline;
@@ -63,9 +64,16 @@ class DocumentServiceTest {
 
     @BeforeEach
     void setUp() {
-        // 构造器注入（@RequiredArgsConstructor 按字段声明顺序生成全参构造器）
+        // 构造器注入（@RequiredArgsConstructor 按字段声明顺序生成全参构造器）；
+        // 转换器用真实实现（MapStruct 生成类），转换行为由 DocumentConverterTest 单独覆盖
         documentService = new DocumentService(
-                documentMapper, chunkMapper, knowledgeBaseMapper, minioStorageService, etlPipeline, etlPool);
+                documentMapper,
+                chunkMapper,
+                knowledgeBaseMapper,
+                minioStorageService,
+                etlPipeline,
+                etlPool,
+                new DocumentConverterImpl());
     }
 
     private Document mockDoc(Long id, Long createdBy) {
@@ -302,7 +310,7 @@ class DocumentServiceTest {
         kb.setCreatedBy(100L);
         when(knowledgeBaseMapper.selectById(7L)).thenReturn(kb);
 
-        Document result = documentService.findById(10L, 100L, "TEACHER");
+        DocumentVO result = documentService.findById(10L, 100L, "TEACHER");
 
         assertNotNull(result, "kb 属主教师应可见库内文档");
     }

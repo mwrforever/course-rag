@@ -7,13 +7,12 @@ import com.commerce.rag.controller.dto.BatchCorrectedRequest;
 import com.commerce.rag.controller.dto.ChunkCollectionTypeRequest;
 import com.commerce.rag.controller.dto.ChunkContentUpdateRequest;
 import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.entity.DocumentChunk;
+import com.commerce.rag.controller.vo.DocumentChunkVO;
 import com.commerce.rag.service.DocumentChunkService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 分片管理 Controller（D1-D9）
@@ -42,25 +42,24 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class AdminChunkController {
 
-    private static final Logger log = LoggerFactory.getLogger(AdminChunkController.class);
-
     private final DocumentChunkService chunkService;
 
     /** D1: 查询分片详情 */
     @GetMapping("/{id}")
-    public ApiResponse<DocumentChunk> findById(HttpServletRequest request, @PathVariable Long id) {
+    public ApiResponse<DocumentChunkVO> findById(HttpServletRequest request, @PathVariable Long id) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         String role = AuthInterceptor.getCurrentRole(request);
-        DocumentChunk chunk = chunkService.findById(id, userId, role);
+        DocumentChunkVO chunk = chunkService.findById(id, userId, role);
         if (chunk == null) {
-            return ApiResponse.error(404, "分片不存在");
+            // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "分片不存在");
         }
         return ApiResponse.ok(chunk);
     }
 
     /** D2: 分页查询分片 */
     @GetMapping
-    public ApiResponse<PageResponse<DocumentChunk>> findPage(
+    public ApiResponse<PageResponse<DocumentChunkVO>> findPage(
             HttpServletRequest request,
             @RequestParam(required = false) Long docId,
             @RequestParam(required = false) Long kbId,
@@ -102,7 +101,7 @@ public class AdminChunkController {
 
     /** D6: 查询分片上下文（parent/prev/current/next） */
     @GetMapping("/{id}/context")
-    public ApiResponse<Map<String, DocumentChunk>> findContext(HttpServletRequest request, @PathVariable Long id) {
+    public ApiResponse<Map<String, DocumentChunkVO>> findContext(HttpServletRequest request, @PathVariable Long id) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         String role = AuthInterceptor.getCurrentRole(request);
         return ApiResponse.ok(chunkService.findContext(id, userId, role));
@@ -128,7 +127,7 @@ public class AdminChunkController {
 
     /** D9: 查询待修正分片 */
     @GetMapping("/pending")
-    public ApiResponse<PageResponse<DocumentChunk>> findPending(
+    public ApiResponse<PageResponse<DocumentChunkVO>> findPending(
             HttpServletRequest request,
             @RequestParam(required = false) Long kbId,
             @RequestParam(required = false) Long docId,

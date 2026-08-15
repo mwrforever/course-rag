@@ -9,6 +9,7 @@ import com.commerce.rag.entity.UserFeedback;
 import com.commerce.rag.mapper.UserFeedbackMapper;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
@@ -33,6 +35,10 @@ class UserFeedbackServiceTest {
 
     @Mock
     private UserFeedbackMapper feedbackMapper;
+
+    /** 转换器用真实实现（MapStruct 生成类），转换行为由 UserFeedbackConverterTest 单独覆盖 */
+    @Spy
+    private UserFeedbackConverter feedbackConverter = new UserFeedbackConverterImpl();
 
     @InjectMocks
     private UserFeedbackService feedbackService;
@@ -87,22 +93,28 @@ class UserFeedbackServiceTest {
     void findStats_groupsByIntentType() {
         // Mock 查询不重复的 intent_type
         UserFeedback type1 = new UserFeedback();
-        type1.setIntentType("TECHNICAL_QA");
-        UserFeedback type2 = new UserFeedback();
-        type2.setIntentType("COURSE_INFO");
-        when(feedbackMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(type1, type2));
+        // perf P3-1: 单条 GROUP BY 聚合 SQL（mapper XML）返回全部意图统计
+        Map<String, Object> row1 = new java.util.HashMap<>();
+        row1.put("intent_type", "TECHNICAL_QA");
+        row1.put("liked_count", 10L);
+        row1.put("disliked_count", 2L);
+        Map<String, Object> row2 = new java.util.HashMap<>();
+        row2.put("intent_type", "COURSE_INFO");
+        row2.put("liked_count", 5L);
+        row2.put("disliked_count", 1L);
+        when(feedbackMapper.selectIntentStats(isNull())).thenReturn(List.of(row1, row2));
 
-        // Mock 统计赞/踩数
-        when(feedbackMapper.selectCount(any(LambdaQueryWrapper.class)))
-                .thenReturn(10L) // TECHNICAL_QA 赞
-                .thenReturn(2L) // TECHNICAL_QA 踩
-                .thenReturn(5L) // COURSE_INFO 赞
-                .thenReturn(1L); // COURSE_INFO 踩
-
-        var stats = feedbackService.findStats();
+        var stats = feedbackService.findStats(null);
 
         assertEquals(2, stats.size());
-        verify(feedbackMapper, times(4)).selectCount(any());
+        verify(feedbackMapper, times(1)).selectIntentStats(isNull());
+        // 断言返回结构（intentType/likedCount/dislikedCount）
+        Map<String, Object> tech = stats.stream()
+                .filter(m -> "TECHNICAL_QA".equals(m.get("intentType")))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(10L, tech.get("likedCount"));
+        assertEquals(2L, tech.get("dislikedCount"));
     }
 
     @Test

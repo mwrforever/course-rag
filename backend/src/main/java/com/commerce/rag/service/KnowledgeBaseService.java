@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.controller.vo.KnowledgeBaseVO;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.entity.KnowledgeBase;
@@ -45,15 +46,18 @@ public class KnowledgeBaseService {
     private final EtlPipeline etlPipeline;
     private final MinioStorageService minioStorageService;
 
+    /** 知识库转换器 —— Entity 出 service 边界前转 VO */
+    private final KnowledgeBaseConverter knowledgeBaseConverter;
+
     /**
      * 创建知识库
      *
      * @param name        知识库名称
      * @param description 描述
      * @param createdBy   创建者 ID（教师 user_id）
-     * @return 已持久化的知识库实体
+     * @return 已持久化知识库的视图对象
      */
-    public KnowledgeBase create(String name, String description, Long createdBy) {
+    public KnowledgeBaseVO create(String name, String description, Long createdBy) {
         KnowledgeBase kb = new KnowledgeBase();
         kb.setName(name);
         kb.setDescription(description);
@@ -61,7 +65,7 @@ public class KnowledgeBaseService {
         kb.setCreatedBy(createdBy);
         knowledgeBaseMapper.insert(kb);
         log.info("创建知识库: kbId={}, name={}, createdBy={}", kb.getId(), name, createdBy);
-        return kb;
+        return knowledgeBaseConverter.toVO(kb);
     }
 
     /**
@@ -70,9 +74,9 @@ public class KnowledgeBaseService {
      * @param id     知识库 ID
      * @param userId 当前用户 ID（TEACHER 数据权限过滤）
      * @param role   当前用户角色（TEACHER 时校验 ownership）
-     * @return 知识库实体，不存在或无权访问返回 null
+     * @return 知识库视图对象，不存在或无权访问返回 null
      */
-    public KnowledgeBase findById(Long id, Long userId, String role) {
+    public KnowledgeBaseVO findById(Long id, Long userId, String role) {
         KnowledgeBase kb = knowledgeBaseMapper.selectById(id);
         if (kb == null) {
             return null;
@@ -82,7 +86,7 @@ public class KnowledgeBaseService {
                 && (kb.getCreatedBy() == null || !kb.getCreatedBy().equals(userId))) {
             return null;
         }
-        return kb;
+        return knowledgeBaseConverter.toVO(kb);
     }
 
     /**
@@ -93,9 +97,9 @@ public class KnowledgeBaseService {
      * @param keyword 名称关键词（可选）
      * @param userId  当前用户 ID（TEACHER 数据权限过滤）
      * @param role    当前用户角色（TEACHER 时按 created_by 过滤）
-     * @return 分页结果
+     * @return 分页结果（records 为知识库视图对象）
      */
-    public Page<KnowledgeBase> findPage(int page, int size, String keyword, Long userId, String role) {
+    public Page<KnowledgeBaseVO> findPage(int page, int size, String keyword, Long userId, String role) {
         Page<KnowledgeBase> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
         LambdaQueryWrapper<KnowledgeBase> wrapper = Wrappers.<KnowledgeBase>lambdaQuery()
                 .eq(KnowledgeBase::getStatus, "ACTIVE")
@@ -107,7 +111,13 @@ public class KnowledgeBaseService {
         if ("TEACHER".equals(role) && userId != null) {
             wrapper.eq(KnowledgeBase::getCreatedBy, userId);
         }
-        return knowledgeBaseMapper.selectPage(pageObj, wrapper);
+        Page<KnowledgeBase> entityPage = knowledgeBaseMapper.selectPage(pageObj, wrapper);
+        // 实体分页 → VO 分页：records 逐条转换，total/current/size 分页语义保持
+        Page<KnowledgeBaseVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
+        voPage.setRecords(entityPage.getRecords().stream()
+                .map(knowledgeBaseConverter::toVO)
+                .collect(Collectors.toList()));
+        return voPage;
     }
 
     /**

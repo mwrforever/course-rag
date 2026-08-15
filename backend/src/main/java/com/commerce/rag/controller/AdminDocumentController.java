@@ -4,7 +4,7 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.DocumentUpdateRequest;
 import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.entity.Document;
+import com.commerce.rag.controller.vo.DocumentVO;
 import com.commerce.rag.etl.EtlProperties;
 import com.commerce.rag.service.DocumentService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -58,7 +59,7 @@ public class AdminDocumentController {
 
     /** C1: 上传文档（courseId 可选：不传则 DEFAULT=通用资料库，传则文档归属该课程，分片继承） */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ApiResponse<Document> upload(
+    public ApiResponse<DocumentVO> upload(
             HttpServletRequest request,
             @RequestParam("kbId") Long kbId,
             @RequestParam("title") String title,
@@ -83,7 +84,7 @@ public class AdminDocumentController {
         }
 
         try (InputStream inputStream = file.getInputStream()) {
-            Document doc = documentService.upload(
+            DocumentVO doc = documentService.upload(
                     kbId, title, inputStream, fileType, fileSize, courseId, userId, "SUPER_ADMIN".equals(role));
             return ApiResponse.ok(doc);
         }
@@ -91,10 +92,10 @@ public class AdminDocumentController {
 
     /** C2: 查询文档详情 */
     @GetMapping("/{id}")
-    public ApiResponse<Document> findById(HttpServletRequest request, @PathVariable Long id) {
+    public ApiResponse<DocumentVO> findById(HttpServletRequest request, @PathVariable Long id) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         String role = AuthInterceptor.getCurrentRole(request);
-        Document doc = documentService.findById(id, userId, role);
+        DocumentVO doc = documentService.findById(id, userId, role);
         if (doc == null) {
             // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "文档不存在");
@@ -104,7 +105,7 @@ public class AdminDocumentController {
 
     /** C3: 分页查询文档（P2-2：status/q/sort 筛选参数对齐前端文档 :871） */
     @GetMapping
-    public ApiResponse<PageResponse<Document>> findPage(
+    public ApiResponse<PageResponse<DocumentVO>> findPage(
             HttpServletRequest request,
             @RequestParam(required = false) Long kbId,
             @RequestParam(required = false) String status,
@@ -148,7 +149,7 @@ public class AdminDocumentController {
 
     /** C7: 下载文档原始文件（perf P2-4：download 一次查询取实体，fileType 由实体带出，消除重复主键查询） */
     @GetMapping("/{id}/download")
-    public org.springframework.core.io.Resource download(HttpServletRequest request, @PathVariable Long id) {
+    public Resource download(HttpServletRequest request, @PathVariable Long id) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         boolean isAdmin = "SUPER_ADMIN".equals(AuthInterceptor.getCurrentRole(request));
         DocumentService.DocumentDownload download = documentService.downloadWithType(id, userId, isAdmin);

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.controller.vo.DocumentVO;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.entity.KnowledgeBase;
@@ -53,6 +54,9 @@ public class DocumentService {
     @Qualifier("etlPool")
     private final ThreadPoolExecutor etlPool;
 
+    /** 文档转换器 —— Entity 出 service 边界前转 VO（sourcePath 不泄露） */
+    private final DocumentConverter documentConverter;
+
     /**
      * 上传文档
      *
@@ -66,9 +70,9 @@ public class DocumentService {
      * @param courseId    课程 ID（可空，空则 DEFAULT=通用资料库；分片继承该值写入 Milvus course_id）
      * @param createdBy   创建者 ID
      * @param isAdmin     是否为超管（超管旁路）
-     * @return 已持久化的文档实体
+     * @return 已持久化文档的视图对象（不含内部路径 sourcePath）
      */
-    public Document upload(
+    public DocumentVO upload(
             Long kbId,
             String title,
             InputStream inputStream,
@@ -119,7 +123,8 @@ public class DocumentService {
         // 触发 ETL 异步管道
         etlPool.execute(() -> etlPipeline.process(doc.getId()));
 
-        return doc;
+        // Entity 出 service 边界前转 VO（sourcePath 因 VO 无此字段自然忽略）
+        return documentConverter.toVO(doc);
     }
 
     /**
@@ -128,9 +133,9 @@ public class DocumentService {
      * @param id     文档 ID
      * @param userId 当前用户 ID（TEACHER 数据权限过滤）
      * @param role   当前用户角色（TEACHER 时校验 ownership）
-     * @return 文档实体，不存在或无权访问返回 null
+     * @return 文档视图对象（不含 sourcePath），不存在或无权访问返回 null
      */
-    public Document findById(Long id, Long userId, String role) {
+    public DocumentVO findById(Long id, Long userId, String role) {
         Document doc = documentMapper.selectById(id);
         if (doc == null) {
             return null;
@@ -139,7 +144,7 @@ public class DocumentService {
         if ("TEACHER".equals(role) && !isOwnerOrKbOwner(doc, userId)) {
             return null;
         }
-        return doc;
+        return documentConverter.toVO(doc);
     }
 
     /**
@@ -153,9 +158,9 @@ public class DocumentService {
      * @param size   每页条数
      * @param userId 当前用户 ID（TEACHER 数据权限过滤）
      * @param role   当前用户角色（TEACHER 时按 created_by 过滤）
-     * @return 分页结果
+     * @return 分页结果（records 为文档视图对象，不含 sourcePath）
      */
-    public IPage<Document> findPage(
+    public IPage<DocumentVO> findPage(
             Long kbId, String status, String q, String sort, int page, int size, Long userId, String role) {
         Page<Document> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
         // 合规：Wrappers 静态工厂 + lambda 链式（宪法「Wrapper 一律 lambda 链式构建，禁止 new」）
@@ -179,7 +184,12 @@ public class DocumentService {
                 wrapper.and(w -> w.eq(Document::getCreatedBy, userId).or().in(Document::getKbId, kbIds));
             }
         }
-        return documentMapper.selectPage(pageObj, wrapper);
+        Page<Document> entityPage = documentMapper.selectPage(pageObj, wrapper);
+        // 实体分页 → VO 分页：records 逐条转换，total/current/size 分页语义保持
+        Page<DocumentVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
+        voPage.setRecords(
+                entityPage.getRecords().stream().map(documentConverter::toVO).collect(Collectors.toList()));
+        return voPage;
     }
 
     /**

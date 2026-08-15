@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.controller.vo.DocumentChunkVO;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.entity.KnowledgeBase;
@@ -52,6 +53,9 @@ public class DocumentChunkService {
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final EtlPipeline etlPipeline;
 
+    /** 文档分片转换器 —— Entity 出 service 边界前转 VO（denseVector 不泄露） */
+    private final DocumentChunkConverter chunkConverter;
+
     /**
      * 按 ID 查询分片（无权限校验，用于 C 端学生端点）
      *
@@ -68,9 +72,9 @@ public class DocumentChunkService {
      * @param id     分片 ID
      * @param userId 当前用户 ID（TEACHER 数据权限过滤）
      * @param role   当前用户角色（TEACHER 时校验 ownership）
-     * @return 分片实体，不存在或无权访问返回 null
+     * @return 分片视图对象（不含 denseVector），不存在或无权访问返回 null
      */
-    public DocumentChunk findById(Long id, Long userId, String role) {
+    public DocumentChunkVO findById(Long id, Long userId, String role) {
         DocumentChunk chunk = chunkMapper.selectById(id);
         if (chunk == null) {
             return null;
@@ -79,7 +83,7 @@ public class DocumentChunkService {
         if ("TEACHER".equals(role)) {
             checkOwnership(id, userId, false);
         }
-        return chunk;
+        return chunkConverter.toVO(chunk);
     }
 
     /**
@@ -91,24 +95,31 @@ public class DocumentChunkService {
      * @param size   每页条数
      * @param userId 当前用户 ID（TEACHER 数据权限过滤）
      * @param role   当前用户角色（TEACHER 时按 doc_id→document.created_by 过滤）
-     * @return 分页结果
+     * @return 分页结果（records 为分片视图对象，不含 denseVector）
      */
-    public IPage<DocumentChunk> findPage(Long docId, Long kbId, int page, int size, Long userId, String role) {
+    public IPage<DocumentChunkVO> findPage(Long docId, Long kbId, int page, int size, Long userId, String role) {
         Page<DocumentChunk> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
         // perf P3-2: 教师数据权限走 mapper XML 子查询（doc_id IN (SELECT id FROM document WHERE created_by=?)），
         // 避免应用层取全量 doc id + 数千 id 的 IN 列表（SQL 超长、执行计划退化）
+        IPage<DocumentChunk> entityPage;
         if ("TEACHER".equals(role) && userId != null) {
-            return chunkMapper.selectPageFilteredByTeacher(pageObj, docId, kbId, false, userId);
+            entityPage = chunkMapper.selectPageFilteredByTeacher(pageObj, docId, kbId, false, userId);
+        } else {
+            LambdaQueryWrapper<DocumentChunk> wrapper =
+                    Wrappers.<DocumentChunk>lambdaQuery().orderByAsc(DocumentChunk::getChunkIndex);
+            if (docId != null) {
+                wrapper.eq(DocumentChunk::getDocId, docId);
+            }
+            if (kbId != null) {
+                wrapper.eq(DocumentChunk::getKbId, kbId);
+            }
+            entityPage = chunkMapper.selectPage(pageObj, wrapper);
         }
-        LambdaQueryWrapper<DocumentChunk> wrapper =
-                Wrappers.<DocumentChunk>lambdaQuery().orderByAsc(DocumentChunk::getChunkIndex);
-        if (docId != null) {
-            wrapper.eq(DocumentChunk::getDocId, docId);
-        }
-        if (kbId != null) {
-            wrapper.eq(DocumentChunk::getKbId, kbId);
-        }
-        return chunkMapper.selectPage(pageObj, wrapper);
+        // 实体分页 → VO 分页：records 逐条转换，total/current/size 分页语义保持
+        Page<DocumentChunkVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
+        voPage.setRecords(
+                entityPage.getRecords().stream().map(chunkConverter::toVO).collect(Collectors.toList()));
+        return voPage;
     }
 
     /**
@@ -200,9 +211,9 @@ public class DocumentChunkService {
      * @param id     分片 ID
      * @param userId 当前用户 ID（TEACHER 数据权限过滤）
      * @param role   当前用户角色（TEACHER 时校验 ownership）
-     * @return 包含 parent / prev / current / next 的 Map
+     * @return 包含 parent / prev / current / next 的 Map（value 为分片视图对象，不含 denseVector）
      */
-    public Map<String, DocumentChunk> findContext(Long id, Long userId, String role) {
+    public Map<String, DocumentChunkVO> findContext(Long id, Long userId, String role) {
         DocumentChunk current = chunkMapper.selectById(id);
         if (current == null) {
             throw new IllegalArgumentException("分片不存在: id=" + id);
@@ -226,11 +237,12 @@ public class DocumentChunkService {
             next = chunkMapper.selectById(current.getNextChunkId());
         }
 
-        Map<String, DocumentChunk> context = new HashMap<>();
-        context.put("parent", parent);
-        context.put("prev", prev);
-        context.put("current", current);
-        context.put("next", next);
+        Map<String, DocumentChunkVO> context = new HashMap<>();
+        // 上下文四件套逐条转 VO（可能为 null 的相邻分片保持 null，key 不变）
+        context.put("parent", parent != null ? chunkConverter.toVO(parent) : null);
+        context.put("prev", prev != null ? chunkConverter.toVO(prev) : null);
+        context.put("current", chunkConverter.toVO(current));
+        context.put("next", next != null ? chunkConverter.toVO(next) : null);
         return context;
     }
 
@@ -331,24 +343,31 @@ public class DocumentChunkService {
      * @param size   每页条数
      * @param userId 当前用户 ID（TEACHER 数据权限过滤）
      * @param role   当前用户角色（TEACHER 时按 doc_id→document.created_by 过滤）
-     * @return 分页结果
+     * @return 分页结果（records 为分片视图对象，不含 denseVector）
      */
-    public IPage<DocumentChunk> findPending(Long kbId, Long docId, int page, int size, Long userId, String role) {
+    public IPage<DocumentChunkVO> findPending(Long kbId, Long docId, int page, int size, Long userId, String role) {
         Page<DocumentChunk> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
         // perf P3-2: 教师数据权限走 mapper XML 子查询（与 findPage 同型）
+        IPage<DocumentChunk> entityPage;
         if ("TEACHER".equals(role) && userId != null) {
-            return chunkMapper.selectPageFilteredByTeacher(pageObj, docId, kbId, true, userId);
+            entityPage = chunkMapper.selectPageFilteredByTeacher(pageObj, docId, kbId, true, userId);
+        } else {
+            LambdaQueryWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaQuery()
+                    .eq(DocumentChunk::getCorrectionStatus, "PENDING")
+                    .orderByAsc(DocumentChunk::getChunkIndex);
+            if (kbId != null) {
+                wrapper.eq(DocumentChunk::getKbId, kbId);
+            }
+            if (docId != null) {
+                wrapper.eq(DocumentChunk::getDocId, docId);
+            }
+            entityPage = chunkMapper.selectPage(pageObj, wrapper);
         }
-        LambdaQueryWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaQuery()
-                .eq(DocumentChunk::getCorrectionStatus, "PENDING")
-                .orderByAsc(DocumentChunk::getChunkIndex);
-        if (kbId != null) {
-            wrapper.eq(DocumentChunk::getKbId, kbId);
-        }
-        if (docId != null) {
-            wrapper.eq(DocumentChunk::getDocId, docId);
-        }
-        return chunkMapper.selectPage(pageObj, wrapper);
+        // 实体分页 → VO 分页：records 逐条转换，total/current/size 分页语义保持
+        Page<DocumentChunkVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
+        voPage.setRecords(
+                entityPage.getRecords().stream().map(chunkConverter::toVO).collect(Collectors.toList()));
+        return voPage;
     }
 
     /**

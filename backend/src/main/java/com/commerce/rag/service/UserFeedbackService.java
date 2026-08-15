@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.controller.vo.UserFeedbackVO;
 import com.commerce.rag.entity.UserFeedback;
 import com.commerce.rag.mapper.UserFeedbackMapper;
 import java.util.ArrayList;
@@ -34,6 +35,9 @@ public class UserFeedbackService {
     private static final int DEFAULT_PAGE_SIZE = 20;
 
     private final UserFeedbackMapper feedbackMapper;
+
+    /** 用户反馈转换器 —— Entity 出 service 边界前转 VO */
+    private final UserFeedbackConverter feedbackConverter;
 
     /**
      * 创建反馈（或更新已有反馈）
@@ -92,20 +96,27 @@ public class UserFeedbackService {
      * @param size       每页条数
      * @param intentType 意图类型筛选（可选）
      * @param createdBy  教师用户 ID（null=全部，超管视角）
-     * @return 分页结果
+     * @return 分页结果（records 为用户反馈视图对象）
      */
-    public IPage<UserFeedback> findPage(int page, int size, String intentType, Long createdBy) {
+    public IPage<UserFeedbackVO> findPage(int page, int size, String intentType, Long createdBy) {
         Page<UserFeedback> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
+        IPage<UserFeedback> entityPage;
         if (createdBy != null) {
             // 教师隔离：user_id IN 子查询（mapper XML），仅见自己创建学生的反馈
-            return feedbackMapper.selectPageFilteredByTeacher(pageObj, intentType, createdBy);
+            entityPage = feedbackMapper.selectPageFilteredByTeacher(pageObj, intentType, createdBy);
+        } else {
+            LambdaQueryWrapper<UserFeedback> wrapper =
+                    Wrappers.<UserFeedback>lambdaQuery().orderByDesc(UserFeedback::getCreatedAt);
+            if (intentType != null && !intentType.isBlank()) {
+                wrapper.eq(UserFeedback::getIntentType, intentType);
+            }
+            entityPage = feedbackMapper.selectPage(pageObj, wrapper);
         }
-        LambdaQueryWrapper<UserFeedback> wrapper =
-                Wrappers.<UserFeedback>lambdaQuery().orderByDesc(UserFeedback::getCreatedAt);
-        if (intentType != null && !intentType.isBlank()) {
-            wrapper.eq(UserFeedback::getIntentType, intentType);
-        }
-        return feedbackMapper.selectPage(pageObj, wrapper);
+        // 实体分页 → VO 分页：records 逐条转换，total/current/size 分页语义保持
+        Page<UserFeedbackVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
+        voPage.setRecords(
+                entityPage.getRecords().stream().map(feedbackConverter::toVO).toList());
+        return voPage;
     }
 
     /**
