@@ -2,6 +2,7 @@ package com.commerce.rag.etl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -338,5 +339,146 @@ class EtlPipelineTest {
         etlPipeline.deleteFromMilvusByChunkIds(List.of());
 
         verify(milvusClientV2, never()).delete(any());
+    }
+
+    // ========================================================================
+    // 分片算法与向量化成功路径补测（parsedTextCache 反射注入）
+    // ========================================================================
+
+    /** 反射向 parsedTextCache 注入解析文本（process 内由 Tika 写入，单测直接 seed） */
+    @SuppressWarnings("unchecked")
+    private void seedParsedText(Long docId, String text) throws Exception {
+        java.lang.reflect.Field field = EtlPipeline.class.getDeclaredField("parsedTextCache");
+        field.setAccessible(true);
+        ((java.util.concurrent.ConcurrentHashMap<Long, String>) field.get(etlPipeline)).put(docId, text);
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 长段落触发递归拆分：多分片 + prev 链 + 课程归属透传")
+    void chunkDocument_longParagraph_splitsWithRelations() throws Exception {
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setKbId(10L);
+        doc.setCourseId("5");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        // 单个超过 chunkSize(768) 的段落（无双换行），触发 splitLargeParagraph 按句子拆分
+        String longPara = ("RAG检索增强生成是一种结合检索与生成的架构范式，向量数据库负责存储嵌入向量。" + "混合检索融合了向量相似度与关键词匹配两种召回信号。").repeat(30);
+        seedParsedText(1L, longPara);
+        // mock insert 赋自增 id，建立 prev/next 链
+        java.util.concurrent.atomic.AtomicLong idSeq = new java.util.concurrent.atomic.AtomicLong(100);
+        doAnswer(inv -> {
+                    inv.getArgument(0, DocumentChunk.class).setId(idSeq.getAndIncrement());
+                    return 1;
+                })
+                .when(chunkMapper)
+                .insert(any(DocumentChunk.class));
+
+        etlPipeline.chunkDocument(1L);
+
+        // 长文本被拆成多个分片
+        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
+        verify(chunkMapper, atLeast(3)).insert(captor.capture());
+        List<DocumentChunk> inserted = captor.getAllValues();
+        // 首分片无 prev；后续分片 prev 指向前一个（时间序链）
+        assertNull(inserted.get(0).getPrevChunkId());
+        assertEquals(inserted.get(0).getId(), inserted.get(1).getPrevChunkId());
+        // chunkIndex 从 0 递增
+        assertEquals(0, inserted.get(0).getChunkIndex());
+        assertEquals(1, inserted.get(1).getChunkIndex());
+        // 文档级 course_id 透传至每个分片（非空时不做 DEFAULT 兜底）
+        assertTrue(inserted.stream().allMatch(c -> "5".equals(c.getCourseId())));
+        // token 估算非零（estimateTokens 执行）
+        assertTrue(inserted.get(0).getTokenCount() > 0);
+        // 分片数回写文档
+        verify(documentMapper, atLeastOnce()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 短文本单分片：courseId 缺省 DEFAULT、无关联指针")
+    void chunkDocument_shortText_singleChunkWithDefaultCourse() throws Exception {
+        Document doc = new Document();
+        doc.setId(2L);
+        doc.setKbId(20L);
+        when(documentMapper.selectById(2L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        seedParsedText(2L, "这是短文本内容，不足一个分片大小。");
+        doAnswer(inv -> {
+                    inv.getArgument(0, DocumentChunk.class).setId(200L);
+                    return 1;
+                })
+                .when(chunkMapper)
+                .insert(any(DocumentChunk.class));
+
+        etlPipeline.chunkDocument(2L);
+
+        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
+        verify(chunkMapper).insert(captor.capture());
+        DocumentChunk chunk = captor.getValue();
+        assertEquals("DEFAULT", chunk.getCourseId());
+        assertEquals(0, chunk.getChunkIndex());
+        assertNull(chunk.getParentChunkId());
+        assertNull(chunk.getPrevChunkId());
+        assertEquals("TECHNICAL_QA", chunk.getCollectionType());
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 文档不存在抛 IllegalStateException")
+    void chunkDocument_docNotFound_throws() {
+        when(documentMapper.selectById(99L)).thenReturn(null);
+
+        assertThrows(IllegalStateException.class, () -> etlPipeline.chunkDocument(99L));
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 解析文本为空抛 IllegalStateException（不产生分片）")
+    void chunkDocument_blankText_throws() throws Exception {
+        Document doc = new Document();
+        doc.setId(1L);
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        seedParsedText(1L, "   ");
+
+        assertThrows(IllegalStateException.class, () -> etlPipeline.chunkDocument(1L));
+        verify(chunkMapper, never()).insert(any(DocumentChunk.class));
+    }
+
+    @Test
+    @DisplayName("embedAndIndex — 全部分片成功 → 状态 INDEXED（PG 向量更新 + Milvus insert）")
+    void embedAndIndex_allSuccess_marksIndexed() {
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setTitle("测试文档");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        DocumentChunk c1 = new DocumentChunk();
+        c1.setId(1L);
+        c1.setDocId(1L);
+        c1.setKbId(10L);
+        c1.setContent("内容一");
+        c1.setChunkIndex(0);
+        DocumentChunk c2 = new DocumentChunk();
+        c2.setId(2L);
+        c2.setDocId(1L);
+        c2.setKbId(10L);
+        c2.setContent("内容二");
+        c2.setChunkIndex(1);
+        when(chunkMapper.selectList(any())).thenReturn(List.of(c1, c2));
+        when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f, 0.3f});
+
+        etlPipeline.embedAndIndex(1L);
+
+        // 状态最终为 INDEXED（EMBEDDING 前置 + INDEXED 终态；值参数化在 paramNameValuePairs）
+        ArgumentCaptor<LambdaUpdateWrapper> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(documentMapper, atLeast(2)).update(any(), captor.capture());
+        boolean indexed = captor.getAllValues().stream().anyMatch(w -> {
+            w.getSqlSet(); // 触发惰性渲染，填充 paramNameValuePairs
+            return w.getParamNameValuePairs().containsValue("INDEXED");
+        });
+        assertTrue(indexed, "成功路径应以 INDEXED 收尾");
+        // PG：每个分片一次 dense_vector 更新
+        verify(chunkMapper, times(2)).update(any(), any());
+        // Milvus：清旧 1 次 delete + 每分片 1 次 insert
+        verify(milvusClientV2, times(1)).delete(any(DeleteReq.class));
+        verify(milvusClientV2, times(2)).insert(any(io.milvus.v2.service.vector.request.InsertReq.class));
     }
 }
