@@ -6,6 +6,8 @@ import static org.mockito.Mockito.*;
 
 import com.commerce.rag.config.StreamProperties;
 import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -236,5 +238,102 @@ class MemoryStreamBridgeTest {
     void createRing_idempotent() {
         bridge.createRing("run1");
         assertDoesNotThrow(() -> bridge.createRing("run1"));
+    }
+
+    // ==================== replayAndSubscribe 测试 ====================
+
+    @Test
+    @DisplayName("replayAndSubscribe — 回放 (lastEventId, head] 区间并注册订阅者，新事件实时到达")
+    void replayAndSubscribe_replaysAndRegisters() throws Exception {
+        // Given
+        SseEmitter mockEmitter = mock(SseEmitter.class);
+        bridge.createRing("run1");
+        bridge.push("run1", event(0));
+        bridge.push("run1", event(1));
+        bridge.push("run1", event(2));
+
+        // When: lastEventId=0 → 回放 seqId=1,2
+        boolean result = bridge.replayAndSubscribe("run1", 0, mockEmitter);
+
+        // Then: 回放 2 个事件
+        assertTrue(result);
+        verify(mockEmitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+        // 注册后新事件实时推送（第 3 次 send）
+        bridge.push("run1", event(3));
+        verify(mockEmitter, times(3)).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    @DisplayName("replayAndSubscribe 边界 — lastEventId 超出 head：回放空事件但注册成功")
+    void replayAndSubscribe_lastEventIdBeyondHead_registersOnly() throws Exception {
+        SseEmitter mockEmitter = mock(SseEmitter.class);
+        bridge.createRing("run1");
+        bridge.push("run1", event(0));
+
+        boolean result = bridge.replayAndSubscribe("run1", 100, mockEmitter);
+
+        assertTrue(result);
+        verify(mockEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+        // 注册生效：新事件实时到达
+        bridge.push("run1", event(1));
+        verify(mockEmitter, times(1)).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    @DisplayName("replayAndSubscribe 覆盖 — lastEventId 太旧返回 false 且不注册")
+    void replayAndSubscribe_tooOld_returnsFalseAndNotRegister() throws Exception {
+        SseEmitter mockEmitter = mock(SseEmitter.class);
+        bridge.createRing("run1");
+        for (int i = 0; i < BUFFER_SIZE + 1; i++) {
+            bridge.push("run1", event(i));
+        }
+
+        boolean result = bridge.replayAndSubscribe("run1", 0, mockEmitter);
+
+        assertFalse(result);
+        verify(mockEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+        // 未注册：后续 push 不送达
+        bridge.push("run1", event(BUFFER_SIZE + 1));
+        verify(mockEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    @DisplayName("replayAndSubscribe 不存在的 ring — 返回 false")
+    void replayAndSubscribe_ringNotExist_returnsFalse() {
+        SseEmitter mockEmitter = mock(SseEmitter.class);
+        boolean result = bridge.replayAndSubscribe("nonexistent", 0, mockEmitter);
+        assertFalse(result);
+    }
+
+    @Test
+    @DisplayName("replayAndSubscribe 并发 — 与 push 并发执行，emitter 收到事件总数不丢不重")
+    void replayAndSubscribe_concurrentWithPush_noLossNoDuplicate() throws Exception {
+        // Given
+        SseEmitter mockEmitter = mock(SseEmitter.class);
+        bridge.createRing("run1");
+        int total = 200;
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicReference<Throwable> pushError = new AtomicReference<>();
+        Thread pusher = new Thread(() -> {
+            try {
+                start.await();
+                for (int i = 0; i < total; i++) {
+                    bridge.push("run1", event(i));
+                }
+            } catch (Throwable t) {
+                pushError.set(t);
+            }
+        });
+        pusher.start();
+        start.countDown();
+
+        // When: 与 push 并发重连（lastEventId=0 回放全部已推送事件）
+        boolean result = bridge.replayAndSubscribe("run1", 0, mockEmitter);
+        pusher.join(5000);
+
+        // Then: 回放区间 (0, head@锁内] 与注册后实时区间互斥覆盖全部事件 → 总数恰为 total
+        assertTrue(result);
+        assertNull(pushError.get());
+        verify(mockEmitter, times(total)).send(any(SseEmitter.SseEventBuilder.class));
     }
 }
