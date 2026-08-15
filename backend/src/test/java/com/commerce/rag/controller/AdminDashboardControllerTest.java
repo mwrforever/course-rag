@@ -12,7 +12,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
 /**
  * AdminDashboardController 契约测试 —— 三统计端点与前端文档对齐（P2-2）
@@ -31,6 +34,30 @@ class AdminDashboardControllerTest {
     @BeforeEach
     void setUp() {
         controller = new AdminDashboardController(dashboardService);
+    }
+
+    @Test
+    @DisplayName("契约 — 类级 @RequestMapping /api/v1/admin + @PreAuthorize + 参数默认值")
+    void classLevelMappingAndDefaults() throws Exception {
+        // 类级映射前缀（三个端点共享）
+        RequestMapping classMapping = AdminDashboardController.class.getAnnotation(RequestMapping.class);
+        assertNotNull(classMapping, "必须声明类级 @RequestMapping");
+        assertArrayEquals(new String[] {"/api/v1/admin"}, classMapping.value(), "前缀应为 /api/v1/admin");
+        // 权限注解存在（角色限制不放开）
+        PreAuthorize preAuthorize = AdminDashboardController.class.getAnnotation(PreAuthorize.class);
+        assertNotNull(preAuthorize, "必须声明 @PreAuthorize");
+        assertTrue(preAuthorize.value().contains("SUPER_ADMIN"), "应允许 SUPER_ADMIN: " + preAuthorize.value());
+        // 参数默认值契约：period=today / days=7（前端文档 :784/:786）
+        RequestParam periodParam = AdminDashboardController.class
+                .getMethod("feedbackStats", String.class)
+                .getParameters()[0]
+                .getAnnotation(RequestParam.class);
+        assertEquals("today", periodParam.defaultValue(), "period 默认值应为 today");
+        RequestParam daysParam = AdminDashboardController.class
+                .getMethod("feedbackTrend", int.class)
+                .getParameters()[0]
+                .getAnnotation(RequestParam.class);
+        assertEquals("7", daysParam.defaultValue(), "days 默认值应为 7");
     }
 
     @Test

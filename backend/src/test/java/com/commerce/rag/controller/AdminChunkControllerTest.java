@@ -17,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
 
 /**
  * AdminChunkController 契约测试 —— 端点与前端设计文档对齐（P2-2）
@@ -44,6 +45,14 @@ class AdminChunkControllerTest {
         when(req.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(1L);
         when(req.getAttribute(AuthInterceptor.ATTR_ROLE)).thenReturn("SUPER_ADMIN");
         return req;
+    }
+
+    @Test
+    @DisplayName("契约 — 类级映射 @RequestMapping /api/v1/admin/chunks")
+    void classLevelMapping() {
+        RequestMapping mapping = AdminChunkController.class.getAnnotation(RequestMapping.class);
+        assertNotNull(mapping, "必须声明类级 @RequestMapping");
+        assertArrayEquals(new String[] {"/api/v1/admin/chunks"}, mapping.value(), "前缀应为 /api/v1/admin/chunks");
     }
 
     @Test
