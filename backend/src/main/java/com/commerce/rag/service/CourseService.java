@@ -13,6 +13,7 @@ import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;
 import com.commerce.rag.entity.CourseTeacher;
 import com.commerce.rag.entity.DocumentChunk;
+import com.commerce.rag.etl.EtlPipeline;
 import com.commerce.rag.mapper.CourseContentMapper;
 import com.commerce.rag.mapper.CourseEnrollmentMapper;
 import com.commerce.rag.mapper.CourseInfoMapper;
@@ -81,6 +82,9 @@ public class CourseService {
 
     @Autowired
     private DocumentChunkMapper documentChunkMapper;
+
+    @Autowired
+    private EtlPipeline etlPipeline;
 
     // ==================== 课程基本信息 CRUD ====================
 
@@ -219,6 +223,10 @@ public class CourseService {
         checkOwnership(courseId, currentUserId, isAdmin);
         long ts = System.currentTimeMillis();
         String courseIdStr = String.valueOf(courseId);
+
+        // P1-4 Bug 2: 同步清理 Milvus 中该课程标注的向量（失败上抛阻断级联，
+        // 避免 PG 已删而 Milvus 残留 → 学生端按 course_id 过滤仍命中已删课程内容）
+        etlPipeline.deleteFromMilvusByCourseId(courseIdStr);
 
         // 级联软删关联表（使用 MyBatis-Plus LambdaUpdateWrapper，遵循三层架构）
         courseContentMapper.update(

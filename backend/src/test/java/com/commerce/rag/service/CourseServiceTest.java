@@ -4,11 +4,20 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.commerce.rag.entity.CourseInfo;
+import com.commerce.rag.etl.EtlPipeline;
+import com.commerce.rag.mapper.CourseContentMapper;
+import com.commerce.rag.mapper.CourseEnrollmentMapper;
 import com.commerce.rag.mapper.CourseInfoMapper;
+import com.commerce.rag.mapper.CourseScheduleMapper;
+import com.commerce.rag.mapper.CourseTeacherMapper;
+import com.commerce.rag.mapper.DocumentChunkMapper;
+import com.commerce.rag.test.MybatisPlusTestHelper;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -24,14 +33,53 @@ class CourseServiceTest {
     @Mock
     private CourseInfoMapper courseInfoMapper;
 
+    @Mock
+    private CourseContentMapper courseContentMapper;
+
+    @Mock
+    private CourseScheduleMapper courseScheduleMapper;
+
+    @Mock
+    private CourseTeacherMapper courseTeacherMapper;
+
+    @Mock
+    private CourseEnrollmentMapper courseEnrollmentMapper;
+
+    @Mock
+    private DocumentChunkMapper documentChunkMapper;
+
+    @Mock
+    private EtlPipeline etlPipeline;
+
     private CourseService courseService;
+
+    @BeforeAll
+    static void initMybatisPlus() {
+        // 纯 Mockito 单元测试（无 Spring 上下文）需先初始化 LambdaUpdateWrapper 的 TableInfo 缓存
+        MybatisPlusTestHelper.initTableInfo();
+    }
 
     @BeforeEach
     void setUp() throws Exception {
         courseService = new CourseService();
-        java.lang.reflect.Field f = CourseService.class.getDeclaredField("courseInfoMapper");
-        f.setAccessible(true);
-        f.set(courseService, courseInfoMapper);
+        // 字段为 @Autowired 私有字段，通过反射注入 mock
+        for (java.lang.reflect.Field f : CourseService.class.getDeclaredFields()) {
+            f.setAccessible(true);
+            Object value =
+                    switch (f.getName()) {
+                        case "courseInfoMapper" -> courseInfoMapper;
+                        case "courseContentMapper" -> courseContentMapper;
+                        case "courseScheduleMapper" -> courseScheduleMapper;
+                        case "courseTeacherMapper" -> courseTeacherMapper;
+                        case "courseEnrollmentMapper" -> courseEnrollmentMapper;
+                        case "documentChunkMapper" -> documentChunkMapper;
+                        case "etlPipeline" -> etlPipeline;
+                        default -> null;
+                    };
+            if (value != null) {
+                f.set(courseService, value);
+            }
+        }
     }
 
     @Test
@@ -56,5 +104,36 @@ class CourseServiceTest {
 
         assertNotNull(courseService.findById(1L, 100L));
         assertNotNull(courseService.findById(1L, null));
+    }
+
+    @Test
+    @DisplayName("deleteCourse — 先清 Milvus（ByCourseId）再级联软删")
+    void deleteCourse_cleansMilvusBeforeSoftDelete() {
+        // Given: 课程 1 属于创建者 100
+        CourseInfo course = new CourseInfo();
+        course.setId(1L);
+        course.setCreatedBy(100L);
+        when(courseInfoMapper.selectById(1L)).thenReturn(course);
+
+        // When
+        courseService.deleteCourse(1L, 100L, false);
+
+        // Then: Milvus 清理先于 course_info 软删
+        InOrder inOrder = inOrder(etlPipeline, courseInfoMapper);
+        inOrder.verify(etlPipeline).deleteFromMilvusByCourseId("1");
+        inOrder.verify(courseInfoMapper).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("deleteCourse — Milvus 删除失败上抛，级联软删不执行")
+    void deleteCourse_milvusFailure_blocksSoftDelete() {
+        CourseInfo course = new CourseInfo();
+        course.setId(1L);
+        course.setCreatedBy(100L);
+        when(courseInfoMapper.selectById(1L)).thenReturn(course);
+        doThrow(new RuntimeException("Milvus 不可用")).when(etlPipeline).deleteFromMilvusByCourseId("1");
+
+        assertThrows(RuntimeException.class, () -> courseService.deleteCourse(1L, 100L, false));
+        verify(courseInfoMapper, never()).update(any(), any());
     }
 }
