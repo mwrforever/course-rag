@@ -1,12 +1,13 @@
 package com.commerce.rag.service;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.mapper.ChatRunMapper;
 import java.time.LocalDateTime;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
@@ -19,15 +20,17 @@ import org.springframework.stereotype.Service;
  *
  * <p>状态流转：QUEUED → ACTIVE → COMPLETED / CANCELLED / ERROR
  *
+ * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（private final ChatRunMapper runMapper）。
+ *
  * @author commerce-rag
  */
 @Service
+@RequiredArgsConstructor
 public class ChatRunService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatRunService.class);
 
-    @Autowired
-    private ChatRunMapper runMapper;
+    private final ChatRunMapper runMapper;
 
     /**
      * 创建 Run（status=QUEUED）
@@ -66,8 +69,9 @@ public class ChatRunService {
      */
     public void updateStatus(Long runId, String status) {
         log.info("更新 Run 状态: runId={}, status={}", runId, status);
+        // 合规：Wrappers 静态工厂 + lambda 链式（宪法「Wrapper 一律 lambda 链式构建，禁止 new」）
         LambdaUpdateWrapper<ChatRun> wrapper =
-                new LambdaUpdateWrapper<ChatRun>().eq(ChatRun::getId, runId).set(ChatRun::getStatus, status);
+                Wrappers.<ChatRun>lambdaUpdate().eq(ChatRun::getId, runId).set(ChatRun::getStatus, status);
         if ("ACTIVE".equals(status)) {
             wrapper.set(ChatRun::getStartedAt, LocalDateTime.now());
         } else if ("COMPLETED".equals(status) || "CANCELLED".equals(status) || "ERROR".equals(status)) {
