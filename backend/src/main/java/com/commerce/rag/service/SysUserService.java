@@ -132,11 +132,23 @@ public class SysUserService {
     }
 
     /**
-     * 根据用户名查询用户（含密码，用于登录验证）
+     * 根据用户名查询认证视图（含密码哈希，用于登录验证；Entity 不出 service 边界）
+     *
+     * @param username 用户名（精确匹配）
+     * @return 认证视图，用户不存在返回 null
      */
-    public SysUser findByUsername(String username) {
+    public AuthUserView findAuthViewByUsername(String username) {
         LambdaQueryWrapper<SysUser> wrapper = Wrappers.<SysUser>lambdaQuery().eq(SysUser::getUsername, username);
-        return userMapper.selectOne(wrapper);
+        SysUser user = userMapper.selectOne(wrapper);
+        return user == null
+                ? null
+                : new AuthUserView(
+                        user.getId(),
+                        user.getUsername(),
+                        user.getPasswordHash(),
+                        user.getRole(),
+                        user.getDisplayName(),
+                        user.getStatus());
     }
 
     /**

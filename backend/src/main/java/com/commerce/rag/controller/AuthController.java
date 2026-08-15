@@ -10,7 +10,7 @@ import com.commerce.rag.controller.dto.LoginRequest;
 import com.commerce.rag.controller.dto.LoginResponse;
 import com.commerce.rag.controller.dto.RefreshRequest;
 import com.commerce.rag.controller.dto.UserDTO;
-import com.commerce.rag.entity.SysUser;
+import com.commerce.rag.service.AuthUserView;
 import com.commerce.rag.service.SysUserService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.Cookie;
@@ -91,27 +91,27 @@ public class AuthController {
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
 
-        // 1. 查找用户
-        SysUser user = sysUserService.findByUsername(request.username());
+        // 1. 查找用户（认证视图，Entity 不出 service 边界）
+        AuthUserView user = sysUserService.findAuthViewByUsername(request.username());
         if (user == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
         }
 
         // 2. 验证密码
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        if (!passwordEncoder.matches(request.password(), user.passwordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
         }
 
         // 3. 检查用户状态
-        if (!"ACTIVE".equals(user.getStatus())) {
+        if (!"ACTIVE".equals(user.status())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "用户已被禁用");
         }
 
         // 4. 生成 jti + Token
         String jtiAt = tokenService.generateJti();
         String jtiRt = tokenService.generateJti();
-        String accessToken = tokenService.generateAccessToken(user.getId(), user.getRole(), jtiAt);
-        String refreshToken = tokenService.generateRefreshToken(user.getId(), jtiRt);
+        String accessToken = tokenService.generateAccessToken(user.id(), user.role(), jtiAt);
+        String refreshToken = tokenService.generateRefreshToken(user.id(), jtiRt);
 
         // 5. 设备类型（默认 WEB_DESKTOP）
         String deviceType = request.deviceType();
@@ -121,18 +121,18 @@ public class AuthController {
 
         // 6. 创建登录记录（下沉 AuthSessionService，controller 不直调 mapper、不接触 Entity）
         Long loginRecordId = authSessionService.createLoginRecord(
-                user.getId(), jtiAt, jtiRt, deviceType, httpRequest.getHeader("User-Agent"), getClientIp(httpRequest));
+                user.id(), jtiAt, jtiRt, deviceType, httpRequest.getHeader("User-Agent"), getClientIp(httpRequest));
 
         // 7. 设备互踢
-        deviceKickService.kickAndLogin(user.getId(), deviceType, jtiAt, jtiRt, loginRecordId);
+        deviceKickService.kickAndLogin(user.id(), deviceType, jtiAt, jtiRt, loginRecordId);
 
         // 8. 设置 httpOnly cookie
         setCookie(httpResponse, accessToken);
 
-        log.info("用户登录: userId={}, username={}, deviceType={}", user.getId(), user.getUsername(), deviceType);
+        log.info("用户登录: userId={}, username={}, deviceType={}", user.id(), user.username(), deviceType);
 
         return ApiResponse.ok(
-                new LoginResponse(accessToken, refreshToken, user.getId(), user.getRole(), user.getDisplayName()));
+                new LoginResponse(accessToken, refreshToken, user.id(), user.role(), user.displayName()));
     }
 
     /**

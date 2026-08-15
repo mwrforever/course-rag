@@ -19,6 +19,7 @@ import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -70,6 +71,9 @@ public class EtlPipeline {
 
     /** Tika 解析最大字符数（-1 = 无限制） */
     private static final int TIKA_WRITE_LIMIT = -1;
+
+    /** 影响 Dashboard 统计口径的解析状态（分片落库/终态；中间态不改变统计） */
+    private static final Set<String> STATS_AFFECTING_STATUSES = Set.of("CHUNKED", "INDEXED", "FAILED");
 
     private final DocumentMapper documentMapper;
     private final DocumentChunkMapper chunkMapper;
@@ -758,9 +762,10 @@ public class EtlPipeline {
     /**
      * 更新文档解析状态（所有状态写入的统一入口：PARSING/PARSED/CHUNKING/CHUNKED/EMBEDDING/INDEXED/FAILED）
      *
-     * <p>末尾失效 Dashboard 统计缓存：分片落库（CHUNKED，pendingChunkCount 变更）与
-     * INDEXED/FAILED 终态均经此写入；调用频率为每文档每阶段一次（非逐分片），
-     * invalidateAll 成本可忽略（缓存容量 32）。
+     * <p>统计失效精确化：仅影响统计口径的状态才失效 Dashboard 统计缓存——
+     * CHUNKED（分片落库，pendingChunkCount 变更）与 INDEXED/FAILED（终态兜底）；
+     * PARSING/PARSED/CHUNKING/EMBEDDING 中间态不改变任何统计口径，跳过失效。
+     * 先写 DB 后失效，一致性铁律。
      */
     private void updateDocStatus(Long docId, String status, String errorMessage) {
         LambdaUpdateWrapper<Document> wrapper = Wrappers.<Document>lambdaUpdate()
@@ -771,8 +776,9 @@ public class EtlPipeline {
             wrapper.set(Document::getErrorMessage, errorMessage);
         }
         documentMapper.update(null, wrapper);
-        // 统计失效：分片数/终态已变更（先写 DB 后失效，一致性铁律）
-        dashboardStatsCache.invalidateAll();
+        if (STATS_AFFECTING_STATUSES.contains(status)) {
+            dashboardStatsCache.invalidateAll();
+        }
     }
 
     /**

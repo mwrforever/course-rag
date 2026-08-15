@@ -13,7 +13,7 @@ import com.commerce.rag.controller.dto.LoginRequest;
 import com.commerce.rag.controller.dto.LoginResponse;
 import com.commerce.rag.controller.dto.RefreshRequest;
 import com.commerce.rag.controller.dto.UserDTO;
-import com.commerce.rag.entity.SysUser;
+import com.commerce.rag.service.AuthUserView;
 import com.commerce.rag.service.SysUserService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -88,15 +88,9 @@ class AuthControllerTest {
     @Test
     @DisplayName("login → 正常登录返回 AT+RT")
     void login_validCredentials_returnsTokens() {
-        SysUser user = new SysUser();
-        user.setId(1L);
-        user.setUsername("testuser");
-        user.setPasswordHash("hashed-pass");
-        user.setDisplayName("测试用户");
-        user.setRole("STUDENT");
-        user.setStatus("ACTIVE");
+        AuthUserView user = new AuthUserView(1L, "testuser", "hashed-pass", "STUDENT", "测试用户", "ACTIVE");
 
-        when(sysUserService.findByUsername("testuser")).thenReturn(user);
+        when(sysUserService.findAuthViewByUsername("testuser")).thenReturn(user);
         when(passwordEncoder.matches("password123", "hashed-pass")).thenReturn(true);
         when(tokenService.generateJti()).thenReturn("jti-at", "jti-rt");
         when(tokenService.generateAccessToken(1L, "STUDENT", "jti-at")).thenReturn("access-token");
@@ -125,7 +119,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("login → 用户不存在抛出 401")
     void login_userNotFound_throws401() {
-        when(sysUserService.findByUsername("unknown")).thenReturn(null);
+        when(sysUserService.findAuthViewByUsername("unknown")).thenReturn(null);
 
         ResponseStatusException ex = assertThrows(
                 ResponseStatusException.class,
@@ -136,12 +130,9 @@ class AuthControllerTest {
     @Test
     @DisplayName("login → 密码错误抛出 401")
     void login_wrongPassword_throws401() {
-        SysUser user = new SysUser();
-        user.setUsername("testuser");
-        user.setPasswordHash("hashed-pass");
-        user.setStatus("ACTIVE");
+        AuthUserView user = new AuthUserView(1L, "testuser", "hashed-pass", "STUDENT", "测试用户", "ACTIVE");
 
-        when(sysUserService.findByUsername("testuser")).thenReturn(user);
+        when(sysUserService.findAuthViewByUsername("testuser")).thenReturn(user);
         when(passwordEncoder.matches("wrongpass", "hashed-pass")).thenReturn(false);
 
         ResponseStatusException ex = assertThrows(
@@ -153,12 +144,9 @@ class AuthControllerTest {
     @Test
     @DisplayName("login → 被禁用用户抛出 403")
     void login_disabledUser_throws403() {
-        SysUser user = new SysUser();
-        user.setUsername("testuser");
-        user.setPasswordHash("hashed-pass");
-        user.setStatus("DISABLED");
+        AuthUserView user = new AuthUserView(1L, "testuser", "hashed-pass", "STUDENT", "测试用户", "DISABLED");
 
-        when(sysUserService.findByUsername("testuser")).thenReturn(user);
+        when(sysUserService.findAuthViewByUsername("testuser")).thenReturn(user);
         when(passwordEncoder.matches("password", "hashed-pass")).thenReturn(true);
 
         ResponseStatusException ex = assertThrows(

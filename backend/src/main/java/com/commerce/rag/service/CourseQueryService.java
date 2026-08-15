@@ -1,11 +1,14 @@
 package com.commerce.rag.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;
+import com.commerce.rag.mapper.CourseContentMapper;
+import com.commerce.rag.mapper.CourseInfoMapper;
+import com.commerce.rag.mapper.CourseScheduleMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import java.time.LocalDate;
 import java.util.List;
@@ -19,8 +22,8 @@ import org.springframework.util.StringUtils;
 /**
  * 课程查询服务 —— 封装 MyBatis-Plus 数据层查询，供 CourseApiTool 调用
  *
- * <p>使用 {@link Db} 静态工具类的 {@code lambdaQuery()} 链式 API 进行单表查询，
- * 遵循 MyBatis-Plus 最佳实践（按需 select 字段、条件链式过滤）。
+ * <p>查询经 mapper 注入（Wrappers lambda 链式），不绕数据层直调 Db 静态工具
+ * （工程宪法：mapper 调用传值不传 wrapper，条件查询 wrapper 在 service 内构建）。
  *
  * <p>查询结果使用 Caffeine 本地缓存（courseQueryCache，TTL 5 分钟，容量 512），
  * 键格式 search:{keyword}:{page} / course:{id} / contents:{id} / schedule:{id}；
@@ -43,6 +46,10 @@ public class CourseQueryService {
     @Qualifier("courseQueryCache")
     private final Cache<String, Object> courseQueryCache;
 
+    private final CourseInfoMapper courseInfoMapper;
+    private final CourseContentMapper courseContentMapper;
+    private final CourseScheduleMapper courseScheduleMapper;
+
     /**
      * 分页搜索课程 —— 按标题模糊匹配，仅返回 ACTIVE 状态课程（结果缓存 5 分钟）
      *
@@ -58,20 +65,21 @@ public class CourseQueryService {
             return cached;
         }
         log.info("搜索课程: keyword={}, page={}", keyword, page);
-        IPage<CourseInfo> result = Db.lambdaQuery(CourseInfo.class)
-                .select(
-                        CourseInfo::getId,
-                        CourseInfo::getTitle,
-                        CourseInfo::getCategory,
-                        CourseInfo::getPrice,
-                        CourseInfo::getStatus,
-                        CourseInfo::getTags,
-                        CourseInfo::getDuration,
-                        CourseInfo::getRating)
-                .like(StringUtils.hasText(keyword), CourseInfo::getTitle, keyword)
-                .eq(CourseInfo::getStatus, "ACTIVE")
-                .orderByDesc(CourseInfo::getRating)
-                .page(new Page<>(page, PAGE_SIZE));
+        IPage<CourseInfo> result = courseInfoMapper.selectPage(
+                new Page<>(page, PAGE_SIZE),
+                Wrappers.<CourseInfo>lambdaQuery()
+                        .select(
+                                CourseInfo::getId,
+                                CourseInfo::getTitle,
+                                CourseInfo::getCategory,
+                                CourseInfo::getPrice,
+                                CourseInfo::getStatus,
+                                CourseInfo::getTags,
+                                CourseInfo::getDuration,
+                                CourseInfo::getRating)
+                        .like(StringUtils.hasText(keyword), CourseInfo::getTitle, keyword)
+                        .eq(CourseInfo::getStatus, "ACTIVE")
+                        .orderByDesc(CourseInfo::getRating));
         courseQueryCache.put(key, result);
         return result;
     }
@@ -89,7 +97,7 @@ public class CourseQueryService {
             return cached;
         }
         log.info("查询课程: courseId={}", courseId);
-        CourseInfo result = Db.getById(Long.parseLong(courseId), CourseInfo.class);
+        CourseInfo result = courseInfoMapper.selectById(Long.parseLong(courseId));
         if (result != null) {
             // Caffeine 禁止缓存 null 值：课程不存在时不写入，保持"不存在返回 null"语义
             courseQueryCache.put(key, result);
@@ -111,7 +119,7 @@ public class CourseQueryService {
             return cached;
         }
         log.info("查询课程内容: courseId={}", courseId);
-        List<CourseContent> result = Db.lambdaQuery(CourseContent.class)
+        List<CourseContent> result = courseContentMapper.selectList(Wrappers.<CourseContent>lambdaQuery()
                 .select(
                         CourseContent::getId,
                         CourseContent::getCourseId,
@@ -119,8 +127,7 @@ public class CourseQueryService {
                         CourseContent::getContent,
                         CourseContent::getSortOrder)
                 .eq(CourseContent::getCourseId, Long.parseLong(courseId))
-                .orderByAsc(CourseContent::getSortOrder)
-                .list();
+                .orderByAsc(CourseContent::getSortOrder));
         courseQueryCache.put(key, result);
         return result;
     }
@@ -138,7 +145,7 @@ public class CourseQueryService {
             return cached;
         }
         log.info("查询下一期排期: courseId={}", courseId);
-        CourseSchedule result = Db.lambdaQuery(CourseSchedule.class)
+        CourseSchedule result = courseScheduleMapper.selectOne(Wrappers.<CourseSchedule>lambdaQuery()
                 .select(
                         CourseSchedule::getId, CourseSchedule::getCourseId,
                         CourseSchedule::getStartDate, CourseSchedule::getEndDate,
@@ -148,8 +155,7 @@ public class CourseQueryService {
                 .eq(CourseSchedule::getCourseId, Long.parseLong(courseId))
                 .ge(CourseSchedule::getStartDate, LocalDate.now())
                 .orderByAsc(CourseSchedule::getStartDate)
-                .last("LIMIT 1")
-                .one();
+                .last("LIMIT 1"));
         if (result != null) {
             // Caffeine 禁止缓存 null 值：无可用排期时不写入，保持"无排期返回 null"语义
             courseQueryCache.put(key, result);

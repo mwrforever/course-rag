@@ -363,4 +363,34 @@ class SysUserServiceTest {
 
         assertEquals(404, ex.getStatusCode().value());
     }
+
+    // ==================== findAuthViewByUsername ====================
+
+    @Test
+    @DisplayName("findAuthViewByUsername → 命中返回认证视图（含密码哈希，Entity 不出边界）")
+    void findAuthViewByUsername_hit_returnsView() {
+        SysUser user = new SysUser();
+        user.setId(1L);
+        user.setUsername("testuser");
+        user.setPasswordHash("hashed-pass");
+        user.setRole("STUDENT");
+        user.setDisplayName("测试用户");
+        user.setStatus("ACTIVE");
+        when(userMapper.selectOne(any())).thenReturn(user);
+
+        AuthUserView view = sysUserService.findAuthViewByUsername("testuser");
+
+        assertEquals(1L, view.id());
+        assertEquals("hashed-pass", view.passwordHash());
+        assertEquals("STUDENT", view.role());
+        assertEquals("ACTIVE", view.status());
+    }
+
+    @Test
+    @DisplayName("findAuthViewByUsername → 未命中返回 null")
+    void findAuthViewByUsername_miss_returnsNull() {
+        when(userMapper.selectOne(any())).thenReturn(null);
+
+        assertNull(sysUserService.findAuthViewByUsername("unknown"));
+    }
 }

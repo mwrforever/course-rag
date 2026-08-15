@@ -141,6 +141,14 @@ class CourseConverterTest {
     }
 
     @Test
+    @DisplayName("parseTags null/空白字符串 → 空列表兜底")
+    void parseTags_nullOrBlank_returnsEmpty() {
+        assertThat(converter.parseTags(null)).isEmpty();
+        assertThat(converter.parseTags("")).isEmpty();
+        assertThat(converter.parseTags("   ")).isEmpty();
+    }
+
+    @Test
     @DisplayName("内容实体完整映射到内容 Tab DTO")
     void toContentDTO_mapsAllFields() {
         CourseContent content = new CourseContent();
