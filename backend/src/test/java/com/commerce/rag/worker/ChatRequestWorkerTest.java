@@ -9,6 +9,7 @@ import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
+import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
 import com.commerce.rag.config.StreamProperties;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.service.ChatMessageService;
@@ -347,5 +348,39 @@ class ChatRequestWorkerTest {
 
         // Then: handleError 失败不阻断持久化——用户消息仍批量落库
         verify(chatMessageService).batchInsert(anyList());
+    }
+
+    // ==================== P1-3 取消回滚 checkpoint 类型保留 ====================
+
+    @Test
+    @DisplayName("取消回滚 — 快照 messages 元素保留 Message 类型（P1-3 容器级浅拷贝）")
+    void rollbackCheckpoint_preservesMessageTypes() throws Exception {
+        // Given: saver.get 返回含真实 Spring AI Message 的 checkpoint（第二轮对话场景）
+        Checkpoint cp = Checkpoint.builder()
+                .id("cp-1")
+                .state(Map.of("messages", List.of(new UserMessage("历史问题"), new AssistantMessage("历史回答"))))
+                .nodeId("node-1")
+                .nextNodeId("node-2")
+                .build();
+        when(saver.get(any(RunnableConfig.class))).thenReturn(Optional.of(cp));
+
+        // 取消路径：执行前设置取消标记，首个 chunk 触发 CancelledException
+        worker.cancel("100");
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 回滚写入的 checkpoint state 中 messages 元素仍是 Message 子类（非 LinkedHashMap）
+        ArgumentCaptor<Checkpoint> cpCaptor = ArgumentCaptor.forClass(Checkpoint.class);
+        verify(saver).put(any(RunnableConfig.class), cpCaptor.capture());
+        Checkpoint newCp = cpCaptor.getValue();
+        List<?> messages = (List<?>) newCp.getState().get("messages");
+        assertEquals(2, messages.size());
+        assertTrue(messages.get(0) instanceof UserMessage, "回滚后 messages[0] 应为 UserMessage");
+        assertTrue(messages.get(1) instanceof AssistantMessage, "回滚后 messages[1] 应为 AssistantMessage");
     }
 }

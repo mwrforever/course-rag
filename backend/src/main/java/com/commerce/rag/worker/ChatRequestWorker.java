@@ -453,22 +453,23 @@ public class ChatRequestWorker {
     // ========================================================================
 
     /**
-     * 捕获 pre-run 快照（saver.get → deepCopy）。
+     * 捕获 pre-run 快照（saver.get → 容器级浅拷贝）。
      *
-     * <p>设计文档 §3.4：使用 saver.get(config) 获取 checkpoint，对 state 做深拷贝，
-     * 防止图执行过程中修改原 checkpoint 数据导致回滚失效。
+     * <p>设计文档 §3.4：使用 saver.get(config) 获取 checkpoint，对 state 做容器级浅拷贝
+     * （顶层 Map 独立、值对象引用共享），防止图执行过程中修改原 checkpoint 数据导致回滚失效。
      *
      * <p>F2-11 说明：设计文档原文使用 {@code saver.getTuple(config)} 获取 checkpoint tuple，
      * 但 SAA 1.1.2.0 API 中 {@link BaseCheckpointSaver} 无 {@code getTuple} 方法
      * （该 API 属于 LangGraph4j 原生接口，SAA 未暴露）。此处使用 {@code saver.get(config)}
      * 替代，返回 {@code Optional<Checkpoint>}，功能等价。
-     * 深拷贝通过 Jackson 序列化/反序列化实现（见 {@link #deepCopyState}），
-     * 确保 channelValues 等嵌套对象完全独立，满足回滚隔离要求。
+     * 浅拷贝通过 {@code new HashMap<>(state)} 实现——SAA 1.1.2.0 实证图执行期不原地修改
+     * checkpoint state，浅拷贝即可满足回滚隔离，且保留 Message 类型（P1-3；原 JSON 深拷贝
+     * 经无多态注册的 ObjectMapper 会把 Message 反序列化为 LinkedHashMap，类型破坏）。
      * 快照失败降级（记 warn 不阻塞 run）。
      *
      * @param runId  Run 唯一标识
      * @param config RunnableConfig（含 threadId + userId）
-     * @return 深拷贝快照，失败时返回 null
+     * @return 快照（state 为容器级浅拷贝），失败时返回 null
      */
     private RunSnapshot captureSnapshot(String runId, RunnableConfig config) {
         try {
@@ -478,8 +479,11 @@ public class ChatRequestWorker {
                 return null;
             }
             Checkpoint cp = opt.get();
-            // 深拷贝 state：通过 Jackson 序列化/反序列化，确保 channelValues 等嵌套对象完全独立
-            Map<String, Object> stateCopy = deepCopyState(cp.getState());
+            // P1-3: 容器级浅拷贝替代 JSON 深拷贝——SAA 1.1.2.0 实证（OverAllState.updateState
+            // 用 Stream.collect 产新 Map、AppendStrategy 用 new ArrayList 产新 List）图执行期
+            // 不原地修改 checkpoint state，顶层 Map 独立即可保证快照安全，且 Message 类型 100% 保留
+            // （JSON 往返会经无多态注册的 ObjectMapper 把 Message 反序列化为 LinkedHashMap，类型破坏）
+            Map<String, Object> stateCopy = new HashMap<>(cp.getState());
             // 计算持久化游标：pre-run checkpoint 中 messages 列表长度（P0-4a 去重）
             int historyCount = 0;
             Object messagesObj = stateCopy.get("messages");
@@ -497,31 +501,6 @@ public class ChatRequestWorker {
         } catch (Exception e) {
             log.warn("pre-run 快照失败 runId={} (不阻塞)", runId, e);
             return null;
-        }
-    }
-
-    /**
-     * 对 checkpoint state 做深拷贝（序列化 → 反序列化）。
-     *
-     * <p>设计文档 §3.4 要求深拷贝 channelValues + channelVersions + pendingWrites，
-     * 但 SAA Checkpoint.getState() 返回合并后的 Map，通过 Jackson 序列化确保所有嵌套
-     * 对象（如 List<Message>）均产生独立副本，避免图执行修改影响快照。
-     *
-     * @param state 原始 state Map
-     * @return 深拷贝后的 state Map
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> deepCopyState(Map<String, Object> state) {
-        if (state == null || state.isEmpty()) {
-            return new HashMap<>();
-        }
-        try {
-            String json = objectMapper.writeValueAsString(state);
-            return objectMapper.readValue(json, Map.class);
-        } catch (JsonProcessingException e) {
-            // 序列化失败降级为浅拷贝（至少顶层独立）
-            log.warn("state 深拷贝序列化失败，降级浅拷贝", e);
-            return new HashMap<>(state);
         }
     }
 
