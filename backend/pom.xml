@@ -287,6 +287,10 @@
                     <consoleOutput>true</consoleOutput>
                     <failOnViolation>true</failOnViolation>
                     <violationSeverity>warning</violationSeverity>
+                    <!-- 只检查手写源码：verify 阶段 compile 会把 target/generated-sources 加入编译源根，
+                         注解处理器生成的 MapStruct Impl 会被误扫（ParenPad/LineLength 误报），
+                         故显式限定 includes 排除生成代码 -->
+                    <includes>src/main/java/**/*.java,src/test/java/**/*.java</includes>
                 </configuration>
                 <executions>
                     <execution>
