@@ -20,8 +20,8 @@ CREATE TABLE knowledge_base (
     status      VARCHAR(20)  DEFAULT 'ACTIVE',
     created_by  BIGINT       NOT NULL,
     deleted     BIGINT       DEFAULT 0,
-    created_at  TIMESTAMPTZ  DEFAULT now(),
-    updated_at  TIMESTAMPTZ  DEFAULT now()
+    created_at  TIMESTAMP  DEFAULT now(),
+    updated_at  TIMESTAMP  DEFAULT now()
 );
 CREATE UNIQUE INDEX uniq_knowledge_base_name    ON knowledge_base(name) WHERE deleted = 0;
 CREATE INDEX        idx_knowledge_base_status   ON knowledge_base(status) WHERE deleted = 0;
@@ -38,11 +38,11 @@ CREATE TABLE document (
     parse_status   VARCHAR(20)  DEFAULT 'PENDING',
     chunk_count    INT          DEFAULT 0,
     error_message  TEXT,
-    metadata_json  JSONB        DEFAULT '{}',
+    metadata_json  TEXT        DEFAULT '{}',
     created_by     BIGINT       NOT NULL,
     deleted        BIGINT       DEFAULT 0,
-    created_at     TIMESTAMPTZ  DEFAULT now(),
-    updated_at     TIMESTAMPTZ  DEFAULT now()
+    created_at     TIMESTAMP  DEFAULT now(),
+    updated_at     TIMESTAMP  DEFAULT now()
 );
 CREATE INDEX idx_document_kb_id           ON document(kb_id) WHERE deleted = 0;
 CREATE INDEX idx_document_parse_status    ON document(parse_status) WHERE deleted = 0;
@@ -64,7 +64,7 @@ CREATE TABLE document_chunk (
     token_count       INT          DEFAULT 0,
     collection_type   VARCHAR(20)  NOT NULL DEFAULT 'TECHNICAL_QA',
     course_id         VARCHAR(64)  DEFAULT 'DEFAULT',
-    metadata_json     JSONB        DEFAULT '{}',
+    metadata_json     TEXT        DEFAULT '{}',
     milvus_pk         VARCHAR(64),
     parent_chunk_id   BIGINT,
     prev_chunk_id     BIGINT,
@@ -74,8 +74,8 @@ CREATE TABLE document_chunk (
     correction_status VARCHAR(20)  DEFAULT 'PENDING',
     dense_vector      BYTEA,
     deleted           BIGINT       DEFAULT 0,
-    created_at        TIMESTAMPTZ  DEFAULT now(),
-    updated_at        TIMESTAMPTZ  DEFAULT now()
+    created_at        TIMESTAMP  DEFAULT now(),
+    updated_at        TIMESTAMP  DEFAULT now()
 );
 CREATE INDEX idx_document_chunk_doc_index    ON document_chunk(doc_id, chunk_index) WHERE deleted = 0;
 CREATE INDEX idx_document_chunk_kb_id        ON document_chunk(kb_id) WHERE deleted = 0;
@@ -103,8 +103,8 @@ CREATE TABLE sys_user (
     status        VARCHAR(20)  DEFAULT 'ACTIVE',
     created_by    BIGINT,
     deleted       BIGINT       DEFAULT 0,
-    created_at    TIMESTAMPTZ  DEFAULT now(),
-    updated_at    TIMESTAMPTZ  DEFAULT now()
+    created_at    TIMESTAMP  DEFAULT now(),
+    updated_at    TIMESTAMP  DEFAULT now()
 );
 CREATE UNIQUE INDEX uniq_sys_user_username   ON sys_user(username) WHERE deleted = 0;
 CREATE UNIQUE INDEX uniq_sys_user_super_admin ON sys_user((1)) WHERE role = 'SUPER_ADMIN' AND deleted = 0;
@@ -123,11 +123,11 @@ CREATE TABLE sys_login_record (
     device_type VARCHAR(30)  NOT NULL,
     device_info VARCHAR(500),
     ip_address  VARCHAR(45),
-    expires_at  TIMESTAMPTZ  NOT NULL,
+    expires_at  TIMESTAMP  NOT NULL,
     status      VARCHAR(20)  DEFAULT 'ACTIVE',
     deleted     BIGINT       DEFAULT 0,
-    created_at  TIMESTAMPTZ  DEFAULT now(),
-    updated_at  TIMESTAMPTZ  DEFAULT now()
+    created_at  TIMESTAMP  DEFAULT now(),
+    updated_at  TIMESTAMP  DEFAULT now()
 );
 CREATE INDEX idx_login_record_jti_rt        ON sys_login_record(jti_rt) WHERE deleted = 0;
 CREATE INDEX idx_login_record_user_device    ON sys_login_record(user_id, device_type, status) WHERE deleted = 0;
@@ -141,9 +141,9 @@ CREATE TABLE sys_token_blacklist (
     user_id        BIGINT       NOT NULL,
     blacklisted_by BIGINT,
     reason         VARCHAR(200),
-    expires_at     TIMESTAMPTZ  NOT NULL,
+    expires_at     TIMESTAMP  NOT NULL,
     deleted        BIGINT       DEFAULT 0,
-    created_at     TIMESTAMPTZ  DEFAULT now()
+    created_at     TIMESTAMP  DEFAULT now()
 );
 CREATE UNIQUE INDEX uniq_token_blacklist_jti ON sys_token_blacklist(jti) WHERE deleted = 0;
 CREATE INDEX        idx_token_blacklist_user ON sys_token_blacklist(user_id) WHERE deleted = 0;
@@ -163,22 +163,21 @@ CREATE TABLE course_info (
     instructor_name VARCHAR(100),
     price           DECIMAL(10,2),
     duration        VARCHAR(50),
-    tags            JSONB        DEFAULT '[]',
+    tags            TEXT        DEFAULT '[]',
     rating          DECIMAL(2,1) DEFAULT 0,
     learning_count  INT          DEFAULT 0,
     enrollment_link VARCHAR(1000),
     status          VARCHAR(20)  DEFAULT 'ACTIVE',
     created_by      BIGINT       NOT NULL,
     deleted         BIGINT       DEFAULT 0,
-    created_at      TIMESTAMPTZ  DEFAULT now(),
-    updated_at      TIMESTAMPTZ  DEFAULT now()
+    created_at      TIMESTAMP  DEFAULT now(),
+    updated_at      TIMESTAMP  DEFAULT now()
 );
 CREATE INDEX idx_course_info_created_by    ON course_info(created_by) WHERE deleted = 0;
 CREATE INDEX idx_course_info_category_status ON course_info(category, status) WHERE deleted = 0;
 CREATE INDEX idx_course_info_status_rating  ON course_info(status, rating DESC) WHERE deleted = 0;
 CREATE INDEX idx_course_info_status_created ON course_info(status, created_at DESC) WHERE deleted = 0;
 CREATE INDEX idx_course_info_title_trgm     ON course_info USING gin(title gin_trgm_ops) WHERE deleted = 0;
-CREATE INDEX idx_course_info_tags           ON course_info USING gin(tags) WHERE deleted = 0;
 
 -- 8. course_content ── 课程内容（Body，一个课程多行，按 Tab 分）
 CREATE TABLE course_content (
@@ -188,8 +187,8 @@ CREATE TABLE course_content (
     content     TEXT         NOT NULL,
     sort_order  INT          DEFAULT 0,
     deleted     BIGINT       DEFAULT 0,
-    created_at  TIMESTAMPTZ  DEFAULT now(),
-    updated_at  TIMESTAMPTZ  DEFAULT now()
+    created_at  TIMESTAMP  DEFAULT now(),
+    updated_at  TIMESTAMP  DEFAULT now()
 );
 CREATE UNIQUE INDEX uniq_course_content_type ON course_content(course_id, content_type) WHERE deleted = 0;
 CREATE INDEX        idx_course_content_course ON course_content(course_id, sort_order) WHERE deleted = 0;
@@ -208,8 +207,8 @@ CREATE TABLE course_schedule (
     status          VARCHAR(20)  DEFAULT 'UPCOMING',
     created_by      BIGINT       NOT NULL,
     deleted         BIGINT       DEFAULT 0,
-    created_at      TIMESTAMPTZ  DEFAULT now(),
-    updated_at      TIMESTAMPTZ  DEFAULT now()
+    created_at      TIMESTAMP  DEFAULT now(),
+    updated_at      TIMESTAMP  DEFAULT now()
 );
 CREATE INDEX idx_course_schedule_course_start ON course_schedule(course_id, start_date) WHERE deleted = 0;
 CREATE INDEX idx_course_schedule_status_start  ON course_schedule(status, start_date) WHERE deleted = 0;
@@ -221,7 +220,7 @@ CREATE TABLE course_teacher (
     course_id  BIGINT       NOT NULL,
     teacher_id BIGINT       NOT NULL,
     deleted    BIGINT       DEFAULT 0,
-    created_at TIMESTAMPTZ  DEFAULT now()
+    created_at TIMESTAMP  DEFAULT now()
 );
 CREATE UNIQUE INDEX uniq_course_teacher       ON course_teacher(course_id, teacher_id) WHERE deleted = 0;
 CREATE INDEX        idx_course_teacher_teacher_id ON course_teacher(teacher_id) WHERE deleted = 0;
@@ -231,7 +230,7 @@ CREATE TABLE course_enrollment (
     id         BIGINT       PRIMARY KEY,
     course_id  BIGINT       NOT NULL,
     student_id BIGINT       NOT NULL,
-    enrolled_at TIMESTAMPTZ DEFAULT now(),
+    enrolled_at TIMESTAMP DEFAULT now(),
     status     VARCHAR(20)  DEFAULT 'ACTIVE',
     deleted    BIGINT       DEFAULT 0
 );
@@ -249,11 +248,11 @@ CREATE TABLE chat_session (
     user_id        BIGINT       NOT NULL,
     title          VARCHAR(300),
     status         VARCHAR(20)  DEFAULT 'ACTIVE',
-    last_message_at TIMESTAMPTZ,
+    last_message_at TIMESTAMP,
     model          VARCHAR(50),
     deleted        BIGINT       DEFAULT 0,
-    created_at     TIMESTAMPTZ  DEFAULT now(),
-    updated_at     TIMESTAMPTZ  DEFAULT now()
+    created_at     TIMESTAMP  DEFAULT now(),
+    updated_at     TIMESTAMP  DEFAULT now()
 );
 CREATE INDEX idx_chat_session_user_last ON chat_session(user_id, last_message_at DESC) WHERE deleted = 0;
 
@@ -266,11 +265,11 @@ CREATE TABLE chat_run (
     model_calls   INT          DEFAULT 0,
     trace_id      VARCHAR(64),
     error_message TEXT,
-    meta_json     JSONB        DEFAULT '{}',
+    meta_json     TEXT        DEFAULT '{}',
     deleted       BIGINT       DEFAULT 0,
-    started_at    TIMESTAMPTZ,
-    ended_at      TIMESTAMPTZ,
-    created_at    TIMESTAMPTZ  DEFAULT now()
+    started_at    TIMESTAMP,
+    ended_at      TIMESTAMP,
+    created_at    TIMESTAMP  DEFAULT now()
 );
 -- 并发守卫：同一 session 同时只能有一个 QUEUED 或 ACTIVE run
 CREATE UNIQUE INDEX uniq_active_run_per_session ON chat_run(session_id) WHERE status IN ('QUEUED', 'ACTIVE') AND deleted = 0;
@@ -285,7 +284,7 @@ CREATE TABLE chat_message (
     role         VARCHAR(20)  NOT NULL,
     content      TEXT         NOT NULL,
     intent_type  VARCHAR(20),
-    sources_json JSONB        DEFAULT '[]',
+    sources_json TEXT        DEFAULT '[]',
     token_count  INT          DEFAULT 0,
     run_id       BIGINT       NOT NULL,
     seq          INT          NOT NULL,
@@ -293,7 +292,7 @@ CREATE TABLE chat_message (
     trace_id     VARCHAR(64),
     message_type VARCHAR(20),
     deleted      BIGINT       DEFAULT 0,
-    created_at   TIMESTAMPTZ  DEFAULT now()
+    created_at   TIMESTAMP  DEFAULT now()
 );
 CREATE INDEX idx_chat_message_run_seq     ON chat_message(run_id, seq) WHERE deleted = 0;
 CREATE INDEX idx_chat_message_session_seq  ON chat_message(session_id, seq) WHERE deleted = 0;
@@ -313,7 +312,7 @@ CREATE TABLE user_feedback (
     is_liked   BOOLEAN,
     intent_type VARCHAR(20),
     deleted    BIGINT       DEFAULT 0,
-    created_at TIMESTAMPTZ  DEFAULT now()
+    created_at TIMESTAMP  DEFAULT now()
 );
 
 -- 同一用户对同一消息只允许一条反馈（P0-2h：加 user_id 归属）
@@ -327,10 +326,10 @@ CREATE INDEX        idx_user_feedback_session      ON user_feedback(session_id) 
 -- 默认密码明文：admin123
 -- 该密码仅在初次迁移（无人为覆盖配置）时生效，生产环境应通过配置覆盖
 -- id=1 为硬编码迁移降级值（fallback），正常流程应通过 ApplicationRunner 动态注入
--- BCrypt("admin123") = $2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
+-- BCrypt("admin123") = $2a$10$4Tr8GR4XD98OTopP6/vK5eYsK8yRsRPOjdYzBgK9eahMJDo6KpL8.
 -- ═══════════════════════════════════════════════════════════════════════════
 INSERT INTO sys_user (id, username, password_hash, display_name, role, status)
-SELECT 1, 'admin', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+SELECT 1, 'admin', '$2a$10$4Tr8GR4XD98OTopP6/vK5eYsK8yRsRPOjdYzBgK9eahMJDo6KpL8.',
        '系统管理员', 'SUPER_ADMIN', 'ACTIVE'
 WHERE NOT EXISTS (
     SELECT 1 FROM sys_user WHERE role = 'SUPER_ADMIN' AND deleted = 0
