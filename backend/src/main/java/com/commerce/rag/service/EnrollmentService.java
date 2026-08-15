@@ -6,15 +6,17 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.commerce.rag.controller.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
 import com.commerce.rag.entity.CourseInfo;
+import com.commerce.rag.entity.SysUser;
 import com.commerce.rag.mapper.CourseEnrollmentMapper;
+import com.commerce.rag.mapper.SysUserMapper;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -39,7 +41,8 @@ public class EnrollmentService {
 
     private final CourseEnrollmentMapper enrollmentMapper;
     private final CourseService courseService;
-    private final JdbcTemplate jdbcTemplate;
+    private final SysUserMapper sysUserMapper;
+    private final EnrollmentConverter enrollmentConverter;
 
     /**
      * 查询课程的已选学生列表
@@ -51,42 +54,21 @@ public class EnrollmentService {
      */
     public List<StudentDTO> findStudents(Long courseId, Long currentUserId, boolean isAdmin) {
         courseService.checkOwnership(courseId, currentUserId, isAdmin);
-
-        // 查询选课记录
-        LambdaQueryWrapper<CourseEnrollment> wrapper = Wrappers.<CourseEnrollment>lambdaQuery()
+        List<CourseEnrollment> enrollments = enrollmentMapper.selectList(Wrappers.<CourseEnrollment>lambdaQuery()
                 .eq(CourseEnrollment::getCourseId, courseId)
                 .eq(CourseEnrollment::getStatus, "ACTIVE")
-                .orderByDesc(CourseEnrollment::getEnrolledAt);
-        List<CourseEnrollment> enrollments = enrollmentMapper.selectList(wrapper);
-
+                .orderByDesc(CourseEnrollment::getEnrolledAt));
         if (enrollments.isEmpty()) {
             return List.of();
         }
-
-        // 批量查询学生信息（sys_user 表，由 auth 工程师负责，此处用 JdbcTemplate）
         List<Long> studentIds =
-                enrollments.stream().map(CourseEnrollment::getStudentId).collect(Collectors.toList());
-        String placeholders = studentIds.stream().map(id -> "?").collect(Collectors.joining(","));
-        String sql =
-                "SELECT id, username, display_name FROM sys_user WHERE id IN (" + placeholders + ") AND deleted = 0";
-
-        List<StudentDTO> students = jdbcTemplate.query(sql, studentIds.toArray(), (rs, rowNum) -> {
-            Long studentId = rs.getLong("id");
-            // 匹配对应的 enrollment
-            CourseEnrollment enrollment = enrollments.stream()
-                    .filter(e -> e.getStudentId().equals(studentId))
-                    .findFirst()
-                    .orElse(null);
-            return new StudentDTO(
-                    studentId,
-                    rs.getString("username"),
-                    rs.getString("display_name"),
-                    enrollment != null ? enrollment.getEnrolledAt() : null,
-                    enrollment != null ? enrollment.getStatus() : null);
-        });
-
-        log.info("查询选课学生: courseId={}, count={}", courseId, students.size());
-        return students;
+                enrollments.stream().map(CourseEnrollment::getStudentId).toList();
+        List<SysUser> users = sysUserMapper.selectByIdsIn(studentIds);
+        Map<Long, CourseEnrollment> enrollmentByUser =
+                enrollments.stream().collect(Collectors.toMap(CourseEnrollment::getStudentId, e -> e));
+        return users.stream()
+                .map(user -> enrollmentConverter.toDTO(user, enrollmentByUser.get(user.getId())))
+                .toList();
     }
 
     /**

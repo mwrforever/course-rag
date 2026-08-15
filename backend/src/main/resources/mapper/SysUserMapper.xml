@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.commerce.rag.mapper.SysUserMapper">
+
+    <!-- 按 ID 批量查询用户（按需返回字段，避免 SELECT *） -->
+    <select id="selectByIdsIn" resultType="com.commerce.rag.entity.SysUser">
+        SELECT id, username, display_name FROM sys_user
+        WHERE id IN
+        <foreach collection="list" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        AND deleted = 0
+    </select>
+</mapper>

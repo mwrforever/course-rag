@@ -9,14 +9,13 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 /**
  * 消息服务 —— 批量持久化与查询 chat_message
  *
  * <p>设计文档 §3.5：run 结束后一次性批量 INSERT 消息，
- * 使用 JdbcTemplate.batchUpdate 保证性能（不在 MyBatis Mapper 里循环单条 insert）。
+ * 使用 Mapper XML 多值 INSERT 保证性能（不在 MyBatis Mapper 里循环单条 insert）。
  *
  * <p>单条查询和列表查询走 MyBatis-Plus Lambda 链式 API。
  *
@@ -28,19 +27,12 @@ public class ChatMessageService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatMessageService.class);
 
-    /** 批量插入 SQL（deleted 固定 0 = 未删除，created_at 由数据库生成） */
-    private static final String BATCH_INSERT_SQL =
-            "INSERT INTO chat_message (id, session_id, role, content, intent_type, sources_json, "
-                    + "token_count, run_id, seq, confidence, trace_id, message_type, deleted, created_at) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, now())";
-
     private final ChatMessageMapper messageMapper;
-    private final JdbcTemplate jdbcTemplate;
 
     /**
      * 批量插入消息（run 结束后一次性写入）
      *
-     * <p>使用 JdbcTemplate.batchUpdate 高效批量插入。
+     * <p>使用 Mapper XML 多值 INSERT 高效批量插入。
      * 如果消息未设置 ID，自动通过 {@link IdWorker#get()} 分配雪花 ID。
      *
      * @param messages 消息列表
@@ -53,22 +45,13 @@ public class ChatMessageService {
             if (msg.getId() == null) {
                 msg.setId(IdWorker.getId());
             }
+            // sourcesJson 为 JSONB 列，空值兜底为 "[]"（与原 JdbcTemplate 参数绑定语义一致）
+            if (msg.getSourcesJson() == null) {
+                msg.setSourcesJson("[]");
+            }
         }
         log.info("批量插入消息: count={}", messages.size());
-        jdbcTemplate.batchUpdate(BATCH_INSERT_SQL, messages, messages.size(), (ps, msg) -> {
-            ps.setLong(1, msg.getId());
-            ps.setLong(2, msg.getSessionId());
-            ps.setString(3, msg.getRole());
-            ps.setString(4, msg.getContent());
-            ps.setString(5, msg.getIntentType());
-            ps.setString(6, msg.getSourcesJson() != null ? msg.getSourcesJson() : "[]");
-            ps.setObject(7, msg.getTokenCount());
-            ps.setLong(8, msg.getRunId());
-            ps.setInt(9, msg.getSeq());
-            ps.setObject(10, msg.getConfidence());
-            ps.setString(11, msg.getTraceId());
-            ps.setString(12, msg.getMessageType());
-        });
+        messageMapper.batchInsert(messages);
     }
 
     /**
