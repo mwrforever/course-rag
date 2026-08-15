@@ -1,4 +1,4 @@
-package com.commerce.rag.controller.vo;
+package com.commerce.rag.vo;
 
 import java.math.BigDecimal;
 

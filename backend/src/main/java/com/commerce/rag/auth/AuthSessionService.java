@@ -137,10 +137,11 @@ public class AuthSessionService {
         //    （15min 内仍有效）jti_at 已不匹配，会导致新 RT 漏吊销而永久续命；
         //    改为按 userId + ACTIVE 定位当前会话（系统单设备互踢，同一用户最多一条 ACTIVE），
         //    保证旋转后的新 RT 同样被吊销。
-        SysLoginRecord record = loginRecordMapper.selectOne(Wrappers.<SysLoginRecord>lambdaQuery()
-                .eq(SysLoginRecord::getUserId, userId)
-                .eq(SysLoginRecord::getStatus, "ACTIVE")
-                .last("LIMIT 1"));
+        SysLoginRecord record = loginRecordMapper.selectOne(
+                Wrappers.<SysLoginRecord>lambdaQuery()
+                        .eq(SysLoginRecord::getUserId, userId)
+                        .eq(SysLoginRecord::getStatus, "ACTIVE"),
+                false);
         if (record != null && record.getJtiRt() != null && !record.getJtiRt().isEmpty()) {
             // RT 入黑名单，TTL 取 login_record 记录的真实过期时间，
             // 并以 now+RT 有效期（7d）为上限兜底：防止历史脏数据导致黑名单超期，

@@ -1,9 +1,9 @@
 package com.commerce.rag.service;
 
-import com.commerce.rag.controller.vo.SysLoginRecordVO;
-import com.commerce.rag.controller.vo.SysTokenBlacklistVO;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysTokenBlacklist;
+import com.commerce.rag.vo.SysLoginRecordVO;
+import com.commerce.rag.vo.SysTokenBlacklistVO;
 import org.mapstruct.Mapper;
 
 /**

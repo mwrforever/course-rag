@@ -1,7 +1,7 @@
 package com.commerce.rag.service;
 
-import com.commerce.rag.controller.vo.UserFeedbackVO;
 import com.commerce.rag.entity.UserFeedback;
+import com.commerce.rag.vo.UserFeedbackVO;
 import org.mapstruct.Mapper;
 
 /**

@@ -1,7 +1,7 @@
 package com.commerce.rag.service;
 
-import com.commerce.rag.controller.vo.KnowledgeBaseVO;
 import com.commerce.rag.entity.KnowledgeBase;
+import com.commerce.rag.vo.KnowledgeBaseVO;
 import org.mapstruct.Mapper;
 
 /**

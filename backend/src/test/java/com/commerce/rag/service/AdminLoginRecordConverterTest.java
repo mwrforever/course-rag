@@ -2,10 +2,10 @@ package com.commerce.rag.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.commerce.rag.controller.vo.SysLoginRecordVO;
-import com.commerce.rag.controller.vo.SysTokenBlacklistVO;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysTokenBlacklist;
+import com.commerce.rag.vo.SysLoginRecordVO;
+import com.commerce.rag.vo.SysTokenBlacklistVO;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

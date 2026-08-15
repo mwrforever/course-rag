@@ -2,14 +2,14 @@ package com.commerce.rag.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.commerce.rag.controller.vo.ChunkBriefVO;
-import com.commerce.rag.controller.vo.ChunkContextVO;
-import com.commerce.rag.controller.vo.ChunkVO;
-import com.commerce.rag.controller.vo.SessionVO;
-import com.commerce.rag.controller.vo.StudentCourseVO;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.DocumentChunk;
+import com.commerce.rag.vo.ChunkBriefVO;
+import com.commerce.rag.vo.ChunkContextVO;
+import com.commerce.rag.vo.ChunkVO;
+import com.commerce.rag.vo.SessionVO;
+import com.commerce.rag.vo.StudentCourseVO;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;

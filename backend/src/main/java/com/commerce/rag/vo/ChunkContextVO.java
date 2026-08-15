@@ -1,4 +1,4 @@
-package com.commerce.rag.controller.vo;
+package com.commerce.rag.vo;
 
 /**
  * 分片上下文视图对象 —— controller 出参（C 端接口 J4 分片上下文）

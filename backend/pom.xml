@@ -282,6 +282,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>3.6.0</version>
                 <configuration>
                     <configLocation>${project.basedir}/config/checkstyle/checkstyle.xml</configLocation>
                     <consoleOutput>true</consoleOutput>
@@ -331,6 +332,7 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.15</version>
                 <executions>
                     <execution>
                         <id>jacoco-prepare-agent</id>

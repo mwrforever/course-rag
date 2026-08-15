@@ -2,8 +2,8 @@ package com.commerce.rag.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.commerce.rag.controller.vo.KnowledgeBaseVO;
 import com.commerce.rag.entity.KnowledgeBase;
+import com.commerce.rag.vo.KnowledgeBaseVO;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import org.junit.jupiter.api.DisplayName;

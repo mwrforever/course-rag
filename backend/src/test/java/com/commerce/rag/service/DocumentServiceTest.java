@@ -6,7 +6,6 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.commerce.rag.controller.vo.DocumentVO;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.KnowledgeBase;
 import com.commerce.rag.etl.EtlPipeline;
@@ -15,6 +14,7 @@ import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.DocumentVO;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.io.ByteArrayInputStream;

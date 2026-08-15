@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.commerce.rag.controller.vo.KnowledgeBaseVO;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.KnowledgeBase;
 import com.commerce.rag.etl.EtlPipeline;
@@ -14,6 +13,7 @@ import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.KnowledgeBaseVO;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;

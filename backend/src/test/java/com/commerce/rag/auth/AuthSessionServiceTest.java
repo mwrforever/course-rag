@@ -127,7 +127,7 @@ class AuthSessionServiceTest {
         record.setJtiRt("jti-rt");
         record.setStatus("ACTIVE");
         record.setExpiresAt(rtExpiresAt);
-        when(loginRecordMapper.selectOne(any())).thenReturn(record);
+        when(loginRecordMapper.selectOne(any(), eq(false))).thenReturn(record);
 
         authSessionService.revokeOnLogout(123L, "jti-at");
 
@@ -153,7 +153,7 @@ class AuthSessionServiceTest {
         record.setStatus("ACTIVE");
         // 构造晚于 now+7d 的过期时间（模拟历史脏数据），兜底应截断到 now+7d
         record.setExpiresAt(LocalDateTime.now().plusDays(30));
-        when(loginRecordMapper.selectOne(any())).thenReturn(record);
+        when(loginRecordMapper.selectOne(any(), eq(false))).thenReturn(record);
 
         authSessionService.revokeOnLogout(123L, "jti-at");
 
@@ -170,7 +170,7 @@ class AuthSessionServiceTest {
     @Test
     @DisplayName("revokeOnLogout → 无 ACTIVE record：仅 AT 入黑名单，RT 不入")
     void revokeOnLogout_noRecord_onlyBlacklistsAt() {
-        when(loginRecordMapper.selectOne(any())).thenReturn(null);
+        when(loginRecordMapper.selectOne(any(), eq(false))).thenReturn(null);
 
         authSessionService.revokeOnLogout(123L, "jti-at");
 
@@ -184,7 +184,7 @@ class AuthSessionServiceTest {
     @Test
     @DisplayName("revokeOnLogout → login_record update 异常被吞掉，不向外抛出")
     void revokeOnLogout_updateFailure_doesNotThrow() {
-        when(loginRecordMapper.selectOne(any())).thenReturn(null);
+        when(loginRecordMapper.selectOne(any(), eq(false))).thenReturn(null);
         when(loginRecordMapper.update(isNull(), any())).thenThrow(new RuntimeException("DB 故障"));
 
         assertDoesNotThrow(() -> authSessionService.revokeOnLogout(123L, "jti-at"));
@@ -207,13 +207,13 @@ class AuthSessionServiceTest {
         record.setJtiRt("rotated-jti-rt");
         record.setStatus("ACTIVE");
         record.setExpiresAt(rtExpiresAt);
-        when(loginRecordMapper.selectOne(any())).thenReturn(record);
+        when(loginRecordMapper.selectOne(any(), eq(false))).thenReturn(record);
 
         authSessionService.revokeOnLogout(123L, "old-jti-at");
 
         // 定位条件必须按 userId + ACTIVE（而非 jti_at），保证旋转后的 RT 入黑名单
         ArgumentCaptor<LambdaQueryWrapper> queryCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
-        verify(loginRecordMapper).selectOne(queryCaptor.capture());
+        verify(loginRecordMapper).selectOne(queryCaptor.capture(), eq(false));
         String sqlSegment = queryCaptor.getValue().getCustomSqlSegment();
         assertFalse(sqlSegment.contains("jti_at"), "定位条件不得包含 jti_at（可变字段）");
         assertTrue(sqlSegment.contains("user_id"), "定位条件应包含 user_id");

@@ -1,7 +1,7 @@
 package com.commerce.rag.service;
 
-import com.commerce.rag.controller.vo.DocumentVO;
 import com.commerce.rag.entity.Document;
+import com.commerce.rag.vo.DocumentVO;
 import org.mapstruct.Mapper;
 
 /**

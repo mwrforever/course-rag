@@ -2,6 +2,7 @@ package com.commerce.rag.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -125,24 +126,24 @@ class CourseQueryServiceTest {
     void findNextSchedule_miss_queriesAndCaches() {
         CourseSchedule schedule = new CourseSchedule();
         schedule.setId(1L);
-        when(courseScheduleMapper.selectOne(any())).thenReturn(schedule);
+        when(courseScheduleMapper.selectOne(any(), eq(false))).thenReturn(schedule);
 
         var first = service.findNextSchedule("1");
         var second = service.findNextSchedule("1");
 
         assertThat(first).isSameAs(schedule);
         assertThat(second).isSameAs(schedule);
-        verify(courseScheduleMapper, times(1)).selectOne(any());
+        verify(courseScheduleMapper, times(1)).selectOne(any(), eq(false));
     }
 
     @Test
     @DisplayName("findNextSchedule 无可用排期 → 不缓存 null，再次调用仍查库")
     void findNextSchedule_noSchedule_notCached() {
-        when(courseScheduleMapper.selectOne(any())).thenReturn(null);
+        when(courseScheduleMapper.selectOne(any(), eq(false))).thenReturn(null);
 
         assertThat(service.findNextSchedule("1")).isNull();
         assertThat(service.findNextSchedule("1")).isNull();
-        verify(courseScheduleMapper, times(2)).selectOne(any());
+        verify(courseScheduleMapper, times(2)).selectOne(any(), eq(false));
     }
 
     @Test

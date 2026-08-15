@@ -1,4 +1,4 @@
-package com.commerce.rag.controller.vo;
+package com.commerce.rag.vo;
 
 /**
  * 资料分片简略视图对象 —— controller 出参（C 端接口 J3 通用资料库 / J4 分片上下文关联分片）

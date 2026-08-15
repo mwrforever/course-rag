@@ -2,11 +2,11 @@ package com.commerce.rag.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.commerce.rag.controller.vo.ChatMessageVO;
-import com.commerce.rag.controller.vo.ChatSessionDetailVO;
-import com.commerce.rag.controller.vo.ChatSessionVO;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatSession;
+import com.commerce.rag.vo.ChatMessageVO;
+import com.commerce.rag.vo.ChatSessionDetailVO;
+import com.commerce.rag.vo.ChatSessionVO;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;

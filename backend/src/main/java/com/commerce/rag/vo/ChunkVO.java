@@ -1,4 +1,4 @@
-package com.commerce.rag.controller.vo;
+package com.commerce.rag.vo;
 
 /**
  * 资料分片视图对象 —— controller 出参（C 端接口 J2 课程专属资料）

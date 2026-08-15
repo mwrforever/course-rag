@@ -1,7 +1,7 @@
 package com.commerce.rag.service;
 
-import com.commerce.rag.controller.vo.DocumentChunkVO;
 import com.commerce.rag.entity.DocumentChunk;
+import com.commerce.rag.vo.DocumentChunkVO;
 import org.mapstruct.Mapper;
 
 /**

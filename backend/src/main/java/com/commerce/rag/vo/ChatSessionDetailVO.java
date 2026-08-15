@@ -1,4 +1,4 @@
-package com.commerce.rag.controller.vo;
+package com.commerce.rag.vo;
 
 import java.time.LocalDateTime;
 import java.util.List;

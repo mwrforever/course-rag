@@ -145,17 +145,19 @@ public class CourseQueryService {
             return cached;
         }
         log.info("查询下一期排期: courseId={}", courseId);
-        CourseSchedule result = courseScheduleMapper.selectOne(Wrappers.<CourseSchedule>lambdaQuery()
-                .select(
-                        CourseSchedule::getId, CourseSchedule::getCourseId,
-                        CourseSchedule::getStartDate, CourseSchedule::getEndDate,
-                        CourseSchedule::getScheduleType, CourseSchedule::getLocation,
-                        CourseSchedule::getInstructorName, CourseSchedule::getCapacity,
-                        CourseSchedule::getEnrolled, CourseSchedule::getStatus)
-                .eq(CourseSchedule::getCourseId, Long.parseLong(courseId))
-                .ge(CourseSchedule::getStartDate, LocalDate.now())
-                .orderByAsc(CourseSchedule::getStartDate)
-                .last("LIMIT 1"));
+        // selectOne(throwEx=false)：按 startDate 升序取结果集第一条 = 最近一期（不拼 SQL 片段）
+        CourseSchedule result = courseScheduleMapper.selectOne(
+                Wrappers.<CourseSchedule>lambdaQuery()
+                        .select(
+                                CourseSchedule::getId, CourseSchedule::getCourseId,
+                                CourseSchedule::getStartDate, CourseSchedule::getEndDate,
+                                CourseSchedule::getScheduleType, CourseSchedule::getLocation,
+                                CourseSchedule::getInstructorName, CourseSchedule::getCapacity,
+                                CourseSchedule::getEnrolled, CourseSchedule::getStatus)
+                        .eq(CourseSchedule::getCourseId, Long.parseLong(courseId))
+                        .ge(CourseSchedule::getStartDate, LocalDate.now())
+                        .orderByAsc(CourseSchedule::getStartDate),
+                false);
         if (result != null) {
             // Caffeine 禁止缓存 null 值：无可用排期时不写入，保持"无排期返回 null"语义
             courseQueryCache.put(key, result);
