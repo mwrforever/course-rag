@@ -14,6 +14,7 @@ import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryRewriter;
 import com.commerce.rag.bot.tool.CourseApiTool;
 import com.commerce.rag.bot.tool.SearchKnowledgeTool;
+import com.commerce.rag.config.GraphConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -90,7 +91,7 @@ class LeadAgentGraphTest {
                 compileConfig,
                 15);
 
-        CompiledGraph compiled = graph.leadAgent();
+        CompiledGraph compiled = graph.build();
 
         assertNotNull(compiled);
     }
@@ -114,6 +115,6 @@ class LeadAgentGraphTest {
                 compileConfig,
                 5);
 
-        assertNotNull(graph.leadAgent());
+        assertNotNull(graph.build());
     }
 }

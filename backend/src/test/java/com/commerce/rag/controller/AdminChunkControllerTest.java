@@ -12,7 +12,8 @@ import com.commerce.rag.controller.dto.BatchCorrectedRequest;
 import com.commerce.rag.controller.dto.ChunkCollectionTypeRequest;
 import com.commerce.rag.controller.dto.ChunkContentUpdateRequest;
 import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.service.DocumentChunkService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.service.IDocumentChunkService;
 import com.commerce.rag.vo.DocumentChunkVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
@@ -28,7 +29,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * AdminChunkController 单元测试 —— 分片管理端点 D1-D9（含契约断言）
@@ -42,7 +42,7 @@ import org.springframework.web.server.ResponseStatusException;
 class AdminChunkControllerTest {
 
     @Mock
-    private DocumentChunkService chunkService;
+    private IDocumentChunkService chunkService;
 
     private AdminChunkController controller;
 
@@ -138,11 +138,10 @@ class AdminChunkControllerTest {
     void findById_notFound_throws404() {
         when(chunkService.findById(99L, 1L, "SUPER_ADMIN")).thenReturn(null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.findById(request("SUPER_ADMIN", 1L), 99L));
+        BizException ex = assertThrows(BizException.class, () -> controller.findById(request("SUPER_ADMIN", 1L), 99L));
 
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
-        assertEquals("分片不存在", ex.getReason());
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
+        assertEquals("分片不存在", ex.getMessage());
     }
 
     @Test

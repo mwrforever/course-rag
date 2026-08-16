@@ -2,9 +2,9 @@ package com.commerce.rag.auth;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.commerce.rag.config.AuthProperties;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.mapper.SysLoginRecordMapper;
+import com.commerce.rag.properties.AuthProperties;
 import java.time.LocalDateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

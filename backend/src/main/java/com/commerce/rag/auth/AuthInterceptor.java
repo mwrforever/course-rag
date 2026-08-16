@@ -1,6 +1,6 @@
 package com.commerce.rag.auth;
 
-import com.commerce.rag.config.AuthProperties;
+import com.commerce.rag.properties.AuthProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.Cookie;

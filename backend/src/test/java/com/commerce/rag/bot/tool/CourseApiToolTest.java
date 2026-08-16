@@ -11,7 +11,7 @@ import com.commerce.rag.bot.tool.dto.EnrollmentResult;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;
-import com.commerce.rag.service.CourseQueryService;
+import com.commerce.rag.service.ICourseQueryService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collections;
@@ -24,7 +24,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * CourseApiTool 单元测试 —— Mock CourseQueryService，验证 DTO 映射逻辑
+ * CourseApiTool 单元测试 —— Mock ICourseQueryService，验证 DTO 映射逻辑
  *
  * @author commerce-rag
  */
@@ -32,7 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class CourseApiToolTest {
 
     @Mock
-    private CourseQueryService courseQueryService;
+    private ICourseQueryService courseQueryService;
 
     @InjectMocks
     private CourseApiTool tool;

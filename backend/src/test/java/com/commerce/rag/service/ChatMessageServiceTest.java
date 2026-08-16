@@ -6,23 +6,24 @@ import static org.mockito.Mockito.*;
 
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.mapper.ChatMessageMapper;
+import com.commerce.rag.service.impl.ChatMessageServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * ChatMessageService 单元测试 —— 消息批量持久化与查询
+ * IChatMessageService 单元测试 —— 消息批量持久化与查询
  *
  * @author commerce-rag
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("ChatMessageService 消息服务测试")
+@DisplayName("IChatMessageService 消息服务测试")
 class ChatMessageServiceTest {
 
     @BeforeAll
@@ -33,32 +34,36 @@ class ChatMessageServiceTest {
     @Mock
     private ChatMessageMapper messageMapper;
 
-    @InjectMocks
-    private ChatMessageService messageService;
+    /** 被测实现（spy：saveBatch 为 MP 框架方法，mock 环境无 SqlSessionFactory，stub 后验证调用） */
+    private ChatMessageServiceImpl messageService;
 
-    @Test
-    @DisplayName("batchInsert → 空列表直接返回，不触碰 mapper")
-    void batchInsert_empty_returnsEarly() {
-        messageService.batchInsert(List.of());
-
-        verify(messageMapper, never()).batchInsert(anyList());
+    @BeforeEach
+    void setUp() {
+        messageService = spy(new ChatMessageServiceImpl(messageMapper));
     }
 
     @Test
-    @DisplayName("batchInsert → 为无 ID 消息分配雪花 ID、sourcesJson 兜底为 [] 后批量插入")
-    void batchInsert_fillsIdAndSourcesJson() {
+    @DisplayName("batchInsert → 空列表直接返回，不触发 saveBatch")
+    void batchInsert_empty_returnsEarly() {
+        messageService.batchInsert(List.of());
+
+        verify(messageService, never()).saveBatch(anyList());
+    }
+
+    @Test
+    @DisplayName("batchInsert → sourcesJson 兜底为 [] 后调用 saveBatch（ID 由 MP ASSIGN_ID 自动填充）")
+    void batchInsert_fillsSourcesJsonAndCallsSaveBatch() {
         ChatMessage msg1 = new ChatMessage();
         msg1.setSourcesJson("[{\"doc\":1}]");
         ChatMessage msg2 = new ChatMessage();
-        // 无 ID、无 sourcesJson —— 触发兜底逻辑
+        // 无 sourcesJson —— 触发兜底逻辑
+        doReturn(true).when(messageService).saveBatch(anyList());
 
         messageService.batchInsert(List.of(msg1, msg2));
 
-        assertNotNull(msg1.getId());
-        assertNotNull(msg2.getId());
         assertEquals("[{\"doc\":1}]", msg1.getSourcesJson());
         assertEquals("[]", msg2.getSourcesJson());
-        verify(messageMapper).batchInsert(List.of(msg1, msg2));
+        verify(messageService).saveBatch(List.of(msg1, msg2));
     }
 
     @Test

@@ -4,13 +4,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.commerce.rag.convert.EnrollmentConverter;
+import com.commerce.rag.convert.EnrollmentConverterImpl;
 import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.SysUser;
+import com.commerce.rag.exception.BizException;
 import com.commerce.rag.mapper.CourseEnrollmentMapper;
 import com.commerce.rag.mapper.SysUserMapper;
+import com.commerce.rag.service.impl.EnrollmentServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -23,15 +27,14 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
- * EnrollmentService 单元测试 —— 选课管理（列表/批量添加/移除/学生课程/选课校验）
+ * IEnrollmentService 单元测试 —— 选课管理（列表/批量添加/移除/学生课程/选课校验）
  *
  * @author commerce-rag
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("EnrollmentService 选课管理测试")
+@DisplayName("IEnrollmentService 选课管理测试")
 class EnrollmentServiceTest {
 
     @BeforeAll
@@ -43,7 +46,7 @@ class EnrollmentServiceTest {
     private CourseEnrollmentMapper enrollmentMapper;
 
     @Mock
-    private CourseService courseService;
+    private ICourseService courseService;
 
     @Mock
     private SysUserMapper sysUserMapper;
@@ -52,7 +55,7 @@ class EnrollmentServiceTest {
     private EnrollmentConverter enrollmentConverter = new EnrollmentConverterImpl();
 
     @InjectMocks
-    private EnrollmentService enrollmentService;
+    private EnrollmentServiceImpl enrollmentService;
 
     private CourseEnrollment enrollment(Long courseId, Long studentId, String status) {
         CourseEnrollment e = new CourseEnrollment();
@@ -146,10 +149,9 @@ class EnrollmentServiceTest {
     void removeStudent_noRow_throws404() {
         when(enrollmentMapper.update(isNull(), any())).thenReturn(0);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> enrollmentService.removeStudent(1L, 5L, 1L, true));
+        BizException ex = assertThrows(BizException.class, () -> enrollmentService.removeStudent(1L, 5L, 1L, true));
 
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
     }
 
     // ==================== findStudentCourses ====================

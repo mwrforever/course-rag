@@ -8,7 +8,7 @@ package com.commerce.rag.bot.graph;
  * 声明所有 State Key 及其对应的 KeyStrategy。
  *
  * <p>实际运行时仍使用框架的 {@code OverAllState} 实例，KeyStrategyFactory 在
- * {@link com.commerce.rag.bot.graph.GraphConfig} 中以 {@code @Bean} 注册。
+ * {@link com.commerce.rag.config.GraphConfig} 中以 {@code @Bean} 注册。
  *
  * <h2>State Key 定义</h2>
  * <table border="1">
@@ -20,7 +20,7 @@ package com.commerce.rag.bot.graph;
  * </table>
  *
  * @author commerce-rag
- * @see com.commerce.rag.bot.graph.GraphConfig
+ * @see com.commerce.rag.config.GraphConfig
  */
 public interface OverAllState {
 

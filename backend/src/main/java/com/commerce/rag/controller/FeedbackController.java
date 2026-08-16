@@ -3,9 +3,9 @@ package com.commerce.rag.controller;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.FeedbackRequest;
+import com.commerce.rag.convert.UserFeedbackConverter;
 import com.commerce.rag.entity.UserFeedback;
-import com.commerce.rag.service.UserFeedbackConverter;
-import com.commerce.rag.service.UserFeedbackService;
+import com.commerce.rag.service.IUserFeedbackService;
 import com.commerce.rag.vo.UserFeedbackVO;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -32,10 +32,10 @@ public class FeedbackController {
 
     private static final Logger log = LoggerFactory.getLogger(FeedbackController.class);
 
-    private final UserFeedbackService feedbackService;
+    private final IUserFeedbackService feedbackService;
     private final UserFeedbackConverter converter;
 
-    public FeedbackController(UserFeedbackService feedbackService, UserFeedbackConverter converter) {
+    public FeedbackController(IUserFeedbackService feedbackService, UserFeedbackConverter converter) {
         this.feedbackService = feedbackService;
         this.converter = converter;
     }

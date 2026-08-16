@@ -7,14 +7,15 @@ import static org.mockito.Mockito.*;
 import com.commerce.rag.auth.AuthSessionService;
 import com.commerce.rag.auth.DeviceKickService;
 import com.commerce.rag.auth.TokenService;
-import com.commerce.rag.config.AuthProperties;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.LoginRequest;
 import com.commerce.rag.controller.dto.LoginResponse;
 import com.commerce.rag.controller.dto.RefreshRequest;
 import com.commerce.rag.dto.UserDTO;
-import com.commerce.rag.service.AuthUserView;
-import com.commerce.rag.service.SysUserService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.properties.AuthProperties;
+import com.commerce.rag.record.AuthUserView;
+import com.commerce.rag.service.ISysUserService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.Cookie;
@@ -31,7 +32,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * AuthController 单元测试 —— 登录/刷新/登出端点
@@ -43,7 +43,7 @@ import org.springframework.web.server.ResponseStatusException;
 class AuthControllerTest {
 
     @Mock
-    private SysUserService sysUserService;
+    private ISysUserService sysUserService;
 
     @Mock
     private TokenService tokenService;
@@ -121,10 +121,10 @@ class AuthControllerTest {
     void login_userNotFound_throws401() {
         when(sysUserService.findAuthViewByUsername("unknown")).thenReturn(null);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
+        BizException ex = assertThrows(
+                BizException.class,
                 () -> authController.login(new LoginRequest("unknown", "password", null), httpRequest, httpResponse));
-        assertEquals(401, ex.getStatusCode().value());
+        assertEquals(401, ex.getCode());
     }
 
     @Test
@@ -135,10 +135,10 @@ class AuthControllerTest {
         when(sysUserService.findAuthViewByUsername("testuser")).thenReturn(user);
         when(passwordEncoder.matches("wrongpass", "hashed-pass")).thenReturn(false);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
+        BizException ex = assertThrows(
+                BizException.class,
                 () -> authController.login(new LoginRequest("testuser", "wrongpass", null), httpRequest, httpResponse));
-        assertEquals(401, ex.getStatusCode().value());
+        assertEquals(401, ex.getCode());
     }
 
     @Test
@@ -149,10 +149,10 @@ class AuthControllerTest {
         when(sysUserService.findAuthViewByUsername("testuser")).thenReturn(user);
         when(passwordEncoder.matches("password", "hashed-pass")).thenReturn(true);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
+        BizException ex = assertThrows(
+                BizException.class,
                 () -> authController.login(new LoginRequest("testuser", "password", null), httpRequest, httpResponse));
-        assertEquals(403, ex.getStatusCode().value());
+        assertEquals(403, ex.getCode());
     }
 
     // ==================== logout() 测试 ====================
@@ -271,11 +271,10 @@ class AuthControllerTest {
         // 原子标记返回 false（RT 已被使用）
         when(deviceKickService.markRefreshTokenUsedAtomic("old-jti-rt")).thenReturn(false);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
-                () -> authController.refresh(new RefreshRequest("reused-rt"), httpResponse));
+        BizException ex = assertThrows(
+                BizException.class, () -> authController.refresh(new RefreshRequest("reused-rt"), httpResponse));
 
-        assertEquals(401, ex.getStatusCode().value());
+        assertEquals(401, ex.getCode());
         // RT 复用 → 全量作废该用户所有 Token
         verify(deviceKickService).disableUser(1L, 1L);
         // 短路：黑名单检查不再执行、未生成新 Token

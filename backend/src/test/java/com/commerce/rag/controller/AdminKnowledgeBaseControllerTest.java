@@ -9,7 +9,8 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.KnowledgeBaseRequest;
 import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.service.KnowledgeBaseService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.service.IKnowledgeBaseService;
 import com.commerce.rag.vo.KnowledgeBaseVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
@@ -21,7 +22,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * AdminKnowledgeBaseController 单元测试 —— 知识库管理端点 B1-B5
@@ -33,7 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
 class AdminKnowledgeBaseControllerTest {
 
     @Mock
-    private KnowledgeBaseService knowledgeBaseService;
+    private IKnowledgeBaseService knowledgeBaseService;
 
     private AdminKnowledgeBaseController controller;
 
@@ -72,11 +72,10 @@ class AdminKnowledgeBaseControllerTest {
     void findById_notFound_throws404() {
         when(knowledgeBaseService.findById(99L, 7L, "TEACHER")).thenReturn(null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.findById(request("TEACHER", 7L), 99L));
+        BizException ex = assertThrows(BizException.class, () -> controller.findById(request("TEACHER", 7L), 99L));
 
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
-        assertEquals("知识库不存在", ex.getReason());
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
+        assertEquals("知识库不存在", ex.getMessage());
     }
 
     @Test

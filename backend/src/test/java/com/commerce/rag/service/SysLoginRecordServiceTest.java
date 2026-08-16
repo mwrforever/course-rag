@@ -9,8 +9,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.DeviceKickService;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysTokenBlacklist;
+import com.commerce.rag.exception.BizException;
 import com.commerce.rag.mapper.SysLoginRecordMapper;
 import com.commerce.rag.mapper.SysTokenBlacklistMapper;
+import com.commerce.rag.service.impl.SysLoginRecordServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -22,15 +24,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
- * SysLoginRecordService 单元测试 —— 登录记录 + Token 黑名单管理（K1-K7）
+ * ISysLoginRecordService 单元测试 —— 登录记录 + Token 黑名单管理（K1-K7）
  *
  * @author commerce-rag
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("SysLoginRecordService 登录记录与黑名单测试")
+@DisplayName("ISysLoginRecordService 登录记录与黑名单测试")
 class SysLoginRecordServiceTest {
 
     @BeforeAll
@@ -48,7 +49,7 @@ class SysLoginRecordServiceTest {
     private DeviceKickService deviceKickService;
 
     @InjectMocks
-    private SysLoginRecordService service;
+    private SysLoginRecordServiceImpl service;
 
     private SysLoginRecord activeRecord(Long id) {
         SysLoginRecord r = new SysLoginRecord();
@@ -101,9 +102,9 @@ class SysLoginRecordServiceTest {
     void findById_missing_throws404() {
         when(loginRecordMapper.selectById(99L)).thenReturn(null);
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> service.findById(99L));
+        BizException ex = assertThrows(BizException.class, () -> service.findById(99L));
 
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
     }
 
     @Test
@@ -124,9 +125,9 @@ class SysLoginRecordServiceTest {
     void revoke_missing_throws404() {
         when(loginRecordMapper.selectById(99L)).thenReturn(null);
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> service.revoke(99L, 9L));
+        BizException ex = assertThrows(BizException.class, () -> service.revoke(99L, 9L));
 
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
     }
 
     @Test
@@ -136,9 +137,9 @@ class SysLoginRecordServiceTest {
         revoked.setStatus("REVOKED");
         when(loginRecordMapper.selectById(1L)).thenReturn(revoked);
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> service.revoke(1L, 9L));
+        BizException ex = assertThrows(BizException.class, () -> service.revoke(1L, 9L));
 
-        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST.value(), ex.getCode());
         verify(deviceKickService, never()).addToBlacklist(any(), any(), any(), any(), any(), any());
     }
 
@@ -193,10 +194,9 @@ class SysLoginRecordServiceTest {
     void deleteFromBlacklist_missing_throws404() {
         when(tokenBlacklistMapper.selectById(99L)).thenReturn(null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> service.deleteFromBlacklist(99L));
+        BizException ex = assertThrows(BizException.class, () -> service.deleteFromBlacklist(99L));
 
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
     }
 
     @Test

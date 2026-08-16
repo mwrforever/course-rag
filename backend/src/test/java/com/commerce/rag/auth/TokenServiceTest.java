@@ -2,7 +2,7 @@ package com.commerce.rag.auth;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.commerce.rag.config.AuthProperties;
+import com.commerce.rag.properties.AuthProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;

@@ -4,13 +4,14 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.KnowledgeBaseRequest;
 import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.service.KnowledgeBaseService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
+import com.commerce.rag.service.IKnowledgeBaseService;
 import com.commerce.rag.vo.KnowledgeBaseVO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,7 +22,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 知识库管理 Controller（B1-B5）
@@ -38,9 +38,9 @@ public class AdminKnowledgeBaseController {
 
     private static final Logger log = LoggerFactory.getLogger(AdminKnowledgeBaseController.class);
 
-    private final KnowledgeBaseService knowledgeBaseService;
+    private final IKnowledgeBaseService knowledgeBaseService;
 
-    public AdminKnowledgeBaseController(KnowledgeBaseService knowledgeBaseService) {
+    public AdminKnowledgeBaseController(IKnowledgeBaseService knowledgeBaseService) {
         this.knowledgeBaseService = knowledgeBaseService;
     }
 
@@ -61,7 +61,7 @@ public class AdminKnowledgeBaseController {
         KnowledgeBaseVO kb = knowledgeBaseService.findById(id, userId, role);
         if (kb == null) {
             // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "知识库不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "知识库不存在");
         }
         return ApiResponse.ok(kb);
     }

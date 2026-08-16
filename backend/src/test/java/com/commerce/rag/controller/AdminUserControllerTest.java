@@ -8,7 +8,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.*;
 import com.commerce.rag.dto.*;
-import com.commerce.rag.service.SysUserService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.service.ISysUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * AdminUserController 单元测试 —— 用户管理 CRUD 端点
@@ -28,7 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 class AdminUserControllerTest {
 
     @Mock
-    private SysUserService sysUserService;
+    private ISysUserService sysUserService;
 
     @Mock
     private HttpServletRequest httpRequest;
@@ -65,17 +65,16 @@ class AdminUserControllerTest {
     }
 
     @Test
-    @DisplayName("get → 服务返回 null（不存在/无归属权）时抛 ResponseStatusException 404（P1-3 真实 HTTP 状态码）")
+    @DisplayName("get → 服务返回 null（不存在/无归属权）时抛 BizException 404（P1-3 真实 HTTP 状态码）")
     void get_serviceReturnsNull_throws404() {
         when(httpRequest.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(100L);
         when(httpRequest.getAttribute(AuthInterceptor.ATTR_ROLE)).thenReturn("TEACHER");
         when(sysUserService.findById(999L, 100L, "TEACHER")).thenReturn(null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.get(999L, httpRequest));
+        BizException ex = assertThrows(BizException.class, () -> controller.get(999L, httpRequest));
 
-        assertEquals(404, ex.getStatusCode().value());
-        assertEquals("用户不存在", ex.getReason());
+        assertEquals(404, ex.getCode());
+        assertEquals("用户不存在", ex.getMessage());
     }
 
     @Test

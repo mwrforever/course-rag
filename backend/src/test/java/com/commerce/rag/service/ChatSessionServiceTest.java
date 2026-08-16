@@ -10,6 +10,7 @@ import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.mapper.ChatMessageMapper;
 import com.commerce.rag.mapper.ChatRunMapper;
 import com.commerce.rag.mapper.ChatSessionMapper;
+import com.commerce.rag.service.impl.ChatSessionServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -20,12 +21,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * ChatSessionService 单元测试 —— 会话 CRUD 与级联删除
+ * IChatSessionService 单元测试 —— 会话 CRUD 与级联删除
  *
  * @author commerce-rag
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("ChatSessionService 会话管理测试")
+@DisplayName("IChatSessionService 会话管理测试")
 class ChatSessionServiceTest {
 
     @BeforeAll
@@ -43,7 +44,7 @@ class ChatSessionServiceTest {
     private ChatRunMapper runMapper;
 
     @InjectMocks
-    private ChatSessionService sessionService;
+    private ChatSessionServiceImpl sessionService;
 
     @Test
     @DisplayName("createSession → 插入 ACTIVE 会话并返回带 ID 实体")

@@ -1,6 +1,7 @@
 package com.commerce.rag.config;
 
-import com.commerce.rag.worker.WorkerProperties;
+import com.commerce.rag.properties.StreamProperties;
+import com.commerce.rag.properties.WorkerProperties;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;

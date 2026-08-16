@@ -8,11 +8,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.convert.ChatSessionConverter;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatSession;
-import com.commerce.rag.service.ChatMessageService;
-import com.commerce.rag.service.ChatSessionConverter;
-import com.commerce.rag.service.ChatSessionService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.service.IChatMessageService;
+import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.vo.ChatMessageVO;
 import com.commerce.rag.vo.ChatSessionDetailVO;
 import com.commerce.rag.vo.ChatSessionVO;
@@ -26,7 +27,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * AdminSessionController 单元测试 —— B 端会话管理端点 H1-H4
@@ -38,10 +38,10 @@ import org.springframework.web.server.ResponseStatusException;
 class AdminSessionControllerTest {
 
     @Mock
-    private ChatSessionService sessionService;
+    private IChatSessionService sessionService;
 
     @Mock
-    private ChatMessageService messageService;
+    private IChatMessageService messageService;
 
     @Mock
     private ChatSessionConverter converter;
@@ -119,10 +119,10 @@ class AdminSessionControllerTest {
     void detail_sessionNotFound_throws404() {
         when(sessionService.findById(99L)).thenReturn(null);
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> controller.detail(99L));
+        BizException ex = assertThrows(BizException.class, () -> controller.detail(99L));
 
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
-        assertEquals("会话不存在", ex.getReason());
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
+        assertEquals("会话不存在", ex.getMessage());
         verify(messageService, never()).findBySessionId(anyLong());
     }
 

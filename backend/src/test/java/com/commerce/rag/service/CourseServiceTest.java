@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.convert.CourseConverterImpl;
 import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.CreateCourseRequest;
 import com.commerce.rag.dto.UpdateCourseRequest;
@@ -13,12 +14,14 @@ import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;
 import com.commerce.rag.entity.CourseTeacher;
 import com.commerce.rag.etl.EtlPipeline;
+import com.commerce.rag.exception.BizException;
 import com.commerce.rag.mapper.CourseContentMapper;
 import com.commerce.rag.mapper.CourseEnrollmentMapper;
 import com.commerce.rag.mapper.CourseInfoMapper;
 import com.commerce.rag.mapper.CourseScheduleMapper;
 import com.commerce.rag.mapper.CourseTeacherMapper;
 import com.commerce.rag.mapper.DocumentChunkMapper;
+import com.commerce.rag.service.impl.CourseServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import java.math.BigDecimal;
 import java.util.List;
@@ -31,15 +34,14 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
- * CourseService 权限单元测试 —— 课程详情归属校验（P0-2g）
+ * ICourseService 权限单元测试 —— 课程详情归属校验（P0-2g）
  *
  * @author commerce-rag
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("CourseService 课程归属测试")
+@DisplayName("ICourseService 课程归属测试")
 class CourseServiceTest {
 
     @Mock
@@ -64,9 +66,9 @@ class CourseServiceTest {
     private EtlPipeline etlPipeline;
 
     @Mock
-    private CourseQueryService courseQueryService;
+    private ICourseQueryService courseQueryService;
 
-    private CourseService courseService;
+    private ICourseService courseService;
 
     @BeforeAll
     static void initMybatisPlus() {
@@ -77,7 +79,7 @@ class CourseServiceTest {
     @BeforeEach
     void setUp() {
         // 构造器注入（@RequiredArgsConstructor 按字段声明顺序生成全参构造器）
-        courseService = new CourseService(
+        courseService = new CourseServiceImpl(
                 courseInfoMapper,
                 courseContentMapper,
                 courseScheduleMapper,
@@ -356,10 +358,9 @@ class CourseServiceTest {
     void checkOwnership_notFound_throws404() {
         when(courseInfoMapper.selectById(99L)).thenReturn(null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> courseService.checkOwnership(99L, 7L, false));
+        BizException ex = assertThrows(BizException.class, () -> courseService.checkOwnership(99L, 7L, false));
 
-        assertEquals(404, ex.getStatusCode().value());
+        assertEquals(404, ex.getCode());
     }
 
     @Test
@@ -367,9 +368,8 @@ class CourseServiceTest {
     void checkOwnership_teacherOwnership() {
         when(courseInfoMapper.selectById(1L)).thenReturn(course(1L, 7L));
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> courseService.checkOwnership(1L, 8L, false));
-        assertEquals(403, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> courseService.checkOwnership(1L, 8L, false));
+        assertEquals(403, ex.getCode());
 
         assertDoesNotThrow(() -> courseService.checkOwnership(1L, 7L, false));
     }

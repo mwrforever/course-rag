@@ -5,10 +5,11 @@ import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
-import com.commerce.rag.config.StreamProperties;
 import com.commerce.rag.entity.ChatMessage;
-import com.commerce.rag.service.ChatMessageService;
-import com.commerce.rag.service.ChatRunService;
+import com.commerce.rag.exception.CancelledException;
+import com.commerce.rag.properties.StreamProperties;
+import com.commerce.rag.service.IChatMessageService;
+import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEvent;
 import com.commerce.rag.stream.SseEventTransformer;
@@ -75,8 +76,8 @@ public class ChatRequestWorker {
     private final BaseCheckpointSaver saver;
     private final SseEventTransformer transformer;
     private final MemoryStreamBridge bridge;
-    private final ChatRunService chatRunService;
-    private final ChatMessageService chatMessageService;
+    private final IChatRunService chatRunService;
+    private final IChatMessageService chatMessageService;
     private final StreamProperties streamProperties;
     private final ThreadPoolExecutor runPool;
     private final ObjectMapper objectMapper;
@@ -92,8 +93,8 @@ public class ChatRequestWorker {
             BaseCheckpointSaver saver,
             SseEventTransformer transformer,
             MemoryStreamBridge bridge,
-            ChatRunService chatRunService,
-            ChatMessageService chatMessageService,
+            IChatRunService chatRunService,
+            IChatMessageService chatMessageService,
             StreamProperties streamProperties,
             @Qualifier("runPool") ThreadPoolExecutor runPool,
             ObjectMapper objectMapper) {

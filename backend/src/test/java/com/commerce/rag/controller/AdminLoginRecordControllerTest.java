@@ -8,10 +8,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.convert.AdminLoginRecordConverter;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysTokenBlacklist;
-import com.commerce.rag.service.AdminLoginRecordConverter;
-import com.commerce.rag.service.SysLoginRecordService;
+import com.commerce.rag.service.ISysLoginRecordService;
 import com.commerce.rag.vo.SysLoginRecordVO;
 import com.commerce.rag.vo.SysTokenBlacklistVO;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,7 +36,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class AdminLoginRecordControllerTest {
 
     @Mock
-    private SysLoginRecordService sysLoginRecordService;
+    private ISysLoginRecordService sysLoginRecordService;
 
     @Mock
     private AdminLoginRecordConverter converter;

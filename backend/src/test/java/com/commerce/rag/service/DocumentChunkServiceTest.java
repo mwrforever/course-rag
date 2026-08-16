@@ -6,13 +6,17 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.convert.DocumentChunkConverter;
+import com.commerce.rag.convert.DocumentChunkConverterImpl;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.entity.KnowledgeBase;
 import com.commerce.rag.etl.EtlPipeline;
+import com.commerce.rag.exception.BizException;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
+import com.commerce.rag.service.impl.DocumentChunkServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
@@ -23,10 +27,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
- * DocumentChunkService 单元测试 —— Mock DocumentChunkMapper + EtlPipeline
+ * IDocumentChunkService 单元测试 —— Mock DocumentChunkMapper + EtlPipeline
  *
  * @author commerce-rag
  */
@@ -55,7 +58,7 @@ class DocumentChunkServiceTest {
     private DocumentChunkConverter chunkConverter = new DocumentChunkConverterImpl();
 
     @InjectMocks
-    private DocumentChunkService chunkService;
+    private DocumentChunkServiceImpl chunkService;
 
     @Test
     @DisplayName("updateContent 更新内容 — 验证重新向量化被调用")
@@ -195,10 +198,9 @@ class DocumentChunkServiceTest {
         kb.setCreatedBy(100L);
         when(knowledgeBaseMapper.selectById(7L)).thenReturn(kb);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
-                () -> chunkService.updateCollectionType(1L, "COURSE_INFO", "55", 200L, false));
-        assertEquals(403, ex.getStatusCode().value());
+        BizException ex = assertThrows(
+                BizException.class, () -> chunkService.updateCollectionType(1L, "COURSE_INFO", "55", 200L, false));
+        assertEquals(403, ex.getCode());
         verify(etlPipeline, never()).syncChunkToMilvus(any());
     }
 

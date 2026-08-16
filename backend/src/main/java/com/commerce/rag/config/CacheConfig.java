@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 /**
  * 本地缓存配置 —— 提供课程查询与 Dashboard 统计两个 Caffeine 缓存实例
  *
- * <p>课程查询缓存（perf P2-2）：CourseQueryService 查询结果，TTL 5 分钟，容量 512；
+ * <p>课程查询缓存（perf P2-2）：ICourseQueryService 查询结果，TTL 5 分钟，容量 512；
  * 失效钩子挂在课程/排期写方法（先写 DB 后失效，一致性铁律）。
  *
  * <p>Dashboard 统计缓存（perf P2-3）：三端点统计结果，TTL 60 秒兜底，

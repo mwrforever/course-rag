@@ -1,10 +1,10 @@
 package com.commerce.rag.auth;
 
-import com.commerce.rag.config.AuthProperties;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysTokenBlacklist;
 import com.commerce.rag.mapper.SysLoginRecordMapper;
 import com.commerce.rag.mapper.SysTokenBlacklistMapper;
+import com.commerce.rag.properties.AuthProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;

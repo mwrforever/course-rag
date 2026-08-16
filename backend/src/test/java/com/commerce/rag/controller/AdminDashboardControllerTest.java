@@ -3,7 +3,7 @@ package com.commerce.rag.controller;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.commerce.rag.service.DashboardService;
+import com.commerce.rag.service.IDashboardService;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,7 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 class AdminDashboardControllerTest {
 
     @Mock
-    private DashboardService dashboardService;
+    private IDashboardService dashboardService;
 
     private AdminDashboardController controller;
 

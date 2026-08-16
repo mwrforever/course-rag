@@ -7,12 +7,17 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.DeviceKickService;
+import com.commerce.rag.convert.SysUserConverter;
+import com.commerce.rag.convert.SysUserConverterImpl;
 import com.commerce.rag.dto.CreateUserRequest;
 import com.commerce.rag.dto.UpdateUserRequest;
 import com.commerce.rag.dto.UserDTO;
 import com.commerce.rag.entity.SysUser;
 import com.commerce.rag.enums.UserRole;
+import com.commerce.rag.exception.BizException;
 import com.commerce.rag.mapper.SysUserMapper;
+import com.commerce.rag.record.AuthUserView;
+import com.commerce.rag.service.impl.SysUserServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,15 +30,14 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
- * SysUserService 单元测试 —— 用户 CRUD + 权限校验
+ * ISysUserService 单元测试 —— 用户 CRUD + 权限校验
  *
  * @author commerce-rag
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("SysUserService 用户管理测试")
+@DisplayName("ISysUserService 用户管理测试")
 class SysUserServiceTest {
 
     @BeforeAll
@@ -55,7 +59,7 @@ class SysUserServiceTest {
     private SysUserConverter sysUserConverter = new SysUserConverterImpl();
 
     @InjectMocks
-    private SysUserService sysUserService;
+    private SysUserServiceImpl sysUserService;
 
     @BeforeEach
     void setUp() {
@@ -94,9 +98,8 @@ class SysUserServiceTest {
 
         CreateUserRequest request = new CreateUserRequest("existinguser", "password123", "已存在", "STUDENT");
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> sysUserService.create(request, 100L));
-        assertEquals(409, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> sysUserService.create(request, 100L));
+        assertEquals(409, ex.getCode());
     }
 
     @Test
@@ -108,9 +111,8 @@ class SysUserServiceTest {
 
         CreateUserRequest request = new CreateUserRequest("newadmin", "password123", "新超管", "SUPER_ADMIN");
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> sysUserService.create(request, 100L));
-        assertEquals(409, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> sysUserService.create(request, 100L));
+        assertEquals(409, ex.getCode());
     }
 
     // ==================== findById() 测试 ====================
@@ -138,8 +140,8 @@ class SysUserServiceTest {
     void findById_userNotExists_throws404() {
         when(userMapper.selectById(999L)).thenReturn(null);
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> sysUserService.findById(999L));
-        assertEquals(404, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> sysUserService.findById(999L));
+        assertEquals(404, ex.getCode());
     }
 
     // ==================== updateStatus() 测试 ====================
@@ -152,9 +154,8 @@ class SysUserServiceTest {
         superAdmin.setRole(UserRole.SUPER_ADMIN.name());
         when(userMapper.selectById(1L)).thenReturn(superAdmin);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> sysUserService.updateStatus(1L, "DISABLED", 100L));
-        assertEquals(403, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> sysUserService.updateStatus(1L, "DISABLED", 100L));
+        assertEquals(403, ex.getCode());
     }
 
     @Test
@@ -189,8 +190,8 @@ class SysUserServiceTest {
         superAdmin.setRole(UserRole.SUPER_ADMIN.name());
         when(userMapper.selectById(1L)).thenReturn(superAdmin);
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> sysUserService.delete(1L, 100L));
-        assertEquals(403, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> sysUserService.delete(1L, 100L));
+        assertEquals(403, ex.getCode());
     }
 
     @Test
@@ -249,7 +250,7 @@ class SysUserServiceTest {
         when(userMapper.selectById(100L)).thenReturn(teacher);
         CreateUserRequest req = new CreateUserRequest("stu1", "pass123", "学生一", "TEACHER");
 
-        assertThrows(ResponseStatusException.class, () -> sysUserService.create(req, 100L));
+        assertThrows(BizException.class, () -> sysUserService.create(req, 100L));
 
         CreateUserRequest stuReq = new CreateUserRequest("stu1", "pass123", "学生一", "STUDENT");
         assertDoesNotThrow(() -> sysUserService.create(stuReq, 100L));
@@ -272,7 +273,7 @@ class SysUserServiceTest {
         when(userMapper.selectById(100L)).thenReturn(operator);
         when(userMapper.selectById(2L)).thenReturn(target);
 
-        assertThrows(ResponseStatusException.class, () -> sysUserService.updateStatus(2L, "DISABLED", 100L));
+        assertThrows(BizException.class, () -> sysUserService.updateStatus(2L, "DISABLED", 100L));
     }
 
     @Test
@@ -319,9 +320,8 @@ class SysUserServiceTest {
         when(userMapper.selectById(2L)).thenReturn(target);
 
         // 非超管/教师角色一律拒绝，不得 fall-through 放行
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> sysUserService.updateStatus(2L, "DISABLED", 100L));
-        assertEquals(403, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> sysUserService.updateStatus(2L, "DISABLED", 100L));
+        assertEquals(403, ex.getCode());
     }
 
     // ==================== resetPassword() / delete() 补充 ====================
@@ -331,10 +331,9 @@ class SysUserServiceTest {
     void resetPassword_userNotFound_throws404() {
         when(userMapper.selectById(99L)).thenReturn(null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> sysUserService.resetPassword(99L, "newpass", 100L));
+        BizException ex = assertThrows(BizException.class, () -> sysUserService.resetPassword(99L, "newpass", 100L));
 
-        assertEquals(404, ex.getStatusCode().value());
+        assertEquals(404, ex.getCode());
         verify(userMapper, never()).update(any(), any());
     }
 
@@ -358,10 +357,9 @@ class SysUserServiceTest {
     void delete_userNotFound_throws404() {
         when(userMapper.selectById(99L)).thenReturn(null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> sysUserService.delete(99L, 100L));
+        BizException ex = assertThrows(BizException.class, () -> sysUserService.delete(99L, 100L));
 
-        assertEquals(404, ex.getStatusCode().value());
+        assertEquals(404, ex.getCode());
     }
 
     // ==================== findAuthViewByUsername ====================

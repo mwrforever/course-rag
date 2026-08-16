@@ -22,11 +22,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Component;
 
 /**
- * F#1 Agent 图编排器 —— Spring @Configuration Builder 类
+ * F#1 Agent 图编排器 —— 图构建业务组件
+ *
+ * <p>工程宪法「配置与注册规范」：业务逻辑类不迁入 config/，
+ * 本类以 {@code @Component} 注册，图实例（CompiledGraph）的 Bean 注册
+ * 统一由 {@link com.commerce.rag.config.GraphConfig#leadAgent} 完成。
  *
  * <p><b>编排拓扑：</b>
  * <pre>
@@ -52,7 +55,7 @@ import org.springframework.context.annotation.Configuration;
  * @author commerce-rag
  * @see com.commerce.rag.bot.IntentType
  */
-@Configuration
+@Component
 public class LeadAgentGraph {
 
     private static final Logger log = LoggerFactory.getLogger(LeadAgentGraph.class);
@@ -110,10 +113,9 @@ public class LeadAgentGraph {
     }
 
     /**
-     * 编译后的 Agent 图 —— 单例，所有请求复用
+     * 构建并编译 Agent 图 —— 单例，所有请求复用（注册由 config/GraphConfig 完成）
      */
-    @Bean
-    public CompiledGraph leadAgent() throws Exception {
+    public CompiledGraph build() throws Exception {
         // 1. 创建 StateGraph
         StateGraph stateGraph = new StateGraph(keyStrategyFactory);
 

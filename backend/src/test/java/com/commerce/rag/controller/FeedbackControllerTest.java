@@ -6,9 +6,9 @@ import static org.mockito.Mockito.*;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.FeedbackRequest;
+import com.commerce.rag.convert.UserFeedbackConverter;
 import com.commerce.rag.entity.UserFeedback;
-import com.commerce.rag.service.UserFeedbackConverter;
-import com.commerce.rag.service.UserFeedbackService;
+import com.commerce.rag.service.IUserFeedbackService;
 import com.commerce.rag.vo.UserFeedbackVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
@@ -31,7 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class FeedbackControllerTest {
 
     @Mock
-    private UserFeedbackService feedbackService;
+    private IUserFeedbackService feedbackService;
 
     @Mock
     private UserFeedbackConverter converter;

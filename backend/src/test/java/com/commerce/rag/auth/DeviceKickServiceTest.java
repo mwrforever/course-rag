@@ -4,11 +4,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import com.commerce.rag.config.AuthProperties;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysTokenBlacklist;
 import com.commerce.rag.mapper.SysLoginRecordMapper;
 import com.commerce.rag.mapper.SysTokenBlacklistMapper;
+import com.commerce.rag.properties.AuthProperties;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.TimeUnit;

@@ -9,12 +9,13 @@ import com.commerce.rag.controller.dto.UpdateStatusRequest;
 import com.commerce.rag.dto.CreateUserRequest;
 import com.commerce.rag.dto.UpdateUserRequest;
 import com.commerce.rag.dto.UserDTO;
-import com.commerce.rag.service.SysUserService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
+import com.commerce.rag.service.ISysUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,7 +27,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 用户管理 Controller —— CRUD A1-A7
@@ -42,9 +42,9 @@ public class AdminUserController {
 
     private static final Logger log = LoggerFactory.getLogger(AdminUserController.class);
 
-    private final SysUserService sysUserService;
+    private final ISysUserService sysUserService;
 
-    public AdminUserController(SysUserService sysUserService) {
+    public AdminUserController(ISysUserService sysUserService) {
         this.sysUserService = sysUserService;
     }
 
@@ -79,7 +79,7 @@ public class AdminUserController {
         UserDTO user = sysUserService.findById(id, currentUserId, operatorRole);
         if (user == null) {
             // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "用户不存在");
         }
         return ApiResponse.ok(user);
     }

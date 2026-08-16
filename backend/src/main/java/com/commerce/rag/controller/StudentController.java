@@ -5,13 +5,15 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.ChatRequest;
 import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.convert.StudentConverter;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.DocumentChunk;
-import com.commerce.rag.service.ChatSessionService;
-import com.commerce.rag.service.DocumentChunkService;
-import com.commerce.rag.service.EnrollmentService;
-import com.commerce.rag.service.StudentConverter;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
+import com.commerce.rag.service.IChatSessionService;
+import com.commerce.rag.service.IDocumentChunkService;
+import com.commerce.rag.service.IEnrollmentService;
 import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
@@ -22,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,7 +32,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -53,16 +53,16 @@ public class StudentController {
 
     private static final Logger log = LoggerFactory.getLogger(StudentController.class);
 
-    private final EnrollmentService enrollmentService;
-    private final ChatSessionService sessionService;
-    private final DocumentChunkService documentChunkService;
+    private final IEnrollmentService enrollmentService;
+    private final IChatSessionService sessionService;
+    private final IDocumentChunkService documentChunkService;
     private final ChatController chatController;
     private final StudentConverter converter;
 
     public StudentController(
-            EnrollmentService enrollmentService,
-            ChatSessionService sessionService,
-            DocumentChunkService documentChunkService,
+            IEnrollmentService enrollmentService,
+            IChatSessionService sessionService,
+            IDocumentChunkService documentChunkService,
             ChatController chatController,
             StudentConverter converter) {
         this.enrollmentService = enrollmentService;
@@ -95,9 +95,9 @@ public class StudentController {
         // 权限校验：学生必须已选此课程
         if (!enrollmentService.isEnrolled(id, userId)) {
             // P1-3: 内联错误双轨修复——统一走 ResponseStatusException（真实 HTTP 403）
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "未选此课程，无权查看资料");
+            throw new BizException(ErrorCode.FORBIDDEN, "未选此课程，无权查看资料");
         }
-        // 通过 DocumentChunkService 按 courseId 查询分片列表
+        // 通过 IDocumentChunkService 按 courseId 查询分片列表
         List<DocumentChunk> chunks = documentChunkService.findByCourseId(id);
         return ApiResponse.ok(chunks.stream().map(converter::toChunkVO).toList());
     }
@@ -110,7 +110,7 @@ public class StudentController {
     @GetMapping("/knowledge-bases")
     public ApiResponse<PageResponse<ChunkBriefVO>> knowledgeBase(
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
-        // 通过 DocumentChunkService 按 courseId='DEFAULT' 分页查询
+        // 通过 IDocumentChunkService 按 courseId='DEFAULT' 分页查询
         IPage<DocumentChunk> paged = documentChunkService.findByCourseIdDefault(page, size);
         List<ChunkBriefVO> result =
                 paged.getRecords().stream().map(converter::toChunkBriefVO).toList();
@@ -125,11 +125,11 @@ public class StudentController {
     @GetMapping("/chunks/{id}/context")
     public ApiResponse<ChunkContextVO> chunkContext(HttpServletRequest request, @PathVariable Long id) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
-        // 通过 DocumentChunkService 查询分片及上下文
+        // 通过 IDocumentChunkService 查询分片及上下文
         DocumentChunk chunk = documentChunkService.findById(id);
         if (chunk == null) {
             // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "分片不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "分片不存在");
         }
 
         // 权限校验：如果是课程专属 chunk，学生必须已选该课程
@@ -138,7 +138,7 @@ public class StudentController {
             Long courseIdLong = Long.parseLong(courseId);
             if (!enrollmentService.isEnrolled(courseIdLong, userId)) {
                 // P1-3: 内联错误双轨修复——统一走 ResponseStatusException（真实 HTTP 403）
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "未选此课程，无权查看资料");
+                throw new BizException(ErrorCode.FORBIDDEN, "未选此课程，无权查看资料");
             }
         }
 
@@ -154,7 +154,7 @@ public class StudentController {
 
     // ==================== J5: 提交反馈 ====================
     // J5 已移至 FeedbackController 独立处理（POST /api/v1/student/feedbacks）
-    // 使用 UserFeedbackService 而非 JdbcTemplate，遵循分层架构
+    // 使用 IUserFeedbackService 而非 JdbcTemplate，遵循分层架构
 
     // ==================== J6: 我的会话 ====================
 

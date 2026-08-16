@@ -9,6 +9,7 @@ import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.mapper.SysUserMapper;
 import com.commerce.rag.mapper.UserFeedbackMapper;
+import com.commerce.rag.service.impl.DashboardServiceImpl;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.time.LocalDate;
@@ -22,12 +23,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * DashboardService 单元测试 —— 统计口径（P2-2；2026-08-15 用户裁决：全局统计，不区分教师/超管视角）
+ * IDashboardService 单元测试 —— 统计口径（P2-2；2026-08-15 用户裁决：全局统计，不区分教师/超管视角）
  *
  * @author commerce-rag
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("DashboardService 统计测试")
+@DisplayName("IDashboardService 统计测试")
 class DashboardServiceTest {
 
     @Mock
@@ -45,7 +46,7 @@ class DashboardServiceTest {
     @Mock
     private SysUserMapper sysUserMapper;
 
-    private DashboardService service;
+    private IDashboardService service;
 
     /** Dashboard 统计缓存（真实 Caffeine 实例；JUnit 每测试方法新实例，缓存互不串扰） */
     private final Cache<String, Object> dashboardStatsCache =
@@ -54,7 +55,7 @@ class DashboardServiceTest {
     @BeforeEach
     void setUp() {
         // @RequiredArgsConstructor 生成全参构造器，直接构造注入 mock + 真实缓存
-        service = new DashboardService(
+        service = new DashboardServiceImpl(
                 documentMapper, chunkMapper, knowledgeBaseMapper, feedbackMapper, sysUserMapper, dashboardStatsCache);
     }
 

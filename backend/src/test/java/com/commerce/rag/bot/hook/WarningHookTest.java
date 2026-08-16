@@ -5,8 +5,8 @@ import static org.mockito.Mockito.*;
 
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.agent.hook.messages.AgentCommand;
-import com.commerce.rag.config.LoopDetectionProperties;
-import com.commerce.rag.config.TokenBudgetProperties;
+import com.commerce.rag.properties.LoopDetectionProperties;
+import com.commerce.rag.properties.TokenBudgetProperties;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;

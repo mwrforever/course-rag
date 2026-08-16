@@ -1,8 +1,10 @@
 package com.commerce.rag.controller;
 
 import com.commerce.rag.controller.dto.ApiResponse;
+import com.commerce.rag.exception.BizException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -13,16 +15,16 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 全局异常处理器 —— 统一捕获异常并包装成 ApiResponse
  *
  * <p>处理策略（§七 异常处理）：
  * <ul>
- *   <li>ResponseStatusException → 对应 HttpStatus 码</li>
+ *   <li>BizException → 错误码对应的 HttpStatus（业务错误一律走此通道）</li>
  *   <li>IllegalArgumentException → 400</li>
  *   <li>SecurityException → 403</li>
+ *   <li>DataAccessException → 503</li>
  *   <li>Exception → 500</li>
  * </ul>
  * 所有响应统一包成 {@link ApiResponse#fail(int, String)}。
@@ -35,14 +37,24 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
-     * 处理 ResponseStatusException —— 使用异常中指定的 HTTP 状态码
-     * （P2-3：真实 HTTP 状态码，原实现 HTTP 恒 200 的双轨问题）
+     * 处理 BizException —— 使用错误码对应的 HTTP 状态码
+     * （code 与 HTTP 状态同值，保持 ApiResponse.code 前端契约）
      */
-    @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<ApiResponse<Void>> handleResponseStatusException(ResponseStatusException e) {
-        int code = e.getStatusCode().value();
-        log.warn("业务异常: status={}, reason={}", code, e.getReason());
-        return ResponseEntity.status(e.getStatusCode()).body(ApiResponse.fail(code, e.getReason()));
+    @ExceptionHandler(BizException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBizException(BizException e) {
+        int code = e.getCode();
+        log.warn("业务异常: status={}, message={}", code, e.getMessage());
+        return ResponseEntity.status(e.getErrorCode().getHttpStatus()).body(ApiResponse.fail(code, e.getMessage()));
+    }
+
+    /**
+     * 处理 DataAccessException —— 数据库访问异常，返回 503
+     */
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    @ExceptionHandler(DataAccessException.class)
+    public ApiResponse<Void> handleDataAccess(DataAccessException e) {
+        log.error("数据库访问异常", e);
+        return ApiResponse.fail(HttpStatus.SERVICE_UNAVAILABLE.value(), "数据库暂时不可用，请稍后重试");
     }
 
     /**

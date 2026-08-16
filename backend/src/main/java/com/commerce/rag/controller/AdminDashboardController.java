@@ -1,7 +1,7 @@
 package com.commerce.rag.controller;
 
 import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.service.DashboardService;
+import com.commerce.rag.service.IDashboardService;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class AdminDashboardController {
 
-    private final DashboardService dashboardService;
+    private final IDashboardService dashboardService;
 
     /** Dashboard KPI：文档数 + 待修正分片数 + 知识库数（前端文档 :783；全局口径） */
     @GetMapping("/dashboard/stats")

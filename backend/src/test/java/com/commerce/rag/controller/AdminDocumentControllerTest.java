@@ -9,8 +9,9 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.DocumentUpdateRequest;
 import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.etl.EtlProperties;
-import com.commerce.rag.service.DocumentService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.properties.EtlProperties;
+import com.commerce.rag.service.IDocumentService;
 import com.commerce.rag.vo.DocumentVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.ByteArrayInputStream;
@@ -24,7 +25,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * AdminDocumentController 单元测试 —— 上传白名单与大小校验（P2-1）
@@ -36,7 +36,7 @@ import org.springframework.web.server.ResponseStatusException;
 class AdminDocumentControllerTest {
 
     @Mock
-    private DocumentService documentService;
+    private IDocumentService documentService;
 
     private AdminDocumentController controller;
 
@@ -59,9 +59,9 @@ class AdminDocumentControllerTest {
     void upload_invalidType_throws400() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "virus.exe", "application/octet-stream", new byte[10]);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class, () -> controller.upload(adminRequest(), 1L, "doc", null, file));
-        assertEquals(400, ex.getStatusCode().value());
+        BizException ex =
+                assertThrows(BizException.class, () -> controller.upload(adminRequest(), 1L, "doc", null, file));
+        assertEquals(400, ex.getCode());
         verify(documentService, never()).upload(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
     }
 
@@ -72,9 +72,9 @@ class AdminDocumentControllerTest {
         MockMultipartFile file =
                 new MockMultipartFile("file", "big.pdf", "application/pdf", new byte[100 * 1024 * 1024 + 1]);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class, () -> controller.upload(adminRequest(), 1L, "doc", null, file));
-        assertEquals(400, ex.getStatusCode().value());
+        BizException ex =
+                assertThrows(BizException.class, () -> controller.upload(adminRequest(), 1L, "doc", null, file));
+        assertEquals(400, ex.getCode());
         verify(documentService, never()).upload(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
     }
 
@@ -93,10 +93,10 @@ class AdminDocumentControllerTest {
     void upload_noExtension_throws400() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "noext", "application/octet-stream", new byte[10]);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class, () -> controller.upload(adminRequest(), 1L, "doc", null, file));
+        BizException ex =
+                assertThrows(BizException.class, () -> controller.upload(adminRequest(), 1L, "doc", null, file));
 
-        assertEquals(400, ex.getStatusCode().value());
+        assertEquals(400, ex.getCode());
     }
 
     @Test
@@ -115,11 +115,10 @@ class AdminDocumentControllerTest {
     void findById_notFound_throws404() {
         when(documentService.findById(99L, 1L, "SUPER_ADMIN")).thenReturn(null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.findById(adminRequest(), 99L));
+        BizException ex = assertThrows(BizException.class, () -> controller.findById(adminRequest(), 99L));
 
-        assertEquals(404, ex.getStatusCode().value());
-        assertEquals("文档不存在", ex.getReason());
+        assertEquals(404, ex.getCode());
+        assertEquals("文档不存在", ex.getMessage());
     }
 
     @Test
@@ -163,7 +162,7 @@ class AdminDocumentControllerTest {
     @DisplayName("C7 download → 返回带类型后缀文件名的 InputStreamResource")
     void download_returnsResourceWithFilename() {
         when(documentService.downloadWithType(1L, 1L, true))
-                .thenReturn(new DocumentService.DocumentDownload(new ByteArrayInputStream(new byte[0]), "pdf"));
+                .thenReturn(new IDocumentService.DocumentDownload(new ByteArrayInputStream(new byte[0]), "pdf"));
 
         Resource resource = controller.download(adminRequest(), 1L);
 

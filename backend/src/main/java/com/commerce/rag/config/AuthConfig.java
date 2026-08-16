@@ -1,6 +1,7 @@
 package com.commerce.rag.config;
 
 import com.commerce.rag.auth.AuthInterceptor;
+import com.commerce.rag.properties.AuthProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;

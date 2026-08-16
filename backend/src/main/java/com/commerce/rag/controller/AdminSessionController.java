@@ -4,16 +4,17 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.convert.ChatSessionConverter;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatSession;
-import com.commerce.rag.service.ChatMessageService;
-import com.commerce.rag.service.ChatSessionConverter;
-import com.commerce.rag.service.ChatSessionService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
+import com.commerce.rag.service.IChatMessageService;
+import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.vo.ChatSessionDetailVO;
 import com.commerce.rag.vo.ChatSessionVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,7 +23,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * B 端会话管理 Controller —— CRUD 端点 H1-H4
@@ -36,12 +36,12 @@ import org.springframework.web.server.ResponseStatusException;
 @PreAuthorize("hasRole('SUPER_ADMIN')")
 public class AdminSessionController {
 
-    private final ChatSessionService sessionService;
-    private final ChatMessageService messageService;
+    private final IChatSessionService sessionService;
+    private final IChatMessageService messageService;
     private final ChatSessionConverter converter;
 
     public AdminSessionController(
-            ChatSessionService sessionService, ChatMessageService messageService, ChatSessionConverter converter) {
+            IChatSessionService sessionService, IChatMessageService messageService, ChatSessionConverter converter) {
         this.sessionService = sessionService;
         this.messageService = messageService;
         this.converter = converter;
@@ -68,7 +68,7 @@ public class AdminSessionController {
         ChatSession session = sessionService.findById(id);
         if (session == null) {
             // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "会话不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "会话不存在");
         }
         List<ChatMessage> messages = messageService.findBySessionId(id);
         return ApiResponse.ok(converter.toDetailVO(session, messages));

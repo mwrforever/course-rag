@@ -3,7 +3,7 @@ package com.commerce.rag.controller;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.service.UserFeedbackService;
+import com.commerce.rag.service.IUserFeedbackService;
 import com.commerce.rag.vo.UserFeedbackVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
@@ -33,9 +33,9 @@ public class AdminFeedbackController {
 
     private static final Logger log = LoggerFactory.getLogger(AdminFeedbackController.class);
 
-    private final UserFeedbackService feedbackService;
+    private final IUserFeedbackService feedbackService;
 
-    public AdminFeedbackController(UserFeedbackService feedbackService) {
+    public AdminFeedbackController(IUserFeedbackService feedbackService) {
         this.feedbackService = feedbackService;
     }
 

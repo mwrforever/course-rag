@@ -1,15 +1,16 @@
 package com.commerce.rag.controller;
 
 import com.commerce.rag.auth.AuthInterceptor;
-import com.commerce.rag.config.StreamProperties;
 import com.commerce.rag.controller.dto.ChatRequest;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.entity.ChatSession;
-import com.commerce.rag.service.ChatMessageService;
-import com.commerce.rag.service.ChatRunService;
-import com.commerce.rag.service.ChatSessionService;
-import com.commerce.rag.service.ConcurrentRunException;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
+import com.commerce.rag.properties.StreamProperties;
+import com.commerce.rag.service.IChatMessageService;
+import com.commerce.rag.service.IChatRunService;
+import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEventType;
 import com.commerce.rag.worker.ChatRequestWorker;
@@ -28,12 +29,9 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,7 +39,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -79,9 +76,9 @@ public class ChatController {
 
     private final ChatRequestWorker worker;
     private final MemoryStreamBridge bridge;
-    private final ChatRunService chatRunService;
-    private final ChatSessionService chatSessionService;
-    private final ChatMessageService chatMessageService;
+    private final IChatRunService chatRunService;
+    private final IChatSessionService chatSessionService;
+    private final IChatMessageService chatMessageService;
     private final StringRedisTemplate redisTemplate;
     private final StreamProperties streamProperties;
     private final ObjectMapper objectMapper;
@@ -92,9 +89,9 @@ public class ChatController {
     public ChatController(
             ChatRequestWorker worker,
             MemoryStreamBridge bridge,
-            ChatRunService chatRunService,
-            ChatSessionService chatSessionService,
-            ChatMessageService chatMessageService,
+            IChatRunService chatRunService,
+            IChatSessionService chatSessionService,
+            IChatMessageService chatMessageService,
             StringRedisTemplate redisTemplate,
             StreamProperties streamProperties,
             ObjectMapper objectMapper) {
@@ -137,7 +134,7 @@ public class ChatController {
      * <ol>
      *   <li>从 AuthInterceptor 注入的 request attribute 获取 userId</li>
      *   <li>如果 sessionId 为 null → 创建新会话</li>
-     *   <li>chatRunService.createRun — 并发守卫（ConcurrentRunException → 409）</li>
+     *   <li>chatRunService.createRun — 并发守卫（ConcurrentRunException → 全局 409）</li>
      *   <li>创建 SseEmitter + bridge.createRing + bridge.subscribe（先订阅再入队，确保不丢事件）</li>
      *   <li>XADD 消息到 Redis Stream：{runId, sessionId, userId, query}</li>
      *   <li>启动心跳定时器（每 heartbeatInterval 秒发 heartbeat 事件）</li>
@@ -154,7 +151,7 @@ public class ChatController {
 
         // 0. 参数校验
         if (request.query() == null || request.query().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "query 不能为空");
+            throw new BizException(ErrorCode.BAD_REQUEST, "query 不能为空");
         }
 
         // 1. 会话处理（含归属校验：sessionId 非空时必须是当前用户的会话）
@@ -166,11 +163,11 @@ public class ChatController {
             // P0-3: sessionId 归属校验——传入他人会话 ID 直接拒绝
             ChatSession session = chatSessionService.findById(sessionId);
             if (session == null || !session.getUserId().equals(userId)) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权操作此会话");
+                throw new BizException(ErrorCode.FORBIDDEN, "无权操作此会话");
             }
         }
 
-        // 2. 创建 run（并发守卫 → ConcurrentRunException 由 @ExceptionHandler 处理）
+        // 2. 创建 run（并发守卫 → ConcurrentRunException 由全局异常处理器统一转 409）
         ChatRun run = chatRunService.createRun(sessionId, userId);
         String runId = run.getId().toString();
 
@@ -202,7 +199,7 @@ public class ChatController {
             } finally {
                 bridge.removeRing(runId);
             }
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "消息队列暂不可用，请稍后重试");
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "消息队列暂不可用，请稍后重试");
         }
 
         // 6. 心跳定时器
@@ -361,29 +358,6 @@ public class ChatController {
     }
 
     // ========================================================================
-    // Exception Handlers
-    // ========================================================================
-
-    /**
-     * 并发 Run 冲突 → 409 Conflict + JSON 错误体
-     */
-    @ExceptionHandler(ConcurrentRunException.class)
-    public ResponseEntity<Map<String, String>> handleConcurrentRun(ConcurrentRunException e) {
-        log.warn("并发 Run 冲突: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "CONFLICT", "message", "该会话已有正在进行的对话"));
-    }
-
-    /**
-     * 数据库访问异常 → 503 Service Unavailable
-     */
-    @ExceptionHandler(DataAccessException.class)
-    public ResponseEntity<Map<String, String>> handleDataAccess(DataAccessException e) {
-        log.error("数据库访问异常", e);
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(Map.of("error", "SERVICE_UNAVAILABLE", "message", "数据库暂时不可用，请稍后重试"));
-    }
-
-    // ========================================================================
     // 辅助方法
     // ========================================================================
 
@@ -518,11 +492,11 @@ public class ChatController {
         try {
             runIdLong = Long.parseLong(runId);
         } catch (NumberFormatException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Run 不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "Run 不存在");
         }
         ChatRun run = chatRunService.findById(runIdLong);
         if (run == null || !run.getUserId().equals(userId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Run 不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "Run 不存在");
         }
     }
 

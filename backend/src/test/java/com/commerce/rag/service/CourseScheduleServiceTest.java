@@ -7,7 +7,10 @@ import static org.mockito.Mockito.*;
 import com.commerce.rag.dto.CreateScheduleRequest;
 import com.commerce.rag.dto.UpdateScheduleRequest;
 import com.commerce.rag.entity.CourseSchedule;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.mapper.CourseScheduleMapper;
+import com.commerce.rag.service.impl.CourseScheduleServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import java.time.LocalDate;
 import org.junit.jupiter.api.BeforeAll;
@@ -17,30 +20,29 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
- * CourseScheduleService 单元测试 —— 排期 CRUD + 读端点归属校验（P0-4）
+ * ICourseScheduleService 单元测试 —— 排期 CRUD + 读端点归属校验（P0-4）
  *
  * <p>P0-4 修复：F1 列表/F3 详情读端点原先无任何归属校验（任意 TEACHER 可枚举他人课程排期），
- * 修复后 findById/findByCourseId 带权限的重载先经 CourseService.checkOwnership 校验。
+ * 修复后 findById/findByCourseId 带权限的重载先经 ICourseService.checkOwnership 校验。
  *
  * @author commerce-rag
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("CourseScheduleService 排期服务测试")
+@DisplayName("ICourseScheduleService 排期服务测试")
 class CourseScheduleServiceTest {
 
     @Mock
     private CourseScheduleMapper scheduleMapper;
 
     @Mock
-    private CourseService courseService;
+    private ICourseService courseService;
 
     @Mock
-    private CourseQueryService courseQueryService;
+    private ICourseQueryService courseQueryService;
 
-    private CourseScheduleService scheduleService;
+    private ICourseScheduleService scheduleService;
 
     @BeforeAll
     static void initMybatisPlus() {
@@ -51,7 +53,7 @@ class CourseScheduleServiceTest {
     @BeforeEach
     void setUp() {
         // 构造器注入（@RequiredArgsConstructor 按字段声明顺序生成全参构造器）
-        scheduleService = new CourseScheduleService(scheduleMapper, courseService, courseQueryService);
+        scheduleService = new CourseScheduleServiceImpl(scheduleMapper, courseService, courseQueryService);
     }
 
     @Test
@@ -62,13 +64,12 @@ class CourseScheduleServiceTest {
         schedule.setCourseId(55L);
         when(scheduleMapper.selectById(1L)).thenReturn(schedule);
         // 教师 100 非课程 55 创建者 → checkOwnership 抛 403
-        doThrow(new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN, "无权操作此课程"))
+        doThrow(new BizException(ErrorCode.FORBIDDEN, "无权操作此课程"))
                 .when(courseService)
                 .checkOwnership(55L, 100L, false);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> scheduleService.findById(1L, 100L, false));
-        assertEquals(403, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> scheduleService.findById(1L, 100L, false));
+        assertEquals(403, ex.getCode());
     }
 
     @Test
@@ -158,10 +159,9 @@ class CourseScheduleServiceTest {
         UpdateScheduleRequest request =
                 new UpdateScheduleRequest(LocalDate.of(2026, 9, 1), null, null, null, null, null, null, null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> scheduleService.update(99L, request, 100L, false));
+        BizException ex = assertThrows(BizException.class, () -> scheduleService.update(99L, request, 100L, false));
 
-        assertEquals(404, ex.getStatusCode().value());
+        assertEquals(404, ex.getCode());
     }
 
     @Test

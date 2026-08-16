@@ -9,13 +9,14 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.ChatRequest;
 import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.convert.StudentConverter;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.DocumentChunk;
-import com.commerce.rag.service.ChatSessionService;
-import com.commerce.rag.service.DocumentChunkService;
-import com.commerce.rag.service.EnrollmentService;
-import com.commerce.rag.service.StudentConverter;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.service.IChatSessionService;
+import com.commerce.rag.service.IDocumentChunkService;
+import com.commerce.rag.service.IEnrollmentService;
 import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
@@ -33,7 +34,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -49,13 +49,13 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 class StudentControllerTest {
 
     @Mock
-    private EnrollmentService enrollmentService;
+    private IEnrollmentService enrollmentService;
 
     @Mock
-    private ChatSessionService sessionService;
+    private IChatSessionService sessionService;
 
     @Mock
-    private DocumentChunkService documentChunkService;
+    private IDocumentChunkService documentChunkService;
 
     @Mock
     private ChatController chatController;
@@ -163,10 +163,9 @@ class StudentControllerTest {
     void courseMaterials_notEnrolled_throws403() {
         when(enrollmentService.isEnrolled(10L, 5L)).thenReturn(false);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.courseMaterials(studentRequest(5L), 10L));
+        BizException ex = assertThrows(BizException.class, () -> controller.courseMaterials(studentRequest(5L), 10L));
 
-        assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
+        assertEquals(HttpStatus.FORBIDDEN.value(), ex.getCode());
         verify(documentChunkService, never()).findByCourseId(anyLong());
     }
 
@@ -219,10 +218,9 @@ class StudentControllerTest {
     void chunkContext_notFound_throws404() {
         when(documentChunkService.findById(99L)).thenReturn(null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.chunkContext(studentRequest(5L), 99L));
+        BizException ex = assertThrows(BizException.class, () -> controller.chunkContext(studentRequest(5L), 99L));
 
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
     }
 
     @Test
@@ -231,10 +229,9 @@ class StudentControllerTest {
         when(documentChunkService.findById(1L)).thenReturn(chunk(1L, "10"));
         when(enrollmentService.isEnrolled(10L, 5L)).thenReturn(false);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.chunkContext(studentRequest(5L), 1L));
+        BizException ex = assertThrows(BizException.class, () -> controller.chunkContext(studentRequest(5L), 1L));
 
-        assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
+        assertEquals(HttpStatus.FORBIDDEN.value(), ex.getCode());
     }
 
     @Test

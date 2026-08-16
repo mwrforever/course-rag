@@ -6,12 +6,13 @@ import static org.mockito.Mockito.*;
 
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
+import com.commerce.rag.convert.ScheduleConverter;
 import com.commerce.rag.dto.CreateScheduleRequest;
 import com.commerce.rag.dto.ScheduleDTO;
 import com.commerce.rag.dto.UpdateScheduleRequest;
 import com.commerce.rag.entity.CourseSchedule;
-import com.commerce.rag.service.CourseScheduleService;
-import com.commerce.rag.service.ScheduleConverter;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.service.ICourseScheduleService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDate;
 import java.util.List;
@@ -22,7 +23,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * AdminScheduleController 单元测试 —— B 端排期管理端点 F1-F5
@@ -34,7 +34,7 @@ import org.springframework.web.server.ResponseStatusException;
 class AdminScheduleControllerTest {
 
     @Mock
-    private CourseScheduleService scheduleService;
+    private ICourseScheduleService scheduleService;
 
     @Mock
     private ScheduleConverter scheduleConverter;
@@ -126,11 +126,10 @@ class AdminScheduleControllerTest {
     void detail_notFound_throws404() {
         when(scheduleService.findById(99L, 7L, false)).thenReturn(null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.detail(request("TEACHER", 7L), 99L));
+        BizException ex = assertThrows(BizException.class, () -> controller.detail(request("TEACHER", 7L), 99L));
 
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
-        assertEquals("排期不存在", ex.getReason());
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
+        assertEquals("排期不存在", ex.getMessage());
     }
 
     @Test

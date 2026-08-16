@@ -15,6 +15,7 @@ import com.commerce.rag.entity.CourseSchedule;
 import com.commerce.rag.mapper.CourseContentMapper;
 import com.commerce.rag.mapper.CourseInfoMapper;
 import com.commerce.rag.mapper.CourseScheduleMapper;
+import com.commerce.rag.service.impl.CourseQueryServiceImpl;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.time.Duration;
@@ -26,9 +27,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** CourseQueryService 测试 —— 缓存行为 + DB 查询路径（mapper 注入后可直接单测） */
+/** ICourseQueryService 测试 —— 缓存行为 + DB 查询路径（mapper 注入后可直接单测） */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("CourseQueryService 缓存与查询测试")
+@DisplayName("ICourseQueryService 缓存与查询测试")
 class CourseQueryServiceTest {
 
     private final Cache<String, Object> courseQueryCache = Caffeine.newBuilder()
@@ -45,11 +46,12 @@ class CourseQueryServiceTest {
     @Mock
     private CourseScheduleMapper courseScheduleMapper;
 
-    private CourseQueryService service;
+    private ICourseQueryService service;
 
     @BeforeEach
     void setUp() {
-        service = new CourseQueryService(courseQueryCache, courseInfoMapper, courseContentMapper, courseScheduleMapper);
+        service = new CourseQueryServiceImpl(
+                courseQueryCache, courseInfoMapper, courseContentMapper, courseScheduleMapper);
     }
 
     @Test

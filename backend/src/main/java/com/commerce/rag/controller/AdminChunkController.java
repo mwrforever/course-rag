@@ -7,12 +7,13 @@ import com.commerce.rag.controller.dto.BatchCorrectedRequest;
 import com.commerce.rag.controller.dto.ChunkCollectionTypeRequest;
 import com.commerce.rag.controller.dto.ChunkContentUpdateRequest;
 import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.service.DocumentChunkService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
+import com.commerce.rag.service.IDocumentChunkService;
 import com.commerce.rag.vo.DocumentChunkVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,7 +25,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 分片管理 Controller（D1-D9）
@@ -32,7 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
  * <p>B 端管理接口，教师/超级管理员可操作。
  * 支持分片查看、内容修正、标量字段批量更新、上下文查询等。
  * TEACHER 只能操作自己创建的文档的分片（Service 层经 doc_id→document.created_by 校验）。
- * 依赖注入：Lombok @RequiredArgsConstructor 构造器注入（private final DocumentChunkService chunkService）。
+ * 依赖注入：Lombok @RequiredArgsConstructor 构造器注入（private final IDocumentChunkService chunkService）。
  *
  * @author commerce-rag
  */
@@ -42,7 +42,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class AdminChunkController {
 
-    private final DocumentChunkService chunkService;
+    private final IDocumentChunkService chunkService;
 
     /** D1: 查询分片详情 */
     @GetMapping("/{id}")
@@ -52,7 +52,7 @@ public class AdminChunkController {
         DocumentChunkVO chunk = chunkService.findById(id, userId, role);
         if (chunk == null) {
             // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "分片不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "分片不存在");
         }
         return ApiResponse.ok(chunk);
     }

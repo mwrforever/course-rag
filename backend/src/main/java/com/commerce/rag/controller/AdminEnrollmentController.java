@@ -5,7 +5,7 @@ import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.EnrollmentRequest;
 import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.StudentDTO;
-import com.commerce.rag.service.EnrollmentService;
+import com.commerce.rag.service.IEnrollmentService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,9 +29,9 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TEACHER')")
 public class AdminEnrollmentController {
 
-    private final EnrollmentService enrollmentService;
+    private final IEnrollmentService enrollmentService;
 
-    public AdminEnrollmentController(EnrollmentService enrollmentService) {
+    public AdminEnrollmentController(IEnrollmentService enrollmentService) {
         this.enrollmentService = enrollmentService;
     }
 

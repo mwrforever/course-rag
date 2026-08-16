@@ -10,10 +10,10 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
-import com.commerce.rag.config.StreamProperties;
 import com.commerce.rag.entity.ChatMessage;
-import com.commerce.rag.service.ChatMessageService;
-import com.commerce.rag.service.ChatRunService;
+import com.commerce.rag.properties.StreamProperties;
+import com.commerce.rag.service.IChatMessageService;
+import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEvent;
 import com.commerce.rag.stream.SseEventTransformer;
@@ -72,10 +72,10 @@ class ChatRequestWorkerTest {
     private MemoryStreamBridge bridge;
 
     @Mock
-    private ChatRunService chatRunService;
+    private IChatRunService chatRunService;
 
     @Mock
-    private ChatMessageService chatMessageService;
+    private IChatMessageService chatMessageService;
 
     @Mock
     private ThreadPoolExecutor runPool;

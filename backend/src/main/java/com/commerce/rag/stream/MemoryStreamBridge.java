@@ -1,6 +1,6 @@
 package com.commerce.rag.stream;
 
-import com.commerce.rag.config.StreamProperties;
+import com.commerce.rag.properties.StreamProperties;
 import java.io.IOException;
 import java.util.List;
 import java.util.Queue;

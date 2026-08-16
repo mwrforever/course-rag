@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
 import com.alibaba.cloud.ai.graph.checkpoint.savers.postgresql.PostgresSaver;
+import com.commerce.rag.config.GraphConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

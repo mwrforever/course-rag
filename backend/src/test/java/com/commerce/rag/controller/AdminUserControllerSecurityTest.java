@@ -8,9 +8,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.auth.DeviceKickService;
-import com.commerce.rag.auth.SecurityConfig;
 import com.commerce.rag.auth.TokenService;
-import com.commerce.rag.service.SysUserService;
+import com.commerce.rag.config.SecurityConfig;
+import com.commerce.rag.service.ISysUserService;
 import io.jsonwebtoken.Claims;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.jupiter.api.DisplayName;
@@ -45,7 +45,7 @@ class AdminUserControllerSecurityTest {
     private DeviceKickService deviceKickService;
 
     @MockBean
-    private SysUserService sysUserService;
+    private ISysUserService sysUserService;
 
     // RETURNS_DEEP_STUBS：@WebMvcTest 切片不加载 MyBatis 自动配置（无真实 SqlSessionFactory），
     // 但主类 @MapperScan 仍会注册全部 Mapper bean，其初始化链路会调用

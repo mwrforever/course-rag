@@ -9,7 +9,7 @@ import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.EnrollmentRequest;
 import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.StudentDTO;
-import com.commerce.rag.service.EnrollmentService;
+import com.commerce.rag.service.IEnrollmentService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -30,7 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class AdminEnrollmentControllerTest {
 
     @Mock
-    private EnrollmentService enrollmentService;
+    private IEnrollmentService enrollmentService;
 
     private AdminEnrollmentController controller;
 

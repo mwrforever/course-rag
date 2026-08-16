@@ -5,12 +5,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.convert.KnowledgeBaseConverter;
+import com.commerce.rag.convert.KnowledgeBaseConverterImpl;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.KnowledgeBase;
 import com.commerce.rag.etl.EtlPipeline;
+import com.commerce.rag.exception.BizException;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
+import com.commerce.rag.service.impl.KnowledgeBaseServiceImpl;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.KnowledgeBaseVO;
@@ -24,10 +28,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
- * KnowledgeBaseService 单元测试 —— Mock Mapper + EtlPipeline
+ * IKnowledgeBaseService 单元测试 —— Mock Mapper + EtlPipeline
  *
  * @author commerce-rag
  */
@@ -59,7 +62,7 @@ class KnowledgeBaseServiceTest {
     private KnowledgeBaseConverter knowledgeBaseConverter = new KnowledgeBaseConverterImpl();
 
     @InjectMocks
-    private KnowledgeBaseService knowledgeBaseService;
+    private KnowledgeBaseServiceImpl knowledgeBaseService;
 
     @Test
     @DisplayName("create 创建知识库")
@@ -114,7 +117,7 @@ class KnowledgeBaseServiceTest {
         kb.setCreatedBy(1L);
         when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
 
-        assertThrows(ResponseStatusException.class, () -> knowledgeBaseService.delete(1L, 2L, false));
+        assertThrows(BizException.class, () -> knowledgeBaseService.delete(1L, 2L, false));
     }
 
     @Test
@@ -240,7 +243,7 @@ class KnowledgeBaseServiceTest {
         kb.setCreatedBy(1L);
         when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
 
-        assertThrows(ResponseStatusException.class, () -> knowledgeBaseService.update(1L, "新名", null, 2L, false));
+        assertThrows(BizException.class, () -> knowledgeBaseService.update(1L, "新名", null, 2L, false));
         verify(knowledgeBaseMapper, never()).update(any(), any());
     }
 

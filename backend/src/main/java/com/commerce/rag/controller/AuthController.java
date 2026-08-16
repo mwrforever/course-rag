@@ -4,14 +4,16 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.auth.AuthSessionService;
 import com.commerce.rag.auth.DeviceKickService;
 import com.commerce.rag.auth.TokenService;
-import com.commerce.rag.config.AuthProperties;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.LoginRequest;
 import com.commerce.rag.controller.dto.LoginResponse;
 import com.commerce.rag.controller.dto.RefreshRequest;
 import com.commerce.rag.dto.UserDTO;
-import com.commerce.rag.service.AuthUserView;
-import com.commerce.rag.service.SysUserService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
+import com.commerce.rag.properties.AuthProperties;
+import com.commerce.rag.record.AuthUserView;
+import com.commerce.rag.service.ISysUserService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,13 +23,11 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 认证 Controller —— 登录/刷新/登出
@@ -50,7 +50,7 @@ public class AuthController {
 
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
-    private final SysUserService sysUserService;
+    private final ISysUserService sysUserService;
     private final TokenService tokenService;
     private final DeviceKickService deviceKickService;
     private final AuthProperties authProperties;
@@ -58,7 +58,7 @@ public class AuthController {
     private final AuthSessionService authSessionService;
 
     public AuthController(
-            SysUserService sysUserService,
+            ISysUserService sysUserService,
             TokenService tokenService,
             DeviceKickService deviceKickService,
             AuthProperties authProperties,
@@ -94,17 +94,17 @@ public class AuthController {
         // 1. 查找用户（认证视图，Entity 不出 service 边界）
         AuthUserView user = sysUserService.findAuthViewByUsername(request.username());
         if (user == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
+            throw new BizException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
         }
 
         // 2. 验证密码
         if (!passwordEncoder.matches(request.password(), user.passwordHash())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
+            throw new BizException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
         }
 
         // 3. 检查用户状态
         if (!"ACTIVE".equals(user.status())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "用户已被禁用");
+            throw new BizException(ErrorCode.FORBIDDEN, "用户已被禁用");
         }
 
         // 4. 生成 jti + Token
@@ -157,12 +157,12 @@ public class AuthController {
         try {
             claims = tokenService.validateToken(request.refreshToken());
         } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh Token 无效或已过期");
+            throw new BizException(ErrorCode.UNAUTHORIZED, "Refresh Token 无效或已过期");
         }
 
         // 2. 检查类型
         if (!"REFRESH".equals(tokenService.extractTokenType(claims))) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "令牌类型错误");
+            throw new BizException(ErrorCode.UNAUTHORIZED, "令牌类型错误");
         }
 
         String oldJtiRt = tokenService.extractJti(claims);
@@ -173,12 +173,12 @@ public class AuthController {
             // RT 复用 → 全量作废该用户所有 Token
             log.warn("RT 复用检测: userId={}, jtiRt={}", userId, oldJtiRt);
             deviceKickService.disableUser(userId, userId);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh Token 已被使用，请重新登录");
+            throw new BizException(ErrorCode.UNAUTHORIZED, "Refresh Token 已被使用，请重新登录");
         }
 
         // 4. 检查 RT 是否在黑名单中（保留）
         if (deviceKickService.isBlacklisted(oldJtiRt)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh Token 已被吊销");
+            throw new BizException(ErrorCode.UNAUTHORIZED, "Refresh Token 已被吊销");
         }
 
         // 5.（原 markRefreshTokenUsed 已合并进步骤 3 的原子脚本）

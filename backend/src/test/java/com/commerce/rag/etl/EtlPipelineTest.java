@@ -14,6 +14,7 @@ import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
+import com.commerce.rag.properties.EtlProperties;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.github.benmanes.caffeine.cache.Cache;

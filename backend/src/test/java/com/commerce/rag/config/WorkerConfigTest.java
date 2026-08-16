@@ -2,7 +2,7 @@ package com.commerce.rag.config;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.commerce.rag.worker.WorkerProperties;
+import com.commerce.rag.properties.WorkerProperties;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;

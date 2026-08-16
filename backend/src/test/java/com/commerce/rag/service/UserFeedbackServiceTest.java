@@ -5,8 +5,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.commerce.rag.convert.UserFeedbackConverter;
+import com.commerce.rag.convert.UserFeedbackConverterImpl;
 import com.commerce.rag.entity.UserFeedback;
 import com.commerce.rag.mapper.UserFeedbackMapper;
+import com.commerce.rag.service.impl.UserFeedbackServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.github.benmanes.caffeine.cache.Cache;
 import java.util.List;
@@ -22,7 +25,7 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * UserFeedbackService 单元测试 —— Mock UserFeedbackMapper
+ * IUserFeedbackService 单元测试 —— Mock UserFeedbackMapper
  *
  * @author commerce-rag
  */
@@ -46,7 +49,7 @@ class UserFeedbackServiceTest {
     private Cache<String, Object> dashboardStatsCache;
 
     @InjectMocks
-    private UserFeedbackService feedbackService;
+    private UserFeedbackServiceImpl feedbackService;
 
     @Test
     @DisplayName("create 新建反馈 — 不存在时插入")

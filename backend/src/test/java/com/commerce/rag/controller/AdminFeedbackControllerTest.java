@@ -8,7 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.service.UserFeedbackService;
+import com.commerce.rag.service.IUserFeedbackService;
 import com.commerce.rag.vo.UserFeedbackVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
@@ -31,7 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class AdminFeedbackControllerTest {
 
     @Mock
-    private UserFeedbackService feedbackService;
+    private IUserFeedbackService feedbackService;
 
     private AdminFeedbackController controller;
 

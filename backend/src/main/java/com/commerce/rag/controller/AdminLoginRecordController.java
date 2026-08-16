@@ -4,10 +4,10 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.convert.AdminLoginRecordConverter;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysTokenBlacklist;
-import com.commerce.rag.service.AdminLoginRecordConverter;
-import com.commerce.rag.service.SysLoginRecordService;
+import com.commerce.rag.service.ISysLoginRecordService;
 import com.commerce.rag.vo.SysLoginRecordVO;
 import com.commerce.rag.vo.SysTokenBlacklistVO;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,11 +35,11 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasRole('SUPER_ADMIN')")
 public class AdminLoginRecordController {
 
-    private final SysLoginRecordService sysLoginRecordService;
+    private final ISysLoginRecordService sysLoginRecordService;
     private final AdminLoginRecordConverter converter;
 
     public AdminLoginRecordController(
-            SysLoginRecordService sysLoginRecordService, AdminLoginRecordConverter converter) {
+            ISysLoginRecordService sysLoginRecordService, AdminLoginRecordConverter converter) {
         this.sysLoginRecordService = sysLoginRecordService;
         this.converter = converter;
     }

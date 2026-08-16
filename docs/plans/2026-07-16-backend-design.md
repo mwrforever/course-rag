@@ -284,7 +284,7 @@ metadata / thinking / thinking_end / delta / tool_call / tool_result
 - **独立渲染表 `chat_message`**（DDL 见 `db-schema.md` §三）：
   - 字段：`run_id` + `seq` + `msg_type` + `role` + `content`(JSONB) + `created_at`
   - 与 SAA checkpoint 表（checkpoints / checkpoint_writes / checkpoint_blobs）完全分离
-- **持久化时机**：run 结束时一次性批量 INSERT（JdbcTemplate `batchUpdate`）；不做增量持久化（SAA checkpoint 管中间恢复，渲染表只做终态记录）
+- **持久化时机**：run 结束时一次性批量 INSERT（MyBatis-Plus `saveBatch`，JDBC 批处理，`@TableId(ASSIGN_ID)` 自动雪花 ID，事务内调用保证原子性）；不做增量持久化（SAA checkpoint 管中间恢复，渲染表只做终态记录）
 - **`msg_type` 内容存储规则（方案 A，已确认）**：
 
 | msg_type | role | content 存储格式 |

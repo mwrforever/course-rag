@@ -6,12 +6,15 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.convert.DocumentConverterImpl;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.KnowledgeBase;
 import com.commerce.rag.etl.EtlPipeline;
+import com.commerce.rag.exception.BizException;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
+import com.commerce.rag.service.impl.DocumentServiceImpl;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.DocumentVO;
@@ -29,15 +32,14 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
- * DocumentService 权限校验单元测试 —— 改名/下载/上传的归属校验（P0-2a/b/c）
+ * IDocumentService 权限校验单元测试 —— 改名/下载/上传的归属校验（P0-2a/b/c）
  *
  * @author commerce-rag
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("DocumentService 文档权限测试")
+@DisplayName("IDocumentService 文档权限测试")
 class DocumentServiceTest {
 
     @Mock
@@ -62,7 +64,7 @@ class DocumentServiceTest {
     private final Cache<String, Object> dashboardStatsCache =
             Caffeine.newBuilder().build();
 
-    private DocumentService documentService;
+    private IDocumentService documentService;
 
     @BeforeAll
     static void initMybatisPlus() {
@@ -73,7 +75,7 @@ class DocumentServiceTest {
     void setUp() {
         // 构造器注入（@RequiredArgsConstructor 按字段声明顺序生成全参构造器）；
         // 转换器用真实实现（MapStruct 生成类），转换行为由 DocumentConverterTest 单独覆盖
-        documentService = new DocumentService(
+        documentService = new DocumentServiceImpl(
                 documentMapper,
                 chunkMapper,
                 knowledgeBaseMapper,
@@ -99,9 +101,8 @@ class DocumentServiceTest {
         when(documentMapper.selectById(1L)).thenReturn(mockDoc(1L, 100L));
 
         // 操作者 200 不是创建者 100 → 403
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> documentService.update(1L, "新标题", 200L, false));
-        assertEquals(403, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> documentService.update(1L, "新标题", 200L, false));
+        assertEquals(403, ex.getCode());
         // 403 路径零写入副作用：不得触发任何 DB 更新
         verify(documentMapper, never()).update(any(), any());
         // 超管旁路：不抛异常
@@ -113,9 +114,8 @@ class DocumentServiceTest {
     void download_notOwner_throws403() {
         when(documentMapper.selectById(1L)).thenReturn(mockDoc(1L, 100L));
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> documentService.download(1L, 200L, false));
-        assertEquals(403, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> documentService.download(1L, 200L, false));
+        assertEquals(403, ex.getCode());
         // 403 路径零副作用：不得从 MinIO 读取文件
         verify(minioStorageService, never()).downloadFile(anyString());
     }
@@ -129,11 +129,11 @@ class DocumentServiceTest {
         when(knowledgeBaseMapper.selectById(1L)).thenReturn(kb);
 
         // 用户 200 向 createdBy=100 的知识库上传 → 403
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
+        BizException ex = assertThrows(
+                BizException.class,
                 () -> documentService.upload(
                         1L, "doc", new ByteArrayInputStream(new byte[0]), "pdf", 10L, "DEFAULT", 200L, false));
-        assertEquals(403, ex.getStatusCode().value());
+        assertEquals(403, ex.getCode());
         // 403 路径零副作用：documentMapper 零交互（未落库）
         verifyNoInteractions(documentMapper);
     }
@@ -301,9 +301,8 @@ class DocumentServiceTest {
         kb.setCreatedBy(100L); // kb 属主是教师 100，操作者 200 无权限
         when(knowledgeBaseMapper.selectById(7L)).thenReturn(kb);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> documentService.update(10L, "新标题", 200L, false));
-        assertEquals(403, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> documentService.update(10L, "新标题", 200L, false));
+        assertEquals(403, ex.getCode());
     }
 
     @Test
@@ -388,7 +387,7 @@ class DocumentServiceTest {
         InputStream stream = new ByteArrayInputStream(new byte[0]);
         when(minioStorageService.downloadFile("kb/1/doc.pdf")).thenReturn(stream);
 
-        DocumentService.DocumentDownload result = documentService.downloadWithType(1L, 100L, false);
+        IDocumentService.DocumentDownload result = documentService.downloadWithType(1L, 100L, false);
 
         assertSame(stream, result.inputStream());
         assertEquals("pdf", result.fileType());

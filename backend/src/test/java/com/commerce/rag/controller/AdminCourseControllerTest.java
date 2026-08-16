@@ -7,11 +7,12 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.*;
+import com.commerce.rag.convert.CourseConverter;
 import com.commerce.rag.dto.*;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
-import com.commerce.rag.service.CourseConverter;
-import com.commerce.rag.service.CourseService;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.service.ICourseService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -23,7 +24,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * AdminCourseController 单元测试 —— B 端课程管理端点 E1-E9
@@ -38,7 +38,7 @@ import org.springframework.web.server.ResponseStatusException;
 class AdminCourseControllerTest {
 
     @Mock
-    private CourseService courseService;
+    private ICourseService courseService;
 
     @Mock
     private CourseConverter courseConverter;
@@ -135,11 +135,10 @@ class AdminCourseControllerTest {
     void detail_teacherNotFound_throws404() {
         when(courseService.findById(99L, 7L)).thenReturn(null);
 
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.detail(request("TEACHER", 7L), 99L));
+        BizException ex = assertThrows(BizException.class, () -> controller.detail(request("TEACHER", 7L), 99L));
 
-        assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
-        assertEquals("课程不存在", ex.getReason());
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
+        assertEquals("课程不存在", ex.getMessage());
     }
 
     @Test

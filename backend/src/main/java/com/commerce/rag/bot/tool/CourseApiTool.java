@@ -11,7 +11,7 @@ import com.commerce.rag.bot.tool.dto.EnrollmentResult.NextSchedule;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;
-import com.commerce.rag.service.CourseQueryService;
+import com.commerce.rag.service.ICourseQueryService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -32,7 +32,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>课程"报名"为只读交接：仅返回 enrollmentUrl，绝不调用业务报名 API。
  *
- * <p>数据层通过 {@link CourseQueryService} 封装 MyBatis-Plus 查询，
+ * <p>数据层通过 {@link ICourseQueryService} 封装 MyBatis-Plus 查询，
  * DTO 映射逻辑（Entity → DTO）在本类中完成。
  *
  * @author commerce-rag
@@ -49,9 +49,9 @@ public class CourseApiTool {
     private static final Map<String, String> SCHEDULE_TYPE_LABELS =
             Map.of("ONLINE", "线上授课", "OFFLINE", "线下授课", "HYBRID", "线上线下结合");
 
-    private final CourseQueryService courseQueryService;
+    private final ICourseQueryService courseQueryService;
 
-    public CourseApiTool(CourseQueryService courseQueryService) {
+    public CourseApiTool(ICourseQueryService courseQueryService) {
         this.courseQueryService = courseQueryService;
     }
 

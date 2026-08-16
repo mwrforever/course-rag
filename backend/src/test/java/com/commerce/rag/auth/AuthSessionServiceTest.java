@@ -6,9 +6,9 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.commerce.rag.config.AuthProperties;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.mapper.SysLoginRecordMapper;
+import com.commerce.rag.properties.AuthProperties;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import java.time.LocalDateTime;
 import java.util.List;

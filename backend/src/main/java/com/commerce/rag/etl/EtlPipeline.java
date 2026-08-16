@@ -7,6 +7,7 @@ import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
+import com.commerce.rag.properties.EtlProperties;
 import com.commerce.rag.storage.MinioStorageService;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.google.gson.JsonArray;
@@ -414,7 +415,7 @@ public class EtlPipeline {
      * 按 course_id 删除 Milvus 中该课程标注的所有分片。
      *
      * <p>P1-4 Bug 2 修复：课程删除需同步清理 Milvus（course_id 为 Milvus 现有 VARCHAR 字段，
-     * 过滤值格式与 CourseService.deleteCourse 软删 chunk 的 courseIdStr 一致）。
+     * 过滤值格式与 ICourseService.deleteCourse 软删 chunk 的 courseIdStr 一致）。
      * 删除失败上抛，阻断课程级联软删（失败可见可重试）。
      *
      * @param courseId 课程 ID 字符串
@@ -432,7 +433,7 @@ public class EtlPipeline {
     /**
      * 删除 Milvus 中单个分片（v2 API：DeleteReq + filter）
      *
-     * <p>P0-8 修复：删除失败上抛（不再吞异常）——调用方（DocumentChunkService.delete）
+     * <p>P0-8 修复：删除失败上抛（不再吞异常）——调用方（IDocumentChunkService.delete）
      * 先删 Milvus 再软删 PG，失败阻断 PG 软删，可重试收敛；吞异常会导致向量永久残留可检索。
      *
      * @param chunkIdStr 分片 ID 字符串

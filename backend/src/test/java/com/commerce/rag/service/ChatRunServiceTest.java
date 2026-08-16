@@ -5,7 +5,9 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.commerce.rag.entity.ChatRun;
+import com.commerce.rag.exception.ConcurrentRunException;
 import com.commerce.rag.mapper.ChatRunMapper;
+import com.commerce.rag.service.impl.ChatRunServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -17,12 +19,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
 /**
- * ChatRunService 单元测试 —— Run 生命周期（并发守卫 / 状态流转）
+ * IChatRunService 单元测试 —— Run 生命周期（并发守卫 / 状态流转）
  *
  * @author commerce-rag
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("ChatRunService Run 生命周期测试")
+@DisplayName("IChatRunService Run 生命周期测试")
 class ChatRunServiceTest {
 
     @BeforeAll
@@ -34,7 +36,7 @@ class ChatRunServiceTest {
     private ChatRunMapper runMapper;
 
     @InjectMocks
-    private ChatRunService runService;
+    private ChatRunServiceImpl runService;
 
     @Test
     @DisplayName("createRun → 创建 QUEUED Run 并返回（含初始字段）")

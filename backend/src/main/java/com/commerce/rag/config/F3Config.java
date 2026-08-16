@@ -1,5 +1,8 @@
 package com.commerce.rag.config;
 
+import com.commerce.rag.properties.ConfidenceProperties;
+import com.commerce.rag.properties.LoopDetectionProperties;
+import com.commerce.rag.properties.TokenBudgetProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 

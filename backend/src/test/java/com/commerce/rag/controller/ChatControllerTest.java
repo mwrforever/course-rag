@@ -5,15 +5,15 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.commerce.rag.auth.AuthInterceptor;
-import com.commerce.rag.config.StreamProperties;
 import com.commerce.rag.controller.dto.ChatRequest;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.entity.ChatSession;
-import com.commerce.rag.service.ChatMessageService;
-import com.commerce.rag.service.ChatRunService;
-import com.commerce.rag.service.ChatSessionService;
-import com.commerce.rag.service.ConcurrentRunException;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.properties.StreamProperties;
+import com.commerce.rag.service.IChatMessageService;
+import com.commerce.rag.service.IChatRunService;
+import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.worker.ChatRequestWorker;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,7 +31,6 @@ import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -54,13 +53,13 @@ class ChatControllerTest {
     private MemoryStreamBridge bridge;
 
     @Mock
-    private ChatRunService chatRunService;
+    private IChatRunService chatRunService;
 
     @Mock
-    private ChatSessionService chatSessionService;
+    private IChatSessionService chatSessionService;
 
     @Mock
-    private ChatMessageService chatMessageService;
+    private IChatMessageService chatMessageService;
 
     @Mock
     private StringRedisTemplate redisTemplate;
@@ -156,21 +155,19 @@ class ChatControllerTest {
     }
 
     @Test
-    @DisplayName("chat 空查询 → 抛出 400 ResponseStatusException")
+    @DisplayName("chat 空查询 → 抛出 400 BizException")
     void chat_blankQuery_throws400() {
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
-                () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, "")));
-        assertEquals(400, ex.getStatusCode().value());
+        BizException ex = assertThrows(
+                BizException.class, () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, "")));
+        assertEquals(400, ex.getCode());
     }
 
     @Test
-    @DisplayName("chat null 查询 → 抛出 400 ResponseStatusException")
+    @DisplayName("chat null 查询 → 抛出 400 BizException")
     void chat_nullQuery_throws400() {
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
-                () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, null)));
-        assertEquals(400, ex.getStatusCode().value());
+        BizException ex = assertThrows(
+                BizException.class, () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, null)));
+        assertEquals(400, ex.getCode());
     }
 
     @Test
@@ -184,9 +181,8 @@ class ChatControllerTest {
 
         ChatRequest request = new ChatRequest(99L, "你好");
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class, () -> controller.chat(mockRequestWithUserId(123L), request));
-        assertEquals(403, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> controller.chat(mockRequestWithUserId(123L), request));
+        assertEquals(403, ex.getCode());
         verify(chatRunService, never()).createRun(any(), any());
     }
 
@@ -205,11 +201,10 @@ class ChatControllerTest {
         doThrow(new RuntimeException("Redis 不可用")).when(streamOps).add(anyString(), anyMap());
 
         // When / Then: chat() 抛 503，run 状态回滚为 ERROR + 清理 ring
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
-                () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好")));
+        BizException ex = assertThrows(
+                BizException.class, () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好")));
 
-        assertEquals(503, ex.getStatusCode().value());
+        assertEquals(503, ex.getCode());
         verify(chatRunService).updateStatus(123L, "ERROR");
         verify(bridge).removeRing("123");
     }
@@ -230,11 +225,10 @@ class ChatControllerTest {
         doThrow(new RuntimeException("数据库不可用")).when(chatRunService).updateStatus(anyLong(), anyString());
 
         // When / Then: 仍抛 503（不因回滚失败变 500），且 ring 必清理
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class,
-                () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好")));
+        BizException ex = assertThrows(
+                BizException.class, () -> controller.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好")));
 
-        assertEquals(503, ex.getStatusCode().value());
+        assertEquals(503, ex.getCode());
         verify(chatRunService).updateStatus(123L, "ERROR");
         verify(bridge).removeRing("123");
     }
@@ -267,19 +261,18 @@ class ChatControllerTest {
         othersRun.setUserId(2L);
         when(chatRunService.findById(1L)).thenReturn(othersRun);
 
-        // When / Then: checkRunOwnership 抛 ResponseStatusException(404)
-        ResponseStatusException ex =
-                assertThrows(ResponseStatusException.class, () -> controller.cancel("1", mockRequestWithUserId(123L)));
-        assertEquals(404, ex.getStatusCode().value());
+        // When / Then: checkRunOwnership 抛 BizException(404)
+        BizException ex = assertThrows(BizException.class, () -> controller.cancel("1", mockRequestWithUserId(123L)));
+        assertEquals(404, ex.getCode());
         verify(worker, never()).cancel(anyString());
     }
 
     @Test
     @DisplayName("cancel → 非数字 runId 返回 404")
     void cancel_withNonNumericRunId_returns404() {
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class, () -> controller.cancel("run-abc", mockRequestWithUserId(123L)));
-        assertEquals(404, ex.getStatusCode().value());
+        BizException ex =
+                assertThrows(BizException.class, () -> controller.cancel("run-abc", mockRequestWithUserId(123L)));
+        assertEquals(404, ex.getCode());
         verify(worker, never()).cancel(anyString());
         verify(chatRunService, never()).findById(anyLong());
     }
@@ -289,9 +282,8 @@ class ChatControllerTest {
     void cancel_withUnknownRun_returns404() {
         when(chatRunService.findById(456L)).thenReturn(null);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class, () -> controller.cancel("456", mockRequestWithUserId(123L)));
-        assertEquals(404, ex.getStatusCode().value());
+        BizException ex = assertThrows(BizException.class, () -> controller.cancel("456", mockRequestWithUserId(123L)));
+        assertEquals(404, ex.getCode());
         verify(worker, never()).cancel(anyString());
     }
 
@@ -421,24 +413,10 @@ class ChatControllerTest {
         othersRun.setUserId(2L);
         when(chatRunService.findById(1L)).thenReturn(othersRun);
 
-        ResponseStatusException ex = assertThrows(
-                ResponseStatusException.class, () -> controller.reconnect("1", 0, mockRequestWithUserId(123L)));
-        assertEquals(404, ex.getStatusCode().value());
+        BizException ex =
+                assertThrows(BizException.class, () -> controller.reconnect("1", 0, mockRequestWithUserId(123L)));
+        assertEquals(404, ex.getCode());
         verify(bridge, never()).replayAndSubscribe(anyString(), anyLong(), any(SseEmitter.class));
-    }
-
-    // ==================== ExceptionHandler 测试 ====================
-
-    @Test
-    @DisplayName("handleConcurrentRun → 返回 409 Conflict + JSON 错误体")
-    void handleConcurrentRun_returns409() {
-        ResponseEntity<Map<String, String>> response =
-                controller.handleConcurrentRun(new ConcurrentRunException("测试冲突"));
-
-        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
-        assertNotNull(response.getBody());
-        assertEquals("CONFLICT", response.getBody().get("error"));
-        assertEquals("该会话已有正在进行的对话", response.getBody().get("message"));
     }
 
     @Test
