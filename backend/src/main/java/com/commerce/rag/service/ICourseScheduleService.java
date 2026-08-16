@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.commerce.rag.dto.CreateScheduleRequest;
 import com.commerce.rag.dto.UpdateScheduleRequest;
 import com.commerce.rag.entity.CourseSchedule;
+import com.commerce.rag.vo.CourseScheduleVO;
 import java.util.List;
 
 /**
@@ -22,9 +23,9 @@ public interface ICourseScheduleService extends IService<CourseSchedule> {
      * @param request       创建请求
      * @param currentUserId 当前用户 ID（权限校验）
      * @param isAdmin       是否为超管（超管旁路）
-     * @return 排期实体（含雪花 ID）
+     * @return 排期视图对象（含雪花 ID，实体不出 service 边界）
      */
-    CourseSchedule create(Long courseId, CreateScheduleRequest request, Long currentUserId, boolean isAdmin);
+    CourseScheduleVO create(Long courseId, CreateScheduleRequest request, Long currentUserId, boolean isAdmin);
 
     /**
      * 根据 ID 查询排期（无权限校验，供内部使用）
@@ -37,9 +38,9 @@ public interface ICourseScheduleService extends IService<CourseSchedule> {
      * @param id            排期 ID
      * @param currentUserId 当前用户 ID
      * @param isAdmin       是否为超管（超管旁路）
-     * @return 排期实体，不存在或无权访问返回 null
+     * @return 排期视图对象，不存在或无权访问返回 null（实体不出 service 边界）
      */
-    CourseSchedule findById(Long id, Long currentUserId, boolean isAdmin);
+    CourseScheduleVO findById(Long id, Long currentUserId, boolean isAdmin);
 
     /**
      * 查询课程的所有排期（按开课日期升序）
@@ -52,9 +53,9 @@ public interface ICourseScheduleService extends IService<CourseSchedule> {
      * @param courseId      课程 ID
      * @param currentUserId 当前用户 ID
      * @param isAdmin       是否为超管（超管旁路）
-     * @return 排期列表；课程不存在或无权访问抛 404/403
+     * @return 排期视图对象列表；课程不存在或无权访问抛 404/403（实体不出 service 边界）
      */
-    List<CourseSchedule> findByCourseId(Long courseId, Long currentUserId, boolean isAdmin);
+    List<CourseScheduleVO> findByCourseId(Long courseId, Long currentUserId, boolean isAdmin);
 
     /**
      * 更新排期

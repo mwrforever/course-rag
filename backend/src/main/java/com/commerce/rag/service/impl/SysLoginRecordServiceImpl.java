@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.commerce.rag.auth.DeviceKickService;
+import com.commerce.rag.convert.AdminLoginRecordConverter;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysTokenBlacklist;
 import com.commerce.rag.exception.BizException;
@@ -14,6 +15,8 @@ import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.mapper.SysLoginRecordMapper;
 import com.commerce.rag.mapper.SysTokenBlacklistMapper;
 import com.commerce.rag.service.ISysLoginRecordService;
+import com.commerce.rag.vo.SysLoginRecordVO;
+import com.commerce.rag.vo.SysTokenBlacklistVO;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.slf4j.Logger;
@@ -40,14 +43,18 @@ public class SysLoginRecordServiceImpl extends ServiceImpl<SysLoginRecordMapper,
     private final SysLoginRecordMapper loginRecordMapper;
     private final SysTokenBlacklistMapper tokenBlacklistMapper;
     private final DeviceKickService deviceKickService;
+    /** 登录记录/黑名单转换器 —— Entity 出 service 边界前转 VO */
+    private final AdminLoginRecordConverter converter;
 
     public SysLoginRecordServiceImpl(
             SysLoginRecordMapper loginRecordMapper,
             SysTokenBlacklistMapper tokenBlacklistMapper,
-            DeviceKickService deviceKickService) {
+            DeviceKickService deviceKickService,
+            AdminLoginRecordConverter converter) {
         this.loginRecordMapper = loginRecordMapper;
         this.tokenBlacklistMapper = tokenBlacklistMapper;
         this.deviceKickService = deviceKickService;
+        this.converter = converter;
     }
 
     // ========================================================================
@@ -64,7 +71,7 @@ public class SysLoginRecordServiceImpl extends ServiceImpl<SysLoginRecordMapper,
      * @param status     状态筛选（可空）
      * @return 分页结果
      */
-    public IPage<SysLoginRecord> findPage(int page, int size, Long userId, String deviceType, String status) {
+    public IPage<SysLoginRecordVO> findPage(int page, int size, Long userId, String deviceType, String status) {
         Page<SysLoginRecord> pageObj = new Page<>(page, size);
         LambdaQueryWrapper<SysLoginRecord> wrapper =
                 Wrappers.<SysLoginRecord>lambdaQuery().orderByDesc(SysLoginRecord::getCreatedAt);
@@ -77,7 +84,8 @@ public class SysLoginRecordServiceImpl extends ServiceImpl<SysLoginRecordMapper,
         if (status != null && !status.isEmpty()) {
             wrapper.eq(SysLoginRecord::getStatus, status);
         }
-        return loginRecordMapper.selectPage(pageObj, wrapper);
+        // 实体分页 → VO 分页（IPage.convert 为 MP 框架方法，records 逐条转换，分页语义保持）
+        return loginRecordMapper.selectPage(pageObj, wrapper).convert(converter::toLoginRecordVO);
     }
 
     /**
@@ -165,7 +173,7 @@ public class SysLoginRecordServiceImpl extends ServiceImpl<SysLoginRecordMapper,
      * @param tokenType 类型筛选（可空）
      * @return 分页结果
      */
-    public IPage<SysTokenBlacklist> findBlacklistPage(int page, int size, Long userId, String jti, String tokenType) {
+    public IPage<SysTokenBlacklistVO> findBlacklistPage(int page, int size, Long userId, String jti, String tokenType) {
         Page<SysTokenBlacklist> pageObj = new Page<>(page, size);
         LambdaQueryWrapper<SysTokenBlacklist> wrapper =
                 Wrappers.<SysTokenBlacklist>lambdaQuery().orderByDesc(SysTokenBlacklist::getCreatedAt);
@@ -178,7 +186,8 @@ public class SysLoginRecordServiceImpl extends ServiceImpl<SysLoginRecordMapper,
         if (tokenType != null && !tokenType.isEmpty()) {
             wrapper.eq(SysTokenBlacklist::getTokenType, tokenType);
         }
-        return tokenBlacklistMapper.selectPage(pageObj, wrapper);
+        // 实体分页 → VO 分页（IPage.convert 为 MP 框架方法，records 逐条转换，分页语义保持）
+        return tokenBlacklistMapper.selectPage(pageObj, wrapper).convert(converter::toBlacklistVO);
     }
 
     /**

@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.commerce.rag.convert.ScheduleConverter;
+import com.commerce.rag.convert.ScheduleConverterImpl;
 import com.commerce.rag.dto.CreateScheduleRequest;
 import com.commerce.rag.dto.UpdateScheduleRequest;
 import com.commerce.rag.entity.CourseSchedule;
@@ -12,12 +14,14 @@ import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.mapper.CourseScheduleMapper;
 import com.commerce.rag.service.impl.CourseScheduleServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.CourseScheduleVO;
 import java.time.LocalDate;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -42,6 +46,9 @@ class CourseScheduleServiceTest {
     @Mock
     private ICourseQueryService courseQueryService;
 
+    /** 转换器用真实实现（MapStruct 生成类），转换行为由 ScheduleConverterTest 单独覆盖 */
+    private final ScheduleConverter scheduleConverter = new ScheduleConverterImpl();
+
     private ICourseScheduleService scheduleService;
 
     @BeforeAll
@@ -53,7 +60,8 @@ class CourseScheduleServiceTest {
     @BeforeEach
     void setUp() {
         // 构造器注入（@RequiredArgsConstructor 按字段声明顺序生成全参构造器）
-        scheduleService = new CourseScheduleServiceImpl(scheduleMapper, courseService, courseQueryService);
+        scheduleService =
+                new CourseScheduleServiceImpl(scheduleMapper, courseService, courseQueryService, scheduleConverter);
     }
 
     @Test
@@ -73,16 +81,17 @@ class CourseScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("P0-4 findById(带权限) → 课程属主可查看")
+    @DisplayName("P0-4 findById(带权限) → 课程属主可查看（返回 VO）")
     void findById_withPermission_ownerCanView() {
         CourseSchedule schedule = new CourseSchedule();
         schedule.setId(1L);
         schedule.setCourseId(55L);
         when(scheduleMapper.selectById(1L)).thenReturn(schedule);
 
-        CourseSchedule result = scheduleService.findById(1L, 100L, false);
+        CourseScheduleVO result = scheduleService.findById(1L, 100L, false);
 
         assertNotNull(result);
+        assertEquals(55L, result.courseId());
         verify(courseService).checkOwnership(55L, 100L, false);
     }
 
@@ -108,23 +117,30 @@ class CourseScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("create → 校验归属后按请求创建 UPCOMING 排期并失效缓存")
+    @DisplayName("create → 校验归属后按请求创建 UPCOMING 排期并失效缓存（返回 VO）")
     void create_buildsScheduleAndEvictsCache() {
         CreateScheduleRequest request = new CreateScheduleRequest(
                 LocalDate.of(2026, 9, 1), LocalDate.of(2026, 12, 31), "WEEKEND", "线上", "张老师", 50);
 
-        CourseSchedule result = scheduleService.create(55L, request, 100L, false);
+        CourseScheduleVO result = scheduleService.create(55L, request, 100L, false);
 
         verify(courseService).checkOwnership(55L, 100L, false);
-        verify(scheduleMapper).insert(result);
+        // 落库实体字段断言（insert 入参为实体，捕获验证）
+        ArgumentCaptor<CourseSchedule> captor = ArgumentCaptor.forClass(CourseSchedule.class);
+        verify(scheduleMapper).insert(captor.capture());
+        CourseSchedule inserted = captor.getValue();
+        assertEquals(55L, inserted.getCourseId());
+        assertEquals(LocalDate.of(2026, 9, 1), inserted.getStartDate());
+        assertEquals("WEEKEND", inserted.getScheduleType());
+        assertEquals(50, inserted.getCapacity());
+        assertEquals(0, inserted.getEnrolled());
+        assertEquals("UPCOMING", inserted.getStatus());
+        assertEquals(100L, inserted.getCreatedBy());
         verify(courseQueryService).evictCourse(55L);
-        assertEquals(55L, result.getCourseId());
-        assertEquals(LocalDate.of(2026, 9, 1), result.getStartDate());
-        assertEquals("WEEKEND", result.getScheduleType());
-        assertEquals(50, result.getCapacity());
-        assertEquals(0, result.getEnrolled());
-        assertEquals("UPCOMING", result.getStatus());
-        assertEquals(100L, result.getCreatedBy());
+        // VO 出参与实体同字段（MapStruct 真实转换）
+        assertEquals(55L, result.courseId());
+        assertEquals("WEEKEND", result.scheduleType());
+        assertEquals("UPCOMING", result.status());
     }
 
     @Test
@@ -133,9 +149,9 @@ class CourseScheduleServiceTest {
         CreateScheduleRequest request = new CreateScheduleRequest(
                 LocalDate.of(2026, 9, 1), LocalDate.of(2026, 12, 31), "WEEKEND", "线下", "李老师", null);
 
-        CourseSchedule result = scheduleService.create(55L, request, 100L, false);
+        CourseScheduleVO result = scheduleService.create(55L, request, 100L, false);
 
-        assertEquals(0, result.getCapacity());
+        assertEquals(0, result.capacity());
     }
 
     @Test

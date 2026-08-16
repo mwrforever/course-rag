@@ -17,9 +17,9 @@ public interface IUserFeedbackService extends IService<UserFeedback> {
     /**
      * 提交反馈（按 user_id + message_id 幂等）
      *
-     * @return 反馈实体（已存在时更新原记录）
+     * @return 反馈视图对象（已存在时更新原记录，实体不出 service 边界）
      */
-    UserFeedback create(Long userId, Long sessionId, Long messageId, Boolean isLiked, String intentType);
+    UserFeedbackVO create(Long userId, Long sessionId, Long messageId, Boolean isLiked, String intentType);
 
     /**
      * 分页查询反馈（管理端）

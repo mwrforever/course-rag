@@ -3,7 +3,8 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.commerce.rag.entity.SysLoginRecord;
-import com.commerce.rag.entity.SysTokenBlacklist;
+import com.commerce.rag.vo.SysLoginRecordVO;
+import com.commerce.rag.vo.SysTokenBlacklistVO;
 import java.time.LocalDateTime;
 
 /**
@@ -21,9 +22,9 @@ public interface ISysLoginRecordService extends IService<SysLoginRecord> {
      * @param userId     用户 ID 筛选（可空）
      * @param deviceType 设备类型筛选（可空）
      * @param status     状态筛选（可空）
-     * @return 分页结果
+     * @return 分页结果（records 为登录记录视图对象，实体不出 service 边界）
      */
-    IPage<SysLoginRecord> findPage(int page, int size, Long userId, String deviceType, String status);
+    IPage<SysLoginRecordVO> findPage(int page, int size, Long userId, String deviceType, String status);
 
     /**
      * 按 ID 查询登录记录
@@ -44,8 +45,10 @@ public interface ISysLoginRecordService extends IService<SysLoginRecord> {
 
     /**
      * 分页查询黑名单
+     *
+     * @return 分页结果（records 为黑名单视图对象，实体不出 service 边界）
      */
-    IPage<SysTokenBlacklist> findBlacklistPage(int page, int size, Long userId, String jti, String tokenType);
+    IPage<SysTokenBlacklistVO> findBlacklistPage(int page, int size, Long userId, String jti, String tokenType);
 
     /**
      * 手动添加黑名单记录

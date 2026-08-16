@@ -60,9 +60,9 @@ public class UserFeedbackServiceImpl extends ServiceImpl<UserFeedbackMapper, Use
      * @param messageId  消息 ID
      * @param isLiked    是否点赞（NULL/TRUE/FALSE）
      * @param intentType 意图类型
-     * @return 已持久化的反馈实体
+     * @return 已持久化的反馈视图对象（实体不出 service 边界）
      */
-    public UserFeedback create(Long userId, Long sessionId, Long messageId, Boolean isLiked, String intentType) {
+    public UserFeedbackVO create(Long userId, Long sessionId, Long messageId, Boolean isLiked, String intentType) {
         // 查询是否已有该用户的反馈（按 user_id + message_id 唯一定位）
         LambdaQueryWrapper<UserFeedback> wrapper = Wrappers.<UserFeedback>lambdaQuery()
                 .eq(UserFeedback::getUserId, userId)
@@ -81,7 +81,7 @@ public class UserFeedbackServiceImpl extends ServiceImpl<UserFeedbackMapper, Use
             // 统计失效：点赞状态已变更（先写 DB 后失效，一致性铁律）
             dashboardStatsCache.invalidateAll();
             log.info("更新反馈: feedbackId={}, isLiked={}", existing.getId(), isLiked);
-            return existing;
+            return feedbackConverter.toVO(existing);
         }
 
         // 创建新反馈
@@ -100,7 +100,7 @@ public class UserFeedbackServiceImpl extends ServiceImpl<UserFeedbackMapper, Use
                 userId,
                 messageId,
                 isLiked);
-        return feedback;
+        return feedbackConverter.toVO(feedback);
     }
 
     /**

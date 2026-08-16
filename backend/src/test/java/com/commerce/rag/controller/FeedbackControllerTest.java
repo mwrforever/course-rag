@@ -6,8 +6,6 @@ import static org.mockito.Mockito.*;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.FeedbackRequest;
-import com.commerce.rag.convert.UserFeedbackConverter;
-import com.commerce.rag.entity.UserFeedback;
 import com.commerce.rag.service.IUserFeedbackService;
 import com.commerce.rag.vo.UserFeedbackVO;
 import jakarta.servlet.http.HttpServletRequest;
@@ -33,14 +31,11 @@ class FeedbackControllerTest {
     @Mock
     private IUserFeedbackService feedbackService;
 
-    @Mock
-    private UserFeedbackConverter converter;
-
     private FeedbackController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new FeedbackController(feedbackService, converter);
+        controller = new FeedbackController(feedbackService);
     }
 
     @Test
@@ -50,17 +45,8 @@ class FeedbackControllerTest {
         when(req.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(5L);
         FeedbackRequest feedbackRequest = new FeedbackRequest(1L, 2L, true, "knowledge_question");
 
-        UserFeedback feedback = new UserFeedback();
-        feedback.setId(1L);
-        feedback.setUserId(5L);
-        feedback.setSessionId(1L);
-        feedback.setMessageId(2L);
-        feedback.setIsLiked(true);
-        feedback.setIntentType("knowledge_question");
-        feedback.setCreatedAt(LocalDateTime.now());
-        when(feedbackService.create(5L, 1L, 2L, true, "knowledge_question")).thenReturn(feedback);
-        when(converter.toVO(feedback))
-                .thenReturn(new UserFeedbackVO(1L, 1L, 2L, 5L, true, "knowledge_question", feedback.getCreatedAt()));
+        when(feedbackService.create(5L, 1L, 2L, true, "knowledge_question"))
+                .thenReturn(new UserFeedbackVO(1L, 1L, 2L, 5L, true, "knowledge_question", LocalDateTime.now()));
 
         ApiResponse<UserFeedbackVO> result = controller.create(req, feedbackRequest);
 
@@ -76,12 +62,8 @@ class FeedbackControllerTest {
         when(req.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(5L);
         FeedbackRequest feedbackRequest = new FeedbackRequest(1L, 3L, false, "chat");
 
-        UserFeedback feedback = new UserFeedback();
-        feedback.setId(2L);
-        feedback.setUserId(5L);
-        feedback.setIsLiked(false);
-        when(feedbackService.create(5L, 1L, 3L, false, "chat")).thenReturn(feedback);
-        when(converter.toVO(feedback)).thenReturn(new UserFeedbackVO(2L, 1L, 3L, 5L, false, "chat", null));
+        when(feedbackService.create(5L, 1L, 3L, false, "chat"))
+                .thenReturn(new UserFeedbackVO(2L, 1L, 3L, 5L, false, "chat", null));
 
         ApiResponse<UserFeedbackVO> result = controller.create(req, feedbackRequest);
 

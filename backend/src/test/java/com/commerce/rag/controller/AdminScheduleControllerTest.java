@@ -6,13 +6,11 @@ import static org.mockito.Mockito.*;
 
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.convert.ScheduleConverter;
 import com.commerce.rag.dto.CreateScheduleRequest;
-import com.commerce.rag.dto.ScheduleDTO;
 import com.commerce.rag.dto.UpdateScheduleRequest;
-import com.commerce.rag.entity.CourseSchedule;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.service.ICourseScheduleService;
+import com.commerce.rag.vo.CourseScheduleVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDate;
 import java.util.List;
@@ -36,14 +34,11 @@ class AdminScheduleControllerTest {
     @Mock
     private ICourseScheduleService scheduleService;
 
-    @Mock
-    private ScheduleConverter scheduleConverter;
-
     private AdminScheduleController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AdminScheduleController(scheduleService, scheduleConverter);
+        controller = new AdminScheduleController(scheduleService);
     }
 
     private HttpServletRequest request(String role, Long userId) {
@@ -53,24 +48,8 @@ class AdminScheduleControllerTest {
         return req;
     }
 
-    private CourseSchedule schedule(Long id) {
-        CourseSchedule s = new CourseSchedule();
-        s.setId(id);
-        s.setCourseId(1L);
-        s.setStartDate(LocalDate.of(2026, 9, 1));
-        s.setEndDate(LocalDate.of(2026, 12, 31));
-        s.setScheduleType("WEEKEND");
-        s.setLocation("线上");
-        s.setInstructorName("张老师");
-        s.setCapacity(50);
-        s.setEnrolled(10);
-        s.setStatus("ACTIVE");
-        s.setCreatedBy(1L);
-        return s;
-    }
-
-    private ScheduleDTO scheduleDTO(Long id) {
-        return new ScheduleDTO(
+    private CourseScheduleVO scheduleVO(Long id) {
+        return new CourseScheduleVO(
                 id,
                 1L,
                 LocalDate.of(2026, 9, 1),
@@ -81,16 +60,17 @@ class AdminScheduleControllerTest {
                 50,
                 10,
                 "ACTIVE",
-                1L);
+                1L,
+                null,
+                null);
     }
 
     @Test
-    @DisplayName("F1 listByCourse → 超管不限归属，返回排期 DTO 列表")
+    @DisplayName("F1 listByCourse → 超管不限归属，返回排期视图列表")
     void listByCourse_superAdmin_returnsAll() {
-        when(scheduleService.findByCourseId(1L, 1L, true)).thenReturn(List.of(schedule(1L)));
-        when(scheduleConverter.toDTO(any(CourseSchedule.class))).thenReturn(scheduleDTO(1L));
+        when(scheduleService.findByCourseId(1L, 1L, true)).thenReturn(List.of(scheduleVO(1L)));
 
-        ApiResponse<List<ScheduleDTO>> result = controller.listByCourse(request("SUPER_ADMIN", 1L), 1L);
+        ApiResponse<List<CourseScheduleVO>> result = controller.listByCourse(request("SUPER_ADMIN", 1L), 1L);
 
         assertEquals(1, result.data().size());
         assertEquals(1L, result.data().get(0).id());
@@ -108,14 +88,13 @@ class AdminScheduleControllerTest {
     }
 
     @Test
-    @DisplayName("F2 create → 调用创建并返回 DTO")
+    @DisplayName("F2 create → 调用创建并返回视图对象")
     void create_callsService() {
         CreateScheduleRequest createRequest = new CreateScheduleRequest(
                 LocalDate.of(2026, 9, 1), LocalDate.of(2026, 12, 31), "WEEKEND", "线上", "张老师", 50);
-        when(scheduleService.create(1L, createRequest, 1L, true)).thenReturn(schedule(1L));
-        when(scheduleConverter.toDTO(any(CourseSchedule.class))).thenReturn(scheduleDTO(1L));
+        when(scheduleService.create(1L, createRequest, 1L, true)).thenReturn(scheduleVO(1L));
 
-        ApiResponse<ScheduleDTO> result = controller.create(request("SUPER_ADMIN", 1L), 1L, createRequest);
+        ApiResponse<CourseScheduleVO> result = controller.create(request("SUPER_ADMIN", 1L), 1L, createRequest);
 
         assertEquals(1L, result.data().id());
         verify(scheduleService).create(1L, createRequest, 1L, true);
@@ -133,12 +112,11 @@ class AdminScheduleControllerTest {
     }
 
     @Test
-    @DisplayName("F3 detail → 存在时返回 DTO")
-    void detail_returnsDTO() {
-        when(scheduleService.findById(1L, 1L, true)).thenReturn(schedule(1L));
-        when(scheduleConverter.toDTO(any(CourseSchedule.class))).thenReturn(scheduleDTO(1L));
+    @DisplayName("F3 detail → 存在时返回视图对象")
+    void detail_returnsVO() {
+        when(scheduleService.findById(1L, 1L, true)).thenReturn(scheduleVO(1L));
 
-        ApiResponse<ScheduleDTO> result = controller.detail(request("SUPER_ADMIN", 1L), 1L);
+        ApiResponse<CourseScheduleVO> result = controller.detail(request("SUPER_ADMIN", 1L), 1L);
 
         assertEquals("WEEKEND", result.data().scheduleType());
     }

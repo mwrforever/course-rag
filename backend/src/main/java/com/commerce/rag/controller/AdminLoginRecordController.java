@@ -5,14 +5,11 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
 import com.commerce.rag.convert.AdminLoginRecordConverter;
-import com.commerce.rag.entity.SysLoginRecord;
-import com.commerce.rag.entity.SysTokenBlacklist;
 import com.commerce.rag.service.ISysLoginRecordService;
 import com.commerce.rag.vo.SysLoginRecordVO;
 import com.commerce.rag.vo.SysTokenBlacklistVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -57,10 +54,8 @@ public class AdminLoginRecordController {
             @RequestParam(required = false) String deviceType,
             @RequestParam(required = false) String status) {
 
-        IPage<SysLoginRecord> result = sysLoginRecordService.findPage(page, size, userId, deviceType, status);
-        List<SysLoginRecordVO> records =
-                result.getRecords().stream().map(converter::toLoginRecordVO).toList();
-        return ApiResponse.ok(new PageResponse<>(records, result.getTotal(), page, size));
+        IPage<SysLoginRecordVO> result = sysLoginRecordService.findPage(page, size, userId, deviceType, status);
+        return ApiResponse.ok(PageResponse.of(result));
     }
 
     /** K2: 查看登录记录详情 */
@@ -90,10 +85,8 @@ public class AdminLoginRecordController {
             @RequestParam(required = false) String jti,
             @RequestParam(required = false) String tokenType) {
 
-        IPage<SysTokenBlacklist> result = sysLoginRecordService.findBlacklistPage(page, size, userId, jti, tokenType);
-        List<SysTokenBlacklistVO> records =
-                result.getRecords().stream().map(converter::toBlacklistVO).toList();
-        return ApiResponse.ok(new PageResponse<>(records, result.getTotal(), page, size));
+        IPage<SysTokenBlacklistVO> result = sysLoginRecordService.findBlacklistPage(page, size, userId, jti, tokenType);
+        return ApiResponse.ok(PageResponse.of(result));
     }
 
     /** K5: 手动添加黑名单 */

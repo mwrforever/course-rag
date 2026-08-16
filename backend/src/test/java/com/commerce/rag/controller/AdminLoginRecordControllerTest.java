@@ -10,7 +10,6 @@ import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
 import com.commerce.rag.convert.AdminLoginRecordConverter;
 import com.commerce.rag.entity.SysLoginRecord;
-import com.commerce.rag.entity.SysTokenBlacklist;
 import com.commerce.rag.service.ISysLoginRecordService;
 import com.commerce.rag.vo.SysLoginRecordVO;
 import com.commerce.rag.vo.SysTokenBlacklistVO;
@@ -63,18 +62,6 @@ class AdminLoginRecordControllerTest {
         return r;
     }
 
-    private SysTokenBlacklist blacklist(Long id) {
-        SysTokenBlacklist b = new SysTokenBlacklist();
-        b.setId(id);
-        b.setJti("jti-1");
-        b.setTokenType("ACCESS");
-        b.setUserId(5L);
-        b.setBlacklistedBy(1L);
-        b.setReason("MANUAL_REVOKE");
-        b.setExpiresAt(LocalDateTime.now().plusDays(7));
-        return b;
-    }
-
     private SysLoginRecordVO loginRecordVO(Long id) {
         return new SysLoginRecordVO(
                 id,
@@ -105,11 +92,10 @@ class AdminLoginRecordControllerTest {
     @Test
     @DisplayName("K1 listLoginRecords → 透传筛选条件返回分页记录（VO）")
     void listLoginRecords_returnsPaged() {
-        Page<SysLoginRecord> paged = new Page<>(1, 20);
-        paged.setRecords(List.of(loginRecord(1L)));
+        Page<SysLoginRecordVO> paged = new Page<>(1, 20);
+        paged.setRecords(List.of(loginRecordVO(1L)));
         paged.setTotal(1);
         when(sysLoginRecordService.findPage(1, 20, 5L, "PC", "ACTIVE")).thenReturn(paged);
-        when(converter.toLoginRecordVO(any(SysLoginRecord.class))).thenReturn(loginRecordVO(1L));
 
         ApiResponse<PageResponse<SysLoginRecordVO>> result = controller.listLoginRecords(1, 20, 5L, "PC", "ACTIVE");
 
@@ -143,12 +129,11 @@ class AdminLoginRecordControllerTest {
     @Test
     @DisplayName("K4 listBlacklist → 透传筛选条件返回分页黑名单（VO）")
     void listBlacklist_returnsPaged() {
-        Page<SysTokenBlacklist> paged = new Page<>(1, 20);
-        paged.setRecords(List.of(blacklist(1L)));
+        Page<SysTokenBlacklistVO> paged = new Page<>(1, 20);
+        paged.setRecords(List.of(blacklistVO(1L)));
         paged.setTotal(1);
         when(sysLoginRecordService.findBlacklistPage(1, 20, 5L, "jti-1", "ACCESS"))
                 .thenReturn(paged);
-        when(converter.toBlacklistVO(any(SysTokenBlacklist.class))).thenReturn(blacklistVO(1L));
 
         ApiResponse<PageResponse<SysTokenBlacklistVO>> result = controller.listBlacklist(1, 20, 5L, "jti-1", "ACCESS");
 

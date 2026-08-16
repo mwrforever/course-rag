@@ -11,6 +11,7 @@ import com.commerce.rag.entity.UserFeedback;
 import com.commerce.rag.mapper.UserFeedbackMapper;
 import com.commerce.rag.service.impl.UserFeedbackServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.UserFeedbackVO;
 import com.github.benmanes.caffeine.cache.Cache;
 import java.util.List;
 import java.util.Map;
@@ -52,24 +53,24 @@ class UserFeedbackServiceTest {
     private UserFeedbackServiceImpl feedbackService;
 
     @Test
-    @DisplayName("create 新建反馈 — 不存在时插入")
+    @DisplayName("create 新建反馈 — 不存在时插入并返回 VO")
     void create_newFeedback_inserts() {
         // 查询不存在
         when(feedbackMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
         when(feedbackMapper.insert((UserFeedback) any())).thenReturn(1);
 
-        UserFeedback result = feedbackService.create(200L, 1L, 100L, true, "TECHNICAL_QA");
+        UserFeedbackVO result = feedbackService.create(200L, 1L, 100L, true, "TECHNICAL_QA");
 
         assertNotNull(result);
-        assertEquals(1L, result.getSessionId());
-        assertEquals(100L, result.getMessageId());
-        assertTrue(result.getIsLiked());
-        assertEquals("TECHNICAL_QA", result.getIntentType());
+        assertEquals(1L, result.sessionId());
+        assertEquals(100L, result.messageId());
+        assertTrue(result.isLiked());
+        assertEquals("TECHNICAL_QA", result.intentType());
         verify(feedbackMapper).insert((UserFeedback) any());
     }
 
     @Test
-    @DisplayName("create 更新已有反馈 — 存在时更新")
+    @DisplayName("create 更新已有反馈 — 存在时更新并返回 VO")
     void create_existingFeedback_updates() {
         UserFeedback existing = new UserFeedback();
         existing.setId(1L);
@@ -80,10 +81,10 @@ class UserFeedbackServiceTest {
         when(feedbackMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(existing);
         when(feedbackMapper.update(any(), any())).thenReturn(1);
 
-        UserFeedback result = feedbackService.create(200L, 1L, 100L, true, "COURSE_INFO");
+        UserFeedbackVO result = feedbackService.create(200L, 1L, 100L, true, "COURSE_INFO");
 
-        assertTrue(result.getIsLiked());
-        assertEquals("COURSE_INFO", result.getIntentType());
+        assertTrue(result.isLiked());
+        assertEquals("COURSE_INFO", result.intentType());
         verify(feedbackMapper).update(any(), any());
         verify(feedbackMapper, never()).insert(any(UserFeedback.class));
     }
@@ -131,12 +132,15 @@ class UserFeedbackServiceTest {
         // 无已有反馈时新建
         when(feedbackMapper.selectOne(any())).thenReturn(null);
 
-        UserFeedback result = feedbackService.create(200L, 1L, 10L, true, "knowledge_question");
+        UserFeedbackVO result = feedbackService.create(200L, 1L, 10L, true, "knowledge_question");
 
         ArgumentCaptor<UserFeedback> captor = ArgumentCaptor.forClass(UserFeedback.class);
         verify(feedbackMapper).insert(captor.capture());
         assertEquals(200L, captor.getValue().getUserId());
         assertEquals(10L, captor.getValue().getMessageId());
+        // VO 出参与实体同字段（MapStruct 真实转换）
+        assertEquals(200L, result.userId());
+        assertEquals(10L, result.messageId());
     }
 
     @Test

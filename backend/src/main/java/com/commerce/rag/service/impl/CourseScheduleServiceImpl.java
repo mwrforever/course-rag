@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.commerce.rag.convert.ScheduleConverter;
 import com.commerce.rag.dto.CreateScheduleRequest;
 import com.commerce.rag.dto.UpdateScheduleRequest;
 import com.commerce.rag.entity.CourseSchedule;
@@ -13,6 +14,7 @@ import com.commerce.rag.mapper.CourseScheduleMapper;
 import com.commerce.rag.service.ICourseQueryService;
 import com.commerce.rag.service.ICourseScheduleService;
 import com.commerce.rag.service.ICourseService;
+import com.commerce.rag.vo.CourseScheduleVO;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,8 @@ public class CourseScheduleServiceImpl extends ServiceImpl<CourseScheduleMapper,
     private final ICourseService courseService;
     /** 课程查询服务（排期写后失效该课程的查询缓存，先写 DB 后失效） */
     private final ICourseQueryService courseQueryService;
+    /** 排期转换器 —— Entity 出 service 边界前转 VO */
+    private final ScheduleConverter scheduleConverter;
 
     /**
      * 创建排期
@@ -48,7 +52,7 @@ public class CourseScheduleServiceImpl extends ServiceImpl<CourseScheduleMapper,
      * @param isAdmin       是否为超管（超管旁路）
      * @return 排期实体（含雪花 ID）
      */
-    public CourseSchedule create(Long courseId, CreateScheduleRequest request, Long currentUserId, boolean isAdmin) {
+    public CourseScheduleVO create(Long courseId, CreateScheduleRequest request, Long currentUserId, boolean isAdmin) {
         courseService.checkOwnership(courseId, currentUserId, isAdmin);
         CourseSchedule schedule = new CourseSchedule();
         schedule.setCourseId(courseId);
@@ -65,7 +69,7 @@ public class CourseScheduleServiceImpl extends ServiceImpl<CourseScheduleMapper,
         // 新排期影响"下一期排期"查询结果，失效该课程缓存键（先写 DB 后失效）
         courseQueryService.evictCourse(courseId);
         log.info("创建排期: scheduleId={}, courseId={}, operator={}", schedule.getId(), courseId, currentUserId);
-        return schedule;
+        return scheduleConverter.toVO(schedule);
     }
 
     /**
@@ -83,14 +87,14 @@ public class CourseScheduleServiceImpl extends ServiceImpl<CourseScheduleMapper,
      * @param isAdmin       是否为超管（超管旁路）
      * @return 排期实体，不存在或无权访问返回 null
      */
-    public CourseSchedule findById(Long id, Long currentUserId, boolean isAdmin) {
+    public CourseScheduleVO findById(Long id, Long currentUserId, boolean isAdmin) {
         CourseSchedule schedule = scheduleMapper.selectById(id);
         if (schedule == null) {
             return null;
         }
         // 归属校验：非超管必须为课程创建者（无权访问返回 null，不泄露存在性）
         courseService.checkOwnership(schedule.getCourseId(), currentUserId, isAdmin);
-        return schedule;
+        return scheduleConverter.toVO(schedule);
     }
 
     /**
@@ -111,10 +115,11 @@ public class CourseScheduleServiceImpl extends ServiceImpl<CourseScheduleMapper,
      * @param isAdmin       是否为超管（超管旁路）
      * @return 排期列表；课程不存在或无权访问抛 404/403
      */
-    public List<CourseSchedule> findByCourseId(Long courseId, Long currentUserId, boolean isAdmin) {
+    public List<CourseScheduleVO> findByCourseId(Long courseId, Long currentUserId, boolean isAdmin) {
         // 归属校验：课程不存在或非创建者直接拒绝（读端点越权修复）
         courseService.checkOwnership(courseId, currentUserId, isAdmin);
-        return findByCourseId(courseId);
+        // 内部单参重载返回实体列表，此处逐条转 VO 后再出 service 边界
+        return findByCourseId(courseId).stream().map(scheduleConverter::toVO).toList();
     }
 
     /**

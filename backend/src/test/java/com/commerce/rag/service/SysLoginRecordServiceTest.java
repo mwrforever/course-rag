@@ -7,6 +7,8 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.DeviceKickService;
+import com.commerce.rag.convert.AdminLoginRecordConverter;
+import com.commerce.rag.convert.AdminLoginRecordConverterImpl;
 import com.commerce.rag.entity.SysLoginRecord;
 import com.commerce.rag.entity.SysTokenBlacklist;
 import com.commerce.rag.exception.BizException;
@@ -14,6 +16,8 @@ import com.commerce.rag.mapper.SysLoginRecordMapper;
 import com.commerce.rag.mapper.SysTokenBlacklistMapper;
 import com.commerce.rag.service.impl.SysLoginRecordServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.SysLoginRecordVO;
+import com.commerce.rag.vo.SysTokenBlacklistVO;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
@@ -22,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
@@ -48,6 +53,10 @@ class SysLoginRecordServiceTest {
     @Mock
     private DeviceKickService deviceKickService;
 
+    /** 转换器用真实实现（MapStruct 生成类），转换行为由 AdminLoginRecordConverterTest 单独覆盖 */
+    @Spy
+    private AdminLoginRecordConverter converter = new AdminLoginRecordConverterImpl();
+
     @InjectMocks
     private SysLoginRecordServiceImpl service;
 
@@ -62,17 +71,34 @@ class SysLoginRecordServiceTest {
         return r;
     }
 
+    private SysTokenBlacklist blacklistRecord(Long id) {
+        SysTokenBlacklist b = new SysTokenBlacklist();
+        b.setId(id);
+        b.setJti("jti-1");
+        b.setTokenType("ACCESS");
+        b.setUserId(5L);
+        b.setBlacklistedBy(1L);
+        b.setReason("MANUAL_REVOKE");
+        b.setExpiresAt(LocalDateTime.now().plusDays(7));
+        return b;
+    }
+
     // ==================== 登录记录 K1-K3 ====================
 
     @Test
-    @DisplayName("findPage → 全条件筛选分页查询")
+    @DisplayName("findPage → 全条件筛选分页查询并转换为 VO 分页")
     void findPage_withAllFilters() {
         Page<SysLoginRecord> page = new Page<>(1, 20);
+        page.setRecords(List.of(activeRecord(1L)));
+        page.setTotal(1);
         when(loginRecordMapper.selectPage(any(Page.class), any())).thenReturn(page);
 
-        IPage<SysLoginRecord> result = service.findPage(1, 20, 5L, "PC", "ACTIVE");
+        IPage<SysLoginRecordVO> result = service.findPage(1, 20, 5L, "PC", "ACTIVE");
 
-        assertSame(page, result);
+        assertEquals(1, result.getTotal());
+        assertEquals(1, result.getRecords().size());
+        assertEquals(5L, result.getRecords().get(0).userId());
+        assertEquals("jti-at-1", result.getRecords().get(0).jtiAt());
         verify(loginRecordMapper).selectPage(any(Page.class), any());
     }
 
@@ -80,10 +106,12 @@ class SysLoginRecordServiceTest {
     @DisplayName("findPage → 无筛选条件时同样分页查询")
     void findPage_noFilters() {
         Page<SysLoginRecord> page = new Page<>(1, 20);
+        page.setRecords(List.of(activeRecord(1L)));
         when(loginRecordMapper.selectPage(any(Page.class), any())).thenReturn(page);
 
-        service.findPage(1, 20, null, null, null);
+        IPage<SysLoginRecordVO> result = service.findPage(1, 20, null, null, null);
 
+        assertEquals(1, result.getRecords().size());
         verify(loginRecordMapper).selectPage(any(Page.class), any());
     }
 
@@ -156,14 +184,19 @@ class SysLoginRecordServiceTest {
     // ==================== Token 黑名单 K4-K7 ====================
 
     @Test
-    @DisplayName("findBlacklistPage → 全条件筛选分页查询")
+    @DisplayName("findBlacklistPage → 全条件筛选分页查询并转换为 VO 分页")
     void findBlacklistPage_withAllFilters() {
         Page<SysTokenBlacklist> page = new Page<>(1, 20);
+        page.setRecords(List.of(blacklistRecord(1L)));
+        page.setTotal(1);
         when(tokenBlacklistMapper.selectPage(any(Page.class), any())).thenReturn(page);
 
-        IPage<SysTokenBlacklist> result = service.findBlacklistPage(1, 20, 5L, "jti-1", "ACCESS");
+        IPage<SysTokenBlacklistVO> result = service.findBlacklistPage(1, 20, 5L, "jti-1", "ACCESS");
 
-        assertSame(page, result);
+        assertEquals(1, result.getTotal());
+        assertEquals(1, result.getRecords().size());
+        assertEquals("jti-1", result.getRecords().get(0).jti());
+        assertEquals(5L, result.getRecords().get(0).userId());
     }
 
     @Test
