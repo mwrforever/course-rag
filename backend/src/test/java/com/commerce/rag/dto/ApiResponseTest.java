@@ -1,4 +1,4 @@
-package com.commerce.rag.controller.dto;
+package com.commerce.rag.dto;
 
 import static org.junit.jupiter.api.Assertions.*;
 

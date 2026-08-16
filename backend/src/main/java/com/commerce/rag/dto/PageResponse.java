@@ -1,4 +1,4 @@
-package com.commerce.rag.controller.dto;
+package com.commerce.rag.dto;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import java.util.List;

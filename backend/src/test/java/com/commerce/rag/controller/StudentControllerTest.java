@@ -6,9 +6,9 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
-import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.dto.ApiResponse;
 import com.commerce.rag.dto.ChatRequest;
+import com.commerce.rag.dto.PageResponse;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.service.IDocumentChunkService;

@@ -1,4 +1,4 @@
-package com.commerce.rag.controller.dto;
+package com.commerce.rag.dto;
 
 /**
  * 登录响应 DTO

@@ -1,6 +1,6 @@
 package com.commerce.rag.controller;
 
-import com.commerce.rag.controller.dto.ApiResponse;
+import com.commerce.rag.dto.ApiResponse;
 import com.commerce.rag.service.IDashboardService;
 import java.util.List;
 import java.util.Map;

@@ -1,7 +1,7 @@
 package com.commerce.rag.controller;
 
 import com.commerce.rag.auth.AuthInterceptor;
-import com.commerce.rag.controller.dto.ApiResponse;
+import com.commerce.rag.dto.ApiResponse;
 import com.commerce.rag.dto.CreateScheduleRequest;
 import com.commerce.rag.dto.UpdateScheduleRequest;
 import com.commerce.rag.exception.BizException;

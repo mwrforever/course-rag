@@ -1,4 +1,4 @@
-package com.commerce.rag.controller.dto;
+package com.commerce.rag.dto;
 
 /**
  * 分片 collection_type 更新请求

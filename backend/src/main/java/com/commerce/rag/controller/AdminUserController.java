@@ -2,11 +2,11 @@ package com.commerce.rag.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.commerce.rag.auth.AuthInterceptor;
-import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.controller.dto.ResetPasswordRequest;
-import com.commerce.rag.controller.dto.UpdateStatusRequest;
+import com.commerce.rag.dto.ApiResponse;
 import com.commerce.rag.dto.CreateUserRequest;
+import com.commerce.rag.dto.PageResponse;
+import com.commerce.rag.dto.ResetPasswordRequest;
+import com.commerce.rag.dto.UpdateStatusRequest;
 import com.commerce.rag.dto.UpdateUserRequest;
 import com.commerce.rag.dto.UserDTO;
 import com.commerce.rag.exception.BizException;

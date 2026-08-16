@@ -2,9 +2,9 @@ package com.commerce.rag.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.commerce.rag.auth.AuthInterceptor;
-import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.controller.dto.PageResponse;
 import com.commerce.rag.convert.AdminLoginRecordConverter;
+import com.commerce.rag.dto.ApiResponse;
+import com.commerce.rag.dto.PageResponse;
 import com.commerce.rag.service.ISysLoginRecordService;
 import com.commerce.rag.vo.SysLoginRecordVO;
 import com.commerce.rag.vo.SysTokenBlacklistVO;

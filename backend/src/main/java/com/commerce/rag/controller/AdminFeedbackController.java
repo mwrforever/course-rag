@@ -1,8 +1,8 @@
 package com.commerce.rag.controller;
 
 import com.commerce.rag.auth.AuthInterceptor;
-import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.dto.ApiResponse;
+import com.commerce.rag.dto.PageResponse;
 import com.commerce.rag.service.IUserFeedbackService;
 import com.commerce.rag.vo.UserFeedbackVO;
 import jakarta.servlet.http.HttpServletRequest;

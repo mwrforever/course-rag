@@ -18,8 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Answers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -38,20 +38,20 @@ class AdminUserControllerSecurityTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private TokenService tokenService;
 
-    @MockBean
+    @MockitoBean
     private DeviceKickService deviceKickService;
 
-    @MockBean
+    @MockitoBean
     private ISysUserService sysUserService;
 
     // RETURNS_DEEP_STUBS：@WebMvcTest 切片不加载 MyBatis 自动配置（无真实 SqlSessionFactory），
     // 但主类 @MapperScan 仍会注册全部 Mapper bean，其初始化链路会调用
     // getConfiguration().getDefaultExecutorType()/getEnvironment().getDataSource() ——
     // 深桩 mock 让 Mapper 可初始化（本测试不触达数据库，故无需真实工厂）
-    @MockBean(answer = Answers.RETURNS_DEEP_STUBS)
+    @MockitoBean(answers = Answers.RETURNS_DEEP_STUBS)
     private SqlSessionFactory sqlSessionFactory;
 
     private Claims stubToken(String role) throws Exception {

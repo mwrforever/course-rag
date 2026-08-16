@@ -2,8 +2,8 @@ package com.commerce.rag.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.commerce.rag.auth.AuthInterceptor;
-import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.dto.ApiResponse;
+import com.commerce.rag.dto.PageResponse;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.service.IChatMessageService;

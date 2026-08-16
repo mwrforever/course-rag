@@ -2,7 +2,7 @@ package com.commerce.rag.controller;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.commerce.rag.controller.dto.ApiResponse;
+import com.commerce.rag.dto.ApiResponse;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
 import org.junit.jupiter.api.DisplayName;

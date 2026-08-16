@@ -6,12 +6,12 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
-import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.controller.dto.BatchChunkUpdateRequest;
-import com.commerce.rag.controller.dto.BatchCorrectedRequest;
-import com.commerce.rag.controller.dto.ChunkCollectionTypeRequest;
-import com.commerce.rag.controller.dto.ChunkContentUpdateRequest;
-import com.commerce.rag.controller.dto.PageResponse;
+import com.commerce.rag.dto.ApiResponse;
+import com.commerce.rag.dto.BatchChunkUpdateRequest;
+import com.commerce.rag.dto.BatchCorrectedRequest;
+import com.commerce.rag.dto.ChunkCollectionTypeRequest;
+import com.commerce.rag.dto.ChunkContentUpdateRequest;
+import com.commerce.rag.dto.PageResponse;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.service.IDocumentChunkService;
 import com.commerce.rag.vo.DocumentChunkVO;
