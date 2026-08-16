@@ -518,6 +518,21 @@ public class WarningHook extends MessagesModelHook {
         }
     }
 
+    /**
+     * 会话级检测状态清理（BUG-11：run 被取消/异常终止时由 ChatRequestWorker finally 调用）
+     *
+     * <p>原实现仅在自然结束（无 tool_calls）与软停路径清理——取消/异常路径不触发 hook 回调，
+     * 该会话的 DetectionState（hash 窗口 + 工具计数器 + token 累计）常驻内存至会话结束，
+     * 会话多时内存缓慢增长，且残留的 totalTokens 历史最大值会污染下一轮 run 的预算判定。
+     *
+     * @param threadId 会话线程 ID（= sessionId）
+     */
+    public void cleanupSession(String threadId) {
+        if (threadId != null) {
+            cleanupThreadState(threadId);
+        }
+    }
+
     // ==================== 工具方法 ====================
 
     /**

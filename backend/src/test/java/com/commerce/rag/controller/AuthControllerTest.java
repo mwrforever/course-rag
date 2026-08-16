@@ -261,6 +261,33 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("refresh → Redis 故障降级 fail-open：标记放行 + 黑名单降级查 PG 未命中 → 刷新成功（BUG-1 回归保护）")
+    void refresh_redisFailure_failOpenSucceeds() {
+        // 模拟 Redis 故障场景：markRefreshTokenUsedAtomic 内部捕获 Redis 异常降级放行（返回 true），
+        // isBlacklisted 降级查 PG 无 TOKEN_REUSE 行（返回 false）——refresh 必须成功而非 401 自拦截
+        Claims claims = mock(Claims.class);
+        when(tokenService.validateToken("failover-rt")).thenReturn(claims);
+        when(tokenService.extractTokenType(claims)).thenReturn("REFRESH");
+        when(tokenService.extractJti(claims)).thenReturn("old-jti-rt");
+        when(tokenService.extractUserId(claims)).thenReturn(1L);
+        when(deviceKickService.markRefreshTokenUsedAtomic("old-jti-rt")).thenReturn(true);
+        when(deviceKickService.isBlacklisted("old-jti-rt")).thenReturn(false);
+        when(sysUserService.findById(1L))
+                .thenReturn(new UserDTO(1L, "testuser", "测试用户", "STUDENT", "ACTIVE", LocalDateTime.now()));
+        when(tokenService.generateJti()).thenReturn("new-jti-at", "new-jti-rt");
+        when(tokenService.generateAccessToken(1L, "STUDENT", "new-jti-at")).thenReturn("new-access-token");
+        when(tokenService.generateRefreshToken(1L, "new-jti-rt")).thenReturn("new-refresh-token");
+        when(claims.getExpiration()).thenReturn(Date.from(Instant.now().plusSeconds(604800L)));
+
+        ApiResponse<LoginResponse> result = authController.refresh(new RefreshRequest("failover-rt"), httpResponse);
+
+        // 刷新成功（不 401、不触发全量作废）
+        assertNotNull(result);
+        assertEquals("new-access-token", result.data().accessToken());
+        verify(deviceKickService, never()).disableUser(anyLong(), anyLong());
+    }
+
+    @Test
     @DisplayName("refresh → RT 复用（原子标记失败）：401 + disableUser 全量作废")
     void refresh_rtReuse_throws401AndDisablesUser() {
         Claims claims = mock(Claims.class);

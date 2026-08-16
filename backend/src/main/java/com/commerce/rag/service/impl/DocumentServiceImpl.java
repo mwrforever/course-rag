@@ -24,6 +24,7 @@ import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -131,8 +132,8 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
 
         log.info("文档已上传: docId={}, kbId={}, title={}, fileType={}", doc.getId(), kbId, title, fileType);
 
-        // 触发 ETL 异步管道
-        etlPool.execute(() -> etlPipeline.process(doc.getId()));
+        // 触发 ETL 异步管道（M-7：队列满快速失败，不再 CallerRuns 内联阻塞上传请求线程）
+        submitEtlOrFail(doc.getId());
 
         // Entity 出 service 边界前转 VO（sourcePath 因 VO 无此字段自然忽略）
         return documentConverter.toVO(doc);
@@ -312,13 +313,37 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                 .set(Document::getUpdatedAt, LocalDateTime.now());
         documentMapper.update(null, docWrapper);
 
-        // 重新触发 ETL
-        etlPool.execute(() -> etlPipeline.process(id));
+        // 重新触发 ETL（M-7：队列满快速失败，不再 CallerRuns 内联阻塞重解析请求线程）
+        submitEtlOrFail(id);
 
         // 统计失效：文档状态已重置为 PENDING（先写 DB 后失效，一致性铁律；ETL 终态由 EtlPipeline 失效）
         dashboardStatsCache.invalidateAll();
 
         log.info("重新解析文档: docId={}, operatorId={}", id, operatorId);
+    }
+
+    /**
+     * 提交 ETL 异步任务（M-7：etlPool 队列满时快速失败——回写文档 FAILED + 抛 503，
+     * 替代原 CallerRunsPolicy 让上传/重解析的 HTTP 请求线程内联执行整个 ETL（分钟级阻塞））
+     *
+     * @param docId 文档 ID
+     */
+    private void submitEtlOrFail(Long docId) {
+        try {
+            etlPool.execute(() -> etlPipeline.process(docId));
+        } catch (RejectedExecutionException e) {
+            log.error("ETL 队列已满，文档快速失败: docId={}", docId, e);
+            documentMapper.update(
+                    null,
+                    Wrappers.<Document>lambdaUpdate()
+                            .eq(Document::getId, docId)
+                            .set(Document::getParseStatus, "FAILED")
+                            .set(Document::getErrorMessage, "ETL 队列已满，请稍后重试")
+                            .set(Document::getUpdatedAt, LocalDateTime.now()));
+            // 状态已变更（先写 DB 后失效，一致性铁律）
+            dashboardStatsCache.invalidateAll();
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "文档解析队列繁忙，请稍后重试");
+        }
     }
 
     /**

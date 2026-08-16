@@ -62,11 +62,23 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
     /**
      * 按 run_id 查询消息（按 seq 升序），用于降级重组和前端历史回放
      *
+     * <p>L-2：按需取列——仅投影 ChatMessageVO 所需 8 列（sourcesJson/tokenCount/
+     * confidence/traceId/sessionId 等大字段或内部字段丢弃）。
+     *
      * @param runId Run ID
      * @return 消息视图对象列表（按 seq 升序，剔除 sessionId/sourcesJson 等内部字段）
      */
     public List<ChatMessageVO> findByRunId(Long runId) {
         LambdaQueryWrapper<ChatMessage> wrapper = Wrappers.<ChatMessage>lambdaQuery()
+                .select(
+                        ChatMessage::getId,
+                        ChatMessage::getRole,
+                        ChatMessage::getContent,
+                        ChatMessage::getMessageType,
+                        ChatMessage::getIntentType,
+                        ChatMessage::getRunId,
+                        ChatMessage::getSeq,
+                        ChatMessage::getCreatedAt)
                 .eq(ChatMessage::getRunId, runId)
                 .orderByAsc(ChatMessage::getSeq);
         // 实体列表 → VO 列表：逐条转换，sessionId/sourcesJson 等内部字段不随 VO 出边界
@@ -78,11 +90,22 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
     /**
      * 按 session_id 查询全部消息（按 created_at 升序），用于管理端会话详情
      *
+     * <p>L-2：按需取列——与 findByRunId 同款投影（sourcesJson/tokenCount/confidence/traceId 丢弃）。
+     *
      * @param sessionId 会话 ID
      * @return 消息视图对象列表（剔除 sessionId/sourcesJson 等内部字段）
      */
     public List<ChatMessageVO> findBySessionId(Long sessionId) {
         LambdaQueryWrapper<ChatMessage> wrapper = Wrappers.<ChatMessage>lambdaQuery()
+                .select(
+                        ChatMessage::getId,
+                        ChatMessage::getRole,
+                        ChatMessage::getContent,
+                        ChatMessage::getMessageType,
+                        ChatMessage::getIntentType,
+                        ChatMessage::getRunId,
+                        ChatMessage::getSeq,
+                        ChatMessage::getCreatedAt)
                 .eq(ChatMessage::getSessionId, sessionId)
                 .orderByAsc(ChatMessage::getCreatedAt);
         // 实体列表 → VO 列表：逐条转换，sessionId/sourcesJson 等内部字段不随 VO 出边界

@@ -80,7 +80,9 @@ public class ChatStreamEntry {
 
     @PostConstruct
     public void init() {
-        scheduler = new ScheduledThreadPoolExecutor(2, r -> {
+        // L-7: 心跳线程数 2→4——慢客户端 send 阻塞时避免饿死全部连接心跳
+        // （根治方案=心跳发送走投递线程/加超时，线程扩容为低成本缓解）
+        scheduler = new ScheduledThreadPoolExecutor(4, r -> {
             Thread t = new Thread(r, "chat-heartbeat");
             t.setDaemon(true);
             return t;

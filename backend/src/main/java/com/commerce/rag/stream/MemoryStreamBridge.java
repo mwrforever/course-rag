@@ -2,11 +2,13 @@ package com.commerce.rag.stream;
 
 import com.commerce.rag.properties.StreamProperties;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,10 +20,22 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  *
  * <p>核心能力：
  * <ol>
- *   <li>实时推送：事件写入 ring buffer → 唤醒订阅者（SseEmitter）→ 前端 EventSource 消费</li>
+ *   <li>实时推送：事件写入 ring buffer → 有界投递队列 → 独立投递线程唤醒订阅者（SseEmitter）→ 前端 EventSource 消费</li>
  *   <li>O(1) 回放：断线重连时根据 lastEventId 计算 offset，从 ring buffer 回放后续事件</li>
  *   <li>降级：ring buffer 分配失败 → fallback ConcurrentLinkedQueue（不终止 run）</li>
  * </ol>
+ *
+ * <p>H-1（2026-08-16 性能报告）：事件投递与生成线程解耦——每 run 一个「有界投递队列 +
+ * 独立投递线程」，SseEmitter.send 的阻塞网络 IO 不再发生在生成线程（doOnNext/blockLast）上，
+ * 慢客户端只阻塞自己的投递线程；投递队列满（投递线程被慢客户端卡住）时摘除全部订阅者
+ * （complete → EventSource 自动重连 → 经 ring 回放补偿，事件不丢——ring 是恢复的事实来源）。
+ *
+ * <p>M-3：断线重连回放不再持 stateLock 逐条 send——锁内仅收集回放快照（引用列表）并入队
+ * 回放批次，实际发送由投递线程执行；回放批次与广播事件在同一把锁内入队，FIFO 保证
+ * 「回放事件（旧 seq）先于其后推送的实时事件（新 seq）送达」，顺序语义与 P1-1 一致。
+ *
+ * <p>线程模型：生成线程 → push（锁内写 ring + 入队，纯内存 O(1)，永不阻塞网络 IO）；
+ * 投递线程（每 run 一个，daemon）→ take 队列逐条发送。
  *
  * <p>设计文档 §3.2 / §3.6
  */
@@ -51,8 +65,10 @@ public class MemoryStreamBridge {
     }
 
     /**
-     * 写入事件到 ring buffer + 推送给所有订阅者。
-     * SseEmitter.send() 在各自实例上同步（Spring 内部已保证线程安全）。
+     * 写入事件到 ring buffer + 投递队列（异步送达订阅者）。
+     *
+     * <p>H-1：本方法只做「锁内写 ring + 有界队列入队」（O(1) 纯内存），
+     * 实际 SseEmitter.send 由投递线程执行——慢客户端不再拖停生成线程。
      */
     public void push(String runId, SseEvent event) {
         Ring ring = rings.get(runId);
@@ -86,11 +102,15 @@ public class MemoryStreamBridge {
      * 原子「回放 + 订阅」——断线重连主路径（P1-2 B5 竞态修复）。
      *
      * <p>回放 lastEventId 之后的事件并注册 emitter，与 push 并发下不丢不重。
+     * 本方法返回时回放尚未发送（投递线程异步执行）——顺序保证为结构性：
+     * 回放批次在锁内先于其后广播事件入队，单投递线程 FIFO 逐条发送，
+     * 回放事件（旧 seq）必然先于任何实时事件（新 seq）送达（M-3）。
      *
      * @param runId       Run 唯一标识
      * @param lastEventId 客户端最后收到的 eventId
      * @param emitter     SSE 订阅者
-     * @return true=回放成功且已注册；false=ring 不存在或 lastEventId 已被覆盖（需降级查 PG）
+     * @return true=回放已入队（投递线程将发送并注册）；false=ring 不存在、lastEventId 已被覆盖
+     *         或投递队列满（需降级查 PG）
      */
     public boolean replayAndSubscribe(String runId, long lastEventId, SseEmitter emitter) {
         Ring ring = rings.get(runId);
@@ -111,6 +131,14 @@ public class MemoryStreamBridge {
         }
     }
 
+    /**
+     * 测试/诊断辅助：指定 runId 的投递队列积压数（-1 = ring 不存在）
+     */
+    int outboxPending(String runId) {
+        Ring ring = rings.get(runId);
+        return ring == null ? -1 : ring.outbox.size();
+    }
+
     // ── 内部类 ──
 
     /**
@@ -127,11 +155,17 @@ public class MemoryStreamBridge {
         final List<SseEmitter> subscribers;
         volatile boolean closed;
 
-        /** 回放/订阅与 push 写入共享的锁（回放区间与注册原子，保证不丢不重） */
+        /** 回放/订阅与 push 写入共享的锁（回放区间收集与广播入队原子，保证不丢不重 + 顺序） */
         private final Object stateLock = new Object();
 
         /** 降级队列：非 null 表示处于降级模式 */
         final Queue<SseEvent> fallback;
+
+        /** H-1: 有界投递队列（容量 = ring capacity）；投递线程逐条发送 */
+        final LinkedBlockingQueue<Deliverable> outbox;
+
+        /** H-1: 独立投递线程（每 run 一个，daemon，阻塞网络 IO 不触碰生成线程） */
+        private volatile Thread deliveryThread;
 
         private Ring(String runId, int capacity, boolean useFallback) {
             this.runId = runId;
@@ -140,22 +174,56 @@ public class MemoryStreamBridge {
             this.head = new AtomicLong(0);
             this.subscribers = new CopyOnWriteArrayList<>();
             this.fallback = useFallback ? new ConcurrentLinkedQueue<>() : null;
+            this.outbox = new LinkedBlockingQueue<>(capacity);
         }
 
         /**
-         * 工厂方法：尝试创建正常 ring buffer，OOM 时降级。
+         * 工厂方法：尝试创建正常 ring buffer，OOM 时降级；随后启动投递线程。
          */
         static Ring create(String runId, int capacity) {
+            Ring ring;
             try {
-                return new Ring(runId, capacity, false);
+                ring = new Ring(runId, capacity, false);
             } catch (OutOfMemoryError e) {
                 log.warn("ring buffer 分配失败 runId={}, 降级 ConcurrentLinkedQueue", runId, e);
-                return new Ring(runId, capacity, true);
+                ring = new Ring(runId, capacity, true);
+            }
+            ring.startDeliveryThread();
+            return ring;
+        }
+
+        /** 启动投递线程（每 run 一个，daemon） */
+        private void startDeliveryThread() {
+            Thread t = new Thread(this::deliveryLoop, "bridge-delivery-" + runId);
+            t.setDaemon(true);
+            t.start();
+            deliveryThread = t;
+        }
+
+        /**
+         * 投递线程主循环：FIFO 逐条处理（单线程天然有序——回放批次先于其后广播事件）。
+         */
+        private void deliveryLoop() {
+            while (!closed) {
+                try {
+                    Deliverable item = outbox.take();
+                    if (item.replay) {
+                        deliverReplay(item.emitter, item.replayEvents);
+                    } else {
+                        deliverBroadcast(item.event);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (Exception e) {
+                    // 单条投递异常不终止线程（防御：complete 并发导致的 IllegalStateException 等）
+                    log.warn("投递线程处理异常（跳过该事件）: runId={}, err={}", runId, e.getMessage());
+                }
             }
         }
 
         void push(SseEvent event) {
-            // buffer 写入与 head 递增在锁内（纯内存操作，无 IO）；send 在锁外（IO 不持锁）
+            // buffer 写入与投递入队在锁内（纯内存操作，无 IO）；send 由投递线程执行
             synchronized (stateLock) {
                 if (closed) return;
                 if (fallback != null) {
@@ -165,10 +233,11 @@ public class MemoryStreamBridge {
                     int slot = (int) (idx % capacity);
                     buffer[slot] = event;
                 }
-            }
-            // 推送给所有订阅者（CopyOnWriteArrayList 线程安全）
-            for (SseEmitter emitter : subscribers) {
-                sendEvent(emitter, event);
+                // 广播入队失败（投递线程被慢客户端卡住、队列积满）→ 摘除全部订阅者，
+                // 客户端经 EventSource 自动重连 + ring 回放补偿（事件在 ring 中不丢）
+                if (!outbox.offer(Deliverable.broadcast(event))) {
+                    dropAllSubscribers();
+                }
             }
         }
 
@@ -193,21 +262,21 @@ public class MemoryStreamBridge {
         }
 
         /**
-         * 原子「回放 + 订阅」：锁内收集回放区间事件、注册 emitter 并发送回放事件。
+         * 原子「回放 + 订阅」：锁内收集回放区间事件快照并入队回放批次（M-3：锁内不再发送）。
          *
-         * <p>正确性：回放区间 (lastEventId, head@锁内] 与注册在同一临界区完成；
-         * 锁内注册后 push 的新事件（head 之后）实时推送到已注册 emitter →
-         * 并发下无丢失、无重复（对比旧的 replay+subscribe 两步之间的窗口丢失）。
+         * <p>正确性：回放区间 (lastEventId, head@锁内] 与回放批次入队在同一临界区完成；
+         * 入队后 push 的广播事件（head 之后）必然排在回放批次之后 → 单投递线程 FIFO 发送，
+         * 回放事件（旧 seq）先于实时事件（新 seq）交付，并发下无丢失、无重复、无乱序。
          *
-         * <p>P1-1 修复：回放事件在锁内发送——回放事件（旧 seq）先于任何 push 的
-         * 实时事件（新 seq，push 需拿锁写 buffer 后才发送）交付，消除重连时
-         * 新旧事件在 SseEmitter.send 上竞争导致的乱序（如 END 先于正文）。
+         * <p>回放批次实际发送在投递线程：先逐条发送回放事件，全部成功后注册 emitter
+         * （注册前 push 的广播事件不送达该 emitter——回放覆盖 ring 中全部旧事件）。
          *
          * @param lastEventId 客户端最后收到的 eventId
          * @param emitter     重连的 SSE 订阅者
-         * @return true=回放成功且已注册；false=lastEventId 已被覆盖（需降级查 PG）
+         * @return true=回放已入队；false=lastEventId 已被覆盖 / 投递队列满（需降级查 PG）
          */
         boolean replayAndSubscribe(long lastEventId, SseEmitter emitter) {
+            List<SseEvent> snapshot = new ArrayList<>();
             synchronized (stateLock) {
                 if (closed) {
                     return false;
@@ -216,9 +285,7 @@ public class MemoryStreamBridge {
                     // 降级路径：遍历 queue（O(n)，降级场景可接受）
                     for (SseEvent event : fallback) {
                         if (event.seqId() > lastEventId) {
-                            if (!sendEvent(emitter, event)) {
-                                return false;
-                            }
+                            snapshot.add(event);
                         }
                     }
                 } else {
@@ -238,24 +305,78 @@ public class MemoryStreamBridge {
                             int slot = (int) (seq % capacity);
                             SseEvent event = buffer[slot];
                             if (event != null && event.seqId() == seq) {
-                                if (!sendEvent(emitter, event)) {
-                                    return false;
-                                }
+                                snapshot.add(event);
                             }
                         }
                     }
                 }
-                // 回放事件全部发送成功后再注册：后续 push 实时推送到已注册 emitter
-                subscribers.add(emitter);
-                emitter.onCompletion(() -> subscribers.remove(emitter));
-                emitter.onTimeout(() -> subscribers.remove(emitter));
-                emitter.onError(e -> subscribers.remove(emitter));
+                // 回放批次入队（锁内与 push 的广播入队互斥——顺序保证的关键）；
+                // 队列满（投递线程被慢客户端卡住）→ 返回 false，调用方降级查 PG
+                if (!outbox.offer(Deliverable.replay(emitter, snapshot))) {
+                    log.warn("replayAndSubscribe 失败 runId={}: 投递队列已满", runId);
+                    return false;
+                }
                 return true;
             }
         }
 
+        /**
+         * 回放批次投递（投递线程执行）：逐条发送成功后注册 emitter。
+         */
+        private void deliverReplay(SseEmitter emitter, List<SseEvent> events) {
+            for (SseEvent event : events) {
+                if (!sendEvent(emitter, event)) {
+                    // 发送失败：emitter 已在 sendEvent 内移除，不再注册
+                    return;
+                }
+            }
+            // 回放全部成功后再注册：注册后 push 的实时事件才送达该 emitter（顺序保证）
+            synchronized (stateLock) {
+                if (closed) {
+                    return;
+                }
+                subscribers.add(emitter);
+                emitter.onCompletion(() -> subscribers.remove(emitter));
+                emitter.onTimeout(() -> subscribers.remove(emitter));
+                emitter.onError(e -> subscribers.remove(emitter));
+            }
+        }
+
+        /**
+         * 广播投递（投递线程执行）：发送给当前全部订阅者。
+         */
+        private void deliverBroadcast(SseEvent event) {
+            // CopyOnWriteArrayList 线程安全：send 失败移除不影响迭代
+            for (SseEmitter emitter : subscribers) {
+                sendEvent(emitter, event);
+            }
+        }
+
+        /**
+         * H-1: 投递队列积满（投递线程被慢客户端阻塞）→ 摘除全部订阅者。
+         *
+         * <p>complete 后浏览器 EventSource 自动重连（带 Last-Event-ID），经
+         * {@link #replayAndSubscribe} 从 ring buffer 回放补偿，事件不丢。
+         */
+        private void dropAllSubscribers() {
+            log.warn("投递队列已满（慢客户端阻塞投递线程），摘除全部订阅者（客户端重连后经 ring 回放补偿）: runId={}", runId);
+            for (SseEmitter emitter : new ArrayList<>(subscribers)) {
+                try {
+                    emitter.complete();
+                } catch (Exception ignored) {
+                    // 忽略关闭异常
+                }
+                subscribers.remove(emitter);
+            }
+        }
+
         void close() {
-            closed = true;
+            synchronized (stateLock) {
+                if (closed) {
+                    return;
+                }
+                closed = true;
+            }
             for (SseEmitter emitter : subscribers) {
                 try {
                     emitter.complete();
@@ -264,6 +385,12 @@ public class MemoryStreamBridge {
                 }
             }
             subscribers.clear();
+            // 中断投递线程（阻塞在 take() 上时立即退出；阻塞在 socket send 上时
+            // 等待发送失败后自然退出——daemon 线程，不阻止 JVM 退出）
+            Thread thread = deliveryThread;
+            if (thread != null) {
+                thread.interrupt();
+            }
         }
 
         /**
@@ -281,6 +408,36 @@ public class MemoryStreamBridge {
                 log.warn("SseEmitter.send 失败 runId={} seqId={}: {}", runId, event.seqId(), e.getMessage());
                 subscribers.remove(emitter);
                 return false;
+            } catch (RuntimeException e) {
+                // 与 complete() 并发导致的 IllegalStateException 等（发送失败视同断连）
+                log.warn("SseEmitter.send 运行时异常 runId={} seqId={}: {}", runId, event.seqId(), e.getMessage());
+                subscribers.remove(emitter);
+                return false;
+            }
+        }
+
+        /**
+         * 投递队列元素：广播事件（全体订阅者）或回放批次（单订阅者）。
+         */
+        static final class Deliverable {
+            final SseEvent event; // BROADCAST 用
+            final SseEmitter emitter; // REPLAY 用
+            final List<SseEvent> replayEvents; // REPLAY 用
+            final boolean replay;
+
+            private Deliverable(SseEvent event, SseEmitter emitter, List<SseEvent> replayEvents, boolean replay) {
+                this.event = event;
+                this.emitter = emitter;
+                this.replayEvents = replayEvents;
+                this.replay = replay;
+            }
+
+            static Deliverable broadcast(SseEvent event) {
+                return new Deliverable(event, null, null, false);
+            }
+
+            static Deliverable replay(SseEmitter emitter, List<SseEvent> events) {
+                return new Deliverable(null, emitter, events, true);
             }
         }
     }

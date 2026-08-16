@@ -11,6 +11,7 @@ import com.commerce.rag.mapper.ChatRunMapper;
 import com.commerce.rag.service.impl.ChatRunServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.ChatRunVO;
+import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -114,5 +115,21 @@ class ChatRunServiceTest {
         when(runMapper.selectById(99L)).thenReturn(null);
 
         assertNull(runService.findById(99L));
+    }
+
+    @Test
+    @DisplayName("findStaleActive → 查询超时 ACTIVE run 并转 VO（M-8 巡检用）")
+    void findStaleActive_returnsActiveRuns() {
+        ChatRun stale = new ChatRun();
+        stale.setId(1L);
+        stale.setStatus("ACTIVE");
+        when(runMapper.selectList(any())).thenReturn(List.of(stale));
+
+        List<ChatRunVO> result =
+                runService.findStaleActive(java.time.LocalDateTime.now().minusMinutes(10));
+
+        assertEquals(1, result.size());
+        assertEquals(1L, result.get(0).id());
+        assertEquals("ACTIVE", result.get(0).status());
     }
 }

@@ -233,28 +233,26 @@ class SysLoginRecordServiceTest {
     }
 
     @Test
-    @DisplayName("cleanupExpiredBlacklist → 逐条软删过期记录并返回数量")
+    @DisplayName("cleanupExpiredBlacklist → 单条 UPDATE 软删全部过期记录并返回行数（M-6）")
     void cleanupExpiredBlacklist_softDeletesEach() {
-        SysTokenBlacklist r1 = new SysTokenBlacklist();
-        r1.setId(1L);
-        SysTokenBlacklist r2 = new SysTokenBlacklist();
-        r2.setId(2L);
-        when(tokenBlacklistMapper.selectList(any())).thenReturn(List.of(r1, r2));
+        // M-6: 单条 UPDATE 替代「先全表查回 + 循环逐条 UPDATE」（与 cleanupExpired 同范式）
+        when(tokenBlacklistMapper.update(isNull(), any())).thenReturn(2);
 
         int count = service.cleanupExpiredBlacklist();
 
         assertEquals(2, count);
-        verify(tokenBlacklistMapper, times(2)).update(isNull(), any());
+        verify(tokenBlacklistMapper, never()).selectList(any());
+        verify(tokenBlacklistMapper, times(1)).update(isNull(), any());
     }
 
     @Test
     @DisplayName("cleanupExpiredBlacklist → 无过期记录时返回 0")
     void cleanupExpiredBlacklist_none_returnsZero() {
-        when(tokenBlacklistMapper.selectList(any())).thenReturn(List.of());
+        when(tokenBlacklistMapper.update(isNull(), any())).thenReturn(0);
 
         int count = service.cleanupExpiredBlacklist();
 
         assertEquals(0, count);
-        verify(tokenBlacklistMapper, never()).update(any(), any());
+        verify(tokenBlacklistMapper, never()).selectList(any());
     }
 }

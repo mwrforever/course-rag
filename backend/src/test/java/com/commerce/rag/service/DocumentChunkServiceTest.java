@@ -24,6 +24,7 @@ import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
 import com.commerce.rag.vo.DocumentChunkVO;
+import com.github.benmanes.caffeine.cache.Cache;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeAll;
@@ -59,6 +60,10 @@ class DocumentChunkServiceTest {
 
     @Mock
     private EtlPipeline etlPipeline;
+
+    /** Dashboard 统计缓存（Mock——删除/修正路径的失效钩子仅需不抛异常） */
+    @Mock
+    private Cache<String, Object> dashboardStatsCache;
 
     /** 转换器用真实实现（MapStruct 生成类），转换行为由 DocumentChunkConverterTest 单独覆盖 */
     @Spy
@@ -240,10 +245,9 @@ class DocumentChunkServiceTest {
         current.setParentChunkId(1L);
         current.setPrevChunkId(100L);
         current.setNextChunkId(3L);
-        when(chunkMapper.selectById(2L)).thenReturn(current);
-        when(chunkMapper.selectById(1L)).thenReturn(chunk(1L, "10"));
-        when(chunkMapper.selectById(100L)).thenReturn(chunk(100L, "10"));
-        when(chunkMapper.selectById(3L)).thenReturn(chunk(3L, "10"));
+        // L-4: 主分片走 selectOne（投影），相邻分片一次批量 selectList
+        when(chunkMapper.selectOne(any())).thenReturn(current);
+        when(chunkMapper.selectList(any())).thenReturn(List.of(chunk(1L, "10"), chunk(100L, "10"), chunk(3L, "10")));
 
         ChunkContextVO context = chunkService.findContext(2L);
 
@@ -258,7 +262,7 @@ class DocumentChunkServiceTest {
     @Test
     @DisplayName("findContext(C端) → 主分片不存在返回 null")
     void findContext_chunkNotFound_returnsNull() {
-        when(chunkMapper.selectById(99L)).thenReturn(null);
+        when(chunkMapper.selectOne(any())).thenReturn(null);
 
         assertNull(chunkService.findContext(99L));
     }
@@ -268,8 +272,9 @@ class DocumentChunkServiceTest {
     void findContext_missingNeighbors_omitsFields() {
         DocumentChunk current = chunk(1L, "DEFAULT");
         current.setParentChunkId(100L);
-        when(chunkMapper.selectById(1L)).thenReturn(current);
-        when(chunkMapper.selectById(100L)).thenReturn(null);
+        when(chunkMapper.selectOne(any())).thenReturn(current);
+        // 相邻分片批量查询无结果（已软删/不存在）→ Map 缺键 → 对应字段为 null
+        when(chunkMapper.selectList(any())).thenReturn(List.of());
 
         ChunkContextVO context = chunkService.findContext(1L);
 
@@ -279,9 +284,9 @@ class DocumentChunkServiceTest {
     }
 
     @Test
-    @DisplayName("findContext(C端) → 主分片无任何相邻指针时相邻字段为 null")
+    @DisplayName("findContext(C端) → 主分片无任何相邻指针时相邻字段为 null，且不触发相邻批量查询")
     void findContext_noPointers_neighborsNull() {
-        when(chunkMapper.selectById(1L)).thenReturn(chunk(1L, "DEFAULT"));
+        when(chunkMapper.selectOne(any())).thenReturn(chunk(1L, "DEFAULT"));
 
         ChunkContextVO context = chunkService.findContext(1L);
 
@@ -289,6 +294,7 @@ class DocumentChunkServiceTest {
         assertNull(context.parent());
         assertNull(context.prev());
         assertNull(context.next());
+        verify(chunkMapper, never()).selectList(any());
     }
 
     @Test
@@ -654,7 +660,8 @@ class DocumentChunkServiceTest {
         c.setDocId(10L);
         when(chunkMapper.selectBatchIds(any())).thenReturn(List.of(c));
         when(documentMapper.selectBatchIds(any())).thenReturn(List.of(doc(10L, 999L, 7L)));
-        when(knowledgeBaseMapper.selectById(7L)).thenReturn(kb(7L, 100L));
+        // L-5: 知识库归属校验走批量查询（原循环内逐次 selectById）
+        when(knowledgeBaseMapper.selectBatchIds(any())).thenReturn(List.of(kb(7L, 100L)));
         when(chunkMapper.update(any(), any())).thenReturn(1);
 
         chunkService.batchUpdate(List.of(1L), "COURSE_INFO", null, 100L, false);

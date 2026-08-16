@@ -26,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 选课管理服务 —— 封装 course_enrollment 表的 CRUD 操作
@@ -86,12 +87,15 @@ public class EnrollmentServiceImpl extends ServiceImpl<CourseEnrollmentMapper, C
     /**
      * 批量添加学生选课（跳过已选的）
      *
+     * <p>saveBatch 须在事务内调用（宪法：JDBC 批处理整体原子性）。
+     *
      * @param courseId      课程 ID
      * @param studentIds    学生 ID 列表
      * @param currentUserId 当前用户 ID（权限校验）
      * @param isAdmin       是否为超管（超管旁路）
      * @return 实际新增选课数
      */
+    @Transactional
     public int addStudents(Long courseId, List<Long> studentIds, Long currentUserId, boolean isAdmin) {
         courseService.checkOwnership(courseId, currentUserId, isAdmin);
 
@@ -111,30 +115,36 @@ public class EnrollmentServiceImpl extends ServiceImpl<CourseEnrollmentMapper, C
                 .map(CourseEnrollment::getStudentId)
                 .collect(Collectors.toList());
 
-        int added = 0;
-        for (Long studentId : studentIds) {
-            if (activeStudentIds.contains(studentId)) {
-                continue; // 已选课，跳过
-            }
-            if (droppedStudentIds.contains(studentId)) {
-                // 重新激活退课记录
-                LambdaUpdateWrapper<CourseEnrollment> updateWrapper = Wrappers.<CourseEnrollment>lambdaUpdate()
-                        .eq(CourseEnrollment::getCourseId, courseId)
-                        .eq(CourseEnrollment::getStudentId, studentId)
-                        .set(CourseEnrollment::getStatus, "ACTIVE")
-                        .set(CourseEnrollment::getEnrolledAt, LocalDateTime.now());
-                enrollmentMapper.update(null, updateWrapper);
-            } else {
-                // 新建选课记录
-                CourseEnrollment enrollment = new CourseEnrollment();
-                enrollment.setCourseId(courseId);
-                enrollment.setStudentId(studentId);
-                enrollment.setEnrolledAt(LocalDateTime.now());
-                enrollment.setStatus("ACTIVE");
-                enrollmentMapper.insert(enrollment);
-            }
-            added++;
+        // L-3: 分离「待激活（已退课）」与「新建」集合，分别批量 UPDATE 与 saveBatch
+        // （原逐条 UPDATE + 逐条 INSERT，N 条 SQL）
+        List<Long> toReactivate =
+                studentIds.stream().filter(droppedStudentIds::contains).toList();
+        if (!toReactivate.isEmpty()) {
+            enrollmentMapper.update(
+                    null,
+                    Wrappers.<CourseEnrollment>lambdaUpdate()
+                            .eq(CourseEnrollment::getCourseId, courseId)
+                            .in(CourseEnrollment::getStudentId, toReactivate)
+                            .set(CourseEnrollment::getStatus, "ACTIVE")
+                            .set(CourseEnrollment::getEnrolledAt, LocalDateTime.now()));
         }
+        // 新建集合：既非活跃也非退课（完全新选课）
+        List<CourseEnrollment> toCreate = studentIds.stream()
+                .filter(s -> !activeStudentIds.contains(s) && !droppedStudentIds.contains(s))
+                .map(s -> {
+                    CourseEnrollment enrollment = new CourseEnrollment();
+                    enrollment.setCourseId(courseId);
+                    enrollment.setStudentId(s);
+                    enrollment.setEnrolledAt(LocalDateTime.now());
+                    enrollment.setStatus("ACTIVE");
+                    return enrollment;
+                })
+                .toList();
+        if (!toCreate.isEmpty()) {
+            // 本 service 主表：saveBatch（JDBC 批处理，自动填充雪花 ID）
+            this.saveBatch(toCreate);
+        }
+        int added = toReactivate.size() + toCreate.size();
         log.info("批量添加选课: courseId={}, requested={}, added={}", courseId, studentIds.size(), added);
         return added;
     }

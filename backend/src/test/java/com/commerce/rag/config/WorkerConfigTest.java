@@ -18,18 +18,18 @@ import org.junit.jupiter.api.Test;
 class WorkerConfigTest {
 
     @Test
-    @DisplayName("runPool 按配置创建核心/最大线程数、队列容量与 CallerRunsPolicy 的线程池")
+    @DisplayName("runPool 按 yml 配置创建核心/最大线程数、队列容量与 AbortPolicy 的线程池（L-12/M-8）")
     void runPool_buildsPoolPerProperties() {
-        WorkerProperties props = new WorkerProperties(2, 4, 100, "chat-worker-");
+        WorkerProperties props = new WorkerProperties(2, 4, 100, "chat-worker-", 10);
         ThreadPoolExecutor pool = new WorkerConfig().runPool(props);
 
         try {
-            // 核心/最大线程数 = CPU*2（动态计算，仅断言 >0 与队列/拒绝策略配置正确）
-            assertTrue(pool.getCorePoolSize() > 0);
-            assertEquals(pool.getCorePoolSize(), pool.getMaximumPoolSize());
+            // L-12: 线程数直接取自 yml 配置（原硬编码 CPU*2 使 yml 死配置）
+            assertEquals(2, pool.getCorePoolSize());
+            assertEquals(4, pool.getMaximumPoolSize());
             assertEquals(100, ((LinkedBlockingQueue<?>) pool.getQueue()).remainingCapacity());
             assertEquals(60L, pool.getKeepAliveTime(TimeUnit.SECONDS));
-            assertInstanceOf(ThreadPoolExecutor.CallerRunsPolicy.class, pool.getRejectedExecutionHandler());
+            assertInstanceOf(ThreadPoolExecutor.AbortPolicy.class, pool.getRejectedExecutionHandler());
             // 线程工厂应使用配置的前缀（daemon 线程）
             assertTrue(pool.getThreadFactory().newThread(() -> {}).isDaemon());
         } finally {

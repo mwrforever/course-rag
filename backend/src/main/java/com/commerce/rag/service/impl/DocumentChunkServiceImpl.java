@@ -22,16 +22,20 @@ import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
 import com.commerce.rag.vo.DocumentChunkVO;
+import com.github.benmanes.caffeine.cache.Cache;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -66,6 +70,10 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
 
     /** 学生端转换器 —— C 端分片视图对象转换（toChunkVO/toChunkBriefVO/toChunkContextVO），转换器跨层共用合法 */
     private final StudentConverter studentConverter;
+
+    /** Dashboard 统计缓存（TTL 60 秒；分片删除/修正影响 pendingChunkCount，DB 写入后失效——BUG-2 修复） */
+    @Qualifier("dashboardStatsCache")
+    private final Cache<String, Object> dashboardStatsCache;
 
     /**
      * 按 ID 查询分片（B 端管理，含权限校验）
@@ -174,6 +182,9 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
                 .set(DocumentChunk::getDeleted, System.currentTimeMillis());
         chunkMapper.update(null, wrapper);
 
+        // 统计失效：删除 PENDING 分片影响 pendingChunkCount（先写 DB 后失效——BUG-2 修复）
+        dashboardStatsCache.invalidateAll();
+
         log.info("删除分片: chunkId={}", id);
     }
 
@@ -253,19 +264,51 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
      * <p>主分片与相邻分片均按主键查（chunkMapper.selectById，与既有实现风格一致），
      * 再经学生端转换器组装为上下文视图对象（含 courseId 供 controller 做选课校验）。
      *
+     * <p>L-4：相邻分片合并为一次批量查询（原逐条 selectById 最多 3 次），且全部按
+     * 视图所需列投影（不含 dense_vector BYTEA / metadata_json 等大字段）。
+     *
      * @param chunkId 分片 ID
      * @return 分片上下文视图对象，主分片不存在返回 null
      */
     public ChunkContextVO findContext(Long chunkId) {
-        DocumentChunk chunk = chunkMapper.selectById(chunkId); // 完整实体确需（字段多向使用）
+        // 主分片按视图所需列投影（ChunkContextVO 10 列，不含 dense_vector）
+        DocumentChunk chunk = chunkMapper.selectOne(Wrappers.<DocumentChunk>lambdaQuery()
+                .select(
+                        DocumentChunk::getId,
+                        DocumentChunk::getDocId,
+                        DocumentChunk::getKbId,
+                        DocumentChunk::getContent,
+                        DocumentChunk::getHeadingPath,
+                        DocumentChunk::getChunkIndex,
+                        DocumentChunk::getCourseId,
+                        DocumentChunk::getParentChunkId,
+                        DocumentChunk::getPrevChunkId,
+                        DocumentChunk::getNextChunkId)
+                .eq(DocumentChunk::getId, chunkId));
         if (chunk == null) {
             return null;
         }
-        // 相邻分片按指针查询，指针为空则保持 null（转换器空安全映射）
-        DocumentChunk parent =
-                chunk.getParentChunkId() == null ? null : chunkMapper.selectById(chunk.getParentChunkId());
-        DocumentChunk prev = chunk.getPrevChunkId() == null ? null : chunkMapper.selectById(chunk.getPrevChunkId());
-        DocumentChunk next = chunk.getNextChunkId() == null ? null : chunkMapper.selectById(chunk.getNextChunkId());
+        // 相邻分片指针收集 + 一次批量查询（投影 ChunkBriefVO 所需 5 列）
+        List<Long> neighborIds = Stream.of(chunk.getParentChunkId(), chunk.getPrevChunkId(), chunk.getNextChunkId())
+                .filter(Objects::nonNull)
+                .toList();
+        Map<Long, DocumentChunk> neighborMap = neighborIds.isEmpty()
+                ? Map.of()
+                : chunkMapper
+                        .selectList(Wrappers.<DocumentChunk>lambdaQuery()
+                                .select(
+                                        DocumentChunk::getId,
+                                        DocumentChunk::getContent,
+                                        DocumentChunk::getHeadingPath,
+                                        DocumentChunk::getChunkIndex,
+                                        DocumentChunk::getParentTitle)
+                                .in(DocumentChunk::getId, neighborIds))
+                        .stream()
+                        .collect(Collectors.toMap(DocumentChunk::getId, c -> c));
+        // 指针为空则保持 null（转换器空安全映射）
+        DocumentChunk parent = chunk.getParentChunkId() == null ? null : neighborMap.get(chunk.getParentChunkId());
+        DocumentChunk prev = chunk.getPrevChunkId() == null ? null : neighborMap.get(chunk.getPrevChunkId());
+        DocumentChunk next = chunk.getNextChunkId() == null ? null : neighborMap.get(chunk.getNextChunkId());
         return studentConverter.toChunkContextVO(chunk, parent, prev, next);
     }
 
@@ -277,9 +320,18 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
      */
     public List<ChunkVO> findByCourseIdAsVO(Long courseId) {
         LambdaQueryWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaQuery()
+                .select(
+                        DocumentChunk::getId,
+                        DocumentChunk::getContent,
+                        DocumentChunk::getHeadingPath,
+                        DocumentChunk::getChunkIndex,
+                        DocumentChunk::getParentTitle,
+                        DocumentChunk::getStartPage,
+                        DocumentChunk::getEndPage)
                 .eq(DocumentChunk::getCourseId, String.valueOf(courseId))
                 .orderByAsc(DocumentChunk::getChunkIndex);
         // 实体列表 → VO 列表：逐条转换，docId/kbId/courseId 等内部字段不随 VO 出边界
+        // M-5：投影仅取 ChunkVO 所需 7 列（原全列含 dense_vector BYTEA / 长文本 content 重复传输）
         return chunkMapper.selectList(wrapper).stream()
                 .map(studentConverter::toChunkVO)
                 .toList();
@@ -363,6 +415,8 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
                 .set(DocumentChunk::getCorrectionStatus, "CORRECTED")
                 .set(DocumentChunk::getUpdatedAt, LocalDateTime.now());
         chunkMapper.update(null, wrapper);
+        // 统计失效：PENDING→CORRECTED 影响 pendingChunkCount（先写 DB 后失效——BUG-2 修复）
+        dashboardStatsCache.invalidateAll();
         log.info("批量标记已修正: count={}", ids.size());
     }
 
@@ -425,6 +479,17 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
         Set<Long> docIds = chunks.stream().map(DocumentChunk::getDocId).collect(Collectors.toSet());
         Map<Long, Document> docMap =
                 documentMapper.selectBatchIds(docIds).stream().collect(Collectors.toMap(Document::getId, d -> d));
+        // L-5: 知识库归属校验先收集 kbId 去重，一次批量查询建 Map（原循环内对同一 kbId 重复 selectById）
+        Set<Long> kbIds = chunks.stream()
+                .map(c -> docMap.get(c.getDocId()))
+                .filter(Objects::nonNull)
+                .map(Document::getKbId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, KnowledgeBase> kbMap = kbIds.isEmpty()
+                ? Map.of()
+                : knowledgeBaseMapper.selectBatchIds(kbIds).stream()
+                        .collect(Collectors.toMap(KnowledgeBase::getId, kb -> kb));
         for (DocumentChunk chunk : chunks) {
             Document doc = docMap.get(chunk.getDocId());
             if (doc == null) {
@@ -435,7 +500,7 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
                 continue;
             }
             if (doc.getKbId() != null) {
-                KnowledgeBase kb = knowledgeBaseMapper.selectById(doc.getKbId());
+                KnowledgeBase kb = kbMap.get(doc.getKbId());
                 if (kb != null && kb.getCreatedBy() != null && kb.getCreatedBy().equals(userId)) {
                     continue;
                 }

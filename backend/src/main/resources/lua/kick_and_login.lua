@@ -6,8 +6,10 @@
 -- KEYS[1] = auth:cur:{userId}:{deviceType}  (当前活跃设备指针)
 -- ARGV[1] = new_jti_at|new_jti_rt|new_login_id  (新设备标记)
 -- ARGV[2] = cur_key_ttl  (= 新 RT 有效期，秒)
--- ARGV[3] = old_at_ttl  (旧 AT 剩余有效期，秒，无旧设备时传 0)
--- ARGV[4] = old_rt_ttl  (旧 RT 剩余有效期，秒，无旧设备时传 0)
+-- ARGV[3] = old_at_ttl  (旧 AT 黑名单 TTL = accessTokenExpiry 全量，秒；H-2：不再传 Java 预读的
+--                        剩余 TTL——预读与 Lua 内 GET 分离存在 TOCTOU，旧设备是否存在由本脚本
+--                        第 1 步 GET 决定，TTL 全量多留无害，过期自动清理)
+-- ARGV[4] = old_rt_ttl  (旧 RT 黑名单 TTL = refreshTokenExpiry 全量，秒；同上)
 -- ARGV[5] = kick_reason  ("DEVICE_KICKED")
 -- ARGV[6] = current_timestamp  (由 Java 传入，避免 Lua 内调 TIME 导致脚本不可复制)
 

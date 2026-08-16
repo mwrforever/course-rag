@@ -10,6 +10,7 @@ import com.commerce.rag.mapper.ChatRunMapper;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.vo.ChatRunVO;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,5 +99,25 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
         ChatRun run = runMapper.selectById(runId);
         // 实体 → VO：entity 不出 service 边界（B1 清理）
         return run == null ? null : chatRunConverter.toVO(run);
+    }
+
+    /**
+     * 查询超时未结束的 ACTIVE run（M-8 巡检用）
+     *
+     * <p>本 service 主表查询走内置链式（this.lambdaQuery），按需取列仅 id/status。
+     *
+     * @param startedBefore started_at 早于该时间的 ACTIVE run（视为超时）
+     * @return 超时 run 的视图对象列表
+     */
+    public List<ChatRunVO> findStaleActive(LocalDateTime startedBefore) {
+        return runMapper
+                .selectList(Wrappers.<ChatRun>lambdaQuery()
+                        .select(ChatRun::getId, ChatRun::getStatus)
+                        .eq(ChatRun::getStatus, "ACTIVE")
+                        .isNotNull(ChatRun::getStartedAt)
+                        .lt(ChatRun::getStartedAt, startedBefore))
+                .stream()
+                .map(chatRunConverter::toVO)
+                .toList();
     }
 }

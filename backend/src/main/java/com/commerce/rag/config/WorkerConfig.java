@@ -15,8 +15,9 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Worker 线程池配置 —— 创建独立于 ETL 的对话执行线程池。
  *
- * <p>设计文档 §3.3：runPool 使用 CallerRunsPolicy（队列满时由调用线程执行），
- * 防止 Redis Stream 消费过快导致 OOM。
+ * <p>设计文档 §3.3：runPool 使用 AbortPolicy（队列满时拒绝新任务并快速失败，
+ * 由调用方回写 run=ERROR——M-8：原 CallerRunsPolicy 会让消费者线程内联执行整个 run，
+ * 消费循环停摆，Redis Stream 所有新对话滞留；拒绝策略 + 状态回写保证消费循环永不阻塞）。
  *
  * <p>同时注册 {@link StreamProperties} 和 {@link WorkerProperties} 两个
  * {@code @ConfigurationProperties} record 为 Spring Bean。
@@ -30,22 +31,19 @@ public class WorkerConfig {
     /**
      * 对话执行线程池（runPool）。
      *
-     * <p>设计文档 §3.3：core=CPU*2, max=CPU*2, queue=100。
-     * 线程数根据 CPU 核心数动态计算（{@code Runtime.getRuntime().availableProcessors() * 2}），
-     * 而非 yml 硬编码值。yml 中 {@code worker.run-pool.core-size/max-size} 仅作为 fallback。
+     * <p>线程数直接取自 yml（worker.run-pool.core-size/max-size，默认 8/8）——L-12：
+     * 原实现硬编码 CPU*2 覆盖 yml 值，yml 的 core-size/max-size 成为死配置
+     * （注释声称 fallback 但无逻辑）；现按宪法「阈值全配置化」让 yml 生效。
      *
-     * @param props Worker 线程池配置（queueCapacity / threadNamePrefix 仍从 yml 注入）
+     * @param props Worker 线程池配置（coreSize / maxSize / queueCapacity / threadNamePrefix 均从 yml 注入）
      * @return 配置好的 ThreadPoolExecutor
      */
     @Bean("runPool")
     public ThreadPoolExecutor runPool(WorkerProperties props) {
-        // 设计文档 §3.3: core=CPU*2, max=CPU*2 —— 动态计算，不硬编码
-        int cpuCount = Runtime.getRuntime().availableProcessors();
-        int poolSize = cpuCount * 2;
-        log.info("runPool 初始化: core=max={} (CPU={})", poolSize, cpuCount);
+        log.info("runPool 初始化: core={}, max={}, queue={}", props.coreSize(), props.maxSize(), props.queueCapacity());
         return new ThreadPoolExecutor(
-                poolSize,
-                poolSize,
+                props.coreSize(),
+                props.maxSize(),
                 60L,
                 TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(props.queueCapacity()),
@@ -53,6 +51,6 @@ public class WorkerConfig {
                         .setNameFormat(props.threadNamePrefix() + "%d")
                         .setDaemon(true)
                         .build(),
-                new ThreadPoolExecutor.CallerRunsPolicy());
+                new ThreadPoolExecutor.AbortPolicy());
     }
 }

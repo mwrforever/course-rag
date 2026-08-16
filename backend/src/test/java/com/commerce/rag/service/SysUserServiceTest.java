@@ -19,6 +19,7 @@ import com.commerce.rag.mapper.SysUserMapper;
 import com.commerce.rag.record.AuthUserView;
 import com.commerce.rag.service.impl.SysUserServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.github.benmanes.caffeine.cache.Cache;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -53,6 +54,10 @@ class SysUserServiceTest {
 
     @Mock
     private DeviceKickService deviceKickService;
+
+    /** Dashboard 统计缓存（Mock——用户增删路径的失效钩子仅需不抛异常） */
+    @Mock
+    private Cache<String, Object> dashboardStatsCache;
 
     /** 真实转换器实现（MapStruct 生成），保证 toDTO 走真实字段映射而非 mock */
     @Spy

@@ -5,20 +5,24 @@ import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
+import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.StreamProperties;
+import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEvent;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.SseEventType;
+import com.commerce.rag.vo.ChatRunVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -27,6 +31,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -79,13 +86,20 @@ public class ChatRequestWorker {
     private final IChatRunService chatRunService;
     private final IChatMessageService chatMessageService;
     private final StreamProperties streamProperties;
+    private final WorkerProperties workerProperties;
     private final ThreadPoolExecutor runPool;
+    /** 安全告警 Hook（BUG-11：run 结束 finally 清理 per-thread 检测状态，取消/异常路径不泄漏） */
+    private final WarningHook warningHook;
+
     private final ObjectMapper objectMapper;
     /** per-run 取消标记 */
     private final ConcurrentHashMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
 
     /** Consumer 运行标志 */
     private volatile boolean running = false;
+
+    /** M-8: ACTIVE run 巡检调度器 */
+    private ScheduledExecutorService sweepScheduler;
 
     public ChatRequestWorker(
             StringRedisTemplate redisTemplate,
@@ -96,7 +110,9 @@ public class ChatRequestWorker {
             IChatRunService chatRunService,
             IChatMessageService chatMessageService,
             StreamProperties streamProperties,
+            WorkerProperties workerProperties,
             @Qualifier("runPool") ThreadPoolExecutor runPool,
+            WarningHook warningHook,
             ObjectMapper objectMapper) {
         this.redisTemplate = redisTemplate;
         this.compiledGraph = compiledGraph;
@@ -106,7 +122,9 @@ public class ChatRequestWorker {
         this.chatRunService = chatRunService;
         this.chatMessageService = chatMessageService;
         this.streamProperties = streamProperties;
+        this.workerProperties = workerProperties;
         this.runPool = runPool;
+        this.warningHook = warningHook;
         this.objectMapper = objectMapper;
     }
 
@@ -115,7 +133,7 @@ public class ChatRequestWorker {
     // ========================================================================
 
     /**
-     * 启动后台消费线程 + pending 回收调度。
+     * 启动后台消费线程 + ACTIVE run 巡检调度。
      */
     @PostConstruct
     public void start() {
@@ -125,6 +143,15 @@ public class ChatRequestWorker {
         consumer.setDaemon(true);
         consumer.start();
 
+        // M-8: ACTIVE run 巡检——进程崩溃/runPool 拒绝后 run 滞留 ACTIVE，
+        // uniq_active_run_per_session 锁死会话（后续对话恒 409），每 60s 扫描置 ERROR 解锁
+        sweepScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "chat-run-sweep");
+            t.setDaemon(true);
+            return t;
+        });
+        sweepScheduler.scheduleAtFixedRate(this::sweepStaleRuns, 60, 60, TimeUnit.SECONDS);
+
         log.info(
                 "ChatRequestWorker 启动: stream={}, group={}",
                 streamProperties.requestStream(),
@@ -132,12 +159,15 @@ public class ChatRequestWorker {
     }
 
     /**
-     * 优雅关闭：停止消费 → 等待 runPool 完成 → 关闭调度器。
+     * 优雅关闭：停止消费 → 关闭巡检调度器 → 等待 runPool 完成。
      */
     @PreDestroy
     public void stop() {
         log.info("ChatRequestWorker 关闭中...");
         running = false;
+        if (sweepScheduler != null) {
+            sweepScheduler.shutdownNow();
+        }
         runPool.shutdown();
         try {
             if (!runPool.awaitTermination(30, TimeUnit.SECONDS)) {
@@ -149,6 +179,31 @@ public class ChatRequestWorker {
             runPool.shutdownNow();
         }
         log.info("ChatRequestWorker 已关闭");
+    }
+
+    /**
+     * M-8: 巡检超时未结束的 ACTIVE run（超时阈值 = worker.run-pool.stale-run-timeout-minutes）
+     *
+     * <p>进程崩溃（先 ACK 后执行，P3-2 裁决下消息直接丢失）或 runPool 拒绝后，
+     * run 滞留 ACTIVE 被 uniq_active_run_per_session 锁死——该会话后续对话恒 409。
+     * 巡检将超过阈值的 ACTIVE run 置 ERROR（endedAt 由 updateStatus 自动设置），
+     * 失败可见可手动重试。与 P1-5 的完成时刻短重试互补（覆盖执行期崩溃场景）。
+     */
+    private void sweepStaleRuns() {
+        try {
+            LocalDateTime threshold = LocalDateTime.now().minusMinutes(workerProperties.staleRunTimeoutMinutes());
+            List<ChatRunVO> stale = chatRunService.findStaleActive(threshold);
+            for (ChatRunVO run : stale) {
+                try {
+                    chatRunService.updateStatus(run.id(), "ERROR");
+                    log.warn("巡检发现超时 ACTIVE run，置 ERROR 解锁会话: runId={}, sessionId={}", run.id(), run.sessionId());
+                } catch (Exception e) {
+                    log.error("巡检置 ERROR 失败: runId={}", run.id(), e);
+                }
+            }
+        } catch (Exception e) {
+            log.error("ACTIVE run 巡检失败（下轮重试）", e);
+        }
     }
 
     // ========================================================================
@@ -187,7 +242,24 @@ public class ChatRequestWorker {
                     // 消费组不积累 pending，删除 reclaimPending/XCLAIM 重投机制（消除双跑窗口）；
                     // run 执行结果由 chat_run 状态兜底（失败可见，可手动重试）
                     ackMessage(msg.getId().getValue());
-                    runPool.submit(() -> processRequest(msg));
+                    try {
+                        runPool.submit(() -> processRequest(msg));
+                    } catch (RejectedExecutionException e) {
+                        // M-8: runPool 队列满（8 线程全忙 + 队列 100 满）不再 CallerRuns 内联执行——
+                        // 内联会让消费者线程执行整个 run（最长 5 分钟），消费循环停摆、
+                        // Redis Stream 所有新对话滞留；改为快速失败：消息已 ACK，
+                        // run 状态回写 ERROR 解锁 uniq_active_run_per_session（会话可重试）
+                        Object runIdObj = msg.getValue().get("runId");
+                        Long rejectedRunId = runIdObj == null ? null : parseLongQuietly(String.valueOf(runIdObj));
+                        if (rejectedRunId != null) {
+                            try {
+                                chatRunService.updateStatus(rejectedRunId, "ERROR");
+                            } catch (Exception dbEx) {
+                                log.error("runPool 拒绝后回写 run=ERROR 失败: runId={}", rejectedRunId, dbEx);
+                            }
+                        }
+                        log.error("runPool 队列已满，run 快速失败（消息已 ACK）: runId={}", runIdObj);
+                    }
                 }
             } catch (Exception e) {
                 if (running) {
@@ -323,8 +395,6 @@ public class ChatRequestWorker {
                                 userQuery,
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
                                 lastOutput.get());
-                        // F2-8: 缓存最终结果到 Redis（TTL=responseTtl），供断线重连快速恢复
-                        cacheFinalResult(runId, lastOutput.get());
                         return Mono.empty();
                     })
                     .doOnComplete(() -> {
@@ -332,15 +402,16 @@ public class ChatRequestWorker {
                             // 错误/取消已在 onErrorResume 处理，跳过正常完成逻辑
                             return;
                         }
-                        handleCompleted(runIdStr, runId, runState);
+                        // 先持久化消息、再推 END + 写 COMPLETED 终态——
+                        // 「run 终态 = 数据已完整落库」语义（chat_message 与状态非原子，
+                        // 先状态后落库会让外部观察者在终态可见时查到空消息表）
                         persistMessages(
                                 runId,
                                 sessionId,
                                 userQuery,
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
                                 lastOutput.get());
-                        // F2-8: 缓存最终结果到 Redis（TTL=responseTtl），供断线重连快速恢复
-                        cacheFinalResult(runId, lastOutput.get());
+                        handleCompleted(runIdStr, runId, runState);
                     })
                     .blockLast(Duration.ofMinutes(5));
 
@@ -360,10 +431,12 @@ public class ChatRequestWorker {
                     userQuery,
                     snapshot != null ? snapshot.historyMessageCount() : 0,
                     lastOutput.get());
-            cacheFinalResult(runId, lastOutput.get());
         } finally {
             bridge.removeRing(runIdStr);
             cancelFlags.remove(runIdStr);
+            // BUG-11：任何路径（含取消/异常）都清理 WarningHook per-thread 检测状态——
+            // 原实现仅自然结束/软停清理，取消与异常终止的 run 使 DetectionState 常驻至会话结束
+            warningHook.cleanupSession(sessionIdStr);
         }
     }
 
@@ -511,46 +584,6 @@ public class ChatRequestWorker {
             } catch (Exception e) {
                 log.error("消息持久化失败 runId={}", runId, e);
             }
-        }
-    }
-
-    /**
-     * F2-8: 缓存最终结果到 Redis，供断线重连快速恢复。
-     *
-     * <p>设计文档 §3.6：run 结束后，将 assistant 最终文本缓存到 Redis
-     * （key={@code chat:result:{runId}}，TTL={@code responseTtl} 秒）。
-     * 缓存失败不终止 run（记 warn），fallback 查 PG chat_message 表。
-     *
-     * @param runId      Run ID
-     * @param lastOutput 流式输出的最后一个 NodeOutput
-     */
-    private void cacheFinalResult(Long runId, NodeOutput lastOutput) {
-        try {
-            if (lastOutput == null || lastOutput.state() == null) {
-                return;
-            }
-            Optional<Object> messagesOpt = lastOutput.state().value("messages");
-            if (messagesOpt.isEmpty() || !(messagesOpt.get() instanceof List<?> rawList)) {
-                return;
-            }
-
-            // 从后往前找最后一条 AssistantMessage 的纯文本内容
-            for (int i = rawList.size() - 1; i >= 0; i--) {
-                Object item = rawList.get(i);
-                if (item instanceof AssistantMessage am) {
-                    String text = am.getText();
-                    if (text != null && !text.isEmpty()) {
-                        redisTemplate
-                                .opsForValue()
-                                .set("chat:result:" + runId, text, Duration.ofSeconds(streamProperties.responseTtl()));
-                        log.debug("Redis 结果缓存成功: runId={}, ttl={}s", runId, streamProperties.responseTtl());
-                        return;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // 缓存失败不终止，fallback 查 PG chat_message 表（§3.6）
-            log.warn("Redis 结果缓存失败 runId={} (不终止，降级查 PG)", runId, e);
         }
     }
 
@@ -777,6 +810,15 @@ public class ChatRequestWorker {
             body.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
         }
         return body;
+    }
+
+    /** 宽松解析 Long（队列拒绝分支读取 runId 用），解析失败返回 null */
+    private Long parseLongQuietly(String value) {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

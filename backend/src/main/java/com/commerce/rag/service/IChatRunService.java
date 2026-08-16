@@ -3,6 +3,8 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.vo.ChatRunVO;
+import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Run 生命周期服务接口 —— 管理 chat_run 表的状态流转（主表 ChatRun）
@@ -39,4 +41,15 @@ public interface IChatRunService extends IService<ChatRun> {
      * @return Run 视图对象，不存在则返回 null
      */
     ChatRunVO findById(Long runId);
+
+    /**
+     * 查询超时未结束的 ACTIVE run（M-8 巡检用）
+     *
+     * <p>进程崩溃/runPool 拒绝后 run 可能滞留 ACTIVE，uniq_active_run_per_session
+     * 使该会话后续对话恒 409——由巡检定时任务扫描并置 ERROR 解锁。
+     *
+     * @param startedBefore started_at 早于该时间的 ACTIVE run（视为超时）
+     * @return 超时 run 的视图对象列表（仅 id/status）
+     */
+    List<ChatRunVO> findStaleActive(LocalDateTime startedBefore);
 }

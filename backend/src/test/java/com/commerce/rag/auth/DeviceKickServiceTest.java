@@ -69,10 +69,7 @@ class DeviceKickServiceTest {
     @Test
     @DisplayName("kickAndLogin → Lua 踢出旧设备后，PG 审计落盘（REVOKED + 双 jti 黑名单）")
     void kickAndLogin_kickedTrue_writesPgAudit() {
-        // 旧设备存在（触发 TTL 计算分支）
-        when(redisTemplate.opsForValue()).thenReturn(valueOps);
-        when(valueOps.get(anyString())).thenReturn("old-at|old-rt|1");
-        // Lua 返回：踢出成功
+        // H-2：黑名单 TTL 固定传全量有效期（无 Java 预读），旧设备检测原子化于 Lua
         when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
                 .thenReturn("{\"kicked\":true,\"old_jti_at\":\"old-at\",\"old_jti_rt\":\"old-rt\"}");
 
@@ -102,8 +99,6 @@ class DeviceKickServiceTest {
     @Test
     @DisplayName("kickAndLogin → 无旧设备（kicked=false），不做 PG 审计")
     void kickAndLogin_notKicked_noPgAudit() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOps);
-        when(valueOps.get(anyString())).thenReturn(null);
         when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
                 .thenReturn("{\"kicked\":false,\"old_jti_at\":\"\",\"old_jti_rt\":\"\"}");
 
@@ -117,8 +112,6 @@ class DeviceKickServiceTest {
     @Test
     @DisplayName("kickAndLogin → PG 审计异常不影响登录主流程（返回正常结果）")
     void kickAndLogin_pgAuditFailure_stillReturnsResult() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOps);
-        when(valueOps.get(anyString())).thenReturn("old-at|old-rt|1");
         when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
                 .thenReturn("{\"kicked\":true,\"old_jti_at\":\"old-at\",\"old_jti_rt\":\"old-rt\"}");
         // PG 审计落盘时 DB 故障
@@ -153,21 +146,17 @@ class DeviceKickServiceTest {
     }
 
     @Test
-    @DisplayName("markRefreshTokenUsedAtomic — Redis 异常降级放行并写 PG 黑名单兜底")
-    void markRefreshTokenUsedAtomic_redisFail_fallbackOpen() {
+    @DisplayName("markRefreshTokenUsedAtomic — Redis 异常降级放行（fail-open），不写 PG 黑名单（BUG-1 回归保护）")
+    void markRefreshTokenUsedAtomic_redisFail_failOpenWithoutPgWrite() {
         when(redisTemplate.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class)))
                 .thenThrow(new RuntimeException("redis down"));
 
-        // 降级放行（与原宽松降级语义一致），不抛异常
+        // 降级放行（恢复 179881e^ 旧 fail-open 语义），不抛异常
         assertTrue(service.markRefreshTokenUsedAtomic("jti-1"));
-        // addToBlacklistPg 为 private 无法直接 verify，断言其公共可观察行为：PG 黑名单兜底写入
-        ArgumentCaptor<SysTokenBlacklist> captor = ArgumentCaptor.forClass(SysTokenBlacklist.class);
-        verify(tokenBlacklistMapper).insert(captor.capture());
-        SysTokenBlacklist inserted = captor.getValue();
-        assertEquals("jti-1", inserted.getJti());
-        assertEquals("REFRESH", inserted.getTokenType());
-        assertEquals("TOKEN_REUSE", inserted.getReason());
-        assertNull(inserted.getUserId());
+        // 关键断言：降级分支不得写 PG 黑名单——若写入，AuthController 随后 isBlacklisted
+        // 降级查 PG 会命中本方法刚写入的 TOKEN_REUSE 行，Redis 故障期间每次 refresh 必 401
+        // 自拦截，且该行无清理任务导致 RT 被永久烧毁（BUG-1）
+        verify(tokenBlacklistMapper, never()).insert(any(SysTokenBlacklist.class));
     }
 
     @Test

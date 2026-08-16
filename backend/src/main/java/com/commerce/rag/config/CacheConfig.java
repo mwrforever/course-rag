@@ -29,7 +29,7 @@ public class CacheConfig {
                 .build();
     }
 
-    /** Dashboard 统计缓存：键格式 dashboardStats:{operatorId}:{isAdmin} / feedbackStats:{period}:{...} / feedbackTrend:{days} */
+    /** Dashboard 统计缓存：键格式 dashboardStats / feedbackStats:{period} / feedbackTrend:{days}（单键全局视图，BUG-10 注释修正） */
     @Bean
     public Cache<String, Object> dashboardStatsCache() {
         return Caffeine.newBuilder()

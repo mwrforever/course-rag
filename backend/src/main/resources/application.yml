@@ -133,6 +133,8 @@ retrieval:
 # ── ETL 分块参数 ──
 etl:
   max-file-size-mb: 100
+  # H-3: embedding 批量调用批次大小（DashScope 一次请求携带多条文本，调用次数 = 分片数/批大小）
+  embedding-batch-size: 16
   executor:
     core-size: 2
     max-size: 4
@@ -237,15 +239,17 @@ auth:
     - WEB_DESKTOP
 
 # ── Worker 线程池（对话执行，与 ETL 独立）──
-# 设计文档 §3.3: core=CPU*2, max=CPU*2, queue=100
-# core-size/max-size 由 WorkerConfig 动态计算（Runtime.availableProcessors()*2），
-# 此处值仅作 fallback，实际不读取 core/max（仅 queue-capacity / thread-name-prefix 生效）
+# L-12: core-size/max-size 为实际生效值（WorkerConfig 直接读取，原"动态计算+fallback"注释无逻辑）
+# 队列满时 AbortPolicy 快速失败（M-8：run 回写 ERROR，消息已 ACK，失败可见可手动重试）
 worker:
   run-pool:
     core-size: 8
     max-size: 8
     queue-capacity: 100
     thread-name-prefix: chat-worker-
+    # M-8: ACTIVE run 巡检超时（分钟）——run 滞留 ACTIVE 会锁死会话（uniq_active_run_per_session），
+    # 巡检每 60s 扫描一次，超过该时长未结束的 ACTIVE run 置 ERROR 解锁
+    stale-run-timeout-minutes: 10
 
 logging:
   level:

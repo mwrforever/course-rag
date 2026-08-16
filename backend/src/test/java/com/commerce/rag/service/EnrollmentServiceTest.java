@@ -26,6 +26,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -62,6 +63,7 @@ class EnrollmentServiceTest {
     @Spy
     private StudentConverter studentConverter = new StudentConverterImpl();
 
+    @Spy
     @InjectMocks
     private EnrollmentServiceImpl enrollmentService;
 
@@ -114,14 +116,19 @@ class EnrollmentServiceTest {
     // ==================== addStudents ====================
 
     @Test
-    @DisplayName("addStudents → 全部新学生时逐条插入")
+    @DisplayName("addStudents → 全部新学生时批量插入（L-3：saveBatch 替代逐条 insert）")
     void addStudents_allNew_insertsAll() {
         when(enrollmentMapper.selectList(any())).thenReturn(List.of());
+        // L-3: 新建集合走 service 批量 API（JDBC 批处理），spy 拦截真实 DB 调用
+        doReturn(true).when(enrollmentService).saveBatch(anyList());
 
         int added = enrollmentService.addStudents(1L, List.of(5L, 6L), 1L, true);
 
         assertEquals(2, added);
-        verify(enrollmentMapper, times(2)).insert(any(CourseEnrollment.class));
+        ArgumentCaptor<List> captor = ArgumentCaptor.forClass(List.class);
+        verify(enrollmentService).saveBatch(captor.capture());
+        assertEquals(2, captor.getValue().size(), "批量插入应携带 2 条新选课记录");
+        verify(enrollmentMapper, never()).insert(any(CourseEnrollment.class));
     }
 
     @Test
@@ -131,12 +138,17 @@ class EnrollmentServiceTest {
         when(enrollmentMapper.selectList(any()))
                 .thenReturn(List.of(enrollment(1L, 5L, "ACTIVE"), enrollment(1L, 6L, "DROPPED")));
 
+        doReturn(true).when(enrollmentService).saveBatch(anyList());
+
         int added = enrollmentService.addStudents(1L, List.of(5L, 6L, 7L), 1L, true);
 
         assertEquals(2, added);
-        // 6 号走更新激活、7 号走插入；5 号无任何操作
+        // L-3: 待激活集合（6 号）单条批量 UPDATE 激活、新建集合（7 号）saveBatch；5 号无任何操作
         verify(enrollmentMapper).update(isNull(), any());
-        verify(enrollmentMapper).insert(any(CourseEnrollment.class));
+        ArgumentCaptor<List> captor = ArgumentCaptor.forClass(List.class);
+        verify(enrollmentService).saveBatch(captor.capture());
+        assertEquals(1, captor.getValue().size(), "仅 7 号进入新建集合");
+        verify(enrollmentMapper, never()).insert(any(CourseEnrollment.class));
     }
 
     // ==================== removeStudent ====================

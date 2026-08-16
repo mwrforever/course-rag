@@ -8,6 +8,8 @@ import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.properties.EtlProperties;
+import com.commerce.rag.record.ChunkLinkPair;
+import com.commerce.rag.record.ChunkVectorUpdate;
 import com.commerce.rag.storage.MinioStorageService;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.google.gson.JsonArray;
@@ -216,9 +218,11 @@ public class EtlPipeline {
         List<ChunkInfo> chunks = recursiveSplit(text, chunkSize, overlap);
         log.info("分片完成: docId={}, 分片数={}", docId, chunks.size());
 
-        // 保存到 PG + 建立父子关联
+        // 保存到 PG + 建立父子关联（M-1：next_chunk_id 回填收集后单条批量 UPDATE，
+        // 原逐分片「insert + updateChunkNextId」2N 条 SQL → N 条 insert + 1 条批量 update）
         Long prevChunkId = null;
         Long currentGroupFirstId = null; // 当前段落组的首 chunk ID（用于 parent_chunk_id）
+        List<ChunkLinkPair> linkPairs = new ArrayList<>();
 
         for (int i = 0; i < chunks.size(); i++) {
             ChunkInfo info = chunks.get(i);
@@ -246,9 +250,9 @@ public class EtlPipeline {
 
             chunkMapper.insert(chunk);
 
-            // 设置前一个 chunk 的 next_chunk_id
+            // 收集 next_chunk_id 回填对（前驱 → 当前），落库后统一批量 UPDATE
             if (prevChunkId != null) {
-                updateChunkNextId(prevChunkId, chunk.getId());
+                linkPairs.add(new ChunkLinkPair(prevChunkId, chunk.getId()));
             }
 
             // 更新当前段落组的首 chunk ID
@@ -257,6 +261,11 @@ public class EtlPipeline {
             }
 
             prevChunkId = chunk.getId();
+        }
+
+        // M-1: next_chunk_id 批量回填（单条 CASE WHEN UPDATE）
+        if (!linkPairs.isEmpty()) {
+            chunkMapper.batchUpdateNextChunkIds(linkPairs);
         }
 
         // 更新文档分片数
@@ -294,31 +303,56 @@ public class EtlPipeline {
         // 先删除 Milvus 中该文档的旧记录
         deleteFromMilvusByDocId(docId);
 
-        // 批量向量化
+        // H-3: 批量向量化——按批调用 embedding（一次请求携带多文本，调用次数 = 分片数/批大小）、
+        // PG 向量批量回写（单条 CASE WHEN UPDATE）、Milvus 多行插入（InsertReq.data 多行）
         int failedCount = 0;
-        for (DocumentChunk chunk : chunks) {
+        int batchSize = etlProperties.embeddingBatchSize();
+        for (int start = 0; start < chunks.size(); start += batchSize) {
+            List<DocumentChunk> batch = chunks.subList(start, Math.min(start + batchSize, chunks.size()));
             try {
-                // 调用 Embedding API
-                float[] vector = embeddingModel.embed(chunk.getContent());
-                if (vector == null || vector.length == 0) {
-                    log.warn("Embedding 返回空向量: chunkId={}", chunk.getId());
-                    // 空向量计入失败（与 P2-1「部分失败标 FAILED」语义一致，避免静默跳过误标 INDEXED 导致检索漏召回）
-                    failedCount++;
+                // 批量 embedding（DashScope 一次请求携带全部文本，序与输入一致）
+                List<float[]> vectors = embeddingModel.embed(
+                        batch.stream().map(DocumentChunk::getContent).toList());
+                List<DocumentChunk> indexed = new ArrayList<>();
+                List<float[]> indexedVectors = new ArrayList<>();
+                for (int i = 0; i < batch.size(); i++) {
+                    float[] vector = vectors.get(i);
+                    if (vector == null || vector.length == 0) {
+                        log.warn("Embedding 返回空向量: chunkId={}", batch.get(i).getId());
+                        // 空向量计入失败（与 P2-1「部分失败标 FAILED」语义一致，避免静默跳过误标 INDEXED 导致检索漏召回）
+                        failedCount++;
+                    } else {
+                        indexed.add(batch.get(i));
+                        indexedVectors.add(vector);
+                    }
+                }
+                if (indexed.isEmpty()) {
                     continue;
                 }
 
-                // 存储到 PG（BYTEA）
-                byte[] denseVector = floatArrayToBytes(vector);
-                updateChunkVector(chunk.getId(), denseVector, String.valueOf(chunk.getId()));
+                // PG 向量批量回写（dense_vector BYTEA + milvus_pk）
+                List<ChunkVectorUpdate> vectorUpdates = new ArrayList<>(indexed.size());
+                for (int i = 0; i < indexed.size(); i++) {
+                    vectorUpdates.add(new ChunkVectorUpdate(
+                            indexed.get(i).getId(),
+                            floatArrayToBytes(indexedVectors.get(i)),
+                            String.valueOf(indexed.get(i).getId())));
+                }
+                chunkMapper.batchUpdateVectors(vectorUpdates);
 
-                // 插入 Milvus
-                insertToMilvus(chunk, vector, doc.getTitle());
+                // Milvus 多行插入（每批一次 InsertReq，原逐 chunk 单行 insert）
+                List<JsonObject> rows = new ArrayList<>(indexed.size());
+                for (int i = 0; i < indexed.size(); i++) {
+                    rows.add(buildMilvusRow(indexed.get(i), indexedVectors.get(i), doc.getTitle()));
+                }
+                insertToMilvusBatch(rows);
 
-                log.debug("分片已索引: chunkId={}, index={}", chunk.getId(), chunk.getChunkIndex());
+                log.debug("分片批次已索引: docId={}, 批次起始={}, 数量={}", docId, start, indexed.size());
             } catch (Exception e) {
-                log.error("分片向量化失败: chunkId={}", chunk.getId(), e);
-                // 继续处理其他分片，不中断
-                failedCount++;
+                // 批次级失败：该批分片全部计入失败（embedding API/PG/Milvus 异常多为全局性，
+                // 与单分片失败粒度差异可接受），继续处理其他批次
+                log.error("分片批次向量化失败: docId={}, 批次起始={}, size={}", docId, start, batch.size(), e);
+                failedCount += batch.size();
             }
         }
 
@@ -370,7 +404,7 @@ public class EtlPipeline {
 
         // Milvus delete-then-insert
         deleteFromMilvusByChunkId(String.valueOf(chunkId));
-        insertToMilvus(chunk, vector, docTitle);
+        insertToMilvusBatch(List.of(buildMilvusRow(chunk, vector, docTitle)));
 
         log.info("分片重新向量化完成: chunkId={}", chunkId);
     }
@@ -500,9 +534,11 @@ public class EtlPipeline {
      * 文档级同步：将该文档全部未删分片的标量字段（course_id/collection_type）同步到 Milvus
      *
      * <p>用户裁决（2026-08-15）：后台提供文档级同步而非逐 chunk——B 端「把整篇文档标注为
-     * 某课程」时一次调用完成（调用次数 = 文档数，而非分片数）。内部仍逐 chunk
-     * delete-then-insert 重建 Milvus 行（向量从 PG dense_vector 恢复，不重新调 embedding API）。
+     * 某课程」时一次调用完成（调用次数 = 文档数，而非分片数）。内部仍 delete-then-insert
+     * 重建 Milvus 行（向量从 PG dense_vector 恢复，不重新调 embedding API）。
      * 未向量化的分片（dense_vector 为空）跳过。失败上抛，阻断调用方（可重试收敛）。
+     *
+     * <p>M-4：批量 delete（filter IN 一次）+ 多行 InsertReq（原逐 chunk 两两往返）。
      *
      * @param docId 文档 ID
      */
@@ -515,15 +551,23 @@ public class EtlPipeline {
         List<DocumentChunk> chunks = chunkMapper.selectList(Wrappers.<DocumentChunk>lambdaQuery()
                 .eq(DocumentChunk::getDocId, docId)
                 .orderByAsc(DocumentChunk::getChunkIndex));
-        int synced = 0;
-        for (DocumentChunk chunk : chunks) {
-            if (chunk.getDenseVector() == null || chunk.getDenseVector().length == 0) {
-                continue;
-            }
-            syncChunkRowToMilvus(chunk, docTitle);
-            synced++;
+        // 仅同步已向量化的分片（未向量化的跳过，无需同步）
+        List<DocumentChunk> vectorized = chunks.stream()
+                .filter(c -> c.getDenseVector() != null && c.getDenseVector().length > 0)
+                .toList();
+        if (vectorized.isEmpty()) {
+            log.info("文档标注已同步 Milvus（无向量化分片）: docId={}, 同步分片数=0", docId);
+            return;
         }
-        log.info("文档标注已同步 Milvus: docId={}, 同步分片数={}", docId, synced);
+        // M-4: 批量 delete（一次 filter IN）+ 多行 insert（一次 InsertReq）
+        deleteFromMilvusByChunkIds(
+                vectorized.stream().map(c -> String.valueOf(c.getId())).toList());
+        List<JsonObject> rows = new ArrayList<>(vectorized.size());
+        for (DocumentChunk chunk : vectorized) {
+            rows.add(buildMilvusRow(chunk, bytesToFloatArray(chunk.getDenseVector()), docTitle));
+        }
+        insertToMilvusBatch(rows);
+        log.info("文档标注已同步 Milvus: docId={}, 同步分片数={}", docId, vectorized.size());
     }
 
     /**
@@ -532,7 +576,7 @@ public class EtlPipeline {
     private void syncChunkRowToMilvus(DocumentChunk chunk, String docTitle) {
         float[] vector = bytesToFloatArray(chunk.getDenseVector());
         deleteFromMilvusByChunkId(String.valueOf(chunk.getId()));
-        insertToMilvus(chunk, vector, docTitle);
+        insertToMilvusBatch(List.of(buildMilvusRow(chunk, vector, docTitle)));
         log.debug("分片标量字段已同步 Milvus: chunkId={}, courseId={}", chunk.getId(), chunk.getCourseId());
     }
 
@@ -541,20 +585,38 @@ public class EtlPipeline {
     // ========================================================================
 
     /**
-     * 插入单条记录到 Milvus（v2 API：InsertReq + Gson JsonObject 行式插入）
+     * 批量插入多行到 Milvus（v2 API：InsertReq + Gson JsonObject 行式插入）
      *
-     * <p>插入 11 个字段（不含 sparse_vector —— 服务端 BM25 Function 自动生成）：
-     * chunk_id, doc_id, kb_id, content, heading_path, dense_vector,
-     * chunk_index, token_count, collection_type, course_id, updated_at
+     * <p>H-3/M-4：一次 InsertReq 携带多行（原逐 chunk 单行 insert，N 次网络往返 → N/批大小 次）。
+     * 插入失败仅记 warn（与单行插入既有语义一致，不阻断文档终态判定）。
+     *
+     * @param rows Milvus 行列表（每行 11 个字段，不含 sparse_vector —— 服务端 BM25 Function 自动生成）
+     */
+    private void insertToMilvusBatch(List<JsonObject> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        InsertReq insertReq =
+                InsertReq.builder().collectionName(COLLECTION_NAME).data(rows).build();
+        try {
+            milvusClientV2.insert(insertReq);
+        } catch (Exception e) {
+            log.warn("Milvus 批量插入失败: 行数={}, error={}", rows.size(), e.getMessage());
+        }
+    }
+
+    /**
+     * 构建单条 Milvus 行（11 个字段：chunk_id, doc_id, kb_id, content, heading_path, dense_vector,
+     * chunk_index, token_count, collection_type, course_id, updated_at；不含 sparse_vector）
      *
      * @param chunk      PG 分片实体
      * @param denseVector dense 向量（embedding 模型输出）
      * @param docTitle   文档标题（当前未使用，新 schema 无 source 字段）
+     * @return Gson JsonObject 行
      */
-    private void insertToMilvus(DocumentChunk chunk, float[] denseVector, String docTitle) {
+    private JsonObject buildMilvusRow(DocumentChunk chunk, float[] denseVector, String docTitle) {
         String chunkIdStr = String.valueOf(chunk.getId());
 
-        // 构建 Gson JsonObject 行（v2 行式插入）
         JsonObject row = new JsonObject();
         row.addProperty(MilvusCollectionInitializer.FIELD_CHUNK_ID, chunkIdStr);
         row.addProperty(MilvusCollectionInitializer.FIELD_DOC_ID, String.valueOf(chunk.getDocId()));
@@ -583,17 +645,7 @@ public class EtlPipeline {
                 chunk.getCourseId() != null ? chunk.getCourseId() : "DEFAULT");
         row.addProperty(MilvusCollectionInitializer.FIELD_UPDATED_AT, System.currentTimeMillis() / 1000);
         // 注意：不插入 sparse_vector —— 服务端 BM25 Function 自动生成
-
-        InsertReq insertReq = InsertReq.builder()
-                .collectionName(COLLECTION_NAME)
-                .data(List.of(row))
-                .build();
-
-        try {
-            milvusClientV2.insert(insertReq);
-        } catch (Exception e) {
-            log.warn("Milvus 插入失败: chunkId={}, error={}", chunkIdStr, e.getMessage());
-        }
+        return row;
     }
 
     /**
@@ -801,17 +853,6 @@ public class EtlPipeline {
                         .eq(DocumentChunk::getId, chunkId)
                         .set(DocumentChunk::getDenseVector, denseVector)
                         .set(DocumentChunk::getMilvusPk, milvusPk));
-    }
-
-    /**
-     * 更新分片的 next_chunk_id
-     */
-    private void updateChunkNextId(Long chunkId, Long nextChunkId) {
-        chunkMapper.update(
-                null,
-                Wrappers.<DocumentChunk>lambdaUpdate()
-                        .eq(DocumentChunk::getId, chunkId)
-                        .set(DocumentChunk::getNextChunkId, nextChunkId));
     }
 
     // ========================================================================

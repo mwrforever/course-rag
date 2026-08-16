@@ -4,6 +4,9 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.entity.DocumentChunk;
+import com.commerce.rag.record.ChunkLinkPair;
+import com.commerce.rag.record.ChunkVectorUpdate;
+import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -11,7 +14,8 @@ import org.apache.ibatis.annotations.Param;
  * 文档分片 Mapper —— MyBatis-Plus BaseMapper 接口
  *
  * <p>单表 CRUD 由 BaseMapper 提供，无需手写 SQL；
- * 教师数据权限分页查询（doc_id IN 子查询，perf P3-2）在 DocumentChunkMapper.xml 中映射实现。
+ * 教师数据权限分页查询（doc_id IN 子查询，perf P3-2）与批量回写
+ * （next_chunk_id 链路回填 M-1 / dense_vector 向量回写 H-3）在 DocumentChunkMapper.xml 中映射实现。
  *
  * @author commerce-rag
  */
@@ -37,4 +41,20 @@ public interface DocumentChunkMapper extends BaseMapper<DocumentChunk> {
             @Param("kbId") Long kbId,
             @Param("pendingOnly") boolean pendingOnly,
             @Param("userId") Long userId);
+
+    /**
+     * 批量回填 next_chunk_id（M-1：原逐分片单条 UPDATE → 单条 CASE WHEN 批量 UPDATE）
+     *
+     * @param pairs 链路回填对（prevChunkId → 后继 chunkId），不允许为空
+     * @return 受影响行数
+     */
+    int batchUpdateNextChunkIds(@Param("pairs") List<ChunkLinkPair> pairs);
+
+    /**
+     * 批量回写 dense_vector + milvus_pk（H-3：原逐分片单条 UPDATE → 单条 CASE WHEN 批量 UPDATE）
+     *
+     * @param updates 向量回写记录列表，不允许为空
+     * @return 受影响行数
+     */
+    int batchUpdateVectors(@Param("updates") List<ChunkVectorUpdate> updates);
 }

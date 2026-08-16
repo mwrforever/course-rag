@@ -11,6 +11,8 @@ import org.springframework.validation.annotation.Validated;
  * <p>绑定 application.yml 中 {@code etl.*} 配置块：
  * <pre>
  * etl:
+ *   max-file-size-mb: 100
+ *   embedding-batch-size: 16
  *   executor:
  *     core-size: 2
  *     max-size: 4
@@ -25,7 +27,7 @@ import org.springframework.validation.annotation.Validated;
  */
 @Validated
 @ConfigurationProperties(prefix = "etl")
-public record EtlProperties(@Min(1) int maxFileSizeMb, Executor executor, Chunk chunk) {
+public record EtlProperties(@Min(1) int maxFileSizeMb, Executor executor, Chunk chunk, @Min(1) int embeddingBatchSize) {
 
     /**
      * ETL 线程池配置

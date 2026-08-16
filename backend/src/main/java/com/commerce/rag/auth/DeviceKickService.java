@@ -104,6 +104,13 @@ public class DeviceKickService {
      *   <li>返回 {kicked, old_jti_at, old_jti_rt}</li>
      * </ol>
      *
+     * <p>H-2（性能报告 2026-08-16）：黑名单 TTL 固定传全量有效期（AT=accessTokenExpiry、
+     * RT=refreshTokenExpiry），旧设备是否存在由 Lua 内 GET 决定——删除 Java 预读
+     * （原实现"预读 TTL"与 Lua 内 GET 分离存在 TOCTOU：并发登录时 B 的预读读到 null，
+     * 但 Lua 内实际 GET 到旧设备 → 旧 RT 漏进黑名单，互踢安全边界被绕过；
+     * 且注释声称"剩余 TTL"实为恒传全量，注释与实现不符）。
+     * 黑名单 TTL 多留无害（过期自动清理），Lua 原子性由单脚本保证。
+     *
      * @param userId       用户 ID
      * @param deviceType   设备类型
      * @param newJtiAt     新 Access Token 的 jti
@@ -115,31 +122,16 @@ public class DeviceKickService {
         String curKey = CUR_KEY_PREFIX + userId + ":" + deviceType;
         String newValue = newJtiAt + "|" + newJtiRt + "|" + newLoginId;
         long curKeyTtl = authProperties.refreshTokenExpiry();
-        long oldAtTtl = 0;
-        long oldRtTtl = 0;
-
-        // 先查询旧 AT 的剩余 TTL（如果存在旧设备指针）
-        String old = redisTemplate.opsForValue().get(curKey);
-        if (old != null && !old.isEmpty()) {
-            // 尝试解析旧 jti 并计算剩余 TTL
-            String[] parts = old.split("\\|");
-            if (parts.length >= 1 && !parts[0].isEmpty()) {
-                oldAtTtl = authProperties.accessTokenExpiry();
-            }
-            if (parts.length >= 2 && !parts[1].isEmpty()) {
-                oldRtTtl = authProperties.refreshTokenExpiry();
-            }
-        }
 
         try {
-            // 执行 Lua 脚本
+            // 执行 Lua 脚本（旧设备检测 + 黑名单写入全部原子化于 Lua 内，无 Java 预读）
             String result = redisTemplate.execute(
                     kickAndLoginScript,
                     List.of(curKey),
                     newValue,
                     String.valueOf(curKeyTtl),
-                    String.valueOf(oldAtTtl),
-                    String.valueOf(oldRtTtl),
+                    String.valueOf(authProperties.accessTokenExpiry()),
+                    String.valueOf(authProperties.refreshTokenExpiry()),
                     "DEVICE_KICKED",
                     String.valueOf(System.currentTimeMillis()));
 
@@ -194,7 +186,10 @@ public class DeviceKickService {
      * 原子检查并标记 RT 为已使用（一次性旋转，P3 A11 Lua 化消除 TOCTOU）
      *
      * <p>单条 Lua（mark_rt_used.lua）完成「检查是否已标记 + 置位」，并发 refresh 仅一个能抢占成功；
-     * Redis 异常降级放行并写 PG 黑名单兜底（与原宽松降级语义一致）。
+     * Redis 异常降级放行（fail-open，不写 PG 黑名单——BUG-1 修复：179881e 曾在降级分支先写
+     * PG 黑名单再返回 true，而 AuthController 随后 isBlacklisted 降级查 PG 会命中本方法刚写入的
+     * TOKEN_REUSE 行 → Redis 故障期间每次 refresh 必 401 自拦截，且该行无清理任务导致 RT 被永久烧毁。
+     * 恢复旧 fail-open 语义：降级期间同一 RT 的并发复用检测退化为无（Redis 不可用时无法原子判定）。）
      *
      * @param jtiRt RT 的 JWT ID（不允许为空）
      * @return true=首次使用（本次抢占成功）；false=已被使用（应拒绝）；jtiRt 为空时返回 false
@@ -210,8 +205,7 @@ public class DeviceKickService {
                     String.valueOf(authProperties.refreshTokenExpiry()));
             return result != null && result == 1L;
         } catch (Exception e) {
-            log.warn("Redis RT 原子标记失败，降级放行并写 PG 黑名单: jtiRt={}", jtiRt, e);
-            addToBlacklistPg(jtiRt, "REFRESH", null, null, "TOKEN_REUSE");
+            log.warn("Redis RT 原子标记失败，降级放行（fail-open，不写 PG 黑名单避免 isBlacklisted 自拦截）: jtiRt={}", jtiRt, e);
             return true;
         }
     }
@@ -420,10 +414,17 @@ public class DeviceKickService {
             blacklist.setUserId(userId);
             blacklist.setBlacklistedBy(blacklistedBy);
             blacklist.setReason(reason);
+            // L-13：未显式传过期时间时按 token 类型取对应有效期（ACCESS=accessTokenExpiry，
+            // REFRESH=refreshTokenExpiry）——原实现恒用 refreshTokenExpiry(7d)，AT 黑名单
+            // 与 Lua 侧 15min TTL 不对称（无害但不一致）
             blacklist.setExpiresAt(
                     expiresAt != null
                             ? expiresAt
-                            : LocalDateTime.now().plusSeconds(authProperties.refreshTokenExpiry()));
+                            : LocalDateTime.now()
+                                    .plusSeconds(
+                                            "ACCESS".equals(tokenType)
+                                                    ? authProperties.accessTokenExpiry()
+                                                    : authProperties.refreshTokenExpiry()));
             tokenBlacklistMapper.insert(blacklist);
         } catch (Exception e) {
             // 可能是唯一索引冲突（重复插入），忽略

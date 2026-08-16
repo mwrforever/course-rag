@@ -26,4 +26,38 @@
         ORDER BY chunk_index
     </select>
 
+    <!-- M-1: next_chunk_id 批量回填——分片落库后一次性回填全部链路指针
+         （原逐分片单条 UPDATE，N 分片 N 次 SQL → 单条 CASE WHEN 批量 UPDATE）。 -->
+    <update id="batchUpdateNextChunkIds">
+        UPDATE document_chunk
+        SET next_chunk_id = CASE id
+            <foreach collection="pairs" item="p">
+                WHEN #{p.prevChunkId} THEN #{p.nextChunkId}
+            </foreach>
+            ELSE next_chunk_id
+        END
+        WHERE id IN
+        <foreach collection="pairs" item="p" open="(" separator="," close=")">#{p.prevChunkId}</foreach>
+    </update>
+
+    <!-- H-3: dense_vector + milvus_pk 批量回写——向量化阶段批量 embedding 后一次性回写
+         （原逐分片单条 UPDATE，N 分片 N 次 SQL → 单条 CASE WHEN 批量 UPDATE）。 -->
+    <update id="batchUpdateVectors">
+        UPDATE document_chunk
+        SET dense_vector = CASE id
+            <foreach collection="updates" item="u">
+                WHEN #{u.chunkId} THEN #{u.denseVector}
+            </foreach>
+            ELSE dense_vector
+        END,
+        milvus_pk = CASE id
+            <foreach collection="updates" item="u">
+                WHEN #{u.chunkId} THEN #{u.milvusPk}
+            </foreach>
+            ELSE milvus_pk
+        END
+        WHERE id IN
+        <foreach collection="updates" item="u" open="(" separator="," close=")">#{u.chunkId}</foreach>
+    </update>
+
 </mapper>

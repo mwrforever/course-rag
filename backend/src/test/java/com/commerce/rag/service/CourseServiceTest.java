@@ -23,6 +23,7 @@ import com.commerce.rag.mapper.CourseTeacherMapper;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.service.impl.CourseServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.github.benmanes.caffeine.cache.Cache;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
@@ -68,6 +69,10 @@ class CourseServiceTest {
     @Mock
     private ICourseQueryService courseQueryService;
 
+    /** Dashboard 统计缓存（Mock——级联软删路径的失效钩子仅需不抛异常） */
+    @Mock
+    private Cache<String, Object> dashboardStatsCache;
+
     private ICourseService courseService;
 
     @BeforeAll
@@ -88,7 +93,8 @@ class CourseServiceTest {
                 documentChunkMapper,
                 etlPipeline,
                 new CourseConverterImpl(),
-                courseQueryService);
+                courseQueryService,
+                dashboardStatsCache);
     }
 
     @Test

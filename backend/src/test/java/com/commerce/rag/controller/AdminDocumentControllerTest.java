@@ -42,8 +42,8 @@ class AdminDocumentControllerTest {
 
     @BeforeEach
     void setUp() {
-        EtlProperties props =
-                new EtlProperties(100, new EtlProperties.Executor(2, 4, 20, "etl-"), new EtlProperties.Chunk(768, 128));
+        EtlProperties props = new EtlProperties(
+                100, new EtlProperties.Executor(2, 4, 20, "etl-"), new EtlProperties.Chunk(768, 128), 16);
         controller = new AdminDocumentController(documentService, props);
     }
 

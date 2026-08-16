@@ -18,6 +18,7 @@ import com.commerce.rag.service.impl.KnowledgeBaseServiceImpl;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.KnowledgeBaseVO;
+import com.github.benmanes.caffeine.cache.Cache;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -56,6 +57,10 @@ class KnowledgeBaseServiceTest {
 
     @Mock
     private MinioStorageService minioStorageService;
+
+    /** Dashboard 统计缓存（Mock——知识库增删路径的失效钩子仅需不抛异常） */
+    @Mock
+    private Cache<String, Object> dashboardStatsCache;
 
     /** 转换器用真实实现（MapStruct 生成类），转换行为由 KnowledgeBaseConverterTest 单独覆盖 */
     @Spy

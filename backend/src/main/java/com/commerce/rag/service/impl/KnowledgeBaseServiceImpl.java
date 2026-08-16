@@ -18,6 +18,7 @@ import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.service.IKnowledgeBaseService;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.vo.KnowledgeBaseVO;
+import com.github.benmanes.caffeine.cache.Cache;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -53,6 +55,10 @@ public class KnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, K
     /** 知识库转换器 —— Entity 出 service 边界前转 VO */
     private final KnowledgeBaseConverter knowledgeBaseConverter;
 
+    /** Dashboard 统计缓存（TTL 60 秒；知识库增删影响 knowledgeBaseCount/documentCount/pendingChunkCount，DB 写入后失效——BUG-2 修复） */
+    @Qualifier("dashboardStatsCache")
+    private final Cache<String, Object> dashboardStatsCache;
+
     /**
      * 创建知识库
      *
@@ -68,6 +74,8 @@ public class KnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, K
         kb.setStatus("ACTIVE");
         kb.setCreatedBy(createdBy);
         knowledgeBaseMapper.insert(kb);
+        // 统计失效：知识库数已变更（先写 DB 后失效——BUG-2 修复）
+        dashboardStatsCache.invalidateAll();
         log.info("创建知识库: kbId={}, name={}, createdBy={}", kb.getId(), name, createdBy);
         return knowledgeBaseConverter.toVO(kb);
     }
@@ -200,6 +208,9 @@ public class KnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, K
                 .eq(KnowledgeBase::getId, id)
                 .set(KnowledgeBase::getDeleted, System.currentTimeMillis());
         knowledgeBaseMapper.update(null, kbWrapper);
+
+        // 统计失效：知识库/文档/分片数均变更（先写 DB 后失效——BUG-2 修复）
+        dashboardStatsCache.invalidateAll();
 
         log.info("删除知识库（级联）: kbId={}, operatorId={}", id, operatorId);
     }

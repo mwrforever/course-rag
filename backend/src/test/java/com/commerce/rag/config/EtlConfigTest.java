@@ -17,17 +17,17 @@ import org.junit.jupiter.api.Test;
 class EtlConfigTest {
 
     @Test
-    @DisplayName("etlPool 按 EtlProperties 创建独立线程池（core/max/队列/CallerRunsPolicy）")
+    @DisplayName("etlPool 按 EtlProperties 创建独立线程池（core/max/队列/AbortPolicy——M-7 快速失败）")
     void etlPool_buildsPoolPerProperties() {
-        EtlProperties props =
-                new EtlProperties(100, new EtlProperties.Executor(2, 4, 20, "etl-"), new EtlProperties.Chunk(768, 128));
+        EtlProperties props = new EtlProperties(
+                100, new EtlProperties.Executor(2, 4, 20, "etl-"), new EtlProperties.Chunk(768, 128), 16);
         ThreadPoolExecutor pool = new EtlConfig().etlPool(props);
 
         try {
             assertEquals(2, pool.getCorePoolSize());
             assertEquals(4, pool.getMaximumPoolSize());
             assertEquals(20, ((LinkedBlockingQueue<?>) pool.getQueue()).remainingCapacity());
-            assertInstanceOf(ThreadPoolExecutor.CallerRunsPolicy.class, pool.getRejectedExecutionHandler());
+            assertInstanceOf(ThreadPoolExecutor.AbortPolicy.class, pool.getRejectedExecutionHandler());
             assertTrue(pool.getThreadFactory().newThread(() -> {}).isDaemon());
         } finally {
             pool.shutdownNow();

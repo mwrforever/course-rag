@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.entity.DocumentChunk;
+import com.commerce.rag.record.ChunkLinkPair;
+import com.commerce.rag.record.ChunkVectorUpdate;
 import com.commerce.rag.test.IntegrationTestBase;
 import java.util.List;
 import java.util.Set;
@@ -165,5 +167,49 @@ class DocumentChunkMapperXmlTest extends IntegrationTestBase {
         IPage<DocumentChunk> all =
                 documentChunkMapper.selectPageFilteredByTeacher(new Page<>(1, 10), null, null, false, TEACHER_A);
         assertEquals(2, all.getTotal(), "pendingOnly=false 应返回全部未删除分片");
+    }
+
+    /**
+     * M-1: batchUpdateNextChunkIds 执行级验证——单条批量 UPDATE 正确回填 next_chunk_id。
+     *
+     * <p>预置分片 1001 → 1002 → 1004 的线性链，批量回填后按 id 校验逐条指针。
+     */
+    @Test
+    void batchUpdateNextChunkIds回填链路指针() {
+        int rows = documentChunkMapper.batchUpdateNextChunkIds(
+                List.of(new ChunkLinkPair(1001L, 1002L), new ChunkLinkPair(1002L, 1004L)));
+
+        assertEquals(2, rows, "批量回填应命中 2 行");
+        Long nextOf1001 =
+                jdbcTemplate.queryForObject("SELECT next_chunk_id FROM document_chunk WHERE id = 1001", Long.class);
+        Long nextOf1002 =
+                jdbcTemplate.queryForObject("SELECT next_chunk_id FROM document_chunk WHERE id = 1002", Long.class);
+        Long nextOf1004 =
+                jdbcTemplate.queryForObject("SELECT next_chunk_id FROM document_chunk WHERE id = 1004", Long.class);
+        assertEquals(1002L, nextOf1001, "1001 的 next_chunk_id 应回填为 1002");
+        assertEquals(1004L, nextOf1002, "1002 的 next_chunk_id 应回填为 1004");
+        assertTrue(nextOf1004 == null, "链尾分片（不在回填集合内）应保持 NULL");
+    }
+
+    /**
+     * H-3: batchUpdateVectors 执行级验证——单条批量 UPDATE 正确回写 dense_vector + milvus_pk。
+     */
+    @Test
+    void batchUpdateVectors批量回写向量() {
+        byte[] vec1 = new byte[] {1, 2, 3, 4};
+        byte[] vec2 = new byte[] {5, 6, 7, 8};
+        int rows = documentChunkMapper.batchUpdateVectors(
+                List.of(new ChunkVectorUpdate(1001L, vec1, "1001"), new ChunkVectorUpdate(1002L, vec2, "1002")));
+
+        assertEquals(2, rows, "批量回写应命中 2 行");
+        byte[] stored1 =
+                jdbcTemplate.queryForObject("SELECT dense_vector FROM document_chunk WHERE id = 1001", byte[].class);
+        String pk1 = jdbcTemplate.queryForObject("SELECT milvus_pk FROM document_chunk WHERE id = 1001", String.class);
+        assertTrue(java.util.Arrays.equals(vec1, stored1), "dense_vector 应回写为传入字节");
+        assertEquals("1001", pk1, "milvus_pk 应回写为分片 ID 字符串");
+        // 未回写的分片保持原样（NULL）
+        byte[] stored4 =
+                jdbcTemplate.queryForObject("SELECT dense_vector FROM document_chunk WHERE id = 1004", byte[].class);
+        assertTrue(stored4 == null, "未回写分片的 dense_vector 应保持 NULL");
     }
 }

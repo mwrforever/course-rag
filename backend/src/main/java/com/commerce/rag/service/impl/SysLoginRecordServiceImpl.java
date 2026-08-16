@@ -18,7 +18,6 @@ import com.commerce.rag.service.ISysLoginRecordService;
 import com.commerce.rag.vo.SysLoginRecordVO;
 import com.commerce.rag.vo.SysTokenBlacklistVO;
 import java.time.LocalDateTime;
-import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -226,19 +225,18 @@ public class SysLoginRecordServiceImpl extends ServiceImpl<SysLoginRecordMapper,
     /**
      * 清理过期黑名单记录
      *
+     * <p>M-6：单条 UPDATE 替代「先全表查回 + 循环逐条 UPDATE」（与上方 cleanupExpired 同范式），
+     * UPDATE 返回行数即清理数，语义保持。
+     *
      * @return 清理数量
      */
     public int cleanupExpiredBlacklist() {
-        LambdaQueryWrapper<SysTokenBlacklist> queryWrapper =
-                Wrappers.<SysTokenBlacklist>lambdaQuery().lt(SysTokenBlacklist::getExpiresAt, LocalDateTime.now());
-        List<SysTokenBlacklist> expired = tokenBlacklistMapper.selectList(queryWrapper);
-        for (SysTokenBlacklist record : expired) {
-            LambdaUpdateWrapper<SysTokenBlacklist> wrapper = Wrappers.<SysTokenBlacklist>lambdaUpdate()
-                    .eq(SysTokenBlacklist::getId, record.getId())
-                    .set(SysTokenBlacklist::getDeleted, System.currentTimeMillis());
-            tokenBlacklistMapper.update(null, wrapper);
-        }
-        log.info("清理过期黑名单记录: count={}", expired.size());
-        return expired.size();
+        LambdaUpdateWrapper<SysTokenBlacklist> wrapper = Wrappers.<SysTokenBlacklist>lambdaUpdate()
+                .eq(SysTokenBlacklist::getDeleted, 0)
+                .lt(SysTokenBlacklist::getExpiresAt, LocalDateTime.now())
+                .set(SysTokenBlacklist::getDeleted, System.currentTimeMillis());
+        int updated = tokenBlacklistMapper.update(null, wrapper);
+        log.info("清理过期黑名单记录: count={}", updated);
+        return updated;
     }
 }

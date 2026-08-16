@@ -13,7 +13,9 @@ import org.springframework.context.annotation.Configuration;
  * ETL 管道配置 —— 注册 EtlProperties + ETL 线程池 Bean
  *
  * <p>ETL 线程池与对话 Worker 线程池独立，避免文档解析阻塞对话执行。
- * 使用 CallerRunsPolicy（队列满时由调用线程执行），防止队列溢出。
+ * 使用 AbortPolicy（M-7：队列满时快速失败并抛 RejectedExecutionException，
+ * 由调用方回写文档状态 PENDING/FAILED——原 CallerRunsPolicy 会让上传/reparse 的
+ * HTTP 请求线程内联执行整个 ETL（分钟级任务直接阻塞上传接口））。
  *
  * @author commerce-rag
  */
@@ -40,6 +42,6 @@ public class EtlConfig {
                         .setNameFormat(exec.threadNamePrefix() + "%d")
                         .setDaemon(true)
                         .build(),
-                new ThreadPoolExecutor.CallerRunsPolicy());
+                new ThreadPoolExecutor.AbortPolicy());
     }
 }

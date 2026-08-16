@@ -15,12 +15,14 @@ import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.properties.EtlProperties;
+import com.commerce.rag.record.ChunkLinkPair;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.DeleteReq;
+import io.milvus.v2.service.vector.request.InsertReq;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -71,8 +73,8 @@ class EtlPipelineTest {
 
     @BeforeEach
     void setUp() {
-        EtlProperties props =
-                new EtlProperties(100, new EtlProperties.Executor(2, 4, 20, "etl-"), new EtlProperties.Chunk(768, 128));
+        EtlProperties props = new EtlProperties(
+                100, new EtlProperties.Executor(2, 4, 20, "etl-"), new EtlProperties.Chunk(768, 128), 16);
         etlPipeline = new EtlPipeline(
                 documentMapper,
                 chunkMapper,
@@ -259,7 +261,7 @@ class EtlPipelineTest {
         chunk.setKbId(10L);
         chunk.setContent("内容");
         when(chunkMapper.selectList(any())).thenReturn(List.of(chunk));
-        when(embeddingModel.embed(anyString())).thenThrow(new RuntimeException("embedding 服务不可用"));
+        when(embeddingModel.embed(anyList())).thenThrow(new RuntimeException("embedding 服务不可用"));
 
         etlPipeline.embedAndIndex(1L);
 
@@ -290,7 +292,7 @@ class EtlPipelineTest {
         chunk.setKbId(10L);
         chunk.setContent("内容");
         when(chunkMapper.selectList(any())).thenReturn(List.of(chunk));
-        when(embeddingModel.embed(anyString())).thenReturn(new float[0]);
+        when(embeddingModel.embed(anyList())).thenReturn(List.of(new float[0]));
 
         etlPipeline.embedAndIndex(1L);
 
@@ -393,6 +395,13 @@ class EtlPipelineTest {
         assertTrue(inserted.get(0).getTokenCount() > 0);
         // 分片数回写文档
         verify(documentMapper, atLeastOnce()).update(any(), any());
+        // M-1：next_chunk_id 单条批量回填（收集全部链路对，非逐分片 UPDATE）
+        ArgumentCaptor<List> linkCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper).batchUpdateNextChunkIds(linkCaptor.capture());
+        List<ChunkLinkPair> pairs = linkCaptor.getValue();
+        assertFalse(pairs.isEmpty());
+        assertEquals(inserted.get(0).getId(), pairs.get(0).prevChunkId());
+        assertEquals(inserted.get(1).getId(), pairs.get(0).nextChunkId());
     }
 
     @Test
@@ -464,7 +473,8 @@ class EtlPipelineTest {
         c2.setContent("内容二");
         c2.setChunkIndex(1);
         when(chunkMapper.selectList(any())).thenReturn(List.of(c1, c2));
-        when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f, 0.3f});
+        when(embeddingModel.embed(anyList()))
+                .thenReturn(List.of(new float[] {0.1f, 0.2f, 0.3f}, new float[] {0.4f, 0.5f, 0.6f}));
 
         etlPipeline.embedAndIndex(1L);
 
@@ -476,10 +486,181 @@ class EtlPipelineTest {
             return w.getParamNameValuePairs().containsValue("INDEXED");
         });
         assertTrue(indexed, "成功路径应以 INDEXED 收尾");
-        // PG：每个分片一次 dense_vector 更新
-        verify(chunkMapper, times(2)).update(any(), any());
-        // Milvus：清旧 1 次 delete + 每分片 1 次 insert
+        // H-3：PG 向量批量回写（单条 CASE WHEN UPDATE，原逐分片 update）
+        verify(chunkMapper).batchUpdateVectors(anyList());
+        // H-3：Milvus 清旧 1 次 delete + 1 次多行 insert（2 行）
         verify(milvusClientV2, times(1)).delete(any(DeleteReq.class));
-        verify(milvusClientV2, times(2)).insert(any(io.milvus.v2.service.vector.request.InsertReq.class));
+        ArgumentCaptor<InsertReq> insertCaptor = ArgumentCaptor.forClass(InsertReq.class);
+        verify(milvusClientV2, times(1)).insert(insertCaptor.capture());
+        assertEquals(2, insertCaptor.getValue().getData().size(), "多行插入应携带 2 行");
+    }
+
+    // ==================== reEmbedAndUpsert / 同步 Milvus（M-4 批量） ====================
+
+    @Test
+    @DisplayName("reEmbedAndUpsert → 单分片重新向量化：PG 向量更新 + Milvus delete-then-insert")
+    void reEmbedAndUpsert_updatesVectorAndMilvus() {
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        chunk.setDocId(1L);
+        chunk.setKbId(10L);
+        chunk.setContent("新内容");
+        when(chunkMapper.selectById(1L)).thenReturn(chunk);
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setTitle("测试文档");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f, 0.3f});
+
+        etlPipeline.reEmbedAndUpsert(1L);
+
+        // PG：单分片向量回写（updateChunkVector）
+        verify(chunkMapper).update(any(), any());
+        // Milvus：delete 1 次 + 多行 insert 1 次（单行）
+        verify(milvusClientV2).delete(any(DeleteReq.class));
+        ArgumentCaptor<InsertReq> insertCaptor = ArgumentCaptor.forClass(InsertReq.class);
+        verify(milvusClientV2).insert(insertCaptor.capture());
+        assertEquals(1, insertCaptor.getValue().getData().size());
+    }
+
+    @Test
+    @DisplayName("reEmbedAndUpsert → 分片不存在抛 IllegalStateException")
+    void reEmbedAndUpsert_chunkNotFound_throws() {
+        when(chunkMapper.selectById(99L)).thenReturn(null);
+
+        assertThrows(IllegalStateException.class, () -> etlPipeline.reEmbedAndUpsert(99L));
+    }
+
+    @Test
+    @DisplayName("reEmbedAndUpsert → Embedding 返回空向量抛异常")
+    void reEmbedAndUpsert_emptyVector_throws() {
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        chunk.setDocId(1L);
+        chunk.setContent("内容");
+        when(chunkMapper.selectById(1L)).thenReturn(chunk);
+        when(embeddingModel.embed(anyString())).thenReturn(new float[0]);
+
+        assertThrows(RuntimeException.class, () -> etlPipeline.reEmbedAndUpsert(1L));
+    }
+
+    @Test
+    @DisplayName("syncChunkToMilvus → 已向量化分片重建 Milvus 行（向量从 PG 恢复）")
+    void syncChunkToMilvus_vectorized_syncsRow() {
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        chunk.setDocId(1L);
+        chunk.setKbId(10L);
+        chunk.setCourseId("COURSE_1");
+        chunk.setDenseVector(new byte[] {0, 0, 0, 0}); // 1 个 float
+        when(chunkMapper.selectById(1L)).thenReturn(chunk);
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setTitle("测试文档");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+
+        etlPipeline.syncChunkToMilvus(1L);
+
+        verify(milvusClientV2).delete(any(DeleteReq.class));
+        verify(milvusClientV2).insert(any(InsertReq.class));
+    }
+
+    @Test
+    @DisplayName("syncChunkToMilvus → 未向量化分片跳过（不调 Milvus）")
+    void syncChunkToMilvus_noVector_skips() {
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        chunk.setDocId(1L);
+        when(chunkMapper.selectById(1L)).thenReturn(chunk);
+
+        etlPipeline.syncChunkToMilvus(1L);
+
+        verify(milvusClientV2, never()).delete(any(DeleteReq.class));
+        verify(milvusClientV2, never()).insert(any(InsertReq.class));
+    }
+
+    @Test
+    @DisplayName("syncDocToMilvus（M-4）→ 批量 delete（filter IN）+ 多行 insert，未向量化分片跳过")
+    void syncDocToMilvus_batchDeleteAndInsert() {
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setTitle("测试文档");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        DocumentChunk vectorized = new DocumentChunk();
+        vectorized.setId(1L);
+        vectorized.setDocId(1L);
+        vectorized.setKbId(10L);
+        vectorized.setDenseVector(new byte[] {0, 0, 0, 0});
+        DocumentChunk noVector = new DocumentChunk();
+        noVector.setId(2L);
+        noVector.setDocId(1L);
+        noVector.setKbId(10L);
+        noVector.setDenseVector(null);
+        when(chunkMapper.selectList(any())).thenReturn(List.of(vectorized, noVector));
+
+        etlPipeline.syncDocToMilvus(1L);
+
+        // M-4: 批量 delete 一次（filter IN 含 1 个 chunk）+ 多行 insert 一次（1 行）
+        ArgumentCaptor<DeleteReq> deleteCaptor = ArgumentCaptor.forClass(DeleteReq.class);
+        verify(milvusClientV2, times(1)).delete(deleteCaptor.capture());
+        assertTrue(deleteCaptor.getValue().getFilter().contains("chunk_id in"), "应使用 filter IN 批量删除");
+        ArgumentCaptor<InsertReq> insertCaptor = ArgumentCaptor.forClass(InsertReq.class);
+        verify(milvusClientV2, times(1)).insert(insertCaptor.capture());
+        assertEquals(1, insertCaptor.getValue().getData().size(), "多行插入仅含已向量化分片");
+    }
+
+    @Test
+    @DisplayName("syncDocToMilvus → 无向量化分片时跳过（不调 Milvus）")
+    void syncDocToMilvus_noVectorized_skips() {
+        Document doc = new Document();
+        doc.setId(1L);
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        DocumentChunk noVector = new DocumentChunk();
+        noVector.setId(2L);
+        noVector.setDocId(1L);
+        when(chunkMapper.selectList(any())).thenReturn(List.of(noVector));
+
+        etlPipeline.syncDocToMilvus(1L);
+
+        verify(milvusClientV2, never()).delete(any(DeleteReq.class));
+        verify(milvusClientV2, never()).insert(any(InsertReq.class));
+    }
+
+    @Test
+    @DisplayName("syncDocToMilvus → 文档不存在抛 IllegalStateException")
+    void syncDocToMilvus_docNotFound_throws() {
+        when(documentMapper.selectById(99L)).thenReturn(null);
+
+        assertThrows(IllegalStateException.class, () -> etlPipeline.syncDocToMilvus(99L));
+    }
+
+    @Test
+    @DisplayName("embedAndIndex 部分失败且 Milvus 半成品清理失败 — 仅告警，仍标 FAILED")
+    void embedAndIndex_partialFailure_cleanupDeleteFails_stillFailed() {
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setKbId(10L);
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        chunk.setDocId(1L);
+        chunk.setKbId(10L);
+        chunk.setContent("内容");
+        when(chunkMapper.selectList(any())).thenReturn(List.of(chunk));
+        when(embeddingModel.embed(anyList())).thenThrow(new RuntimeException("embedding 服务不可用"));
+        // 开头清旧 delete 成功、FAILED 半成品清理 delete 失败（仅告警不阻断）
+        doReturn(null)
+                .doThrow(new RuntimeException("milvus down"))
+                .when(milvusClientV2)
+                .delete(any(DeleteReq.class));
+
+        etlPipeline.embedAndIndex(1L);
+
+        ArgumentCaptor<LambdaUpdateWrapper> wrapperCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(documentMapper, atLeastOnce()).update(any(), wrapperCaptor.capture());
+        String setValues = wrapperCaptor.getAllValues().stream()
+                .map(w -> String.valueOf(w.getParamNameValuePairs().values()))
+                .reduce("", (a, b) -> a + b);
+        assertTrue(setValues.contains("FAILED"), "半成品清理失败仍应标 FAILED: " + setValues);
     }
 }

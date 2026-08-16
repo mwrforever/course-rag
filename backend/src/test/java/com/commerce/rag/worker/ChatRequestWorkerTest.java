@@ -10,8 +10,10 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
+import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.properties.StreamProperties;
+import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.stream.MemoryStreamBridge;
@@ -22,7 +24,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +52,6 @@ import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 import reactor.core.publisher.Flux;
 
 /**
@@ -91,7 +91,10 @@ class ChatRequestWorkerTest {
     private ThreadPoolExecutor runPool;
 
     @Mock
-    private ValueOperations<String, String> valueOps;
+    private WarningHook warningHook;
+
+    @Mock
+    private WorkerProperties workerProperties;
 
     private StreamOperations<String, Object, Object> streamOps;
     private ChatRequestWorker worker;
@@ -110,7 +113,9 @@ class ChatRequestWorkerTest {
                 chatRunService,
                 chatMessageService,
                 streamProperties,
+                workerProperties,
                 runPool,
+                warningHook,
                 new ObjectMapper());
 
         // 公共 stub：saver.get 返回空 Optional（无历史 checkpoint）
@@ -129,8 +134,6 @@ class ChatRequestWorkerTest {
         lenient()
                 .when(streamOps.acknowledge(anyString(), anyString(), anyString()))
                 .thenReturn(0L);
-        // 公共 stub：结果缓存 ValueOperations（cacheFinalResult 成功路径）
-        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOps);
     }
 
     @AfterEach
@@ -651,62 +654,6 @@ class ChatRequestWorkerTest {
         verify(chatMessageService).batchInsert(anyList());
     }
 
-    // ==================== cacheFinalResult（F2-8 结果缓存） ====================
-
-    /** 反射调用 private cacheFinalResult */
-    private void invokeCacheFinalResult(Long runId, NodeOutput lastOutput) throws Exception {
-        Method method = ChatRequestWorker.class.getDeclaredMethod("cacheFinalResult", Long.class, NodeOutput.class);
-        method.setAccessible(true);
-        method.invoke(worker, runId, lastOutput);
-    }
-
-    @Test
-    @DisplayName("cacheFinalResult → 最后一条 AssistantMessage 文本缓存到 Redis")
-    void cacheFinalResult_assistantText_cachedToRedis() throws Exception {
-        OverAllState state =
-                new OverAllState(Map.of("messages", List.of(new UserMessage("问题"), new AssistantMessage("最终回答"))));
-        NodeOutput lastOutput = mock(NodeOutput.class);
-        when(lastOutput.state()).thenReturn(state);
-
-        invokeCacheFinalResult(1L, lastOutput);
-
-        verify(valueOps).set(eq("chat:result:1"), eq("最终回答"), any(Duration.class));
-    }
-
-    @Test
-    @DisplayName("cacheFinalResult → state 无 messages 时跳过缓存")
-    void cacheFinalResult_noMessages_skipsCache() throws Exception {
-        NodeOutput lastOutput = mock(NodeOutput.class);
-        when(lastOutput.state()).thenReturn(new OverAllState(Map.of()));
-
-        invokeCacheFinalResult(1L, lastOutput);
-
-        verify(valueOps, never()).set(anyString(), anyString(), any(Duration.class));
-    }
-
-    @Test
-    @DisplayName("cacheFinalResult → 无 AssistantMessage 时跳过缓存")
-    void cacheFinalResult_noAssistantMessage_skipsCache() throws Exception {
-        NodeOutput lastOutput = mock(NodeOutput.class);
-        when(lastOutput.state()).thenReturn(new OverAllState(Map.of("messages", List.of(new UserMessage("仅用户消息")))));
-
-        invokeCacheFinalResult(1L, lastOutput);
-
-        verify(valueOps, never()).set(anyString(), anyString(), any(Duration.class));
-    }
-
-    @Test
-    @DisplayName("cacheFinalResult → Redis 写入失败降级，不抛出异常")
-    void cacheFinalResult_redisFailure_degrades() throws Exception {
-        doThrow(new RuntimeException("Redis 不可用")).when(valueOps).set(anyString(), anyString(), any(Duration.class));
-        NodeOutput lastOutput = mock(NodeOutput.class);
-        when(lastOutput.state())
-                .thenReturn(new OverAllState(Map.of("messages", List.of(new AssistantMessage("最终回答")))));
-
-        // 缓存失败仅记 warn，不抛出
-        invokeCacheFinalResult(1L, lastOutput);
-    }
-
     // ==================== toChatMessages 分支 ====================
 
     /** 反射调用 private toChatMessages */
@@ -757,7 +704,9 @@ class ChatRequestWorkerTest {
                 chatRunService,
                 chatMessageService,
                 streamProperties,
+                workerProperties,
                 runPool,
+                warningHook,
                 mapper);
     }
 
