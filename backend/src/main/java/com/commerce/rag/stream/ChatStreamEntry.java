@@ -26,6 +26,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -57,6 +58,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * @author commerce-rag
  */
 @Component
+@RequiredArgsConstructor
 public class ChatStreamEntry {
 
     private static final Logger log = LoggerFactory.getLogger(ChatStreamEntry.class);
@@ -76,25 +78,6 @@ public class ChatStreamEntry {
     /** 心跳定时器线程池 */
     private ScheduledExecutorService scheduler;
 
-    public ChatStreamEntry(
-            ChatRequestWorker worker,
-            MemoryStreamBridge bridge,
-            IChatRunService chatRunService,
-            IChatSessionService chatSessionService,
-            IChatMessageService chatMessageService,
-            StringRedisTemplate redisTemplate,
-            StreamProperties streamProperties,
-            ObjectMapper objectMapper) {
-        this.worker = worker;
-        this.bridge = bridge;
-        this.chatRunService = chatRunService;
-        this.chatSessionService = chatSessionService;
-        this.chatMessageService = chatMessageService;
-        this.redisTemplate = redisTemplate;
-        this.streamProperties = streamProperties;
-        this.objectMapper = objectMapper;
-    }
-
     @PostConstruct
     public void init() {
         scheduler = new ScheduledThreadPoolExecutor(2, r -> {
@@ -102,14 +85,14 @@ public class ChatStreamEntry {
             t.setDaemon(true);
             return t;
         });
-        log.info("ChatController 心跳调度器已启动: interval={}s", streamProperties.heartbeatInterval());
+        log.info("ChatStreamEntry 心跳调度器已启动: interval={}s", streamProperties.heartbeatInterval());
     }
 
     @PreDestroy
     public void destroy() {
         if (scheduler != null) {
             scheduler.shutdownNow();
-            log.info("ChatController 心跳调度器已关闭");
+            log.info("ChatStreamEntry 心跳调度器已关闭");
         }
     }
 
@@ -164,7 +147,7 @@ public class ChatStreamEntry {
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT);
 
         // 4. 创建 ring + 订阅（先创建 ring 再订阅，确保不丢事件）
-        //    Worker 的 createRing 用 computeIfAbsent，Controller 先创建是幂等操作
+        //    Worker 的 createRing 用 computeIfAbsent，ChatStreamEntry 先创建是幂等操作
         bridge.createRing(runId);
         bridge.subscribe(runId, emitter);
 

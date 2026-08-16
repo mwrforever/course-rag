@@ -352,27 +352,6 @@ public abstract class IntegrationTestBase {
         return status;
     }
 
-    /**
-     * 轮询 chat_run 状态直到等于目标状态（如等待 ACTIVE）。
-     *
-     * @param runId    Run ID
-     * @param expected 期望状态
-     * @param timeoutMs 最长等待毫秒数
-     * @return true=在超时前达到目标状态
-     */
-    protected boolean awaitStatus(Long runId, String expected, long timeoutMs) {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
-            String status =
-                    jdbcTemplate.queryForObject("SELECT status FROM chat_run WHERE id = ?", String.class, runId);
-            if (expected.equals(status)) {
-                return true;
-            }
-            sleepQuietly(300);
-        }
-        return false;
-    }
-
     /** 判断 run 状态是否为终态 */
     private boolean isTerminal(String status) {
         return "COMPLETED".equals(status) || "CANCELLED".equals(status) || "ERROR".equals(status);
@@ -385,11 +364,6 @@ public abstract class IntegrationTestBase {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    /** 断言 HTTP 状态码 */
-    protected void assertStatus(ResponseEntity<?> response, int expected) {
-        assertEquals(expected, response.getStatusCode().value(), "HTTP 状态码不符");
     }
 
     /** 断言登录成功并返回 accessToken（供用例复用） */
