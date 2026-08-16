@@ -6,13 +6,13 @@ import static org.mockito.Mockito.*;
 
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.dto.ChatRequest;
-import com.commerce.rag.entity.ChatMessage;
-import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.service.IChatSessionService;
+import com.commerce.rag.vo.ChatMessageVO;
+import com.commerce.rag.vo.ChatRunVO;
 import com.commerce.rag.vo.ChatSessionVO;
 import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.worker.ChatRequestWorker;
@@ -116,9 +116,7 @@ class ChatStreamEntryTest {
         when(chatSessionService.createSession(eq(123L), anyString()))
                 .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
 
-        ChatRun mockRun = mock(ChatRun.class);
-        when(mockRun.getId()).thenReturn(123L);
-        when(chatRunService.createRun(456L, 123L)).thenReturn(mockRun);
+        when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
 
         // When
         SseEmitter emitter = entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好"));
@@ -140,9 +138,7 @@ class ChatStreamEntryTest {
         when(chatSessionService.findById(456L))
                 .thenReturn(new ChatSessionVO(456L, 123L, "会话", "ACTIVE", null, null, null));
 
-        ChatRun mockRun = mock(ChatRun.class);
-        when(mockRun.getId()).thenReturn(789L);
-        when(chatRunService.createRun(456L, 123L)).thenReturn(mockRun);
+        when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(789L, 456L, 123L, "QUEUED", null));
 
         // When
         SseEmitter emitter = entry.chat(mockRequestWithUserId(123L), new ChatRequest(456L, "你好"));
@@ -202,9 +198,7 @@ class ChatStreamEntryTest {
         when(chatSessionService.createSession(eq(123L), anyString()))
                 .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
 
-        ChatRun mockRun = mock(ChatRun.class);
-        when(mockRun.getId()).thenReturn(123L);
-        when(chatRunService.createRun(456L, 123L)).thenReturn(mockRun);
+        when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
 
         doThrow(new RuntimeException("Redis 不可用")).when(streamOps).add(anyString(), anyMap());
 
@@ -224,9 +218,7 @@ class ChatStreamEntryTest {
         when(chatSessionService.createSession(eq(123L), anyString()))
                 .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
 
-        ChatRun mockRun = mock(ChatRun.class);
-        when(mockRun.getId()).thenReturn(123L);
-        when(chatRunService.createRun(456L, 123L)).thenReturn(mockRun);
+        when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
 
         doThrow(new RuntimeException("Redis 不可用")).when(streamOps).add(anyString(), anyMap());
         doThrow(new RuntimeException("数据库不可用")).when(chatRunService).updateStatus(anyLong(), anyString());
@@ -246,10 +238,7 @@ class ChatStreamEntryTest {
     @DisplayName("cancel → 调用 worker.cancel，返回 200")
     void cancel_callsWorkerCancel_returns200() {
         // Given: run 123 属于当前用户（P0-3 归属校验通过）
-        ChatRun ownRun = new ChatRun();
-        ownRun.setId(123L);
-        ownRun.setUserId(123L);
-        when(chatRunService.findById(123L)).thenReturn(ownRun);
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "QUEUED", null));
 
         // When
         ResponseEntity<Void> response = entry.cancel("123", mockRequestWithUserId(123L));
@@ -263,10 +252,7 @@ class ChatStreamEntryTest {
     @DisplayName("cancel → 他人 runId 返回 404（不泄露存在性）")
     void cancel_withOthersRun_returns404() {
         // Given: run 1 属于用户 2，当前用户为 123
-        ChatRun othersRun = new ChatRun();
-        othersRun.setId(1L);
-        othersRun.setUserId(2L);
-        when(chatRunService.findById(1L)).thenReturn(othersRun);
+        when(chatRunService.findById(1L)).thenReturn(new ChatRunVO(1L, 1L, 2L, "QUEUED", null));
 
         // When / Then: checkRunOwnership 抛 BizException(404)
         BizException ex = assertThrows(BizException.class, () -> entry.cancel("1", mockRequestWithUserId(123L)));
@@ -299,10 +285,7 @@ class ChatStreamEntryTest {
     @DisplayName("reconnect ring 回放成功 → replayAndSubscribe 被调用，不再单独 subscribe")
     void reconnect_replaySuccess_replayAndSubscribe() {
         // Given: run 123 属于当前用户 + replayAndSubscribe 返回 true
-        ChatRun ownRun = new ChatRun();
-        ownRun.setId(123L);
-        ownRun.setUserId(123L);
-        when(chatRunService.findById(123L)).thenReturn(ownRun);
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "QUEUED", null));
         when(bridge.replayAndSubscribe(eq("123"), eq(5L), any(SseEmitter.class)))
                 .thenReturn(true);
 
@@ -319,11 +302,7 @@ class ChatStreamEntryTest {
     @DisplayName("reconnect PG 回放失败 + run 已终态 → error 事件收尾，不 subscribe（P2-10 真失败）")
     void reconnect_pgReplayFailure_terminalRun_doesNotSubscribe() {
         // Given: run 123 属于当前用户且终态（COMPLETED）+ replayAndSubscribe 返回 false + PG 无历史消息
-        ChatRun ownRun = new ChatRun();
-        ownRun.setId(123L);
-        ownRun.setUserId(123L);
-        ownRun.setStatus("COMPLETED");
-        when(chatRunService.findById(123L)).thenReturn(ownRun);
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
         when(chatMessageService.findByRunId(123L)).thenReturn(null);
@@ -340,11 +319,7 @@ class ChatStreamEntryTest {
     @DisplayName("reconnect PG 回放失败 + run 仍活跃 → 仅订阅实时事件，不误报 REPLAY_FAILED（P2-10）")
     void reconnect_pgReplayFailure_activeRun_subscribesOnly() {
         // Given: run 123 属于当前用户且活跃（ACTIVE）+ replayAndSubscribe 返回 false + PG 无历史消息
-        ChatRun ownRun = new ChatRun();
-        ownRun.setId(123L);
-        ownRun.setUserId(123L);
-        ownRun.setStatus("ACTIVE");
-        when(chatRunService.findById(123L)).thenReturn(ownRun);
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
         when(chatMessageService.findByRunId(123L)).thenReturn(null);
@@ -362,19 +337,12 @@ class ChatStreamEntryTest {
     @DisplayName("reconnect PG 回放成功 + run 已终态 → 补发 end 事件收尾，不 subscribe 不心跳")
     void reconnect_terminalRun_sendsEndAndCompletes() {
         // Given: run 123 属于当前用户且状态 COMPLETED；replayAndSubscribe 失败（ring 已移除）；PG 有历史消息
-        ChatRun ownRun = new ChatRun();
-        ownRun.setId(123L);
-        ownRun.setUserId(123L);
-        ownRun.setStatus("COMPLETED");
-        when(chatRunService.findById(123L)).thenReturn(ownRun);
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
 
-        ChatMessage assistantMsg = new ChatMessage();
-        assistantMsg.setRole("ASSISTANT");
-        assistantMsg.setMessageType("thinking");
-        assistantMsg.setContent("历史思考内容");
-        when(chatMessageService.findByRunId(123L)).thenReturn(List.of(assistantMsg));
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史思考内容", "thinking", null, 123L, 1, null)));
 
         // When
         SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
@@ -389,19 +357,12 @@ class ChatStreamEntryTest {
     @DisplayName("reconnect PG 回放成功 + run 仍活跃 → 继续 subscribe + 心跳")
     void reconnect_activeRun_continuesSubscribe() {
         // Given: run 123 属于当前用户且状态 ACTIVE；replayAndSubscribe 失败（ring 覆盖）；PG 有历史消息
-        ChatRun ownRun = new ChatRun();
-        ownRun.setId(123L);
-        ownRun.setUserId(123L);
-        ownRun.setStatus("ACTIVE");
-        when(chatRunService.findById(123L)).thenReturn(ownRun);
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
 
-        ChatMessage assistantMsg = new ChatMessage();
-        assistantMsg.setRole("ASSISTANT");
-        assistantMsg.setMessageType("thinking");
-        assistantMsg.setContent("历史思考内容");
-        when(chatMessageService.findByRunId(123L)).thenReturn(List.of(assistantMsg));
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史思考内容", "thinking", null, 123L, 1, null)));
 
         // When
         SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
@@ -414,10 +375,7 @@ class ChatStreamEntryTest {
     @Test
     @DisplayName("reconnect → 他人 runId 返回 404")
     void reconnect_withOthersRun_returns404() {
-        ChatRun othersRun = new ChatRun();
-        othersRun.setId(1L);
-        othersRun.setUserId(2L);
-        when(chatRunService.findById(1L)).thenReturn(othersRun);
+        when(chatRunService.findById(1L)).thenReturn(new ChatRunVO(1L, 1L, 2L, "QUEUED", null));
 
         BizException ex = assertThrows(BizException.class, () -> entry.reconnect("1", 0, mockRequestWithUserId(123L)));
         assertEquals(404, ex.getCode());

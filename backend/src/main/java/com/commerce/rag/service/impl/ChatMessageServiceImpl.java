@@ -63,13 +63,16 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
      * 按 run_id 查询消息（按 seq 升序），用于降级重组和前端历史回放
      *
      * @param runId Run ID
-     * @return 消息列表（按 seq 升序）
+     * @return 消息视图对象列表（按 seq 升序，剔除 sessionId/sourcesJson 等内部字段）
      */
-    public List<ChatMessage> findByRunId(Long runId) {
+    public List<ChatMessageVO> findByRunId(Long runId) {
         LambdaQueryWrapper<ChatMessage> wrapper = Wrappers.<ChatMessage>lambdaQuery()
                 .eq(ChatMessage::getRunId, runId)
                 .orderByAsc(ChatMessage::getSeq);
-        return messageMapper.selectList(wrapper);
+        // 实体列表 → VO 列表：逐条转换，sessionId/sourcesJson 等内部字段不随 VO 出边界
+        return messageMapper.selectList(wrapper).stream()
+                .map(chatSessionConverter::toMessageVO)
+                .collect(Collectors.toList());
     }
 
     /**

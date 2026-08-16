@@ -2,6 +2,7 @@ package com.commerce.rag.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.commerce.rag.entity.ChatRun;
+import com.commerce.rag.vo.ChatRunVO;
 
 /**
  * Run 生命周期服务接口 —— 管理 chat_run 表的状态流转（主表 ChatRun）
@@ -18,10 +19,10 @@ public interface IChatRunService extends IService<ChatRun> {
      *
      * @param sessionId 会话 ID
      * @param userId    用户 ID
-     * @return 已持久化的 Run 实体（含雪花 ID）
+     * @return 已持久化的 Run 视图对象（含雪花 ID，entity 不出 service 边界）
      * @throws com.commerce.rag.exception.ConcurrentRunException 同一 session 已有活跃 run
      */
-    ChatRun createRun(Long sessionId, Long userId);
+    ChatRunVO createRun(Long sessionId, Long userId);
 
     /**
      * 更新 Run 状态，自动设置 startedAt / endedAt
@@ -35,7 +36,7 @@ public interface IChatRunService extends IService<ChatRun> {
      * 根据 ID 查询 Run
      *
      * @param runId Run ID
-     * @return Run 实体，不存在则返回 null
+     * @return Run 视图对象，不存在则返回 null
      */
-    ChatRun findById(Long runId);
+    ChatRunVO findById(Long runId);
 }

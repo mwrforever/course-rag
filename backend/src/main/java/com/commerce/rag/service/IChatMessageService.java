@@ -25,9 +25,9 @@ public interface IChatMessageService extends IService<ChatMessage> {
      * 按 run_id 查询消息（按 seq 升序），用于降级重组和前端历史回放
      *
      * @param runId Run ID
-     * @return 消息列表
+     * @return 消息视图对象列表（剔除 sessionId/sourcesJson 等内部字段）
      */
-    List<ChatMessage> findByRunId(Long runId);
+    List<ChatMessageVO> findByRunId(Long runId);
 
     /**
      * 按 session_id 查询全部消息（按 created_at 升序），用于管理端会话详情

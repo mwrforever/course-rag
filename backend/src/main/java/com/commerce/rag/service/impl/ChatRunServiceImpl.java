@@ -3,10 +3,12 @@ package com.commerce.rag.service.impl;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.commerce.rag.convert.ChatRunConverter;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.exception.ConcurrentRunException;
 import com.commerce.rag.mapper.ChatRunMapper;
 import com.commerce.rag.service.IChatRunService;
+import com.commerce.rag.vo.ChatRunVO;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -34,6 +36,8 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
     private static final Logger log = LoggerFactory.getLogger(IChatRunService.class);
 
     private final ChatRunMapper runMapper;
+    /** Run 转换器 —— 实体 → 视图对象（entity 不出 service 边界） */
+    private final ChatRunConverter chatRunConverter;
 
     /**
      * 创建 Run（status=QUEUED）
@@ -44,10 +48,10 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
      *
      * @param sessionId 会话 ID
      * @param userId    用户 ID
-     * @return 已持久化的 Run 实体（含雪花 ID）
+     * @return 已持久化的 Run 视图对象（含雪花 ID）
      * @throws ConcurrentRunException 同一 session 已有活跃 run
      */
-    public ChatRun createRun(Long sessionId, Long userId) {
+    public ChatRunVO createRun(Long sessionId, Long userId) {
         ChatRun run = new ChatRun();
         run.setSessionId(sessionId);
         run.setUserId(userId);
@@ -57,7 +61,8 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
         try {
             runMapper.insert(run);
             log.info("创建 Run: runId={}, sessionId={}", run.getId(), sessionId);
-            return run;
+            // 实体 → VO：entity 不出 service 边界（B1 清理）
+            return chatRunConverter.toVO(run);
         } catch (DataIntegrityViolationException e) {
             log.warn("并发 Run 冲突: sessionId={}", sessionId);
             throw new ConcurrentRunException("会话 " + sessionId + " 已有活跃的 Run，无法创建新 Run", e);
@@ -87,9 +92,11 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
      * 根据 ID 查询 Run
      *
      * @param runId Run ID
-     * @return Run 实体，不存在则返回 null
+     * @return Run 视图对象，不存在则返回 null
      */
-    public ChatRun findById(Long runId) {
-        return runMapper.selectById(runId);
+    public ChatRunVO findById(Long runId) {
+        ChatRun run = runMapper.selectById(runId);
+        // 实体 → VO：entity 不出 service 边界（B1 清理）
+        return run == null ? null : chatRunConverter.toVO(run);
     }
 }

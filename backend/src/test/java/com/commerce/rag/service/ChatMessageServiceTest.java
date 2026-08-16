@@ -70,14 +70,25 @@ class ChatMessageServiceTest {
     }
 
     @Test
-    @DisplayName("findByRunId → 按 run 查询消息（seq 升序）")
+    @DisplayName("findByRunId → 按 run 查询消息并转为消息 VO（剔除内部字段）")
     void findByRunId_returnsMessages() {
         ChatMessage msg = new ChatMessage();
+        msg.setId(1L);
+        msg.setRole("ASSISTANT");
+        msg.setContent("回答1");
+        msg.setMessageType("thinking");
+        msg.setRunId(10L);
+        msg.setSeq(1);
         when(messageMapper.selectList(any())).thenReturn(List.of(msg));
 
-        List<ChatMessage> result = messageService.findByRunId(10L);
+        List<ChatMessageVO> result = messageService.findByRunId(10L);
 
         assertEquals(1, result.size());
+        ChatMessageVO vo = result.get(0);
+        assertEquals("ASSISTANT", vo.role());
+        assertEquals("回答1", vo.content());
+        assertEquals("thinking", vo.messageType());
+        assertEquals(10L, vo.runId());
         verify(messageMapper).selectList(any());
     }
 

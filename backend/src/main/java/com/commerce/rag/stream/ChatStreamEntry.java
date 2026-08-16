@@ -2,14 +2,14 @@ package com.commerce.rag.stream;
 
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.dto.ChatRequest;
-import com.commerce.rag.entity.ChatMessage;
-import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.service.IChatSessionService;
+import com.commerce.rag.vo.ChatMessageVO;
+import com.commerce.rag.vo.ChatRunVO;
 import com.commerce.rag.vo.ChatSessionVO;
 import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.worker.ChatRequestWorker;
@@ -157,8 +157,8 @@ public class ChatStreamEntry {
         }
 
         // 2. 创建 run（并发守卫 → ConcurrentRunException 由全局异常处理器统一转 409）
-        ChatRun run = chatRunService.createRun(sessionId, userId);
-        String runId = run.getId().toString();
+        ChatRunVO run = chatRunService.createRun(sessionId, userId);
+        String runId = run.id().toString();
 
         // 3. 创建 SseEmitter（30 分钟超时）
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT);
@@ -182,7 +182,7 @@ public class ChatStreamEntry {
             // 故 removeRing 放 finally（修复审查 finding：锁死未解除 + ring 泄漏）
             log.error("XADD 入队失败，回滚 run: runId={}", runId, e);
             try {
-                chatRunService.updateStatus(run.getId(), "ERROR");
+                chatRunService.updateStatus(run.id(), "ERROR");
             } catch (Exception dbEx) {
                 log.error("XADD 失败后回滚 run 状态失败: runId={}", runId, dbEx);
             } finally {
@@ -257,14 +257,13 @@ public class ChatStreamEntry {
             if (lastSeq < 0) {
                 // P2-10 修复: run 仍在执行时（ring 覆盖、PG 尚无消息——持久化在 run 结束）
                 // 不得误报 REPLAY_FAILED 终态——仅订阅继续收实时事件，历史缺失可接受
-                ChatRun run = chatRunService.findById(Long.parseLong(runId));
-                if (run != null && !isTerminalStatus(run.getStatus())) {
+                ChatRunVO run = chatRunService.findById(Long.parseLong(runId));
+                if (run != null && !isTerminalStatus(run.status())) {
                     // P1-4: 订阅返回 false 说明 ring 恰在此时被关闭（run 完成）——补查终态补发 end
                     if (!bridge.subscribe(runId, emitter)) {
-                        ChatRun closedRun = chatRunService.findById(Long.parseLong(runId));
-                        if (closedRun != null && isTerminalStatus(closedRun.getStatus())) {
-                            String payload =
-                                    "{\"runId\":\"" + runId + "\",\"status\":\"" + closedRun.getStatus() + "\"}";
+                        ChatRunVO closedRun = chatRunService.findById(Long.parseLong(runId));
+                        if (closedRun != null && isTerminalStatus(closedRun.status())) {
+                            String payload = "{\"runId\":\"" + runId + "\",\"status\":\"" + closedRun.status() + "\"}";
                             try {
                                 emitter.send(SseEmitter.event()
                                         .name(SseEventType.END.getEventName())
@@ -293,10 +292,10 @@ public class ChatStreamEntry {
             }
             // P1-2 终态判定：run 已完成（ring 已移除）→ 补发 end 事件 + complete，
             // 否则新 emitter 收不到 end，前端状态机永久停在"生成中"
-            ChatRun run = chatRunService.findById(Long.parseLong(runId));
-            if (run != null && isTerminalStatus(run.getStatus())) {
+            ChatRunVO run = chatRunService.findById(Long.parseLong(runId));
+            if (run != null && isTerminalStatus(run.status())) {
                 // runId/status 均来自服务端白名单值（数字 ID + 枚举状态），拼接安全
-                String payload = "{\"runId\":\"" + runId + "\",\"status\":\"" + run.getStatus() + "\"}";
+                String payload = "{\"runId\":\"" + runId + "\",\"status\":\"" + run.status() + "\"}";
                 try {
                     emitter.send(SseEmitter.event()
                             .id(String.valueOf(lastSeq + 1))
@@ -306,16 +305,16 @@ public class ChatStreamEntry {
                 } catch (IOException e) {
                     // emitter 已关闭，忽略
                 }
-                log.info("run 已终态，补发 end 事件收尾: runId={}, status={}", runId, run.getStatus());
+                log.info("run 已终态，补发 end 事件收尾: runId={}, status={}", runId, run.status());
                 return emitter;
             }
             // 非终态：run 仍在执行，继续订阅接收后续事件
             // P1-4: subscribe 返回 false 说明 ring 恰在判定与订阅之间被关闭（run 已完成）——
             // 补查终态并补发 end，避免新 emitter 无事件无 end 永久"生成中"
             if (!bridge.subscribe(runId, emitter)) {
-                ChatRun closedRun = chatRunService.findById(Long.parseLong(runId));
-                if (closedRun != null && isTerminalStatus(closedRun.getStatus())) {
-                    String payload = "{\"runId\":\"" + runId + "\",\"status\":\"" + closedRun.getStatus() + "\"}";
+                ChatRunVO closedRun = chatRunService.findById(Long.parseLong(runId));
+                if (closedRun != null && isTerminalStatus(closedRun.status())) {
+                    String payload = "{\"runId\":\"" + runId + "\",\"status\":\"" + closedRun.status() + "\"}";
                     try {
                         emitter.send(SseEmitter.event()
                                 .id(String.valueOf(lastSeq + 1))
@@ -396,16 +395,16 @@ public class ChatStreamEntry {
     private long replayFromPg(String runId, long lastEventId, SseEmitter emitter) {
         try {
             Long runIdLong = Long.parseLong(runId);
-            List<ChatMessage> messages = chatMessageService.findByRunId(runIdLong);
+            List<ChatMessageVO> messages = chatMessageService.findByRunId(runIdLong);
             if (messages == null || messages.isEmpty()) {
                 log.warn("PG 降级回放: runId={} 无历史消息", runId);
                 return -1;
             }
 
             long seq = lastEventId;
-            for (ChatMessage msg : messages) {
+            for (ChatMessageVO msg : messages) {
                 // 跳过用户消息（客户端已有用户查询）
-                if ("USER".equals(msg.getRole())) {
+                if ("USER".equals(msg.role())) {
                     continue;
                 }
 
@@ -413,22 +412,22 @@ public class ChatStreamEntry {
                 String eventType;
                 String payload;
 
-                if ("thinking".equals(msg.getMessageType())) {
+                if ("thinking".equals(msg.messageType())) {
                     eventType = SseEventType.THINKING.getEventName();
-                    payload = "{\"delta\":\"" + escapeJson(msg.getContent()) + "\"}";
-                } else if ("TOOL_CALL".equals(msg.getMessageType())) {
+                    payload = "{\"delta\":\"" + escapeJson(msg.content()) + "\"}";
+                } else if ("TOOL_CALL".equals(msg.messageType())) {
                     // P1-2: 与实时 TOOL_CALL 事件 schema 对齐（toolCallId/toolName/input）——
                     // 新格式直接透传；历史旧格式（{"tool","args"}）重建，保证前端按 toolCallId 配对
                     eventType = SseEventType.TOOL_CALL.getEventName();
-                    payload = normalizeToolPayload(msg.getContent(), true);
-                } else if ("TOOL_RESULT".equals(msg.getMessageType())) {
+                    payload = normalizeToolPayload(msg.content(), true);
+                } else if ("TOOL_RESULT".equals(msg.messageType())) {
                     // P1-2: 与实时 TOOL_RESULT 事件 schema 对齐（toolCallId/status/output）
                     eventType = SseEventType.TOOL_RESULT.getEventName();
-                    payload = normalizeToolPayload(msg.getContent(), false);
+                    payload = normalizeToolPayload(msg.content(), false);
                 } else {
                     // 普通助手消息 → DELTA 事件
                     eventType = SseEventType.DELTA.getEventName();
-                    payload = "{\"text\":\"" + escapeJson(msg.getContent()) + "\"}";
+                    payload = "{\"text\":\"" + escapeJson(msg.content()) + "\"}";
                 }
 
                 try {
@@ -478,8 +477,8 @@ public class ChatStreamEntry {
         } catch (NumberFormatException e) {
             throw new BizException(ErrorCode.NOT_FOUND, "Run 不存在");
         }
-        ChatRun run = chatRunService.findById(runIdLong);
-        if (run == null || !run.getUserId().equals(userId)) {
+        ChatRunVO run = chatRunService.findById(runIdLong);
+        if (run == null || !run.userId().equals(userId)) {
             throw new BizException(ErrorCode.NOT_FOUND, "Run 不存在");
         }
     }
