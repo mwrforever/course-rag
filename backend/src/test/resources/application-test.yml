@@ -1,0 +1,25 @@
+# 集成测试配置（profile: test）
+#
+# 职责：
+# 1. 数据源/Redis 由 IntegrationTestBase 的 @DynamicPropertySource 注入 Testcontainers 容器地址（此处不写死）
+# 2. Flyway 显式开启——V7 checkpoint 三表是 GraphConfig.postgresSaver 的前置条件（与生产一致）
+# 3. DashScope 使用 dummy key——模型 bean 由 @MockitoBean 替换，保证不发起真实模型调用
+# 4. MinIO/Milvus 指向不可达端口——MinioStorageService @PostConstruct 与
+#    MilvusCollectionInitializer（ApplicationRunner）均异常降级，不阻断上下文启动
+# 5. 主配置 application.yml 的 spring.config.import: optional:file:.env 在 test profile 下同样生效，
+#    文件缺失/存在均不阻断（optional 语义），且本文件的显式值优先级高于 .env 注入
+spring:
+  flyway:
+    enabled: true
+  ai:
+    dashscope:
+      api-key: test-dummy-key
+
+minio:
+  endpoint: http://localhost:19000   # 不可达端口，MinioStorageService @PostConstruct 降级
+  access-key: test-minio
+  secret-key: test-minio
+
+milvus:
+  host: localhost
+  port: 19531                        # 不可达端口，MilvusCollectionInitializer 降级
