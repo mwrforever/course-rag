@@ -345,7 +345,11 @@
             </plugin>
 
             <!-- JaCoCo 覆盖率统计 + 门禁：全局行覆盖率必须 ≥ 80%（AGENTS.md 非核心功能下限），
-                 报告输出至 target/site/jacoco，CI 上传为 artifact -->
+                 且每个类行覆盖率必须 ≥ 80%（单类门禁，防新增/改动业务类拉低单类覆盖），
+                 报告输出至 target/site/jacoco，CI 上传为 artifact
+                 豁免清单（仅 check 规则级生效，report 保持完整）：
+                 entity/dto/vo/record/enums 纯数据样板类、构造器真实建连的 MilvusConfig/GraphConfig、
+                 MapStruct 编译期生成的 convert.*ConverterImpl -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
@@ -374,6 +378,26 @@
                             <rules>
                                 <rule>
                                     <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                                <rule>
+                                    <element>CLASS</element>
+                                    <excludes>
+                                        <exclude>com.commerce.rag.entity.*</exclude>
+                                        <exclude>com.commerce.rag.dto.*</exclude>
+                                        <exclude>com.commerce.rag.vo.*</exclude>
+                                        <exclude>com.commerce.rag.record.*</exclude>
+                                        <exclude>com.commerce.rag.enums.*</exclude>
+                                        <exclude>com.commerce.rag.config.MilvusConfig</exclude>
+                                        <exclude>com.commerce.rag.config.GraphConfig</exclude>
+                                        <exclude>com.commerce.rag.convert.*ConverterImpl</exclude>
+                                    </excludes>
                                     <limits>
                                         <limit>
                                             <counter>LINE</counter>
