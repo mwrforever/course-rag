@@ -16,15 +16,20 @@ import com.commerce.rag.vo.ChatRunVO;
 import com.commerce.rag.vo.ChatSessionVO;
 import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.worker.ChatRequestWorker;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -37,8 +42,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 /**
  * ChatStreamEntry 单元测试 —— Mock 所有 Service/Worker/Bridge，验证 Chat SSE 编排逻辑
  *
- * <p>覆盖：chat 发起（新会话/既有会话/参数校验/归属校验/入队失败回滚）、cancel 归属校验、
- * reconnect 原子回放/终态补发/PG 降级回放。
+ * <p>覆盖：chat 发起（新会话/既有会话/参数校验/归属校验/入队失败回滚/标题截断）、cancel 归属校验、
+ * reconnect 原子回放/终态补发/PG 降级回放（USER 跳过/thinking/TOOL_CALL/TOOL_RESULT/DELTA）、
+ * 心跳调度器与工具方法（truncateTitle/normalizeToolPayload/escapeJson）。
  *
  * <p>注意：ChatStreamEntry 的 chat()/reconnect() 会创建真实 SseEmitter，
  * startHeartbeat 使用 @PostConstruct 创建的调度器。
@@ -189,6 +195,36 @@ class ChatStreamEntryTest {
                 BizException.class, () -> entry.chat(mockRequestWithUserId(123L), new ChatRequest(99L, "你好")));
         assertEquals(403, ex.getCode());
         verify(chatRunService, never()).createRun(any(), any());
+    }
+
+    @Test
+    @DisplayName("chat 纯空白字符查询 → 抛出 400 BizException")
+    void chat_whitespaceQuery_throws400() {
+        // Given: query 为纯空白字符串（isBlank 判定为 true）
+        ChatRequest request = new ChatRequest(null, "   ");
+
+        // When / Then: 参数校验拒绝空白查询，不进入创建会话流程
+        BizException ex = assertThrows(BizException.class, () -> entry.chat(mockRequestWithUserId(123L), request));
+        assertEquals(400, ex.getCode());
+        verify(chatSessionService, never()).createSession(anyLong(), anyString());
+    }
+
+    @Test
+    @DisplayName("chat 超长 query → 会话标题截断为前 30 字符加省略号")
+    void chat_longQuery_truncatesTitleTo30Chars() {
+        // Given: 36 字符查询（超过 30 触发标题截断）
+        String longQuery = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        when(chatSessionService.createSession(eq(123L), anyString()))
+                .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
+        when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
+
+        // When
+        entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, longQuery));
+
+        // Then: 标题 = 前 30 字符 + 省略号（truncateTitle 截断分支）
+        ArgumentCaptor<String> titleCaptor = ArgumentCaptor.forClass(String.class);
+        verify(chatSessionService).createSession(eq(123L), titleCaptor.capture());
+        assertEquals("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123...", titleCaptor.getValue());
     }
 
     @Test
@@ -380,5 +416,357 @@ class ChatStreamEntryTest {
         BizException ex = assertThrows(BizException.class, () -> entry.reconnect("1", 0, mockRequestWithUserId(123L)));
         assertEquals(404, ex.getCode());
         verify(bridge, never()).replayAndSubscribe(anyString(), anyLong(), any(SseEmitter.class));
+    }
+
+    // ==================== reconnect() 订阅关闭竞态分支（P1-4） ====================
+
+    @Test
+    @DisplayName("reconnect PG 无数据 + run 活跃 + subscribe 失败且 closedRun 已终态 → 补发 end + complete 收尾")
+    void reconnect_pgEmpty_activeRun_subscribeFalse_closedRunTerminal_sendsEnd() {
+        // Given: PG 无历史（replayFromPg=-1）；run 活跃；subscribe 返回 false 说明 ring 恰在此时关闭；
+        // 补查 closedRun 已终态 → 补发 end 事件收尾（P1-4 竞态）
+        when(chatRunService.findById(123L))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L)).thenReturn(null);
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 订阅尝试失败一次，随后按 closedRun 终态补发 end 并 complete
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("reconnect PG 无数据 + run 活跃 + subscribe 失败且 closedRun 非终态 → 仅 complete 收尾")
+    void reconnect_pgEmpty_activeRun_subscribeFalse_closedRunActive_completesOnly() {
+        // Given: closedRun 仍活跃（非终态）→ 无 end 可补发，仅 complete 收尾
+        when(chatRunService.findById(123L))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L)).thenReturn(null);
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 订阅尝试失败且 closedRun 非终态 → 直接 complete 收尾
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("reconnect PG 无数据 + run 不存在 → 发送 REPLAY_FAILED error 事件收尾")
+    void reconnect_pgEmpty_runNotFound_emitsReplayFailedError() {
+        // Given: 归属校验通过（首次 findById 返回活跃 run），回放判定时 findById 返回 null（run==null 分支）
+        when(chatRunService.findById(123L))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(null);
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L)).thenReturn(null);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 历史不可恢复视为真失败——不 subscribe、补发 REPLAY_FAILED error 事件
+        verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("reconnect PG 回放成功 + run 不存在 → 跳过终态判定仅订阅实时事件")
+    void reconnect_pgData_runNotFound_subscribesOnly() {
+        // Given: PG 有历史消息（lastSeq>=0）；判定 run 时 findById 返回 null（覆盖终态判定 null 分支）
+        when(chatRunService.findById(123L))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(null);
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史内容", "thinking", null, 123L, 1, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: run 状态不可判时仍继续订阅实时事件并启动心跳
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("reconnect PG 回放成功 + run 活跃 + subscribe 失败且 closedRun 已终态 → 补发 end + complete")
+    void reconnect_pgData_activeRun_subscribeFalse_closedRunTerminal_sendsEnd() {
+        // Given: PG 有历史；run 活跃；订阅失败后补查 closedRun 已终态 → 补发带 id 的 end 事件
+        when(chatRunService.findById(123L))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史内容", "thinking", null, 123L, 1, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 订阅失败 → 按 closedRun 终态补发 end（id=lastSeq+1）并 complete 收尾
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("reconnect PG 回放成功 + run 活跃 + subscribe 失败且 closedRun 不存在 → 仅 complete 收尾")
+    void reconnect_pgData_activeRun_subscribeFalse_closedRunNull_completesOnly() {
+        // Given: closedRun 查询为 null → 无终态可补发，仅 complete 收尾
+        when(chatRunService.findById(123L))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(null);
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史内容", "thinking", null, 123L, 1, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 订阅失败且 closedRun 不存在 → 直接 complete 收尾
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    // ==================== replayFromPg() 降级回放事件类型（P1-2 schema 对齐） ====================
+
+    @Test
+    @DisplayName("replayFromPg USER 消息跳过 + thinking/DELTA 事件转义发送")
+    void reconnect_replayFromPg_skipsUserAndEmitsThinkingAndDelta() {
+        // Given: 消息含 USER（跳过——客户端已有用户查询）、thinking（THINKING 事件 + escapeJson 转义）、
+        // 普通助手消息（DELTA 事件）
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(
+                        new ChatMessageVO(1L, "USER", "你好", null, null, 123L, 1, null),
+                        new ChatMessageVO(2L, "ASSISTANT", "他说\"你好\"\n含反斜杠\\t", "thinking", null, 123L, 2, null),
+                        new ChatMessageVO(3L, "ASSISTANT", "答案文本", null, null, 123L, 3, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: USER 被跳过，thinking/DELTA 均完成回放并继续订阅实时事件
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("replayFromPg TOOL_CALL 新格式（含 toolCallId）直接透传")
+    void reconnect_replayFromPg_toolCallNewFormat_passthrough() throws Exception {
+        // Given: 新格式 content 含 toolCallId → normalizeToolPayload 直接透传（不重建）
+        JsonNode node = new ObjectMapper().readTree("{\"toolCallId\":\"tc-1\",\"toolName\":\"search\"}");
+        when(objectMapper.readTree(anyString())).thenReturn(node);
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(
+                        1L,
+                        "ASSISTANT",
+                        "{\"toolCallId\":\"tc-1\",\"toolName\":\"search\"}",
+                        "TOOL_CALL",
+                        null,
+                        123L,
+                        1,
+                        null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 新格式透传（writeValueAsString 不被调用），回放后继续订阅
+        verify(objectMapper, never()).writeValueAsString(any());
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("replayFromPg TOOL_CALL 旧格式 → 重建为 toolCallId 空串新格式")
+    void reconnect_replayFromPg_toolCallOldFormat_rebuilt() throws Exception {
+        // Given: 历史旧格式 {"tool","args"} → 重建为 {toolCallId:"",toolName,input}
+        JsonNode node = new ObjectMapper().readTree("{\"tool\":\"calculator\",\"args\":{\"a\":1}}");
+        when(objectMapper.readTree(anyString())).thenReturn(node);
+        when(objectMapper.writeValueAsString(any()))
+                .thenReturn("{\"toolCallId\":\"\",\"toolName\":\"calculator\",\"input\":{\"a\":1}}");
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(
+                        1L,
+                        "ASSISTANT",
+                        "{\"tool\":\"calculator\",\"args\":{\"a\":1}}",
+                        "TOOL_CALL",
+                        null,
+                        123L,
+                        1,
+                        null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 旧格式 TOOL_CALL 被重建（writeValueAsString 被调用），回放后继续订阅
+        verify(objectMapper).writeValueAsString(any());
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("replayFromPg TOOL_RESULT 旧格式 → 重建为 status/output 新格式")
+    void reconnect_replayFromPg_toolResultOldFormat_rebuilt() throws Exception {
+        // Given: 历史旧格式 {"tool","result"} → 重建为 {toolCallId:"",status:"success",output}
+        JsonNode node = new ObjectMapper().readTree("{\"tool\":\"calculator\",\"result\":\"42\"}");
+        when(objectMapper.readTree(anyString())).thenReturn(node);
+        when(objectMapper.writeValueAsString(any()))
+                .thenReturn("{\"toolCallId\":\"\",\"status\":\"success\",\"output\":\"42\"}");
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(
+                        1L,
+                        "ASSISTANT",
+                        "{\"tool\":\"calculator\",\"result\":\"42\"}",
+                        "TOOL_RESULT",
+                        null,
+                        123L,
+                        1,
+                        null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: TOOL_RESULT 旧格式重建（path("result").asText 取值），回放后继续订阅
+        verify(objectMapper).writeValueAsString(any());
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("replayFromPg TOOL_CALL 内容非 JSON → 原样返回不中断回放")
+    void reconnect_replayFromPg_toolCallInvalidJson_passthrough() throws Exception {
+        // Given: 落库 content 非合法 JSON → normalizeToolPayload 解析失败原样返回（不中断回放）
+        when(objectMapper.readTree(anyString())).thenThrow(new JsonParseException(null, "json 解析失败"));
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "not-json", "TOOL_CALL", null, 123L, 1, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 解析失败原样返回，回放继续不中断
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("replayFromPg TOOL_CALL 内容空白 → 归一化为空对象 {}")
+    void reconnect_replayFromPg_toolCallBlankContent_emptyObject() throws Exception {
+        // Given: 落库 content 为空白 → normalizeToolPayload 直接返回 {}（不解析 JSON）
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "  ", "TOOL_CALL", null, 123L, 1, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 空白内容不触达 readTree，回放后继续订阅
+        verify(objectMapper, never()).readTree(anyString());
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("replayFromPg findByRunId 抛异常 → 返回 -1 降级为仅订阅实时事件")
+    void reconnect_replayFromPg_findByRunIdThrows_returnsMinusOne() {
+        // Given: PG 查询抛异常 → replayFromPg 捕获后返回 -1；run 活跃则仅订阅实时事件
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L)).thenThrow(new RuntimeException("数据库不可用"));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 查询异常不中断重连，降级为仅订阅实时事件
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+        assertNotNull(emitter);
+    }
+
+    // ==================== startHeartbeat() 心跳调度器（真实 scheduler） ====================
+
+    /** 通过反射获取心跳调度器，用于断言定时任务状态（真实 scheduler 行为验证） */
+    private ScheduledThreadPoolExecutor heartbeatScheduler() throws Exception {
+        Field f = ChatStreamEntry.class.getDeclaredField("scheduler");
+        f.setAccessible(true);
+        return (ScheduledThreadPoolExecutor) f.get(entry);
+    }
+
+    @Test
+    @DisplayName("startHeartbeat 心跳注释行发送成功 → 周期任务持续运行不被取消")
+    void chat_startHeartbeat_sendsHeartbeatComment() throws Exception {
+        // Given: 心跳间隔 1 秒（覆盖 setUp 默认 15 秒），正常创建会话与 run
+        when(streamProperties.heartbeatInterval()).thenReturn(1);
+        when(chatSessionService.createSession(eq(123L), anyString()))
+                .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
+        when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
+
+        // When: 发起对话（内部 startHeartbeat 调度 1s 周期心跳任务）
+        entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好"));
+
+        // Then: 首个心跳 tick 已成功发送（无异常），周期任务仍在调度队列中（未被取消）
+        Thread.sleep(1500);
+        assertEquals(1, heartbeatScheduler().getQueue().size());
+    }
+
+    @Test
+    @DisplayName("startHeartbeat emitter 已关闭 → send 异常后心跳任务被取消（不再调度）")
+    void chat_startHeartbeat_emitterClosed_cancelsHeartbeat() throws Exception {
+        // Given: 心跳间隔 1 秒
+        when(streamProperties.heartbeatInterval()).thenReturn(1);
+        when(chatSessionService.createSession(eq(123L), anyString()))
+                .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
+        when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
+
+        // When: 发起对话后立即关闭 emitter（模拟连接断开，心跳 send 抛异常）
+        entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好"));
+        ArgumentCaptor<SseEmitter> emitterCaptor = ArgumentCaptor.forClass(SseEmitter.class);
+        verify(bridge).subscribe(eq("123"), emitterCaptor.capture());
+        emitterCaptor.getValue().complete();
+
+        // Then: 首个心跳 tick 触发 send 异常后任务被取消，调度队列清空（心跳停止）
+        Thread.sleep(2200);
+        assertEquals(0, heartbeatScheduler().getQueue().size());
     }
 }
