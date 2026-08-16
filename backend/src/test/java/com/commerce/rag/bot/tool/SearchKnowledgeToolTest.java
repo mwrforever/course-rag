@@ -1,15 +1,22 @@
 package com.commerce.rag.bot.tool;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.commerce.rag.bot.IntentType;
+import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.config.MilvusCollectionInitializer;
 import com.commerce.rag.retrieval.FusionService;
 import com.commerce.rag.retrieval.RerankService;
 import io.milvus.v2.client.MilvusClientV2;
+import io.milvus.v2.common.IndexParam;
+import io.milvus.v2.service.vector.request.AnnSearchReq;
 import io.milvus.v2.service.vector.request.HybridSearchReq;
+import io.milvus.v2.service.vector.request.data.EmbeddedText;
+import io.milvus.v2.service.vector.request.data.FloatVec;
+import io.milvus.v2.service.vector.request.ranker.RRFRanker;
 import io.milvus.v2.service.vector.response.SearchResp;
 import java.util.Collections;
 import java.util.List;
@@ -203,5 +210,243 @@ class SearchKnowledgeToolTest {
         assertTrue(expr.contains("course_id == \"DEFAULT\""));
         assertTrue(expr.contains("course_id in [\"C1\", \"C2\"]"));
         assertTrue(expr.contains(" and ("));
+    }
+
+    // ==================== A2-2 补测：searchKnowledge 入口 / 并行 / 降级 / 双路检索 ====================
+
+    @Test
+    @DisplayName("buildFilterExpression — courseIds 为空列表时不拼 course_id 条件")
+    void buildFilterExpression_emptyCourseIds_noCourseClause() {
+        TypedQuery query = new TypedQuery(IntentType.COURSE_INFO, "test", List.of());
+
+        assertEquals("collection_type == \"COURSE_INFO\"", tool.buildFilterExpression(query));
+    }
+
+    @Test
+    @DisplayName("searchKnowledge 空查询列表 — 直接返回空结果，不触达 Milvus/融合/精排")
+    void searchKnowledge_emptyQueries_returnsEmpty() {
+        assertTrue(tool.searchKnowledge(null).chunks().isEmpty());
+        assertTrue(tool.searchKnowledge(List.of()).chunks().isEmpty());
+
+        verifyNoInteractions(milvusClientV2, fusionService, rerankService);
+    }
+
+    @Test
+    @DisplayName("searchKnowledge 完整链路 — 并行检索 → RRF 融合 → rerank 精排")
+    void searchKnowledge_fullFlow_fuseAndRerank() {
+        TypedQuery q1 = new TypedQuery(IntentType.TECHNICAL_QA, "Redis 配置", null);
+        TypedQuery q2 = new TypedQuery(IntentType.TECHNICAL_QA, "Redis 哨兵", null);
+        when(embeddingModel.embed("Redis 配置")).thenReturn(new float[] {0.1f});
+        when(embeddingModel.embed("Redis 哨兵")).thenReturn(new float[] {0.2f});
+        SearchResp searchResp = mockSearchResp();
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
+
+        KnowledgeChunk k1 = new KnowledgeChunk("c1", "内容1", "", "", "h1", 0.9, IntentType.TECHNICAL_QA);
+        KnowledgeChunk k2 = new KnowledgeChunk("c2", "内容2", "", "", "h2", 0.8, IntentType.TECHNICAL_QA);
+        when(fusionService.fuse(anyMap())).thenReturn(List.of(k1, k2));
+        when(rerankService.rerank("Redis 配置", List.of(k1, k2))).thenReturn(List.of(k2, k1));
+
+        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q1, q2));
+
+        // 精排结果即最终输出（k2 在前）
+        assertEquals(2, result.chunks().size());
+        assertEquals("c2", result.chunks().get(0).chunkId());
+        assertEquals("c1", result.chunks().get(1).chunkId());
+        // 融合入参：并行检索结果按查询分组，两条查询均有命中
+        ArgumentCaptor<Map<TypedQuery, List<KnowledgeChunk>>> mapCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(fusionService).fuse(mapCaptor.capture());
+        Map<TypedQuery, List<KnowledgeChunk>> raw = mapCaptor.getValue();
+        assertEquals(2, raw.size());
+        assertEquals("chunk_001", raw.get(q1).get(0).chunkId());
+        assertEquals("chunk_001", raw.get(q2).get(0).chunkId());
+        // 精排 anchor 取第一条查询文本
+        verify(rerankService).rerank("Redis 配置", List.of(k1, k2));
+    }
+
+    @Test
+    @DisplayName("searchKnowledge 单查询失败降级 — 返回空结果不抛异常")
+    void searchKnowledge_queryFailure_degradedEmpty() {
+        TypedQuery q = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        when(embeddingModel.embed("查询")).thenThrow(new RuntimeException("Milvus 连接失败"));
+
+        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q));
+
+        assertTrue(result.chunks().isEmpty());
+        // 降级后融合/精排在空结果上正常走通
+        verify(fusionService).fuse(anyMap());
+        verify(rerankService).rerank(eq("查询"), anyList());
+    }
+
+    @Test
+    @DisplayName("searchInParallel 单查询超时 — 10s 超时后返回已完成部分，不阻塞整体")
+    void searchKnowledge_timeout_returnsPartial() throws InterruptedException {
+        TypedQuery fast = new TypedQuery(IntentType.TECHNICAL_QA, "快速查询", null);
+        TypedQuery slow = new TypedQuery(IntentType.TECHNICAL_QA, "慢速查询", null);
+        when(embeddingModel.embed("快速查询")).thenReturn(new float[] {0.1f});
+        when(embeddingModel.embed("慢速查询")).thenAnswer(inv -> {
+            // 慢查询远超 10s 超时阈值（30s），保证超时时刻仍未完成
+            Thread.sleep(30_000);
+            return new float[] {0.2f};
+        });
+        SearchResp searchResp = mockSearchResp();
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
+
+        long start = System.currentTimeMillis();
+        KnowledgeSearchResult result = tool.searchKnowledge(List.of(fast, slow));
+        long elapsed = System.currentTimeMillis() - start;
+
+        // 约 10s 超时即返回，不等待慢查询完成
+        assertTrue(elapsed >= 9_000 && elapsed < 25_000, "实际耗时(ms): " + elapsed);
+        assertTrue(result.chunks().isEmpty());
+        // 超时时刻融合入参仅含已完成的快查询
+        ArgumentCaptor<Map<TypedQuery, List<KnowledgeChunk>>> mapCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(fusionService).fuse(mapCaptor.capture());
+        assertTrue(mapCaptor.getValue().containsKey(fast));
+    }
+
+    @Test
+    @DisplayName("searchSingle 空向量 — 降级返回空列表，不触达 Milvus")
+    void searchSingle_emptyEmbedding_returnsEmpty() {
+        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        when(embeddingModel.embed("查询")).thenReturn(new float[0]);
+
+        assertTrue(tool.searchSingle(query).isEmpty());
+        verify(milvusClientV2, never()).hybridSearch(any());
+    }
+
+    @Test
+    @DisplayName("searchSingle null 向量 — 降级返回空列表")
+    void searchSingle_nullEmbedding_returnsEmpty() {
+        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        when(embeddingModel.embed("查询")).thenReturn(null);
+
+        assertTrue(tool.searchSingle(query).isEmpty());
+    }
+
+    @Test
+    @DisplayName("searchSingle 检索结果外层列表为 null — 降级返回空列表")
+    void searchSingle_nullSearchResults_returnsEmpty() {
+        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
+        SearchResp resp = mock(SearchResp.class);
+        when(resp.getSearchResults()).thenReturn(null);
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
+
+        assertTrue(tool.searchSingle(query).isEmpty());
+    }
+
+    @Test
+    @DisplayName("searchSingle 检索结果外层列表为空 — 降级返回空列表")
+    void searchSingle_emptySearchResults_returnsEmpty() {
+        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
+        SearchResp resp = mock(SearchResp.class);
+        when(resp.getSearchResults()).thenReturn(List.of());
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
+
+        assertTrue(tool.searchSingle(query).isEmpty());
+    }
+
+    @Test
+    @DisplayName("searchSingle 混合检索请求 — dense(FloatVec+COSINE) + sparse(EmbeddedText+BM25) 双路 + RRF 融合")
+    void searchSingle_hybridRequest_denseAndSparse() {
+        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "如何配置Redis", null);
+        when(embeddingModel.embed("如何配置Redis")).thenReturn(new float[] {0.1f, 0.2f});
+        SearchResp searchResp = mockSearchResp();
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
+
+        tool.searchSingle(query);
+
+        ArgumentCaptor<HybridSearchReq> reqCaptor = ArgumentCaptor.forClass(HybridSearchReq.class);
+        verify(milvusClientV2).hybridSearch(reqCaptor.capture());
+        HybridSearchReq req = reqCaptor.getValue();
+        assertEquals(MilvusCollectionInitializer.COLLECTION_NAME, req.getCollectionName());
+        assertEquals(2, req.getSearchRequests().size());
+        // dense 路：FloatVec + COSINE
+        AnnSearchReq dense = req.getSearchRequests().get(0);
+        assertEquals(MilvusCollectionInitializer.FIELD_DENSE_VECTOR, dense.getVectorFieldName());
+        assertEquals(IndexParam.MetricType.COSINE, dense.getMetricType());
+        assertTrue(dense.getVectors().get(0) instanceof FloatVec);
+        // sparse 路：EmbeddedText + BM25
+        AnnSearchReq sparse = req.getSearchRequests().get(1);
+        assertEquals(MilvusCollectionInitializer.FIELD_SPARSE_VECTOR, sparse.getVectorFieldName());
+        assertEquals(IndexParam.MetricType.BM25, sparse.getMetricType());
+        assertTrue(sparse.getVectors().get(0) instanceof EmbeddedText);
+        // 双路过滤表达式一致
+        assertEquals(dense.getFilter(), sparse.getFilter());
+        assertTrue(req.getRanker() instanceof RRFRanker);
+    }
+
+    @Test
+    @DisplayName("searchSingle 结果含 null entity / null score / 缺字段 — 空实体跳过、分数归 0、缺失字段空串兜底")
+    void searchSingle_nullEntityAndScore_handled() {
+        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
+
+        // 第一条 entity 为 null（跳过）；第二条 score 为 null、缺 heading_path（getStr 空串兜底）
+        SearchResp.SearchResult withNullEntity =
+                SearchResp.SearchResult.builder().score(0.5f).entity(null).build();
+        Map<String, Object> entity = Map.of(
+                "chunk_id", "chunk_002",
+                "content", "内容2",
+                "collection_type", "TECHNICAL_QA");
+        SearchResp.SearchResult partial =
+                SearchResp.SearchResult.builder().entity(entity).build();
+        SearchResp resp = mock(SearchResp.class);
+        when(resp.getSearchResults()).thenReturn(List.of(List.of(withNullEntity, partial)));
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
+
+        List<KnowledgeChunk> chunks = tool.searchSingle(query);
+
+        assertEquals(1, chunks.size());
+        assertEquals("chunk_002", chunks.get(0).chunkId());
+        assertEquals(0.0, chunks.get(0).score(), 0.001);
+        assertEquals("", chunks.get(0).headingPath());
+    }
+
+    @Test
+    @DisplayName("searchSingle collection_type 缺失/非法 — 归为 TECHNICAL_QA 兜底")
+    void searchSingle_invalidCollectionType_defaultsToTechnicalQa() {
+        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
+
+        Map<String, Object> blankType = Map.of("chunk_id", "c1", "content", "内容1", "collection_type", "  ");
+        Map<String, Object> invalidType = Map.of("chunk_id", "c2", "content", "内容2", "collection_type", "NOT_A_TYPE");
+        SearchResp.SearchResult r1 =
+                SearchResp.SearchResult.builder().score(0.1f).entity(blankType).build();
+        SearchResp.SearchResult r2 = SearchResp.SearchResult.builder()
+                .score(0.2f)
+                .entity(invalidType)
+                .build();
+        SearchResp resp = mock(SearchResp.class);
+        when(resp.getSearchResults()).thenReturn(List.of(List.of(r1, r2)));
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
+
+        List<KnowledgeChunk> chunks = tool.searchSingle(query);
+
+        assertEquals(2, chunks.size());
+        assertEquals(IntentType.TECHNICAL_QA, chunks.get(0).collectionType());
+        assertEquals(IntentType.TECHNICAL_QA, chunks.get(1).collectionType());
+    }
+
+    @Test
+    @DisplayName("searchSingle queryText 为 null 且 Milvus 返回 null — truncate 空串兜底不抛异常")
+    void searchSingle_nullQueryText_milvusNull_ok() {
+        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, null, null);
+        when(embeddingModel.embed((String) null)).thenReturn(new float[] {0.1f});
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(null);
+
+        assertTrue(tool.searchSingle(query).isEmpty());
+    }
+
+    @Test
+    @DisplayName("searchSingle 长 queryText — 日志截断逻辑不抛异常")
+    void searchSingle_longQueryText_truncate() {
+        String longText = "这是一段超过三十个字符的非常长的查询文本用于触发截断逻辑ABCDEFG";
+        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, longText, null);
+        when(embeddingModel.embed(longText)).thenReturn(new float[] {0.1f});
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenThrow(new RuntimeException("连接失败"));
+
+        assertTrue(tool.searchSingle(query).isEmpty());
     }
 }
