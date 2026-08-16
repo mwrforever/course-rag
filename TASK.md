@@ -4,7 +4,22 @@
 
 ---
 
-## 1. 前端 E2E（Playwright）— 暂缓，待前端落地
+## 1. 多实例部署（雪花 ID worker-id / 本地缓存一致性）— 待用户批准立项
+
+**背景**（2026-08-16 24h 审查 BUG-8 + 性能 L-14）：application.yml 雪花 ID `worker-id: 1`、
+`datacenter-id: 1` 硬编码——多实例部署时主键跨实例冲突（写失败/数据覆盖）；
+CourseQueryService 等 Caffeine 本地缓存多实例间写失效不互通（脏读至 TTL 上界）。
+
+**当前状态**：单实例无影响，**未实现**。用户 2026-08-16 指示：后续扩展，吸纳为待办，
+**批准后才能动**。
+
+**接入清单**（批准后执行）：
+- [ ] 雪花 ID worker-id/datacenter-id 从 Redis/DB 分配或配置化（多实例唯一，注释自认未实现）
+- [ ] 多实例缓存一致性评估（Redis 分布式缓存替代 Caffeine，或接受 TTL 上界）
+
+---
+
+## 2. 前端 E2E（Playwright）— 暂缓，待前端落地
 
 **背景**：CI 集成表要求后端配套 Playwright E2E。当前 `frontend/` 与 `student-frontend/`
 均为空目录（设计文档定 Next.js App Router + TS，**两前端完全独立，禁共享包/跨引用**），
@@ -22,7 +37,7 @@
 
 ---
 
-## 2. JaCoCo 覆盖率补测路线图（~~37% → 80%~~ ✅ 已完成 2026-08-15 晚，实测 80.1%；2026-08-16 二轮收官 LINE 95.0%）
+## 3. JaCoCo 覆盖率补测路线图（~~37% → 80%~~ ✅ 已完成 2026-08-15 晚，实测 80.1%；2026-08-16 二轮收官 LINE 95.0%）
 
 **达成记录**：
 - 2026-08-15 晚：`mvn verify` 全绿（spotless/checkstyle/spotbugs/jacoco LINE 80.1%）；全量测试 480/480。

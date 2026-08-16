@@ -59,7 +59,8 @@ class DeviceKickServiceTest {
                 "commerce_token",
                 "localhost",
                 false,
-                List.of("WEB_DESKTOP"));
+                List.of("WEB_DESKTOP"),
+                false);
         // self 代理传 null（P0-5）：本测试不触发 Redis 降级路径（fallback 经 self 代理调用），
         // 降级链路的代理注入由 Spring 容器负责，不在本单测直测
         service = new DeviceKickService(

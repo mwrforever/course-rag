@@ -18,6 +18,8 @@ import org.springframework.validation.annotation.Validated;
  * @param cookieDomain        Cookie 域名
  * @param cookieSecure        Cookie 是否仅 HTTPS 传输（Secure 标记，默认 false；生产 HTTPS 应配 true，防中间人窃取 AT）
  * @param deviceTypes         支持的设备类型列表
+ * @param strictSecret        JWT 密钥严格模式（BUG-7，默认 false）：true 时启动校验
+ *                            JWT_SECRET 已配置且非内置默认值，否则拒绝启动（防生产漏配导致可伪造任意身份）
  */
 @Validated
 @ConfigurationProperties(prefix = "auth")
@@ -28,4 +30,5 @@ public record AuthProperties(
         @NotBlank String cookieName,
         String cookieDomain,
         @DefaultValue("false") boolean cookieSecure,
-        List<String> deviceTypes) {}
+        List<String> deviceTypes,
+        @DefaultValue("false") boolean strictSecret) {}

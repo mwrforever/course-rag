@@ -57,7 +57,8 @@ class AuthSessionServiceTest {
                 "commerce_token",
                 "localhost",
                 false,
-                List.of("WEB_DESKTOP"));
+                List.of("WEB_DESKTOP"),
+                false);
         authSessionService = new AuthSessionService(loginRecordMapper, deviceKickService, props);
     }
 

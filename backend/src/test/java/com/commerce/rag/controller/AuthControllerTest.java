@@ -75,7 +75,8 @@ class AuthControllerTest {
                 "commerce_token",
                 "localhost",
                 false,
-                List.of("WEB_DESKTOP"));
+                List.of("WEB_DESKTOP"),
+                false);
         authController = new AuthController(
                 sysUserService, tokenService, deviceKickService, authProperties, passwordEncoder, authSessionService);
 
