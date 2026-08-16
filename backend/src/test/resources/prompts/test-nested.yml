@@ -1,0 +1,7 @@
+# 测试夹具：三级嵌套 YAML（含叶子字符串与字符串列表），用于验证 flattenMap 递归展平
+level1:
+  level2:
+    level3: 深层叶子值
+  items:
+    - 甲
+    - 乙

@@ -1,0 +1,5 @@
+# 测试夹具：嵌套 Map + 多个叶子字符串，用于验证 findSingleLeafValue 多叶子歧义（返回第一个）
+root:
+  sub:
+    leaf: 深层叶子
+  first: 第一个叶子
