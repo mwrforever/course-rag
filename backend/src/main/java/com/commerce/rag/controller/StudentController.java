@@ -3,9 +3,9 @@ package com.commerce.rag.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.controller.dto.ChatRequest;
 import com.commerce.rag.controller.dto.PageResponse;
 import com.commerce.rag.convert.StudentConverter;
+import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.DocumentChunk;
@@ -14,6 +14,7 @@ import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.service.IDocumentChunkService;
 import com.commerce.rag.service.IEnrollmentService;
+import com.commerce.rag.stream.ChatStreamEntry;
 import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
@@ -42,7 +43,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * <p>J1-J4 查询课程资料（已选课才能查课程专属）
  * J5 提交反馈 —— 由 FeedbackController 独立处理（POST /api/v1/student/feedbacks）
  * J6-J7 会话管理
- * J8 SSE 流式对话（转发到 ChatController）
+ * J8 SSE 流式对话（经 ChatStreamEntry，不再依赖 ChatController）
  *
  * @author commerce-rag
  */
@@ -56,19 +57,19 @@ public class StudentController {
     private final IEnrollmentService enrollmentService;
     private final IChatSessionService sessionService;
     private final IDocumentChunkService documentChunkService;
-    private final ChatController chatController;
+    private final ChatStreamEntry chatStreamEntry;
     private final StudentConverter converter;
 
     public StudentController(
             IEnrollmentService enrollmentService,
             IChatSessionService sessionService,
             IDocumentChunkService documentChunkService,
-            ChatController chatController,
+            ChatStreamEntry chatStreamEntry,
             StudentConverter converter) {
         this.enrollmentService = enrollmentService;
         this.sessionService = sessionService;
         this.documentChunkService = documentChunkService;
-        this.chatController = chatController;
+        this.chatStreamEntry = chatStreamEntry;
         this.converter = converter;
     }
 
@@ -191,10 +192,10 @@ public class StudentController {
     // ==================== J8: SSE 流式对话 ====================
 
     /**
-     * J8: SSE 流式对话（转发到 ChatController）
+     * J8: SSE 流式对话（经 ChatStreamEntry，不再依赖 ChatController）
      */
     @PostMapping("/chat/stream")
     public SseEmitter chatStream(HttpServletRequest request, @RequestBody ChatRequest chatRequest) {
-        return chatController.chat(request, chatRequest);
+        return chatStreamEntry.chat(request, chatRequest);
     }
 }

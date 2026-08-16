@@ -7,9 +7,9 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
-import com.commerce.rag.controller.dto.ChatRequest;
 import com.commerce.rag.controller.dto.PageResponse;
 import com.commerce.rag.convert.StudentConverter;
+import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.DocumentChunk;
@@ -17,6 +17,7 @@ import com.commerce.rag.exception.BizException;
 import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.service.IDocumentChunkService;
 import com.commerce.rag.service.IEnrollmentService;
+import com.commerce.rag.stream.ChatStreamEntry;
 import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
@@ -58,7 +59,7 @@ class StudentControllerTest {
     private IDocumentChunkService documentChunkService;
 
     @Mock
-    private ChatController chatController;
+    private ChatStreamEntry chatStreamEntry;
 
     @Mock
     private StudentConverter converter;
@@ -68,7 +69,7 @@ class StudentControllerTest {
     @BeforeEach
     void setUp() {
         controller = new StudentController(
-                enrollmentService, sessionService, documentChunkService, chatController, converter);
+                enrollmentService, sessionService, documentChunkService, chatStreamEntry, converter);
     }
 
     private HttpServletRequest studentRequest(Long userId) {
@@ -375,13 +376,13 @@ class StudentControllerTest {
     // ==================== J8: SSE 流式对话 ====================
 
     @Test
-    @DisplayName("J8 chatStream → 原样转发到 ChatController")
-    void chatStream_forwardsToChatController() {
+    @DisplayName("J8 chatStream → 原样转发到 ChatStreamEntry")
+    void chatStream_forwardsToChatStreamEntry() {
         ChatRequest chatRequest = new ChatRequest(1L, "什么是 RAG？");
         // 转发端点不读取请求属性，直接用裸 mock
         HttpServletRequest req = mock(HttpServletRequest.class);
         SseEmitter emitter = mock(SseEmitter.class);
-        when(chatController.chat(req, chatRequest)).thenReturn(emitter);
+        when(chatStreamEntry.chat(req, chatRequest)).thenReturn(emitter);
 
         var result = controller.chatStream(req, chatRequest);
 
