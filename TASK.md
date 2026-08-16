@@ -22,14 +22,30 @@
 
 ---
 
-## 2. JaCoCo 覆盖率补测路线图（~~37% → 80%~~ ✅ 已完成 2026-08-15 晚，实测 80.1%）
+## 2. JaCoCo 覆盖率补测路线图（~~37% → 80%~~ ✅ 已完成 2026-08-15 晚，实测 80.1%；2026-08-16 二轮收官 LINE 95.0%）
 
-**达成记录**：`mvn verify` 全绿（spotless/checkstyle/spotbugs/jacoco LINE 80.1%）；全量测试 480/480。
-4 批次 11 提交（af1ccc2..7952066）：批次A config+controller 0% 类 → 62.4%；批次B service 0% 五类 → 67.8%；
-批次C FusionService+bot（QueryRewriter/Graph/Interceptor/Hook）→ 73.1%；批次D 低覆盖大块扩展 → 80.1%。
+**达成记录**：
+- 2026-08-15 晚：`mvn verify` 全绿（spotless/checkstyle/spotbugs/jacoco LINE 80.1%）；全量测试 480/480。
+  4 批次 11 提交（af1ccc2..7952066）：批次A config+controller 0% 类 → 62.4%；批次B service 0% 五类 → 67.8%；
+  批次C FusionService+bot（QueryRewriter/Graph/Interceptor/Hook）→ 73.1%；批次D 低覆盖大块扩展 → 80.1%。
+- 2026-08-16（A1/A2/B1/B2/C2/C3 轮）：全量测试 707（680 单测 + 9 集成 + 1 冒烟 + 17 mapper），
+  jacoco BUNDLE LINE 95.0%（指令 94.3%），0.80 总门禁达标；新增集成测试（Testcontainers PG+Redis，
+  Auth/ChatFlow/Security 三链路 9 用例）与 mapper XML 执行级测试（5 个 XML、17 用例，真实 PG 断言 SQL 结果）。
 
-**遗留低覆盖类**（非门禁阻塞，后续可选补测）：DeviceKickService 44%、EtlPipeline 37%（chunkDocument/splitLargeParagraph 等需构造长文本）、
-CustomSummarizationHook 35%、CourseQueryService 20%（Db 静态工具需 mockStatic）、ChatController 69%（reconnect/replayFromPg 需 SAA 流 mock）、
+**遗留低覆盖类**（原 8 类，2026-08-16 本轮全量补测后全部 ≥80% 达标，实测覆盖率见下表）：
+
+| 类 | 指令覆盖率 | 行覆盖率 |
+|---|---|---|
+| MinioStorageService | 100.0% | 100.0% |
+| DocumentChunkServiceImpl | 100.0% | 100.0% |
+| LeadAgentGraph | 100.0% | 100.0% |
+| SearchKnowledgeTool | 100.0% | 100.0% |
+| ReminderHook | 99.1% | 100.0% |
+| ChatRequestWorker | 98.7% | 99.5% |
+| PromptLoader | 94.3% | 96.1% |
+| ChatStreamEntry（原 ChatController 编排，Task 1 抽取后改名） | 96.4% | 94.6% |
+
+注：8 类均已 ≥80% 达标，非门禁阻塞；jacoco 单类 ≥80% 门禁计划中（Task 12 上线）。
 GraphConfig.postgresSaver 与 MilvusConfig 已豁免（构造器真实建连，外部依赖）。
 
 **历史路线图存档**（2026-08-12 基线 37%）：
