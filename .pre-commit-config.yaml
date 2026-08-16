@@ -16,15 +16,21 @@
 # ─────────────────────────────────────────────────────────────────────────────
 repos:
   # 通用文件级检查（trailing whitespace / 行尾 / yaml 校验 / 合并冲突 / 大文件拦截）
+  # 仅 pre-commit 阶段运行（pre-push 阶段只跑下方 Maven 全量验证，避免全仓扫描历史文件触发修复）
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        stages: [pre-commit]
       - id: end-of-file-fixer
+        stages: [pre-commit]
       - id: check-yaml
+        stages: [pre-commit]
       - id: check-merge-conflict
+        stages: [pre-commit]
       - id: check-added-large-files
         args: ["--maxkb=2048"]
+        stages: [pre-commit]
 
   # 本地 Maven 质量门禁（language: system 直接复用本机 Maven，不重复下载工具链）
   - repo: local
