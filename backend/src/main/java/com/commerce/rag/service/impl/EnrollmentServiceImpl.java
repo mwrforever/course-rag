@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.commerce.rag.convert.EnrollmentConverter;
+import com.commerce.rag.convert.StudentConverter;
 import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
@@ -16,6 +17,7 @@ import com.commerce.rag.mapper.CourseEnrollmentMapper;
 import com.commerce.rag.mapper.SysUserMapper;
 import com.commerce.rag.service.ICourseService;
 import com.commerce.rag.service.IEnrollmentService;
+import com.commerce.rag.vo.StudentCourseVO;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +51,8 @@ public class EnrollmentServiceImpl extends ServiceImpl<CourseEnrollmentMapper, C
     private final ICourseService courseService;
     private final SysUserMapper sysUserMapper;
     private final EnrollmentConverter enrollmentConverter;
+    /** 学生端转换器 —— 学生课程视图对象转换（toCourseVO），转换器跨层共用合法 */
+    private final StudentConverter studentConverter;
 
     /**
      * 查询课程的已选学生列表
@@ -166,6 +170,19 @@ public class EnrollmentServiceImpl extends ServiceImpl<CourseEnrollmentMapper, C
     public List<CourseDTO> findStudentCoursesAsDTO(Long studentId) {
         return findStudentCourses(studentId).stream()
                 .map(c -> courseService.toDTO(c, false))
+                .toList();
+    }
+
+    /**
+     * 查询学生已选课程列表（C 端视图对象，供 StudentController 使用）
+     *
+     * @param studentId 学生 ID
+     * @return 学生课程视图对象列表（剔除价格/描述等内部字段）
+     */
+    public List<StudentCourseVO> findStudentCoursesAsVO(Long studentId) {
+        // 复用实体查询（批量 in 查询课程），再逐条转 C 端视图对象
+        return findStudentCourses(studentId).stream()
+                .map(studentConverter::toCourseVO)
                 .toList();
     }
 

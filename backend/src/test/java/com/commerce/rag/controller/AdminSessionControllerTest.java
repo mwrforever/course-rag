@@ -8,9 +8,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.convert.ChatSessionConverter;
-import com.commerce.rag.entity.ChatMessage;
-import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatSessionService;
@@ -43,40 +40,11 @@ class AdminSessionControllerTest {
     @Mock
     private IChatMessageService messageService;
 
-    @Mock
-    private ChatSessionConverter converter;
-
     private AdminSessionController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AdminSessionController(sessionService, messageService, converter);
-    }
-
-    private ChatSession session(Long id) {
-        ChatSession s = new ChatSession();
-        s.setId(id);
-        s.setUserId(5L);
-        s.setTitle("会话" + id);
-        s.setStatus("ACTIVE");
-        s.setLastMessageAt(LocalDateTime.of(2026, 8, 15, 10, 0));
-        s.setModel("qwen3.8-max");
-        s.setCreatedAt(LocalDateTime.of(2026, 8, 15, 9, 0));
-        return s;
-    }
-
-    private ChatMessage message(Long id) {
-        ChatMessage m = new ChatMessage();
-        m.setId(id);
-        m.setSessionId(1L);
-        m.setRole("user");
-        m.setContent("问题" + id);
-        m.setMessageType("TEXT");
-        m.setIntentType("knowledge_question");
-        m.setRunId(10L);
-        m.setSeq(1);
-        m.setCreatedAt(LocalDateTime.of(2026, 8, 15, 9, 1));
-        return m;
+        controller = new AdminSessionController(sessionService, messageService);
     }
 
     private ChatSessionVO sessionVO(Long id) {
@@ -98,11 +66,10 @@ class AdminSessionControllerTest {
     @Test
     @DisplayName("H1 list → 分页返回会话摘要列表（VO）")
     void list_returnsPagedSessions() {
-        Page<ChatSession> paged = new Page<>(1, 20);
-        paged.setRecords(List.of(session(1L)));
+        Page<ChatSessionVO> paged = new Page<>(1, 20);
+        paged.setRecords(List.of(sessionVO(1L)));
         paged.setTotal(1);
         when(sessionService.findAllSessions(1, 20)).thenReturn(paged);
-        when(converter.toSummaryVO(any(ChatSession.class))).thenReturn(sessionVO(1L));
 
         ApiResponse<PageResponse<ChatSessionVO>> result = controller.list(1, 20);
 
@@ -127,25 +94,16 @@ class AdminSessionControllerTest {
     }
 
     @Test
-    @DisplayName("H2 detail → 返回会话摘要与消息列表（VO）")
+    @DisplayName("H2 detail → 由摘要 VO + 消息 VO 列表组装详情（controller 零 entity）")
     void detail_returnsSessionWithMessages() {
-        when(sessionService.findById(1L)).thenReturn(session(1L));
-        when(messageService.findBySessionId(1L)).thenReturn(List.of(message(1L)));
-        when(converter.toDetailVO(any(ChatSession.class), anyList()))
-                .thenReturn(new ChatSessionDetailVO(
-                        1L,
-                        5L,
-                        "会话1",
-                        "ACTIVE",
-                        LocalDateTime.of(2026, 8, 15, 10, 0),
-                        "qwen3.8-max",
-                        LocalDateTime.of(2026, 8, 15, 9, 0),
-                        List.of(messageVO(1L))));
+        when(sessionService.findById(1L)).thenReturn(sessionVO(1L));
+        when(messageService.findBySessionId(1L)).thenReturn(List.of(messageVO(1L)));
 
         ApiResponse<ChatSessionDetailVO> result = controller.detail(1L);
 
         ChatSessionDetailVO data = result.data();
         assertEquals("会话1", data.title());
+        assertEquals(5L, data.userId());
         assertEquals(1, data.messages().size());
         ChatMessageVO msg = data.messages().get(0);
         assertEquals("user", msg.role());

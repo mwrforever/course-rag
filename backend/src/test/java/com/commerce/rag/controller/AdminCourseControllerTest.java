@@ -15,7 +15,6 @@ import com.commerce.rag.exception.BizException;
 import com.commerce.rag.service.ICourseService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -57,16 +56,6 @@ class AdminCourseControllerTest {
         return req;
     }
 
-    private CourseInfo course(Long id) {
-        CourseInfo c = new CourseInfo();
-        c.setId(id);
-        c.setTitle("课程" + id);
-        c.setCategory("编程");
-        c.setCreatedBy(1L);
-        c.setCreatedAt(LocalDateTime.now());
-        return c;
-    }
-
     private CourseDTO courseDTO(Long id) {
         return new CourseDTO(
                 id, "课程" + id, null, null, "编程", null, null, null, null, null, null, null, "ACTIVE", 1L, null, null,
@@ -76,11 +65,10 @@ class AdminCourseControllerTest {
     @Test
     @DisplayName("E1 list → 超管不传 createdBy 过滤，返回全量分页")
     void list_superAdmin_passesNullCreatedBy() {
-        Page<CourseInfo> paged = new Page<>(1, 20);
-        paged.setRecords(List.of(course(1L)));
+        Page<CourseDTO> paged = new Page<>(1, 20);
+        paged.setRecords(List.of(courseDTO(1L)));
         paged.setTotal(1);
         when(courseService.findPage(1, 20, "编程", null, null)).thenReturn(paged);
-        when(courseService.toDTO(any(CourseInfo.class), eq(false))).thenReturn(courseDTO(1L));
 
         ApiResponse<PageResponse<CourseDTO>> result = controller.list(request("SUPER_ADMIN", 1L), 1, 20, "编程", null);
 
@@ -92,7 +80,7 @@ class AdminCourseControllerTest {
     @Test
     @DisplayName("E1 list → 教师按 createdBy=自己过滤")
     void list_teacher_filtersByOwnId() {
-        Page<CourseInfo> paged = new Page<>(1, 20);
+        Page<CourseDTO> paged = new Page<>(1, 20);
         paged.setRecords(List.of());
         when(courseService.findPage(1, 20, null, "Java", 7L)).thenReturn(paged);
 
@@ -109,8 +97,7 @@ class AdminCourseControllerTest {
         // create 端点仅读取 userId（不读角色），故只 stub userId
         HttpServletRequest req = mock(HttpServletRequest.class);
         when(req.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(1L);
-        when(courseService.createCourse(createRequest, 1L)).thenReturn(course(3L));
-        when(courseService.toDTO(any(CourseInfo.class), eq(false))).thenReturn(courseDTO(3L));
+        when(courseService.createCourse(createRequest, 1L)).thenReturn(courseDTO(3L));
 
         ApiResponse<CourseDTO> result = controller.create(req, createRequest);
 
@@ -121,8 +108,7 @@ class AdminCourseControllerTest {
     @Test
     @DisplayName("E3 detail → 超管不过滤，返回含关系的 DTO")
     void detail_superAdmin_noFilter() {
-        when(courseService.findById(1L, null)).thenReturn(course(1L));
-        when(courseService.toDTO(any(CourseInfo.class), eq(true))).thenReturn(courseDTO(1L));
+        when(courseService.findById(1L, null)).thenReturn(courseDTO(1L));
 
         ApiResponse<CourseDTO> result = controller.detail(request("SUPER_ADMIN", 1L), 1L);
 
@@ -190,7 +176,8 @@ class AdminCourseControllerTest {
         content.setContentType("overview");
         content.setContent("简介");
         content.setSortOrder(1);
-        when(courseService.checkOwnership(1L, 7L, false)).thenReturn(course(1L));
+        // checkOwnership 返回课程实体（归属校验在 service 层执行，controller 仅透传）
+        when(courseService.checkOwnership(1L, 7L, false)).thenReturn(new CourseInfo());
         when(courseService.findContents(1L)).thenReturn(List.of(content));
         when(courseConverter.toContentDTO(content)).thenReturn(new CourseDTO.CourseContentDTO("overview", "简介", 1));
 

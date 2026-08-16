@@ -4,13 +4,14 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatRun;
-import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.service.IChatSessionService;
+import com.commerce.rag.vo.ChatSessionVO;
+import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.worker.ChatRequestWorker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -145,12 +146,12 @@ public class ChatStreamEntry {
         // 1. 会话处理（含归属校验：sessionId 非空时必须是当前用户的会话）
         Long sessionId = request.sessionId();
         if (sessionId == null) {
-            ChatSession session = chatSessionService.createSession(userId, truncateTitle(request.query()));
-            sessionId = session.getId();
+            SessionVO session = chatSessionService.createSession(userId, truncateTitle(request.query()));
+            sessionId = session.id();
         } else {
             // P0-3: sessionId 归属校验——传入他人会话 ID 直接拒绝
-            ChatSession session = chatSessionService.findById(sessionId);
-            if (session == null || !session.getUserId().equals(userId)) {
+            ChatSessionVO session = chatSessionService.findById(sessionId);
+            if (session == null || !session.userId().equals(userId)) {
                 throw new BizException(ErrorCode.FORBIDDEN, "无权操作此会话");
             }
         }

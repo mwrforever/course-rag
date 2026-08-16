@@ -4,10 +4,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.commerce.rag.convert.ChatSessionConverterImpl;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.mapper.ChatMessageMapper;
 import com.commerce.rag.service.impl.ChatMessageServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.ChatMessageVO;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +42,7 @@ class ChatMessageServiceTest {
 
     @BeforeEach
     void setUp() {
-        messageService = spy(new ChatMessageServiceImpl(messageMapper));
+        messageService = spy(new ChatMessageServiceImpl(messageMapper, new ChatSessionConverterImpl()));
     }
 
     @Test
@@ -79,11 +82,41 @@ class ChatMessageServiceTest {
     }
 
     @Test
-    @DisplayName("findBySessionId → 按会话查询全部消息")
+    @DisplayName("findBySessionId → 按会话查询全部消息（返回消息 VO，剔除内部字段）")
     void findBySessionId_returnsMessages() {
+        ChatMessage msg = new ChatMessage();
+        msg.setId(1L);
+        msg.setSessionId(8L);
+        msg.setRole("user");
+        msg.setContent("问题1");
+        msg.setMessageType("TEXT");
+        msg.setIntentType("knowledge_question");
+        msg.setSourcesJson("[1]");
+        msg.setTokenCount(10);
+        msg.setRunId(10L);
+        msg.setSeq(1);
+        msg.setTraceId("trace-1");
+        msg.setCreatedAt(LocalDateTime.of(2026, 8, 15, 9, 1));
+        when(messageMapper.selectList(any())).thenReturn(List.of(msg));
+
+        List<ChatMessageVO> result = messageService.findBySessionId(1L);
+
+        assertEquals(1, result.size());
+        ChatMessageVO vo = result.get(0);
+        assertEquals(1L, vo.id());
+        assertEquals("user", vo.role());
+        assertEquals("问题1", vo.content());
+        assertEquals("knowledge_question", vo.intentType());
+        assertEquals(10L, vo.runId());
+        verify(messageMapper).selectList(any());
+    }
+
+    @Test
+    @DisplayName("findBySessionId → 无消息时返回空列表")
+    void findBySessionId_noMessages_returnsEmpty() {
         when(messageMapper.selectList(any())).thenReturn(List.of());
 
-        List<ChatMessage> result = messageService.findBySessionId(1L);
+        List<ChatMessageVO> result = messageService.findBySessionId(1L);
 
         assertTrue(result.isEmpty());
         verify(messageMapper).selectList(any());

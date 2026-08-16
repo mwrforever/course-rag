@@ -2,6 +2,7 @@ package com.commerce.rag.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.commerce.rag.entity.ChatMessage;
+import com.commerce.rag.vo.ChatMessageVO;
 import java.util.List;
 
 /**
@@ -32,9 +33,9 @@ public interface IChatMessageService extends IService<ChatMessage> {
      * 按 session_id 查询全部消息（按 created_at 升序），用于管理端会话详情
      *
      * @param sessionId 会话 ID
-     * @return 消息列表
+     * @return 消息视图对象列表（剔除 sessionId/sourcesJson 等内部字段）
      */
-    List<ChatMessage> findBySessionId(Long sessionId);
+    List<ChatMessageVO> findBySessionId(Long sessionId);
 
     /**
      * 统计 run 的消息数量

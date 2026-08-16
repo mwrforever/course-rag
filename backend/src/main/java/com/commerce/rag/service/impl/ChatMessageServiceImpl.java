@@ -3,10 +3,13 @@ package com.commerce.rag.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.commerce.rag.convert.ChatSessionConverter;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.mapper.ChatMessageMapper;
 import com.commerce.rag.service.IChatMessageService;
+import com.commerce.rag.vo.ChatMessageVO;
 import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +33,8 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
     private static final Logger log = LoggerFactory.getLogger(ChatMessageServiceImpl.class);
 
     private final ChatMessageMapper messageMapper;
+    /** 会话转换器 —— 消息视图对象转换（toMessageVO） */
+    private final ChatSessionConverter chatSessionConverter;
 
     /**
      * 批量插入消息（run 结束后一次性写入）
@@ -71,13 +76,16 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
      * 按 session_id 查询全部消息（按 created_at 升序），用于管理端会话详情
      *
      * @param sessionId 会话 ID
-     * @return 消息列表
+     * @return 消息视图对象列表（剔除 sessionId/sourcesJson 等内部字段）
      */
-    public List<ChatMessage> findBySessionId(Long sessionId) {
+    public List<ChatMessageVO> findBySessionId(Long sessionId) {
         LambdaQueryWrapper<ChatMessage> wrapper = Wrappers.<ChatMessage>lambdaQuery()
                 .eq(ChatMessage::getSessionId, sessionId)
                 .orderByAsc(ChatMessage::getCreatedAt);
-        return messageMapper.selectList(wrapper);
+        // 实体列表 → VO 列表：逐条转换，sessionId/sourcesJson 等内部字段不随 VO 出边界
+        return messageMapper.selectList(wrapper).stream()
+                .map(chatSessionConverter::toMessageVO)
+                .collect(Collectors.toList());
     }
 
     /**

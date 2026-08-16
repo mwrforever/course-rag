@@ -4,11 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.controller.dto.ApiResponse;
 import com.commerce.rag.controller.dto.PageResponse;
-import com.commerce.rag.convert.StudentConverter;
 import com.commerce.rag.dto.ChatRequest;
-import com.commerce.rag.entity.ChatSession;
-import com.commerce.rag.entity.CourseInfo;
-import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.service.IChatSessionService;
@@ -58,19 +54,16 @@ public class StudentController {
     private final IChatSessionService sessionService;
     private final IDocumentChunkService documentChunkService;
     private final ChatStreamEntry chatStreamEntry;
-    private final StudentConverter converter;
 
     public StudentController(
             IEnrollmentService enrollmentService,
             IChatSessionService sessionService,
             IDocumentChunkService documentChunkService,
-            ChatStreamEntry chatStreamEntry,
-            StudentConverter converter) {
+            ChatStreamEntry chatStreamEntry) {
         this.enrollmentService = enrollmentService;
         this.sessionService = sessionService;
         this.documentChunkService = documentChunkService;
         this.chatStreamEntry = chatStreamEntry;
-        this.converter = converter;
     }
 
     // ==================== J1: 我的课程 ====================
@@ -81,8 +74,7 @@ public class StudentController {
     @GetMapping("/courses")
     public ApiResponse<List<StudentCourseVO>> myCourses(HttpServletRequest request) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
-        List<CourseInfo> courses = enrollmentService.findStudentCourses(userId);
-        return ApiResponse.ok(courses.stream().map(converter::toCourseVO).toList());
+        return ApiResponse.ok(enrollmentService.findStudentCoursesAsVO(userId));
     }
 
     // ==================== J2: 课程专属资料 ====================
@@ -98,9 +90,8 @@ public class StudentController {
             // P1-3: 内联错误双轨修复——统一走 ResponseStatusException（真实 HTTP 403）
             throw new BizException(ErrorCode.FORBIDDEN, "未选此课程，无权查看资料");
         }
-        // 通过 IDocumentChunkService 按 courseId 查询分片列表
-        List<DocumentChunk> chunks = documentChunkService.findByCourseId(id);
-        return ApiResponse.ok(chunks.stream().map(converter::toChunkVO).toList());
+        // 通过 IDocumentChunkService 按 courseId 查询分片列表（VO 直接出参）
+        return ApiResponse.ok(documentChunkService.findByCourseIdAsVO(id));
     }
 
     // ==================== J3: 通用资料库 ====================
@@ -111,11 +102,10 @@ public class StudentController {
     @GetMapping("/knowledge-bases")
     public ApiResponse<PageResponse<ChunkBriefVO>> knowledgeBase(
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
-        // 通过 IDocumentChunkService 按 courseId='DEFAULT' 分页查询
-        IPage<DocumentChunk> paged = documentChunkService.findByCourseIdDefault(page, size);
-        List<ChunkBriefVO> result =
-                paged.getRecords().stream().map(converter::toChunkBriefVO).toList();
-        return ApiResponse.ok(new PageResponse<>(result, paged.getTotal(), page, size));
+        // 通过 IDocumentChunkService 按 courseId='DEFAULT' 分页查询（VO 直接出参）
+        IPage<ChunkBriefVO> paged = documentChunkService.findByCourseIdDefaultAsVO(page, size);
+        return ApiResponse.ok(new PageResponse<>(
+                paged.getRecords(), paged.getTotal(), (int) paged.getCurrent(), (int) paged.getSize()));
     }
 
     // ==================== J4: 分片上下文 ====================
@@ -126,15 +116,15 @@ public class StudentController {
     @GetMapping("/chunks/{id}/context")
     public ApiResponse<ChunkContextVO> chunkContext(HttpServletRequest request, @PathVariable Long id) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
-        // 通过 IDocumentChunkService 查询分片及上下文
-        DocumentChunk chunk = documentChunkService.findById(id);
+        // 通过 IDocumentChunkService 查询分片及上下文（父/前/后由 service 组装）
+        ChunkContextVO chunk = documentChunkService.findContext(id);
         if (chunk == null) {
             // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
             throw new BizException(ErrorCode.NOT_FOUND, "分片不存在");
         }
 
-        // 权限校验：如果是课程专属 chunk，学生必须已选该课程
-        String courseId = chunk.getCourseId();
+        // 权限校验：如果是课程专属 chunk，学生必须已选该课程（courseId 取自 VO）
+        String courseId = chunk.courseId();
         if (courseId != null && !"DEFAULT".equals(courseId)) {
             Long courseIdLong = Long.parseLong(courseId);
             if (!enrollmentService.isEnrolled(courseIdLong, userId)) {
@@ -142,15 +132,7 @@ public class StudentController {
                 throw new BizException(ErrorCode.FORBIDDEN, "未选此课程，无权查看资料");
             }
         }
-
-        // 查询父/前/后 chunk（不存在则传 null，由转换器做空安全映射）
-        DocumentChunk parent =
-                chunk.getParentChunkId() == null ? null : documentChunkService.findById(chunk.getParentChunkId());
-        DocumentChunk prev =
-                chunk.getPrevChunkId() == null ? null : documentChunkService.findById(chunk.getPrevChunkId());
-        DocumentChunk next =
-                chunk.getNextChunkId() == null ? null : documentChunkService.findById(chunk.getNextChunkId());
-        return ApiResponse.ok(converter.toChunkContextVO(chunk, parent, prev, next));
+        return ApiResponse.ok(chunk);
     }
 
     // ==================== J5: 提交反馈 ====================
@@ -168,11 +150,10 @@ public class StudentController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
-        IPage<ChatSession> result = sessionService.findSessionsByUser(userId, page, size);
-        List<SessionVO> records =
-                result.getRecords().stream().map(converter::toSessionVO).toList();
-        return ApiResponse.ok(
-                new PageResponse<>(records, result.getTotal(), (int) result.getCurrent(), (int) result.getSize()));
+        // service 返回的即 SessionVO 分页（records 不含 userId 等内部字段）
+        IPage<SessionVO> result = sessionService.findSessionsByUser(userId, page, size);
+        return ApiResponse.ok(new PageResponse<>(
+                result.getRecords(), result.getTotal(), (int) result.getCurrent(), (int) result.getSize()));
     }
 
     // ==================== J7: 创建会话 ====================
@@ -185,8 +166,7 @@ public class StudentController {
             HttpServletRequest request, @RequestBody Map<String, String> sessionRequest) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         String title = sessionRequest.getOrDefault("title", "新对话");
-        ChatSession session = sessionService.createSession(userId, title);
-        return ApiResponse.ok(converter.toSessionVO(session));
+        return ApiResponse.ok(sessionService.createSession(userId, title));
     }
 
     // ==================== J8: SSE 流式对话 ====================

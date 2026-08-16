@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.commerce.rag.convert.DocumentChunkConverter;
+import com.commerce.rag.convert.StudentConverter;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.entity.KnowledgeBase;
@@ -17,6 +18,9 @@ import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.service.IDocumentChunkService;
+import com.commerce.rag.vo.ChunkBriefVO;
+import com.commerce.rag.vo.ChunkContextVO;
+import com.commerce.rag.vo.ChunkVO;
 import com.commerce.rag.vo.DocumentChunkVO;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -60,15 +64,8 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
     /** 文档分片转换器 —— Entity 出 service 边界前转 VO（denseVector 不泄露） */
     private final DocumentChunkConverter chunkConverter;
 
-    /**
-     * 按 ID 查询分片（无权限校验，用于 C 端学生端点）
-     *
-     * @param id 分片 ID
-     * @return 分片实体，不存在返回 null
-     */
-    public DocumentChunk findById(Long id) {
-        return chunkMapper.selectById(id);
-    }
+    /** 学生端转换器 —— C 端分片视图对象转换（toChunkVO/toChunkBriefVO/toChunkContextVO），转换器跨层共用合法 */
+    private final StudentConverter studentConverter;
 
     /**
      * 按 ID 查询分片（B 端管理，含权限校验）
@@ -251,31 +248,62 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
     }
 
     /**
+     * 查询分片上下文（父/前/后，C 端 J4：对话引用展示）
+     *
+     * <p>主分片与相邻分片均按主键查（chunkMapper.selectById，与既有实现风格一致），
+     * 再经学生端转换器组装为上下文视图对象（含 courseId 供 controller 做选课校验）。
+     *
+     * @param chunkId 分片 ID
+     * @return 分片上下文视图对象，主分片不存在返回 null
+     */
+    public ChunkContextVO findContext(Long chunkId) {
+        DocumentChunk chunk = chunkMapper.selectById(chunkId); // 完整实体确需（字段多向使用）
+        if (chunk == null) {
+            return null;
+        }
+        // 相邻分片按指针查询，指针为空则保持 null（转换器空安全映射）
+        DocumentChunk parent =
+                chunk.getParentChunkId() == null ? null : chunkMapper.selectById(chunk.getParentChunkId());
+        DocumentChunk prev = chunk.getPrevChunkId() == null ? null : chunkMapper.selectById(chunk.getPrevChunkId());
+        DocumentChunk next = chunk.getNextChunkId() == null ? null : chunkMapper.selectById(chunk.getNextChunkId());
+        return studentConverter.toChunkContextVO(chunk, parent, prev, next);
+    }
+
+    /**
      * 按课程 ID 查询分片列表（C 端 J2：课程专属资料）
      *
      * @param courseId 课程 ID
-     * @return 分片列表（按 chunk_index 排序）
+     * @return 资料分片视图对象列表（按 chunk_index 排序）
      */
-    public List<DocumentChunk> findByCourseId(Long courseId) {
+    public List<ChunkVO> findByCourseIdAsVO(Long courseId) {
         LambdaQueryWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaQuery()
                 .eq(DocumentChunk::getCourseId, String.valueOf(courseId))
                 .orderByAsc(DocumentChunk::getChunkIndex);
-        return chunkMapper.selectList(wrapper);
+        // 实体列表 → VO 列表：逐条转换，docId/kbId/courseId 等内部字段不随 VO 出边界
+        return chunkMapper.selectList(wrapper).stream()
+                .map(studentConverter::toChunkVO)
+                .toList();
     }
 
     /**
      * 查询通用资料库分片（C 端 J3：course_id='DEFAULT'）
      *
      * @param page 页码（1-based）
-     * @param size 每页条数
-     * @return 分页结果
+     * @param size 每页条数（<=0 用默认 20）
+     * @return 分页结果（records 为简略视图对象）
      */
-    public IPage<DocumentChunk> findByCourseIdDefault(int page, int size) {
+    public IPage<ChunkBriefVO> findByCourseIdDefaultAsVO(int page, int size) {
         Page<DocumentChunk> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
         LambdaQueryWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaQuery()
                 .eq(DocumentChunk::getCourseId, "DEFAULT")
                 .orderByAsc(DocumentChunk::getChunkIndex);
-        return chunkMapper.selectPage(pageObj, wrapper);
+        IPage<DocumentChunk> entityPage = chunkMapper.selectPage(pageObj, wrapper);
+        // 实体分页 → VO 分页：records 逐条转换，total/current/size 分页语义保持
+        Page<ChunkBriefVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
+        voPage.setRecords(entityPage.getRecords().stream()
+                .map(studentConverter::toChunkBriefVO)
+                .collect(Collectors.toList()));
+        return voPage;
     }
 
     /**

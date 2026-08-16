@@ -104,14 +104,19 @@ class CourseServiceTest {
     }
 
     @Test
-    @DisplayName("findById 过滤重载 → 创建者可查看 + 超管（filter=null）可查看任意课程")
+    @DisplayName("findById 过滤重载 → 创建者可查看 + 超管（filter=null）可查看任意课程（返回 DTO）")
     void findById_ownerAndAdmin_canView() {
         CourseInfo course = new CourseInfo();
         course.setId(1L);
         course.setCreatedBy(100L);
+        course.setTitle("Java 入门");
         when(courseInfoMapper.selectById(1L)).thenReturn(course);
 
-        assertNotNull(courseService.findById(1L, 100L));
+        // 返回课程 DTO（含关系查询走 mock 默认空列表）
+        CourseDTO ownerDto = courseService.findById(1L, 100L);
+        assertNotNull(ownerDto);
+        assertEquals(1L, ownerDto.id());
+        assertEquals("Java 入门", ownerDto.title());
         assertNotNull(courseService.findById(1L, null));
     }
 
@@ -165,29 +170,35 @@ class CourseServiceTest {
     // ==================== createCourse / 查询 / 教师 / 内容 补充 ====================
 
     @Test
-    @DisplayName("createCourse → 组装默认字段并插入，失效搜索缓存")
+    @DisplayName("createCourse → 组装默认字段并插入，失效搜索缓存（返回 DTO）")
     void createCourse_buildsAndInserts() {
         CreateCourseRequest request = new CreateCourseRequest(
                 "Java 入门", "描述", "cover.png", "编程", "张老师", new BigDecimal("99"), "10h", List.of("Java", "入门"), "link");
 
-        CourseInfo result = courseService.createCourse(request, 7L);
+        CourseDTO dto = courseService.createCourse(request, 7L);
 
-        verify(courseInfoMapper).insert(result);
-        verify(courseQueryService).evictCourse(result.getId());
-        assertEquals("ACTIVE", result.getStatus());
-        assertEquals(new BigDecimal("0"), result.getRating());
-        assertEquals(0, result.getLearningCount());
-        assertEquals("[\"Java\",\"入门\"]", result.getTags());
+        // 插入实体为默认字段组装（默认状态/评分/学习人数/标签 JSON）
+        ArgumentCaptor<CourseInfo> captor = ArgumentCaptor.forClass(CourseInfo.class);
+        verify(courseInfoMapper).insert(captor.capture());
+        CourseInfo inserted = captor.getValue();
+        verify(courseQueryService).evictCourse(inserted.getId());
+        assertEquals("ACTIVE", inserted.getStatus());
+        assertEquals(new BigDecimal("0"), inserted.getRating());
+        assertEquals(0, inserted.getLearningCount());
+        assertEquals("[\"Java\",\"入门\"]", inserted.getTags());
+        // 返回契约为课程 DTO（不含关联数据）
+        assertEquals("Java 入门", dto.title());
+        assertEquals("ACTIVE", dto.status());
     }
 
     @Test
-    @DisplayName("createCourse → tags 为空时序列化为 []")
+    @DisplayName("createCourse → tags 为空时序列化为 []（返回 DTO）")
     void createCourse_emptyTags_serializesEmptyArray() {
         CreateCourseRequest request = new CreateCourseRequest("Java", null, null, null, null, null, null, null, null);
 
-        CourseInfo result = courseService.createCourse(request, 7L);
+        CourseDTO dto = courseService.createCourse(request, 7L);
 
-        assertEquals("[]", result.getTags());
+        assertTrue(dto.tags().isEmpty());
     }
 
     @Test
@@ -208,14 +219,22 @@ class CourseServiceTest {
     }
 
     @Test
-    @DisplayName("findPage → 全条件筛选分页")
+    @DisplayName("findPage → 全条件筛选分页（返回 DTO 分页）")
     void findPage_withFilters() {
         Page<CourseInfo> page = new Page<>(1, 20);
+        CourseInfo c = new CourseInfo();
+        c.setId(1L);
+        c.setTitle("Java 入门");
+        page.setRecords(List.of(c));
+        page.setTotal(1);
         when(courseInfoMapper.selectPage(any(Page.class), any())).thenReturn(page);
 
-        IPage<CourseInfo> result = courseService.findPage(1, 20, "编程", "Java", 7L);
+        IPage<CourseDTO> result = courseService.findPage(1, 20, "编程", "Java", 7L);
 
-        assertSame(page, result);
+        assertEquals(1, result.getRecords().size());
+        assertEquals(1L, result.getRecords().get(0).id());
+        assertEquals("Java 入门", result.getRecords().get(0).title());
+        assertEquals(1, result.getTotal());
     }
 
     @Test

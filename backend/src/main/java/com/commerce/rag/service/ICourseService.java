@@ -22,9 +22,9 @@ public interface ICourseService extends IService<CourseInfo> {
      *
      * @param request  创建请求
      * @param createdBy 创建者 ID
-     * @return 课程实体（含雪花 ID）
+     * @return 课程 DTO（含雪花 ID，不含关联数据）
      */
-    CourseInfo createCourse(CreateCourseRequest request, Long createdBy);
+    CourseDTO createCourse(CreateCourseRequest request, Long createdBy);
 
     /**
      * 按 ID 查询课程（无权限过滤）
@@ -36,9 +36,9 @@ public interface ICourseService extends IService<CourseInfo> {
      *
      * @param courseId        课程 ID
      * @param createdByFilter 创建者 ID 过滤（null 不过滤）
-     * @return 课程实体，不存在或无权返回 null
+     * @return 课程 DTO（含内容/排期/教师关联），不存在或无权返回 null
      */
-    CourseInfo findById(Long courseId, Long createdByFilter);
+    CourseDTO findById(Long courseId, Long createdByFilter);
 
     /**
      * 批量查询课程（按 ID 列表）
@@ -47,8 +47,10 @@ public interface ICourseService extends IService<CourseInfo> {
 
     /**
      * 分页查询课程（支持分类/关键词/创建者过滤）
+     *
+     * @return 分页结果（records 为课程 DTO，不含关联数据）
      */
-    IPage<CourseInfo> findPage(int page, int size, String category, String keyword, Long createdBy);
+    IPage<CourseDTO> findPage(int page, int size, String category, String keyword, Long createdBy);
 
     /**
      * 更新课程

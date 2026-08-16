@@ -3,6 +3,8 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.commerce.rag.entity.ChatSession;
+import com.commerce.rag.vo.ChatSessionVO;
+import com.commerce.rag.vo.SessionVO;
 
 /**
  * 会话服务接口 —— 封装 chat_session 表的 CRUD 操作（主表 ChatSession）
@@ -16,9 +18,9 @@ public interface IChatSessionService extends IService<ChatSession> {
      *
      * @param userId 用户 ID
      * @param title  会话标题
-     * @return 已持久化的会话实体（含雪花 ID）
+     * @return 已持久化的会话视图对象（含雪花 ID）
      */
-    ChatSession createSession(Long userId, String title);
+    SessionVO createSession(Long userId, String title);
 
     /**
      * 分页查询用户的活跃会话（按 last_message_at 降序）
@@ -55,18 +57,18 @@ public interface IChatSessionService extends IService<ChatSession> {
      * 根据 ID 查询会话
      *
      * @param sessionId 会话 ID
-     * @return 会话实体，不存在返回 null
+     * @return 会话摘要视图对象，不存在返回 null
      */
-    ChatSession findById(Long sessionId);
+    ChatSessionVO findById(Long sessionId);
 
     /**
      * 分页查询全部会话（管理端，不限用户和状态）
      *
      * @param page 页码（1-based）
      * @param size 每页条数
-     * @return 分页结果
+     * @return 分页结果（records 为会话摘要视图对象）
      */
-    IPage<ChatSession> findAllSessions(int page, int size);
+    IPage<ChatSessionVO> findAllSessions(int page, int size);
 
     /**
      * 分页查询用户会话（不限状态，管理端用）
@@ -74,9 +76,9 @@ public interface IChatSessionService extends IService<ChatSession> {
      * @param userId 用户 ID
      * @param page   页码（1-based）
      * @param size   每页条数
-     * @return 分页结果
+     * @return 分页结果（records 为会话视图对象，不含 userId 等内部字段）
      */
-    IPage<ChatSession> findSessionsByUser(Long userId, int page, int size);
+    IPage<SessionVO> findSessionsByUser(Long userId, int page, int size);
 
     /**
      * 删除会话（级联软删消息 + Run）

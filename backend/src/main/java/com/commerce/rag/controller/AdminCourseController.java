@@ -8,7 +8,6 @@ import com.commerce.rag.convert.CourseConverter;
 import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.CreateCourseRequest;
 import com.commerce.rag.dto.UpdateCourseRequest;
-import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.service.ICourseService;
@@ -63,12 +62,10 @@ public class AdminCourseController {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         boolean isAdmin = "SUPER_ADMIN".equals(AuthInterceptor.getCurrentRole(request));
         Long createdBy = isAdmin ? null : userId;
-        IPage<CourseInfo> result = courseService.findPage(page, size, category, keyword, createdBy);
-        List<CourseDTO> dtos = result.getRecords().stream()
-                .map(c -> courseService.toDTO(c, false))
-                .collect(Collectors.toList());
-        return ApiResponse.ok(
-                new PageResponse<>(dtos, result.getTotal(), (int) result.getCurrent(), (int) result.getSize()));
+        // service 返回的即 DTO 分页（records 不含关联数据），不再于 controller 内逐条转换
+        IPage<CourseDTO> result = courseService.findPage(page, size, category, keyword, createdBy);
+        return ApiResponse.ok(new PageResponse<>(
+                result.getRecords(), result.getTotal(), (int) result.getCurrent(), (int) result.getSize()));
     }
 
     /**
@@ -77,8 +74,7 @@ public class AdminCourseController {
     @PostMapping
     public ApiResponse<CourseDTO> create(HttpServletRequest request, @RequestBody CreateCourseRequest createRequest) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
-        CourseInfo course = courseService.createCourse(createRequest, userId);
-        return ApiResponse.ok(courseService.toDTO(course, false));
+        return ApiResponse.ok(courseService.createCourse(createRequest, userId));
     }
 
     /**
@@ -92,12 +88,12 @@ public class AdminCourseController {
         String role = AuthInterceptor.getCurrentRole(request);
         // 教师按 created_by 过滤，超管不过滤
         Long createdByFilter = "SUPER_ADMIN".equals(role) ? null : userId;
-        CourseInfo course = courseService.findById(id, createdByFilter);
+        CourseDTO course = courseService.findById(id, createdByFilter);
         if (course == null) {
             // P1-3: 内联 404 双轨修复——统一走 ResponseStatusException（真实 HTTP 404）
             throw new BizException(ErrorCode.NOT_FOUND, "课程不存在");
         }
-        return ApiResponse.ok(courseService.toDTO(course, true));
+        return ApiResponse.ok(course);
     }
 
     /**

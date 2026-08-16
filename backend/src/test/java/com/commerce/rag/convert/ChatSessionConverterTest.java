@@ -5,10 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.vo.ChatMessageVO;
-import com.commerce.rag.vo.ChatSessionDetailVO;
 import com.commerce.rag.vo.ChatSessionVO;
 import java.time.LocalDateTime;
-import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -89,27 +87,5 @@ class ChatSessionConverterTest {
                 .isEqualTo(new ChatMessageVO(
                         1L, "user", "问题1", "TEXT", "knowledge_question", 10L, 1, LocalDateTime.of(2026, 8, 15, 9, 1)));
         assertThat(vo.toString()).contains("问题1");
-    }
-
-    @Test
-    @DisplayName("会话 + 消息列表 → 详情视图（messages 来自第二参数）")
-    void toDetailVO_mapsSessionAndMessages() {
-        ChatSessionDetailVO vo = converter.toDetailVO(session(1L), List.of(message(1L), message(2L)));
-
-        assertThat(vo.id()).isEqualTo(1L);
-        assertThat(vo.title()).isEqualTo("会话1");
-        assertThat(vo.messages()).hasSize(2);
-        assertThat(vo.messages().get(0).content()).isEqualTo("问题1");
-        assertThat(vo.messages().get(1).content()).isEqualTo("问题2");
-        assertThat(vo.toString()).contains("messages");
-    }
-
-    @Test
-    @DisplayName("详情视图：空消息列表映射为空列表（不抛异常）")
-    void toDetailVO_emptyMessages() {
-        ChatSessionDetailVO vo = converter.toDetailVO(session(2L), List.of());
-
-        assertThat(vo.messages()).isEmpty();
-        assertThat(vo.title()).isEqualTo("会话2");
     }
 }

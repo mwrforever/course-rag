@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.commerce.rag.convert.ChatSessionConverter;
+import com.commerce.rag.convert.StudentConverter;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.entity.ChatSession;
@@ -13,7 +15,10 @@ import com.commerce.rag.mapper.ChatMessageMapper;
 import com.commerce.rag.mapper.ChatRunMapper;
 import com.commerce.rag.mapper.ChatSessionMapper;
 import com.commerce.rag.service.IChatSessionService;
+import com.commerce.rag.vo.ChatSessionVO;
+import com.commerce.rag.vo.SessionVO;
 import java.time.LocalDateTime;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,22 +44,26 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
     private final ChatSessionMapper sessionMapper;
     private final ChatMessageMapper messageMapper;
     private final ChatRunMapper runMapper;
+    /** 会话转换器 —— 管理端摘要视图对象（ChatSessionVO） */
+    private final ChatSessionConverter chatSessionConverter;
+    /** 学生端转换器 —— C 端会话视图对象（SessionVO），转换器跨层共用合法 */
+    private final StudentConverter studentConverter;
 
     /**
      * 创建新会话
      *
      * @param userId 用户 ID
      * @param title  会话标题
-     * @return 已持久化的会话实体（含雪花 ID）
+     * @return 已持久化的会话视图对象（含雪花 ID）
      */
-    public ChatSession createSession(Long userId, String title) {
+    public SessionVO createSession(Long userId, String title) {
         ChatSession session = new ChatSession();
         session.setUserId(userId);
         session.setTitle(title);
         session.setStatus("ACTIVE");
         sessionMapper.insert(session);
         log.info("创建会话: sessionId={}, userId={}", session.getId(), userId);
-        return session;
+        return studentConverter.toSessionVO(session);
     }
 
     /**
@@ -119,10 +128,11 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
      * 根据 ID 查询会话
      *
      * @param sessionId 会话 ID
-     * @return 会话实体，不存在返回 null
+     * @return 会话摘要视图对象，不存在返回 null
      */
-    public ChatSession findById(Long sessionId) {
-        return sessionMapper.selectById(sessionId);
+    public ChatSessionVO findById(Long sessionId) {
+        ChatSession session = sessionMapper.selectById(sessionId);
+        return session == null ? null : chatSessionConverter.toSummaryVO(session);
     }
 
     /**
@@ -130,13 +140,19 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
      *
      * @param page 页码（1-based）
      * @param size 每页条数
-     * @return 分页结果
+     * @return 分页结果（records 为会话摘要视图对象）
      */
-    public IPage<ChatSession> findAllSessions(int page, int size) {
+    public IPage<ChatSessionVO> findAllSessions(int page, int size) {
         Page<ChatSession> pageObj = new Page<>(page, size);
         LambdaQueryWrapper<ChatSession> wrapper =
                 Wrappers.<ChatSession>lambdaQuery().orderByDesc(ChatSession::getLastMessageAt);
-        return sessionMapper.selectPage(pageObj, wrapper);
+        IPage<ChatSession> entityPage = sessionMapper.selectPage(pageObj, wrapper);
+        // 实体分页 → VO 分页：records 逐条转换，total/current/size 分页语义保持
+        Page<ChatSessionVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
+        voPage.setRecords(entityPage.getRecords().stream()
+                .map(chatSessionConverter::toSummaryVO)
+                .collect(Collectors.toList()));
+        return voPage;
     }
 
     /**
@@ -145,14 +161,20 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
      * @param userId 用户 ID
      * @param page   页码（1-based）
      * @param size   每页条数
-     * @return 分页结果
+     * @return 分页结果（records 为会话视图对象，不含 userId 等内部字段）
      */
-    public IPage<ChatSession> findSessionsByUser(Long userId, int page, int size) {
+    public IPage<SessionVO> findSessionsByUser(Long userId, int page, int size) {
         Page<ChatSession> pageObj = new Page<>(page, size);
         LambdaQueryWrapper<ChatSession> wrapper = Wrappers.<ChatSession>lambdaQuery()
                 .eq(ChatSession::getUserId, userId)
                 .orderByDesc(ChatSession::getLastMessageAt);
-        return sessionMapper.selectPage(pageObj, wrapper);
+        IPage<ChatSession> entityPage = sessionMapper.selectPage(pageObj, wrapper);
+        // 实体分页 → VO 分页：records 逐条转换，total/current/size 分页语义保持
+        Page<SessionVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
+        voPage.setRecords(entityPage.getRecords().stream()
+                .map(studentConverter::toSessionVO)
+                .collect(Collectors.toList()));
+        return voPage;
     }
 
     /**

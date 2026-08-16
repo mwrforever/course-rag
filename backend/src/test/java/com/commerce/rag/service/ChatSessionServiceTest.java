@@ -6,18 +6,28 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.convert.ChatSessionConverter;
+import com.commerce.rag.convert.ChatSessionConverterImpl;
+import com.commerce.rag.convert.StudentConverter;
+import com.commerce.rag.convert.StudentConverterImpl;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.mapper.ChatMessageMapper;
 import com.commerce.rag.mapper.ChatRunMapper;
 import com.commerce.rag.mapper.ChatSessionMapper;
 import com.commerce.rag.service.impl.ChatSessionServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.ChatSessionVO;
+import com.commerce.rag.vo.SessionVO;
+import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
@@ -43,18 +53,45 @@ class ChatSessionServiceTest {
     @Mock
     private ChatRunMapper runMapper;
 
+    /** 会话转换器用真实实现（MapStruct 生成类），转换行为由 ChatSessionConverterTest 单独覆盖 */
+    @Spy
+    private ChatSessionConverter chatSessionConverter = new ChatSessionConverterImpl();
+
+    /** 学生端转换器用真实实现（MapStruct 生成类），转换行为由 StudentConverterTest 单独覆盖 */
+    @Spy
+    private StudentConverter studentConverter = new StudentConverterImpl();
+
     @InjectMocks
     private ChatSessionServiceImpl sessionService;
 
-    @Test
-    @DisplayName("createSession → 插入 ACTIVE 会话并返回带 ID 实体")
-    void createSession_insertsActiveSession() {
-        ChatSession result = sessionService.createSession(5L, "新对话");
+    /** 构造测试用会话实体（含摘要 VO 全部业务字段） */
+    private ChatSession session(Long id) {
+        ChatSession s = new ChatSession();
+        s.setId(id);
+        s.setUserId(5L);
+        s.setTitle("会话" + id);
+        s.setStatus("ACTIVE");
+        s.setLastMessageAt(LocalDateTime.of(2026, 8, 15, 10, 0));
+        s.setModel("qwen3.8-max");
+        s.setCreatedAt(LocalDateTime.of(2026, 8, 15, 9, 0));
+        return s;
+    }
 
-        assertEquals(5L, result.getUserId());
-        assertEquals("新对话", result.getTitle());
-        assertEquals("ACTIVE", result.getStatus());
-        verify(sessionMapper).insert(result);
+    @Test
+    @DisplayName("createSession → 插入 ACTIVE 会话并返回带 ID 的 SessionVO")
+    void createSession_insertsActiveSession() {
+        SessionVO result = sessionService.createSession(5L, "新对话");
+
+        // 插入实体为 ACTIVE 会话（userId/title/status 透传）
+        ArgumentCaptor<ChatSession> captor = ArgumentCaptor.forClass(ChatSession.class);
+        verify(sessionMapper).insert(captor.capture());
+        ChatSession inserted = captor.getValue();
+        assertEquals(5L, inserted.getUserId());
+        assertEquals("新对话", inserted.getTitle());
+        assertEquals("ACTIVE", inserted.getStatus());
+        // 返回契约为 C 端会话 VO（不含 userId）
+        assertEquals("新对话", result.title());
+        assertEquals("ACTIVE", result.status());
     }
 
     @Test
@@ -94,37 +131,57 @@ class ChatSessionServiceTest {
     }
 
     @Test
-    @DisplayName("findById → 返回会话实体")
+    @DisplayName("findById → 返回会话摘要 VO，不存在返回 null")
     void findById_returnsSession() {
-        ChatSession session = new ChatSession();
-        session.setId(1L);
-        when(sessionMapper.selectById(1L)).thenReturn(session);
+        when(sessionMapper.selectById(1L)).thenReturn(session(1L));
 
-        ChatSession result = sessionService.findById(1L);
+        ChatSessionVO result = sessionService.findById(1L);
 
-        assertEquals(1L, result.getId());
+        assertEquals(1L, result.id());
+        assertEquals(5L, result.userId());
+        assertEquals("会话1", result.title());
+        assertEquals("ACTIVE", result.status());
+        assertEquals("qwen3.8-max", result.model());
+
+        // 会话不存在返回 null（controller 层 404）
+        when(sessionMapper.selectById(99L)).thenReturn(null);
+        assertNull(sessionService.findById(99L));
     }
 
     @Test
-    @DisplayName("findAllSessions → 管理端分页查询全部会话")
+    @DisplayName("findAllSessions → 管理端分页查询全部会话（records 转摘要 VO）")
     void findAllSessions_returnsPage() {
         Page<ChatSession> page = new Page<>(1, 20);
+        page.setRecords(List.of(session(1L)));
+        page.setTotal(1);
         when(sessionMapper.selectPage(any(Page.class), any())).thenReturn(page);
 
-        IPage<ChatSession> result = sessionService.findAllSessions(1, 20);
+        IPage<ChatSessionVO> result = sessionService.findAllSessions(1, 20);
 
-        assertSame(page, result);
+        assertEquals(1, result.getRecords().size());
+        ChatSessionVO vo = result.getRecords().get(0);
+        assertEquals(5L, vo.userId());
+        assertEquals("会话1", vo.title());
+        assertEquals("qwen3.8-max", vo.model());
+        assertEquals(1, result.getTotal());
     }
 
     @Test
-    @DisplayName("findSessionsByUser → 按用户分页查询（不限状态）")
+    @DisplayName("findSessionsByUser → 按用户分页查询（records 转 SessionVO）")
     void findSessionsByUser_returnsPage() {
         Page<ChatSession> page = new Page<>(1, 20);
+        page.setRecords(List.of(session(1L)));
+        page.setTotal(1);
         when(sessionMapper.selectPage(any(Page.class), any())).thenReturn(page);
 
-        IPage<ChatSession> result = sessionService.findSessionsByUser(5L, 1, 20);
+        IPage<SessionVO> result = sessionService.findSessionsByUser(5L, 1, 20);
 
-        assertSame(page, result);
+        assertEquals(1, result.getRecords().size());
+        SessionVO vo = result.getRecords().get(0);
+        assertEquals(1L, vo.id());
+        assertEquals("会话1", vo.title());
+        assertEquals("ACTIVE", vo.status());
+        assertEquals(1, result.getTotal());
         verify(sessionMapper).selectPage(any(Page.class), any());
     }
 

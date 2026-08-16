@@ -8,12 +8,13 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatRun;
-import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.service.IChatSessionService;
+import com.commerce.rag.vo.ChatSessionVO;
+import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.worker.ChatRequestWorker;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -111,10 +112,9 @@ class ChatStreamEntryTest {
     @Test
     @DisplayName("chat sessionId=null → 创建新会话 + 创建 run + 创建 ring + subscribe + XADD")
     void chat_nullSessionId_createsNewSessionAndRun() {
-        // Given: mock 创建会话和 run
-        ChatSession mockSession = mock(ChatSession.class);
-        when(mockSession.getId()).thenReturn(456L);
-        when(chatSessionService.createSession(eq(123L), anyString())).thenReturn(mockSession);
+        // Given: mock 创建会话（返回 SessionVO）和 run
+        when(chatSessionService.createSession(eq(123L), anyString()))
+                .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
 
         ChatRun mockRun = mock(ChatRun.class);
         when(mockRun.getId()).thenReturn(123L);
@@ -136,10 +136,9 @@ class ChatStreamEntryTest {
     @Test
     @DisplayName("chat sessionId=456 → 不创建新会话，直接创建 run")
     void chat_existingSessionId_doesNotCreateSession() {
-        // Given: 会话 456 属于当前用户（P0-3 归属校验通过）
-        ChatSession existingSession = mock(ChatSession.class);
-        when(existingSession.getUserId()).thenReturn(123L);
-        when(chatSessionService.findById(456L)).thenReturn(existingSession);
+        // Given: 会话 456 属于当前用户（P0-3 归属校验通过，findById 返回 ChatSessionVO）
+        when(chatSessionService.findById(456L))
+                .thenReturn(new ChatSessionVO(456L, 123L, "会话", "ACTIVE", null, null, null));
 
         ChatRun mockRun = mock(ChatRun.class);
         when(mockRun.getId()).thenReturn(789L);
@@ -174,11 +173,9 @@ class ChatStreamEntryTest {
     @Test
     @DisplayName("chat → 传入他人 sessionId 抛出 403")
     void chat_withOthersSession_throws403() {
-        // 现有 mock：AuthInterceptor attribute userId=1（本测试用 123）
-        ChatSession othersSession = new ChatSession();
-        othersSession.setId(99L);
-        othersSession.setUserId(2L); // 属于用户 2
-        when(chatSessionService.findById(99L)).thenReturn(othersSession);
+        // 会话 99 属于用户 2（userId 来自 ChatSessionVO），当前用户为 123
+        when(chatSessionService.findById(99L))
+                .thenReturn(new ChatSessionVO(99L, 2L, "他人会话", "ACTIVE", null, null, null));
 
         ChatRequest request = new ChatRequest(99L, "你好");
 
@@ -188,12 +185,22 @@ class ChatStreamEntryTest {
     }
 
     @Test
+    @DisplayName("chat → sessionId 对应会话不存在抛出 403（不泄露存在性）")
+    void chat_withUnknownSession_throws403() {
+        when(chatSessionService.findById(99L)).thenReturn(null);
+
+        BizException ex = assertThrows(
+                BizException.class, () -> entry.chat(mockRequestWithUserId(123L), new ChatRequest(99L, "你好")));
+        assertEquals(403, ex.getCode());
+        verify(chatRunService, never()).createRun(any(), any());
+    }
+
+    @Test
     @DisplayName("XADD 失败 → run 状态回滚 ERROR + removeRing + 503（P0-4c）")
     void chat_xaddFailure_rollsBackRun() {
-        // Given: 会话与 run 创建成功（复用既有 mock 构造），XADD 抛异常模拟 Redis 不可用
-        ChatSession mockSession = mock(ChatSession.class);
-        when(mockSession.getId()).thenReturn(456L);
-        when(chatSessionService.createSession(eq(123L), anyString())).thenReturn(mockSession);
+        // Given: 会话（返回 SessionVO）与 run 创建成功，XADD 抛异常模拟 Redis 不可用
+        when(chatSessionService.createSession(eq(123L), anyString()))
+                .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
 
         ChatRun mockRun = mock(ChatRun.class);
         when(mockRun.getId()).thenReturn(123L);
@@ -213,10 +220,9 @@ class ChatStreamEntryTest {
     @Test
     @DisplayName("XADD 与 DB 双挂 → updateStatus 失败仍 removeRing + 503（P0-4c 复合故障兜底）")
     void chat_xaddAndDbBothFail_stillRemovesRing() {
-        // Given: 会话与 run 创建成功；XADD 与 run 状态回滚均抛异常（Redis+DB 双挂）
-        ChatSession mockSession = mock(ChatSession.class);
-        when(mockSession.getId()).thenReturn(456L);
-        when(chatSessionService.createSession(eq(123L), anyString())).thenReturn(mockSession);
+        // Given: 会话（返回 SessionVO）与 run 创建成功；XADD 与 run 状态回滚均抛异常（Redis+DB 双挂）
+        when(chatSessionService.createSession(eq(123L), anyString()))
+                .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
 
         ChatRun mockRun = mock(ChatRun.class);
         when(mockRun.getId()).thenReturn(123L);

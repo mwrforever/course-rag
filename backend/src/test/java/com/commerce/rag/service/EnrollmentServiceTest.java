@@ -6,6 +6,8 @@ import static org.mockito.Mockito.*;
 
 import com.commerce.rag.convert.EnrollmentConverter;
 import com.commerce.rag.convert.EnrollmentConverterImpl;
+import com.commerce.rag.convert.StudentConverter;
+import com.commerce.rag.convert.StudentConverterImpl;
 import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
@@ -16,6 +18,8 @@ import com.commerce.rag.mapper.CourseEnrollmentMapper;
 import com.commerce.rag.mapper.SysUserMapper;
 import com.commerce.rag.service.impl.EnrollmentServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.StudentCourseVO;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
@@ -53,6 +57,10 @@ class EnrollmentServiceTest {
 
     @Spy
     private EnrollmentConverter enrollmentConverter = new EnrollmentConverterImpl();
+
+    /** 学生端转换器用真实实现（MapStruct 生成类），转换行为由 StudentConverterTest 单独覆盖 */
+    @Spy
+    private StudentConverter studentConverter = new StudentConverterImpl();
 
     @InjectMocks
     private EnrollmentServiceImpl enrollmentService;
@@ -213,6 +221,54 @@ class EnrollmentServiceTest {
 
         assertTrue(result.isEmpty());
         verify(courseService, never()).toDTO(any(), anyBoolean());
+    }
+
+    // ==================== findStudentCoursesAsVO ====================
+
+    @Test
+    @DisplayName("findStudentCoursesAsVO → 批量查询后转为 C 端课程 VO（剔除价格/描述等内部字段）")
+    void findStudentCoursesAsVO_returnsConvertedVOs() {
+        when(enrollmentMapper.selectList(any()))
+                .thenReturn(List.of(enrollment(1L, 5L, "ACTIVE"), enrollment(2L, 5L, "ACTIVE")));
+        CourseInfo c1 = new CourseInfo();
+        c1.setId(1L);
+        c1.setTitle("Java 入门");
+        c1.setCoverImage("cover.png");
+        c1.setCategory("编程");
+        c1.setInstructorName("张老师");
+        c1.setDuration("10h");
+        c1.setRating(new BigDecimal("4.5"));
+        c1.setLearningCount(100);
+        c1.setPrice(new BigDecimal("99"));
+        CourseInfo c2 = new CourseInfo();
+        c2.setId(2L);
+        c2.setTitle("Spring");
+        when(courseService.findByIds(List.of(1L, 2L))).thenReturn(List.of(c1, c2));
+
+        List<StudentCourseVO> result = enrollmentService.findStudentCoursesAsVO(5L);
+
+        assertEquals(2, result.size());
+        StudentCourseVO vo = result.get(0);
+        assertEquals(1L, vo.id());
+        assertEquals("Java 入门", vo.title());
+        assertEquals("cover.png", vo.coverImage());
+        assertEquals("编程", vo.category());
+        assertEquals("张老师", vo.instructorName());
+        assertEquals("10h", vo.duration());
+        assertEquals(new BigDecimal("4.5"), vo.rating());
+        assertEquals(100, vo.learningCount());
+        verify(courseService).findByIds(List.of(1L, 2L));
+    }
+
+    @Test
+    @DisplayName("findStudentCoursesAsVO → 无选课时返回空列表（不触发课程查询）")
+    void findStudentCoursesAsVO_noEnrollment_returnsEmpty() {
+        when(enrollmentMapper.selectList(any())).thenReturn(List.of());
+
+        List<StudentCourseVO> result = enrollmentService.findStudentCoursesAsVO(5L);
+
+        assertTrue(result.isEmpty());
+        verify(courseService, never()).findByIds(anyList());
     }
 
     // ==================== isEnrolled ====================

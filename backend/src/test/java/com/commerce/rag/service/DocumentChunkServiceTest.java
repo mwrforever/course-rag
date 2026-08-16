@@ -8,6 +8,8 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.convert.DocumentChunkConverter;
 import com.commerce.rag.convert.DocumentChunkConverterImpl;
+import com.commerce.rag.convert.StudentConverter;
+import com.commerce.rag.convert.StudentConverterImpl;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.entity.KnowledgeBase;
@@ -18,6 +20,9 @@ import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.service.impl.DocumentChunkServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.ChunkBriefVO;
+import com.commerce.rag.vo.ChunkContextVO;
+import com.commerce.rag.vo.ChunkVO;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -56,6 +61,10 @@ class DocumentChunkServiceTest {
     /** 转换器用真实实现（MapStruct 生成类），转换行为由 DocumentChunkConverterTest 单独覆盖 */
     @Spy
     private DocumentChunkConverter chunkConverter = new DocumentChunkConverterImpl();
+
+    /** 学生端转换器用真实实现（MapStruct 生成类），转换行为由 StudentConverterTest 单独覆盖 */
+    @Spy
+    private StudentConverter studentConverter = new StudentConverterImpl();
 
     @InjectMocks
     private DocumentChunkServiceImpl chunkService;
@@ -204,39 +213,103 @@ class DocumentChunkServiceTest {
         verify(etlPipeline, never()).syncChunkToMilvus(any());
     }
 
-    // ==================== C 端查询方法（J2/J3 数据源） ====================
+    // ==================== C 端查询方法（J2/J3/J4 数据源，VO 出参） ====================
 
-    @Test
-    @DisplayName("findById(无参) → 直接按 ID 查询实体（C 端 J4 数据源）")
-    void findById_noPermission_returnsChunk() {
-        DocumentChunk chunk = new DocumentChunk();
-        chunk.setId(1L);
-        when(chunkMapper.selectById(1L)).thenReturn(chunk);
-
-        DocumentChunk result = chunkService.findById(1L);
-
-        assertEquals(1L, result.getId());
+    /** 构造测试用分片实体（覆盖 C 端视图对象业务字段） */
+    private DocumentChunk chunk(Long id, String courseId) {
+        DocumentChunk c = new DocumentChunk();
+        c.setId(id);
+        c.setCourseId(courseId);
+        c.setDocId(1L);
+        c.setKbId(1L);
+        c.setContent("内容-" + id);
+        c.setHeadingPath("第一章");
+        c.setChunkIndex(1);
+        c.setParentTitle("小节");
+        c.setStartPage(1);
+        c.setEndPage(2);
+        return c;
     }
 
     @Test
-    @DisplayName("findByCourseId → 按课程 ID 查询分片（chunk_index 升序）")
-    void findByCourseId_returnsChunks() {
-        when(chunkMapper.selectList(any())).thenReturn(List.of(new DocumentChunk()));
+    @DisplayName("findContext(C端) → 主分片 + parent/prev/next 组装为上下文 VO")
+    void findContext_returnsContextVO() {
+        DocumentChunk current = chunk(2L, "10");
+        current.setParentChunkId(1L);
+        current.setPrevChunkId(100L);
+        current.setNextChunkId(3L);
+        when(chunkMapper.selectById(2L)).thenReturn(current);
+        when(chunkMapper.selectById(1L)).thenReturn(chunk(1L, "10"));
+        when(chunkMapper.selectById(100L)).thenReturn(chunk(100L, "10"));
+        when(chunkMapper.selectById(3L)).thenReturn(chunk(3L, "10"));
 
-        List<DocumentChunk> result = chunkService.findByCourseId(55L);
+        ChunkContextVO context = chunkService.findContext(2L);
 
-        assertEquals(1, result.size());
+        assertEquals(2L, context.id());
+        assertEquals("10", context.courseId());
+        assertEquals(1L, context.parentChunkId());
+        assertEquals(1L, context.parent().id());
+        assertEquals(100L, context.prev().id());
+        assertEquals(3L, context.next().id());
+    }
+
+    @Test
+    @DisplayName("findContext(C端) → 主分片不存在返回 null")
+    void findContext_chunkNotFound_returnsNull() {
+        when(chunkMapper.selectById(99L)).thenReturn(null);
+
+        assertNull(chunkService.findContext(99L));
+    }
+
+    @Test
+    @DisplayName("findContext(C端) → 相邻分片指针为空/缺失时对应字段为 null")
+    void findContext_missingNeighbors_omitsFields() {
+        DocumentChunk current = chunk(1L, "DEFAULT");
+        current.setParentChunkId(100L);
+        when(chunkMapper.selectById(1L)).thenReturn(current);
+        when(chunkMapper.selectById(100L)).thenReturn(null);
+
+        ChunkContextVO context = chunkService.findContext(1L);
+
+        assertNull(context.parent());
+        assertNull(context.prev());
+        assertNull(context.next());
+    }
+
+    @Test
+    @DisplayName("findByCourseIdAsVO → 按课程 ID 查询分片（chunk_index 升序，VO 出参）")
+    void findByCourseIdAsVO_returnsChunks() {
+        when(chunkMapper.selectList(any())).thenReturn(List.of(chunk(1L, "10"), chunk(2L, "10")));
+
+        List<ChunkVO> result = chunkService.findByCourseIdAsVO(55L);
+
+        assertEquals(2, result.size());
+        ChunkVO vo = result.get(0);
+        assertEquals(1L, vo.id());
+        assertEquals("内容-1", vo.content());
+        assertEquals("第一章", vo.headingPath());
+        assertEquals(1, vo.chunkIndex());
+        assertEquals("小节", vo.parentTitle());
+        assertEquals(1, vo.startPage());
+        assertEquals(2, vo.endPage());
         verify(chunkMapper).selectList(any());
     }
 
     @Test
-    @DisplayName("findByCourseIdDefault → 分页查询 DEFAULT 通用库（size<=0 用默认 20）")
-    void findByCourseIdDefault_returnsPage() {
+    @DisplayName("findByCourseIdDefaultAsVO → 分页查询 DEFAULT 通用库（size<=0 用默认 20，records 转简略 VO）")
+    void findByCourseIdDefaultAsVO_returnsPage() {
         Page<DocumentChunk> page = new Page<>(1, 20);
+        page.setRecords(List.of(chunk(1L, "DEFAULT")));
+        page.setTotal(1);
         when(chunkMapper.selectPage(any(Page.class), any())).thenReturn(page);
 
-        IPage<DocumentChunk> result = chunkService.findByCourseIdDefault(1, 0);
+        IPage<ChunkBriefVO> result = chunkService.findByCourseIdDefaultAsVO(1, 0);
 
-        assertSame(page, result);
+        assertEquals(1, result.getRecords().size());
+        ChunkBriefVO vo = result.getRecords().get(0);
+        assertEquals(1L, vo.id());
+        assertEquals("内容-1", vo.content());
+        assertEquals(1, result.getTotal());
+        assertEquals(1, result.getCurrent());
     }
 }

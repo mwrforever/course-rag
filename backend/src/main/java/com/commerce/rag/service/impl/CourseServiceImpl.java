@@ -87,9 +87,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
      *
      * @param request   创建请求
      * @param createdBy 创建者 ID
-     * @return 课程实体（含雪花 ID）
+     * @return 课程 DTO（含雪花 ID，不含关联数据）
      */
-    public CourseInfo createCourse(CreateCourseRequest request, Long createdBy) {
+    public CourseDTO createCourse(CreateCourseRequest request, Long createdBy) {
         CourseInfo course = new CourseInfo();
         course.setTitle(request.title());
         course.setDescription(request.description());
@@ -108,7 +108,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
         // 新建课程影响搜索列表可见性，失效该课程相关缓存键（先写 DB 后失效）
         courseQueryService.evictCourse(course.getId());
         log.info("创建课程: courseId={}, title={}, createdBy={}", course.getId(), course.getTitle(), createdBy);
-        return course;
+        return toDTO(course, false);
     }
 
     /**
@@ -128,9 +128,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
      *
      * @param courseId        课程 ID
      * @param createdByFilter 创建者过滤（null=不过滤；非 null 且不匹配返回 null）
-     * @return 课程实体，不存在或无权访问返回 null
+     * @return 课程 DTO（含内容/排期/教师关联），不存在或无权访问返回 null
      */
-    public CourseInfo findById(Long courseId, Long createdByFilter) {
+    public CourseDTO findById(Long courseId, Long createdByFilter) {
         CourseInfo course = courseInfoMapper.selectById(courseId);
         if (course == null) {
             return null;
@@ -140,7 +140,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
                 && (course.getCreatedBy() == null || !course.getCreatedBy().equals(createdByFilter))) {
             return null;
         }
-        return course;
+        return toDTO(course, true);
     }
 
     /**
@@ -168,16 +168,21 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
      * @param category  分类筛选（可选）
      * @param keyword   标题关键词（可选）
      * @param createdBy 创建者筛选（null=全部，非 null=仅该创建者）
-     * @return 分页结果
+     * @return 分页结果（records 为课程 DTO，不含关联数据）
      */
-    public IPage<CourseInfo> findPage(int page, int size, String category, String keyword, Long createdBy) {
+    public IPage<CourseDTO> findPage(int page, int size, String category, String keyword, Long createdBy) {
         Page<CourseInfo> pageObj = new Page<>(page, size);
         LambdaQueryWrapper<CourseInfo> wrapper = Wrappers.<CourseInfo>lambdaQuery()
                 .eq(StringUtils.hasText(category), CourseInfo::getCategory, category)
                 .like(StringUtils.hasText(keyword), CourseInfo::getTitle, keyword)
                 .eq(createdBy != null, CourseInfo::getCreatedBy, createdBy)
                 .orderByDesc(CourseInfo::getCreatedAt);
-        return courseInfoMapper.selectPage(pageObj, wrapper);
+        IPage<CourseInfo> entityPage = courseInfoMapper.selectPage(pageObj, wrapper);
+        // 实体分页 → DTO 分页：records 逐条转换，total/current/size 分页语义保持
+        Page<CourseDTO> dtoPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
+        dtoPage.setRecords(
+                entityPage.getRecords().stream().map(c -> toDTO(c, false)).collect(Collectors.toList()));
+        return dtoPage;
     }
 
     /**
