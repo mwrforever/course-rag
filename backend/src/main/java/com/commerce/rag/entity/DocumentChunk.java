@@ -80,6 +80,18 @@ public class DocumentChunk implements Serializable {
     @TableField("course_id")
     private String courseId;
 
+    /** 分片内容类型：text 文本 / image 图片（content=caption）/ table 表格（Markdown） */
+    @TableField("content_type")
+    private String contentType;
+
+    /** 图片分片的 MinIO objectKey（仅 content_type=image 有值，其余为 null） */
+    @TableField("image_url")
+    private String imageUrl;
+
+    /** 归一化内容的 SHA-256 十六进制摘要（64 字符，ETL 全局去重键） */
+    @TableField("sha256")
+    private String sha256;
+
     /** 元数据 JSON（JSONB） */
     @TableField("metadata_json")
     private String metadataJson;

@@ -66,6 +66,9 @@ CREATE TABLE document_chunk (
     token_count       INT          DEFAULT 0,
     collection_type   VARCHAR(20)  NOT NULL DEFAULT 'TECHNICAL_QA',
     course_id         VARCHAR(64)  DEFAULT 'DEFAULT',
+    content_type      VARCHAR(20)  NOT NULL DEFAULT 'text',
+    image_url         VARCHAR(1000),
+    sha256            VARCHAR(64),
     metadata_json     TEXT        DEFAULT '{}',
     milvus_pk         VARCHAR(64),
     parent_chunk_id   BIGINT,
@@ -89,6 +92,7 @@ CREATE INDEX idx_document_chunk_parent        ON document_chunk(parent_chunk_id)
 CREATE INDEX idx_document_chunk_prev           ON document_chunk(prev_chunk_id) WHERE prev_chunk_id IS NOT NULL AND deleted = 0;
 CREATE INDEX idx_document_chunk_next           ON document_chunk(next_chunk_id) WHERE next_chunk_id IS NOT NULL AND deleted = 0;
 CREATE INDEX idx_document_chunk_correction    ON document_chunk(correction_status, kb_id) WHERE deleted = 0;
+CREATE INDEX idx_document_chunk_sha256       ON document_chunk(sha256) WHERE deleted = 0;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 二、用户体系（1 表）
