@@ -70,8 +70,7 @@ class SearchKnowledgeToolTest {
                 .entity(Map.of(
                         "chunk_id", "chunk_001",
                         "content", "Redis配置方法...",
-                        "heading_path", "Ch3 > 3.2",
-                        "collection_type", "TECHNICAL_QA"))
+                        "heading_path", "Ch3 > 3.2"))
                 .build();
 
         SearchResp searchResp = mock(SearchResp.class);
@@ -102,7 +101,7 @@ class SearchKnowledgeToolTest {
         assertEquals("", chunk.source()); // source 已废弃，设为空字符串
         assertEquals("Ch3 > 3.2", chunk.headingPath());
         assertEquals(0.95, chunk.score(), 0.001);
-        assertEquals(IntentType.TECHNICAL_QA, chunk.collectionType());
+        assertNull(chunk.collectionType()); // S1 意图-检索解耦：检索结果不再携带 collection_type 意图
     }
 
     @Test
@@ -131,12 +130,8 @@ class SearchKnowledgeToolTest {
         // 由于 filter 在 AnnSearchReq 上，我们通过 buildFilterExpression 间接验证
         // 这里直接验证 buildFilterExpression 方法
         String expr = tool.buildFilterExpression(query);
-        assertNotNull(expr);
-        assertTrue(expr.contains("course_id in ["), "过滤表达式应包含 course_id in [");
-        assertTrue(expr.contains("DEFAULT"), "过滤表达式应包含 DEFAULT");
-        assertTrue(expr.contains("COURSE_123"), "过滤表达式应包含 COURSE_123");
-        assertTrue(expr.contains("COURSE_456"), "过滤表达式应包含 COURSE_456");
-        assertTrue(expr.contains("COURSE_INFO"), "过滤表达式应包含 collection_type");
+        assertEquals("(course_id == \"DEFAULT\" or course_id in [\"COURSE_123\", \"COURSE_456\"])", expr);
+        assertFalse(expr.contains("collection_type"), "过滤表达式不应含 collection_type（S1 意图-检索解耦）");
 
         // 空结果
         assertTrue(result.isEmpty());
@@ -190,36 +185,32 @@ class SearchKnowledgeToolTest {
     }
 
     @Test
-    @DisplayName("buildFilterExpression — 无 courseIds 时仅 collection_type")
-    void buildFilterExpression_noCourseIds_onlyCollectionType() {
+    @DisplayName("buildFilterExpression — 无 courseIds 时不设过滤（返回 null，全局检索）")
+    void buildFilterExpression_noCourseIds_returnsNull() {
         TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "test", null);
 
-        String expr = tool.buildFilterExpression(query);
-
-        assertEquals("collection_type == \"TECHNICAL_QA\"", expr);
+        assertNull(tool.buildFilterExpression(query));
     }
 
     @Test
-    @DisplayName("buildFilterExpression — 有 courseIds 时包含 in + DEFAULT OR")
-    void buildFilterExpression_withCourseIds_includesInAndDefault() {
+    @DisplayName("buildFilterExpression — 有 courseIds 时仅 course_id 子句（in + DEFAULT OR，不含 collection_type）")
+    void buildFilterExpression_withCourseIds_onlyCourseClause() {
         TypedQuery query = new TypedQuery(IntentType.COURSE_INFO, "test", List.of("C1", "C2"));
 
         String expr = tool.buildFilterExpression(query);
 
-        assertTrue(expr.contains("collection_type == \"COURSE_INFO\""));
-        assertTrue(expr.contains("course_id == \"DEFAULT\""));
-        assertTrue(expr.contains("course_id in [\"C1\", \"C2\"]"));
-        assertTrue(expr.contains(" and ("));
+        assertEquals("(course_id == \"DEFAULT\" or course_id in [\"C1\", \"C2\"])", expr);
+        assertFalse(expr.contains("collection_type"), "过滤表达式不应含 collection_type（S1 意图-检索解耦）");
     }
 
     // ==================== A2-2 补测：searchKnowledge 入口 / 并行 / 降级 / 双路检索 ====================
 
     @Test
-    @DisplayName("buildFilterExpression — courseIds 为空列表时不拼 course_id 条件")
-    void buildFilterExpression_emptyCourseIds_noCourseClause() {
+    @DisplayName("buildFilterExpression — courseIds 为空列表时不设过滤（返回 null）")
+    void buildFilterExpression_emptyCourseIds_returnsNull() {
         TypedQuery query = new TypedQuery(IntentType.COURSE_INFO, "test", List.of());
 
-        assertEquals("collection_type == \"COURSE_INFO\"", tool.buildFilterExpression(query));
+        assertNull(tool.buildFilterExpression(query));
     }
 
     @Test
@@ -388,8 +379,7 @@ class SearchKnowledgeToolTest {
                 SearchResp.SearchResult.builder().score(0.5f).entity(null).build();
         Map<String, Object> entity = Map.of(
                 "chunk_id", "chunk_002",
-                "content", "内容2",
-                "collection_type", "TECHNICAL_QA");
+                "content", "内容2");
         SearchResp.SearchResult partial =
                 SearchResp.SearchResult.builder().entity(entity).build();
         SearchResp resp = mock(SearchResp.class);
@@ -402,31 +392,6 @@ class SearchKnowledgeToolTest {
         assertEquals("chunk_002", chunks.get(0).chunkId());
         assertEquals(0.0, chunks.get(0).score(), 0.001);
         assertEquals("", chunks.get(0).headingPath());
-    }
-
-    @Test
-    @DisplayName("searchSingle collection_type 缺失/非法 — 归为 TECHNICAL_QA 兜底")
-    void searchSingle_invalidCollectionType_defaultsToTechnicalQa() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
-        when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
-
-        Map<String, Object> blankType = Map.of("chunk_id", "c1", "content", "内容1", "collection_type", "  ");
-        Map<String, Object> invalidType = Map.of("chunk_id", "c2", "content", "内容2", "collection_type", "NOT_A_TYPE");
-        SearchResp.SearchResult r1 =
-                SearchResp.SearchResult.builder().score(0.1f).entity(blankType).build();
-        SearchResp.SearchResult r2 = SearchResp.SearchResult.builder()
-                .score(0.2f)
-                .entity(invalidType)
-                .build();
-        SearchResp resp = mock(SearchResp.class);
-        when(resp.getSearchResults()).thenReturn(List.of(List.of(r1, r2)));
-        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
-
-        List<KnowledgeChunk> chunks = tool.searchSingle(query);
-
-        assertEquals(2, chunks.size());
-        assertEquals(IntentType.TECHNICAL_QA, chunks.get(0).collectionType());
-        assertEquals(IntentType.TECHNICAL_QA, chunks.get(1).collectionType());
     }
 
     @Test

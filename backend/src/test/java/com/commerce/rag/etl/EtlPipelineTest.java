@@ -20,6 +20,7 @@ import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.google.gson.JsonObject;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.InsertReq;
@@ -493,6 +494,37 @@ class EtlPipelineTest {
         ArgumentCaptor<InsertReq> insertCaptor = ArgumentCaptor.forClass(InsertReq.class);
         verify(milvusClientV2, times(1)).insert(insertCaptor.capture());
         assertEquals(2, insertCaptor.getValue().getData().size(), "多行插入应携带 2 行");
+    }
+
+    @Test
+    @DisplayName("Milvus 行字段 — 新 schema：含 content_type/image_url/sha256，不含 collection_type")
+    void milvusRow_containsNewFields_noCollectionType() {
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setTitle("测试文档");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        chunk.setDocId(1L);
+        chunk.setKbId(10L);
+        chunk.setContent("图片描述");
+        chunk.setContentType("image");
+        chunk.setImageUrl("10/abc.png");
+        chunk.setSha256("f".repeat(64));
+        chunk.setChunkIndex(0);
+        when(chunkMapper.selectList(any())).thenReturn(List.of(chunk));
+        when(embeddingModel.embed(anyList())).thenReturn(List.of(new float[] {0.1f, 0.2f}));
+
+        etlPipeline.embedAndIndex(1L);
+
+        ArgumentCaptor<InsertReq> captor = ArgumentCaptor.forClass(InsertReq.class);
+        verify(milvusClientV2).insert(captor.capture());
+        JsonObject row = captor.getValue().getData().get(0);
+        assertEquals("image", row.get("content_type").getAsString());
+        assertEquals("10/abc.png", row.get("image_url").getAsString());
+        assertEquals("f".repeat(64), row.get("sha256").getAsString());
+        assertNull(row.get("collection_type"), "新 schema 行不应含 collection_type");
     }
 
     // ==================== reEmbedAndUpsert / 同步 Milvus（M-4 批量） ====================

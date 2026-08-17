@@ -1,6 +1,5 @@
 package com.commerce.rag.bot.tool;
 
-import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
 import com.commerce.rag.config.MilvusCollectionInitializer;
@@ -32,12 +31,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * 统一知识检索工具（v2 API）—— 单 Collection + 标量路由 + 混合检索
+ * 统一知识检索工具（v2 API）—— 单 Collection + 意图检索解耦 + 混合检索
  *
  * <p>核心架构：
  * <ul>
- *   <li>单 Milvus Collection {@code knowledge_chunks}，通过标量字段
- *       {@code collection_type} 过滤实现逻辑分区</li>
+ *   <li>单 Milvus Collection {@code knowledge_chunks}，S1 意图-检索解耦：
+ *       意图判定由上游节点完成，检索不再按 {@code collection_type} 过滤，
+ *       仅按课程归属 {@code course_id} 收窄检索范围</li>
  *   <li><b>混合检索</b>：dense（FloatVec + COSINE）+ sparse（EmbeddedText + BM25），
  *       由 RRFRanker(k=60) 融合</li>
  *   <li>并行检索：接收 {@code List<TypedQuery>}，CompletableFuture.allOf 并发执行</li>
@@ -71,14 +71,13 @@ public class SearchKnowledgeTool {
     private static final String HNSW_PARAMS = "{\"ef\": 64}";
 
     /**
-     * Milvus 输出字段列表（10 个标量字段，不含 source/dense_vector/sparse_vector）
+     * Milvus 输出字段列表（9 个标量字段，不含 source/dense_vector/sparse_vector）
      * 字段名全部引用 MilvusCollectionInitializer 公开常量，确保一致
      */
     private static final List<String> OUTPUT_FIELDS = List.of(
             MilvusCollectionInitializer.FIELD_CHUNK_ID,
             MilvusCollectionInitializer.FIELD_CONTENT,
             MilvusCollectionInitializer.FIELD_HEADING_PATH,
-            MilvusCollectionInitializer.FIELD_COLLECTION_TYPE,
             MilvusCollectionInitializer.FIELD_COURSE_ID,
             MilvusCollectionInitializer.FIELD_DOC_ID,
             MilvusCollectionInitializer.FIELD_KB_ID,
@@ -120,7 +119,7 @@ public class SearchKnowledgeTool {
      * @param queries 查询重写后的多条覆盖性查询
      * @return 去重、融合、精排后的知识检索结果
      */
-    @Tool(description = "知识库检索：根据类型化查询（TECHNICAL_QA 技术答疑 / COURSE_INFO 课程咨询）混合检索 Milvus 知识库并精排返回")
+    @Tool(description = "知识库检索：混合检索 Milvus 知识库（dense+sparse RRF 融合）并精排返回")
     public KnowledgeSearchResult searchKnowledge(List<TypedQuery> queries) {
         if (queries == null || queries.isEmpty()) {
             return new KnowledgeSearchResult(Collections.emptyList());
@@ -178,7 +177,7 @@ public class SearchKnowledgeTool {
      * <p>流程：
      * <ol>
      *   <li>使用 EmbeddingModel 将 query.queryText() 向量化 → dense 向量</li>
-     *   <li>构建 Milvus 过滤表达式（collection_type + 可选 course_id IN + DEFAULT OR）</li>
+     *   <li>构建 Milvus 过滤表达式（仅 course_id 子句，无 courseIds 时不设过滤）</li>
      *   <li>构建 dense AnnSearchReq（FloatVec + COSINE）</li>
      *   <li>构建 sparse AnnSearchReq（EmbeddedText + BM25）</li>
      *   <li>构建 HybridSearchReq（RRFRanker(k=60) 融合）</li>
@@ -272,11 +271,9 @@ public class SearchKnowledgeTool {
                 String chunkId = getStr(entity, MilvusCollectionInitializer.FIELD_CHUNK_ID);
                 String content = getStr(entity, MilvusCollectionInitializer.FIELD_CONTENT);
                 String headingPath = getStr(entity, MilvusCollectionInitializer.FIELD_HEADING_PATH);
-                String collectionTypeStr = getStr(entity, MilvusCollectionInitializer.FIELD_COLLECTION_TYPE);
 
-                IntentType collectionType = parseCollectionType(collectionTypeStr);
-
-                chunks.add(new KnowledgeChunk(chunkId, content, "", "", headingPath, score, collectionType));
+                // S1 意图-检索解耦：不再从 collection_type 解析意图，构造传 null（上游节点判定）
+                chunks.add(new KnowledgeChunk(chunkId, content, "", "", headingPath, score, null));
             }
 
             log.debug("单条检索完成: type={}, 结果数={}", query.collectionType(), chunks.size());
@@ -289,26 +286,24 @@ public class SearchKnowledgeTool {
     }
 
     /**
-     * 构建 Milvus 标量过滤表达式
+     * 构建 Milvus 标量过滤表达式（S1 意图-检索解耦：不再按 collection_type 过滤）
      *
      * <p>格式：
      * <ul>
-     *   <li>无 courseIds：{@code collection_type == "TECHNICAL_QA"}</li>
-     *   <li>有 courseIds：{@code collection_type == "TECHNICAL_QA" and
-     *       (course_id == "DEFAULT" or course_id in ["C1", "C2"])}</li>
+     *   <li>无 courseIds：返回 null（不设过滤，全局检索）</li>
+     *   <li>有 courseIds：{@code (course_id == "DEFAULT" or course_id in ["C1", "C2"])}</li>
      * </ul>
      *
      * @param query 类型化查询
-     * @return Milvus 过滤表达式字符串
+     * @return Milvus 过滤表达式字符串，无过滤条件时为 null
      */
     String buildFilterExpression(TypedQuery query) {
-        String expr = "collection_type == \"" + query.collectionType().name() + "\"";
-        if (query.courseIds() != null && !query.courseIds().isEmpty()) {
-            String courseList =
-                    query.courseIds().stream().map(id -> "\"" + id + "\"").collect(Collectors.joining(", "));
-            expr += " and (course_id == \"DEFAULT\" or course_id in [" + courseList + "])";
+        if (query.courseIds() == null || query.courseIds().isEmpty()) {
+            return null;
         }
-        return expr;
+        String courseList =
+                query.courseIds().stream().map(id -> "\"" + id + "\"").collect(Collectors.joining(", "));
+        return "(course_id == \"DEFAULT\" or course_id in [" + courseList + "])";
     }
 
     /**
@@ -318,20 +313,6 @@ public class SearchKnowledgeTool {
         Object val = entity.get(key);
         if (val == null) return "";
         return String.valueOf(val);
-    }
-
-    /**
-     * 解析 collection_type 字符串为 IntentType 枚举
-     */
-    private static IntentType parseCollectionType(String typeStr) {
-        if (typeStr == null || typeStr.isBlank()) {
-            return IntentType.TECHNICAL_QA;
-        }
-        try {
-            return IntentType.valueOf(typeStr);
-        } catch (IllegalArgumentException e) {
-            return IntentType.TECHNICAL_QA;
-        }
     }
 
     private static String truncate(String s, int maxLen) {

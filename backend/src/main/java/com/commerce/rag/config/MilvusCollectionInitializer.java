@@ -8,11 +8,16 @@ import io.milvus.v2.service.collection.request.AddFieldReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq.CollectionSchema;
 import io.milvus.v2.service.collection.request.CreateCollectionReq.Function;
+import io.milvus.v2.service.collection.request.DescribeCollectionReq;
+import io.milvus.v2.service.collection.request.DropCollectionReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.collection.request.LoadCollectionReq;
+import io.milvus.v2.service.collection.response.DescribeCollectionResp;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,19 +26,20 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 /**
- * Milvus Collection 自动初始化器（v2 API）—— 应用启动时幂等创建 {@code knowledge_chunks}
+ * Milvus Collection 自动初始化器（v2 API）—— 应用启动时比对重建 {@code knowledge_chunks}
  *
  * <p>核心职责：
  * <ul>
  *   <li>实现 {@link ApplicationRunner}，Spring Boot 启动后自动执行</li>
- *   <li><b>幂等</b>：先检查 Collection 是否存在，存在则跳过，不存在才创建</li>
- *   <li>12 字段 Schema + BM25 Function + 4 索引一步创建（v2 API：{@code indexParams} 随 {@code createCollection}）</li>
+ *   <li><b>比对重建</b>：Collection 存在时 describe 比对实际字段集与期望 14 字段集，
+ *       完全匹配才跳过；不匹配（历史版本 schema）drop 重建</li>
+ *   <li>14 字段 Schema + BM25 Function + 3 索引一步创建（v2 API：{@code indexParams} 随 {@code createCollection}）</li>
  *   <li>创建后调用 {@code loadCollection} 加载到内存</li>
  *   <li>通过配置开关 {@code milvus.auto-create-collection} 控制是否启用（默认 true）</li>
- *   <li><b>异常降级</b>：Milvus 不可达时 log warn 并跳过，不阻断应用启动</li>
+ *   <li><b>异常降级</b>：Milvus 不可达或创建失败时 log warn 并跳过，不阻断应用启动</li>
  * </ul>
  *
- * <p>Collection Schema（12 字段，必须与 SearchKnowledgeTool / EtlPipeline 精确匹配）：
+ * <p>Collection Schema（14 字段，必须与 SearchKnowledgeTool / EtlPipeline 精确匹配）：
  * <pre>
  * | 字段名           | 类型                 | 约束 / 备注                      |
  * | chunk_id         | VARCHAR(64)          | Primary Key, autoID=false       |
@@ -45,17 +51,18 @@ import org.springframework.stereotype.Component;
  * | sparse_vector    | SPARSE_FLOAT_VECTOR  | 服务端 BM25 Function 自动生成    |
  * | chunk_index      | INT32                | 分片序号                         |
  * | token_count      | INT32                | token 数量                       |
- * | collection_type  | VARCHAR(20)          | TECHNICAL_QA / COURSE_INFO       |
  * | course_id        | VARCHAR(64)          | DEFAULT / 具体课程 ID            |
+ * | content_type     | VARCHAR(20)          | 分片内容类型（text / image / table）|
+ * | image_url        | VARCHAR(1000)        | 图片分片的 MinIO objectKey        |
+ * | sha256           | VARCHAR(64)          | 归一化内容哈希（检索侧防御去重用） |
  * | updated_at       | INT64                | Unix epoch 秒                    |
  * </pre>
  *
  * <p>Function（1 个）：BM25 — input=[content], output=[sparse_vector]
- * <p>索引（4 个，随 Collection 一起创建）：
+ * <p>索引（3 个，随 Collection 一起创建）：
  * <ul>
  *   <li>dense_vector: HNSW, COSINE, M=16, efConstruction=200</li>
  *   <li>sparse_vector: SPARSE_INVERTED_INDEX, BM25</li>
- *   <li>collection_type: INVERTED（标量索引）</li>
  *   <li>course_id: INVERTED（标量索引）</li>
  * </ul>
  *
@@ -80,9 +87,28 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
     public static final String FIELD_SPARSE_VECTOR = "sparse_vector";
     public static final String FIELD_CHUNK_INDEX = "chunk_index";
     public static final String FIELD_TOKEN_COUNT = "token_count";
-    public static final String FIELD_COLLECTION_TYPE = "collection_type";
     public static final String FIELD_COURSE_ID = "course_id";
+    public static final String FIELD_CONTENT_TYPE = "content_type";
+    public static final String FIELD_IMAGE_URL = "image_url";
+    public static final String FIELD_SHA256 = "sha256";
     public static final String FIELD_UPDATED_AT = "updated_at";
+
+    /** 期望 schema 字段全集（14 个）——启动时 describe 比对，不匹配则 drop 重建 */
+    private static final List<String> EXPECTED_FIELD_NAMES = List.of(
+            FIELD_CHUNK_ID,
+            FIELD_DOC_ID,
+            FIELD_KB_ID,
+            FIELD_CONTENT,
+            FIELD_HEADING_PATH,
+            FIELD_DENSE_VECTOR,
+            FIELD_SPARSE_VECTOR,
+            FIELD_CHUNK_INDEX,
+            FIELD_TOKEN_COUNT,
+            FIELD_COURSE_ID,
+            FIELD_CONTENT_TYPE,
+            FIELD_IMAGE_URL,
+            FIELD_SHA256,
+            FIELD_UPDATED_AT);
 
     // ── 字段长度常量 ──
     private static final int MAX_LEN_CHUNK_ID = 64;
@@ -90,8 +116,10 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
     private static final int MAX_LEN_KB_ID = 64;
     private static final int MAX_LEN_CONTENT = 65535;
     private static final int MAX_LEN_HEADING_PATH = 500;
-    private static final int MAX_LEN_COLLECTION_TYPE = 20;
     private static final int MAX_LEN_COURSE_ID = 64;
+    private static final int MAX_LEN_CONTENT_TYPE = 20;
+    private static final int MAX_LEN_IMAGE_URL = 1000;
+    private static final int MAX_LEN_SHA256 = 64;
 
     private final MilvusClientV2 milvusClientV2;
     private final String collectionName;
@@ -154,25 +182,32 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
      *
      * <p>流程：
      * <ol>
-     *   <li>检查 Collection 是否存在（幂等保证）</li>
-     *   <li>不存在时创建 Collection（12 字段 Schema + BM25 Function + 4 索引一步创建）</li>
+     *   <li>检查 Collection 是否存在</li>
+     *   <li>已存在时 describe 比对 schema，匹配则跳过；不匹配（历史版本）drop 重建</li>
+     *   <li>创建 Collection（14 字段 Schema + BM25 Function + 3 索引一步创建）</li>
      *   <li>加载 Collection 到内存</li>
      * </ol>
      *
      * @throws RuntimeException Milvus 操作失败时抛出（由 {@link #run} 捕获降级）
      */
     private void initCollection() {
-        // 1. 检查 Collection 是否存在（幂等）
+        // 1. 检查 Collection 是否存在
         Boolean exists = milvusClientV2.hasCollection(
                 HasCollectionReq.builder().collectionName(collectionName).build());
 
         if (Boolean.TRUE.equals(exists)) {
-            log.info("Milvus Collection 已存在，跳过创建: name={}", collectionName);
-            return;
+            if (schemaMatches()) {
+                log.info("Milvus Collection 已存在且 schema 匹配，跳过创建: name={}", collectionName);
+                return;
+            }
+            // S1 §12：schema 不匹配（历史版本）→ drop 重建（开发库无业务数据，用户已拍板）
+            log.warn("Milvus Collection schema 不匹配，drop 重建: name={}", collectionName);
+            milvusClientV2.dropCollection(
+                    DropCollectionReq.builder().collectionName(collectionName).build());
         }
 
-        // 2. 构建 Schema + 索引，一步创建 Collection
-        log.info("Milvus Collection 不存在，开始创建: name={}", collectionName);
+        // 2. 创建 Collection（14 字段 Schema + BM25 Function + 3 索引）
+        log.info("开始创建 Milvus Collection: name={}", collectionName);
         CollectionSchema schema = buildCollectionSchema();
         List<IndexParam> indexParams = buildIndexParams();
 
@@ -185,14 +220,40 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
         milvusClientV2.createCollection(createReq);
         log.info("Milvus Collection 创建成功（含 Schema + Function + 索引）: name={}", collectionName);
 
-        // 3. 加载 Collection 到内存（search 前必须 load）
+        // 3. 加载 Collection 到内存
         milvusClientV2.loadCollection(
                 LoadCollectionReq.builder().collectionName(collectionName).build());
         log.info("Milvus Collection 加载完成: name={}", collectionName);
     }
 
     /**
-     * 构建 Collection Schema —— 12 个字段 + BM25 Function
+     * describe 比对实际字段集与期望字段集（双向包含，多余/缺失都视为不匹配）
+     *
+     * <p>describe 异常或返回空字段信息时保守返回 true（视为匹配）——不因 Milvus 瞬时故障误删有数据 Collection。
+     */
+    private boolean schemaMatches() {
+        try {
+            DescribeCollectionResp resp = milvusClientV2.describeCollection(DescribeCollectionReq.builder()
+                    .collectionName(collectionName)
+                    .build());
+            // describe 返回 null/空字段信息（未抛异常）同属异常态——保守视为匹配，不做破坏性 drop。
+            // SDK 的 DescribeCollectionResp 构造对 fieldNames 空值默认填充空列表，故空列表也须覆盖
+            if (resp == null
+                    || resp.getFieldNames() == null
+                    || resp.getFieldNames().isEmpty()) {
+                return true;
+            }
+            Set<String> actual = new HashSet<>(resp.getFieldNames());
+            return actual.containsAll(EXPECTED_FIELD_NAMES) && EXPECTED_FIELD_NAMES.containsAll(actual);
+        } catch (Exception e) {
+            log.warn(
+                    "Milvus describe 失败，保守视为 schema 匹配（跳过重建）: collection={}, error={}", collectionName, e.getMessage());
+            return true;
+        }
+    }
+
+    /**
+     * 构建 Collection Schema —— 14 个字段 + BM25 Function
      *
      * <p>字段定义必须与 {@code SearchKnowledgeTool.OUTPUT_FIELDS} 和
      * {@code EtlPipeline.insertToMilvus} 的字段完全一致。
@@ -265,21 +326,35 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
                 .dataType(DataType.Int32)
                 .build());
 
-        // 10. collection_type — 标量路由字段（TECHNICAL_QA / COURSE_INFO）
-        schema.addField(AddFieldReq.builder()
-                .fieldName(FIELD_COLLECTION_TYPE)
-                .dataType(DataType.VarChar)
-                .maxLength(MAX_LEN_COLLECTION_TYPE)
-                .build());
-
-        // 11. course_id — 课程 ID（DEFAULT 表示无特定课程）
+        // 10. course_id — 课程 ID（DEFAULT 表示无特定课程）
         schema.addField(AddFieldReq.builder()
                 .fieldName(FIELD_COURSE_ID)
                 .dataType(DataType.VarChar)
                 .maxLength(MAX_LEN_COURSE_ID)
                 .build());
 
-        // 12. updated_at — 更新时间戳（Unix epoch 秒）
+        // 11. content_type — 分片内容类型（text / image / table）
+        schema.addField(AddFieldReq.builder()
+                .fieldName(FIELD_CONTENT_TYPE)
+                .dataType(DataType.VarChar)
+                .maxLength(MAX_LEN_CONTENT_TYPE)
+                .build());
+
+        // 12. image_url — 图片分片的 MinIO objectKey（仅 image 分片有值）
+        schema.addField(AddFieldReq.builder()
+                .fieldName(FIELD_IMAGE_URL)
+                .dataType(DataType.VarChar)
+                .maxLength(MAX_LEN_IMAGE_URL)
+                .build());
+
+        // 13. sha256 — 归一化内容哈希（检索侧防御去重用，计划 2/5 消费）
+        schema.addField(AddFieldReq.builder()
+                .fieldName(FIELD_SHA256)
+                .dataType(DataType.VarChar)
+                .maxLength(MAX_LEN_SHA256)
+                .build());
+
+        // 14. updated_at — 更新时间戳（Unix epoch 秒）
         schema.addField(AddFieldReq.builder()
                 .fieldName(FIELD_UPDATED_AT)
                 .dataType(DataType.Int64)
@@ -297,12 +372,11 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
     }
 
     /**
-     * 构建 4 个索引参数（随 Collection 一起创建）
+     * 构建 3 个索引参数（随 Collection 一起创建）
      *
      * <ul>
      *   <li>dense_vector: HNSW, COSINE, M=16, efConstruction=200</li>
      *   <li>sparse_vector: SPARSE_INVERTED_INDEX, BM25</li>
-     *   <li>collection_type: INVERTED（标量索引）</li>
      *   <li>course_id: INVERTED（标量索引）</li>
      * </ul>
      *
@@ -326,13 +400,7 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
                 .metricType(IndexParam.MetricType.BM25)
                 .build());
 
-        // 3. collection_type: INVERTED（标量索引，加速过滤表达式）
-        indexParams.add(IndexParam.builder()
-                .fieldName(FIELD_COLLECTION_TYPE)
-                .indexType(IndexParam.IndexType.INVERTED)
-                .build());
-
-        // 4. course_id: INVERTED（标量索引，加速过滤表达式）
+        // 3. course_id: INVERTED（标量索引，加速过滤表达式）
         indexParams.add(IndexParam.builder()
                 .fieldName(FIELD_COURSE_ID)
                 .indexType(IndexParam.IndexType.INVERTED)

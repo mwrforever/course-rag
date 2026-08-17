@@ -506,7 +506,7 @@ public class EtlPipeline {
     }
 
     /**
-     * 将 PG 分片的标量字段（course_id/collection_type）同步到 Milvus（delete-then-insert）
+     * 将 PG 分片的标量字段（course_id / content_type / image_url / sha256）同步到 Milvus（delete-then-insert）
      *
      * <p>P0-1：D5/D7 标注只改 PG 时 Milvus 侧 course_id 恒为 DEFAULT——课程删除按 course_id
      * 过滤删不到向量、学生端课程维度过滤失效。Milvus v2 SDK 无按 filter 更新的 API，
@@ -531,7 +531,7 @@ public class EtlPipeline {
     }
 
     /**
-     * 文档级同步：将该文档全部未删分片的标量字段（course_id/collection_type）同步到 Milvus
+     * 文档级同步：将该文档全部未删分片的标量字段（course_id / content_type / image_url / sha256）同步到 Milvus
      *
      * <p>用户裁决（2026-08-15）：后台提供文档级同步而非逐 chunk——B 端「把整篇文档标注为
      * 某课程」时一次调用完成（调用次数 = 文档数，而非分片数）。内部仍 delete-then-insert
@@ -590,7 +590,7 @@ public class EtlPipeline {
      * <p>H-3/M-4：一次 InsertReq 携带多行（原逐 chunk 单行 insert，N 次网络往返 → N/批大小 次）。
      * 插入失败仅记 warn（与单行插入既有语义一致，不阻断文档终态判定）。
      *
-     * @param rows Milvus 行列表（每行 11 个字段，不含 sparse_vector —— 服务端 BM25 Function 自动生成）
+     * @param rows Milvus 行列表（每行 13 个字段，不含 sparse_vector —— 服务端 BM25 Function 自动生成）
      */
     private void insertToMilvusBatch(List<JsonObject> rows) {
         if (rows == null || rows.isEmpty()) {
@@ -606,8 +606,8 @@ public class EtlPipeline {
     }
 
     /**
-     * 构建单条 Milvus 行（11 个字段：chunk_id, doc_id, kb_id, content, heading_path, dense_vector,
-     * chunk_index, token_count, collection_type, course_id, updated_at；不含 sparse_vector）
+     * 构建单条 Milvus 行（13 个字段：chunk_id, doc_id, kb_id, content, heading_path, dense_vector,
+     * chunk_index, token_count, course_id, content_type, image_url, sha256, updated_at；不含 sparse_vector）
      *
      * @param chunk      PG 分片实体
      * @param denseVector dense 向量（embedding 模型输出）
@@ -638,11 +638,14 @@ public class EtlPipeline {
                 MilvusCollectionInitializer.FIELD_TOKEN_COUNT,
                 chunk.getTokenCount() != null ? chunk.getTokenCount() : 0);
         row.addProperty(
-                MilvusCollectionInitializer.FIELD_COLLECTION_TYPE,
-                chunk.getCollectionType() != null ? chunk.getCollectionType() : "TECHNICAL_QA");
-        row.addProperty(
                 MilvusCollectionInitializer.FIELD_COURSE_ID,
                 chunk.getCourseId() != null ? chunk.getCourseId() : "DEFAULT");
+        row.addProperty(
+                MilvusCollectionInitializer.FIELD_CONTENT_TYPE,
+                chunk.getContentType() != null ? chunk.getContentType() : "text");
+        row.addProperty(
+                MilvusCollectionInitializer.FIELD_IMAGE_URL, chunk.getImageUrl() != null ? chunk.getImageUrl() : "");
+        row.addProperty(MilvusCollectionInitializer.FIELD_SHA256, chunk.getSha256() != null ? chunk.getSha256() : "");
         row.addProperty(MilvusCollectionInitializer.FIELD_UPDATED_AT, System.currentTimeMillis() / 1000);
         // 注意：不插入 sparse_vector —— 服务端 BM25 Function 自动生成
         return row;
