@@ -27,7 +27,6 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -115,15 +114,14 @@ public class SearchKnowledgeTool {
     }
 
     /**
-     * 统一检索入口 —— LLM Agent 直接调用
+     * 统一检索入口 —— RetrieveNode 编排调用
      *
      * <p>返回 KnowledgeSearchResult 对象（record DTO），非 String。
-     * SAA ReactAgent 会将返回对象的 toString() / JSON 序列化结果注入上下文。
+     * S1 检索链路重构：本方法由 RetrieveNode（图节点）调用，检索结果不直接进入模型上下文。
      *
      * @param queries 查询重写后的多条覆盖性查询
      * @return 去重、融合、精排后的知识检索结果
      */
-    @Tool(description = "知识库检索：混合检索 Milvus 知识库（dense+sparse RRF 融合）并精排返回")
     public KnowledgeSearchResult searchKnowledge(List<TypedQuery> queries) {
         if (queries == null || queries.isEmpty()) {
             return new KnowledgeSearchResult(Collections.emptyList());
