@@ -366,7 +366,7 @@ class EtlPipelineTest {
     }
 
     @Test
-    @DisplayName("chunkDocument — 长段落触发递归拆分：多分片 + prev 链 + 课程归属透传")
+    @DisplayName("chunkDocument — 长段落触发 TokenTextSplitter 分片：多分片 + prev 链 + 课程归属透传")
     void chunkDocument_longParagraph_splitsWithRelations() throws Exception {
         Document doc = new Document();
         doc.setId(1L);
@@ -374,7 +374,7 @@ class EtlPipelineTest {
         doc.setCourseId("5");
         when(documentMapper.selectById(1L)).thenReturn(doc);
         when(documentMapper.update(any(), any())).thenReturn(1);
-        // 单个超过 chunkSize(768) 的段落（无双换行），触发 splitLargeParagraph 按句子拆分
+        // 单个超过 chunkSize(768) token 的长正文（含 ASCII "RAG"，无 .?! 回卷点），触发 TokenTextSplitter 按 token 切为多片
         String longPara = ("RAG检索增强生成是一种结合检索与生成的架构范式，向量数据库负责存储嵌入向量。" + "混合检索融合了向量相似度与关键词匹配两种召回信号。").repeat(30);
         seedParsedContent(1L, longPara);
         // mock insert 赋自增 id，建立 prev/next 链
@@ -403,7 +403,7 @@ class EtlPipelineTest {
         // 新分片模型：无段落父子分组，contentType 恒为 text
         assertTrue(inserted.stream().allMatch(c -> "text".equals(c.getContentType())));
         assertTrue(inserted.stream().allMatch(c -> c.getParentChunkId() == null));
-        // token 估算非零（estimateTokens 执行）
+        // token 估算非零（TokenEstimator.estimate 执行）
         assertTrue(inserted.get(0).getTokenCount() > 0);
         // 分片数回写文档
         verify(documentMapper, atLeastOnce()).update(any(), any());
@@ -484,8 +484,11 @@ class EtlPipelineTest {
         doc.setKbId(40L);
         when(documentMapper.selectById(4L)).thenReturn(doc);
         when(documentMapper.update(any(), any())).thenReturn(1);
-        // 构造：一大段正文 + 短尾句（<64 字符）
-        String longBody = "检索增强生成结合检索与生成，向量数据库存储嵌入向量。".repeat(12);
+        // 构造：正文 > 768 token（触发 TokenTextSplitter 多片）+ 短尾句「完。」。
+        // 尾块实测约 13 字符：大于框架 minChunkLengthToEmbed(5) 被保留、小于 64 被 mergeSmallPieces
+        // 并入前一片（2→1）；若去掉合并，13 字符「完。」尾块会命中下方断言使测试失败（真实回归守卫）。
+        // 注意：尾句不得 ≤5 字符（会被框架直接丢弃），正文不得含 ASCII .?! 回卷点。
+        String longBody = "检索增强生成结合检索与生成，向量数据库存储嵌入向量。".repeat(30);
         String tail = "完。";
         java.lang.reflect.Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
         field.setAccessible(true);
