@@ -72,8 +72,8 @@ class DocumentAssemblerInterceptorTest {
     }
 
     @Test
-    @DisplayName("interceptModel — 幂等：注入一次后同次请求后续调用不再重复注入")
-    void interceptModel_idempotent_singleInjection() {
+    @DisplayName("interceptModel — 每轮模型调用均重新注入（去幂等：瞬时注入不累积，工具调用后作答轮仍保有接地）")
+    void interceptModel_reinjectsOnEveryCall() {
         Map<String, Object> ctx = new HashMap<>();
         ctx.put(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT, "<document>D</document>");
         ModelRequest request = ModelRequest.builder()
@@ -81,16 +81,21 @@ class DocumentAssemblerInterceptorTest {
                 .context(ctx)
                 .build();
 
-        // 第一次调用注入
+        // 第一次调用注入（如首轮作答）
         interceptor.interceptModel(request, handler);
-        // 第二次调用（同一 context Map，模拟 ReactAgent 多轮工具调用）不再注入
+        // 第二次调用（同一 context Map，模拟 ReactAgent 工具调用后的作答轮）重新注入
         interceptor.interceptModel(request, handler);
 
         ArgumentCaptor<ModelRequest> captor = ArgumentCaptor.forClass(ModelRequest.class);
         verify(handler, times(2)).call(captor.capture());
         List<ModelRequest> all = captor.getAllValues();
-        assertEquals(2, all.get(0).getMessages().size(), "首次注入 1 条");
-        assertEquals(1, all.get(1).getMessages().size(), "二次不再注入（幂等）");
+        // 两轮均追加 document UserMessage（瞬时注入基于各自消息列表追加，无累积重复）
+        assertEquals(2, all.get(0).getMessages().size(), "首次调用追加 1 条 document");
+        assertEquals(2, all.get(1).getMessages().size(), "二次调用同样追加（重新注入）");
+        assertEquals(
+                "<document>D</document>",
+                ((UserMessage) all.get(1).getMessages().get(1)).getText(),
+                "第二轮 document 文本一致");
     }
 
     @Test

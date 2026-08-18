@@ -25,8 +25,14 @@ import org.springframework.stereotype.Component;
  * {@code request.getContext()} 读取。
  *
  * <p><b>注入形态（spec §3.3）：</b>追加一条独立 UserMessage 容器（与用户原文分离——
- * QU 过滤、chat_message 渲染、摘要提取不受污染）；幂等：注入后向 context 置标记，
- * ReactAgent 多轮工具调用的后续模型请求不重复注入。
+ * QU 过滤、chat_message 渲染、摘要提取不受污染）；每轮模型调用都重新注入（不做幂等
+ * 检查）：ModelInterceptor 为瞬时注入，仅修改在途请求、不落 state/checkpoint，同一
+ * 请求链内多次调用各自基于当前消息列表追加，不会产生可见重复；这样 ReactAgent 工具
+ * 调用轮次（如 CourseApiTool 查价格/课表）之后的作答轮仍保有 document 接地。
+ *
+ * <p>注：此处刻意偏离 spec §3.3 的「幂等检查（已注入则不重复）」——终态评审
+ * （Important-1）经字节码级验证确认注入为瞬时行为（不会产生可见重复），去幂等可修复
+ * 「工具调用后作答轮丢失 document 接地」的主场景缺陷；该偏离已获 controller 裁定批准。
  *
  * @author commerce-rag
  */
@@ -37,9 +43,6 @@ public class DocumentAssemblerInterceptor extends ModelInterceptor {
 
     /** metadata/context 键：检索节点写入的 <document> 文本（RetrieveNode 与拦截器共享） */
     public static final String KEY_DOCUMENT_CONTEXT = "document_context";
-
-    /** context 内部幂等标记：注入后置 true，同请求后续调用不再注入 */
-    private static final String KEY_DOCUMENT_INJECTED = "document_injected";
 
     @Override
     public String getName() {
@@ -52,15 +55,10 @@ public class DocumentAssemblerInterceptor extends ModelInterceptor {
         if (ctx == null || ctx.get(KEY_DOCUMENT_CONTEXT) == null) {
             return handler.call(request);
         }
-        // 幂等：已注入过则直接透传（ReactAgent 多轮工具调用期间 document 只注入一次）
-        if (Boolean.TRUE.equals(ctx.get(KEY_DOCUMENT_INJECTED))) {
-            return handler.call(request);
-        }
 
-        // 追加独立 document UserMessage（消息末尾，与用户原文分离）
+        // 追加独立 document UserMessage（消息末尾，与用户原文分离；每轮调用都重注——瞬时注入不落 state，无累积重复）
         List<Message> messages = new ArrayList<>(request.getMessages());
         messages.add(new UserMessage(String.valueOf(ctx.get(KEY_DOCUMENT_CONTEXT))));
-        ctx.put(KEY_DOCUMENT_INJECTED, true);
 
         log.debug(
                 "已注入 document 上下文（{} 字符）",
