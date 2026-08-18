@@ -4,7 +4,6 @@ import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.streaming.OutputType;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -214,10 +213,6 @@ public class SseEventTransformer {
      * <p>消息体为 {@link ToolResponseMessage}，包含一个或多个
      * {@link ToolResponseMessage.ToolResponse}。每个 ToolResponse 对应
      * 一个 TOOL_RESULT 事件。输出摘要截断到 {@value #TOOL_OUTPUT_MAX_LENGTH} 字符。
-     *
-     * <p>设计文档 §3.2 / F2-10：当工具名为 searchKnowledge 时，额外从 tool_result
-     * 提取 chunkId / source / headingPath / score 构造 SOURCES 事件推送，供前端渲染
-     * 知识来源引用卡片。
      */
     private List<SseEvent> transformToolFinished(StreamingOutput<?> chunk, RunState runState) {
         Message message = chunk.message();
@@ -233,56 +228,8 @@ public class SseEventTransformer {
             payload.put("status", "success");
             payload.put("output", output);
             events.add(makeEvent(SseEventType.TOOL_RESULT, runState, payload));
-
-            // F2-10: searchKnowledge 工具结果 → 提取知识来源构造 SOURCES 事件
-            if ("searchKnowledge".equals(response.name())) {
-                SseEvent sourcesEvent = buildSourcesEvent(response.responseData(), runState);
-                if (sourcesEvent != null) {
-                    events.add(sourcesEvent);
-                }
-            }
         }
         return events;
-    }
-
-    /**
-     * 从 searchKnowledge 工具结果 JSON 中提取知识来源，构造 SOURCES 事件。
-     *
-     * <p>KnowledgeSearchResult JSON 格式：{@code {"chunks":[{"chunkId":"...","source":"...",
-     * "headingPath":"...","score":0.85,...},...]}}
-     *
-     * <p>提取每个 chunk 的 chunkId / source / headingPath / score，构造 sources 列表。
-     * 解析失败时返回 null（不中断流）。
-     *
-     * @param responseData 工具返回的完整 JSON 字符串
-     * @param runState     run 上下文
-     * @return SOURCES 事件，解析失败返回 null
-     */
-    private SseEvent buildSourcesEvent(String responseData, RunState runState) {
-        if (responseData == null || responseData.isBlank()) {
-            return null;
-        }
-        try {
-            JsonNode root = objectMapper.readTree(responseData);
-            JsonNode chunks = root.path("chunks");
-            if (!chunks.isArray() || chunks.isEmpty()) {
-                return null;
-            }
-
-            List<Map<String, Object>> sources = new ArrayList<>();
-            for (JsonNode chunk : chunks) {
-                Map<String, Object> source = new LinkedHashMap<>();
-                source.put("chunkId", chunk.path("chunkId").asText(""));
-                source.put("source", chunk.path("source").asText(""));
-                source.put("headingPath", chunk.path("headingPath").asText(""));
-                source.put("score", chunk.path("score").asDouble(0.0));
-                sources.add(source);
-            }
-
-            return makeEvent(SseEventType.SOURCES, runState, Map.of("sources", sources));
-        } catch (JsonProcessingException e) {
-            return null;
-        }
     }
 
     // ========================================================================

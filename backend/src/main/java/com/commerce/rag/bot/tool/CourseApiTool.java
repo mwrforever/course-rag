@@ -27,8 +27,8 @@ import org.springframework.stereotype.Component;
 /**
  * 课程 API 工具组 —— LLM Agent 直接调用，获取课程实时数据
  *
- * <p>三个方法对应三个 DTO 记录类型，Agent 优先调用此工具，
- * 只有当 API 无法满足需求时才回退到 SearchKnowledgeTool 查知识库。
+ * <p>三个方法对应三个 DTO 记录类型。课程结构化信息（列表/详情/报名）
+ * 经 CourseApiTool 获取；知识库资料由系统检索节点注入 <document> 上下文。
  *
  * <p>课程"报名"为只读交接：仅返回 enrollmentUrl，绝不调用业务报名 API。
  *
