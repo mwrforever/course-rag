@@ -49,6 +49,17 @@ public interface ICourseQueryService {
     CourseSchedule findNextSchedule(String courseId);
 
     /**
+     * 按课程名精确匹配查询课程（同名多课全量返回，spec §2.3 CourseNameMapper 消费）
+     *
+     * <p>课程信息对学生全量可见（开放问答），本查询不过滤状态、不区分 ARCHIVED——
+     * course_id 是相关性收窄而非权限边界；首版仅按 title 精确匹配（不做模糊）。
+     *
+     * @param title 课程中文名（精确匹配）
+     * @return 匹配的课程列表（可能为空；逻辑删除自动过滤）
+     */
+    List<CourseInfo> findByTitle(String title);
+
+    /**
      * 失效课程相关缓存键（先写 DB 后失效，一致性铁律）
      *
      * @param courseId 课程 ID

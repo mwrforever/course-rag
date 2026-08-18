@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
@@ -16,14 +17,17 @@ import com.commerce.rag.mapper.CourseContentMapper;
 import com.commerce.rag.mapper.CourseInfoMapper;
 import com.commerce.rag.mapper.CourseScheduleMapper;
 import com.commerce.rag.service.impl.CourseQueryServiceImpl;
+import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.time.Duration;
 import java.util.List;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -47,6 +51,12 @@ class CourseQueryServiceTest {
     private CourseScheduleMapper courseScheduleMapper;
 
     private ICourseQueryService service;
+
+    @BeforeAll
+    static void initMybatisPlus() {
+        // 纯 Mockito 单元测试（无 Spring 上下文）需先初始化 Lambda 表达式的 TableInfo 缓存
+        MybatisPlusTestHelper.initTableInfo();
+    }
 
     @BeforeEach
     void setUp() {
@@ -106,6 +116,24 @@ class CourseQueryServiceTest {
         assertThat(first.getTotal()).isEqualTo(1);
         assertThat(second).isSameAs(first);
         verify(courseInfoMapper, times(1)).selectPage(any(), any());
+    }
+
+    @Test
+    @DisplayName("findByTitle — 精确匹配返回课程列表（同名多课全返回）")
+    void findByTitle_matchesExactTitle() {
+        CourseInfo raw = new CourseInfo();
+        raw.setId(101L);
+        raw.setTitle("高等数学");
+        when(courseInfoMapper.selectList(any())).thenReturn(List.of(raw));
+
+        List<CourseInfo> result = service.findByTitle("高等数学");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getId()).isEqualTo(101L);
+        // 断言查询按 title 精确过滤（捕获 wrapper 的 SQL 段应含 title 条件）
+        ArgumentCaptor<Wrapper<CourseInfo>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(courseInfoMapper).selectList(captor.capture());
+        assertThat(captor.getValue().getExpression().getSqlSegment()).contains("title");
     }
 
     @Test

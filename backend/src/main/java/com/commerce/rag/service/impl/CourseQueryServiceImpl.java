@@ -152,6 +152,28 @@ public class CourseQueryServiceImpl implements ICourseQueryService {
     }
 
     /**
+     * 按课程名精确匹配查询课程（同名多课全量返回，结果缓存 5 分钟）
+     *
+     * <p>spec §2.3：LLM 只输出课程名语义标签，服务端确定性查库映射 course_name → course_id；
+     * 同名多期课程全部返回（全注入过滤）。不过滤 status——开放问答下 course_id 是相关性收窄，
+     * ARCHIVED 课程资料仍可检索。
+     *
+     * @param title 课程中文名（精确匹配，不能为 null/空白）
+     * @return 匹配的课程列表（可能为空）
+     */
+    @SuppressWarnings("unchecked")
+    public List<CourseInfo> findByTitle(String title) {
+        String key = "byTitle:" + title;
+        List<CourseInfo> cached = (List<CourseInfo>) courseQueryCache.get(key, k -> {
+            log.info("按课程名精确查询: title={}", title);
+            return courseInfoMapper.selectList(Wrappers.<CourseInfo>lambdaQuery()
+                    .select(CourseInfo::getId, CourseInfo::getTitle, CourseInfo::getStatus)
+                    .eq(CourseInfo::getTitle, title));
+        });
+        return cached;
+    }
+
+    /**
      * 失效课程相关缓存（一致性铁律：写方先写 DB 后调用）
      *
      * <p>精确失效详情/内容/排期键（course/contents/schedule:{courseId}），
