@@ -205,6 +205,11 @@ rag:
     # 单次签出最大重写查询条数（spec §2.2 上限 3）
     max-queries: 3
 
+  # ── S1 Context Builder（spec §3.2：注入条数配置化，Top-K 仅限系统检索）──
+  context-builder:
+    # 系统资料注入条数（rerank 分数降序取前 N）
+    top-k: 5
+
   # ── F#3 死循环检测（LoopDetectionProperties）──
   loop-detection:
     # Layer 1: hash 滑动窗口（检测重复内容）
