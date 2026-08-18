@@ -11,15 +11,15 @@ import org.springframework.ai.transformer.splitter.TokenTextSplitter;
  * 故子类化提升 protected splitText(String) 可见性，直接对原始文本分片。
  *
  * <p>框架行为（1.1.2 字节码实锤）：内部以 JTokkit CL100K_BASE 编码 token 序列后按
- * chunkSize 切片再解码——无固定 overlap 参数（见计划决策点 1）；相邻 chunk 之间以
- * 句子边界（。!?！？换行）回卷实现连续性，边界句不截断；decode 往返保留原文（无空格
- * 拼接副作用）。
+ * chunkSize 切片再解码——无固定 overlap 参数（见计划决策点 1）；相邻 chunk 之间仅以
+ * ASCII 句末标点（. ! ?）或换行符回卷实现连续性（CJK 句末标点 。！？ 不参与回卷），
+ * 边界句不截断；decode 往返保留原文（无空格拼接副作用）。
  *
  * @author commerce-rag
  */
 public class TextChunkSplitter extends TokenTextSplitter {
 
-    /** 小于该 token 数的 chunk 不输出（过滤纯标点/空白碎块） */
+    /** 小于该字符数的 chunk 不输出（过滤纯标点/空白碎块，框架按解码后文本字符长度判断） */
     private static final int MIN_CHUNK_LENGTH_TO_EMBED = 5;
 
     /** 单次分片最大 chunk 数（超长文档防御上限） */

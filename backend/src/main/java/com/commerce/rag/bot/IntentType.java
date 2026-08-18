@@ -7,9 +7,9 @@ package com.commerce.rag.bot;
  * {@code queryRewriteNode} generating multiple coverage queries — there is no
  * {@code AWAITING_CLARIFICATION} state.
  *
- * <p>Used as Milvus scalar filter: {@code collection_type == "TECHNICAL_QA"}
- * or {@code collection_type == "COURSE_INFO"} on the single {@code knowledge_chunks}
- * collection.
+ * <p>意图由上游 {@code intentClassifier} 判定后随 {@link com.commerce.rag.bot.tool.TypedQuery}
+ * 下发检索侧，仅作为日志/结果标注的元数据，不再参与 Milvus 过滤（S1 意图-检索解耦，
+ * {@code knowledge_chunks} 已移除 {@code collection_type} 字段，检索仅按 course_id 收窄）。
  *
  * @see com.commerce.rag.bot.tool.SearchKnowledgeTool
  */

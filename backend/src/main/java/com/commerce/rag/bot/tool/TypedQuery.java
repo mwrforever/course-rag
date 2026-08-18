@@ -4,21 +4,21 @@ import com.commerce.rag.bot.IntentType;
 import java.util.List;
 
 /**
- * A typed query carrying the intent and optional course scope.
+ * 一次类型化检索请求 —— 携带意图元数据 + 查询文本 + 可选课程范围
  *
- * <p>Used as input to {@code SearchKnowledgeTool.searchKnowledge(List<TypedQuery>)}.
- * The {@code collectionType} drives the Milvus scalar filter expression, and
- * {@code courseIds} narrows the search scope when the user has enrolled in
- * specific courses.
+ * <p>作为 {@code SearchKnowledgeTool.searchKnowledge(List<TypedQuery>)} 的输入。
+ * S1 意图-检索解耦后，{@code collectionType} 仅作为日志/结果标注的元数据，
+ * 不再参与 Milvus 过滤表达式；{@code courseIds} 在用户已选课时收窄检索范围。
  *
- * <p>When {@code courseIds} is {@code null} or empty, the filter expression is
- * {@code collection_type == "X"} only (no course_id filter).
- * When non-null and non-empty, the expression appends:
- * {@code and (course_id == "DEFAULT" or course_id in ["C1","C2"])}.
+ * <p>过滤表达式由 {@code SearchKnowledgeTool.buildFilterExpression} 生成：
+ * <ul>
+ *   <li>{@code courseIds} 为 null 或空：返回 null（不设过滤，全局检索）</li>
+ *   <li>非 null 非空：{@code (course_id == "DEFAULT" or course_id in ["C1","C2"])}</li>
+ * </ul>
  *
- * @param collectionType intent that determines which Milvus partition to search
- * @param queryText      the actual search text (one of the rewritten queries)
- * @param courseIds      optional list of enrolled course IDs for scoped search;
- *                       {@code null} means global (no course_id filter)
+ * @param collectionType 意图元数据（仅用于日志/结果标注，不驱动 Milvus 过滤）
+ * @param queryText      实际检索文本（查询改写后的某条覆盖查询）
+ * @param courseIds      用户已选课程 ID 列表，用于收窄检索范围；
+ *                       {@code null} 表示全局检索（不设 course_id 过滤）
  */
 public record TypedQuery(IntentType collectionType, String queryText, List<String> courseIds) {}
