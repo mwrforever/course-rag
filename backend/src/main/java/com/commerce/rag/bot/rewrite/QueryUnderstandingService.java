@@ -89,8 +89,8 @@ public class QueryUnderstandingService {
             Map<String, String> sections = promptLoader.loadSections("query-understanding.yml");
             String system = sections.getOrDefault("query-understanding.system", "");
             String instruction = sections.getOrDefault("query-understanding.instruction", "")
-                    .replace("${context}", buildContext(messages))
-                    .replace("${query}", userQuery);
+                    .replace("{context}", buildContext(messages))
+                    .replace("{query}", userQuery);
 
             DashScopeChatOptions options =
                     DashScopeChatOptions.builder().withModel(model).build();

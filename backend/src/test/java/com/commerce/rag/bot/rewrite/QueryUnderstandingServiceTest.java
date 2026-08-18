@@ -175,6 +175,38 @@ class QueryUnderstandingServiceTest {
     }
 
     @Test
+    @DisplayName("understand — 渲染后 prompt 注入组装 context 与用户查询原文（占位符 {context}/{query} 被替换）")
+    void understand_renderedPrompt_containsContextAndQuery() {
+        stubPrompt();
+        stubReply("{\"intent\": \"knowledge_question\", \"rewrittenQueries\": [\"高等数学 课程大纲\"], "
+                + "\"filters\": {}, \"recall_history\": false}");
+        List<Message> messages = List.of(
+                new SystemMessage("## 对话摘要:用户询问了 Redis 缓存配置，已给出排查步骤"),
+                new UserMessage("第一轮问题"),
+                new AssistantMessage("第一轮回答"),
+                new UserMessage("第二轮问题"),
+                new UserMessage("高等数学讲什么"));
+        service.understand("高等数学讲什么", messages);
+
+        ArgumentCaptor<Prompt> captor = ArgumentCaptor.forClass(Prompt.class);
+        verify(chatModel).call(captor.capture());
+        Message renderedUser = captor.getValue()
+                .getInstructions()
+                .get(captor.getValue().getInstructions().size() - 1);
+        String rendered = renderedUser.getText();
+
+        assertTrue(rendered.contains("Redis 缓存配置"), "组装后的会话摘要应注入 prompt");
+        assertTrue(rendered.contains("第二轮问题"), "历史轮次文本应注入 prompt");
+        assertTrue(rendered.contains("高等数学讲什么"), "用户当前查询原文应注入 prompt");
+        assertFalse(rendered.contains("{context}"), "占位符 {context} 应被替换，不得字面残留");
+        assertFalse(rendered.contains("{query}"), "占位符 {query} 应被替换，不得字面残留");
+        assertTrue(
+                captor.getValue().getOptions() instanceof DashScopeChatOptions,
+                "Prompt options 应为 DashScopeChatOptions（独立模型通道）");
+        assertEquals("qwen3.7-flash", ((DashScopeChatOptions) captor.getValue().getOptions()).getModel());
+    }
+
+    @Test
     @DisplayName("buildContext — 提取摘要 + 最近三轮（仅 User/Assistant，排除 ToolResponse/System 与当前消息）")
     void buildContext_summaryAndRecentTurns() {
         // 摘要 SM + 4 对历史（8 条 User/Assistant）+ 当前消息 —— 4 对超出最近 3 对窗口，可验证窗口截断
