@@ -99,6 +99,36 @@ class PromptLoaderTest {
     }
 
     @Test
+    @DisplayName("loadSections — 多叶子 YAML 展平为路径→文本映射")
+    void loadSections_flattensLeafPaths() {
+        PromptLoader loader = new PromptLoader();
+        // 夹具 test-sections.yml：caption.system / caption.instruction 两层叶子
+        Map<String, String> sections = loader.loadSections("test-sections.yml");
+
+        assertTrue(sections.containsKey("caption.system"));
+        assertTrue(sections.containsKey("caption.instruction"));
+        assertTrue(sections.get("caption.system").contains("描述要求"));
+    }
+
+    @Test
+    @DisplayName("loadSections — 真实 caption.yml 可加载（图片 caption 模板缺段会静默降级）")
+    void loadSections_captionYml_loadsBothSections() {
+        Map<String, String> sections = promptLoader.loadSections("caption.yml");
+
+        assertTrue(sections.containsKey("caption.system"));
+        assertTrue(sections.containsKey("caption.instruction"));
+        assertTrue(sections.get("caption.system").contains("描述要求"));
+    }
+
+    @Test
+    @DisplayName("loadSections — 不存在的模板文件返回空 Map，不抛出")
+    void loadSections_missingFile_returnsEmptyMap() {
+        Map<String, String> sections = promptLoader.loadSections("no-such-file.yml");
+
+        assertTrue(sections.isEmpty(), "加载失败应返回空 Map");
+    }
+
+    @Test
     @DisplayName("loadRaw → 多叶子歧义按现有实现返回第一个叶子（嵌套优先）")
     void loadRaw_multiLeaf_returnsFirstEncounteredLeaf() {
         // 夹具 test-multi-leaf.yml：先遍历到嵌套 sub.leaf，再遇到 first → 返回第一个（嵌套叶子）

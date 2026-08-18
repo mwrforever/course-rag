@@ -1,0 +1,17 @@
+# 测试夹具：caption 结构的两层叶子（caption.system / caption.instruction），
+# 用于验证 loadSections 展平路径 → 文本映射（区别于 test-multi-leaf.yml 的多叶子歧义场景）
+caption:
+  system: |
+    <role>
+    你是一个图片内容描述专家。
+    </role>
+
+    <rules>
+    ## 描述要求
+    1. 只描述图片中实际存在的内容,禁止推测
+    </rules>
+
+  instruction: |
+    <output_format>
+    请直接输出图片的中文描述,不要输出任何其他内容。
+    </output_format>

@@ -10,21 +10,28 @@ import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.properties.EtlProperties;
 import com.commerce.rag.record.ChunkLinkPair;
 import com.commerce.rag.record.ChunkVectorUpdate;
+import com.commerce.rag.record.ContentHash;
 import com.commerce.rag.storage.MinioStorageService;
 import com.github.benmanes.caffeine.cache.Cache;
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.InsertReq;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -54,9 +61,10 @@ import org.springframework.stereotype.Component;
  * <p>Milvus upsert 策略：delete-then-insert。
  * PG 冗余 dense_vector（BYTEA）避免回查 Milvus。
  *
- * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（9 个 private final 依赖：
+ * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（10 个 private final 依赖：
  * DocumentMapper / DocumentChunkMapper / MinioStorageService / EmbeddingModel /
- * MilvusClientV2 / EtlProperties / dashboardStatsCache / XhtmlDocumentParser / TableChunker）。
+ * MilvusClientV2 / EtlProperties / dashboardStatsCache / XhtmlDocumentParser / TableChunker /
+ * ImageCaptionService）。
  *
  * @author commerce-rag
  */
@@ -94,6 +102,9 @@ public class EtlPipeline {
 
     /** 表格分片器（HTML 表格 → Markdown，大表按行分组/表头重复/overlap 行，Task 6 接入） */
     private final TableChunker tableChunker;
+
+    /** 图片描述（caption）服务（VLM 生成中文图片描述，Task 7 接入图片分片） */
+    private final ImageCaptionService imageCaptionService;
 
     /** 解析内容内存缓存（docId → 结构化分区），仅在同一线程内有效 */
     private final ConcurrentHashMap<Long, ParsedContent> parsedContentCache = new ConcurrentHashMap<>();
@@ -220,7 +231,7 @@ public class EtlPipeline {
         }
 
         // 组装全部待落库分片（按文档顺序：文本/表格/图片）
-        List<ChunkSpec> specs = buildChunkSpecs(parsed);
+        List<ChunkSpec> specs = buildChunkSpecs(doc, parsed);
         if (specs.isEmpty()) {
             throw new IllegalStateException("分片结果为空: docId=" + docId);
         }
@@ -284,17 +295,99 @@ public class EtlPipeline {
     /**
      * 组装待落库分片 —— 按文档顺序遍历结构分区，按类型分片
      * （文本走 TokenTextSplitter；表格走 TableChunker；图片分区于 Task 7 接入）
+     *
+     * @param doc    文档实体（图片分片 MinIO 上传需要 kbId）
+     * @param parsed 解析后的结构化分区
      */
-    private List<ChunkSpec> buildChunkSpecs(ParsedContent parsed) {
+    private List<ChunkSpec> buildChunkSpecs(Document doc, ParsedContent parsed) {
         List<ChunkSpec> specs = new ArrayList<>();
+        // 图片字节级去重表（sha256 → MinIO objectKey），仅本文件内有效（同图只处理一次）
+        Map<String, String> processedImages = new HashMap<>();
         for (ParsedContent.ParsedSection section : parsed.sections()) {
             if (section instanceof ParsedContent.TextSection text) {
                 specs.addAll(splitTextSection(text));
             } else if (section instanceof ParsedContent.TableSection table) {
                 specs.addAll(tableChunker.chunk(table.html(), table.headingPath()));
+            } else if (section instanceof ParsedContent.ImageSection image) {
+                // 图片：过滤 → 字节去重 → MinIO 上传 → caption → image chunk
+                // 单图失败仅跳过该图（记 warn），文档 ETL 继续（spec §4.2）
+                try {
+                    ChunkSpec spec = buildImageChunk(doc, image, processedImages);
+                    if (spec != null) {
+                        specs.add(spec);
+                    }
+                } catch (Exception e) {
+                    log.warn(
+                            "图片处理失败，跳过该图（文档 ETL 继续）: docId={}, resource={}, error={}",
+                            doc.getId(),
+                            image.resourceName(),
+                            e.getMessage());
+                }
             }
         }
         return specs;
+    }
+
+    /**
+     * 图片分片：过滤小图标/装饰图 → 字节级去重（同图只处理一次）→ MinIO 上传 → VLM caption
+     *
+     * @return 图片分片规格；被过滤/跳过时返回 null
+     */
+    private ChunkSpec buildImageChunk(
+            Document doc, ParsedContent.ImageSection image, Map<String, String> processedImages) {
+        if (ImageFilter.isSmallIcon(image.bytes(), etlProperties.imageMinSizeKb())) {
+            log.info(
+                    "图片过滤（小于 {}KB）: docId={}, resource={}",
+                    etlProperties.imageMinSizeKb(),
+                    doc.getId(),
+                    image.resourceName());
+            return null;
+        }
+        if (ImageFilter.isDecorative(image.bytes())) {
+            log.info("图片过滤（装饰图）: docId={}, resource={}", doc.getId(), image.resourceName());
+            return null;
+        }
+        // 图片字节 sha256 去重：同图只 caption + 上传一次（内存级，spec §4.2）
+        String byteHash = ContentHash.sha256Hex(image.bytes());
+        if (processedImages.containsKey(byteHash)) {
+            log.info("图片字节去重（同图只处理一次）: docId={}, resource={}", doc.getId(), image.resourceName());
+            return null;
+        }
+        String objectKey = uploadImage(doc, image);
+        processedImages.put(byteHash, objectKey);
+
+        String caption = imageCaptionService.caption(image.bytes(), image.mimeType());
+        if (caption == null || caption.isBlank()) {
+            log.warn("图片 caption 为空，跳过该图: docId={}, resource={}", doc.getId(), image.resourceName());
+            return null;
+        }
+        Map<String, String> meta = new LinkedHashMap<>();
+        meta.put("resourceName", image.resourceName());
+        if (image.headingPath() != null && !image.headingPath().isBlank()) {
+            meta.put("headingPath", image.headingPath());
+        }
+        return new ChunkSpec(caption, image.headingPath(), "image", objectKey, new Gson().toJson(meta), null, null);
+    }
+
+    /**
+     * 上传图片字节到 MinIO（uuid 预生成 objectKey，与文档上传同一资源先占策略）
+     */
+    private String uploadImage(Document doc, ParsedContent.ImageSection image) {
+        String uuid = UUID.randomUUID().toString().replace("-", "");
+        return minioStorageService.uploadFile(
+                doc.getKbId(), uuid, new ByteArrayInputStream(image.bytes()), extensionOf(image.mimeType()));
+    }
+
+    /** MIME → 文件扩展名（未知类型回退 bin，MinIO objectKey 后缀用） */
+    private static String extensionOf(String mimeType) {
+        return switch (mimeType) {
+            case "image/png" -> "png";
+            case "image/jpeg", "image/jpg" -> "jpg";
+            case "image/gif" -> "gif";
+            case "image/webp" -> "webp";
+            case "image/bmp" -> "bmp";
+            default -> "bin";
+        };
     }
 
     /**

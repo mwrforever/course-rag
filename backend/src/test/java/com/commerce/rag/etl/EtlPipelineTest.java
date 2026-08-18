@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -27,7 +29,10 @@ import io.milvus.v2.service.vector.request.InsertReq;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Field;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -66,6 +71,9 @@ class EtlPipelineTest {
     @Mock
     private MilvusClientV2 milvusClientV2;
 
+    @Mock
+    private ImageCaptionService imageCaptionService;
+
     /** Dashboard 统计缓存（真实 Caffeine 实例，状态写入失效钩子验证用） */
     private final Cache<String, Object> dashboardStatsCache =
             Caffeine.newBuilder().build();
@@ -91,7 +99,8 @@ class EtlPipelineTest {
                 props,
                 dashboardStatsCache,
                 new XhtmlDocumentParser(),
-                new TableChunker(props));
+                new TableChunker(props),
+                imageCaptionService);
     }
 
     @Test
@@ -546,6 +555,81 @@ class EtlPipelineTest {
         assertEquals("table", chunk.getContentType());
         assertEquals("价格表", chunk.getHeadingPath());
         assertTrue(chunk.getContent().contains("| 课程A | 1999 |"));
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 图片分区：过滤小图标跳过、有效图片产出 image chunk")
+    void chunkDocument_imageSection_filtersAndCaptions() throws Exception {
+        Document doc = new Document();
+        doc.setId(6L);
+        doc.setKbId(60L);
+        when(documentMapper.selectById(6L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        byte[] bigImage = new byte[10 * 1024]; // 10KB 起（≥ imageMinSizeKb 不触发小图标过滤）
+        when(minioStorageService.uploadFile(eq(60L), anyString(), any(InputStream.class), eq("png")))
+                .thenReturn("60/abc.png");
+        when(imageCaptionService.caption(any(byte[].class), eq("image/png"))).thenReturn("这是一段图片描述");
+        Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
+        field.setAccessible(true);
+        ((ConcurrentHashMap<Long, ParsedContent>) field.get(etlPipeline))
+                .put(
+                        6L,
+                        new ParsedContent(
+                                List.of(new ParsedContent.ImageSection("图例", "image/png", bigImage, "image0.png"))));
+        AtomicLong idSeq = new AtomicLong(600);
+        doAnswer(inv -> {
+                    inv.getArgument(0, DocumentChunk.class).setId(idSeq.getAndIncrement());
+                    return 1;
+                })
+                .when(chunkMapper)
+                .insert(any(DocumentChunk.class));
+
+        etlPipeline.chunkDocument(6L);
+
+        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
+        verify(chunkMapper).insert(captor.capture());
+        DocumentChunk chunk = captor.getValue();
+        assertEquals("image", chunk.getContentType());
+        assertEquals("这是一段图片描述", chunk.getContent());
+        assertEquals("60/abc.png", chunk.getImageUrl());
+        assertEquals("图例", chunk.getHeadingPath());
+        assertTrue(chunk.getMetadataJson().contains("image0.png"));
+    }
+
+    @Test
+    @DisplayName("chunkDocument — caption 失败仅跳过该图，文档 ETL 不 FAILED")
+    void chunkDocument_imageCaptionFailure_skipsImage() throws Exception {
+        Document doc = new Document();
+        doc.setId(7L);
+        doc.setKbId(70L);
+        when(documentMapper.selectById(7L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        byte[] bigImage = new byte[10 * 1024];
+        when(minioStorageService.uploadFile(eq(70L), anyString(), any(InputStream.class), eq("png")))
+                .thenReturn("70/abc.png");
+        when(imageCaptionService.caption(any(byte[].class), eq("image/png")))
+                .thenThrow(new RuntimeException("VLM 服务不可用"));
+        Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
+        field.setAccessible(true);
+        ((ConcurrentHashMap<Long, ParsedContent>) field.get(etlPipeline))
+                .put(
+                        7L,
+                        new ParsedContent(List.of(
+                                new ParsedContent.TextSection("", "正文内容保证文档非空。"),
+                                new ParsedContent.ImageSection("", "image/png", bigImage, "image1.png"))));
+        doAnswer(inv -> {
+                    inv.getArgument(0, DocumentChunk.class).setId(700L);
+                    return 1;
+                })
+                .when(chunkMapper)
+                .insert(any(DocumentChunk.class));
+
+        etlPipeline.chunkDocument(7L);
+
+        // 仅文本 chunk 落库（图片跳过），状态 CHUNKED 而非 FAILED
+        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
+        verify(chunkMapper).insert(captor.capture());
+        assertEquals("text", captor.getValue().getContentType());
     }
 
     @Test

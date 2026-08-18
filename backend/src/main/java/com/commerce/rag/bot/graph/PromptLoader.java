@@ -1,6 +1,7 @@
 package com.commerce.rag.bot.graph;
 
 import java.io.InputStream;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -81,6 +82,41 @@ public class PromptLoader {
             template = template.replace("${" + entry.getKey() + "}", entry.getValue());
         }
         return template;
+    }
+
+    /**
+     * 加载 YAML 并返回全部叶子字符串（展平路径为 key）
+     *
+     * <p>适用于多分段提示词（如 caption.yml 的 caption.system / caption.instruction），
+     * 供调用方按路径取用，避免各处重复 extractSection 解析。
+     *
+     * @param fileName 文件名（如 "caption.yml"）
+     * @return 展平路径 → 叶子文本（加载失败返回空 Map）
+     */
+    public Map<String, String> loadSections(String fileName) {
+        try (InputStream is = new ClassPathResource("prompts/" + fileName).getInputStream()) {
+            Map<String, Object> data = yaml.load(is);
+            Map<String, String> result = new LinkedHashMap<>();
+            flattenLeaves(data, "", result);
+            log.info("已加载提示词模板(sections): {} ({} 段)", fileName, result.size());
+            return result;
+        } catch (Exception e) {
+            log.error("加载提示词模板(sections)失败: {}", fileName, e);
+            return Map.of();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void flattenLeaves(Map<String, Object> map, String prefix, Map<String, String> result) {
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            String key = prefix.isEmpty() ? entry.getKey() : prefix + "." + entry.getKey();
+            Object value = entry.getValue();
+            if (value instanceof String s) {
+                result.put(key, s.trim());
+            } else if (value instanceof Map) {
+                flattenLeaves((Map<String, Object>) value, key, result);
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")
