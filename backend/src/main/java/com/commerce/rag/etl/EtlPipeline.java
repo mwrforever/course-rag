@@ -40,7 +40,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 /**
- * ETL 异步管道 —— 文档解析 → 递归分片 → 向量化 + Milvus 索引
+ * ETL 异步管道 —— 文档解析 → 文本分片（TokenTextSplitter）→ 向量化 + Milvus 索引
  *
  * <p>状态机：PENDING → PARSING → PARSED → CHUNKING → CHUNKED → EMBEDDING → INDEXED
  * 任何阶段失败 → FAILED（不阻断，记录 error_message）。
@@ -191,11 +191,14 @@ public class EtlPipeline {
     }
 
     // ========================================================================
-    // 阶段 2：递归分片
+    // 阶段 2：文本分片（TokenTextSplitter）
     // ========================================================================
 
     /**
-     * 递归分片 —— chunk-size=768, overlap=128, 父子关联
+     * 文本分片 —— TokenTextSplitter 按 token 分片（etl.chunk.size=768，1.1.2 无 overlap 参数）
+     *
+     * <p>新分片模型：buildChunkSpecs 按文档顺序组装 ChunkSpec（文本/表格/图片统一载体，Task 6/7
+     * 扩展），删除手写递归分片的父子段落关联；文档内以 prev/next_chunk_id 线性链串联。
      *
      * <p>状态：PARSED → CHUNKING → CHUNKED
      */
@@ -212,63 +215,44 @@ public class EtlPipeline {
         if (parsed == null) {
             throw new IllegalStateException("解析结果为空或未找到: docId=" + docId);
         }
-        // 过渡期（Task 6/7 前）：仅合并文本分区走旧递归分片，图片/表格暂不参与分片
-        String text = parsed.sections().stream()
-                .filter(ParsedContent.TextSection.class::isInstance)
-                .map(s -> ((ParsedContent.TextSection) s).text())
-                .collect(Collectors.joining("\n\n"));
-        if (text == null || text.isBlank()) {
-            throw new IllegalStateException("解析文本为空: docId=" + docId);
+
+        // 组装全部待落库分片（按文档顺序：文本/表格/图片）
+        List<ChunkSpec> specs = buildChunkSpecs(parsed);
+        if (specs.isEmpty()) {
+            throw new IllegalStateException("分片结果为空: docId=" + docId);
         }
 
-        int chunkSize = etlProperties.chunk().size();
-        // 过渡期（Task 5 前置）：etl.chunk.overlap 配置已删除（计划决策点 1——
-        // Spring AI 1.1.2 TokenTextSplitter 无 overlap 参数），递归分片以 overlap=0 过渡，
-        // Task 5 由 TokenTextSplitter 正式接管文本分片
-        int overlap = 0;
-
-        // P2-7: delete-then-insert 幂等化——先软删该文档旧 chunk（含上次 FAILED 遗留的半成品），
-        // 再插入新分片。当前 upload/reparse 入口虽已在外层软删，但 FAILED 重跑等预留路径
-        // （process 抢占 PENDING/FAILED 直接重跑）无此步骤时每次重跑会重复堆积一套分片
+        // P2-7: delete-then-insert 幂等化——先软删该文档旧 chunk，再插入新分片
         chunkMapper.update(
                 null,
                 Wrappers.<DocumentChunk>lambdaUpdate()
                         .eq(DocumentChunk::getDocId, docId)
                         .set(DocumentChunk::getDeleted, System.currentTimeMillis()));
 
-        // 递归分片
-        List<ChunkInfo> chunks = recursiveSplit(text, chunkSize, overlap);
-        log.info("分片完成: docId={}, 分片数={}", docId, chunks.size());
-
-        // 保存到 PG + 建立父子关联（M-1：next_chunk_id 回填收集后单条批量 UPDATE，
-        // 原逐分片「insert + updateChunkNextId」2N 条 SQL → N 条 insert + 1 条批量 update）
+        // 落库（M-1：next_chunk_id 回填收集后单条批量 UPDATE）
         Long prevChunkId = null;
-        Long currentGroupFirstId = null; // 当前段落组的首 chunk ID（用于 parent_chunk_id）
         List<ChunkLinkPair> linkPairs = new ArrayList<>();
-
-        for (int i = 0; i < chunks.size(); i++) {
-            ChunkInfo info = chunks.get(i);
-
+        int inserted = 0;
+        for (ChunkSpec spec : specs) {
             DocumentChunk chunk = new DocumentChunk();
             chunk.setDocId(docId);
             chunk.setKbId(doc.getKbId());
-            chunk.setChunkIndex(i);
-            chunk.setContent(info.text);
-            chunk.setHeadingPath(info.headingPath);
-            chunk.setTokenCount(estimateTokens(info.text));
+            chunk.setChunkIndex(inserted);
+            chunk.setContent(spec.content());
+            chunk.setHeadingPath(spec.headingPath());
+            chunk.setContentType(spec.contentType());
+            chunk.setImageUrl(spec.imageUrl());
+            chunk.setMetadataJson(spec.metadataJson() != null ? spec.metadataJson() : "{}");
+            chunk.setTokenCount(TokenEstimator.estimate(spec.content()));
+            // PG 遗留列：检索不再使用，保持既有默认（admin 校正工作流依赖该列）
             chunk.setCollectionType("TECHNICAL_QA");
-            // 课程归属：优先取文档级 course_id（上传时前端可指定，用户裁决），空则 DEFAULT=通用资料库
+            // 课程归属：优先取文档级 course_id（上传时前端可指定），空则 DEFAULT=通用资料库
             chunk.setCourseId(
                     doc.getCourseId() != null && !doc.getCourseId().isBlank() ? doc.getCourseId() : "DEFAULT");
-            chunk.setCharOffsetStart(info.start);
-            chunk.setCharOffsetEnd(info.end);
+            chunk.setCharOffsetStart(spec.charOffsetStart());
+            chunk.setCharOffsetEnd(spec.charOffsetEnd());
             chunk.setCorrectionStatus("PENDING");
             chunk.setPrevChunkId(prevChunkId);
-
-            // 父子关联：非首 chunk 的子分片指向同组首 chunk
-            if (info.isSubChunk && currentGroupFirstId != null) {
-                chunk.setParentChunkId(currentGroupFirstId);
-            }
 
             chunkMapper.insert(chunk);
 
@@ -276,13 +260,8 @@ public class EtlPipeline {
             if (prevChunkId != null) {
                 linkPairs.add(new ChunkLinkPair(prevChunkId, chunk.getId()));
             }
-
-            // 更新当前段落组的首 chunk ID
-            if (!info.isSubChunk) {
-                currentGroupFirstId = chunk.getId(); // 新段落组的首 chunk
-            }
-
             prevChunkId = chunk.getId();
+            inserted++;
         }
 
         // M-1: next_chunk_id 批量回填（单条 CASE WHEN UPDATE）
@@ -290,13 +269,69 @@ public class EtlPipeline {
             chunkMapper.batchUpdateNextChunkIds(linkPairs);
         }
 
-        // 更新文档分片数
-        updateDocChunkCount(docId, chunks.size());
+        // 更新文档分片数（实际入库数）
+        updateDocChunkCount(docId, inserted);
 
         // 清理缓存
         parsedContentCache.remove(docId);
 
         updateDocStatus(docId, "CHUNKED", null);
+    }
+
+    /**
+     * 组装待落库分片 —— 按文档顺序遍历结构分区，按类型分片
+     * （文本走 TokenTextSplitter；表格/图片分区于 Task 6/7 接入）
+     */
+    private List<ChunkSpec> buildChunkSpecs(ParsedContent parsed) {
+        List<ChunkSpec> specs = new ArrayList<>();
+        for (ParsedContent.ParsedSection section : parsed.sections()) {
+            if (section instanceof ParsedContent.TextSection text) {
+                specs.addAll(splitTextSection(text));
+            }
+        }
+        return specs;
+    }
+
+    /**
+     * 文本分区分片 —— TokenTextSplitter + 过小 chunk 并入前一个
+     */
+    private List<ChunkSpec> splitTextSection(ParsedContent.TextSection section) {
+        TextChunkSplitter splitter = new TextChunkSplitter(
+                etlProperties.chunk().size(), etlProperties.chunk().minChunkSizeChars());
+        List<String> pieces = new ArrayList<>();
+        for (String piece : splitter.splitText(section.text())) {
+            String trimmed = piece.trim();
+            if (!trimmed.isEmpty()) {
+                pieces.add(trimmed);
+            }
+        }
+        mergeSmallPieces(pieces, etlProperties.chunk().minChunkSizeChars());
+
+        List<ChunkSpec> specs = new ArrayList<>(pieces.size());
+        String raw = section.text();
+        int cursor = 0;
+        for (String piece : pieces) {
+            // 字符偏移尽力而为：decode 往返通常保留原文子串；未命中时退化为游标位置
+            int start = raw.indexOf(piece, cursor);
+            if (start < 0) {
+                start = cursor;
+            }
+            specs.add(new ChunkSpec(piece, section.headingPath(), "text", null, null, start, start + piece.length()));
+            cursor = start + piece.length();
+        }
+        return specs;
+    }
+
+    /**
+     * 过小 chunk（< minChars 字符）并入前一个，避免尾部碎块独立成片（spec §4.1）
+     */
+    private void mergeSmallPieces(List<String> pieces, int minChars) {
+        for (int i = pieces.size() - 1; i > 0; i--) {
+            if (pieces.get(i).length() < minChars) {
+                pieces.set(i - 1, pieces.get(i - 1) + "\n" + pieces.get(i));
+                pieces.remove(i);
+            }
+        }
     }
 
     // ========================================================================
@@ -682,137 +717,8 @@ public class EtlPipeline {
     }
 
     // ========================================================================
-    // 递归分片算法
-    // ========================================================================
-
-    /**
-     * 递归分片 —— 按段落 → 句子 → 字符递归拆分，带 overlap
-     *
-     * @param text       原始文本
-     * @param chunkSize  目标分片大小（字符数）
-     * @param overlap    相邻分片重叠字符数
-     * @return 分片列表
-     */
-    private List<ChunkInfo> recursiveSplit(String text, int chunkSize, int overlap) {
-        List<ChunkInfo> result = new ArrayList<>();
-
-        // 按段落分割（双换行）
-        String[] paragraphs = text.split("\n\n+");
-        int globalOffset = 0;
-
-        for (String para : paragraphs) {
-            // 计算段落在原文中的偏移
-            int paraStart = text.indexOf(para, globalOffset);
-            if (paraStart < 0) paraStart = globalOffset;
-            globalOffset = paraStart + para.length();
-
-            if (para.length() <= chunkSize) {
-                // 段落不超过 chunk_size，直接作为一个 chunk
-                result.add(new ChunkInfo(para.trim(), paraStart, paraStart + para.length(), "", false));
-            } else {
-                // 段落超过 chunk_size，按句子拆分
-                List<ChunkInfo> subChunks = splitLargeParagraph(para, paraStart, chunkSize, overlap);
-                // 第一个子 chunk 不是 sub-chunk（它是组的 parent），其余是
-                for (int i = 1; i < subChunks.size(); i++) {
-                    subChunks.get(i).isSubChunk = true;
-                }
-                result.addAll(subChunks);
-            }
-        }
-
-        // 合并过小的 chunk（可选，保持简单暂不合并）
-        // 应用 overlap
-        applyOverlap(result, text, overlap);
-
-        return result;
-    }
-
-    /**
-     * 拆分大段落 —— 按句子 → 字符递归
-     */
-    private List<ChunkInfo> splitLargeParagraph(String para, int paraStart, int chunkSize, int overlap) {
-        List<ChunkInfo> chunks = new ArrayList<>();
-
-        // 按句子分割（中文句号、英文句号、问号、感叹号）
-        String[] sentences = para.split("(?<=[。.!?！？\\n])");
-
-        StringBuilder current = new StringBuilder();
-        int currentStart = 0;
-
-        for (String sentence : sentences) {
-            if (sentence.isBlank()) continue;
-
-            int sentStart = para.indexOf(sentence, currentStart);
-            if (sentStart < 0) sentStart = currentStart;
-            currentStart = sentStart + sentence.length();
-
-            if (current.length() + sentence.length() > chunkSize && current.length() > 0) {
-                // 当前 chunk 已满，保存并开始新 chunk
-                String content = current.toString().trim();
-                chunks.add(new ChunkInfo(
-                        content, paraStart + sentStart - current.length(), paraStart + sentStart, "", false));
-                // overlap：保留上一 chunk 的末尾
-                if (overlap > 0 && content.length() > overlap) {
-                    current = new StringBuilder(content.substring(content.length() - overlap));
-                } else {
-                    current = new StringBuilder();
-                }
-            }
-
-            if (sentence.length() > chunkSize) {
-                // 单个句子超过 chunk_size，按字符强制拆分
-                for (int i = 0; i < sentence.length(); i += chunkSize) {
-                    int end = Math.min(i + chunkSize, sentence.length());
-                    String sub = sentence.substring(i, end).trim();
-                    if (!sub.isEmpty()) {
-                        chunks.add(new ChunkInfo(sub, paraStart + i, paraStart + end, "", false));
-                    }
-                }
-                current = new StringBuilder();
-            } else {
-                current.append(sentence);
-            }
-        }
-
-        // 保存最后一个 chunk
-        if (current.length() > 0) {
-            String content = current.toString().trim();
-            if (!content.isEmpty()) {
-                chunks.add(new ChunkInfo(content, paraStart, paraStart + para.length(), "", false));
-            }
-        }
-
-        return chunks;
-    }
-
-    /**
-     * 应用 overlap（在相邻 chunk 之间添加重叠内容）
-     */
-    private void applyOverlap(List<ChunkInfo> chunks, String originalText, int overlap) {
-        // 分片时已在 splitLargeParagraph 中处理了 overlap
-        // 此处无需额外操作
-    }
-
-    // ========================================================================
     // 辅助方法
     // ========================================================================
-
-    /**
-     * 估算 token 数（粗略：中文 1 字 ≈ 1 token，英文 4 字符 ≈ 1 token）
-     */
-    private int estimateTokens(String text) {
-        if (text == null || text.isEmpty()) return 0;
-        int cnCount = 0;
-        int enCount = 0;
-        for (char c : text.toCharArray()) {
-            if (c > 127) {
-                cnCount++;
-            } else {
-                enCount++;
-            }
-        }
-        return cnCount + enCount / 4;
-    }
 
     /**
      * float[] → byte[]（用于 PG BYTEA 存储）
@@ -878,28 +784,5 @@ public class EtlPipeline {
                         .eq(DocumentChunk::getId, chunkId)
                         .set(DocumentChunk::getDenseVector, denseVector)
                         .set(DocumentChunk::getMilvusPk, milvusPk));
-    }
-
-    // ========================================================================
-    // 分片信息内部数据结构
-    // ========================================================================
-
-    /**
-     * 分片信息（分片过程中的临时数据结构）
-     */
-    private static class ChunkInfo {
-        String text;
-        int start;
-        int end;
-        String headingPath;
-        boolean isSubChunk; // 是否为大段落拆分出的子分片
-
-        ChunkInfo(String text, int start, int end, String headingPath, boolean isSubChunk) {
-            this.text = text;
-            this.start = start;
-            this.end = end;
-            this.headingPath = headingPath;
-            this.isSubChunk = isSubChunk;
-        }
     }
 }

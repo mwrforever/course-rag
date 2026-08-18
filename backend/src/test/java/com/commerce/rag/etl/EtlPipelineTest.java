@@ -400,6 +400,9 @@ class EtlPipelineTest {
         assertEquals(1, inserted.get(1).getChunkIndex());
         // 文档级 course_id 透传至每个分片（非空时不做 DEFAULT 兜底）
         assertTrue(inserted.stream().allMatch(c -> "5".equals(c.getCourseId())));
+        // 新分片模型：无段落父子分组，contentType 恒为 text
+        assertTrue(inserted.stream().allMatch(c -> "text".equals(c.getContentType())));
+        assertTrue(inserted.stream().allMatch(c -> c.getParentChunkId() == null));
         // token 估算非零（estimateTokens 执行）
         assertTrue(inserted.get(0).getTokenCount() > 0);
         // 分片数回写文档
@@ -439,6 +442,72 @@ class EtlPipelineTest {
         assertNull(chunk.getParentChunkId());
         assertNull(chunk.getPrevChunkId());
         assertEquals("TECHNICAL_QA", chunk.getCollectionType());
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 多标题分区：各分片继承所属 headingPath")
+    void chunkDocument_multiSections_inheritHeadingPath() throws Exception {
+        Document doc = new Document();
+        doc.setId(3L);
+        doc.setKbId(30L);
+        when(documentMapper.selectById(3L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        java.lang.reflect.Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
+        field.setAccessible(true);
+        ((java.util.concurrent.ConcurrentHashMap<Long, ParsedContent>) field.get(etlPipeline))
+                .put(
+                        3L,
+                        new ParsedContent(List.of(
+                                new ParsedContent.TextSection("第一章", "第一章的正文内容。".repeat(10)),
+                                new ParsedContent.TextSection("第二章", "第二章的正文内容。".repeat(10)))));
+        java.util.concurrent.atomic.AtomicLong idSeq = new java.util.concurrent.atomic.AtomicLong(300);
+        doAnswer(inv -> {
+                    inv.getArgument(0, DocumentChunk.class).setId(idSeq.getAndIncrement());
+                    return 1;
+                })
+                .when(chunkMapper)
+                .insert(any(DocumentChunk.class));
+
+        etlPipeline.chunkDocument(3L);
+
+        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
+        verify(chunkMapper, atLeast(2)).insert(captor.capture());
+        assertTrue(captor.getAllValues().stream().anyMatch(c -> "第一章".equals(c.getHeadingPath())));
+        assertTrue(captor.getAllValues().stream().anyMatch(c -> "第二章".equals(c.getHeadingPath())));
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 过小尾块并入前一个（不产生 <64 字符碎块）")
+    void chunkDocument_smallTail_mergedIntoPrevious() throws Exception {
+        Document doc = new Document();
+        doc.setId(4L);
+        doc.setKbId(40L);
+        when(documentMapper.selectById(4L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        // 构造：一大段正文 + 短尾句（<64 字符）
+        String longBody = "检索增强生成结合检索与生成，向量数据库存储嵌入向量。".repeat(12);
+        String tail = "完。";
+        java.lang.reflect.Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
+        field.setAccessible(true);
+        ((java.util.concurrent.ConcurrentHashMap<Long, ParsedContent>) field.get(etlPipeline))
+                .put(4L, new ParsedContent(List.of(new ParsedContent.TextSection("", longBody + tail))));
+        java.util.concurrent.atomic.AtomicLong idSeq = new java.util.concurrent.atomic.AtomicLong(400);
+        doAnswer(inv -> {
+                    inv.getArgument(0, DocumentChunk.class).setId(idSeq.getAndIncrement());
+                    return 1;
+                })
+                .when(chunkMapper)
+                .insert(any(DocumentChunk.class));
+
+        etlPipeline.chunkDocument(4L);
+
+        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
+        verify(chunkMapper, atLeast(1)).insert(captor.capture());
+        assertTrue(
+                captor.getAllValues().stream()
+                        .noneMatch(c ->
+                                c.getContent().length() < 64 && c.getContent().endsWith("完。")),
+                "过小尾块应并入前一个分片");
     }
 
     @Test
