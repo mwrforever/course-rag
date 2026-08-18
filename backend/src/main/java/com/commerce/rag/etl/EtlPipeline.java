@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -230,10 +231,19 @@ public class EtlPipeline {
             throw new IllegalStateException("解析结果为空或未找到: docId=" + docId);
         }
 
-        // 组装全部待落库分片（按文档顺序：文本/表格/图片）
-        List<ChunkSpec> specs = buildChunkSpecs(doc, parsed);
-        if (specs.isEmpty()) {
+        // 组装待落库分片（按文档顺序：文本/表格/图片）
+        List<ChunkSpec> rawSpecs = buildChunkSpecs(doc, parsed);
+        if (rawSpecs.isEmpty()) {
             throw new IllegalStateException("分片结果为空: docId=" + docId);
+        }
+        // SHA256 全局去重（spec §4.4）：批内去重 + 查库跳过，全局唯一硬约束
+        List<ChunkSpec> specs = deduplicateSpecs(rawSpecs);
+        if (specs.isEmpty()) {
+            log.info("全部内容已存在（SHA256 去重），无新分片入库: docId={}", docId);
+            updateDocChunkCount(docId, 0);
+            parsedContentCache.remove(docId);
+            updateDocStatus(docId, "CHUNKED", null);
+            return;
         }
 
         // P2-7: delete-then-insert 幂等化——先软删该文档旧 chunk，再插入新分片
@@ -253,6 +263,7 @@ public class EtlPipeline {
             chunk.setKbId(doc.getKbId());
             chunk.setChunkIndex(inserted);
             chunk.setContent(spec.content());
+            chunk.setSha256(ContentHash.of(spec.content()).sha256());
             chunk.setHeadingPath(spec.headingPath());
             chunk.setContentType(spec.contentType());
             chunk.setImageUrl(spec.imageUrl());
@@ -326,6 +337,40 @@ public class EtlPipeline {
             }
         }
         return specs;
+    }
+
+    /**
+     * SHA256 内容去重 —— 批内（同 hash 保留首个）+ 查库（deleted=0 由 @TableLogic 自动过滤）
+     *
+     * <p>spec §4.4：同 sha256 全库只存一条（全局唯一硬约束）；检索侧防御去重在计划 2/5。
+     */
+    private List<ChunkSpec> deduplicateSpecs(List<ChunkSpec> specs) {
+        Map<String, ChunkSpec> byHash = new LinkedHashMap<>();
+        for (ChunkSpec spec : specs) {
+            byHash.putIfAbsent(ContentHash.of(spec.content()).sha256(), spec);
+        }
+        List<String> hashes = new ArrayList<>(byHash.keySet());
+        Set<String> existing = chunkMapper
+                .selectList(Wrappers.<DocumentChunk>lambdaQuery()
+                        .select(DocumentChunk::getSha256)
+                        .in(DocumentChunk::getSha256, hashes))
+                .stream()
+                .map(DocumentChunk::getSha256)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        List<ChunkSpec> unique = new ArrayList<>();
+        for (Map.Entry<String, ChunkSpec> entry : byHash.entrySet()) {
+            if (!existing.contains(entry.getKey())) {
+                unique.add(entry.getValue());
+            }
+        }
+        log.info(
+                "SHA256 去重: 原始={}, 批内去重后={}, 查库跳过={}, 入库={}",
+                specs.size(),
+                byHash.size(),
+                existing.size(),
+                unique.size());
+        return unique;
     }
 
     /**

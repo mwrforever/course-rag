@@ -45,4 +45,31 @@ public record ContentHash(String sha256, String normalizedText) {
     public static String sha256Hex(String text) {
         return sha256Hex(text.getBytes(StandardCharsets.UTF_8));
     }
+
+    /** 中英文常见标点（归一化时删除，spec §4.4 定稿） */
+    private static final String PUNCTUATION = "[。．.!！?？；;：:、,，]";
+
+    /**
+     * 计算内容的归一化文本与 SHA-256 摘要
+     *
+     * @param text 原始内容
+     * @return 归一化文本 + 摘要
+     */
+    public static ContentHash of(String text) {
+        String normalized = normalize(text);
+        return new ContentHash(sha256Hex(normalized), normalized);
+    }
+
+    /**
+     * 归一化（spec §4.4 定稿）：去首尾空白 → 空白（含全角空格）折叠为单空格 → 去标点 → 统一小写
+     */
+    private static String normalize(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.trim()
+                .replaceAll("[\\s\\u3000]+", " ")
+                .replaceAll(PUNCTUATION, "")
+                .toLowerCase();
+    }
 }

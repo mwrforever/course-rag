@@ -19,6 +19,7 @@ import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.properties.EtlProperties;
 import com.commerce.rag.record.ChunkLinkPair;
+import com.commerce.rag.record.ContentHash;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.github.benmanes.caffeine.cache.Cache;
@@ -661,6 +662,69 @@ class EtlPipelineTest {
 
         assertThrows(IllegalStateException.class, () -> etlPipeline.chunkDocument(1L));
         verify(chunkMapper, never()).insert(any(DocumentChunk.class));
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 批内重复内容只入库一次")
+    void chunkDocument_duplicateContentWithinBatch_deduped() throws Exception {
+        Document doc = new Document();
+        doc.setId(8L);
+        doc.setKbId(80L);
+        when(documentMapper.selectById(8L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        // 两个内容完全相同的文本分区（不同 heading）
+        java.lang.reflect.Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
+        field.setAccessible(true);
+        ((java.util.concurrent.ConcurrentHashMap<Long, ParsedContent>) field.get(etlPipeline))
+                .put(
+                        8L,
+                        new ParsedContent(List.of(
+                                new ParsedContent.TextSection("甲", "完全相同的内容段落。"),
+                                new ParsedContent.TextSection("乙", "完全相同的内容段落。"))));
+        // 查库：无已有 hash
+        when(chunkMapper.selectList(any())).thenReturn(List.of());
+        doAnswer(inv -> {
+                    inv.getArgument(0, DocumentChunk.class).setId(800L);
+                    return 1;
+                })
+                .when(chunkMapper)
+                .insert(any(DocumentChunk.class));
+
+        etlPipeline.chunkDocument(8L);
+
+        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
+        verify(chunkMapper).insert(captor.capture());
+        assertEquals(1, captor.getAllValues().size(), "重复内容应只入库一次");
+        assertEquals(64, captor.getValue().getSha256().length());
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 全库已有同内容：零入库，状态 CHUNKED")
+    void chunkDocument_allContentExists_skipsInsert() throws Exception {
+        Document doc = new Document();
+        doc.setId(9L);
+        doc.setKbId(90L);
+        when(documentMapper.selectById(9L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        String text = "全库已存在的内容。";
+        java.lang.reflect.Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
+        field.setAccessible(true);
+        ((java.util.concurrent.ConcurrentHashMap<Long, ParsedContent>) field.get(etlPipeline))
+                .put(9L, new ParsedContent(List.of(new ParsedContent.TextSection("", text))));
+        // 查库：返回同 hash 的既有分片（deleted=0）
+        DocumentChunk existing = new DocumentChunk();
+        existing.setSha256(ContentHash.of(text).sha256());
+        when(chunkMapper.selectList(any())).thenReturn(List.of(existing));
+
+        etlPipeline.chunkDocument(9L);
+
+        verify(chunkMapper, never()).insert(any(DocumentChunk.class));
+        ArgumentCaptor<LambdaUpdateWrapper> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(documentMapper, atLeastOnce()).update(any(), captor.capture());
+        String setValues = captor.getAllValues().stream()
+                .map(w -> String.valueOf(w.getParamNameValuePairs().values()))
+                .reduce("", (a, b) -> a + b);
+        assertTrue(setValues.contains("CHUNKED"), "全部去重后仍应正常收尾 CHUNKED: " + setValues);
     }
 
     @Test
