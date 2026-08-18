@@ -57,7 +57,7 @@ class SearchKnowledgeToolTest {
 
     @BeforeEach
     void setUp() {
-        tool = new SearchKnowledgeTool(fusionService, rerankService, embeddingModel, milvusClientV2, 60);
+        tool = new SearchKnowledgeTool(fusionService, rerankService, embeddingModel, milvusClientV2, 60, 20);
     }
 
     /**
@@ -70,9 +70,9 @@ class SearchKnowledgeToolTest {
                 .entity(Map.of(
                         "chunk_id", "chunk_001",
                         "content", "Redis配置方法...",
-                        "heading_path", "Ch3 > 3.2"))
+                        "heading_path", "Ch3 > 3.2",
+                        "sha256", "a".repeat(64)))
                 .build();
-
         SearchResp searchResp = mock(SearchResp.class);
         when(searchResp.getSearchResults()).thenReturn(List.of(List.of(sr)));
         return searchResp;
@@ -102,6 +102,7 @@ class SearchKnowledgeToolTest {
         assertEquals("Ch3 > 3.2", chunk.headingPath());
         assertEquals(0.95, chunk.score(), 0.001);
         assertNull(chunk.collectionType()); // S1 意图-检索解耦：检索结果不再携带 collection_type 意图
+        assertEquals("a".repeat(64), chunk.sha256(), "Milvus 返回的 sha256 应透传到 KnowledgeChunk");
     }
 
     @Test
@@ -232,8 +233,8 @@ class SearchKnowledgeToolTest {
         SearchResp searchResp = mockSearchResp();
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
 
-        KnowledgeChunk k1 = new KnowledgeChunk("c1", "内容1", "", "", "h1", 0.9, IntentType.KNOWLEDGE_QUESTION);
-        KnowledgeChunk k2 = new KnowledgeChunk("c2", "内容2", "", "", "h2", 0.8, IntentType.KNOWLEDGE_QUESTION);
+        KnowledgeChunk k1 = new KnowledgeChunk("c1", "内容1", "", "", "h1", 0.9, IntentType.KNOWLEDGE_QUESTION, null);
+        KnowledgeChunk k2 = new KnowledgeChunk("c2", "内容2", "", "", "h2", 0.8, IntentType.KNOWLEDGE_QUESTION, null);
         when(fusionService.fuse(anyMap())).thenReturn(List.of(k1, k2));
         when(rerankService.rerank("Redis 配置", List.of(k1, k2))).thenReturn(List.of(k2, k1));
 
@@ -252,6 +253,55 @@ class SearchKnowledgeToolTest {
         assertEquals("chunk_001", raw.get(q2).get(0).chunkId());
         // 精排 anchor 取第一条查询文本
         verify(rerankService).rerank("Redis 配置", List.of(k1, k2));
+    }
+
+    @Test
+    @DisplayName("searchKnowledge — SHA256 同内容去重：保留 RRF 融合分数最高一条")
+    void searchKnowledge_sameSha256_deduplicates() {
+        TypedQuery q1 = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "Redis 配置", null);
+        TypedQuery q2 = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "Redis 哨兵", null);
+        // 两条候选内容归一化后同 hash（防缺陷：计划 1/5 ETL 全库唯一，防御性兜底场景）
+        KnowledgeChunk high = new KnowledgeChunk(
+                "c1", "Redis 配置方法说明。", "", "", "h1", 0.0, IntentType.KNOWLEDGE_QUESTION, "f".repeat(64));
+        KnowledgeChunk low = new KnowledgeChunk(
+                "c2", "Redis 配置方法说明。", "", "", "h2", 0.0, IntentType.KNOWLEDGE_QUESTION, "f".repeat(64));
+        // 本用例未 stub Embedding/Milvus（searchSingle 返回空），与既有 fullFlow 用例一致用 anyMap() 匹配，
+        // 专注验证「融合 → 去重 → rerank」链路上去重确实落在两者之间
+        when(fusionService.fuse(anyMap())).thenReturn(List.of(high, low)); // RRF 降序：high 在前
+        when(rerankService.rerank("Redis 配置", List.of(high))).thenReturn(List.of(high));
+
+        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q1, q2));
+
+        // rerank 仅收到去重后的 1 条（同 hash 保留首次出现的 high）
+        verify(rerankService)
+                .rerank(
+                        eq("Redis 配置"),
+                        argThat(list ->
+                                list.size() == 1 && list.get(0).chunkId().equals("c1")));
+        assertEquals(1, result.chunks().size());
+    }
+
+    @Test
+    @DisplayName("searchKnowledge — sha256 为空时按归一化内容哈希保底去重，仍不可得按 chunkId")
+    void searchKnowledge_nullSha256_fallsBackToContentHash() {
+        TypedQuery q = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
+        // sha256 为 null：走 ContentHash.of(content) 归一化哈希保底（同内容文本 → 同 hash）
+        when(fusionService.fuse(anyMap()))
+                .thenReturn(List.of(
+                        new KnowledgeChunk("c1", "相同内容文本。", "", "", "h1", 0.0, IntentType.KNOWLEDGE_QUESTION, null),
+                        new KnowledgeChunk("c2", "相同内容文本。", "", "", "h2", 0.0, IntentType.KNOWLEDGE_QUESTION, null)));
+        when(rerankService.rerank(
+                        "查询",
+                        List.of(new KnowledgeChunk(
+                                "c1", "相同内容文本。", "", "", "h1", 0.0, IntentType.KNOWLEDGE_QUESTION, null))))
+                .thenReturn(List.of(
+                        new KnowledgeChunk("c1", "相同内容文本。", "", "", "h1", 0.0, IntentType.KNOWLEDGE_QUESTION, null)));
+
+        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q));
+
+        // 无 sha256 时 ContentHash.of(content) 归一化相同 → 也去重为 1 条
+        verify(rerankService).rerank(eq("查询"), argThat(list -> list.size() == 1));
+        assertEquals(1, result.chunks().size());
     }
 
     @Test

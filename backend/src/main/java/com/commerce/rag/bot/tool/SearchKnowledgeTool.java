@@ -3,6 +3,7 @@ package com.commerce.rag.bot.tool;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
 import com.commerce.rag.config.MilvusCollectionInitializer;
+import com.commerce.rag.record.ContentHash;
 import com.commerce.rag.retrieval.FusionService;
 import com.commerce.rag.retrieval.RerankService;
 import io.milvus.v2.client.MilvusClientV2;
@@ -55,9 +56,6 @@ public class SearchKnowledgeTool {
 
     private static final Logger log = LoggerFactory.getLogger(SearchKnowledgeTool.class);
 
-    /** Milvus 检索返回的 Top-K 数量 */
-    private static final int SEARCH_TOP_K = 20;
-
     /** Milvus Collection 名称（引用 MilvusCollectionInitializer 公开常量） */
     private static final String COLLECTION_NAME = MilvusCollectionInitializer.COLLECTION_NAME;
 
@@ -71,7 +69,7 @@ public class SearchKnowledgeTool {
     private static final String HNSW_PARAMS = "{\"ef\": 64}";
 
     /**
-     * Milvus 输出字段列表（9 个标量字段，不含 source/dense_vector/sparse_vector）
+     * Milvus 输出字段列表（10 个标量字段，不含 source/dense_vector/sparse_vector）
      * 字段名全部引用 MilvusCollectionInitializer 公开常量，确保一致
      */
     private static final List<String> OUTPUT_FIELDS = List.of(
@@ -83,13 +81,17 @@ public class SearchKnowledgeTool {
             MilvusCollectionInitializer.FIELD_KB_ID,
             MilvusCollectionInitializer.FIELD_CHUNK_INDEX,
             MilvusCollectionInitializer.FIELD_TOKEN_COUNT,
-            MilvusCollectionInitializer.FIELD_UPDATED_AT);
+            MilvusCollectionInitializer.FIELD_UPDATED_AT,
+            MilvusCollectionInitializer.FIELD_SHA256);
 
     private final FusionService fusionService;
     private final RerankService rerankService;
     private final EmbeddingModel embeddingModel;
     private final MilvusClientV2 milvusClientV2;
     private final int rrfK;
+    /** Milvus 混合检索返回的 Top-K 数量（每条重写查询的预取量，spec §3.1 配置化） */
+    private final int prefetchTopK;
+
     private final ExecutorService searchExecutor;
 
     public SearchKnowledgeTool(
@@ -97,12 +99,14 @@ public class SearchKnowledgeTool {
             RerankService rerankService,
             EmbeddingModel embeddingModel,
             MilvusClientV2 milvusClientV2,
-            @Value("${milvus.sparse-bm25-k:60}") int rrfK) {
+            @Value("${milvus.sparse-bm25-k:60}") int rrfK,
+            @Value("${retrieval.prefetch-top-k:20}") int prefetchTopK) {
         this.fusionService = fusionService;
         this.rerankService = rerankService;
         this.embeddingModel = embeddingModel;
         this.milvusClientV2 = milvusClientV2;
         this.rrfK = rrfK;
+        this.prefetchTopK = prefetchTopK;
         this.searchExecutor = Executors.newFixedThreadPool(4, r -> {
             Thread t = new Thread(r, "search-knowledge-");
             t.setDaemon(true);
@@ -130,17 +134,22 @@ public class SearchKnowledgeTool {
         // 1. 并行检索
         Map<TypedQuery, List<KnowledgeChunk>> rawResults = searchInParallel(queries);
 
-        // 2. RRF 融合 + 去重
+        // 2. RRF 融合 + chunk_id 去重
         List<KnowledgeChunk> fused = fusionService.fuse(rawResults);
 
-        // 3. Rerank 精排（取第一条 query 作为 rerank anchor）
+        // 3. SHA256 内容去重（spec §3.1：去重在 rerank 之前，同 hash 保留 RRF 分数最高一条，
+        //    不为重复内容付 rerank 费用）
+        List<KnowledgeChunk> deduped = deduplicateBySha256(fused);
+
+        // 4. Rerank 精排（取第一条 query 作为 rerank anchor）
         String anchorQuery = queries.get(0).queryText();
-        List<KnowledgeChunk> reranked = rerankService.rerank(anchorQuery, fused);
+        List<KnowledgeChunk> reranked = rerankService.rerank(anchorQuery, deduped);
 
         log.info(
-                "检索完成: 原始={}, 融合后={}, 精排后={}",
+                "检索完成: 原始={}, 融合后={}, 内容去重后={}, 精排后={}",
                 rawResults.values().stream().mapToInt(List::size).sum(),
                 fused.size(),
+                deduped.size(),
                 reranked.size());
 
         return new KnowledgeSearchResult(reranked);
@@ -215,7 +224,7 @@ public class SearchKnowledgeTool {
                     .vectorFieldName(DENSE_FIELD_NAME)
                     .metricType(IndexParam.MetricType.COSINE)
                     .params(HNSW_PARAMS)
-                    .limit(SEARCH_TOP_K)
+                    .limit(prefetchTopK)
                     .filter(filterExpr)
                     .build();
 
@@ -224,7 +233,7 @@ public class SearchKnowledgeTool {
                     .vectors(List.of(new EmbeddedText(query.queryText())))
                     .vectorFieldName(SPARSE_FIELD_NAME)
                     .metricType(IndexParam.MetricType.BM25)
-                    .limit(SEARCH_TOP_K)
+                    .limit(prefetchTopK)
                     .filter(filterExpr)
                     .build();
 
@@ -233,7 +242,7 @@ public class SearchKnowledgeTool {
                     .collectionName(COLLECTION_NAME)
                     .searchRequests(List.of(denseReq, sparseReq))
                     .ranker(RRFRanker.builder().k(rrfK).build())
-                    .limit(SEARCH_TOP_K)
+                    .limit(prefetchTopK)
                     .outFields(OUTPUT_FIELDS)
                     .build();
 
@@ -273,7 +282,9 @@ public class SearchKnowledgeTool {
                 String headingPath = getStr(entity, MilvusCollectionInitializer.FIELD_HEADING_PATH);
 
                 // S1 意图-检索解耦：不再从 collection_type 解析意图，构造传 null（上游节点判定）
-                chunks.add(new KnowledgeChunk(chunkId, content, "", "", headingPath, score, null));
+                String sha256 = getStr(entity, MilvusCollectionInitializer.FIELD_SHA256);
+                chunks.add(new KnowledgeChunk(
+                        chunkId, content, "", "", headingPath, score, null, sha256.isBlank() ? null : sha256));
             }
 
             log.debug("单条检索完成: type={}, 结果数={}", query.collectionType(), chunks.size());
@@ -283,6 +294,37 @@ public class SearchKnowledgeTool {
             log.warn("单条检索失败(降级): type={}, error={}", query.collectionType(), e.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * SHA256 内容去重 —— 同归一化内容哈希只保留一条（spec §3.1 防御性兜底）
+     *
+     * <p>入参为 FusionService 输出的 RRF 分数降序列表，首个出现即分数最高，
+     * 因此 LinkedHashMap putIfAbsent 保留首个即为「保留 RRF 融合分数最高一条」。
+     *
+     * <p>sha256 取 Milvus 返回字段（计划 1/5 ETL 全量写入）；空值时用
+     * {@link com.commerce.rag.record.ContentHash#of(String)} 对 content 归一化计算保底，
+     * 仍不可得（内容本身为空）则退化为按 chunkId 保底（不误删）。
+     *
+     * @param chunks RRF 融合后按分数降序的候选（可为空）
+     * @return 按 sha256 去重后的候选列表（保持原降序）
+     */
+    List<KnowledgeChunk> deduplicateBySha256(List<KnowledgeChunk> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return chunks == null ? Collections.emptyList() : chunks;
+        }
+        Map<String, KnowledgeChunk> seen = new LinkedHashMap<>();
+        for (KnowledgeChunk chunk : chunks) {
+            String hash = chunk.sha256();
+            if (hash == null || hash.isBlank()) {
+                hash = ContentHash.of(chunk.content()).sha256();
+            }
+            if (hash == null || hash.isBlank()) {
+                hash = "chunk:" + chunk.chunkId();
+            }
+            seen.putIfAbsent(hash, chunk);
+        }
+        return new ArrayList<>(seen.values());
     }
 
     /**

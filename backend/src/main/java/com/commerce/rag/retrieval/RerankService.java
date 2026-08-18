@@ -147,7 +147,7 @@ public class RerankService {
         if (original == null) {
             return null;
         }
-        // 用 rerank score 替换原始 score，保留其余字段（7 字段，对照设计 §2.4）
+        // 用 rerank score 替换原始 score，保留其余字段（8 字段，对照设计 §2.4）
         return new KnowledgeChunk(
                 original.chunkId(),
                 original.content(),
@@ -155,7 +155,8 @@ public class RerankService {
                 original.docTitle(),
                 original.headingPath(),
                 dws.getScore(),
-                original.collectionType());
+                original.collectionType(),
+                original.sha256());
     }
 
     /**

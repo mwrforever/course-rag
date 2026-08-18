@@ -65,8 +65,11 @@ class RerankServiceTest {
         assertEquals(2, result.size());
         assertEquals("c1", result.get(0).chunkId());
         assertEquals(0.95, result.get(0).score(), 0.001);
+        // mapToChunk 回传：sha256 等原始字段随 rerank 结果原样透传
+        assertEquals("a".repeat(64), result.get(0).sha256());
         assertEquals("c2", result.get(1).chunkId());
         assertEquals(0.45, result.get(1).score(), 0.001);
+        assertEquals("a".repeat(64), result.get(1).sha256());
     }
 
     @Test
@@ -129,10 +132,10 @@ class RerankServiceTest {
 
     // ==================== 辅助方法 ====================
 
-    /** 构造测试用 KnowledgeChunk（7 字段，对照设计 §2.4） */
+    /** 构造测试用 KnowledgeChunk（8 字段，对照设计 §2.4，sha256 固定为 64 位十六进制） */
     private KnowledgeChunk chunk(String chunkId, String content) {
         return new KnowledgeChunk(
-                chunkId, content, "source", "docTitle", "heading", 0.0, IntentType.KNOWLEDGE_QUESTION);
+                chunkId, content, "source", "docTitle", "heading", 0.0, IntentType.KNOWLEDGE_QUESTION, "a".repeat(64));
     }
 
     /** 构造 mock DocumentWithScore */
