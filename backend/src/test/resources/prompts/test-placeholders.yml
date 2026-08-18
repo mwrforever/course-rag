@@ -1,0 +1,5 @@
+# 占位符替换测试夹具 —— 双占位符模板，供 PromptLoaderTest 验证未匹配占位符原样保留行为
+# 生产模板 dynamic-context.yml 仅剩 ${current_time} 单一占位符，无法再构造"未匹配占位符"场景
+template:
+  content: |
+    hello ${name}, today is ${date}

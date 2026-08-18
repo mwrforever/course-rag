@@ -42,14 +42,12 @@ class PromptLoaderTest {
     }
 
     @Test
-    @DisplayName("loadRawAndReplace → 替换 ${placeholder} 占位符")
+    @DisplayName("loadRawAndReplace → 替换 ${current_time} 占位符")
     void loadRawAndReplace_replacesPlaceholders() {
         String result = promptLoader.loadRawAndReplace(
-                "dynamic-context.yml",
-                Map.of("current_time", "2026-08-15 12:00:00 +0800", "rewritten_queries", "1. 测试查询"));
+                "dynamic-context.yml", Map.of("current_time", "2026-08-15 12:00:00 +0800"));
 
         assertTrue(result.contains("2026-08-15 12:00:00 +0800"));
-        assertTrue(result.contains("1. 测试查询"));
         assertFalse(result.contains("${current_time}"));
     }
 
@@ -63,27 +61,25 @@ class PromptLoaderTest {
     @Test
     @DisplayName("loadRawAndReplace → 未匹配的占位符原样保留，只替换命中项")
     void loadRawAndReplace_unmatchedPlaceholder_keptAsIs() {
-        // 只替换 current_time，rewritten_queries 未提供 → ${rewritten_queries} 原样保留
-        String result = promptLoader.loadRawAndReplace(
-                "dynamic-context.yml", Map.of("current_time", "2026-08-16 10:00:00 +0800"));
+        // 只替换 name，date 未提供 → ${date} 原样保留（生产模板 dynamic-context.yml
+        // 已单占位符化，未匹配场景改用夹具 test-placeholders.yml 验证）
+        String result = promptLoader.loadRawAndReplace("test-placeholders.yml", Map.of("name", "张三"));
 
-        assertTrue(result.contains("2026-08-16 10:00:00 +0800"));
-        assertFalse(result.contains("${current_time}"));
-        assertTrue(result.contains("${rewritten_queries}"), "未提供的占位符应原样保留");
+        assertTrue(result.contains("张三"));
+        assertFalse(result.contains("${name}"));
+        assertTrue(result.contains("${date}"), "未提供的占位符应原样保留");
     }
 
     @Test
     @DisplayName("loadAndReplace → 展平文本中替换占位符且保留分段标记")
     void loadAndReplace_replacesPlaceholdersInFlattenedText() {
-        String result = promptLoader.loadAndReplace(
-                "dynamic-context.yml",
-                Map.of("current_time", "2026-08-16 10:00:00 +0800", "rewritten_queries", "重写查询"));
+        String result =
+                promptLoader.loadAndReplace("dynamic-context.yml", Map.of("current_time", "2026-08-16 10:00:00 +0800"));
 
         // 展平模式下保留叶子所在层级的 key 分段标记（reminder 为顶层 key，不输出前缀）
         assertTrue(result.contains("template:"));
-        assertTrue(result.contains("重写查询"));
+        assertTrue(result.contains("2026-08-16 10:00:00 +0800"));
         assertFalse(result.contains("${current_time}"));
-        assertFalse(result.contains("${rewritten_queries}"));
     }
 
     @Test

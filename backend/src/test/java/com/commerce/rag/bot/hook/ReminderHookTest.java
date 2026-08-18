@@ -4,18 +4,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.alibaba.cloud.ai.graph.RunnableConfig;
-import com.alibaba.cloud.ai.graph.agent.ReactAgent;
 import com.alibaba.cloud.ai.graph.agent.hook.messages.AgentCommand;
 import com.commerce.rag.bot.graph.PromptLoader;
 import java.lang.reflect.Field;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.messages.Message;
@@ -39,7 +35,7 @@ class ReminderHookTest {
     @BeforeEach
     void setUp() {
         hook = new ReminderHook(promptLoader);
-        // hook 未 attach agent 时 getRewrittenQueries 短路返回空列表，reminder 文本固定；
+        // reminder 文本由 mock 固定返回（模板内容不随代码行为变化）；
         // lenient：getName 等不触发 beforeModel 的用例不消费此桩
         lenient()
                 .when(promptLoader.loadRawAndReplace(eq("dynamic-context.yml"), anyMap()))
@@ -95,71 +91,21 @@ class ReminderHookTest {
     }
 
     @Test
-    @DisplayName("beforeModel → 线程状态含 rewrittenQueries 时按编号展开并传入模板，时间按格式输出")
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    void beforeModel_rewrittenQueriesPresent_numberedQueriesInReminder() throws Exception {
-        // 模拟 agent 已 attach 且线程状态中携带 2 条重写查询
-        ReactAgent agent = mock(ReactAgent.class);
-        when(agent.getThreadState("test-thread-1")).thenReturn(Map.of("rewrittenQueries", List.of("查询A", "查询B")));
-        hook.setAgent(agent);
+    @DisplayName("beforeModel — 注入提醒含当前时间语义，不含重写查询")
+    void beforeModel_injectsTimeReminder_noRewrittenQueries() throws Exception {
+        when(promptLoader.loadRawAndReplace(eq("dynamic-context.yml"), anyMap()))
+                .thenReturn("<system-reminder>\n## 重要提醒\n- 当前时间为 2026-08-18 10:00:00 +0800\n</system-reminder>");
 
-        RunnableConfig config = mock(RunnableConfig.class);
-        when(config.threadId()).thenReturn(Optional.of("test-thread-1"));
-
-        AgentCommand command = hook.beforeModel(List.of(new UserMessage("你好")), config);
+        AgentCommand command = hook.beforeModel(
+                List.of(new UserMessage("问")), RunnableConfig.builder().build());
 
         List<Message> result = getMessagesFromCommand(command);
-        assertEquals(2, result.size());
-        assertTrue(result.get(0).getText().contains(ReminderHook.REMINDER_MARKER));
-
-        // 断言传给模板的占位符映射：rewritten_queries 按 "1. 查询A\n2. 查询B" 展开
-        ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(promptLoader).loadRawAndReplace(eq("dynamic-context.yml"), captor.capture());
-        Map<String, String> replacements = captor.getValue();
-        assertEquals("1. 查询A\n2. 查询B", replacements.get("rewritten_queries"));
-        // 时间参数按 yyyy-MM-dd HH:mm:ss Z 格式化（如 2026-08-16 10:00:00 +0800）
         assertTrue(
-                replacements.get("current_time").matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} [+-]\\d{4}"),
-                "current_time 应按 yyyy-MM-dd HH:mm:ss Z 格式输出");
-    }
-
-    @Test
-    @DisplayName("beforeModel → 线程状态缺失 rewrittenQueries 时注入空查询提醒，不阻断")
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    void beforeModel_rewrittenQueriesMissing_emptyQueriesText() throws Exception {
-        // 线程状态存在但不含 rewrittenQueries 键
-        ReactAgent agent = mock(ReactAgent.class);
-        when(agent.getThreadState("test-thread-1")).thenReturn(Map.of());
-        hook.setAgent(agent);
-
-        RunnableConfig config = mock(RunnableConfig.class);
-        when(config.threadId()).thenReturn(Optional.of("test-thread-1"));
-
-        AgentCommand command = hook.beforeModel(List.of(new UserMessage("你好")), config);
-
-        List<Message> result = getMessagesFromCommand(command);
+                result.stream().anyMatch(m -> m.getText() != null && m.getText().contains("当前时间为")));
+        assertTrue(result.stream()
+                .noneMatch(m -> m.getText() != null && m.getText().contains("重写")));
+        // 注入位置：SystemMessage(base) 之后（无 SystemMessage 时插到最前）
         assertEquals(2, result.size());
-
-        ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
-        verify(promptLoader).loadRawAndReplace(eq("dynamic-context.yml"), captor.capture());
-        assertEquals("", captor.getValue().get("rewritten_queries"), "无重写查询时查询文本应为空串");
-    }
-
-    @Test
-    @DisplayName("beforeModel → 线程状态读取异常时降级为空查询，提醒正常注入")
-    void beforeModel_threadStateReadFails_degradesToEmptyQueries() throws Exception {
-        ReactAgent agent = mock(ReactAgent.class);
-        when(agent.getThreadState("test-thread-1")).thenThrow(new RuntimeException("state unavailable"));
-        hook.setAgent(agent);
-
-        RunnableConfig config = mock(RunnableConfig.class);
-        when(config.threadId()).thenReturn(Optional.of("test-thread-1"));
-
-        AgentCommand command = hook.beforeModel(List.of(new UserMessage("你好")), config);
-
-        List<Message> result = getMessagesFromCommand(command);
-        assertEquals(2, result.size());
-        assertTrue(result.get(0).getText().contains(ReminderHook.REMINDER_MARKER));
     }
 
     @Test
