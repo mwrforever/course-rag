@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
@@ -691,6 +692,19 @@ class EtlPipelineTest {
                 .insert(any(DocumentChunk.class));
 
         etlPipeline.chunkDocument(8L);
+
+        // 终审加固回归：去重查询必须排除本文档自身既有 chunk（失败重跑/预留路径下旧 chunk 不得作为「已存在」
+        // 去重依据——否则会在 delete-then-insert 前被跳过，导致内容丢失 + chunk 计数漂移）
+        ArgumentCaptor<LambdaQueryWrapper> dedupCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(chunkMapper).selectList(dedupCaptor.capture());
+        LambdaQueryWrapper dedupWrapper = dedupCaptor.getValue();
+        // 先渲染（getSqlSegment）——IN/占位符参数在渲染时才写入 paramNameValuePairs（MP 3.5.12 惰性）
+        String dedupSql = dedupWrapper.getSqlSegment();
+        assertTrue(dedupSql.contains("doc_id") && dedupSql.contains("<>"), "去重查询应含 doc_id <> 当前文档条件: " + dedupSql);
+        // 参数值集合断言含精确 Long 8L（hash 均为 String，不会与 Long 类型混淆）
+        assertTrue(
+                dedupWrapper.getParamNameValuePairs().values().contains(8L),
+                "去重查询参数应含当前 docId=8: " + dedupWrapper.getParamNameValuePairs());
 
         ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
         verify(chunkMapper).insert(captor.capture());

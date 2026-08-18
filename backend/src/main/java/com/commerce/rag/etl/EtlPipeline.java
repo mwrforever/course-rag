@@ -237,7 +237,7 @@ public class EtlPipeline {
             throw new IllegalStateException("分片结果为空: docId=" + docId);
         }
         // SHA256 全局去重（spec §4.4）：批内去重 + 查库跳过，全局唯一硬约束
-        List<ChunkSpec> specs = deduplicateSpecs(rawSpecs);
+        List<ChunkSpec> specs = deduplicateSpecs(rawSpecs, doc.getId());
         if (specs.isEmpty()) {
             log.info("全部内容已存在（SHA256 去重），无新分片入库: docId={}", docId);
             updateDocChunkCount(docId, 0);
@@ -340,11 +340,15 @@ public class EtlPipeline {
     }
 
     /**
-     * SHA256 内容去重 —— 批内（同 hash 保留首个）+ 查库（deleted=0 由 @TableLogic 自动过滤）
+     * SHA256 内容去重 —— 批内（同 hash 保留首个）+ 查库（跳过其他文档既有 hash；deleted=0 由 @TableLogic 自动过滤）
      *
      * <p>spec §4.4：同 sha256 全库只存一条（全局唯一硬约束）；检索侧防御去重在计划 2/5。
+     *
+     * @param specs 待去重的分片规格列表（批内同 hash 保留首个）
+     * @param docId 当前文档 ID——查询排除本文档自身既有 chunk（失败重跑/预留重跑路径下旧 chunk 不应作为
+     *              「已存在」去重依据，delete-then-insert 幂等语义先软删再重插接管）；仅跨文档去重
      */
-    private List<ChunkSpec> deduplicateSpecs(List<ChunkSpec> specs) {
+    private List<ChunkSpec> deduplicateSpecs(List<ChunkSpec> specs, Long docId) {
         Map<String, ChunkSpec> byHash = new LinkedHashMap<>();
         for (ChunkSpec spec : specs) {
             byHash.putIfAbsent(ContentHash.of(spec.content()).sha256(), spec);
@@ -353,7 +357,9 @@ public class EtlPipeline {
         Set<String> existing = chunkMapper
                 .selectList(Wrappers.<DocumentChunk>lambdaQuery()
                         .select(DocumentChunk::getSha256)
-                        .in(DocumentChunk::getSha256, hashes))
+                        .in(DocumentChunk::getSha256, hashes)
+                        // 排除本文档自身既有 chunk——金融/重跑路径下旧 chunk 不应作为「已存在」去重依据，delete-then-insert 语义接管
+                        .ne(DocumentChunk::getDocId, docId))
                 .stream()
                 .map(DocumentChunk::getSha256)
                 .filter(Objects::nonNull)
