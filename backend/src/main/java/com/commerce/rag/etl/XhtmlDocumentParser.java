@@ -32,7 +32,7 @@ public class XhtmlDocumentParser {
      *
      * @param xhtml  Tika ToHTMLContentHandler 输出的 XHTML
      * @param images 内嵌图片映射（resourceName → 字节与 MIME），允许为空
-     * @return 按文档顺序排列的文本/图片分区（表格分区于 Task 6 启用）
+     * @return 按文档顺序排列的文本/表格/图片分区
      */
     public ParsedContent parse(String xhtml, Map<String, ParsedContent.CapturedImage> images) {
         Element body = Jsoup.parse(xhtml).body();
@@ -79,9 +79,9 @@ public class XhtmlDocumentParser {
                     continue;
                 }
                 if (tag.equals("table")) {
-                    // 过渡期（Task 6 前）：表格以纯文本并入正文，保证内容不丢
+                    // 表格是语义完整单元：独立成 TableSection，从正文剥离（spec §4.3）
                     flushText(buf, currentPath(headings), sections);
-                    buf.append(e.text()).append('\n');
+                    sections.add(new ParsedContent.TableSection(currentPath(headings), e.outerHtml()));
                     continue;
                 }
                 if (tag.equals("img")) {

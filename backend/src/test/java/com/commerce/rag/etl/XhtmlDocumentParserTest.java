@@ -49,18 +49,24 @@ class XhtmlDocumentParserTest {
     }
 
     @Test
-    @DisplayName("表格过渡期 — 表格文本并入正文（内容不丢）")
-    void tableText_mergedIntoBody() {
-        String xhtml = "<html><body><p>前置说明。</p><table><tr><th>名称</th></tr>"
-                + "<tr><td>数值</td></tr></table><p>后置说明。</p></body></html>";
+    @DisplayName("表格剥离正文 — 产出独立 TableSection，正文不含表格文本")
+    void tableElement_producesTableSection() {
+        String xhtml = "<html><body><h1>数据</h1><p>前置说明。</p>"
+                + "<table><tr><th>名称</th></tr><tr><td>数值</td></tr></table>"
+                + "<p>后置说明。</p></body></html>";
 
         ParsedContent parsed = parser.parse(xhtml, Map.of());
-        String all = parsed.sections().stream()
+
+        assertEquals(3, parsed.sections().size(), "应产出 前置文本/表格/后置文本 三个分区");
+        ParsedContent.TableSection table =
+                (ParsedContent.TableSection) parsed.sections().get(1);
+        assertEquals("数据", table.headingPath());
+        assertTrue(table.html().contains("<table>"));
+        String allText = parsed.sections().stream()
                 .filter(ParsedContent.TextSection.class::isInstance)
                 .map(s -> ((ParsedContent.TextSection) s).text())
                 .reduce("", (a, b) -> a + "\n" + b);
-
-        assertTrue(all.contains("名称") && all.contains("数值"), "表格文本应保留在正文: " + all);
+        assertTrue(!allText.contains("数值"), "表格文本应从正文剥离: " + allText);
     }
 
     @Test

@@ -90,7 +90,8 @@ class EtlPipelineTest {
                 milvusClientV2,
                 props,
                 dashboardStatsCache,
-                new XhtmlDocumentParser());
+                new XhtmlDocumentParser(),
+                new TableChunker(props));
     }
 
     @Test
@@ -511,6 +512,40 @@ class EtlPipelineTest {
                         .noneMatch(c ->
                                 c.getContent().length() < 64 && c.getContent().endsWith("完。")),
                 "过小尾块应并入前一个分片");
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 表格分区产出 content_type=table 的 Markdown chunk")
+    void chunkDocument_tableSection_producesTableChunk() throws Exception {
+        Document doc = new Document();
+        doc.setId(5L);
+        doc.setKbId(50L);
+        when(documentMapper.selectById(5L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        java.lang.reflect.Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
+        field.setAccessible(true);
+        ((java.util.concurrent.ConcurrentHashMap<Long, ParsedContent>) field.get(etlPipeline))
+                .put(
+                        5L,
+                        new ParsedContent(List.of(new ParsedContent.TableSection(
+                                "价格表",
+                                "<table><tr><th>名称</th><th>价格</th></tr><tr><td>课程A</td><td>1999</td></tr></table>"))));
+        java.util.concurrent.atomic.AtomicLong idSeq = new java.util.concurrent.atomic.AtomicLong(500);
+        doAnswer(inv -> {
+                    inv.getArgument(0, DocumentChunk.class).setId(idSeq.getAndIncrement());
+                    return 1;
+                })
+                .when(chunkMapper)
+                .insert(any(DocumentChunk.class));
+
+        etlPipeline.chunkDocument(5L);
+
+        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
+        verify(chunkMapper).insert(captor.capture());
+        DocumentChunk chunk = captor.getValue();
+        assertEquals("table", chunk.getContentType());
+        assertEquals("价格表", chunk.getHeadingPath());
+        assertTrue(chunk.getContent().contains("| 课程A | 1999 |"));
     }
 
     @Test

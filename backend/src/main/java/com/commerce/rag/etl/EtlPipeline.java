@@ -54,9 +54,9 @@ import org.springframework.stereotype.Component;
  * <p>Milvus upsert 策略：delete-then-insert。
  * PG 冗余 dense_vector（BYTEA）避免回查 Milvus。
  *
- * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（8 个 private final 依赖：
+ * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（9 个 private final 依赖：
  * DocumentMapper / DocumentChunkMapper / MinioStorageService / EmbeddingModel /
- * MilvusClientV2 / EtlProperties / dashboardStatsCache / XhtmlDocumentParser）。
+ * MilvusClientV2 / EtlProperties / dashboardStatsCache / XhtmlDocumentParser / TableChunker）。
  *
  * @author commerce-rag
  */
@@ -91,6 +91,9 @@ public class EtlPipeline {
 
     /** XHTML 结构解析器（纯函数，Tika 解析 → 结构化分区） */
     private final XhtmlDocumentParser xhtmlDocumentParser;
+
+    /** 表格分片器（HTML 表格 → Markdown，大表按行分组/表头重复/overlap 行，Task 6 接入） */
+    private final TableChunker tableChunker;
 
     /** 解析内容内存缓存（docId → 结构化分区），仅在同一线程内有效 */
     private final ConcurrentHashMap<Long, ParsedContent> parsedContentCache = new ConcurrentHashMap<>();
@@ -280,13 +283,15 @@ public class EtlPipeline {
 
     /**
      * 组装待落库分片 —— 按文档顺序遍历结构分区，按类型分片
-     * （文本走 TokenTextSplitter；表格/图片分区于 Task 6/7 接入）
+     * （文本走 TokenTextSplitter；表格走 TableChunker；图片分区于 Task 7 接入）
      */
     private List<ChunkSpec> buildChunkSpecs(ParsedContent parsed) {
         List<ChunkSpec> specs = new ArrayList<>();
         for (ParsedContent.ParsedSection section : parsed.sections()) {
             if (section instanceof ParsedContent.TextSection text) {
                 specs.addAll(splitTextSection(text));
+            } else if (section instanceof ParsedContent.TableSection table) {
+                specs.addAll(tableChunker.chunk(table.html(), table.headingPath()));
             }
         }
         return specs;
