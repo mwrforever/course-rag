@@ -116,7 +116,8 @@ class ChatRequestWorkerTest {
                 workerProperties,
                 runPool,
                 warningHook,
-                new ObjectMapper());
+                new ObjectMapper(),
+                "qwen3.8-max");
 
         // 公共 stub：saver.get 返回空 Optional（无历史 checkpoint）
         lenient().when(saver.get(any(RunnableConfig.class))).thenReturn(Optional.empty());
@@ -707,7 +708,8 @@ class ChatRequestWorkerTest {
                 workerProperties,
                 runPool,
                 warningHook,
-                mapper);
+                mapper,
+                "qwen3.8-max");
     }
 
     @Test

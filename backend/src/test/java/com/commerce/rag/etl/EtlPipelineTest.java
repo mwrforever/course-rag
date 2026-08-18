@@ -75,7 +75,13 @@ class EtlPipelineTest {
     @BeforeEach
     void setUp() {
         EtlProperties props = new EtlProperties(
-                100, new EtlProperties.Executor(2, 4, 20, "etl-"), new EtlProperties.Chunk(768, 128), 16);
+                100,
+                new EtlProperties.Executor(2, 4, 20, "etl-"),
+                new EtlProperties.Chunk(768, 64),
+                16,
+                "qwen3.7-flash",
+                10,
+                new EtlProperties.Table(25, 30, 2));
         etlPipeline = new EtlPipeline(
                 documentMapper,
                 chunkMapper,

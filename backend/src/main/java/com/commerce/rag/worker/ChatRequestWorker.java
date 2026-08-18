@@ -45,6 +45,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
@@ -92,6 +93,8 @@ public class ChatRequestWorker {
     private final WarningHook warningHook;
 
     private final ObjectMapper objectMapper;
+    /** 主对话模型名（METADATA 事件 model 字段，来自 rag.agent.model） */
+    private final String agentModel;
     /** per-run 取消标记 */
     private final ConcurrentHashMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
 
@@ -113,7 +116,8 @@ public class ChatRequestWorker {
             WorkerProperties workerProperties,
             @Qualifier("runPool") ThreadPoolExecutor runPool,
             WarningHook warningHook,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            @Value("${rag.agent.model:qwen3.8-max}") String agentModel) {
         this.redisTemplate = redisTemplate;
         this.compiledGraph = compiledGraph;
         this.saver = saver;
@@ -126,6 +130,7 @@ public class ChatRequestWorker {
         this.runPool = runPool;
         this.warningHook = warningHook;
         this.objectMapper = objectMapper;
+        this.agentModel = agentModel;
     }
 
     // ========================================================================
@@ -341,8 +346,7 @@ public class ChatRequestWorker {
         inputs.put("messages", List.of(new UserMessage(userQuery)));
 
         // run 上下文
-        SseEventTransformer.RunState runState =
-                SseEventTransformer.RunState.create(runIdStr, sessionIdStr, "qwen3.7-max");
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create(runIdStr, sessionIdStr, agentModel);
 
         // 流式过程中收集最后 NodeOutput（用于消息持久化）
         AtomicReference<NodeOutput> lastOutput = new AtomicReference<>();

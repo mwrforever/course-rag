@@ -20,7 +20,13 @@ class EtlConfigTest {
     @DisplayName("etlPool 按 EtlProperties 创建独立线程池（core/max/队列/AbortPolicy——M-7 快速失败）")
     void etlPool_buildsPoolPerProperties() {
         EtlProperties props = new EtlProperties(
-                100, new EtlProperties.Executor(2, 4, 20, "etl-"), new EtlProperties.Chunk(768, 128), 16);
+                100,
+                new EtlProperties.Executor(2, 4, 20, "etl-"),
+                new EtlProperties.Chunk(768, 64),
+                16,
+                "qwen3.7-flash",
+                10,
+                new EtlProperties.Table(25, 30, 2));
         ThreadPoolExecutor pool = new EtlConfig().etlPool(props);
 
         try {

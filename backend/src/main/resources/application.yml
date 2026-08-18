@@ -18,11 +18,11 @@ spring:
       api-key: ${DASHSCOPE_API_KEY:}
       chat:
         options:
-          model: qwen3.7-max
+          model: qwen3.8-max          # spec §6 主对话旗舰（原 qwen3.7-max）
           temperature: 0.7
       embedding:
         options:
-          model: text-embedding-v4
+          model: qwen3.7-text-embedding   # spec §6 官方当前最强（原 text-embedding-v4，维度仍 1024）
       rerank:
         options:
           model: qwen3-rerank
@@ -135,14 +135,21 @@ etl:
   max-file-size-mb: 100
   # H-3: embedding 批量调用批次大小（DashScope 一次请求携带多条文本，调用次数 = 分片数/批大小）
   embedding-batch-size: 16
+  caption-model: qwen3.7-flash       # VLM 图片描述模型（spec §4.5 两通道独立配置）
+  image-min-size-kb: 10              # 图片过滤：小于该大小的图标跳过（spec §4.2）
   executor:
     core-size: 2
     max-size: 4
     queue-capacity: 20
     thread-name-prefix: etl-
   chunk:
-    size: 768
-    overlap: 128
+    size: 768                        # TokenTextSplitter chunkSizeTokens
+    min-chunk-size-chars: 64         # 过小 chunk 并入前一个的阈值（spec §4.1）
+    # 注意：overlap 配置已删除——Spring AI 1.1.2 TokenTextSplitter 无 overlap 参数（见计划决策点 1）
+  table:
+    rows-per-chunk: 25               # 大表分组名义行数（spec §4.3「每 20~30 行一组」）
+    max-rows-per-chunk: 30           # 分组行数硬上限（token 动态调整）
+    overlap-rows: 2                  # 相邻子 chunk 间重叠行数（spec §4.3「1~2 行」）
 
 # ── 对话配置 ──
 chat:
@@ -186,6 +193,7 @@ rag:
   agent:
     # ModelCallLimitHook runLimit（防单 run 无限迭代）
     run-limit: 15
+    model: qwen3.8-max              # 主对话模型名（METADATA 事件 model 字段来源，原硬编码于 Worker）
     # 僵死 ACTIVE run 回收租约（分钟）
 
   # ── F#3 死循环检测（LoopDetectionProperties）──

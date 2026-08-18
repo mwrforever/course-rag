@@ -203,7 +203,10 @@ public class EtlPipeline {
         }
 
         int chunkSize = etlProperties.chunk().size();
-        int overlap = etlProperties.chunk().overlap();
+        // 过渡期（Task 5 前置）：etl.chunk.overlap 配置已删除（计划决策点 1——
+        // Spring AI 1.1.2 TokenTextSplitter 无 overlap 参数），递归分片以 overlap=0 过渡，
+        // Task 5 由 TokenTextSplitter 正式接管文本分片
+        int overlap = 0;
 
         // P2-7: delete-then-insert 幂等化——先软删该文档旧 chunk（含上次 FAILED 遗留的半成品），
         // 再插入新分片。当前 upload/reparse 入口虽已在外层软删，但 FAILED 重跑等预留路径
