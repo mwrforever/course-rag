@@ -14,7 +14,6 @@ package com.commerce.rag.bot.graph;
  * <table border="1">
  *   <tr><th>Key</th><th>策略</th><th>类型</th><th>说明</th></tr>
  *   <tr><td>{@link #KEY_MESSAGES}</td><td>AppendStrategy</td><td>List&lt;Message&gt;</td><td>对话消息（SAA 框架要求 key 名必须 "messages"）</td></tr>
- *   <tr><td>{@link #KEY_REWRITTEN_QUERIES}</td><td>ReplaceStrategy</td><td>List&lt;String&gt;</td><td>查询重写结果（queryRewriteNode 写入）</td></tr>
  *   <tr><td>{@link #KEY_AGENT_OUTPUT}</td><td>ReplaceStrategy</td><td>String</td><td>ReactAgent 最终输出键</td></tr>
  *   <tr><td>{@link #KEY_SAFETY_WARNINGS}</td><td>AppendStrategy</td><td>List&lt;String&gt;</td><td>安全告警队列（WarningHook 写入）</td></tr>
  *   <tr><td>{@link #KEY_QUERY_PLAN}</td><td>ReplaceStrategy</td><td>QueryPlan</td><td>查询计划（queryUnderstandingNode 写入，RetrieveNode/条件边消费）</td></tr>
@@ -27,9 +26,6 @@ public interface OverAllState {
 
     /** State Key: 对话消息列表（SAA 框架要求 key 名必须为 "messages"） */
     String KEY_MESSAGES = "messages";
-
-    /** State Key: 查询重写结果（queryRewriteNode 写入，ReplaceStrategy） */
-    String KEY_REWRITTEN_QUERIES = "rewrittenQueries";
 
     /** State Key: ReactAgent 最终输出键（ReplaceStrategy） */
     String KEY_AGENT_OUTPUT = "agent_output";

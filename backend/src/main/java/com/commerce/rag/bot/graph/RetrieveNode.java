@@ -43,9 +43,10 @@ import org.springframework.stereotype.Component;
  * <p>失败降级：检索异常/空结果 → 不写 document，ReactAgent 直接回答并记日志
  * （spec §1：retrieveNode 失败/空结果 → document 为空）。
  *
- * <p>注：本类与项目接口 {@link OverAllState}（KEY_QUERY_PLAN 定义处）同包，但 apply 签名
- * 需用框架的 {@code com.alibaba.cloud.ai.graph.OverAllState}（显式 import 遮蔽同包同名类型，
- * JLS 6.4.1），故常量以静态 import（{@code KEY_QUERY_PLAN}）方式引用项目接口成员。
+ * <p>注：本类与项目接口 {@link com.commerce.rag.bot.graph.OverAllState}（KEY_QUERY_PLAN
+ * 定义处）同包，但 apply 签名需用框架的 {@code com.alibaba.cloud.ai.graph.OverAllState}
+ * （显式 import 遮蔽同包同名类型，JLS 6.4.1），故常量以静态 import（{@code KEY_QUERY_PLAN}）
+ * 方式引用项目接口成员。
  *
  * @author commerce-rag
  */

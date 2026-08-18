@@ -25,15 +25,14 @@ class GraphConfigTest {
     private final GraphConfig config = new GraphConfig();
 
     @Test
-    @DisplayName("keyStrategyFactory → 注册 messages/rewrittenQueries/agent_output/safety_warnings/queryPlan 五键策略")
-    void keyStrategyFactory_registersFiveKeys() {
+    @DisplayName("keyStrategyFactory → 注册 messages/agent_output/safety_warnings/queryPlan 四键策略")
+    void keyStrategyFactory_registersFourKeys() {
         KeyStrategyFactory factory = config.keyStrategyFactory();
 
         var strategies = factory.apply();
-        // 五个 key 均注册（messages/safety_warnings 为 Append，其余为 Replace）
-        assertEquals(5, strategies.size());
+        // 四个 key 均注册（messages/safety_warnings 为 Append，其余为 Replace）
+        assertEquals(4, strategies.size());
         assertNotNull(strategies.get("messages"));
-        assertNotNull(strategies.get("rewrittenQueries"));
         assertNotNull(strategies.get("agent_output"));
         assertNotNull(strategies.get("safety_warnings"));
         assertNotNull(strategies.get(OverAllState.KEY_QUERY_PLAN));

@@ -66,11 +66,10 @@ public class GraphConfig {
     }
 
     /**
-     * State Key 策略工厂 —— 定义 OverAllState 5 个 key 的 reducer 行为。
+     * State Key 策略工厂 —— 定义 OverAllState 4 个 key 的 reducer 行为。
      *
      * <ul>
      *   <li><code>messages</code> — AppendStrategy（对话消息累积，SAA 框架要求 key 名必须 "messages"）</li>
-     *   <li><code>rewrittenQueries</code> — ReplaceStrategy（每次 run 替换）</li>
      *   <li><code>agent_output</code> — ReplaceStrategy（ReactAgent 最终输出）</li>
      *   <li><code>safety_warnings</code> — AppendStrategy（安全告警队列累积）</li>
      *   <li><code>queryPlan</code> — ReplaceStrategy（查询计划，queryUnderstandingNode 每次 run 写入替换）</li>
@@ -82,7 +81,6 @@ public class GraphConfig {
     public KeyStrategyFactory keyStrategyFactory() {
         return new KeyStrategyFactoryBuilder()
                 .addStrategy("messages", new AppendStrategy())
-                .addStrategy("rewrittenQueries", new ReplaceStrategy())
                 .addStrategy("agent_output", new ReplaceStrategy())
                 .addStrategy("safety_warnings", new AppendStrategy())
                 // 静态 import 自项目接口 com.commerce.rag.bot.graph.OverAllState（非框架同名类）
