@@ -17,6 +17,7 @@ package com.commerce.rag.bot.graph;
  *   <tr><td>{@link #KEY_REWRITTEN_QUERIES}</td><td>ReplaceStrategy</td><td>List&lt;String&gt;</td><td>查询重写结果（queryRewriteNode 写入）</td></tr>
  *   <tr><td>{@link #KEY_AGENT_OUTPUT}</td><td>ReplaceStrategy</td><td>String</td><td>ReactAgent 最终输出键</td></tr>
  *   <tr><td>{@link #KEY_SAFETY_WARNINGS}</td><td>AppendStrategy</td><td>List&lt;String&gt;</td><td>安全告警队列（WarningHook 写入）</td></tr>
+ *   <tr><td>{@link #KEY_QUERY_PLAN}</td><td>ReplaceStrategy</td><td>QueryPlan</td><td>查询计划（queryUnderstandingNode 写入，RetrieveNode/条件边消费）</td></tr>
  * </table>
  *
  * @author commerce-rag
@@ -35,4 +36,7 @@ public interface OverAllState {
 
     /** State Key: 安全告警队列（WarningHook 写入，AppendStrategy） */
     String KEY_SAFETY_WARNINGS = "safety_warnings";
+
+    /** State Key: 查询计划（queryUnderstandingNode 写入，ReplaceStrategy） */
+    String KEY_QUERY_PLAN = "queryPlan";
 }
