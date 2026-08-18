@@ -13,13 +13,21 @@ import org.junit.jupiter.api.Test;
 class IntentTypeTest {
 
     @Test
-    @DisplayName("值域 — 三个意图枚举存在且顺序稳定（条件边路由依赖 name()）")
+    @DisplayName("值域 — 三个意图枚举存在且顺序稳定（条件边路由依赖 code() 小写规范名）")
     void enumValues_threeIntents() {
         assertEquals(3, IntentType.values().length);
-        // 注：Enum.name() 返回常量标识符本身（Java 语义），Task 10 条件边路由键需与 name() 一致（大写）
-        assertEquals("KNOWLEDGE_QUESTION", IntentType.KNOWLEDGE_QUESTION.name());
-        assertEquals("CHAT", IntentType.CHAT.name());
-        assertEquals("UNKNOWN", IntentType.UNKNOWN.name());
+        // 路由键用 code() 小写规范名（spec §1）；name() 返回大写常量标识符，不用于路由
+        assertEquals("knowledge_question", IntentType.KNOWLEDGE_QUESTION.code());
+        assertEquals("chat", IntentType.CHAT.code());
+        assertEquals("unknown", IntentType.UNKNOWN.code());
+    }
+
+    @Test
+    @DisplayName("code/fromString 对称 — fromString(code()) 恒返回自身（code 与 fromString 一一对应）")
+    void code_fromString_roundTrip() {
+        assertEquals(IntentType.KNOWLEDGE_QUESTION, IntentType.fromString(IntentType.KNOWLEDGE_QUESTION.code()));
+        assertEquals(IntentType.CHAT, IntentType.fromString(IntentType.CHAT.code()));
+        assertEquals(IntentType.UNKNOWN, IntentType.fromString(IntentType.UNKNOWN.code()));
     }
 
     @Test
