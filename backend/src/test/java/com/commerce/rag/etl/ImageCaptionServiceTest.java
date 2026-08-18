@@ -1,13 +1,14 @@
 package com.commerce.rag.etl;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import com.commerce.rag.bot.graph.PromptLoader;
 import com.commerce.rag.properties.EtlProperties;
 import java.util.Map;
@@ -55,12 +56,13 @@ class ImageCaptionServiceTest {
     @Test
     @DisplayName("caption — 图片以 Media 传入（base64 data URL 路径），模型名按次覆盖为 caption 模型")
     void caption_sendsMediaAndCaptionModel() {
+        byte[] imageBytes = new byte[] {1, 2, 3};
         AssistantMessage output = new AssistantMessage("这是图片描述内容");
         ChatResponse response = mock(ChatResponse.class);
         when(response.getResult()).thenReturn(new Generation(output));
         when(chatModel.call(any(Prompt.class))).thenReturn(response);
 
-        String caption = service.caption(new byte[] {1, 2, 3}, "image/png");
+        String caption = service.caption(imageBytes, "image/png");
 
         assertEquals("这是图片描述内容", caption);
         ArgumentCaptor<Prompt> captor = ArgumentCaptor.forClass(Prompt.class);
@@ -70,8 +72,10 @@ class ImageCaptionServiceTest {
         assertEquals(2, prompt.getInstructions().size());
         UserMessage user = (UserMessage) prompt.getInstructions().get(1);
         assertEquals(1, user.getMedia().size());
-        // 模型名按次覆盖（DashScopeChatOptions.model = caption 模型）
-        assertTrue(prompt.getOptions() != null);
+        // 图片字节原样进入 Media.data（SAA 发送时转 base64 data URL，模型侧收到图片内容）
+        assertArrayEquals(imageBytes, (byte[]) user.getMedia().get(0).getData());
+        // 模型名按次覆盖：DashScopeChatOptions.model = etl.caption-model（qwen3.7-flash）
+        assertEquals("qwen3.7-flash", ((DashScopeChatOptions) prompt.getOptions()).getModel());
     }
 
     @Test

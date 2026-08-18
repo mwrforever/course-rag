@@ -1,5 +1,6 @@
 package com.commerce.rag.etl;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -558,24 +559,26 @@ class EtlPipelineTest {
     }
 
     @Test
-    @DisplayName("chunkDocument — 图片分区：过滤小图标跳过、有效图片产出 image chunk")
+    @DisplayName("chunkDocument — 图片分区：小图标被过滤跳过、有效图片产出 image chunk")
     void chunkDocument_imageSection_filtersAndCaptions() throws Exception {
         Document doc = new Document();
         doc.setId(6L);
         doc.setKbId(60L);
         when(documentMapper.selectById(6L)).thenReturn(doc);
         when(documentMapper.update(any(), any())).thenReturn(1);
-        byte[] bigImage = new byte[10 * 1024]; // 10KB 起（≥ imageMinSizeKb 不触发小图标过滤）
+        byte[] bigImage = new byte[10 * 1024]; // ≥ imageMinSizeKb(10KB)，不触发小图标过滤
         when(minioStorageService.uploadFile(eq(60L), anyString(), any(InputStream.class), eq("png")))
                 .thenReturn("60/abc.png");
         when(imageCaptionService.caption(any(byte[].class), eq("image/png"))).thenReturn("这是一段图片描述");
         Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
         field.setAccessible(true);
+        // 两张图：9KB 小图标（<10KB 触发 isSmallIcon 过滤）+ 有效图（≥10KB 正常处理）
         ((ConcurrentHashMap<Long, ParsedContent>) field.get(etlPipeline))
                 .put(
                         6L,
-                        new ParsedContent(
-                                List.of(new ParsedContent.ImageSection("图例", "image/png", bigImage, "image0.png"))));
+                        new ParsedContent(List.of(
+                                new ParsedContent.ImageSection("", "image/png", new byte[10 * 1024 - 1], "icon.png"),
+                                new ParsedContent.ImageSection("图例", "image/png", bigImage, "image0.png"))));
         AtomicLong idSeq = new AtomicLong(600);
         doAnswer(inv -> {
                     inv.getArgument(0, DocumentChunk.class).setId(idSeq.getAndIncrement());
@@ -586,6 +589,7 @@ class EtlPipelineTest {
 
         etlPipeline.chunkDocument(6L);
 
+        // 小图被过滤：仅 1 个 image chunk 落库（即文档成功产出且小图标未进入处理管线）
         ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
         verify(chunkMapper).insert(captor.capture());
         DocumentChunk chunk = captor.getValue();
@@ -594,6 +598,13 @@ class EtlPipelineTest {
         assertEquals("60/abc.png", chunk.getImageUrl());
         assertEquals("图例", chunk.getHeadingPath());
         assertTrue(chunk.getMetadataJson().contains("image0.png"));
+        assertFalse(chunk.getMetadataJson().contains("icon.png"), "小图标不应产出 chunk");
+        // caption 仅被有效图字节调用一次（小图标过滤后未进入 caption）
+        ArgumentCaptor<byte[]> bytesCaptor = ArgumentCaptor.forClass(byte[].class);
+        verify(imageCaptionService).caption(bytesCaptor.capture(), eq("image/png"));
+        assertArrayEquals(bigImage, bytesCaptor.getValue(), "caption 只应收到有效图字节");
+        // 有效图也仅 upload 一次（小图标未触发 MinIO 上传）
+        verify(minioStorageService, times(1)).uploadFile(eq(60L), anyString(), any(InputStream.class), eq("png"));
     }
 
     @Test
