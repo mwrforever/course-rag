@@ -67,7 +67,7 @@ public class TableChunker {
         prefixRows.addAll(dataRows.subList(0, Math.min(PREFIX_DATA_ROWS, dataRows.size())));
         String prefix = toMarkdown(prefixRows);
 
-        // 行分组：表头 + 至多 maxRowsPerChunk 数据行；超 token 上限则逐行回退收口
+        // 行分组：表头 + 至多 maxRowsPerChunk 数据行
         List<ChunkSpec> specs = new ArrayList<>();
         int startIdx = 0;
         while (startIdx < dataRows.size()) {
@@ -76,11 +76,15 @@ public class TableChunker {
             int count = 0;
             while (startIdx + count < dataRows.size()
                     && count < etlProperties.table().maxRowsPerChunk()) {
+                // 达到名义行数（rowsPerChunk）后若再增长即超 token 预算，则停止增长
+                if (count >= etlProperties.table().rowsPerChunk()
+                        && TokenEstimator.estimate(toMarkdown(current)) > maxTokens) {
+                    break;
+                }
                 current.add(dataRows.get(startIdx + count));
                 count++;
             }
-            // 超 token 上限：逐行回退收口（回退行留给下一组，单行超长时退至该行成组），
-            // 直至≤ maxTokens 或仅剩 1 行（不硬切行内结构）
+            // 收口：超 token 预算逐行回退（重行组可能收口到 1 行，不硬切行内结构）
             while (count > 1 && TokenEstimator.estimate(toMarkdown(current)) > maxTokens) {
                 current.remove(current.size() - 1);
                 count--;
