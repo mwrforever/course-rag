@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.commerce.rag.properties.EtlProperties;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -64,10 +65,11 @@ class TableChunkerTest {
         assertTrue(specs.size() > 1, "大表应拆分为多组: " + specs.size());
         for (ChunkSpec spec : specs) {
             assertEquals("table", spec.contentType());
-            // 每组重复完整表头（语义独立）；诊断消息截断需防短 content 越界
+            // 每组重复完整表头（语义独立）：前缀 1 次 + 组体 1 次，出现次数须 ≥2；
+            // 诊断消息截断需防短 content 越界
             assertTrue(
-                    spec.content().contains("| 序号 | 说明 |"),
-                    "每组应含表头: "
+                    countOccurrences(spec.content(), "| 序号 | 说明 |") >= 2,
+                    "每组应重复完整表头（前缀+组体）: "
                             + spec.content()
                                     .substring(0, Math.min(200, spec.content().length())));
             // 上下文前缀 = 表头 + 前 2 数据行（拼在 content 开头）
@@ -76,9 +78,10 @@ class TableChunkerTest {
             assertTrue(TokenEstimator.estimate(spec.content()) <= 1000, "分组 token 超上限");
         }
         // 相邻组 overlap：前一组末尾行出现在后一组
+        // 注意：行 1/2 恒在前缀中，不能作为 overlap 证据，需从 i=3 起扫真实重叠行
         String prev = specs.get(0).content();
         String next = specs.get(1).content();
-        boolean overlapped = java.util.stream.IntStream.rangeClosed(1, 40)
+        boolean overlapped = java.util.stream.IntStream.rangeClosed(3, 40)
                 .anyMatch(i -> prev.contains("| " + i + " |") && next.contains("| " + i + " |"));
         assertTrue(overlapped, "相邻组应有重叠行");
     }
@@ -106,5 +109,12 @@ class TableChunkerTest {
 
         assertEquals(1, specs.size());
         assertTrue(specs.get(0).content().contains("超长单元格内容"), "超长行不得被硬切丢内容");
+    }
+
+    /** 统计 needle 在 haystack 中出现的次数（按字面匹配；split 的 -1 保留尾空段） */
+    private static int countOccurrences(String haystack, String needle) {
+        // needle 含 '|' 等正则元字符，需 Pattern.quote 转义为字面匹配，
+        // 否则 split 视其为正则（空分支可匹配任意位置）导致计数恒偏大、断言失去意义
+        return haystack.split(Pattern.quote(needle), -1).length - 1;
     }
 }
