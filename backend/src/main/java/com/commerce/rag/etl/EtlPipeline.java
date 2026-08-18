@@ -17,8 +17,10 @@ import com.google.gson.JsonObject;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.InsertReq;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,10 +28,11 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.apache.tika.extractor.EmbeddedDocumentExtractor;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
-import org.apache.tika.sax.BodyContentHandler;
+import org.apache.tika.sax.ToHTMLContentHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -51,9 +54,9 @@ import org.springframework.stereotype.Component;
  * <p>Milvus upsert 策略：delete-then-insert。
  * PG 冗余 dense_vector（BYTEA）避免回查 Milvus。
  *
- * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（7 个 private final 依赖：
+ * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（8 个 private final 依赖：
  * DocumentMapper / DocumentChunkMapper / MinioStorageService / EmbeddingModel /
- * MilvusClientV2 / EtlProperties / dashboardStatsCache）。
+ * MilvusClientV2 / EtlProperties / dashboardStatsCache / XhtmlDocumentParser）。
  *
  * @author commerce-rag
  */
@@ -72,9 +75,6 @@ public class EtlPipeline {
     /** content 字段最大长度（Milvus VARCHAR 限制） */
     private static final int MAX_CONTENT_LENGTH = 65535;
 
-    /** Tika 解析最大字符数（-1 = 无限制） */
-    private static final int TIKA_WRITE_LIMIT = -1;
-
     /** 影响 Dashboard 统计口径的解析状态（分片落库/终态；中间态不改变统计） */
     private static final Set<String> STATS_AFFECTING_STATUSES = Set.of("CHUNKED", "INDEXED", "FAILED");
 
@@ -89,8 +89,11 @@ public class EtlPipeline {
     @Qualifier("dashboardStatsCache")
     private final Cache<String, Object> dashboardStatsCache;
 
-    /** 解析文本内存缓存（docId → text），仅在同一线程内有效 */
-    private final ConcurrentHashMap<Long, String> parsedTextCache = new ConcurrentHashMap<>();
+    /** XHTML 结构解析器（纯函数，Tika 解析 → 结构化分区） */
+    private final XhtmlDocumentParser xhtmlDocumentParser;
+
+    /** 解析内容内存缓存（docId → 结构化分区），仅在同一线程内有效 */
+    private final ConcurrentHashMap<Long, ParsedContent> parsedContentCache = new ConcurrentHashMap<>();
 
     // ========================================================================
     // 完整管道入口
@@ -135,9 +138,9 @@ public class EtlPipeline {
             log.error("ETL 管道失败: docId={}", docId, e);
             updateDocStatus(docId, "FAILED", e.getMessage());
         } finally {
-            // perf P3-3: 任何路径（含异常）都清理解析文本缓存——parse 成功但 chunk/embed
+            // perf P3-3: 任何路径（含异常）都清理解析内容缓存——parse 成功但 chunk/embed
             // 失败时缓存残留会随 docId 递增持续增长（反复 reparse 失败即内存泄漏）
-            parsedTextCache.remove(docId);
+            parsedContentCache.remove(docId);
         }
     }
 
@@ -146,7 +149,7 @@ public class EtlPipeline {
     // ========================================================================
 
     /**
-     * Tika 解析文档 → 提取纯文本
+     * Tika 解析文档 → XHTML 结构化解析（标题路径 + 内嵌图片捕获 + 分区）
      *
      * <p>状态：PENDING → PARSING → PARSED
      */
@@ -162,18 +165,26 @@ public class EtlPipeline {
         // 从 MinIO 下载文件
         // P2-1: try-with-resources——Tika 解析异常/损坏文件时流必关（防 MinIO 句柄泄漏）
         try (InputStream inputStream = minioStorageService.downloadFile(doc.getSourcePath())) {
-            // Tika 解析
-            BodyContentHandler handler = new BodyContentHandler(TIKA_WRITE_LIMIT);
+            // Tika 解析 → XHTML（保留 table/img/标题结构，供结构化解析）
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ToHTMLContentHandler handler = new ToHTMLContentHandler(out, "UTF-8");
             Metadata metadata = new Metadata();
             ParseContext context = new ParseContext();
+            TikaImageExtractor imageExtractor = new TikaImageExtractor();
+            context.set(EmbeddedDocumentExtractor.class, imageExtractor);
             AutoDetectParser parser = new AutoDetectParser();
             parser.parse(inputStream, handler, metadata, context);
 
-            String text = handler.toString();
-            log.info("文档解析完成: docId={}, 字符数={}", docId, text.length());
+            String xhtml = out.toString(StandardCharsets.UTF_8);
+            ParsedContent parsed = xhtmlDocumentParser.parse(xhtml, imageExtractor.getImages());
+            log.info(
+                    "文档解析完成: docId={}, XHTML字符数={}, 捕获图片数={}",
+                    docId,
+                    xhtml.length(),
+                    imageExtractor.getImages().size());
 
-            // 将解析文本暂存到内存缓存（供 chunkDocument 阶段使用）
-            parsedTextCache.put(docId, text);
+            // 将解析结果暂存到内存缓存（供 chunkDocument 阶段使用）
+            parsedContentCache.put(docId, parsed);
         }
 
         updateDocStatus(docId, "PARSED", null);
@@ -197,9 +208,17 @@ public class EtlPipeline {
         updateDocStatus(docId, "CHUNKING", null);
         log.info("开始分片: docId={}", docId);
 
-        String text = parsedTextCache.get(docId);
+        ParsedContent parsed = parsedContentCache.get(docId);
+        if (parsed == null) {
+            throw new IllegalStateException("解析结果为空或未找到: docId=" + docId);
+        }
+        // 过渡期（Task 6/7 前）：仅合并文本分区走旧递归分片，图片/表格暂不参与分片
+        String text = parsed.sections().stream()
+                .filter(ParsedContent.TextSection.class::isInstance)
+                .map(s -> ((ParsedContent.TextSection) s).text())
+                .collect(Collectors.joining("\n\n"));
         if (text == null || text.isBlank()) {
-            throw new IllegalStateException("解析文本为空或未找到: docId=" + docId);
+            throw new IllegalStateException("解析文本为空: docId=" + docId);
         }
 
         int chunkSize = etlProperties.chunk().size();
@@ -275,7 +294,7 @@ public class EtlPipeline {
         updateDocChunkCount(docId, chunks.size());
 
         // 清理缓存
-        parsedTextCache.remove(docId);
+        parsedContentCache.remove(docId);
 
         updateDocStatus(docId, "CHUNKED", null);
     }

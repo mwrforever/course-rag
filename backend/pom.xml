@@ -158,6 +158,13 @@
             <version>${tika.version}</version>
         </dependency>
 
+        <!-- S1 表格/结构提取：Tika XHTML 输出 → Markdown 表格与标题路径解析 -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.18.1</version>
+        </dependency>
+
         <!-- commons-io：Tika 传递依赖需要 ChecksumInputStream（2.16.0+），显式升级避免 NoClassDefFoundError -->
         <dependency>
             <groupId>commons-io</groupId>

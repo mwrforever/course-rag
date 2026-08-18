@@ -89,7 +89,8 @@ class EtlPipelineTest {
                 embeddingModel,
                 milvusClientV2,
                 props,
-                dashboardStatsCache);
+                dashboardStatsCache,
+                new XhtmlDocumentParser());
     }
 
     @Test
@@ -352,15 +353,16 @@ class EtlPipelineTest {
     }
 
     // ========================================================================
-    // 分片算法与向量化成功路径补测（parsedTextCache 反射注入）
+    // 分片算法与向量化成功路径补测（parsedContentCache 反射注入）
     // ========================================================================
 
-    /** 反射向 parsedTextCache 注入解析文本（process 内由 Tika 写入，单测直接 seed） */
+    /** 反射向 parsedContentCache 注入解析结果（process 内由 Tika 写入，单测直接 seed） */
     @SuppressWarnings("unchecked")
-    private void seedParsedText(Long docId, String text) throws Exception {
-        java.lang.reflect.Field field = EtlPipeline.class.getDeclaredField("parsedTextCache");
+    private void seedParsedContent(Long docId, String text) throws Exception {
+        java.lang.reflect.Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
         field.setAccessible(true);
-        ((java.util.concurrent.ConcurrentHashMap<Long, String>) field.get(etlPipeline)).put(docId, text);
+        ((java.util.concurrent.ConcurrentHashMap<Long, ParsedContent>) field.get(etlPipeline))
+                .put(docId, new ParsedContent(List.of(new ParsedContent.TextSection("", text))));
     }
 
     @Test
@@ -374,7 +376,7 @@ class EtlPipelineTest {
         when(documentMapper.update(any(), any())).thenReturn(1);
         // 单个超过 chunkSize(768) 的段落（无双换行），触发 splitLargeParagraph 按句子拆分
         String longPara = ("RAG检索增强生成是一种结合检索与生成的架构范式，向量数据库负责存储嵌入向量。" + "混合检索融合了向量相似度与关键词匹配两种召回信号。").repeat(30);
-        seedParsedText(1L, longPara);
+        seedParsedContent(1L, longPara);
         // mock insert 赋自增 id，建立 prev/next 链
         java.util.concurrent.atomic.AtomicLong idSeq = new java.util.concurrent.atomic.AtomicLong(100);
         doAnswer(inv -> {
@@ -419,7 +421,7 @@ class EtlPipelineTest {
         doc.setKbId(20L);
         when(documentMapper.selectById(2L)).thenReturn(doc);
         when(documentMapper.update(any(), any())).thenReturn(1);
-        seedParsedText(2L, "这是短文本内容，不足一个分片大小。");
+        seedParsedContent(2L, "这是短文本内容，不足一个分片大小。");
         doAnswer(inv -> {
                     inv.getArgument(0, DocumentChunk.class).setId(200L);
                     return 1;
@@ -453,7 +455,7 @@ class EtlPipelineTest {
         Document doc = new Document();
         doc.setId(1L);
         when(documentMapper.selectById(1L)).thenReturn(doc);
-        seedParsedText(1L, "   ");
+        seedParsedContent(1L, "   ");
 
         assertThrows(IllegalStateException.class, () -> etlPipeline.chunkDocument(1L));
         verify(chunkMapper, never()).insert(any(DocumentChunk.class));
