@@ -90,6 +90,12 @@ public class SearchKnowledgeTool {
     private final int rrfK;
     /** Milvus 混合检索返回的 Top-K 数量（每条重写查询的预取量，spec §3.1 配置化） */
     private final int prefetchTopK;
+    /**
+     * sparse（BM25 全文检索）开关：milvus-sdk-java 的 EmbeddedText 在 sparse/混合检索存在
+     * 未修复 bug（issue #1402，服务端 INTERNAL 后 SDK 无限重试至超时），默认关闭降级为
+     * dense-only 混合检索；SDK 修复后置 true 恢复全文检索能力
+     */
+    private final boolean sparseEnabled;
 
     private final ExecutorService searchExecutor;
 
@@ -99,13 +105,15 @@ public class SearchKnowledgeTool {
             EmbeddingModel embeddingModel,
             MilvusClientV2 milvusClientV2,
             @Value("${milvus.sparse-bm25-k:60}") int rrfK,
-            @Value("${retrieval.prefetch-top-k:20}") int prefetchTopK) {
+            @Value("${retrieval.prefetch-top-k:20}") int prefetchTopK,
+            @Value("${retrieval.sparse-enabled:false}") boolean sparseEnabled) {
         this.fusionService = fusionService;
         this.rerankService = rerankService;
         this.embeddingModel = embeddingModel;
         this.milvusClientV2 = milvusClientV2;
         this.rrfK = rrfK;
         this.prefetchTopK = prefetchTopK;
+        this.sparseEnabled = sparseEnabled;
         this.searchExecutor = Executors.newFixedThreadPool(4, r -> {
             Thread t = new Thread(r, "search-knowledge-");
             t.setDaemon(true);
@@ -226,19 +234,24 @@ public class SearchKnowledgeTool {
                     .filter(filterExpr)
                     .build();
 
-            // 4. 构建 sparse AnnSearchReq（EmbeddedText + BM25）
-            AnnSearchReq sparseReq = AnnSearchReq.builder()
-                    .vectors(List.of(new EmbeddedText(query.queryText())))
-                    .vectorFieldName(SPARSE_FIELD_NAME)
-                    .metricType(IndexParam.MetricType.BM25)
-                    .limit(prefetchTopK)
-                    .filter(filterExpr)
-                    .build();
+            // 4. 构建 sparse AnnSearchReq（EmbeddedText + BM25，全文检索）
+            //    sparseEnabled=false 时省略（milvus-sdk-java EmbeddedText bug，见字段注释）
+            List<AnnSearchReq> searchRequests = new ArrayList<>(2);
+            searchRequests.add(denseReq);
+            if (sparseEnabled) {
+                searchRequests.add(AnnSearchReq.builder()
+                        .vectors(List.of(new EmbeddedText(query.queryText())))
+                        .vectorFieldName(SPARSE_FIELD_NAME)
+                        .metricType(IndexParam.MetricType.BM25)
+                        .limit(prefetchTopK)
+                        .filter(filterExpr)
+                        .build());
+            }
 
-            // 5. 构建 HybridSearchReq（RRFRanker 融合）
+            // 5. 构建 HybridSearchReq（RRFRanker 融合；sparse 关闭时等价于单路 dense 检索）
             HybridSearchReq hybridSearchReq = HybridSearchReq.builder()
                     .collectionName(COLLECTION_NAME)
-                    .searchRequests(List.of(denseReq, sparseReq))
+                    .searchRequests(searchRequests)
                     .ranker(RRFRanker.builder().k(rrfK).build())
                     .limit(prefetchTopK)
                     .outFields(OUTPUT_FIELDS)

@@ -57,7 +57,7 @@ class SearchKnowledgeToolTest {
 
     @BeforeEach
     void setUp() {
-        tool = new SearchKnowledgeTool(fusionService, rerankService, embeddingModel, milvusClientV2, 60, 20);
+        tool = new SearchKnowledgeTool(fusionService, rerankService, embeddingModel, milvusClientV2, 60, 20, false);
     }
 
     /**
@@ -389,8 +389,31 @@ class SearchKnowledgeToolTest {
     }
 
     @Test
-    @DisplayName("searchSingle 混合检索请求 — dense(FloatVec+COSINE) + sparse(EmbeddedText+BM25) 双路 + RRF 融合")
+    @DisplayName("searchSingle 混合检索请求 — sparse 开关关闭时仅 dense 单路（EmbeddedText SDK bug 降级）")
+    void searchSingle_hybridRequest_sparseDisabled() {
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "如何配置Redis", null);
+        when(embeddingModel.embed("如何配置Redis")).thenReturn(new float[] {0.1f, 0.2f});
+        SearchResp searchResp = mockSearchResp();
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
+
+        tool.searchSingle(query);
+
+        ArgumentCaptor<HybridSearchReq> reqCaptor = ArgumentCaptor.forClass(HybridSearchReq.class);
+        verify(milvusClientV2).hybridSearch(reqCaptor.capture());
+        HybridSearchReq req = reqCaptor.getValue();
+        assertEquals(MilvusCollectionInitializer.COLLECTION_NAME, req.getCollectionName());
+        assertEquals(1, req.getSearchRequests().size(), "sparse 关闭时只发 dense 单路");
+        // dense 路：FloatVec + COSINE
+        AnnSearchReq dense = req.getSearchRequests().get(0);
+        assertEquals(MilvusCollectionInitializer.FIELD_DENSE_VECTOR, dense.getVectorFieldName());
+        assertEquals(IndexParam.MetricType.COSINE, dense.getMetricType());
+        assertTrue(dense.getVectors().get(0) instanceof FloatVec);
+    }
+
+    @Test
+    @DisplayName("searchSingle 混合检索请求 — sparse 开关开启时 dense + sparse 双路 + RRF 融合")
     void searchSingle_hybridRequest_denseAndSparse() {
+        tool = new SearchKnowledgeTool(fusionService, rerankService, embeddingModel, milvusClientV2, 60, 20, true);
         TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "如何配置Redis", null);
         when(embeddingModel.embed("如何配置Redis")).thenReturn(new float[] {0.1f, 0.2f});
         SearchResp searchResp = mockSearchResp();
