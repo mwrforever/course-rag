@@ -200,7 +200,7 @@ rag:
 
   # ── S1 Query Understanding（spec §2.2/§6：独立轻量模型 + 重写上限）──
   query-understanding:
-    # QU 独立模型（原 QueryRewriter 复用主对话模型，现独立配置 qwen3.7-flash）
+    # QU 独立模型（不复用主对话模型，独立配置 qwen3.7-flash）
     model: qwen3.7-flash
     # 单次签出最大重写查询条数（spec §2.2 上限 3）
     max-queries: 3

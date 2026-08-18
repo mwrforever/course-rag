@@ -21,7 +21,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
- * 查询理解服务 —— 替换 QueryRewriter，单次 LLM 调用签出完整 QueryPlan（spec §2）
+ * 查询理解服务 —— 单次 LLM 调用签出完整 QueryPlan（spec §2）
  *
  * <p>职责：
  * <ul>

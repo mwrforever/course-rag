@@ -1,25 +1,32 @@
 package com.commerce.rag.bot.graph;
 
+import static com.commerce.rag.bot.graph.OverAllState.KEY_QUERY_PLAN;
+
 import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
 import com.alibaba.cloud.ai.graph.StateGraph;
+import com.alibaba.cloud.ai.graph.action.AsyncEdgeActionWithConfig;
 import com.alibaba.cloud.ai.graph.action.AsyncNodeActionWithConfig;
 import com.alibaba.cloud.ai.graph.agent.ReactAgent;
 import com.alibaba.cloud.ai.graph.agent.hook.modelcalllimit.ModelCallLimitHook;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
 import com.commerce.rag.bot.hook.CoalescingInterceptor;
 import com.commerce.rag.bot.hook.CustomSummarizationHook;
+import com.commerce.rag.bot.hook.DocumentAssemblerInterceptor;
 import com.commerce.rag.bot.hook.ReminderHook;
 import com.commerce.rag.bot.hook.WarningHook;
-import com.commerce.rag.bot.rewrite.QueryRewriter;
+import com.commerce.rag.bot.rewrite.QueryPlan;
+import com.commerce.rag.bot.rewrite.QueryUnderstandingService;
 import com.commerce.rag.bot.tool.CourseApiTool;
-import com.commerce.rag.bot.tool.SearchKnowledgeTool;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -31,10 +38,17 @@ import org.springframework.stereotype.Component;
  * 本类以 {@code @Component} 注册，图实例（CompiledGraph）的 Bean 注册
  * 统一由 {@link com.commerce.rag.config.GraphConfig#leadAgent} 完成。
  *
- * <p><b>编排拓扑：</b>
+ * <p><b>编排拓扑（S1 三节点图）：</b>
  * <pre>
- * START → queryRewriteNode → ReactAgent(asNode) → END
+ * START → queryUnderstandingNode →(条件边)
+ *         ├─ knowledge_question → retrieveNode → ReactAgent → END
+ *         └─ chat / unknown → ReactAgent → END
  * </pre>
+ *
+ * <p>查询理解节点单次 LLM 调用签出 QueryPlan（intent + 重写查询 + filters + recall_history）
+ * 写入 State.KEY_QUERY_PLAN；条件边按 intent.code() 小写规范名路由（chat/unknown 同路不检索，
+ * spec §1）；retrieveNode 仅 knowledge_question 分支触发，检索结果经 metadata 瞬时注入
+ * （DocumentAssemblerInterceptor 消费，不落 state/checkpoint）。
  *
  * <p><b>关键参数：</b>
  * <ul>
@@ -60,8 +74,11 @@ public class LeadAgentGraph {
 
     private static final Logger log = LoggerFactory.getLogger(LeadAgentGraph.class);
 
-    /** 图节点名：查询重写 */
-    private static final String NODE_QUERY_REWRITE = "queryRewriteNode";
+    /** 图节点名：查询理解（Query Understanding，intent + 重写 + filters 单次签出） */
+    private static final String NODE_QUERY_UNDERSTANDING = "queryUnderstandingNode";
+
+    /** 图节点名：检索编排（仅 knowledge_question 分支触发） */
+    private static final String NODE_RETRIEVE = "retrieveNode";
 
     /** 图节点名：ReactAgent */
     private static final String NODE_REACT_AGENT = "reactAgent";
@@ -69,16 +86,20 @@ public class LeadAgentGraph {
     /** ReactAgent outputKey */
     private static final String OUTPUT_KEY = "agent_output";
 
-    /** 查询重写数量 */
-    private static final int REWRITE_COUNT = 3;
+    /** 条件边结果 → 下一节点映射（spec §1：chat/unknown 同路不检索） */
+    private static final Map<String, String> INTENT_ROUTES = Map.of(
+            "knowledge_question", NODE_RETRIEVE,
+            "chat", NODE_REACT_AGENT,
+            "unknown", NODE_REACT_AGENT);
 
     private final ChatModel chatModel;
     private final PromptLoader promptLoader;
-    private final QueryRewriter queryRewriter;
-    private final SearchKnowledgeTool searchKnowledgeTool;
+    private final QueryUnderstandingService queryUnderstandingService;
+    private final RetrieveNode retrieveNode;
     private final CourseApiTool courseApiTool;
     private final CustomSummarizationHook customSummarizationHook;
     private final CoalescingInterceptor coalescingInterceptor;
+    private final DocumentAssemblerInterceptor documentAssemblerInterceptor;
     private final ReminderHook reminderHook;
     private final WarningHook warningHook;
     private final KeyStrategyFactory keyStrategyFactory;
@@ -88,11 +109,12 @@ public class LeadAgentGraph {
     public LeadAgentGraph(
             ChatModel chatModel,
             PromptLoader promptLoader,
-            QueryRewriter queryRewriter,
-            SearchKnowledgeTool searchKnowledgeTool,
+            QueryUnderstandingService queryUnderstandingService,
+            RetrieveNode retrieveNode,
             CourseApiTool courseApiTool,
             CustomSummarizationHook customSummarizationHook,
             CoalescingInterceptor coalescingInterceptor,
+            DocumentAssemblerInterceptor documentAssemblerInterceptor,
             ReminderHook reminderHook,
             WarningHook warningHook,
             KeyStrategyFactory keyStrategyFactory,
@@ -100,11 +122,12 @@ public class LeadAgentGraph {
             @Value("${rag.agent.run-limit:15}") int runLimit) {
         this.chatModel = chatModel;
         this.promptLoader = promptLoader;
-        this.queryRewriter = queryRewriter;
-        this.searchKnowledgeTool = searchKnowledgeTool;
+        this.queryUnderstandingService = queryUnderstandingService;
+        this.retrieveNode = retrieveNode;
         this.courseApiTool = courseApiTool;
         this.customSummarizationHook = customSummarizationHook;
         this.coalescingInterceptor = coalescingInterceptor;
+        this.documentAssemblerInterceptor = documentAssemblerInterceptor;
         this.reminderHook = reminderHook;
         this.warningHook = warningHook;
         this.keyStrategyFactory = keyStrategyFactory;
@@ -119,55 +142,77 @@ public class LeadAgentGraph {
         // 1. 创建 StateGraph
         StateGraph stateGraph = new StateGraph(keyStrategyFactory);
 
-        // 2. 添加查询重写节点
-        stateGraph.addNode(NODE_QUERY_REWRITE, buildQueryRewriteNode());
+        // 2. 添加查询理解节点
+        stateGraph.addNode(NODE_QUERY_UNDERSTANDING, buildQueryUnderstandingNode());
 
-        // 3. 构建 ReactAgent 子图
+        // 3. 添加检索编排节点（仅 knowledge_question 分支触发）
+        stateGraph.addNode(NODE_RETRIEVE, retrieveNode);
+
+        // 4. 构建 ReactAgent 子图
         ReactAgent reactAgent = buildReactAgent();
 
-        // 4. 添加 ReactAgent 为子图节点
+        // 5. 添加 ReactAgent 为子图节点
         stateGraph.addNode(NODE_REACT_AGENT, reactAgent.asNode(true, false));
 
-        // 5. 接线: START → queryRewriteNode → ReactAgent → END
-        stateGraph.addEdge(StateGraph.START, NODE_QUERY_REWRITE);
-        stateGraph.addEdge(NODE_QUERY_REWRITE, NODE_REACT_AGENT);
+        // 6. 接线: START → queryUnderstandingNode →(条件边)→ retrieveNode/ReactAgent → END
+        stateGraph.addEdge(StateGraph.START, NODE_QUERY_UNDERSTANDING);
+        stateGraph.addConditionalEdges(NODE_QUERY_UNDERSTANDING, buildIntentRouter(), INTENT_ROUTES);
+        stateGraph.addEdge(NODE_RETRIEVE, NODE_REACT_AGENT);
         stateGraph.addEdge(NODE_REACT_AGENT, StateGraph.END);
 
-        // 6. 编译
+        // 7. 编译
         CompiledGraph compiled = stateGraph.compile(compileConfig);
-        log.info("LeadAgentGraph 编译完成: nodes={}, hooks={}, interceptors={}, runLimit={}", 3, 4, 1, runLimit);
+        log.info("LeadAgentGraph 编译完成: nodes={}, hooks={}, interceptors={}, runLimit={}", 3, 4, 2, runLimit);
         return compiled;
     }
 
     /**
-     * 构建查询重写节点 —— 调用 QueryRewriter，将结果写入 State
+     * 构建查询理解节点 —— 调用 QueryUnderstandingService 单次签出 QueryPlan，写入 State
      *
      * <p>AsyncNodeActionWithConfig 签名：
      * {@code CompletableFuture<Map<String, Object>> apply(OverAllState, RunnableConfig)}
+     *
+     * <p>userQuery 为 null/blank 时 understand 自身降级 fallback，节点不提前短路——
+     * 保证 queryPlan 恒写入 state，条件边有值可路由。
      */
-    private AsyncNodeActionWithConfig buildQueryRewriteNode() {
+    private AsyncNodeActionWithConfig buildQueryUnderstandingNode() {
         return (overAllState, config) -> {
-            // 1. 从 State 读取最后一条用户消息
+            // 1. 从 State 读取 messages
             @SuppressWarnings("unchecked")
-            List<org.springframework.ai.chat.messages.Message> messages =
-                    (List<org.springframework.ai.chat.messages.Message>)
-                            overAllState.value("messages").orElse(List.of());
+            List<Message> messages =
+                    (List<Message>) overAllState.value("messages").orElse(List.of());
 
+            // 2. 提取当前用户消息
             String userQuery = extractLastUserQuery(messages);
-            if (userQuery == null || userQuery.isBlank()) {
-                log.debug("queryRewriteNode: 无用户消息，跳过重写");
-                return CompletableFuture.completedFuture(Map.of());
-            }
 
-            // 2. 调用 QueryRewriter
-            List<String> rewritten = queryRewriter.rewrite(userQuery);
-            if (rewritten.size() > REWRITE_COUNT) {
-                rewritten = rewritten.subList(0, REWRITE_COUNT);
-            }
+            // 3. 调用 QueryUnderstandingService（含降级：失败 → unknown + 原始查询，不拒答）
+            QueryPlan plan = queryUnderstandingService.understand(userQuery, messages);
 
-            // 3. 返回增量更新 Map（只写入 rewrittenQueries，不返回完整 state）
-            log.info("queryRewriteNode 完成: 原始={} → 重写={}条", truncate(userQuery, 30), rewritten.size());
-            return CompletableFuture.completedFuture(Map.of("rewrittenQueries", rewritten));
+            // 4. 返回增量更新 Map（只写入 queryPlan，不返回完整 state）
+            log.info(
+                    "queryUnderstandingNode 完成: intent={}, 重写={}条, filters={}, recall_history={}",
+                    plan.intent().name(),
+                    plan.rewrittenQueries().size(),
+                    plan.filters().courseNames(),
+                    plan.recallHistory());
+            return CompletableFuture.completedFuture(Map.of(KEY_QUERY_PLAN, plan));
+        };
+    }
+
+    /**
+     * 意图路由条件边 —— 读取 QueryPlan.intent 决定下一节点（spec §1）
+     *
+     * <p>返回值为 INTENT_ROUTES 的 key（intent.code() 小写规范名）；queryPlan 缺失时兜底 "unknown"（不 NPE）。
+     *
+     * <p>包内可见（package-private）供单元测试直调（LeadAgentGraphTest.intentRouter_routesByIntent）。
+     */
+    AsyncEdgeActionWithConfig buildIntentRouter() {
+        return (overAllState, config) -> {
+            Optional<Object> planOpt = overAllState.value(KEY_QUERY_PLAN);
+            if (planOpt.isPresent() && planOpt.get() instanceof QueryPlan qp) {
+                return CompletableFuture.completedFuture(qp.intent().code());
+            }
+            return CompletableFuture.completedFuture("unknown");
         };
     }
 
@@ -192,8 +237,8 @@ public class LeadAgentGraph {
                 .model(chatModel)
                 .systemPrompt(systemPrompt)
                 .instruction(instruction)
-                // 工具注册：使用 methodTools 自动包装公开方法
-                .methodTools(searchKnowledgeTool, courseApiTool)
+                // 工具注册：仅课程结构化信息工具（系统检索已由 retrieveNode 编排，不再注册检索工具）
+                .methodTools(courseApiTool)
                 // 输出 Key
                 .outputKey(OUTPUT_KEY)
                 .outputKeyStrategy(new ReplaceStrategy())
@@ -204,8 +249,8 @@ public class LeadAgentGraph {
                         warningHook, // 后面注册 → AFTER_MODEL 先执行
                         limitHook // 最后注册 → AFTER_MODEL 最先执行
                         )
-                // Interceptor 注册
-                .interceptors(coalescingInterceptor)
+                // Interceptor 注册（瞬时上下文：coalescing 合并请求 + document 检索上下文注入）
+                .interceptors(coalescingInterceptor, documentAssemblerInterceptor)
                 .includeContents(true)
                 .returnReasoningContents(false)
                 .build();
@@ -214,23 +259,16 @@ public class LeadAgentGraph {
     /**
      * 从 messages 列表中提取最后一条用户消息的文本
      */
-    private String extractLastUserQuery(List<org.springframework.ai.chat.messages.Message> messages) {
+    private String extractLastUserQuery(List<Message> messages) {
         if (messages == null || messages.isEmpty()) {
             return null;
         }
         for (int i = messages.size() - 1; i >= 0; i--) {
-            org.springframework.ai.chat.messages.Message m = messages.get(i);
-            if (m instanceof org.springframework.ai.chat.messages.UserMessage
-                    && m.getText() != null
-                    && !m.getText().isBlank()) {
+            Message m = messages.get(i);
+            if (m instanceof UserMessage && m.getText() != null && !m.getText().isBlank()) {
                 return m.getText();
             }
         }
         return null;
-    }
-
-    private static String truncate(String s, int maxLen) {
-        if (s == null || s.length() <= maxLen) return s;
-        return s.substring(0, maxLen) + "...";
     }
 }

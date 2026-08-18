@@ -1,5 +1,6 @@
 package com.commerce.rag.bot.graph;
 
+import static com.commerce.rag.bot.graph.OverAllState.KEY_QUERY_PLAN;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -10,13 +11,16 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.action.AsyncNodeActionWithConfig;
 import com.alibaba.cloud.ai.graph.agent.hook.HookPosition;
+import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.hook.CoalescingInterceptor;
 import com.commerce.rag.bot.hook.CustomSummarizationHook;
+import com.commerce.rag.bot.hook.DocumentAssemblerInterceptor;
 import com.commerce.rag.bot.hook.ReminderHook;
 import com.commerce.rag.bot.hook.WarningHook;
-import com.commerce.rag.bot.rewrite.QueryRewriter;
+import com.commerce.rag.bot.rewrite.QueryPlan;
+import com.commerce.rag.bot.rewrite.QueryPlanFilters;
+import com.commerce.rag.bot.rewrite.QueryUnderstandingService;
 import com.commerce.rag.bot.tool.CourseApiTool;
-import com.commerce.rag.bot.tool.SearchKnowledgeTool;
 import com.commerce.rag.config.GraphConfig;
 import java.util.List;
 import java.util.Map;
@@ -29,11 +33,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 
 /**
- * LeadAgentGraph 单元测试 —— Agent 图编译（queryRewriteNode → ReactAgent 接线）
+ * LeadAgentGraph 单元测试 —— Agent 图编译（queryUnderstandingNode → 条件边 → retrieveNode/ReactAgent 接线）
  *
  * @author commerce-rag
  */
@@ -48,10 +53,10 @@ class LeadAgentGraphTest {
     private PromptLoader promptLoader;
 
     @Mock
-    private QueryRewriter queryRewriter;
+    private QueryUnderstandingService queryUnderstandingService;
 
     @Mock
-    private SearchKnowledgeTool searchKnowledgeTool;
+    private RetrieveNode retrieveNode;
 
     @Mock
     private CourseApiTool courseApiTool;
@@ -63,6 +68,9 @@ class LeadAgentGraphTest {
     private CoalescingInterceptor coalescingInterceptor;
 
     @Mock
+    private DocumentAssemblerInterceptor documentAssemblerInterceptor;
+
+    @Mock
     private ReminderHook reminderHook;
 
     @Mock
@@ -70,18 +78,22 @@ class LeadAgentGraphTest {
 
     @BeforeEach
     void setUp() {
-        // ReactAgent.Builder 按 hook 全名去重（Hook.getFullHookName），mock 默认返回 null 会判定重复
-        when(customSummarizationHook.getName()).thenReturn("CustomSummarizationHook");
-        when(reminderHook.getName()).thenReturn("ReminderHook");
-        when(warningHook.getName()).thenReturn("WarningHook");
+        // ReactAgent.Builder 按 hook 全名去重（Hook.getFullHookName），mock 默认返回 null 会判定重复。
+        // 用 lenient 打桩：仅实际 build ReactAgent 的用例消费这些 stub，
+        // 意图路由等不 build 的用例不会触发 UnnecessaryStubbingException。
+        lenient().when(customSummarizationHook.getName()).thenReturn("CustomSummarizationHook");
+        lenient().when(reminderHook.getName()).thenReturn("ReminderHook");
+        lenient().when(warningHook.getName()).thenReturn("WarningHook");
         // filterHooksByPosition 对 hook.getHookPositions() 做 Arrays.asList 判空，需显式打桩（默认 AFTER_MODEL）
-        when(customSummarizationHook.getHookPositions()).thenReturn(new HookPosition[] {HookPosition.AFTER_MODEL});
-        when(reminderHook.getHookPositions()).thenReturn(new HookPosition[] {HookPosition.AFTER_MODEL});
-        when(warningHook.getHookPositions()).thenReturn(new HookPosition[] {HookPosition.AFTER_MODEL});
+        lenient()
+                .when(customSummarizationHook.getHookPositions())
+                .thenReturn(new HookPosition[] {HookPosition.AFTER_MODEL});
+        lenient().when(reminderHook.getHookPositions()).thenReturn(new HookPosition[] {HookPosition.AFTER_MODEL});
+        lenient().when(warningHook.getHookPositions()).thenReturn(new HookPosition[] {HookPosition.AFTER_MODEL});
     }
 
     @Test
-    @DisplayName("leadAgent → 编译成功返回 START→queryRewriteNode→ReactAgent→END 的图")
+    @DisplayName("leadAgent → 编译成功返回 START→queryUnderstandingNode→条件边→retrieveNode/ReactAgent→END 的图")
     void leadAgent_compilesGraph() throws Exception {
         // 真实构建 key 策略工厂与编译配置（不依赖外部连接）
         KeyStrategyFactory keyStrategyFactory = new GraphConfig().keyStrategyFactory();
@@ -89,11 +101,12 @@ class LeadAgentGraphTest {
         LeadAgentGraph graph = new LeadAgentGraph(
                 chatModel,
                 promptLoader,
-                queryRewriter,
-                searchKnowledgeTool,
+                queryUnderstandingService,
+                retrieveNode,
                 courseApiTool,
                 customSummarizationHook,
                 coalescingInterceptor,
+                documentAssemblerInterceptor,
                 reminderHook,
                 warningHook,
                 keyStrategyFactory,
@@ -113,11 +126,12 @@ class LeadAgentGraphTest {
         LeadAgentGraph graph = new LeadAgentGraph(
                 chatModel,
                 promptLoader,
-                queryRewriter,
-                searchKnowledgeTool,
+                queryUnderstandingService,
+                retrieveNode,
                 courseApiTool,
                 customSummarizationHook,
                 coalescingInterceptor,
+                documentAssemblerInterceptor,
                 reminderHook,
                 warningHook,
                 keyStrategyFactory,
@@ -127,18 +141,19 @@ class LeadAgentGraphTest {
         assertNotNull(graph.build());
     }
 
-    // ==================== build() 拓扑与 queryRewriteNode 节点行为 ====================
+    // ==================== build() 拓扑与 queryUnderstandingNode 节点行为 ====================
 
     /** 构建 LeadAgentGraph 实例（固定 runLimit=15） */
     private LeadAgentGraph newGraph() {
         return new LeadAgentGraph(
                 chatModel,
                 promptLoader,
-                queryRewriter,
-                searchKnowledgeTool,
+                queryUnderstandingService,
+                retrieveNode,
                 courseApiTool,
                 customSummarizationHook,
                 coalescingInterceptor,
+                documentAssemblerInterceptor,
                 reminderHook,
                 warningHook,
                 new GraphConfig().keyStrategyFactory(),
@@ -146,113 +161,120 @@ class LeadAgentGraphTest {
                 15);
     }
 
-    /** 编译图并取出 queryRewriteNode 节点动作（CompiledGraph 公开 API，验证拓扑接线） */
-    private AsyncNodeActionWithConfig queryRewriteNodeAction() throws Exception {
+    /** 编译图并取出 queryUnderstandingNode 节点动作（CompiledGraph 公开 API，验证拓扑接线） */
+    private AsyncNodeActionWithConfig queryUnderstandingNodeAction() throws Exception {
         CompiledGraph compiled = newGraph().build();
-        AsyncNodeActionWithConfig action = compiled.getNodeAction("queryRewriteNode");
-        assertNotNull(action, "queryRewriteNode 节点应注册到编译后图中");
+        AsyncNodeActionWithConfig action = compiled.getNodeAction("queryUnderstandingNode");
+        assertNotNull(action, "queryUnderstandingNode 节点应注册到编译后图中");
         return action;
     }
 
-    /** 以给定 State 直调 queryRewriteNode 节点动作，返回其增量 state 结果 */
-    private Map<String, Object> applyRewrite(OverAllState state) throws Exception {
-        CompletableFuture<Map<String, Object>> future =
-                queryRewriteNodeAction().apply(state, RunnableConfig.builder().build());
+    /** 以给定 State 直调 queryUnderstandingNode 节点动作，返回其增量 state 结果 */
+    private Map<String, Object> applyUnderstanding(OverAllState state) throws Exception {
+        CompletableFuture<Map<String, Object>> future = queryUnderstandingNodeAction()
+                .apply(state, RunnableConfig.builder().build());
         return future.get(5, TimeUnit.SECONDS);
     }
 
     @Test
-    @DisplayName("build → 拓扑含 queryRewriteNode 与 reactAgent 两个节点")
-    void build_registersBothNodes() throws Exception {
+    @DisplayName("build → 拓扑含 queryUnderstandingNode / retrieveNode / reactAgent 三节点")
+    void build_registersThreeNodes() throws Exception {
         CompiledGraph compiled = newGraph().build();
 
-        // 两个业务节点均已注册，接线 START → queryRewriteNode → reactAgent → END
-        assertNotNull(compiled.getNodeAction("queryRewriteNode"), "应注册 queryRewriteNode 节点");
+        // 三个业务节点均已注册，接线 START → queryUnderstandingNode →(条件边)→ retrieveNode/ReactAgent → END
+        assertNotNull(compiled.getNodeAction("queryUnderstandingNode"), "应注册 queryUnderstandingNode 节点");
+        assertNotNull(compiled.getNodeAction("retrieveNode"), "应注册 retrieveNode 节点");
         assertNotNull(compiled.getNodeAction("reactAgent"), "应注册 reactAgent 节点");
     }
 
     @Test
-    @DisplayName("queryRewriteNode → 正常重写：最后一条用户消息被重写并写入 rewrittenQueries")
-    void queryRewriteNode_normalUserMessage_writesRewrittenQueries() throws Exception {
-        // 重写器返回 3 条覆盖性查询（不超过上限）
-        when(queryRewriter.rewrite("Java 课程怎么学")).thenReturn(List.of("q1", "q2", "q3"));
+    @DisplayName("queryUnderstandingNode → 正常签出：写入 queryPlan 增量 state")
+    void queryUnderstandingNode_normalUserMessage_writesQueryPlan() throws Exception {
+        // 理解服务返回 knowledge_question 计划（1 条重写查询）
+        QueryPlan plan =
+                new QueryPlan(IntentType.KNOWLEDGE_QUESTION, List.of("q1"), new QueryPlanFilters(List.of()), false);
+        when(queryUnderstandingService.understand(anyString(), anyList())).thenReturn(plan);
 
         OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage("Java 课程怎么学"))));
-        Map<String, Object> result = applyRewrite(state);
+        Map<String, Object> result = applyUnderstanding(state);
 
-        // 增量 state 写入 rewrittenQueries，条数与重写器返回一致
-        assertEquals(List.of("q1", "q2", "q3"), result.get("rewrittenQueries"));
+        // 增量 state 写入 queryPlan（KEY_QUERY_PLAN），与理解服务返回一致
+        QueryPlan stored = (QueryPlan) result.get(KEY_QUERY_PLAN);
+        assertSame(plan, stored);
+        assertEquals(IntentType.KNOWLEDGE_QUESTION, stored.intent());
+        assertEquals(List.of("q1"), stored.rewrittenQueries());
     }
 
     @Test
-    @DisplayName("queryRewriteNode → 重写结果超过 3 条时截断到 3 条")
-    void queryRewriteNode_exceedLimit_truncatesTo3() throws Exception {
-        // 重写器返回 5 条，超出 REWRITE_COUNT=3 上限
-        when(queryRewriter.rewrite("多个主题问题")).thenReturn(List.of("q1", "q2", "q3", "q4", "q5"));
+    @DisplayName("queryUnderstandingNode → 无任何消息时仍写入降级 queryPlan（不短路）")
+    void queryUnderstandingNode_noMessages_writesFallbackPlan() throws Exception {
+        // 无用户消息 → understand 以 null 调用，返回降级计划（unknown + 原始查询）
+        QueryPlan fallback = QueryPlan.fallback(null);
+        when(queryUnderstandingService.understand(isNull(), anyList())).thenReturn(fallback);
 
-        OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage("多个主题问题"))));
-        Map<String, Object> result = applyRewrite(state);
+        Map<String, Object> result = applyUnderstanding(new OverAllState(Map.of()));
 
-        // 只保留前 3 条
-        assertEquals(3, ((List<?>) result.get("rewrittenQueries")).size());
+        // 恒写入 queryPlan：条件边有值可路由，unknown 分支走 ReactAgent 不拒答
+        assertSame(fallback, result.get(KEY_QUERY_PLAN));
+        assertEquals(IntentType.UNKNOWN, fallback.intent());
+        verify(queryUnderstandingService).understand(isNull(), anyList());
     }
 
     @Test
-    @DisplayName("queryRewriteNode → 无任何消息时跳过重写，返回空增量")
-    void queryRewriteNode_noMessages_skipsRewrite() throws Exception {
-        OverAllState emptyState = new OverAllState(Map.of());
-        Map<String, Object> result = applyRewrite(emptyState);
+    @DisplayName("queryUnderstandingNode → 用户消息为空白时仍写入降级 queryPlan（不短路）")
+    void queryUnderstandingNode_blankUserMessage_writesFallbackPlan() throws Exception {
+        // 空白消息在 extractLastUserQuery 中视为无用户消息（text.isBlank() 过滤）→ understand 以 null 调用降级，
+        // 节点不做提前短路，queryPlan 恒写入
+        QueryPlan fallback = QueryPlan.fallback(null);
+        when(queryUnderstandingService.understand(isNull(), anyList())).thenReturn(fallback);
 
-        // 无用户消息 → 不调用重写器，无增量输出
-        assertTrue(result.isEmpty());
-        verify(queryRewriter, never()).rewrite(anyString());
-    }
-
-    @Test
-    @DisplayName("queryRewriteNode → 用户消息为空白时跳过重写")
-    void queryRewriteNode_blankUserMessage_skipsRewrite() throws Exception {
         OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage("   "))));
-        Map<String, Object> result = applyRewrite(state);
+        Map<String, Object> result = applyUnderstanding(state);
 
-        assertTrue(result.isEmpty());
-        verify(queryRewriter, never()).rewrite(anyString());
+        assertSame(fallback, result.get(KEY_QUERY_PLAN));
     }
 
     @Test
-    @DisplayName("queryRewriteNode → 仅非用户消息时跳过重写")
-    void queryRewriteNode_nonUserMessageOnly_skipsRewrite() throws Exception {
-        OverAllState state = new OverAllState(Map.of("messages", List.of(new AssistantMessage("模型回答"))));
-        Map<String, Object> result = applyRewrite(state);
-
-        // 倒序查找不到 UserMessage → 跳过重写
-        assertTrue(result.isEmpty());
-        verify(queryRewriter, never()).rewrite(anyString());
-    }
-
-    @Test
-    @DisplayName("queryRewriteNode → 从消息末尾倒序提取最后一条用户消息")
-    void queryRewriteNode_earlierUserMessage_extractedFromEnd() throws Exception {
+    @DisplayName("queryUnderstandingNode → 从消息末尾倒序提取最后一条用户消息")
+    void queryUnderstandingNode_earlierUserMessage_extractedFromEnd() throws Exception {
         // 末尾是 AssistantMessage，之前是用户消息 —— 倒序遍历应取到用户消息
-        when(queryRewriter.rewrite("课程价格")).thenReturn(List.of("价格查询"));
+        List<Message> messages = List.of(new UserMessage("课程价格"), new AssistantMessage("推荐课程"));
+        QueryPlan plan =
+                new QueryPlan(IntentType.KNOWLEDGE_QUESTION, List.of("价格查询"), new QueryPlanFilters(List.of()), false);
+        when(queryUnderstandingService.understand("课程价格", messages)).thenReturn(plan);
 
-        OverAllState state =
-                new OverAllState(Map.of("messages", List.of(new UserMessage("课程价格"), new AssistantMessage("推荐课程"))));
-        Map<String, Object> result = applyRewrite(state);
+        Map<String, Object> result = applyUnderstanding(new OverAllState(Map.of("messages", messages)));
 
-        assertEquals(List.of("价格查询"), result.get("rewrittenQueries"));
-        verify(queryRewriter).rewrite("课程价格");
+        assertSame(plan, result.get(KEY_QUERY_PLAN));
+        verify(queryUnderstandingService).understand("课程价格", messages);
     }
 
     @Test
-    @DisplayName("queryRewriteNode → 超长用户消息在日志中截断展示，不影响重写结果")
-    void queryRewriteNode_longQuery_truncatesLogOnly() throws Exception {
-        // 40 字符长问题触发 truncate 截断日志展示（仅日志影响，业务结果不变）
-        String longQuery = "这是一个超过三十个字符的非常非常非常非常长的课程咨询问题测试用例文本内容";
-        when(queryRewriter.rewrite(longQuery)).thenReturn(List.of("截断查询"));
+    @DisplayName("意图路由 — knowledge_question → retrieveNode，chat/unknown → reactAgent")
+    void intentRouter_routesByIntent() throws Exception {
+        LeadAgentGraph graph = newGraph();
+        OverAllState kq = new OverAllState(Map.of(
+                KEY_QUERY_PLAN,
+                new QueryPlan(IntentType.KNOWLEDGE_QUESTION, List.of("q"), new QueryPlanFilters(List.of()), false)));
+        OverAllState chat = new OverAllState(Map.of(
+                KEY_QUERY_PLAN, new QueryPlan(IntentType.CHAT, List.of("hi"), new QueryPlanFilters(List.of()), false)));
+        OverAllState missing = new OverAllState(Map.of());
 
-        OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage(longQuery))));
-        Map<String, Object> result = applyRewrite(state);
-
-        assertEquals(List.of("截断查询"), result.get("rewrittenQueries"));
+        // 路由键为 intent.code() 小写规范名，与 INTENT_ROUTES 映射键一致；queryPlan 缺失兜底 "unknown"
+        assertEquals(
+                "knowledge_question",
+                graph.buildIntentRouter()
+                        .apply(kq, RunnableConfig.builder().build())
+                        .get(5, TimeUnit.SECONDS));
+        assertEquals(
+                "chat",
+                graph.buildIntentRouter()
+                        .apply(chat, RunnableConfig.builder().build())
+                        .get(5, TimeUnit.SECONDS));
+        assertEquals(
+                "unknown",
+                graph.buildIntentRouter()
+                        .apply(missing, RunnableConfig.builder().build())
+                        .get(5, TimeUnit.SECONDS));
     }
 }

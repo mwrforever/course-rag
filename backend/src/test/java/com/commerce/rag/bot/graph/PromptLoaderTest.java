@@ -19,15 +19,15 @@ class PromptLoaderTest {
     private final PromptLoader promptLoader = new PromptLoader();
 
     @Test
-    @DisplayName("load → 展平加载 query-rewrite.yml 且保留 key 分段标记")
+    @DisplayName("load → 展平加载 query-understanding.yml 且保留 key 分段标记")
     void load_flattenedTemplateKeepsSectionMarkers() {
-        String template = promptLoader.load("query-rewrite.yml");
+        String template = promptLoader.load("query-understanding.yml");
 
         assertNotNull(template);
         assertTrue(template.contains("system:"));
         assertTrue(template.contains("instruction:"));
         // 同文件重复加载命中缓存
-        assertSame(template, promptLoader.load("query-rewrite.yml"));
+        assertSame(template, promptLoader.load("query-understanding.yml"));
     }
 
     @Test

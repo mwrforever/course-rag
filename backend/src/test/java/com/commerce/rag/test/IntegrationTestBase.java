@@ -178,7 +178,7 @@ public abstract class IntegrationTestBase {
      *       auth:disable:*、chat:result:* 结果缓存）——不清 chat:request 流（Worker 消费组结构依赖）</li>
      * </ul>
      *
-     * <p>模型 mock 默认行为：call（QueryRewriter/CustomSummarizationHook 走同步调用）与
+     * <p>模型 mock 默认行为：call（QueryUnderstandingService/CustomSummarizationHook 走同步调用）与
      * stream（ReactAgent 走流式）均返回固定文本回复，使 Worker 后台执行图时快速收敛；
      * 子类如需慢速流（如 cancel 竞态窗口）可在自身 @BeforeEach 中覆盖 stub。
      */

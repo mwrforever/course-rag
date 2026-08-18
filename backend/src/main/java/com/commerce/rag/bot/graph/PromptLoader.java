@@ -30,10 +30,10 @@ public class PromptLoader {
     /**
      * 加载指定提示词模板文件的内容（flattenMap 展平模式）
      *
-     * <p>适用于需要 extractSection 分段识别的场景（如 query-rewrite.yml）。
+     * <p>适用于需要 extractSection 分段识别的场景（如 query-understanding.yml）。
      * 会保留 key 前缀（如 "prompt: "）作为分段标记。
      *
-     * @param fileName 文件名（如 "query-rewrite.yml"）
+     * @param fileName 文件名（如 "query-understanding.yml"）
      * @return 模板内容字符串
      */
     public String load(String fileName) {
