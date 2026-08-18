@@ -54,6 +54,10 @@ public class ImageCaptionService {
                 List.of(new SystemMessage(sections.getOrDefault("caption.system", "")), userMessage),
                 DashScopeChatOptions.builder()
                         .model(etlProperties.captionModel())
+                        // 多模态路由开关（SAA 1.1.2 字节码实锤）：multiModel=true 才走
+                        // /multimodal-generation 接口；默认 false 走 text-generation，
+                        // 图片 data URL 被当 URL 解析 → DashScope 报 "url error"
+                        .multiModel(true)
                         .build());
         return chatModel.call(prompt).getResult().getOutput().getText();
     }

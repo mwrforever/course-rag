@@ -40,6 +40,7 @@ import org.apache.tika.extractor.EmbeddedDocumentExtractor;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
+import org.apache.tika.parser.pdf.PDFParserConfig;
 import org.apache.tika.sax.ToHTMLContentHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -185,6 +186,13 @@ public class EtlPipeline {
             ToHTMLContentHandler handler = new ToHTMLContentHandler(out, "UTF-8");
             Metadata metadata = new Metadata();
             ParseContext context = new ParseContext();
+            // PDF 图片提取必须显式开启：Tika 2.9.2 默认 extractInlineImages=false
+            // （extractImages 入口直接 return，XObject 图片也不提取，字节码实锤），
+            // 开启后由 ImageGraphicsEngine 按 RAW_IMAGES 策略提取原始图片字节路由到 TikaImageExtractor
+            PDFParserConfig pdfConfig = new PDFParserConfig();
+            pdfConfig.setExtractInlineImages(true);
+            pdfConfig.setImageStrategy(PDFParserConfig.IMAGE_STRATEGY.RAW_IMAGES);
+            context.set(PDFParserConfig.class, pdfConfig);
             TikaImageExtractor imageExtractor = new TikaImageExtractor();
             context.set(EmbeddedDocumentExtractor.class, imageExtractor);
             AutoDetectParser parser = new AutoDetectParser();
