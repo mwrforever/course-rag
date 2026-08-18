@@ -8,7 +8,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.PromptLoader;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +28,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatOptions;
 
 /**
  * QueryUnderstandingService 单元测试 —— 意图判定 + 查询重写（LLM 调用 / JSON 解析 / 降级）
@@ -159,7 +159,7 @@ class QueryUnderstandingServiceTest {
     }
 
     @Test
-    @DisplayName("understand — ChatClient 经 DashScopeChatOptions 指定独立模型通道（qwen3.7-flash）")
+    @DisplayName("understand — ChatClient 经 OpenAiChatOptions 指定独立模型通道（qwen3.7-flash）")
     void understand_modelOption_dashscopeOptions() {
         stubPrompt();
         stubReply("{\"intent\": \"chat\", \"rewrittenQueries\": [\"你好\"]}");
@@ -169,9 +169,9 @@ class QueryUnderstandingServiceTest {
         ArgumentCaptor<Prompt> captor = ArgumentCaptor.forClass(Prompt.class);
         verify(chatModel).call(captor.capture());
         assertTrue(
-                captor.getValue().getOptions() instanceof DashScopeChatOptions,
-                "Prompt options 应为 DashScopeChatOptions（独立模型通道）");
-        assertEquals("qwen3.7-flash", ((DashScopeChatOptions) captor.getValue().getOptions()).getModel());
+                captor.getValue().getOptions() instanceof OpenAiChatOptions,
+                "Prompt options 应为 OpenAiChatOptions（独立模型通道）");
+        assertEquals("qwen3.7-flash", ((OpenAiChatOptions) captor.getValue().getOptions()).getModel());
     }
 
     @Test
@@ -201,9 +201,9 @@ class QueryUnderstandingServiceTest {
         assertFalse(rendered.contains("{context}"), "占位符 {context} 应被替换，不得字面残留");
         assertFalse(rendered.contains("{query}"), "占位符 {query} 应被替换，不得字面残留");
         assertTrue(
-                captor.getValue().getOptions() instanceof DashScopeChatOptions,
-                "Prompt options 应为 DashScopeChatOptions（独立模型通道）");
-        assertEquals("qwen3.7-flash", ((DashScopeChatOptions) captor.getValue().getOptions()).getModel());
+                captor.getValue().getOptions() instanceof OpenAiChatOptions,
+                "Prompt options 应为 OpenAiChatOptions（独立模型通道）");
+        assertEquals("qwen3.7-flash", ((OpenAiChatOptions) captor.getValue().getOptions()).getModel());
     }
 
     @Test

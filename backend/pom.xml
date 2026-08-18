@@ -60,11 +60,19 @@
             <version>${spring-ai-alibaba.version}</version>
         </dependency>
 
-        <!-- DashScope Starter: ChatModel(qwen3.7-max), EmbeddingModel(text-embedding-v4), RerankModel(qwen3-rerank) -->
+        <!-- DashScope Starter: EmbeddingModel(qwen3.7-text-embedding), RerankModel(qwen3-rerank)；
+             ChatModel 已切换 OpenAI 兼容通道（qwen3.x 新模型仅 compatible-mode 可用，见 application.yml） -->
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
             <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
             <version>${spring-ai-alibaba.version}</version>
+        </dependency>
+
+        <!-- OpenAI Starter: ChatModel 走 DashScope OpenAI 兼容端点（/compatible-mode/v1），
+             主对话/QU/摘要/caption 统一此通道（qwen3.8-max/qwen3.7-flash 原生 text-generation 接口 url error 实锤） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
 
         <!-- ==================== Spring Boot 基础 ==================== -->

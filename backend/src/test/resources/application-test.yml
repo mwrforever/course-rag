@@ -12,7 +12,15 @@ spring:
   flyway:
     enabled: true
   ai:
+    # provider 选择与主配置一致：chat=openai（兼容端点），embedding/rerank=dashscope
+    model:
+      chat: openai
+      embedding: dashscope
+      rerank: dashscope
     dashscope:
+      api-key: test-dummy-key
+    openai:
+      base-url: http://localhost:65535   # 不可达地址，模型 bean 由 @MockitoBean 替换，不发起真实调用
       api-key: test-dummy-key
 
 minio:

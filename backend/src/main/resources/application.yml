@@ -12,20 +12,37 @@ spring:
   config:
     import: optional:file:.env[.properties]
 
-  # ── DashScope AI 模型配置 ──
+  # ── AI 模型配置（2026-08-18 通道切换：chat 走 OpenAI 兼容端点）──
   ai:
+    # Spring AI 通用 provider 选择（控制各自动配置启停）：
+    # chat=openai（DashScope chat 自动配置因 havingValue 不匹配而停用，避免双 ChatModel bean）
+    # embedding/rerank=dashscope（qwen3.7-text-embedding/qwen3-rerank 原生接口可用，保留 SAA 通道）
+    model:
+      chat: openai
+      embedding: dashscope
+      rerank: dashscope
+    # DashScope 原生通道：仅保留 embedding/rerank；
+    # chat 关闭——qwen3.x 新模型（qwen3.8-max/qwen3.7-flash）原生 text-generation 接口 url error 实锤，
+    # 统一走下方 openai 兼容端点（用户裁决：统一使用 OpenAI 协议兼容端口）
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:}
       chat:
-        options:
-          model: qwen3.8-max          # spec §6 主对话旗舰（原 qwen3.7-max）
-          temperature: 0.7
+        enabled: false
       embedding:
         options:
           model: qwen3.7-text-embedding   # spec §6 官方当前最强（原 text-embedding-v4，维度仍 1024）
       rerank:
         options:
           model: qwen3-rerank
+    # OpenAI 兼容通道：base-url 指向 DashScope compatible-mode（OpenAI 协议），
+    # Spring AI 自动补 /v1/chat/completions 路径（base-url 不含 /v1，避免重复）
+    openai:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      api-key: ${DASHSCOPE_API_KEY:}
+      chat:
+        options:
+          model: qwen3.8-max          # spec §6 主对话旗舰
+          temperature: 0.7
 
   # ── PostgreSQL 数据源 ──
   datasource:

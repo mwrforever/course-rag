@@ -1,6 +1,5 @@
 package com.commerce.rag.bot.hook;
 
-import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.agent.hook.messages.AgentCommand;
 import com.alibaba.cloud.ai.graph.agent.hook.messages.MessagesModelHook;
@@ -16,6 +15,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -158,8 +158,7 @@ public class CustomSummarizationHook extends MessagesModelHook {
      *
      * <p>流程：
      * <ol>
-     *   <li>构建 DashScopeChatOptions 指定 summaryModel（qwen-turbo）</li>
-     *   <li>构建 Prompt：SystemMessage（摘要指令）+ UserMessage（待摘要消息 + 旧摘要）</li>
+     *   <li>构建 OpenAiChatOptions 指定 summaryModel（qwen-turbo）</li>     *   <li>构建 Prompt：SystemMessage（摘要指令）+ UserMessage（待摘要消息 + 旧摘要）</li>
      *   <li>调用 chatModel.call(prompt) 获取摘要文本</li>
      *   <li>返回 SUMMARY_PREFIX + summaryText</li>
      * </ol>
@@ -172,10 +171,9 @@ public class CustomSummarizationHook extends MessagesModelHook {
      */
     String generateSummary(List<Message> messages, String previousSummary) {
         try {
-            // 1. 构建 DashScopeChatOptions 指定小模型
-            DashScopeChatOptions options =
-                    DashScopeChatOptions.builder().withModel(summaryModel).build();
-
+            // 1. 构建 OpenAiChatOptions 指定小模型
+            OpenAiChatOptions options =
+                    OpenAiChatOptions.builder().model(summaryModel).build();
             // 2. 构建消息列表
             List<Message> promptMessages = new ArrayList<>();
 
