@@ -131,7 +131,8 @@ class RerankServiceTest {
 
     /** 构造测试用 KnowledgeChunk（7 字段，对照设计 §2.4） */
     private KnowledgeChunk chunk(String chunkId, String content) {
-        return new KnowledgeChunk(chunkId, content, "source", "docTitle", "heading", 0.0, IntentType.TECHNICAL_QA);
+        return new KnowledgeChunk(
+                chunkId, content, "source", "docTitle", "heading", 0.0, IntentType.KNOWLEDGE_QUESTION);
     }
 
     /** 构造 mock DocumentWithScore */

@@ -81,7 +81,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle 正常检索 — 返回 KnowledgeChunk 列表")
     void searchSingle_normal_returnsChunks() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "如何配置Redis", null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "如何配置Redis", null);
 
         // Mock embedding
         when(embeddingModel.embed("如何配置Redis")).thenReturn(new float[] {0.1f, 0.2f, 0.3f});
@@ -107,7 +107,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle 带 courseIds — 过滤表达式包含 in 和 DEFAULT")
     void searchSingle_withCourseIds_filterIncludesInAndDefault() {
-        TypedQuery query = new TypedQuery(IntentType.COURSE_INFO, "课程大纲", List.of("COURSE_123", "COURSE_456"));
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "课程大纲", List.of("COURSE_123", "COURSE_456"));
 
         when(embeddingModel.embed("课程大纲")).thenReturn(new float[] {0.1f, 0.2f});
 
@@ -140,7 +140,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle Milvus异常 — 降级返回空列表")
     void searchSingle_milvusException_returnsEmptyList() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "测试查询", null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "测试查询", null);
 
         when(embeddingModel.embed("测试查询")).thenReturn(new float[] {0.1f});
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenThrow(new RuntimeException("连接超时"));
@@ -156,7 +156,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle Embedding异常 — 降级返回空列表")
     void searchSingle_embeddingException_returnsEmptyList() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "测试查询", null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "测试查询", null);
 
         when(embeddingModel.embed("测试查询")).thenThrow(new RuntimeException("Embedding服务不可用"));
 
@@ -171,7 +171,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle 结果为null — 降级返回空列表")
     void searchSingle_nullResult_returnsEmptyList() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "测试", null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "测试", null);
 
         when(embeddingModel.embed("测试")).thenReturn(new float[] {0.1f});
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(null);
@@ -187,7 +187,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("buildFilterExpression — 无 courseIds 时不设过滤（返回 null，全局检索）")
     void buildFilterExpression_noCourseIds_returnsNull() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "test", null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "test", null);
 
         assertNull(tool.buildFilterExpression(query));
     }
@@ -195,7 +195,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("buildFilterExpression — 有 courseIds 时仅 course_id 子句（in + DEFAULT OR，不含 collection_type）")
     void buildFilterExpression_withCourseIds_onlyCourseClause() {
-        TypedQuery query = new TypedQuery(IntentType.COURSE_INFO, "test", List.of("C1", "C2"));
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "test", List.of("C1", "C2"));
 
         String expr = tool.buildFilterExpression(query);
 
@@ -208,7 +208,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("buildFilterExpression — courseIds 为空列表时不设过滤（返回 null）")
     void buildFilterExpression_emptyCourseIds_returnsNull() {
-        TypedQuery query = new TypedQuery(IntentType.COURSE_INFO, "test", List.of());
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "test", List.of());
 
         assertNull(tool.buildFilterExpression(query));
     }
@@ -225,15 +225,15 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchKnowledge 完整链路 — 并行检索 → RRF 融合 → rerank 精排")
     void searchKnowledge_fullFlow_fuseAndRerank() {
-        TypedQuery q1 = new TypedQuery(IntentType.TECHNICAL_QA, "Redis 配置", null);
-        TypedQuery q2 = new TypedQuery(IntentType.TECHNICAL_QA, "Redis 哨兵", null);
+        TypedQuery q1 = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "Redis 配置", null);
+        TypedQuery q2 = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "Redis 哨兵", null);
         when(embeddingModel.embed("Redis 配置")).thenReturn(new float[] {0.1f});
         when(embeddingModel.embed("Redis 哨兵")).thenReturn(new float[] {0.2f});
         SearchResp searchResp = mockSearchResp();
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
 
-        KnowledgeChunk k1 = new KnowledgeChunk("c1", "内容1", "", "", "h1", 0.9, IntentType.TECHNICAL_QA);
-        KnowledgeChunk k2 = new KnowledgeChunk("c2", "内容2", "", "", "h2", 0.8, IntentType.TECHNICAL_QA);
+        KnowledgeChunk k1 = new KnowledgeChunk("c1", "内容1", "", "", "h1", 0.9, IntentType.KNOWLEDGE_QUESTION);
+        KnowledgeChunk k2 = new KnowledgeChunk("c2", "内容2", "", "", "h2", 0.8, IntentType.KNOWLEDGE_QUESTION);
         when(fusionService.fuse(anyMap())).thenReturn(List.of(k1, k2));
         when(rerankService.rerank("Redis 配置", List.of(k1, k2))).thenReturn(List.of(k2, k1));
 
@@ -257,7 +257,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchKnowledge 单查询失败降级 — 返回空结果不抛异常")
     void searchKnowledge_queryFailure_degradedEmpty() {
-        TypedQuery q = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        TypedQuery q = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
         when(embeddingModel.embed("查询")).thenThrow(new RuntimeException("Milvus 连接失败"));
 
         KnowledgeSearchResult result = tool.searchKnowledge(List.of(q));
@@ -271,8 +271,8 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchInParallel 单查询超时 — 10s 超时后返回已完成部分，不阻塞整体")
     void searchKnowledge_timeout_returnsPartial() throws InterruptedException {
-        TypedQuery fast = new TypedQuery(IntentType.TECHNICAL_QA, "快速查询", null);
-        TypedQuery slow = new TypedQuery(IntentType.TECHNICAL_QA, "慢速查询", null);
+        TypedQuery fast = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "快速查询", null);
+        TypedQuery slow = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "慢速查询", null);
         when(embeddingModel.embed("快速查询")).thenReturn(new float[] {0.1f});
         when(embeddingModel.embed("慢速查询")).thenAnswer(inv -> {
             // 慢查询远超 10s 超时阈值（30s），保证超时时刻仍未完成
@@ -298,7 +298,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle 空向量 — 降级返回空列表，不触达 Milvus")
     void searchSingle_emptyEmbedding_returnsEmpty() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
         when(embeddingModel.embed("查询")).thenReturn(new float[0]);
 
         assertTrue(tool.searchSingle(query).isEmpty());
@@ -308,7 +308,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle null 向量 — 降级返回空列表")
     void searchSingle_nullEmbedding_returnsEmpty() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
         when(embeddingModel.embed("查询")).thenReturn(null);
 
         assertTrue(tool.searchSingle(query).isEmpty());
@@ -317,7 +317,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle 检索结果外层列表为 null — 降级返回空列表")
     void searchSingle_nullSearchResults_returnsEmpty() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
         when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
         SearchResp resp = mock(SearchResp.class);
         when(resp.getSearchResults()).thenReturn(null);
@@ -329,7 +329,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle 检索结果外层列表为空 — 降级返回空列表")
     void searchSingle_emptySearchResults_returnsEmpty() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
         when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
         SearchResp resp = mock(SearchResp.class);
         when(resp.getSearchResults()).thenReturn(List.of());
@@ -341,7 +341,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle 混合检索请求 — dense(FloatVec+COSINE) + sparse(EmbeddedText+BM25) 双路 + RRF 融合")
     void searchSingle_hybridRequest_denseAndSparse() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "如何配置Redis", null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "如何配置Redis", null);
         when(embeddingModel.embed("如何配置Redis")).thenReturn(new float[] {0.1f, 0.2f});
         SearchResp searchResp = mockSearchResp();
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
@@ -371,7 +371,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle 结果含 null entity / null score / 缺字段 — 空实体跳过、分数归 0、缺失字段空串兜底")
     void searchSingle_nullEntityAndScore_handled() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, "查询", null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
         when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
 
         // 第一条 entity 为 null（跳过）；第二条 score 为 null、缺 heading_path（getStr 空串兜底）
@@ -397,7 +397,7 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle queryText 为 null 且 Milvus 返回 null — truncate 空串兜底不抛异常")
     void searchSingle_nullQueryText_milvusNull_ok() {
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, null, null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, null, null);
         when(embeddingModel.embed((String) null)).thenReturn(new float[] {0.1f});
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(null);
 
@@ -408,7 +408,7 @@ class SearchKnowledgeToolTest {
     @DisplayName("searchSingle 长 queryText — 日志截断逻辑不抛异常")
     void searchSingle_longQueryText_truncate() {
         String longText = "这是一段超过三十个字符的非常长的查询文本用于触发截断逻辑ABCDEFG";
-        TypedQuery query = new TypedQuery(IntentType.TECHNICAL_QA, longText, null);
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, longText, null);
         when(embeddingModel.embed(longText)).thenReturn(new float[] {0.1f});
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenThrow(new RuntimeException("连接失败"));
 

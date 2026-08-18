@@ -22,15 +22,17 @@ class FusionServiceTest {
     private final FusionService fusionService = new FusionService(60);
 
     private KnowledgeChunk chunk(String chunkId) {
-        return new KnowledgeChunk(chunkId, "内容-" + chunkId, "source.md", "文档标题", "第一章", 0.9, IntentType.TECHNICAL_QA);
+        return new KnowledgeChunk(
+                chunkId, "内容-" + chunkId, "source.md", "文档标题", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION);
     }
 
     private KnowledgeChunk chunk(String chunkId, double score) {
-        return new KnowledgeChunk(chunkId, "内容-" + chunkId, "source.md", "文档标题", "第一章", score, IntentType.TECHNICAL_QA);
+        return new KnowledgeChunk(
+                chunkId, "内容-" + chunkId, "source.md", "文档标题", "第一章", score, IntentType.KNOWLEDGE_QUESTION);
     }
 
     private TypedQuery query(String text) {
-        return new TypedQuery(IntentType.TECHNICAL_QA, text, List.of());
+        return new TypedQuery(IntentType.KNOWLEDGE_QUESTION, text, List.of());
     }
 
     @Test
