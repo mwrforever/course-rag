@@ -128,7 +128,8 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
      * 查会话最近 run 的附件（后续轮次重建入口，spec §5.1 最终三表决策）
      *
      * <p>第二轮起用户不再上传附件时，worker 以此为入口重建 AttachmentContext。
-     * 本 service 主表走内置链式（this.lambdaQuery），按需取列仅 attachmentsJson。
+     * 本 service 主表走内置链式（this.lambdaQuery），按需取列 id/attachmentsJson
+     * （id 供解析失败告警定位损坏 run）。
      * 按 url 去重（同 url 只保留最近 run 的一条），单个 run JSON 解析失败跳过（warn 日志），
      * 无则返回空列表。
      *
@@ -139,16 +140,29 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
      */
     @Override
     public List<AttachmentRecord> findRecentAttachments(Long sessionId, Long excludeRunId, int limit) {
-        // 查该 session 最近 limit 个 run 的 attachments_json（排除当前 run；ID 倒序 → 最近 run 优先）
+        // 查该 session 最近 limit 个 run 的 id/attachments_json（排除当前 run；ID 倒序 → 最近 run 优先）
         List<ChatRun> runs = this.lambdaQuery()
-                .select(ChatRun::getAttachmentsJson)
+                .select(ChatRun::getId, ChatRun::getAttachmentsJson)
                 .eq(ChatRun::getSessionId, sessionId)
                 .ne(excludeRunId != null, ChatRun::getId, excludeRunId)
                 .isNotNull(ChatRun::getAttachmentsJson)
                 .orderByDesc(ChatRun::getId)
                 .last("LIMIT " + limit)
                 .list();
-        // 按 url 去重：LinkedHashMap 保插入序 → 最近的 run 先入，同 url 只保留最早出现的记录
+        // 本方法仅承担 SQL 获取；聚合逻辑下沉 collectUniqueAttachments（纯函数可单测，规范「测试真实断言」）
+        return collectUniqueAttachments(runs);
+    }
+
+    /**
+     * 从最近 run 行集合聚合附件记录（纯聚合逻辑，无 DB 访问 —— 供 findRecentAttachments 调用）
+     *
+     * <p>按 url 去重：LinkedHashMap 保插入序 → 最近 run 先入，同 url 只保留最早出现的记录；
+     * null/空白 attachmentsJson 跳过；单个 run JSON 解析失败跳过（warn 日志，不阻断整体重建）。
+     *
+     * @param runs 查询出的最近 run 行（调用方保证按 orderByDesc(id) 排序，最近 run 在前）
+     * @return 附件记录列表（去重：同 url 只保留一条；无则空列表）
+     */
+    public List<AttachmentRecord> collectUniqueAttachments(List<ChatRun> runs) {
         Map<String, AttachmentRecord> unique = new LinkedHashMap<>();
         for (ChatRun run : runs) {
             if (run.getAttachmentsJson() == null || run.getAttachmentsJson().isBlank()) {
