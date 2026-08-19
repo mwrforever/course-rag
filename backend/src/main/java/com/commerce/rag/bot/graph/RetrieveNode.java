@@ -11,10 +11,15 @@ import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.bot.tool.SearchKnowledgeTool;
 import com.commerce.rag.bot.tool.TypedQuery;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.record.AttachmentContext;
+import com.commerce.rag.record.DocumentLocalChunk;
 import com.commerce.rag.retrieval.ContextBuilderService;
 import com.commerce.rag.retrieval.CourseNameMapper;
+import com.commerce.rag.service.AttachmentLocalSearchService;
+import com.commerce.rag.service.AttachmentOrchestrator;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.stereotype.Component;
 
 /**
@@ -35,13 +41,22 @@ import org.springframework.stereotype.Component;
  *       匹配失败/为空 → null 全局检索，spec §2.3）</li>
  *   <li>每条重写查询构建 TypedQuery 并行混合检索（SearchKnowledgeTool 内完成：
  *       预取 → RRF 融合 → SHA256 内容去重 → Rerank 精排）</li>
- *   <li>ContextBuilderService 组装 &lt;document&gt;（空候选返回 null）</li>
- *   <li>document 文本写入 config.metadata()["document_context"]——不写 State、
- *       不进 checkpoint（临时上下文，DocumentAssemblerInterceptor 瞬时注入）</li>
+ *   <li>ContextBuilderService 组装 &lt;document&gt;（system-document，空候选返回 null）</li>
+ *   <li>读取 config.metadata() 中 worker 写入的附件上下文（键
+ *       {@link AttachmentOrchestrator#KEY_ATTACHMENT_CONTEXT}，spec §5.1）：图片 caption
+ *       直接注入、文档附件以用户原问题为查询向量做局部检索（AttachmentLocalSearchService，
+ *       spec §5.4），经 buildUserDocument + appendUserDocument 合并为 &lt;user-document&gt;
+ *       子块（本类方法 {@link #mergeUserDocument}）</li>
+ *   <li>合并后的 document 文本写入 config.metadata()["document_context"]（{@link
+ *       AttachmentOrchestrator#KEY_ATTACHMENT_CONTEXT} 同通道）——不写 State、不进 checkpoint
+ *       （临时上下文，DocumentAssemblerInterceptor 瞬时注入）</li>
  * </ol>
  *
  * <p>失败降级：检索异常/空结果 → 不写 document，ReactAgent 直接回答并记日志
  * （spec §1：retrieveNode 失败/空结果 → document 为空）。
+ *
+ * <p>本类为手写单构造器（5 依赖：SearchKnowledgeTool / CourseNameMapper / ContextBuilderService
+ * / AttachmentLocalSearchService / EmbeddingModel，Spring 按单构造器自动注入，无需 @Autowired）。
  *
  * <p>注：本类与项目接口 {@link com.commerce.rag.bot.graph.OverAllState}（KEY_QUERY_PLAN
  * 定义处）同包，但 apply 签名需用框架的 {@code com.alibaba.cloud.ai.graph.OverAllState}
@@ -55,17 +70,26 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
 
     private static final Logger log = LoggerFactory.getLogger(RetrieveNode.class);
 
+    /** 文档附件局部检索返回条数上限（spec §5.4 局部检索 Top-K） */
+    private static final int LOCAL_SEARCH_TOP_K = 3;
+
     private final SearchKnowledgeTool searchKnowledgeTool;
     private final CourseNameMapper courseNameMapper;
     private final ContextBuilderService contextBuilderService;
+    private final AttachmentLocalSearchService localSearchService;
+    private final EmbeddingModel embeddingModel;
 
     public RetrieveNode(
             SearchKnowledgeTool searchKnowledgeTool,
             CourseNameMapper courseNameMapper,
-            ContextBuilderService contextBuilderService) {
+            ContextBuilderService contextBuilderService,
+            AttachmentLocalSearchService localSearchService,
+            EmbeddingModel embeddingModel) {
         this.searchKnowledgeTool = searchKnowledgeTool;
         this.courseNameMapper = courseNameMapper;
         this.contextBuilderService = contextBuilderService;
+        this.localSearchService = localSearchService;
+        this.embeddingModel = embeddingModel;
     }
 
     /**
@@ -127,20 +151,84 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
             return CompletableFuture.completedFuture(Map.of());
         }
 
-        // 5. 组装 <document> 并写入 metadata（临时上下文，不落 state/checkpoint）
+        // 5. 组装 <document>（system-document）并合并 <user-document>（附件上下文，spec §5.3/§5.4）
         String document = contextBuilderService.buildDocument(originalQuery, plan.rewrittenQueries(), chunks);
         if (document == null || document.isBlank()) {
             log.info("retrieveNode: document 组装为空，跳过注入");
             return CompletableFuture.completedFuture(Map.of());
         }
-        config.metadata().ifPresent(m -> m.put(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT, document));
+        // 合并附件 user-document 子块（无附件上下文/无命中则原样返回 systemDocument）
+        // final 合并结果，供下方 lambda 捕获（document 已被上面赋值，非 effectively final）
+        final String mergedDocument = mergeUserDocument(config, document, originalQuery);
+        config.metadata().ifPresent(m -> m.put(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT, mergedDocument));
         log.info(
                 "retrieveNode 完成: intent={}, 候选={}条, 注入 document（{} 字符）",
                 plan.intent().name(),
                 chunks.size(),
-                document.length());
+                mergedDocument.length());
 
         return CompletableFuture.completedFuture(Map.of());
+    }
+
+    /**
+     * 合并附件 user-document 子块 —— 图片 caption 注入 + 文档附件局部检索（spec §5.3/§5.4）
+     *
+     * <p>流程：读取 config.metadata() 的附件上下文 → 按附件 objectKey 逐个以用户原问题向量做
+     * 局部检索（内存余弦 Top-K，spec §5.4：附件文档不参与系统检索，仅作局部语料）→
+     * buildUserDocument 组装 → appendUserDocument 在 `</document>` 前合并。
+     *
+     * <p>查询向量 = 用户原问题（originalQuery）：图输入 UserMessage 即用户问题正式形态，含附件
+     * caption 语境的「图片N:[caption]」前缀（spec §3.3 回答以原问题为准），纯图片走 chat/unknown
+     * 不触发检索、纯文档无前缀、图片+文档混合时 caption 是有效附件语境，故不属污染。
+     *
+     * <p>容错：某附件分片列表为空 → search 返回空列表，docHits 不 put；无任何附件上下文/无命中
+     * → 原样返回 systemDocument（不产生 user-document 子块）。
+     *
+     * @param config        RunnableConfig（读取附件上下文 metadata）
+     * @param document      既有 systemDocument（buildDocument 输出，非 null）
+     * @param originalQuery 用户原问题（局部检索查询向量来源）
+     * @return 合并后的 document 文本
+     */
+    private String mergeUserDocument(RunnableConfig config, String document, String originalQuery) {
+        AttachmentContext attachmentContext = readAttachmentContext(config);
+        // 无附件上下文 → 原样返回既有 document（不产生 user-document 子块）
+        if (attachmentContext == null || !attachmentContext.hasAny()) {
+            return document;
+        }
+        // 存储附件 objectKey → 命中段落文本列表（检索有命中的 key 才放入）
+        Map<String, List<String>> docHits = new LinkedHashMap<>();
+        if (!attachmentContext.documents().isEmpty()) {
+            // 用户原问题作局部检索查询向量（spec §5.4：附件文档内容不参与系统检索查询）
+            float[] queryVector = embeddingModel.embed(originalQuery);
+            for (Map.Entry<String, List<DocumentLocalChunk>> entry :
+                    attachmentContext.documents().entrySet()) {
+                // 某附件分片列表可能为空 → search 返回空列表，docHits 不 put（组装容忍）
+                List<DocumentLocalChunk> hits =
+                        localSearchService.search(entry.getValue(), queryVector, LOCAL_SEARCH_TOP_K);
+                if (!hits.isEmpty()) {
+                    docHits.put(
+                            entry.getKey(),
+                            hits.stream().map(DocumentLocalChunk::text).toList());
+                }
+            }
+        }
+        // 组装 user-document 子块并合并进 document（子块为空 → appendUserDocument 原样返回）
+        String userDocument = contextBuilderService.buildUserDocument(attachmentContext.captions(), docHits);
+        return contextBuilderService.appendUserDocument(document, userDocument);
+    }
+
+    /**
+     * 读取附件处理上下文（worker 写入 config.metadata，键见 {@link AttachmentOrchestrator#KEY_ATTACHMENT_CONTEXT}）
+     *
+     * @param config RunnableConfig（metadata 贯穿全图共享）
+     * @return 附件上下文载体；metadata 无该键/类型不符返回 null
+     */
+    private static AttachmentContext readAttachmentContext(RunnableConfig config) {
+        return config.metadata()
+                .map(m -> m.get(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT))
+                .filter(AttachmentContext.class::isInstance)
+                .map(AttachmentContext.class::cast)
+                .orElse(null);
     }
 
     /**

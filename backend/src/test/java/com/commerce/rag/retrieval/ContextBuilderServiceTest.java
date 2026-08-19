@@ -1,12 +1,15 @@
 package com.commerce.rag.retrieval;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.record.ImageCaptionResult;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -73,5 +76,58 @@ class ContextBuilderServiceTest {
 
         String noRewrite = service.buildDocument("q", null, List.of(chunk("c1", "内容", "doc", "h")));
         assertFalse(noRewrite.contains("检索查询(基于原问题重写)"), "无重写列表时不输出检索查询行");
+    }
+
+    @Test
+    @DisplayName("buildUserDocument — 图片 caption 与文件命中合并为 user-document 块")
+    void buildUserDocument_mergesCaptionsAndHits() {
+        String doc = service.buildUserDocument(
+                List.of(new ImageCaptionResult("图片1:红色图表", "a.png")), Map.of("0/doc.pdf", List.of("段落一", "段落二")));
+
+        assertTrue(doc.contains("<user-document>"), "以 user-document 块包裹附件局部上下文");
+        assertTrue(doc.contains("[图片1:红色图表]"), "图片 caption 以 [图片N:描述] 形式注入");
+        assertTrue(doc.contains("[文件1]"), "文档命中以 [文件N] 序号列出");
+        assertTrue(doc.contains("0/doc.pdf"), "文件行携带附件 objectKey");
+        assertTrue(doc.contains("    - 段落一"), "命中段落以缩进列表行输出");
+        assertTrue(doc.endsWith("</user-document>"), "以闭合标签结束");
+    }
+
+    @Test
+    @DisplayName("buildUserDocument — 无附件内容（caption 与命中均空）返回 null")
+    void buildUserDocument_empty() {
+        assertNull(service.buildUserDocument(null, Map.of()), "captions null + docHits 空 → null");
+        assertNull(service.buildUserDocument(List.of(), null), "captions 空 + docHits null → null");
+        assertNull(service.buildUserDocument(null, null), "双 null → null");
+    }
+
+    @Test
+    @DisplayName("appendUserDocument — user-document 在 </document> 前插入，保持装配顺序")
+    void appendUserDocument_insertsBeforeClosingTag() {
+        String system = "<document>\n检索说明:...\n</system-document>\n</document>";
+        String user = "<user-document>\n  [图片1:红色图表]\n</user-document>";
+
+        String merged = service.appendUserDocument(system, user);
+
+        // 顺序：system-document 在 user-document 之前，闭合标签仍位于末尾
+        int systemIdx = merged.indexOf("</system-document>");
+        int userIdx = merged.indexOf("<user-document>");
+        int closeIdx = merged.indexOf("</document>");
+        assertTrue(systemIdx >= 0 && userIdx >= 0 && closeIdx >= 0, "三部分均存在");
+        assertTrue(systemIdx < userIdx, "system-document 位于 user-document 之前");
+        assertTrue(userIdx < closeIdx, "user-document 在 </document> 闭合之前");
+        assertTrue(merged.endsWith("</document>"), "闭合标签仍在末尾");
+    }
+
+    @Test
+    @DisplayName("appendUserDocument — userDocument 为 null/空白时原样返回 systemDocument")
+    void appendUserDocument_emptyUser_returnsSystemUnchanged() {
+        String system = "<document>\n</system-document>\n</document>";
+
+        assertEquals(system, service.appendUserDocument(system, null), "null userDocument 原样返回");
+        assertEquals(system, service.appendUserDocument(system, "  "), "空白 userDocument 原样返回");
+        assertEquals(
+                null,
+                service.appendUserDocument(null, "<user-document>x</user-document>"),
+                "systemDocument null 返回 null");
     }
 }
