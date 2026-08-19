@@ -298,3 +298,12 @@ logging:
     com.commerce.rag: INFO
     org.springframework.ai: DEBUG
     io.milvus: WARN
+
+# ── 用户附件（spec §5.2 限额定稿，C 端会话级局部处理）──
+attachment:
+  image-max-size-mb: 10        # 单张图片上限
+  document-max-size-mb: 50     # 单个文档上限
+  max-count: 10                # 单次消息附件个数上限
+  total-max-size-mb: 100       # 单次消息附件合计上限
+  cache-max-size: 100          # Caffeine 附件处理结果缓存条数（LRU）
+  cache-expire-minutes: 30     # 附件处理结果缓存失效时间
