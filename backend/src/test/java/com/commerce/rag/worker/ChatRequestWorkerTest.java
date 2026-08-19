@@ -169,6 +169,18 @@ class ChatRequestWorkerTest {
         return value != null ? value : defaultValue;
     }
 
+    /** 创建指定 body 的 mock MapRecord（Redis Stream 消息，用于附件等扩展字段构造） */
+    @SuppressWarnings("unchecked")
+    private MapRecord<String, Object, Object> createMockRecordWithBody(Map<String, Object> body) {
+        MapRecord<String, Object, Object> mockRecord = mock(MapRecord.class);
+        RecordId mockRecordId = mock(RecordId.class);
+        lenient().when(mockRecordId.getValue()).thenReturn("123-0");
+        lenient().when(mockRecord.getId()).thenReturn(mockRecordId);
+        // getValue() 返回 Map<Object,Object>，入参（键 String）拷贝调整为 Object 键类型以匹配返回值
+        lenient().when(mockRecord.getValue()).thenReturn(new HashMap<Object, Object>(body));
+        return mockRecord;
+    }
+
     /** 通过反射调用 private processRequest 方法 */
     private void invokeProcessRequest(MapRecord<String, Object, Object> record) throws Exception {
         Method method = ChatRequestWorker.class.getDeclaredMethod("processRequest", MapRecord.class);
@@ -186,11 +198,17 @@ class ChatRequestWorkerTest {
 
     /** 通过反射调用 private persistMessages（P0-4a 游标去重用例：验证仅持久化游标后的新增消息） */
     private void invokePersistMessages(
-            Long runId, Long sessionId, String userQuery, int historyCursor, NodeOutput lastOutput) throws Exception {
+            Long runId,
+            Long sessionId,
+            String userQuery,
+            String attachmentsJson,
+            int historyCursor,
+            NodeOutput lastOutput)
+            throws Exception {
         Method method = ChatRequestWorker.class.getDeclaredMethod(
-                "persistMessages", Long.class, Long.class, String.class, int.class, NodeOutput.class);
+                "persistMessages", Long.class, Long.class, String.class, String.class, int.class, NodeOutput.class);
         method.setAccessible(true);
-        method.invoke(worker, runId, sessionId, userQuery, historyCursor, lastOutput);
+        method.invoke(worker, runId, sessionId, userQuery, attachmentsJson, historyCursor, lastOutput);
     }
 
     // ==================== cancel() 测试 ====================
@@ -348,7 +366,7 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(state);
 
         // When: 游标=2（历史 2 条）
-        invokePersistMessages(1L, 1L, "本轮问题", 2, lastOutput);
+        invokePersistMessages(1L, 1L, "本轮问题", "[]", 2, lastOutput);
 
         // Then: 仅持久化本轮（USER 用户消息 + 本轮新增 assistant）
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -433,7 +451,7 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(state);
 
         // When: 游标=0（全部新增）
-        invokePersistMessages(1L, 1L, "课程问题", 0, lastOutput);
+        invokePersistMessages(1L, 1L, "课程问题", "[]", 0, lastOutput);
 
         // Then: TOOL_CALL 落库 content 为实时 schema（toolCallId/toolName/input）
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -620,6 +638,94 @@ class ChatRequestWorkerTest {
         verify(chatRunService).updateStatus(100L, "COMPLETED");
     }
 
+    // ==================== 附件入队/落库（spec §5.1 双存） ====================
+
+    @Test
+    @DisplayName("带附件消息 — run 与 message 均落 attachments_json（合法 JSON 数组透传）")
+    void processRequest_withAttachments_runAndMessagePersist() throws Exception {
+        // Given: Redis 消息 body 含附件 JSON 数组（上传接口返回的 type/url/name/size）
+        String attachmentsJson = "[{\"type\":\"image\",\"url\":\"0/a.png\",\"name\":\"a.png\",\"size\":1}]";
+        Map<String, Object> body = new HashMap<>();
+        body.put("runId", "100");
+        body.put("sessionId", "200");
+        body.put("userId", "300");
+        body.put("query", "这张图里是什么");
+        body.put("attachments", attachmentsJson);
+        MapRecord<String, Object, Object> record = createMockRecordWithBody(body);
+
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 业务入口表 chat_run 落 attachments_json（合法 JSON 原样透传）
+        verify(chatRunService).updateAttachments(100L, attachmentsJson);
+        // 渲染/审计表 chat_message 用户消息行落 attachments_json（spec §5.1 双存决策）
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        ChatMessage userMsg = captor.getValue().stream()
+                .filter(m -> "USER".equals(m.getRole()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应含用户消息行"));
+        assertEquals(attachmentsJson, userMsg.getAttachmentsJson());
+    }
+
+    @Test
+    @DisplayName("附件 JSON 非法 — 按空数组处理，run 与 message 均落 []（附件损坏不阻断对话）")
+    void processRequest_invalidAttachmentsJson_degradesToEmptyArray() throws Exception {
+        // Given: Redis 消息 body 含非法附件 JSON
+        Map<String, Object> body = new HashMap<>();
+        body.put("runId", "100");
+        body.put("sessionId", "200");
+        body.put("userId", "300");
+        body.put("query", "这是什么附件");
+        body.put("attachments", "not-json{");
+        MapRecord<String, Object, Object> record = createMockRecordWithBody(body);
+
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 非法 JSON 归一为空数组，双表均落 []
+        verify(chatRunService).updateAttachments(100L, "[]");
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        ChatMessage userMsg = captor.getValue().stream()
+                .filter(m -> "USER".equals(m.getRole()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应含用户消息行"));
+        assertEquals("[]", userMsg.getAttachmentsJson());
+    }
+
+    @Test
+    @DisplayName("无 attachments 键 — 默认空数组，run 与 message 均落 []（历史消息格式兼容）")
+    void processRequest_withoutAttachments_defaultsToEmptyArray() throws Exception {
+        // Given: 消息不含 attachments 键（既有消息格式，向后兼容）
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 无附件时双表均落 []
+        verify(chatRunService).updateAttachments(100L, "[]");
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        ChatMessage userMsg = captor.getValue().stream()
+                .filter(m -> "USER".equals(m.getRole()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应含用户消息行"));
+        assertEquals("[]", userMsg.getAttachmentsJson());
+    }
+
     // ==================== persistMessages 边界分支 ====================
 
     @Test
@@ -632,7 +738,7 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(state);
 
         // When
-        invokePersistMessages(1L, 1L, "本轮问题", 0, lastOutput);
+        invokePersistMessages(1L, 1L, "本轮问题", "[]", 0, lastOutput);
 
         // Then: 仅落库本轮 USER 查询 + ASSISTANT 补充回答，不重复 USER
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -651,7 +757,7 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(null);
 
         // 不抛异常即验证通过（异常在 persistMessages 内部被吞并）
-        invokePersistMessages(1L, 1L, "问题", 0, lastOutput);
+        invokePersistMessages(1L, 1L, "问题", "[]", 0, lastOutput);
         verify(chatMessageService).batchInsert(anyList());
     }
 

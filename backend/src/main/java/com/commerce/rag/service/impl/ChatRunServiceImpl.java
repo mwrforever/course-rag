@@ -102,6 +102,23 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
     }
 
     /**
+     * 落库本次输入附件（业务入口表，spec §5.1 双存决策）
+     *
+     * <p>本 service 主表走内置链式（this.lambdaUpdate），按 runId 选中并仅更新 attachmentsJson 列。
+     *
+     * @param runId           Run ID
+     * @param attachmentsJson 附件 JSON 数组字符串（"[]"=无附件；非法 JSON 已由调用方归一）
+     */
+    @Override
+    public void updateAttachments(Long runId, String attachmentsJson) {
+        log.info("落库附件: runId={}, attachmentsJson={}", runId, attachmentsJson);
+        this.lambdaUpdate()
+                .eq(ChatRun::getId, runId)
+                .set(ChatRun::getAttachmentsJson, attachmentsJson)
+                .update();
+    }
+
+    /**
      * 查询超时未结束的 ACTIVE run（M-8 巡检用）
      *
      * <p>本 service 主表查询走内置链式（this.lambdaQuery），按需取列仅 id/status。

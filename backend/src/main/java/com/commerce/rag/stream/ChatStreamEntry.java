@@ -15,6 +15,7 @@ import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.worker.ChatRequestWorker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.Gson;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpServletRequest;
@@ -154,11 +155,14 @@ public class ChatStreamEntry {
         bridge.subscribe(runId, emitter);
 
         // 5. XADD 入队（subscribe 之后再入队，确保 Worker 推送的事件能到达 emitter）
-        Map<String, String> message = Map.of(
-                "runId", runId,
-                "sessionId", sessionId.toString(),
-                "userId", userId.toString(),
-                "query", request.query());
+        // 本次输入附件 → JSON 数组字符串（worker 消费后落 chat_run/chat_message 的 attachments_json，spec §5.1）
+        String attachmentsJson = request.attachments() == null ? "[]" : new Gson().toJson(request.attachments());
+        Map<String, String> message = new LinkedHashMap<>();
+        message.put("runId", runId);
+        message.put("sessionId", sessionId.toString());
+        message.put("userId", userId.toString());
+        message.put("query", request.query());
+        message.put("attachments", attachmentsJson);
         try {
             redisTemplate.opsForStream().add(streamProperties.requestStream(), message);
         } catch (Exception e) {

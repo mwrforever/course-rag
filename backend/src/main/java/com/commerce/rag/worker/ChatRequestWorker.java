@@ -18,6 +18,7 @@ import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.SseEventType;
 import com.commerce.rag.vo.ChatRunVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -334,6 +335,17 @@ public class ChatRequestWorker {
             return;
         }
 
+        // 本次输入附件 JSON（缺省为空数组）：非法 JSON 按空处理，附件损坏不阻断对话。
+        // 归一结果用 effectively final 变量承载（persistMessages 在 reactor 回调中引用）
+        String rawAttachmentsJson = body.getOrDefault("attachments", "[]");
+        String attachmentsJson;
+        if (!isValidJsonArray(rawAttachmentsJson)) {
+            log.warn("附件 JSON 非法，按空处理: runId={}", runIdStr);
+            attachmentsJson = "[]";
+        } else {
+            attachmentsJson = rawAttachmentsJson;
+        }
+
         // 构建 RunnableConfig（session_id 直接作 thread_id）
         // 设计文档 §2.1: threadId + userId 放 RunnableConfig，不放 State
         RunnableConfig config = RunnableConfig.builder()
@@ -360,6 +372,9 @@ public class ChatRequestWorker {
         try {
             // 2. 状态 → ACTIVE
             chatRunService.updateStatus(runId, "ACTIVE");
+
+            // 2.1 落库本次输入附件（业务入口表，spec §5.1 双存决策；紧随 ACTIVE 写入，保证入口数据不丢）
+            chatRunService.updateAttachments(runId, attachmentsJson);
 
             // 3. bridge 创建 ring
             bridge.createRing(runIdStr);
@@ -397,6 +412,7 @@ public class ChatRequestWorker {
                                 runId,
                                 sessionId,
                                 userQuery,
+                                attachmentsJson,
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
                                 lastOutput.get());
                         return Mono.empty();
@@ -413,6 +429,7 @@ public class ChatRequestWorker {
                                 runId,
                                 sessionId,
                                 userQuery,
+                                attachmentsJson,
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
                                 lastOutput.get());
                         handleCompleted(runIdStr, runId, runState);
@@ -433,6 +450,7 @@ public class ChatRequestWorker {
                     runId,
                     sessionId,
                     userQuery,
+                    attachmentsJson,
                     snapshot != null ? snapshot.historyMessageCount() : 0,
                     lastOutput.get());
         } finally {
@@ -533,20 +551,26 @@ public class ChatRequestWorker {
      * 如遇 lastOutput.state() 遗漏 messages 的边界场景，可通过 saver.get(config)
      * 从完整 checkpoint state 提取作为 fallback。
      *
-     * @param runId         Run 唯一标识
-     * @param sessionId     会话 ID
-     * @param userQuery     本轮用户问题原文
-     * @param historyCursor 持久化游标（pre-run checkpoint 中 messages 数，P0-4a）：
-     *                      仅持久化 rawList 中 index >= historyCursor 的新增消息，避免历史消息每轮重插
-     * @param lastOutput    流式输出的最后一个 NodeOutput（可为 null，此时仅持久化用户消息）
+     * @param runId            Run 唯一标识
+     * @param sessionId        会话 ID
+     * @param userQuery        本轮用户问题原文
+     * @param attachmentsJson  本轮输入附件 JSON 数组字符串（已校验合法，落用户消息行 attachments_json，spec §5.1）
+     * @param historyCursor    持久化游标（pre-run checkpoint 中 messages 数，P0-4a）：
+     *                         仅持久化 rawList 中 index >= historyCursor 的新增消息，避免历史消息每轮重插
+     * @param lastOutput       流式输出的最后一个 NodeOutput（可为 null，此时仅持久化用户消息）
      */
     @SuppressWarnings("unchecked")
     private void persistMessages(
-            Long runId, Long sessionId, String userQuery, int historyCursor, NodeOutput lastOutput) {
+            Long runId,
+            Long sessionId,
+            String userQuery,
+            String attachmentsJson,
+            int historyCursor,
+            NodeOutput lastOutput) {
         List<ChatMessage> messages = new ArrayList<>();
         int seq = 0;
 
-        // 1. 用户消息
+        // 1. 用户消息（携带本轮附件列表，供前端渲染/审计回放 —— spec §5.1 双存决策）
         ChatMessage userMsg = new ChatMessage();
         userMsg.setSessionId(sessionId);
         userMsg.setRunId(runId);
@@ -554,6 +578,7 @@ public class ChatRequestWorker {
         userMsg.setContent(userQuery);
         userMsg.setSeq(seq++);
         userMsg.setSourcesJson("[]");
+        userMsg.setAttachmentsJson(attachmentsJson);
         messages.add(userMsg);
 
         // 2. 从最终状态提取 messages 列表，仅转换本轮新增（index >= 游标）——P0-4a 修复：
@@ -814,6 +839,25 @@ public class ChatRequestWorker {
             body.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
         }
         return body;
+    }
+
+    /**
+     * 校验字符串是否为合法 JSON 数组。
+     *
+     * @param json 待校验字符串（null/空白/非 JSON/JSON 非数组均视为非法）
+     * @return true=合法 JSON 数组；false=非法（调用方按空数组处理，附件损坏不阻断对话）
+     */
+    private boolean isValidJsonArray(String json) {
+        if (json == null || json.isBlank()) {
+            return false;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(json);
+            return node.isArray();
+        } catch (Exception e) {
+            // 解析失败视为非法 JSON，交由调用方按空数组兜底
+            return false;
+        }
     }
 
     /** 宽松解析 Long（队列拒绝分支读取 runId 用），解析失败返回 null */

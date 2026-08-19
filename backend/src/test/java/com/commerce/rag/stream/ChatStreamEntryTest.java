@@ -8,6 +8,7 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.properties.StreamProperties;
+import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.service.IChatSessionService;
@@ -135,6 +136,43 @@ class ChatStreamEntryTest {
         verify(streamOps).add(eq("test-stream"), any(Map.class));
         verify(chatSessionService).updateLastMessageAt(456L);
         assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("chat 带附件 → XADD body 的 attachments 为附件 JSON 数组字符串（spec §5.1 入队）")
+    void chat_withAttachments_xaddBodyCarriesAttachmentsJson() {
+        // Given: 会话与 run 创建成功，请求携带 1 个附件记录
+        when(chatSessionService.createSession(eq(123L), anyString()))
+                .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
+        when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
+        List<AttachmentRecord> attachments = List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1L));
+
+        // When: 三参构造携带附件
+        entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "这张图是什么意思", attachments));
+
+        // Then: XADD body 含 attachments 键，值为 Gson 序列化的 JSON 数组字符串
+        ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(streamOps).add(eq("test-stream"), captor.capture());
+        assertEquals(
+                "[{\"type\":\"image\",\"url\":\"0/a.png\",\"name\":\"a.png\",\"size\":1}]",
+                captor.getValue().get("attachments"));
+    }
+
+    @Test
+    @DisplayName("chat 无附件 → XADD body 的 attachments 为 []（既有两参构造兼容）")
+    void chat_noAttachments_xaddBodyHasEmptyArray() {
+        // Given: 会话与 run 创建成功
+        when(chatSessionService.createSession(eq(123L), anyString()))
+                .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
+        when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
+
+        // When: 既有两参构造（attachments=null → 空数组）
+        entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好"));
+
+        // Then: attachments 键默认空数组
+        ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(streamOps).add(eq("test-stream"), captor.capture());
+        assertEquals("[]", captor.getValue().get("attachments"));
     }
 
     @Test

@@ -43,6 +43,17 @@ public interface IChatRunService extends IService<ChatRun> {
     ChatRunVO findById(Long runId);
 
     /**
+     * 落库本次输入附件（业务入口表，spec §5.1 双存决策）
+     *
+     * <p>ChatRequest 携带的附件记录列表（JSON 数组字符串）写入 chat_run.attachments_json。
+     * 由 ChatRequestWorker 在 run 进入 ACTIVE 后调用；非法 JSON 已由调用方按空数组 "[]" 归一。
+     *
+     * @param runId            Run ID
+     * @param attachmentsJson  附件 JSON 数组字符串（"[]"=无附件）
+     */
+    void updateAttachments(Long runId, String attachmentsJson);
+
+    /**
      * 查询超时未结束的 ACTIVE run（M-8 巡检用）
      *
      * <p>进程崩溃/runPool 拒绝后 run 可能滞留 ACTIVE，uniq_active_run_per_session
