@@ -182,6 +182,14 @@
 
         <!-- ==================== 工具 ==================== -->
 
+        <!-- Gson：ChatRunServiceImpl/EtlPipeline/ChatStreamEntry 直接使用，显式声明与 Spring Boot BOM
+             传递版本对齐（2.13.2），避免隐式依赖随上游变更漂移 -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.13.2</version>
+        </dependency>
+
         <!-- Jackson JSON 处理 -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

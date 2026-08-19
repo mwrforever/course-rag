@@ -137,6 +137,54 @@ class RetrieveNodeTest {
     }
 
     @Test
+    @DisplayName("apply — 系统检索为空但附件上下文存在：注入仅含 <user-document> 的 document shell")
+    void apply_emptySystem_withAttachmentContext_injectsUserDocumentShell() throws Exception {
+        // 附件上下文：1 张图片 caption + 1 个文档局部语料（系统库无命中场景）
+        AttachmentContext attachmentContext = new AttachmentContext(
+                List.of(new ImageCaptionResult("图片1:红色图表", "a.png")),
+                Map.of("0/doc.pdf", List.of(new DocumentLocalChunk("图表纵轴为销量", new float[] {1.0f}, 0))));
+        QueryPlan plan =
+                new QueryPlan(IntentType.KNOWLEDGE_QUESTION, List.of("红色图表含义"), new QueryPlanFilters(List.of()), false);
+        OverAllState state = new OverAllState(
+                Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("图片1:[红色图表] 高等数学怎么学"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("s1")
+                .addMetadata("attachmentContext", attachmentContext)
+                .addMetadata("userId", "u1")
+                .build();
+
+        // 系统检索为空 → 系统侧组装不触发，仅执行附件局部检索链路
+        when(searchKnowledgeTool.searchKnowledge(any())).thenReturn(new KnowledgeSearchResult(List.of()));
+        when(embeddingModel.embed(anyString())).thenReturn(new float[] {1.0f, 0.0f});
+        when(localSearchService.search(anyList(), any(), anyInt()))
+                .thenReturn(List.of(new DocumentLocalChunk("图表纵轴为销量", new float[] {1.0f}, 0)));
+        when(contextBuilderService.buildUserDocument(anyList(), anyMap()))
+                .thenReturn("<user-document>\n  [图片1:红色图表]\n</user-document>");
+        // 以空 <document> 壳为底合并 user-document（buildEmptySystemDocument 的装配路径）
+        when(contextBuilderService.appendUserDocument(anyString(), anyString()))
+                .thenReturn("<document>\n<user-document>\n  [图片1:红色图表]\n</user-document>\n</document>");
+
+        Map<String, Object> result = RetrieveNodeTestUtil.apply(
+                new RetrieveNode(
+                        searchKnowledgeTool,
+                        courseNameMapper,
+                        contextBuilderService,
+                        localSearchService,
+                        embeddingModel),
+                state,
+                config);
+
+        // 检索结果不写 state
+        assertTrue(result.isEmpty());
+        // 系统检索为空 → 不调 system 侧组装
+        verify(contextBuilderService, never()).buildDocument(any(), any(), any());
+        // document_context 被写入且含 <user-document>
+        String written = String.valueOf(config.metadata().get().get(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT));
+        assertEquals("<document>\n<user-document>\n  [图片1:红色图表]\n</user-document>\n</document>", written);
+        assertTrue(written.contains("<user-document>"));
+    }
+
+    @Test
     @DisplayName("apply — chat/unknown 不检索、不写 document")
     void apply_nonKnowledgeIntent_skipsSearch() throws Exception {
         QueryPlan chat = new QueryPlan(IntentType.CHAT, List.of("你好"), new QueryPlanFilters(List.of()), false);

@@ -104,6 +104,21 @@ class AttachmentServiceImplTest {
     }
 
     @Test
+    @DisplayName("混合合法+非法附件 — 第一遍全量校验先拦截，合法前序文件也不落盘（防 MinIO 孤儿对象）")
+    void upload_mixedValidAndInvalid_noOrphanObject() {
+        // file[0] 合法（png 1KB）、file[1] 非法（exe，不在白名单）
+        MockMultipartFile valid = new MockMultipartFile("files", "a.png", "image/png", new byte[1024]);
+        MockMultipartFile invalid = new MockMultipartFile("files", "b.exe", "application/octet-stream", new byte[10]);
+
+        BizException e =
+                assertThrows(BizException.class, () -> service.upload(new MockMultipartFile[] {valid, invalid}));
+
+        assertEquals(ErrorCode.BAD_REQUEST, e.getErrorCode());
+        // 任一非法即整批不落盘：既不会为 file[1] 落盘，也不会为合法的 file[0] 落盘
+        verify(minio, never()).uploadFile(any(), any(), any(), any());
+    }
+
+    @Test
     @DisplayName("附件为空（null 或空数组）— BizException 400，不落盘")
     void upload_empty() {
         BizException nullEx = assertThrows(BizException.class, () -> service.upload(null));

@@ -46,14 +46,17 @@ import org.springframework.stereotype.Component;
  *       {@link AttachmentOrchestrator#KEY_ATTACHMENT_CONTEXT}，spec §5.1）：图片 caption
  *       直接注入、文档附件以用户原问题为查询向量做局部检索（AttachmentLocalSearchService，
  *       spec §5.4），经 buildUserDocument + appendUserDocument 合并为 &lt;user-document&gt;
- *       子块（本类方法 {@link #mergeUserDocument}）</li>
+ *       子块（本类方法 {@link #mergeUserDocument}）；系统检索为空但有附件上下文时，以仅含
+ *       &lt;user-document&gt; 的 &lt;document&gt; shell 注入（{@link #buildEmptySystemDocument}，
+ *       spec §5.4 两者合并注入）</li>
  *   <li>合并后的 document 文本写入 config.metadata()["document_context"]（{@link
  *       AttachmentOrchestrator#KEY_ATTACHMENT_CONTEXT} 同通道）——不写 State、不进 checkpoint
  *       （临时上下文，DocumentAssemblerInterceptor 瞬时注入）</li>
  * </ol>
  *
- * <p>失败降级：检索异常/空结果 → 不写 document，ReactAgent 直接回答并记日志
- * （spec §1：retrieveNode 失败/空结果 → document 为空）。
+ * <p>失败降级：检索异常 → 不写 document，ReactAgent 直接回答并记日志；系统检索空结果 →
+ * 无附件上下文时不写 document（ReactAgent 直接回答），有附件上下文时仍注入仅含
+ * user-document 的 document shell（spec §5.4 附件语料不丢）。
  *
  * <p>本类为手写单构造器（5 依赖：SearchKnowledgeTool / CourseNameMapper / ContextBuilderService
  * / AttachmentLocalSearchService / EmbeddingModel，Spring 按单构造器自动注入，无需 @Autowired）。
@@ -143,11 +146,22 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         // 4. 检索（并行 + RRF 融合 + SHA256 去重 + Rerank 在 SearchKnowledgeTool 内完成）
         List<KnowledgeChunk> chunks =
                 searchKnowledgeTool.searchKnowledge(queries).chunks();
+        // 附件上下文（worker 写入 metadata）提前读取：系统检索并入前即拿到，
+        // 系统库无命中时仍须注入 <user-document>（spec §5.4 两者合并注入）
+        AttachmentContext attachmentContext = readAttachmentContext(config);
+
+        // 系统检索为空：仅当有附件上下文才组装仅含 <user-document> 的 document shell 注入
+        // （ReactAgent 仍直接回答，但附件局部语料不丢，spec §5.4）
         if (chunks.isEmpty()) {
+            String emptyShell = buildEmptySystemDocument(attachmentContext, originalQuery);
+            if (emptyShell != null && !emptyShell.isBlank()) {
+                config.metadata().ifPresent(m -> m.put(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT, emptyShell));
+            }
             log.info(
-                    "retrieveNode: 检索结果为空（ReactAgent 直接回答）: intent={}, 重写={}条",
+                    "retrieveNode: 检索结果为空（ReactAgent 直接回答）: intent={}, 重写={}条, 附件上下文注入={}",
                     plan.intent().name(),
-                    queries.size());
+                    queries.size(),
+                    emptyShell != null);
             return CompletableFuture.completedFuture(Map.of());
         }
 
@@ -159,7 +173,7 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         }
         // 合并附件 user-document 子块（无附件上下文/无命中则原样返回 systemDocument）
         // final 合并结果，供下方 lambda 捕获（document 已被上面赋值，非 effectively final）
-        final String mergedDocument = mergeUserDocument(config, document, originalQuery);
+        final String mergedDocument = mergeUserDocument(document, originalQuery, attachmentContext);
         config.metadata().ifPresent(m -> m.put(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT, mergedDocument));
         log.info(
                 "retrieveNode 完成: intent={}, 候选={}条, 注入 document（{} 字符）",
@@ -171,33 +185,50 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
     }
 
     /**
-     * 合并附件 user-document 子块 —— 图片 caption 注入 + 文档附件局部检索（spec §5.3/§5.4）
+     * 合并附件 user-document 子块 —— 系统 document 非空时在 `</document>` 前并入（spec §5.3/§5.4）
      *
-     * <p>流程：读取 config.metadata() 的附件上下文 → 按附件 objectKey 逐个以用户原问题向量做
-     * 局部检索（内存余弦 Top-K，spec §5.4：附件文档不参与系统检索，仅作局部语料）→
-     * buildUserDocument 组装 → appendUserDocument 在 `</document>` 前合并。
+     * <p>无附件上下文/无命中 → 原样返回 systemDocument（不产生 user-document 子块）。
+     *
+     * @param document          既有 systemDocument（buildDocument 输出，非 null）
+     * @param originalQuery     用户原问题（局部检索查询向量来源）
+     * @param attachmentContext 附件上下文（null/无附件 → 原样返回既有 document）
+     * @return 合并后的 document 文本
+     */
+    private String mergeUserDocument(String document, String originalQuery, AttachmentContext attachmentContext) {
+        String userDocument = buildUserDocumentText(attachmentContext, originalQuery);
+        // 无 user-document 子块（无附件上下文/无命中）→ 原样返回系统 document，不调用 appendUserDocument
+        // （保持既有合并行为：无附件时不触发合并调用）
+        if (userDocument == null || userDocument.isBlank()) {
+            return document;
+        }
+        return contextBuilderService.appendUserDocument(document, userDocument);
+    }
+
+    /**
+     * 计算 {@code <user-document>} 子块文本 —— 图片 caption 注入 + 文档附件局部检索（spec §5.3/§5.4）
+     *
+     * <p>流程：按附件 objectKey 逐个以用户原问题向量做局部检索（内存余弦 Top-K，
+     * spec §5.4：附件文档不参与系统检索，仅作局部语料）→ buildUserDocument 组装。
      *
      * <p>查询向量 = 用户原问题（originalQuery）：图输入 UserMessage 即用户问题正式形态，含附件
      * caption 语境的「图片N:[caption]」前缀（spec §3.3 回答以原问题为准），纯图片走 chat/unknown
      * 不触发检索、纯文档无前缀、图片+文档混合时 caption 是有效附件语境，故不属污染。
      *
-     * <p>容错：某附件分片列表为空 → search 返回空列表，docHits 不 put；无任何附件上下文/无命中
-     * → 原样返回 systemDocument（不产生 user-document 子块）。
+     * <p>容错：某附件分片列表为空 → search 返回空列表，docHits 不 put（组装容忍）；
+     * captions 与 docHits 均无内容 → buildUserDocument 返回 null。
      *
-     * @param config        RunnableConfig（读取附件上下文 metadata）
-     * @param document      既有 systemDocument（buildDocument 输出，非 null）
-     * @param originalQuery 用户原问题（局部检索查询向量来源）
-     * @return 合并后的 document 文本
+     * @param attachmentContext 附件上下文（null/无任何附件 → 返回 null）
+     * @param originalQuery     用户原问题（局部检索查询向量来源）
+     * @return user-document 文本；无附件上下文/无任何可注入内容返回 null
      */
-    private String mergeUserDocument(RunnableConfig config, String document, String originalQuery) {
-        AttachmentContext attachmentContext = readAttachmentContext(config);
-        // 无附件上下文 → 原样返回既有 document（不产生 user-document 子块）
+    private String buildUserDocumentText(AttachmentContext attachmentContext, String originalQuery) {
         if (attachmentContext == null || !attachmentContext.hasAny()) {
-            return document;
+            return null;
         }
         // 存储附件 objectKey → 命中段落文本列表（检索有命中的 key 才放入）
         Map<String, List<String>> docHits = new LinkedHashMap<>();
-        if (!attachmentContext.documents().isEmpty()) {
+        if (attachmentContext.documents() != null
+                && !attachmentContext.documents().isEmpty()) {
             // 用户原问题作局部检索查询向量（spec §5.4：附件文档内容不参与系统检索查询）
             float[] queryVector = embeddingModel.embed(originalQuery);
             for (Map.Entry<String, List<DocumentLocalChunk>> entry :
@@ -212,9 +243,28 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
                 }
             }
         }
-        // 组装 user-document 子块并合并进 document（子块为空 → appendUserDocument 原样返回）
-        String userDocument = contextBuilderService.buildUserDocument(attachmentContext.captions(), docHits);
-        return contextBuilderService.appendUserDocument(document, userDocument);
+        // 组装 user-document 子块（captions 与 docHits 均空 → buildUserDocument 返回 null）
+        return contextBuilderService.buildUserDocument(attachmentContext.captions(), docHits);
+    }
+
+    /**
+     * 系统检索为空时组装仅含 {@code <user-document>} 的 {@code <document>} shell（spec §5.4）
+     *
+     * <p>场景：knowledge_question + 文档附件 + 系统库无命中 —— 系统 document 不存在，但仍须把附件
+     * 局部语料以 &lt;document&gt; 壳注入，否则文档语料整体丢失。以空 shell 为底调用
+     * {@link ContextBuilderService#appendUserDocument} 把 user-document 合并进 `</document>` 前。
+     *
+     * @param attachmentContext 附件上下文（null/无附件 → 返回 null，不注入）
+     * @param originalQuery     用户原问题（局部检索查询向量来源）
+     * @return 仅含 user-document 的 document shell；无任何可注入内容返回 null
+     */
+    private String buildEmptySystemDocument(AttachmentContext attachmentContext, String originalQuery) {
+        String userDocument = buildUserDocumentText(attachmentContext, originalQuery);
+        if (userDocument == null || userDocument.isBlank()) {
+            return null;
+        }
+        // 以空 <document> 壳为底，把 user-document 合并进 </document> 前（spec §3.2 装配顺序）
+        return contextBuilderService.appendUserDocument("<document>\n</document>", userDocument);
     }
 
     /**
