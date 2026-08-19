@@ -59,6 +59,10 @@ public class ChatRun implements Serializable {
     @TableField("meta_json")
     private String metaJson;
 
+    /** 本次输入的附件列表 JSON（[{type,url,name,size}]，业务入口表，spec §5.1 双存决策） */
+    @TableField("attachments_json")
+    private String attachmentsJson;
+
     /** 逻辑删除标记（0 = 未删除，删除时写入毫秒时间戳） */
     @TableLogic(value = "0", delval = "1")
     private Long deleted;

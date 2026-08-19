@@ -52,6 +52,10 @@ public class ChatMessage implements Serializable {
     @TableField("sources_json")
     private String sourcesJson;
 
+    /** 本次消息附件列表 JSON（[{type,url,name,size}]，渲染/审计用，spec §5.1 双存决策） */
+    @TableField("attachments_json")
+    private String attachmentsJson;
+
     /** Token 消耗数 */
     @TableField("token_count")
     private Integer tokenCount;
