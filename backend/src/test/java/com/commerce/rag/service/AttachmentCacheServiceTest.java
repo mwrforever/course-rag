@@ -3,6 +3,12 @@ package com.commerce.rag.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,5 +38,37 @@ class AttachmentCacheServiceTest {
         AttachmentCacheService cache = new AttachmentCacheService(100, 30);
         assertEquals(64, cache.computeHash("abc".getBytes()).length());
         assertTrue(cache.computeHash("abc".getBytes()).matches("[0-9a-f]{64}"));
+    }
+
+    @Test
+    @DisplayName("8 线程并发同 hash — 处理器只执行一次（Caffeine 原子单次计算）")
+    void concurrent_processorRunsOnce() throws Exception {
+        AttachmentCacheService cache = new AttachmentCacheService(1000, 30);
+        AtomicInteger calls = new AtomicInteger();
+        byte[] bytes = "concurrent".getBytes();
+        String hash = cache.computeHash(bytes);
+        int threads = 8;
+        // 就绪闸门：8 线程全部就绪后统一放行，制造同 hash 并发首次 miss 竞争
+        CountDownLatch ready = new CountDownLatch(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            List<Future<String>> futures = new ArrayList<>(threads);
+            for (int i = 0; i < threads; i++) {
+                futures.add(pool.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    return cache.getOrProcess(hash, b -> "result" + calls.incrementAndGet(), bytes);
+                }));
+            }
+            ready.await();
+            start.countDown();
+            for (Future<String> f : futures) {
+                assertEquals("result1", f.get(), "并发下所有线程拿到同一处理结果");
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals(1, calls.get(), "并发同 hash 只处理一次");
     }
 }

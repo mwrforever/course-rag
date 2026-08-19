@@ -7,6 +7,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import java.time.Duration;
 import java.util.function.Function;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -23,6 +24,7 @@ public class AttachmentCacheService {
     private final Cache<String, Object> cache;
 
     /** 正式构造器（Spring 注入限额配置，由 AttachmentProperties 推导缓存容量与失效时间） */
+    @Autowired
     public AttachmentCacheService(AttachmentProperties properties) {
         this(properties.cacheMaxSize(), properties.cacheExpireMinutes());
     }
@@ -43,22 +45,18 @@ public class AttachmentCacheService {
     /**
      * 按 hash 取缓存；未命中时执行 processor 并把结果写入缓存
      *
+     * <p>用 Caffeine {@code get(key, fn)} 原子单次计算：Caffeine 保证每个 key 的 mapping
+     * 函数至多执行一次（同 hash 并发首次 miss 不重复跑 caption/向量化等昂贵 LLM 处理，spec §5.1）；
+     * 函数返回 null 时自动不入缓存，无需手写 null 判断。
+     *
      * @param hash      文件字节 sha256
-     * @param processor 处理函数（入参为文件字节，返回处理结果；不允许返回 null——返回 null 不入缓存）
+     * @param processor 处理函数（入参为文件字节，返回处理结果；返回 null 不入缓存）
      * @param bytes     文件字节（未命中时作为 processor 入参，避免调用方重复持有字节）
      * @return 处理结果
      */
     @SuppressWarnings("unchecked")
     public <T> T getOrProcess(String hash, Function<byte[], T> processor, byte[] bytes) {
-        Object cached = cache.getIfPresent(hash);
-        if (cached != null) {
-            return (T) cached;
-        }
-        T result = processor.apply(bytes);
-        if (result != null) {
-            cache.put(hash, result);
-        }
-        return result;
+        return (T) cache.get(hash, k -> processor.apply(bytes));
     }
 
     /** 缓存条目数（测试/监控用） */
