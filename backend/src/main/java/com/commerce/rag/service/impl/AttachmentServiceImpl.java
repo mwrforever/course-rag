@@ -20,12 +20,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 用户附件服务实现 —— 上传校验（spec §5.2 限额定稿）+ MinIO 落盘
+ * 用户附件服务实现 —— 上传校验（spec §5.2 限额定稿）+ MinIO 落盘/下载
  *
  * <p>kbId 固定传 0L：附件是会话级局部上下文，不归属任何知识库（spec §5.1）。
  *
  * <p>校验顺序：附件非空 → 单次个数限额 → 合计大小限额 → 逐文件（类型白名单 → 单文件大小限额 →
  * MinIO 落盘），任一校验不过立即抛 BizException(400)，保证非法请求不产生任何落盘。
+ *
+ * <p>下载：按 objectKey 读 MinIO 字节流，对象不存在或读取失败统一抛 BizException(404)
+ * （附件为短期会话资源，缺失视为「不存在或已过期」）。
  */
 @Slf4j
 @Service
@@ -63,6 +66,17 @@ public class AttachmentServiceImpl implements IAttachmentService {
         }
         log.info("附件上传完成: count={}, totalSize={}B", files.length, total);
         return records;
+    }
+
+    @Override
+    public byte[] download(String objectKey) {
+        // 从 MinIO 取附件字节流并一次性读全（objectKey 不存在/读取失败视为附件已消失）
+        try (InputStream in = minioStorageService.downloadFile(objectKey)) {
+            return in.readAllBytes();
+        } catch (Exception e) {
+            log.warn("附件下载失败: objectKey={}, error={}", objectKey, e.getMessage());
+            throw new BizException(ErrorCode.NOT_FOUND, "附件不存在或已过期");
+        }
     }
 
     /** 单个附件：类型白名单 → 大小限额 → MinIO 落盘（uuid objectKey，外部资源 key 一律 uuid 先行） */

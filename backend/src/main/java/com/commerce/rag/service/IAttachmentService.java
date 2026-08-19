@@ -19,4 +19,12 @@ public interface IAttachmentService {
      * @return 附件记录列表（type/url/name/size）
      */
     List<AttachmentRecord> upload(MultipartFile[] files);
+
+    /**
+     * 按 objectKey 从 MinIO 下载附件字节
+     *
+     * @param objectKey 上传时返回的对象键
+     * @return 文件字节（不存在抛 BizException 404）
+     */
+    byte[] download(String objectKey);
 }

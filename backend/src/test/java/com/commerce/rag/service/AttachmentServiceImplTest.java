@@ -1,5 +1,6 @@
 package com.commerce.rag.service;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -14,6 +15,8 @@ import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.properties.AttachmentProperties;
 import com.commerce.rag.service.impl.AttachmentServiceImpl;
 import com.commerce.rag.storage.MinioStorageService;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
@@ -110,5 +113,27 @@ class AttachmentServiceImplTest {
         assertEquals(ErrorCode.BAD_REQUEST, emptyEx.getErrorCode());
 
         verify(minio, never()).uploadFile(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("下载附件 — MinIO 返回流内容与下载字节一致")
+    void download_success() {
+        byte[] content = "file-content".getBytes();
+        InputStream stream = new ByteArrayInputStream(content);
+        when(minio.downloadFile("0/abc.png")).thenReturn(stream);
+
+        byte[] result = service.download("0/abc.png");
+
+        assertArrayEquals(content, result);
+    }
+
+    @Test
+    @DisplayName("下载附件不存在（MinIO 抛异常）— BizException 404")
+    void download_notFound() {
+        when(minio.downloadFile("0/ghost.png")).thenThrow(new RuntimeException("no such object"));
+
+        BizException e = assertThrows(BizException.class, () -> service.download("0/ghost.png"));
+
+        assertEquals(ErrorCode.NOT_FOUND, e.getErrorCode());
     }
 }
