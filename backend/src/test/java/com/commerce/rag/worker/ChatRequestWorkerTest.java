@@ -787,6 +787,9 @@ class ChatRequestWorkerTest {
                         .metadata(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT)
                         .orElse(null));
 
+        // Then: 当前消息已带附件 → 不触发 chat_run 历史重建（Task 11 重建仅覆盖后续无附件轮次）
+        verify(chatRunService, never()).findRecentAttachments(anyLong(), anyLong(), anyInt());
+
         // Then: 持久化用户消息仍为原文（不带 caption 前缀，chat_message 渲染/审计不回显图片标注）
         ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
         verify(chatMessageService).batchInsert(msgCaptor.capture());
@@ -840,7 +843,7 @@ class ChatRequestWorkerTest {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     @Test
-    @DisplayName("无附件消息 — 不调用 orchestrator，query 原样，metadata 无附件上下文（只处理当前消息）")
+    @DisplayName("无附件消息 — 不调用 orchestrator，query 原样，metadata 无附件上下文（重建分支查无历史同样无处理）")
     void processRequest_withoutAttachments_noOrchestratorCallAndNoMetadata() throws Exception {
         // Given: 消息不含 attachments 键（既有格式，向后兼容）
         MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
@@ -855,7 +858,8 @@ class ChatRequestWorkerTest {
         // When
         invokeProcessRequest(record);
 
-        // Then: orchestrator 不被调用（chat_run 重建分支 Task 11 补齐），query 原样，无附件上下文 metadata
+        // Then: 触发重建查询但查无历史（mock 默认空列表）→ orchestrator 不被调用，query 原样，无附件上下文 metadata
+        verify(chatRunService).findRecentAttachments(200L, 100L, 3);
         verify(orchestrator, never()).process(anyList());
         List<?> msgs = (List<?>) inputsCaptor.getValue().get("messages");
         assertEquals("你好", ((UserMessage) msgs.get(0)).getText());
@@ -863,6 +867,49 @@ class ChatRequestWorkerTest {
                 .getValue()
                 .metadata(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT)
                 .isEmpty());
+    }
+
+    // ==================== 后续轮次附件重建（Task 11，spec §5.1 最终三表决策） ====================
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @Test
+    @DisplayName("无附件消息 — 按 session 查最近 run 附件重建上下文（findRecentAttachments → orchestrator → metadata）")
+    void processRequest_rebuildFromRecentRun() throws Exception {
+        // Given: body 不含 attachments 键（第二轮后续轮次，用户不再上传附件）
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "课程后续问题");
+
+        // chatRunService 返回最近 run 中重建出的附件记录（排除当前 run，url 去重后）
+        List<AttachmentRecord> recent = List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1L));
+        when(chatRunService.findRecentAttachments(200L, 100L, 3)).thenReturn(recent);
+
+        // orchestrator 返回含旧图 caption 的附件上下文（Caffeine 命中直接复用或重新 caption）
+        AttachmentContext context = new AttachmentContext(List.of(new ImageCaptionResult("图片1:旧图", "a.png")), Map.of());
+        when(orchestrator.process(recent)).thenReturn(context);
+
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        ArgumentCaptor<Map> inputsCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<RunnableConfig> configCaptor = ArgumentCaptor.forClass(RunnableConfig.class);
+        when(compiledGraph.stream(inputsCaptor.capture(), configCaptor.capture()))
+                .thenReturn(Flux.just(mockChunk));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 以 chat_run 为入口查该会话最近 3 个 run 的附件（排除当前 run）
+        verify(chatRunService).findRecentAttachments(200L, 100L, 3);
+        // orchestrator.process 收到重建出的附件记录
+        verify(orchestrator).process(recent);
+        // metadata 携带重建的附件上下文（QU/RetrieveNode 消费通道）
+        assertEquals(
+                context,
+                configCaptor
+                        .getValue()
+                        .metadata(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT)
+                        .orElse(null));
+        // QU 查询携带重建的旧图 caption 前缀（spec §5.3："图片N:[caption] 用户问题"）
+        List<?> msgs = (List<?>) inputsCaptor.getValue().get("messages");
+        assertEquals("图片1:旧图 课程后续问题", ((UserMessage) msgs.get(0)).getText());
     }
 
     // ==================== persistMessages 边界分支 ====================

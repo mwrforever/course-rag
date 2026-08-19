@@ -7,10 +7,16 @@ import com.commerce.rag.convert.ChatRunConverter;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.exception.ConcurrentRunException;
 import com.commerce.rag.mapper.ChatRunMapper;
+import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.vo.ChatRunVO;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -116,6 +122,50 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
                 .eq(ChatRun::getId, runId)
                 .set(ChatRun::getAttachmentsJson, attachmentsJson)
                 .update();
+    }
+
+    /**
+     * 查会话最近 run 的附件（后续轮次重建入口，spec §5.1 最终三表决策）
+     *
+     * <p>第二轮起用户不再上传附件时，worker 以此为入口重建 AttachmentContext。
+     * 本 service 主表走内置链式（this.lambdaQuery），按需取列仅 attachmentsJson。
+     * 按 url 去重（同 url 只保留最近 run 的一条），单个 run JSON 解析失败跳过（warn 日志），
+     * 无则返回空列表。
+     *
+     * @param sessionId    会话 ID
+     * @param excludeRunId 排除的 run（当前 run —— 附件已在本次处理）
+     * @param limit        最多查几个 run（默认 3）
+     * @return 附件记录列表（去重：同 url 只保留一条；无则空列表）
+     */
+    @Override
+    public List<AttachmentRecord> findRecentAttachments(Long sessionId, Long excludeRunId, int limit) {
+        // 查该 session 最近 limit 个 run 的 attachments_json（排除当前 run；ID 倒序 → 最近 run 优先）
+        List<ChatRun> runs = this.lambdaQuery()
+                .select(ChatRun::getAttachmentsJson)
+                .eq(ChatRun::getSessionId, sessionId)
+                .ne(excludeRunId != null, ChatRun::getId, excludeRunId)
+                .isNotNull(ChatRun::getAttachmentsJson)
+                .orderByDesc(ChatRun::getId)
+                .last("LIMIT " + limit)
+                .list();
+        // 按 url 去重：LinkedHashMap 保插入序 → 最近的 run 先入，同 url 只保留最早出现的记录
+        Map<String, AttachmentRecord> unique = new LinkedHashMap<>();
+        for (ChatRun run : runs) {
+            if (run.getAttachmentsJson() == null || run.getAttachmentsJson().isBlank()) {
+                continue;
+            }
+            try {
+                List<AttachmentRecord> records = new Gson()
+                        .fromJson(run.getAttachmentsJson(), new TypeToken<List<AttachmentRecord>>() {}.getType());
+                for (AttachmentRecord r : records) {
+                    unique.putIfAbsent(r.url(), r);
+                }
+            } catch (Exception e) {
+                // 单个 run 附件 JSON 解析失败跳过，不阻断整体重建（损坏数据不扩散）
+                log.warn("run 附件 JSON 解析失败，跳过: runId={}", run.getId());
+            }
+        }
+        return new ArrayList<>(unique.values());
     }
 
     /**

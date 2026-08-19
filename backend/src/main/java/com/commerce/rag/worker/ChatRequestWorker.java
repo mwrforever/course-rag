@@ -364,10 +364,16 @@ public class ChatRequestWorker {
                 .build();
 
         // ── 附件处理（spec §5.1：消息发送后 worker 内处理，caption/局部语料 Caffeine 缓存）──
-        // 只处理当前消息的 attachments（chat_run 重建分支由 Task 11 findRecentAttachments 补齐）；
-        // 处理结果经 RunnableConfig.metadata 传 QU/RetrieveNode（瞬时注入，不落 state/checkpoint）
+        // 先处理当前消息的 attachments；第二轮起用户不再上传附件时，以 chat_run 为入口查该会话
+        // 最近 3 个 run 的附件重建上下文（spec §5.1 最终三表决策：Caffeine 命中直接复用
+        // caption/语料，未命中重新下载处理）。处理结果经 RunnableConfig.metadata 传 QU/RetrieveNode
+        // （瞬时注入，不落 state/checkpoint）
         AttachmentContext attachmentContext = AttachmentContext.empty();
         List<AttachmentRecord> attachments = parseAttachments(attachmentsJson);
+        if (attachments.isEmpty()) {
+            // 后续轮次：查该会话最近 3 个 run 的附件重建（排除当前 run，url 去重）
+            attachments = chatRunService.findRecentAttachments(sessionId, runId, 3);
+        }
         if (!attachments.isEmpty()) {
             attachmentContext = orchestrator.process(attachments);
         }

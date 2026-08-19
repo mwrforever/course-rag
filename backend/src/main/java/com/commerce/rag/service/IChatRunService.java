@@ -2,6 +2,7 @@ package com.commerce.rag.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.commerce.rag.entity.ChatRun;
+import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.vo.ChatRunVO;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -52,6 +53,20 @@ public interface IChatRunService extends IService<ChatRun> {
      * @param attachmentsJson  附件 JSON 数组字符串（"[]"=无附件）
      */
     void updateAttachments(Long runId, String attachmentsJson);
+
+    /**
+     * 查会话最近 run 的附件（后续轮次重建入口，spec §5.1）
+     *
+     * <p>第二轮起用户不再上传附件时，worker 以此为入口重建 AttachmentContext：
+     * 查该 session 最近 limit 个 run 的 attachments_json（排除当前 run），按 url 去重
+     * （同 url 只保留最近 run 的一条），JSON 解析失败的单个 run 跳过，无则返回空列表。
+     *
+     * @param sessionId    会话 ID
+     * @param excludeRunId 排除的 run（当前 run —— 附件已在本次处理）
+     * @param limit        最多查几个 run（默认 3）
+     * @return 附件记录列表（去重：同 url 只保留一条；无则空列表）
+     */
+    List<AttachmentRecord> findRecentAttachments(Long sessionId, Long excludeRunId, int limit);
 
     /**
      * 查询超时未结束的 ACTIVE run（M-8 巡检用）
