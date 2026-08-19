@@ -55,7 +55,8 @@ class AttachmentDocumentProcessorTest {
         List<DocumentLocalChunk> chunks = processor.processDocument(text.getBytes(StandardCharsets.UTF_8), "note.txt");
 
         assertNotNull(chunks, "解析成功应返回分片列表");
-        assertTrue(chunks.size() >= 1, "应至少产生一个局部分片");
+        // 收紧断言：>1 块证明「切分」路径真实执行（单块退化的弱断言不足以命中切分逻辑）
+        assertTrue(chunks.size() > 1, "应切出多块证明切分路径真实执行");
         // 向量维度与 mock EmbeddingModel 输出一致（2 维），且逐块输出即 mock 固定向量
         assertEquals(2, chunks.get(0).vector().length, "分片向量维度应与 mock EmbeddingModel 输出一致");
         assertEquals(1f, chunks.get(0).vector()[0], 0.001);

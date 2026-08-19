@@ -15,6 +15,7 @@ import org.apache.tika.parser.ParseContext;
 import org.apache.tika.sax.ToHTMLContentHandler;
 import org.jsoup.Jsoup;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -53,8 +54,10 @@ public class AttachmentDocumentProcessor {
      *
      * @param embeddingModel 向量化模型（Spring AI 装配的 EmbeddingModel bean）
      * @param cacheService   附件处理结果缓存（Task 4 产物）
-     * @param properties     附件限额配置（当前仅承载缓存容量/失效时间，构造器暂不消费细节）
+     * @param properties     仅 DI 签名作用，方法体不消费配置（chunkSize/minChunkSizeChars 按
+     *                       spec §4.1 硬编码，不读属性），保证类在多构造器下仍被 Spring 选中
      */
+    @Autowired
     public AttachmentDocumentProcessor(
             EmbeddingModel embeddingModel, AttachmentCacheService cacheService, AttachmentProperties properties) {
         this.embeddingModel = embeddingModel;
@@ -129,8 +132,8 @@ public class AttachmentDocumentProcessor {
             log.info("文档附件处理完成: name={}, 分片数={}", name, chunks.size());
             return chunks;
         } catch (Exception e) {
-            // 解析失败不中断对话，返回空列表作为局部语料（spec §5.4）
-            log.warn("文档附件解析失败，返回空语料: name={}, error={}", name, e.getMessage());
+            // 处理失败不中断对话，返回空列表作为局部语料（spec §5.4）
+            log.warn("文档附件处理失败，返回空语料: name={}, error={}", name, e.getMessage());
             return new ArrayList<>();
         }
     }
