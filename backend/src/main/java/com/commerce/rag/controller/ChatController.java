@@ -1,8 +1,13 @@
 package com.commerce.rag.controller;
 
+import com.commerce.rag.dto.ApiResponse;
 import com.commerce.rag.dto.ChatRequest;
+import com.commerce.rag.record.AttachmentRecord;
+import com.commerce.rag.service.IAttachmentService;
 import com.commerce.rag.stream.ChatStreamEntry;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.List;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,16 +17,18 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * Chat SSE Controller —— 对话流式端点（薄控制器）
  *
- * <p>提供 3 个端点：
+ * <p>提供 4 个端点：
  * <ol>
  *   <li>POST /api/v1/student/chat — 发起对话，返回 SseEmitter</li>
  *   <li>POST /api/v1/student/chat/{runId}/cancel — 取消正在执行的 run</li>
  *   <li>GET /api/v1/student/chat/{runId}/reconnect — 断线重连</li>
+ *   <li>POST /api/v1/student/chat/attachments — 用户附件上传（限额校验 + MinIO 落盘）</li>
  * </ol>
  *
  * <p>端点仅做参数绑定与转发，SSE 编排（会话/run 创建、Redis 入队、心跳、归属校验、
@@ -39,9 +46,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class ChatController {
 
     private final ChatStreamEntry chatStreamEntry;
+    private final IAttachmentService attachmentService;
 
-    public ChatController(ChatStreamEntry chatStreamEntry) {
+    public ChatController(ChatStreamEntry chatStreamEntry, IAttachmentService attachmentService) {
         this.chatStreamEntry = chatStreamEntry;
+        this.attachmentService = attachmentService;
     }
 
     // ========================================================================
@@ -81,5 +90,21 @@ public class ChatController {
             @RequestParam(defaultValue = "0") long lastEventId,
             HttpServletRequest httpRequest) {
         return chatStreamEntry.reconnect(runId, lastEventId, httpRequest);
+    }
+
+    // ========================================================================
+    // POST /api/v1/student/chat/attachments — 用户附件上传
+    // ========================================================================
+
+    /**
+     * 用户附件上传（spec §5.1）：只存 MinIO 返回 objectKey，caption/解析延迟到消息发送后处理。
+     * 限额校验（个数/类型/单文件/合计）与落盘委托 AttachmentServiceImpl，薄控制器仅做参数绑定与转发。
+     *
+     * @param files 上传文件字段（multipart 多文件，必填，约束见 AttachmentServiceImpl.upload）
+     * @return {@code ApiResponse<List<AttachmentRecord>>}，data 为附件记录列表（type/url/name/size）
+     */
+    @PostMapping(value = "/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<List<AttachmentRecord>> uploadAttachments(@RequestParam("files") MultipartFile[] files) {
+        return ApiResponse.ok(attachmentService.upload(files));
     }
 }

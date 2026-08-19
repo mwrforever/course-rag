@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.commerce.rag.dto.ChatRequest;
+import com.commerce.rag.service.IAttachmentService;
 import com.commerce.rag.stream.ChatStreamEntry;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,11 +33,14 @@ class ChatControllerTest {
     @Mock
     private ChatStreamEntry chatStreamEntry;
 
+    @Mock
+    private IAttachmentService attachmentService;
+
     private ChatController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new ChatController(chatStreamEntry);
+        controller = new ChatController(chatStreamEntry, attachmentService);
     }
 
     // ==================== chat() 转发测试 ====================
