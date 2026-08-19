@@ -10,6 +10,10 @@ import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
+import com.commerce.rag.record.AttachmentContext;
+import com.commerce.rag.record.AttachmentRecord;
+import com.commerce.rag.record.ImageCaptionResult;
+import com.commerce.rag.service.AttachmentOrchestrator;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.stream.MemoryStreamBridge;
@@ -18,6 +22,7 @@ import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.SseEventType;
 import com.commerce.rag.vo.ChatRunVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -39,6 +44,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -92,6 +98,8 @@ public class ChatRequestWorker {
     private final ThreadPoolExecutor runPool;
     /** 安全告警 Hook（BUG-11：run 结束 finally 清理 per-thread 检测状态，取消/异常路径不泄漏） */
     private final WarningHook warningHook;
+    /** 附件处理编排（下载 → 按类型分发 → AttachmentContext，caption 拼 QU 查询，spec §5.1/§5.3） */
+    private final AttachmentOrchestrator orchestrator;
 
     private final ObjectMapper objectMapper;
     /** 主对话模型名（METADATA 事件 model 字段，来自 rag.agent.model） */
@@ -117,6 +125,7 @@ public class ChatRequestWorker {
             WorkerProperties workerProperties,
             @Qualifier("runPool") ThreadPoolExecutor runPool,
             WarningHook warningHook,
+            AttachmentOrchestrator orchestrator,
             ObjectMapper objectMapper,
             @Value("${rag.agent.model:qwen3.8-max}") String agentModel) {
         this.redisTemplate = redisTemplate;
@@ -130,6 +139,7 @@ public class ChatRequestWorker {
         this.workerProperties = workerProperties;
         this.runPool = runPool;
         this.warningHook = warningHook;
+        this.orchestrator = orchestrator;
         this.objectMapper = objectMapper;
         this.agentModel = agentModel;
     }
@@ -353,9 +363,34 @@ public class ChatRequestWorker {
                 .addMetadata("userId", userIdStr)
                 .build();
 
+        // ── 附件处理（spec §5.1：消息发送后 worker 内处理，caption/局部语料 Caffeine 缓存）──
+        // 只处理当前消息的 attachments（chat_run 重建分支由 Task 11 findRecentAttachments 补齐）；
+        // 处理结果经 RunnableConfig.metadata 传 QU/RetrieveNode（瞬时注入，不落 state/checkpoint）
+        AttachmentContext attachmentContext = AttachmentContext.empty();
+        List<AttachmentRecord> attachments = parseAttachments(attachmentsJson);
+        if (!attachments.isEmpty()) {
+            attachmentContext = orchestrator.process(attachments);
+        }
+        if (attachmentContext.hasAny()) {
+            // 局部 final 转发（attachmentContext 上方被赋值非 effectively final，lambda 捕获需 final 变量）
+            AttachmentContext ctxForMetadata = attachmentContext;
+            config.metadata().ifPresent(m -> m.put(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT, ctxForMetadata));
+        }
+
+        // ── QU 输入组装：caption 前缀拼入 {query}（spec §5.3："图片1:[caption] 图片2:[caption] 用户问题"）──
+        // QU 服务在 queryUnderstandingNode 内读取图输入的最后一条 UserMessage 文本，故把拼好的
+        // quQuery 作为图输入的用户消息；持久化仍用原文 userQuery（chat_message 用户行不加 caption 前缀）
+        String quQuery = userQuery;
+        if (!attachmentContext.captions().isEmpty()) {
+            String captionPrefix = attachmentContext.captions().stream()
+                    .map(ImageCaptionResult::caption)
+                    .collect(Collectors.joining(" "));
+            quQuery = captionPrefix + " " + userQuery;
+        }
+
         // 构建 SAA 图输入（messages 列表）
         Map<String, Object> inputs = new HashMap<>();
-        inputs.put("messages", List.of(new UserMessage(userQuery)));
+        inputs.put("messages", List.of(new UserMessage(quQuery)));
 
         // run 上下文
         SseEventTransformer.RunState runState = SseEventTransformer.RunState.create(runIdStr, sessionIdStr, agentModel);
@@ -857,6 +892,24 @@ public class ChatRequestWorker {
         } catch (Exception e) {
             // 解析失败视为非法 JSON，交由调用方按空数组兜底
             return false;
+        }
+    }
+
+    /**
+     * 解析附件 JSON 数组字符串为附件记录列表（worker 附件处理段消费，spec §5.1）
+     *
+     * <p>入参已由归一逻辑保证为合法 JSON 数组（缺省 "[]"），此处仅做反序列化；
+     * 解析失败兜底返回空列表（record 反序列化异常不阻断对话）。
+     *
+     * @param attachmentsJson 附件 JSON 数组字符串（归一后非空）
+     * @return 附件记录列表（解析失败返回空列表）
+     */
+    private List<AttachmentRecord> parseAttachments(String attachmentsJson) {
+        try {
+            return objectMapper.readValue(attachmentsJson, new TypeReference<List<AttachmentRecord>>() {});
+        } catch (Exception e) {
+            log.warn("附件 JSON 解析失败，按空处理: error={}", e.getMessage());
+            return List.of();
         }
     }
 

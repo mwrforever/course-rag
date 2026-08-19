@@ -14,6 +14,11 @@ import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
+import com.commerce.rag.record.AttachmentContext;
+import com.commerce.rag.record.AttachmentRecord;
+import com.commerce.rag.record.DocumentLocalChunk;
+import com.commerce.rag.record.ImageCaptionResult;
+import com.commerce.rag.service.AttachmentOrchestrator;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.stream.MemoryStreamBridge;
@@ -94,6 +99,9 @@ class ChatRequestWorkerTest {
     private WarningHook warningHook;
 
     @Mock
+    private AttachmentOrchestrator orchestrator;
+
+    @Mock
     private WorkerProperties workerProperties;
 
     private StreamOperations<String, Object, Object> streamOps;
@@ -116,6 +124,7 @@ class ChatRequestWorkerTest {
                 workerProperties,
                 runPool,
                 warningHook,
+                orchestrator,
                 new ObjectMapper(),
                 "qwen3.8-max");
 
@@ -653,6 +662,9 @@ class ChatRequestWorkerTest {
         body.put("attachments", attachmentsJson);
         MapRecord<String, Object, Object> record = createMockRecordWithBody(body);
 
+        // 附件编排 mock：返回空上下文（本用例聚焦 run/message 双存，不关心 caption 组装）
+        when(orchestrator.process(anyList())).thenReturn(AttachmentContext.empty());
+
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
         when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
@@ -724,6 +736,133 @@ class ChatRequestWorkerTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("应含用户消息行"));
         assertEquals("[]", userMsg.getAttachmentsJson());
+    }
+
+    // ==================== 附件处理与 QU caption 拼装（Task 9，spec §5.1/§5.3） ====================
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @Test
+    @DisplayName("带图片附件 — caption 拼入 QU 查询 + metadata 携带附件上下文，持久化用户消息仍为原文")
+    void processRequest_withImageAttachment_captionPrefixedAndMetadata() throws Exception {
+        // Given: 消息带 1 张图片附件，orchestrator 返回含 caption 的附件上下文
+        String attachmentsJson = "[{\"type\":\"image\",\"url\":\"0/a.png\",\"name\":\"a.png\",\"size\":1}]";
+        Map<String, Object> body = new HashMap<>();
+        body.put("runId", "100");
+        body.put("sessionId", "200");
+        body.put("userId", "300");
+        body.put("query", "这张图里是什么");
+        body.put("attachments", attachmentsJson);
+        MapRecord<String, Object, Object> record = createMockRecordWithBody(body);
+
+        AttachmentContext context =
+                new AttachmentContext(List.of(new ImageCaptionResult("图片1:红色图表", "a.png")), Map.of());
+        when(orchestrator.process(anyList())).thenReturn(context);
+
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        ArgumentCaptor<Map> inputsCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<RunnableConfig> configCaptor = ArgumentCaptor.forClass(RunnableConfig.class);
+        when(compiledGraph.stream(inputsCaptor.capture(), configCaptor.capture()))
+                .thenReturn(Flux.just(mockChunk));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: QU 图输入的用户消息带 caption 前缀（spec §5.3："图片N:[caption] 用户问题"）
+        List<?> msgs = (List<?>) inputsCaptor.getValue().get("messages");
+        assertEquals("图片1:红色图表 这张图里是什么", ((UserMessage) msgs.get(0)).getText());
+
+        // Then: orchestrator 收到解析后的附件记录（url/type 原样透传）
+        ArgumentCaptor<List<AttachmentRecord>> attCaptor = ArgumentCaptor.forClass(List.class);
+        verify(orchestrator).process(attCaptor.capture());
+        assertEquals(1, attCaptor.getValue().size());
+        assertEquals("image", attCaptor.getValue().get(0).type());
+        assertEquals("0/a.png", attCaptor.getValue().get(0).url());
+
+        // Then: metadata 携带附件上下文（QU/RetrieveNode 消费通道）
+        assertEquals(
+                context,
+                configCaptor
+                        .getValue()
+                        .metadata(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT)
+                        .orElse(null));
+
+        // Then: 持久化用户消息仍为原文（不带 caption 前缀，chat_message 渲染/审计不回显图片标注）
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(msgCaptor.capture());
+        ChatMessage userMsg = msgCaptor.getValue().stream()
+                .filter(m -> "USER".equals(m.getRole()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应含用户消息行"));
+        assertEquals("这张图里是什么", userMsg.getContent());
+        assertEquals(attachmentsJson, userMsg.getAttachmentsJson());
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @Test
+    @DisplayName("带文档附件 — metadata 携带文档局部语料，query 无 caption 前缀保持原样")
+    void processRequest_withDocumentAttachment_metadataCarriesDocuments() throws Exception {
+        // Given: 消息带 1 个文档附件，orchestrator 返回仅含 documents 的上下文
+        String attachmentsJson = "[{\"type\":\"document\",\"url\":\"0/doc.pdf\",\"name\":\"doc.pdf\",\"size\":2}]";
+        Map<String, Object> body = new HashMap<>();
+        body.put("runId", "100");
+        body.put("sessionId", "200");
+        body.put("userId", "300");
+        body.put("query", "这份文档讲了什么");
+        body.put("attachments", attachmentsJson);
+        MapRecord<String, Object, Object> record = createMockRecordWithBody(body);
+
+        AttachmentContext context = new AttachmentContext(
+                List.of(), Map.of("0/doc.pdf", List.of(new DocumentLocalChunk("附件正文", new float[] {1f}, 0))));
+        when(orchestrator.process(anyList())).thenReturn(context);
+
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        ArgumentCaptor<Map> inputsCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<RunnableConfig> configCaptor = ArgumentCaptor.forClass(RunnableConfig.class);
+        when(compiledGraph.stream(inputsCaptor.capture(), configCaptor.capture()))
+                .thenReturn(Flux.just(mockChunk));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 无 caption 时 QU 查询原样（文档附件不拼前缀）
+        List<?> msgs = (List<?>) inputsCaptor.getValue().get("messages");
+        assertEquals("这份文档讲了什么", ((UserMessage) msgs.get(0)).getText());
+        // Then: metadata 携带文档局部语料
+        assertEquals(
+                context,
+                configCaptor
+                        .getValue()
+                        .metadata(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT)
+                        .orElse(null));
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @Test
+    @DisplayName("无附件消息 — 不调用 orchestrator，query 原样，metadata 无附件上下文（只处理当前消息）")
+    void processRequest_withoutAttachments_noOrchestratorCallAndNoMetadata() throws Exception {
+        // Given: 消息不含 attachments 键（既有格式，向后兼容）
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        ArgumentCaptor<Map> inputsCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<RunnableConfig> configCaptor = ArgumentCaptor.forClass(RunnableConfig.class);
+        when(compiledGraph.stream(inputsCaptor.capture(), configCaptor.capture()))
+                .thenReturn(Flux.just(mockChunk));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: orchestrator 不被调用（chat_run 重建分支 Task 11 补齐），query 原样，无附件上下文 metadata
+        verify(orchestrator, never()).process(anyList());
+        List<?> msgs = (List<?>) inputsCaptor.getValue().get("messages");
+        assertEquals("你好", ((UserMessage) msgs.get(0)).getText());
+        assertTrue(configCaptor
+                .getValue()
+                .metadata(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT)
+                .isEmpty());
     }
 
     // ==================== persistMessages 边界分支 ====================
@@ -814,6 +953,7 @@ class ChatRequestWorkerTest {
                 workerProperties,
                 runPool,
                 warningHook,
+                orchestrator,
                 mapper,
                 "qwen3.8-max");
     }
