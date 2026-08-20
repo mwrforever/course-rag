@@ -311,6 +311,34 @@ class ChatRequestWorkerTest {
         assertTrue(submitted.get(1) instanceof AssistantMessage, "消息[1] 应为助手最终回答");
     }
 
+    @Test
+    @DisplayName("正常完成 — run COMPLETED 后触发经历记忆提取（spec §8.4：与偏好同触发点、消息取最终 state、sessionId 落记忆来源）")
+    @SuppressWarnings("unchecked")
+    void processRequest_completed_triggersEpisodicExtraction() throws Exception {
+        // Given: 最终 state 含本轮用户消息 + 助手最终回答
+        UserMessage userMsg = new UserMessage("你好");
+        AssistantMessage assistantMsg = new AssistantMessage("你好，有什么可以帮你？");
+        OverAllState state = new OverAllState(Map.of("messages", List.of(userMsg, assistantMsg)));
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        when(mockChunk.state()).thenReturn(state);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: COMPLETED 后异步投递经历记忆提取
+        // （userId=300 硬隔离、sessionId=200 来源会话落库、消息=最终 state messages，spec §8.4）
+        verify(chatRunService).updateStatus(100L, "COMPLETED");
+        ArgumentCaptor<List<Message>> captor = ArgumentCaptor.forClass(List.class);
+        verify(memoryExtractionPipeline).submitEpisodic(eq(300L), eq(200L), captor.capture());
+        List<Message> submitted = captor.getValue();
+        assertEquals(2, submitted.size());
+        assertTrue(submitted.get(0) instanceof UserMessage, "消息[0] 应为本轮用户消息");
+        assertTrue(submitted.get(1) instanceof AssistantMessage, "消息[1] 应为助手最终回答");
+    }
+
     // ==================== processRequest 取消流程 ====================
 
     @Test
@@ -333,8 +361,9 @@ class ChatRequestWorkerTest {
         verify(chatRunService).updateStatus(100L, "CANCELLED");
         // bridge.push 包含 CANCELLED END 事件
         verify(bridge, atLeast(1)).push(eq("100"), any(SseEvent.class));
-        // spec §7.6：非 COMPLETED 终态（cancel）不触发偏好提取
+        // spec §7.6/§8.4：非 COMPLETED 终态（cancel）不触发偏好/经历提取
         verify(memoryExtractionPipeline, never()).submit(any(), any());
+        verify(memoryExtractionPipeline, never()).submitEpisodic(any(), any(), any());
     }
 
     // ==================== processRequest 异常流程 ====================
@@ -356,8 +385,9 @@ class ChatRequestWorkerTest {
         verify(chatRunService).updateStatus(100L, "ERROR");
         // bridge.push 包含 ERROR 事件
         verify(bridge, atLeast(1)).push(eq("100"), any(SseEvent.class));
-        // spec §7.6：非 COMPLETED 终态（error）不触发偏好提取
+        // spec §7.6/§8.4：非 COMPLETED 终态（error）不触发偏好/经历提取
         verify(memoryExtractionPipeline, never()).submit(any(), any());
+        verify(memoryExtractionPipeline, never()).submitEpisodic(any(), any(), any());
     }
 
     // ==================== processRequest 参数解析失败 ====================

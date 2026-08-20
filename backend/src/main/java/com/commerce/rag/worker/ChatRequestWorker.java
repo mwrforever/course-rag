@@ -483,6 +483,9 @@ public class ChatRequestWorker {
                         // 偏好提取异步触发（spec §7.6：run 完成、SSE 已发送完后异步，不阻塞用户响应；
                         // 仅 COMPLETED 触发——error/cancel 路径不提取）
                         triggerPreferenceExtraction(userId, lastOutput.get());
+                        // 经历记忆提取异步触发（spec §8.4：与偏好同一触发点仅 run COMPLETED 后、
+                        // 独立任务独立 prompt、共用防抖队列；error/cancel 路径不触发）
+                        triggerEpisodicExtraction(userId, sessionId, lastOutput.get());
                     })
                     .blockLast(Duration.ofMinutes(5));
 
@@ -779,6 +782,26 @@ public class ChatRequestWorker {
                 .filter(m -> m instanceof List<?>)
                 .map(m -> (List<Message>) m)
                 .ifPresent(msgs -> memoryExtractionPipeline.submit(userId, msgs));
+    }
+
+    /**
+     * 触发经历记忆提取（spec §8.4：与偏好提取同一触发点 run COMPLETED 后、独立任务独立 prompt、
+     * 共用防抖队列机制；error/cancel 路径不触发）
+     *
+     * @param userId     当前用户 ID（硬隔离过滤键）
+     * @param sessionId  当前会话 ID（记忆 source_session_id 落库）
+     * @param lastOutput 流式最后一个 NodeOutput（可为 null——异常路径不触发）
+     */
+    private void triggerEpisodicExtraction(Long userId, Long sessionId, NodeOutput lastOutput) {
+        if (userId == null || lastOutput == null || lastOutput.state() == null) {
+            return;
+        }
+        lastOutput
+                .state()
+                .value("messages")
+                .filter(m -> m instanceof List<?>)
+                .map(m -> (List<Message>) m)
+                .ifPresent(msgs -> memoryExtractionPipeline.submitEpisodic(userId, sessionId, msgs));
     }
 
     /**
