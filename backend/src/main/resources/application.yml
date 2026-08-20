@@ -307,3 +307,45 @@ attachment:
   total-max-size-mb: 100       # 单次消息附件合计上限
   cache-max-size: 100          # Caffeine 附件处理结果缓存条数（LRU）
   cache-expire-minutes: 30     # 附件处理结果缓存失效时间
+
+# ── S1 记忆体系（spec §7.8/§8.3：阈值/权重/预算/曲线全配置化）──
+memory:
+  extraction:
+    model: qwen3.7-flash        # 偏好/记忆提取模型（spec §7.6 独立配置）
+    debounce-window-seconds: 30 # run 完成后的防抖窗口，同用户窗口内消息合并
+    timeout-ms: 10000           # 提取 LLM 调用超时，超时丢弃本批不重试
+    threads: 2                  # 防抖调度线程数（独立小线程池）
+  preference:
+    write-high: 0.75            # write_score 直接写阈值
+    observe-low: 0.50           # write_score 观察池阈值
+    explicit-update: 0.80       # 单值冲突「直接 UPDATE」的 explicitness 门槛
+    promote-min-count: 5        # 观察晋升最低计数
+    promote-min-score: 0.75     # 观察晋升最低 write_score
+    stability-base: 0.1         # stability 曲线基数（min(1, base+count*step)）
+    stability-step: 0.15
+    weight-explicitness: 0.4    # write_score = 0.4e + 0.4s + 0.2c
+    weight-stability: 0.4
+    weight-confidence: 0.2
+    token-guaranteed: 500       # 硬偏好保底注入预算
+    token-extended: 1500        # 其余偏好按 write_score 降序注入预算
+    cache-expire-minutes: 30    # 偏好块冻结缓存失效（防 prefix cache 破坏）
+    cache-max-size: 256
+    value-synonyms:             # 枚举型 key 的 value 归一化（spec §7.4-②）
+      response_language:
+        zh: 中文
+        chinese: 中文
+        简体中文: 中文
+        en: 英文
+        english: 英文
+      response_verbosity:
+        brief: 简洁
+        short: 简洁
+        简短: 简洁
+        简单: 简洁
+        detailed: 详尽
+        详细: 详尽
+      explain_depth:
+        shallow: 基础
+        简单: 基础
+        deep: 深入
+        深入: 深入
