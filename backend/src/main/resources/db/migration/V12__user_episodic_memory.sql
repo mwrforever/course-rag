@@ -7,7 +7,7 @@ CREATE TABLE user_episodic_memory (
     type              VARCHAR(50)  NOT NULL,       -- 记忆分类（constants/EpisodicTypes 白名单）
     content           VARCHAR(2000) NOT NULL,      -- 完整记忆内容（事实源，注入用，提炼陈述）
     summary           VARCHAR(500),                -- 一句话摘要（与 content 合并做 embedding，spec §8.4）
-    structured_facts  JSONB,                       -- 结构化事实（LLM 输出原文 JSON 存储，v1 不消费）
+    structured_facts  TEXT,                        -- 结构化事实 JSON 原文文本（存 LLM 输出对象序列化，v1 不消费；按 V10 先例 MP String→jsonb 绑定失败故用 TEXT，spec §8.5）
     importance        NUMERIC(4,3),                -- LLM 初判重要性 × 类型权重后的有效值（系统校正后）
     confidence        NUMERIC(4,3),                -- LLM 初判置信度 0~1
     validity          VARCHAR(20)  NOT NULL DEFAULT 'active',  -- 状态机 active/superseded/merged/invalidated/archived

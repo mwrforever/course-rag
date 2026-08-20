@@ -15,7 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * user_episodic_memory 表结构集成测试（Testcontainers 真实 PG，计划 5/5 Task 1）
  *
  * <p>验证：V12 迁移落地（表/列/索引）、@TableLogic 软删语义、
- * JSONB 列可写入/读回原始 JSON 文本。
+ * structured_facts TEXT 列可写入/读回原始 JSON 文本（V10 先例：MP String→jsonb 绑定失败故用 TEXT）。
  *
  * @author commerce-rag
  */
@@ -57,11 +57,11 @@ class UserEpisodicMemorySchemaTest extends IntegrationTestBase {
     @Test
     void insertRawJsonBAndReadBack() {
         Long id = 9000000000000000001L;
-        // 原始 SQL 插入 JSONB（含中文），验证 structured_facts 可落可读
+        // 原始 SQL 插入 structured_facts（TEXT 存 JSON 原文，含中文），验证列可落可读（无需 ::jsonb cast）
         jdbcTemplate.update(
                 "INSERT INTO user_episodic_memory (id, user_id, type, content, summary, structured_facts,"
                         + " importance, confidence, validity, version, deleted) VALUES "
-                        + "(?, ?, ?, ?, ?, ?::jsonb, 0.900, 0.850, 'active', 1, 0)",
+                        + "(?, ?, ?, ?, ?, ?, 0.900, 0.850, 'active', 1, 0)",
                 id,
                 42L,
                 "learning_progress",
@@ -70,7 +70,7 @@ class UserEpisodicMemorySchemaTest extends IntegrationTestBase {
                 "{\"skill\": \"Python/Django\", \"stage\": \"Django学习\"}");
         Map<String, Object> row = jdbcTemplate.queryForMap(
                 "SELECT structured_facts, importance FROM user_episodic_memory WHERE id = ?", id);
-        // PG JDBC 对 jsonb 返回 PGobject，转换后断言原始 JSON 文本含关键字段值
+        // TEXT 列经 JDBC 直接返回 String，断言原始 JSON 文本含关键字段值
         assertEquals(
                 "Python/Django",
                 String.valueOf(row.get("structured_facts")).contains("Python/Django") ? "Python/Django" : "");

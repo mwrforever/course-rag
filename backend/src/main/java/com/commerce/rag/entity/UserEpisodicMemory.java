@@ -17,7 +17,7 @@ import lombok.Data;
  * active/superseded/merged/invalidated/archived（spec §8.6，archived 预留），
  * 与软删 deleted 0/1 双轨：validity 表达「事实生命周期演进」，deleted 表达「整条物理删除审计」。
  *
- * <p>structured_facts 为 JSONB 原始 JSON 文本（LLM 输出原文存储，v1 不消费、注入不用，
+ * <p>structured_facts 为 TEXT 存 JSON 原文（LLM 输出原文存储，v1 不消费、注入不用，
  * 完全回 PG 查询也不解析）；importance 存系统校正后有效值（LLM importance × typeWeight）。
  *
  * @author commerce-rag
@@ -45,7 +45,7 @@ public class UserEpisodicMemory implements Serializable {
     /** 一句话摘要（与 content 合并做 embedding，spec §8.4） */
     private String summary;
 
-    /** 结构化事实 JSONB（LLM 输出原文 JSON 文本，v1 不消费） */
+    /** 结构化事实 JSON 原文文本（TEXT 存 LLM 输出对象序列化，v1 不消费；按 V10 先例 MP String→jsonb 绑定失败故用 TEXT） */
     @TableField("structured_facts")
     private String structuredFacts;
 
