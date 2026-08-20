@@ -114,4 +114,33 @@ class MemoryExtractionPipelineTest {
         assertEquals("英文", captured.candidates().get(1).value(), "同 key 异质 value 保留");
         assertEquals("简洁", captured.candidates().get(2).value());
     }
+
+    @Test
+    @DisplayName("超时 — 提取 LLM 阻塞超时：快速返回、取消任务、不落库、不抛异常（spec §7.6 超时丢弃本批）")
+    void execute_timeoutDropsBatchWithoutWrite() {
+        MemoryProperties props = new MemoryProperties();
+        props.getExtraction().setTimeoutMs(50L);
+        PreferenceExtractionService extract = mock(PreferenceExtractionService.class);
+        IPreferenceService pref = mock(IPreferenceService.class);
+        when(pref.findExistingValuesText(any())).thenReturn("无");
+        // 模拟外部模型卡死：提取调用远比超时窗口久（永不返回），用来触发 TimeoutException 分支
+        when(extract.extract(any(), any())).thenAnswer(inv -> {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException ie) {
+                // cancel(true) 中断了提取线程，属预期，恢复中断标记后正常结束
+                Thread.currentThread().interrupt();
+            }
+            return null;
+        });
+        MemoryExtractionPipeline p =
+                new MemoryExtractionPipeline(props, new MemoryExtractionInputAssembler(), extract, pref);
+
+        // executeInternal 应俘获超时并丢弃本批：正常返回、不等待外部 LLM、不落库、不抛异常
+        long start = System.currentTimeMillis();
+        p.executeInternal(1L, List.of(new UserMessage("当前问题"), new AssistantMessage("回答")));
+        long elapsed = System.currentTimeMillis() - start;
+        assertTrue(elapsed < 800, "超时路径应快速返回（不等待外部 LLM），实际耗时 " + elapsed + "ms");
+        verify(pref, never()).applyExtraction(eq(1L), any());
+    }
 }

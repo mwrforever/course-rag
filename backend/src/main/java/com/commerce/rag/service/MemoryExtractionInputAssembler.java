@@ -8,6 +8,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.stereotype.Component;
 
 /**
  * 提取输入组装 —— 会话摘要 SM（如有）+ 最近三轮（User+Assistant）+ 当前 QA（spec §7.6）
@@ -16,8 +17,11 @@ import org.springframework.ai.chat.messages.UserMessage;
  * document/preference 由 interceptor 瞬时注入不落 state，天然无污染；只取 User/Assistant；
  * 当前轮（最后一条 UserMessage 及其后的最终回答）不进 context，只进 current。
  *
+ * <p>无状态工具组件，注册为 Spring Bean（{@link MemoryExtractionPipeline} 构造器注入）。
+ *
  * @author commerce-rag
  */
+@Component
 public class MemoryExtractionInputAssembler {
 
     /** 会话摘要 SystemMessage 前缀标记（与 CustomSummarizationHook.SUMMARY_PREFIX 同值） */
