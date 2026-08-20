@@ -63,6 +63,19 @@ class EpisodicBlockServiceTest {
     }
 
     @Test
+    @DisplayName("build → 首行即超预算 → 返回空串（无任何行可放，拦截器据此不注入）")
+    void build_firstLineExceedsBudget_returnsEmpty() {
+        // 预算压到 1 token：任何非空行的估算必超预算 → 首行 break → 只剩 <episodic> 头 → 返回空串
+        MemoryProperties tiny = new MemoryProperties();
+        tiny.getEpisodic().setTokenBudget(1);
+        EpisodicBlockService small = new EpisodicBlockService(tiny);
+
+        List<EpisodicMemoryRef> refs = List.of(ref("learning_progress", "任意内容行首行即超预算", "active"));
+
+        assertEquals("", small.build(refs), "首行即超预算应返回空串（不注入半截块）");
+    }
+
+    @Test
     @DisplayName("build → null / 空列表返回空串（拦截器据此不注入）")
     void build_emptyReturnsEmptyString() {
         assertEquals("", blockService.build(null), "null 引用应返回空串");

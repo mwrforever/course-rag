@@ -79,6 +79,17 @@ class EpisodicDecisionEngineTest {
     }
 
     @Test
+    @DisplayName("rowsForType=null → 视为无既有行（防御性），高分 CREATE 返回 CREATE")
+    void create_nullRowsForType_handledAsEmpty() {
+        // e=0.8/c=0.8/i=0.8 ×learning_progress(0.9) → score=0.32+0.24+0.216=0.776 ≥ 0.7
+        EpisodicAction action = engine.decide(
+                cand(true, "CREATE", EpisodicTypes.LEARNING_PROGRESS, "已学会 Java 集合", "摘", null, 0.8, 0.8, 0.8, null),
+                null);
+        assertEquals(EpisodicActionType.CREATE, action.type(), "null 既有行按空列表处理，首见事实走 CREATE");
+        assertEquals(1, action.version());
+    }
+
+    @Test
     @DisplayName("同 type+同 content 已有 active 行 → CREATE 重复 IGNORE")
     void create_duplicateContent_ignored() {
         EpisodicAction action = engine.decide(
