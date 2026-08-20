@@ -7,16 +7,21 @@ import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.action.AsyncNodeActionWithConfig;
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.hook.DocumentAssemblerInterceptor;
+import com.commerce.rag.bot.hook.EpisodicInterceptor;
+import com.commerce.rag.bot.hook.PreferenceInterceptor;
 import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.bot.tool.SearchKnowledgeTool;
 import com.commerce.rag.bot.tool.TypedQuery;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.properties.MemoryProperties;
 import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.DocumentLocalChunk;
+import com.commerce.rag.record.EpisodicMemoryRef;
 import com.commerce.rag.retrieval.ContextBuilderService;
 import com.commerce.rag.retrieval.CourseNameMapper;
 import com.commerce.rag.service.AttachmentLocalSearchService;
 import com.commerce.rag.service.AttachmentOrchestrator;
+import com.commerce.rag.service.IEpisodicMemoryService;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -52,14 +57,22 @@ import org.springframework.stereotype.Component;
  *   <li>合并后的 document 文本写入 config.metadata()["document_context"]（{@link
  *       AttachmentOrchestrator#KEY_ATTACHMENT_CONTEXT} 同通道）——不写 State、不进 checkpoint
  *       （临时上下文，DocumentAssemblerInterceptor 瞬时注入）</li>
+ *   <li>knowledge_question 分支公共段（queries 判空后、系统检索空/非空两分支返回前）编排经历记忆
+ *       召回（{@link IEpisodicMemoryService#recall}，spec §8.7）：user_id 硬隔离（metadata 读
+ *       userId，Long）、recall_history 动态 validity 过滤，命中把引用列表写入
+ *       metadata["episodic_context"]（{@link EpisodicInterceptor#KEY_EPISODIC_CONTEXT}，与
+ *       document 同通道——不落 state/checkpoint，EpisodicInterceptor 尾部注入）；召回异常/无命中/
+ *       无 userId → 降级不写，不影响主文档检索与回答</li>
  * </ol>
  *
  * <p>失败降级：检索异常 → 不写 document，ReactAgent 直接回答并记日志；系统检索空结果 →
  * 无附件上下文时不写 document（ReactAgent 直接回答），有附件上下文时仍注入仅含
- * user-document 的 document shell（spec §5.4 附件语料不丢）。
+ * user-document 的 document shell（spec §5.4 附件语料不丢）；经历记忆召回异常/无命中 →
+ * 不写 episodic_context（EpisodicInterceptor 原样透传），记忆缺失不影响回答。
  *
- * <p>本类为手写单构造器（5 依赖：SearchKnowledgeTool / CourseNameMapper / ContextBuilderService
- * / AttachmentLocalSearchService / EmbeddingModel，Spring 按单构造器自动注入，无需 @Autowired）。
+ * <p>本类为手写单构造器（7 依赖：SearchKnowledgeTool / CourseNameMapper / ContextBuilderService
+ * / AttachmentLocalSearchService / EmbeddingModel / IEpisodicMemoryService / MemoryProperties，
+ * Spring 按单构造器自动注入，无需 @Autowired）。
  *
  * <p>注：本类与项目接口 {@link com.commerce.rag.bot.graph.OverAllState}（KEY_QUERY_PLAN
  * 定义处）同包，但 apply 签名需用框架的 {@code com.alibaba.cloud.ai.graph.OverAllState}
@@ -81,18 +94,24 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
     private final ContextBuilderService contextBuilderService;
     private final AttachmentLocalSearchService localSearchService;
     private final EmbeddingModel embeddingModel;
+    private final IEpisodicMemoryService episodicMemoryService;
+    private final MemoryProperties properties;
 
     public RetrieveNode(
             SearchKnowledgeTool searchKnowledgeTool,
             CourseNameMapper courseNameMapper,
             ContextBuilderService contextBuilderService,
             AttachmentLocalSearchService localSearchService,
-            EmbeddingModel embeddingModel) {
+            EmbeddingModel embeddingModel,
+            IEpisodicMemoryService episodicMemoryService,
+            MemoryProperties properties) {
         this.searchKnowledgeTool = searchKnowledgeTool;
         this.courseNameMapper = courseNameMapper;
         this.contextBuilderService = contextBuilderService;
         this.localSearchService = localSearchService;
         this.embeddingModel = embeddingModel;
+        this.episodicMemoryService = episodicMemoryService;
+        this.properties = properties;
     }
 
     /**
@@ -143,6 +162,11 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
             return CompletableFuture.completedFuture(Map.of());
         }
 
+        // Episodic 召回（spec §8.7）：recall_history 动态 validity 过滤，仅命中写入 metadata（非每轮注入）
+        // 置于 queries 判空后、系统检索空/非空两分支返回前的公共段：无论 document 是否注入都尝试召回，
+        // episodic_context 与 document_context 通道独立，互不影响
+        recallEpisodic(config, plan, plan.rewrittenQueries().get(0));
+
         // 4. 检索（并行 + RRF 融合 + SHA256 去重 + Rerank 在 SearchKnowledgeTool 内完成）
         List<KnowledgeChunk> chunks =
                 searchKnowledgeTool.searchKnowledge(queries).chunks();
@@ -182,6 +206,58 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
                 mergedDocument.length());
 
         return CompletableFuture.completedFuture(Map.of());
+    }
+
+    /**
+     * 经历记忆召回编排（spec §8.7）：user_id（metadata 硬隔离）→ recall → 命中写入
+     * {@link EpisodicInterceptor#KEY_EPISODIC_CONTEXT} metadata（EpisodicInterceptor 尾部注入）。
+     *
+     * <p>规则：recall_history=true → 不带 validity 过滤（全量召回）；false → 仅召 active，
+     * 由 {@link IEpisodicMemoryService#recall} 内部实现（spec §8.7 动态 validity）。
+     *
+     * <p>降级：无 userId / userId 非法字符串 / 召回异常 / 无命中 → 不写 metadata
+     * （EpisodicInterceptor 原样透传），记忆缺失不影响主文档检索与回答。
+     *
+     * @param config      RunnableConfig（metadata：userId 读取 + episodic_context 写入通道）
+     * @param plan        QueryPlan（recallHistory 动态过滤上游）
+     * @param recallQuery 召回查询文本（重写查询首条）
+     */
+    private void recallEpisodic(RunnableConfig config, QueryPlan plan, String recallQuery) {
+        if (recallQuery == null || recallQuery.isBlank()) {
+            return;
+        }
+        // 全链路 user_id 硬隔离（spec §10-6）：从 metadata 读 PreferenceInterceptor.KEY_USER_ID（String）
+        Object uid = config.metadata()
+                .map(m -> m.get(PreferenceInterceptor.KEY_USER_ID))
+                .orElse(null);
+        if (!(uid instanceof String userId) || userId.isBlank()) {
+            log.debug("recallEpisodic: 无 userId，跳过经历记忆召回");
+            return;
+        }
+        try {
+            Long parsedUserId = Long.parseLong(userId);
+            List<EpisodicMemoryRef> refs = episodicMemoryService.recall(
+                    parsedUserId,
+                    recallQuery,
+                    plan.recallHistory(),
+                    properties.getEpisodic().getRecallTopK());
+            if (refs == null || refs.isEmpty()) {
+                log.debug("recallEpisodic: 无命中经历记忆 userId={}, recallHistory={}", parsedUserId, plan.recallHistory());
+                return;
+            }
+            // 命中 → 写入 episodic_context metadata（与 document 同通道，不落 state/checkpoint，
+            // refs 为 effectively final，可供 lambda 直接捕获）
+            config.metadata().ifPresent(m -> m.put(EpisodicInterceptor.KEY_EPISODIC_CONTEXT, refs));
+            log.info(
+                    "recallEpisodic: 召回 {} 条经历记忆 userId={}, recallHistory={}",
+                    refs.size(),
+                    parsedUserId,
+                    plan.recallHistory());
+        } catch (NumberFormatException e) {
+            log.warn("recallEpisodic: userId 非法字符串，跳过经历记忆召回: {}", userId);
+        } catch (Exception e) {
+            log.warn("recallEpisodic: 召回异常，降级不注入（不影响主流程）: userId={}", userId, e);
+        }
     }
 
     /**
