@@ -16,6 +16,7 @@ import com.commerce.rag.record.ImageCaptionResult;
 import com.commerce.rag.service.AttachmentOrchestrator;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
+import com.commerce.rag.service.MemoryExtractionPipeline;
 import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEvent;
 import com.commerce.rag.stream.SseEventTransformer;
@@ -100,6 +101,8 @@ public class ChatRequestWorker {
     private final WarningHook warningHook;
     /** 附件处理编排（下载 → 按类型分发 → AttachmentContext，caption 拼 QU 查询，spec §5.1/§5.3） */
     private final AttachmentOrchestrator orchestrator;
+    /** 偏好提取流水线（run 完成后异步触发，spec §7.6；不阻塞用户响应） */
+    private final MemoryExtractionPipeline memoryExtractionPipeline;
 
     private final ObjectMapper objectMapper;
     /** 主对话模型名（METADATA 事件 model 字段，来自 rag.agent.model） */
@@ -126,6 +129,7 @@ public class ChatRequestWorker {
             @Qualifier("runPool") ThreadPoolExecutor runPool,
             WarningHook warningHook,
             AttachmentOrchestrator orchestrator,
+            MemoryExtractionPipeline memoryExtractionPipeline,
             ObjectMapper objectMapper,
             @Value("${rag.agent.model:qwen3.8-max}") String agentModel) {
         this.redisTemplate = redisTemplate;
@@ -140,6 +144,7 @@ public class ChatRequestWorker {
         this.runPool = runPool;
         this.warningHook = warningHook;
         this.orchestrator = orchestrator;
+        this.memoryExtractionPipeline = memoryExtractionPipeline;
         this.objectMapper = objectMapper;
         this.agentModel = agentModel;
     }
@@ -335,10 +340,11 @@ public class ChatRequestWorker {
 
         Long runId;
         Long sessionId;
+        Long userId;
         try {
             runId = Long.parseLong(runIdStr);
             sessionId = Long.parseLong(sessionIdStr);
-            Long.parseLong(userIdStr); // 验证 userId 格式
+            userId = Long.parseLong(userIdStr);
         } catch (NumberFormatException e) {
             log.error("请求参数解析失败: runId={}, sessionId={}, userId={}", runIdStr, sessionIdStr, userIdStr);
             ackMessage(msgId);
@@ -474,6 +480,9 @@ public class ChatRequestWorker {
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
                                 lastOutput.get());
                         handleCompleted(runIdStr, runId, runState);
+                        // 偏好提取异步触发（spec §7.6：run 完成、SSE 已发送完后异步，不阻塞用户响应；
+                        // 仅 COMPLETED 触发——error/cancel 路径不提取）
+                        triggerPreferenceExtraction(userId, lastOutput.get());
                     })
                     .blockLast(Duration.ofMinutes(5));
 
@@ -751,6 +760,25 @@ public class ChatRequestWorker {
         String payload = toJson(Map.of("runId", runIdStr, "status", "COMPLETED"));
         bridge.push(runIdStr, new SseEvent(SseEventType.END, runState.nextSeq(), payload, System.currentTimeMillis()));
         updateStatusWithRetry(runId, "COMPLETED");
+    }
+
+    /**
+     * 触发偏好提取（spec §7.6：run 完成后异步；消息取最终 state 的 messages 列表，
+     * 含本轮用户消息（附件 caption 已拼入图输入 UserMessage）与助手最终回答）
+     *
+     * @param userId     当前用户 ID（硬隔离过滤键）
+     * @param lastOutput 流式最后一个 NodeOutput（可为 null——异常路径不触发）
+     */
+    private void triggerPreferenceExtraction(Long userId, NodeOutput lastOutput) {
+        if (userId == null || lastOutput == null || lastOutput.state() == null) {
+            return;
+        }
+        lastOutput
+                .state()
+                .value("messages")
+                .filter(m -> m instanceof List<?>)
+                .map(m -> (List<Message>) m)
+                .ifPresent(msgs -> memoryExtractionPipeline.submit(userId, msgs));
     }
 
     /**

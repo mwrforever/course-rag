@@ -21,6 +21,7 @@ import com.commerce.rag.record.ImageCaptionResult;
 import com.commerce.rag.service.AttachmentOrchestrator;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
+import com.commerce.rag.service.MemoryExtractionPipeline;
 import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEvent;
 import com.commerce.rag.stream.SseEventTransformer;
@@ -102,6 +103,9 @@ class ChatRequestWorkerTest {
     private AttachmentOrchestrator orchestrator;
 
     @Mock
+    private MemoryExtractionPipeline memoryExtractionPipeline;
+
+    @Mock
     private WorkerProperties workerProperties;
 
     private StreamOperations<String, Object, Object> streamOps;
@@ -125,6 +129,7 @@ class ChatRequestWorkerTest {
                 runPool,
                 warningHook,
                 orchestrator,
+                memoryExtractionPipeline,
                 new ObjectMapper(),
                 "qwen3.8-max");
 
@@ -279,6 +284,33 @@ class ChatRequestWorkerTest {
         verify(bridge).removeRing("100");
     }
 
+    @Test
+    @DisplayName("正常完成 — run COMPLETED 后触发偏好提取（spec §7.6：消息取最终 state messages）")
+    @SuppressWarnings("unchecked")
+    void processRequest_completed_triggersPreferenceExtraction() throws Exception {
+        // Given: 最终 state 含本轮用户消息 + 助手最终回答
+        UserMessage userMsg = new UserMessage("你好");
+        AssistantMessage assistantMsg = new AssistantMessage("你好，有什么可以帮你？");
+        OverAllState state = new OverAllState(Map.of("messages", List.of(userMsg, assistantMsg)));
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        when(mockChunk.state()).thenReturn(state);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: COMPLETED 后异步投递偏好提取（userId 硬隔离过滤键，消息 = 最终 state messages）
+        verify(chatRunService).updateStatus(100L, "COMPLETED");
+        ArgumentCaptor<List<Message>> captor = ArgumentCaptor.forClass(List.class);
+        verify(memoryExtractionPipeline).submit(eq(300L), captor.capture());
+        List<Message> submitted = captor.getValue();
+        assertEquals(2, submitted.size());
+        assertTrue(submitted.get(0) instanceof UserMessage, "消息[0] 应为本轮用户消息");
+        assertTrue(submitted.get(1) instanceof AssistantMessage, "消息[1] 应为助手最终回答");
+    }
+
     // ==================== processRequest 取消流程 ====================
 
     @Test
@@ -301,6 +333,8 @@ class ChatRequestWorkerTest {
         verify(chatRunService).updateStatus(100L, "CANCELLED");
         // bridge.push 包含 CANCELLED END 事件
         verify(bridge, atLeast(1)).push(eq("100"), any(SseEvent.class));
+        // spec §7.6：非 COMPLETED 终态（cancel）不触发偏好提取
+        verify(memoryExtractionPipeline, never()).submit(any(), any());
     }
 
     // ==================== processRequest 异常流程 ====================
@@ -322,6 +356,8 @@ class ChatRequestWorkerTest {
         verify(chatRunService).updateStatus(100L, "ERROR");
         // bridge.push 包含 ERROR 事件
         verify(bridge, atLeast(1)).push(eq("100"), any(SseEvent.class));
+        // spec §7.6：非 COMPLETED 终态（error）不触发偏好提取
+        verify(memoryExtractionPipeline, never()).submit(any(), any());
     }
 
     // ==================== processRequest 参数解析失败 ====================
@@ -1001,6 +1037,7 @@ class ChatRequestWorkerTest {
                 runPool,
                 warningHook,
                 orchestrator,
+                memoryExtractionPipeline,
                 mapper,
                 "qwen3.8-max");
     }
