@@ -15,6 +15,7 @@ import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.hook.CoalescingInterceptor;
 import com.commerce.rag.bot.hook.CustomSummarizationHook;
 import com.commerce.rag.bot.hook.DocumentAssemblerInterceptor;
+import com.commerce.rag.bot.hook.PreferenceInterceptor;
 import com.commerce.rag.bot.hook.ReminderHook;
 import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryPlan;
@@ -71,6 +72,9 @@ class LeadAgentGraphTest {
     private DocumentAssemblerInterceptor documentAssemblerInterceptor;
 
     @Mock
+    private PreferenceInterceptor preferenceInterceptor;
+
+    @Mock
     private ReminderHook reminderHook;
 
     @Mock
@@ -107,6 +111,7 @@ class LeadAgentGraphTest {
                 customSummarizationHook,
                 coalescingInterceptor,
                 documentAssemblerInterceptor,
+                preferenceInterceptor,
                 reminderHook,
                 warningHook,
                 keyStrategyFactory,
@@ -132,6 +137,7 @@ class LeadAgentGraphTest {
                 customSummarizationHook,
                 coalescingInterceptor,
                 documentAssemblerInterceptor,
+                preferenceInterceptor,
                 reminderHook,
                 warningHook,
                 keyStrategyFactory,
@@ -154,6 +160,7 @@ class LeadAgentGraphTest {
                 customSummarizationHook,
                 coalescingInterceptor,
                 documentAssemblerInterceptor,
+                preferenceInterceptor,
                 reminderHook,
                 warningHook,
                 new GraphConfig().keyStrategyFactory(),
