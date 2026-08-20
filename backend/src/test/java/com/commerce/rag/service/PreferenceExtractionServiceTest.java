@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.commerce.rag.bot.graph.PromptLoader;
@@ -82,6 +84,48 @@ class PreferenceExtractionServiceTest {
         ChatModel chatModel = mock(ChatModel.class);
         PreferenceExtractionResult result = newService(chatModel).extract(new ExtractionInput("", "  "), "无");
         assertTrue(result.candidates().isEmpty());
+        // 空 current 短路，必须未触发任何 LLM 调用（审查 M-1 实证）
+        verify(chatModel, never()).call(any(Prompt.class));
+    }
+
+    @Test
+    @DisplayName("extract — explicitness/confidence 越界值被夹取到 [0,1]（spec §7.4 强制）")
+    void extract_clampsScores() {
+        ChatModel chatModel = mock(ChatModel.class);
+        when(chatModel.call(any(Prompt.class)))
+                .thenReturn(
+                        new ChatResponse(
+                                List.of(
+                                        new Generation(
+                                                new AssistantMessage(
+                                                        "{\"candidates\":[{\"key\":\"response_verbosity\",\"value\":\"简洁\",\"explicitness\":1.5,\"confidence\":-0.2}]}")))));
+        PreferenceExtractionResult result = newService(chatModel).extract(new ExtractionInput("", "当前对话"), "无");
+        assertEquals(1, result.candidates().size());
+        // 越界值夹取：explicitness 1.5 → 1.0，confidence -0.2 → 0.0
+        assertEquals(1.0, result.candidates().get(0).explicitness());
+        assertEquals(0.0, result.candidates().get(0).confidence());
+    }
+
+    @Test
+    @DisplayName("extract — LLM 返回非法 JSON 降级返回空（不抛出，不影响主链路）")
+    void extract_invalidJsonReturnsEmpty() {
+        ChatModel chatModel = mock(ChatModel.class);
+        when(chatModel.call(any(Prompt.class)))
+                .thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("not json")))));
+        PreferenceExtractionResult result = newService(chatModel).extract(new ExtractionInput("", "当前对话"), "无");
+        assertTrue(result.candidates().isEmpty());
+        assertTrue(result.deletions().isEmpty());
+    }
+
+    @Test
+    @DisplayName("extract — LLM 返回空白 content 直接返回空结果")
+    void extract_blankContentReturnsEmpty() {
+        ChatModel chatModel = mock(ChatModel.class);
+        when(chatModel.call(any(Prompt.class)))
+                .thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("  ")))));
+        PreferenceExtractionResult result = newService(chatModel).extract(new ExtractionInput("", "当前对话"), "无");
+        assertTrue(result.candidates().isEmpty());
+        assertTrue(result.deletions().isEmpty());
     }
 
     @Test
