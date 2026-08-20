@@ -45,21 +45,30 @@ class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("applyExtraction — CREATE 条目落库 active 行（SQL 段与 wiring 兜底）")
+    @DisplayName("applyExtraction — CREATE 条目落库 active 行（含非 null structuredFacts 回读，SQL 段与 wiring 兜底）")
     void applyExtraction_createRoundTrip_persistsRow() {
         Long userId = registerUser("epi_test_1", "STUDENT");
         int written = episodicMemoryService.applyExtraction(
                 userId,
                 99L,
                 new EpisodicExtractionResult(List.of(new EpisodicMemoryExtraction(
-                        // structuredFacts 传 null：实体 structured_facts(String)→jsonb 映射无 typeHandler，
-                        // MP 非 null String 直插 jsonb 报错（Task 1 实体层遗留，见报告问题 3），落库断言不涉及该列
-                        true, "CREATE", "learning_progress", "已完成 Java 集合泛型", "集合摘要", null, 0.8, 0.8, 0.8, null))));
+                        // structuredFacts 携带非 null JSON 原文：R1 修复（V12 JSONB→TEXT，V10 先例）后
+                        // MP String 直插 TEXT 列可用，本用例是 Critical 回归护栏（曾因 String→jsonb 绑定报错）
+                        true,
+                        "CREATE",
+                        "learning_progress",
+                        "已完成 Java 集合泛型",
+                        "集合摘要",
+                        "{\"topic\":\"java\"}",
+                        0.8,
+                        0.8,
+                        0.8,
+                        null))));
         assertEquals(1, written, "CREATE 生效动作计 1");
 
         Map<String, Object> row = jdbcTemplate.queryForMap(
-                "SELECT content, summary, validity, version, source_session_id, importance FROM user_episodic_memory"
-                        + " WHERE user_id=? AND deleted=0",
+                "SELECT content, summary, validity, version, source_session_id, importance, structured_facts"
+                        + " FROM user_episodic_memory WHERE user_id=? AND deleted=0",
                 userId);
         assertEquals("已完成 Java 集合泛型", row.get("content"));
         assertEquals("集合摘要", row.get("summary"));
@@ -68,6 +77,8 @@ class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
         assertEquals(99L, ((Number) row.get("source_session_id")).longValue());
         // importance = 0.8 × typeWeight(learning_progress=0.9) = 0.72 → NUMERIC(4,3)
         assertEquals(0, new BigDecimal("0.720").compareTo((BigDecimal) row.get("importance")));
+        // Critical 回归关键断言：非 null structuredFacts 经 MP TEXT 写入后原文回读
+        assertEquals("{\"topic\":\"java\"}", row.get("structured_facts"));
     }
 
     @Test
@@ -84,7 +95,6 @@ class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
                 userId,
                 null,
                 new EpisodicExtractionResult(List.of(new EpisodicMemoryExtraction(
-                        // structuredFacts 传 null：原因见 createRoundTrip 用例注释（实体 structured_facts jsonb 映射遗留）
                         true, "UPDATE", "learning_goal", "新目标", "新摘要", null, 0.8, 0.8, 0.8, "旧目标"))));
         assertEquals(1, written, "UPDATE 生效动作计 1");
 

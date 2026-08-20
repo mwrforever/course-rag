@@ -220,7 +220,8 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
                 return List.of();
             }
             // PG 主键批量取数（按需取列，spec 按需取列铁律 + 实体 TIMESTAMPTZ→LocalDateTime 整行映射失败实测）：
-            // 不用内置 listByIds（全字段 SELECT 会映射 created_at/updated_at 抛异常），改链式 in 查询只取召回所需列
+            // 不用内置 listByIds（全字段 SELECT 会映射 created_at/updated_at 抛异常），改链式 in 查询只取召回所需列；
+            // 追加 user_id 等值过滤（spec §10-6 硬隔离字面满足 + 纵深防御，防索引陈旧交叉取到他人记忆）
             List<UserEpisodicMemory> rows = this.lambdaQuery()
                     .select(
                             UserEpisodicMemory::getId,
@@ -228,6 +229,7 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
                             UserEpisodicMemory::getContent,
                             UserEpisodicMemory::getSummary,
                             UserEpisodicMemory::getValidity)
+                    .eq(UserEpisodicMemory::getUserId, userId)
                     .in(UserEpisodicMemory::getId, ids)
                     .list();
             return buildRefs(
