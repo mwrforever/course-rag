@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.commerce.rag.constants.PreferenceKeys;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -44,9 +45,9 @@ class MemoryPropertiesTest {
     @Test
     @DisplayName("PreferenceKeys 白名单/单值多值/标签 — 与 spec §7.2 一致")
     void preferenceKeys() {
-        assertTrue(com.commerce.rag.constants.PreferenceKeys.isKnown("response_verbosity"));
-        assertTrue(com.commerce.rag.constants.PreferenceKeys.isMultiValue("course_direction"));
-        assertFalse(com.commerce.rag.constants.PreferenceKeys.isMultiValue("response_language"));
-        assertEquals("回答语言", com.commerce.rag.constants.PreferenceKeys.LABELS.get("response_language"));
+        assertTrue(PreferenceKeys.isKnown("response_verbosity"));
+        assertTrue(PreferenceKeys.isMultiValue("course_direction"));
+        assertFalse(PreferenceKeys.isMultiValue("response_language"));
+        assertEquals("回答语言", PreferenceKeys.LABELS.get("response_language"));
     }
 }
