@@ -49,6 +49,13 @@ class PreferenceServiceImplTest {
     }
 
     @Test
+    @DisplayName("collectWrites — 空/null 列表返回 0")
+    void collectWrites_emptyOrNullReturnsZero() {
+        assertEquals(0, service.collectWrites(List.of()));
+        assertEquals(0, service.collectWrites(null));
+    }
+
+    @Test
     @DisplayName("toWriteRow — CREATE 动作构造完整行（分数/计数/版本/来源，含 explicitness/confidence 审计）")
     void toWriteRow_buildsEntity() {
         PreferenceAction a = action(PreferenceActionType.CREATE_ACTIVE);

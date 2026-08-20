@@ -7,6 +7,7 @@ import com.commerce.rag.record.ExtractionInput;
 import com.commerce.rag.record.PreferenceCandidate;
 import com.commerce.rag.record.PreferenceDeletion;
 import com.commerce.rag.record.PreferenceExtractionResult;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
@@ -142,8 +143,13 @@ public class PreferenceExtractionService {
                 }
             }
             return new PreferenceExtractionResult(candidates, deletions);
-        } catch (Exception e) {
-            log.warn("偏好候选 JSON 解析失败，返回空: {}", e.getMessage());
+        } catch (JsonProcessingException e) {
+            // JSON 结构非法：readTree 抛出的受检异常，收窄捕获后走降级返回空（spec §7.6 失败降级）
+            log.warn("偏好候选 JSON 格式非法，返回空: {}", e.getMessage());
+            return PreferenceExtractionResult.empty();
+        } catch (RuntimeException e) {
+            // 防御性降级：内容处理/构造过程中的未预期运行时异常同样降级返回空，不破坏主链路
+            log.warn("偏好候选 JSON 解析异常，返回空: {}", e.getMessage());
             return PreferenceExtractionResult.empty();
         }
     }

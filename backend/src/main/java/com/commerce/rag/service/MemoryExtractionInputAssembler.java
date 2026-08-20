@@ -86,10 +86,12 @@ public class MemoryExtractionInputAssembler {
                 .reduce((a, b) -> b);
         lastUser.ifPresent(m -> current.append("用户: ").append(m.getText()).append("\n"));
         AssistantMessage lastAssistant = lastUserPresent(messages) ? lastAssistantAfter(messages) : null;
-        if (lastAssistant != null
-                && lastAssistant.getText() != null
-                && !lastAssistant.getText().isBlank()) {
-            current.append("助手: ").append(lastAssistant.getText());
+        // 固化为局部变量一次性判空：避免同一 getText() 二次调用结果不一致，规避 SpotBugs NP_NULL 告警
+        if (lastAssistant != null) {
+            String assistantText = lastAssistant.getText();
+            if (assistantText != null && !assistantText.isBlank()) {
+                current.append("助手: ").append(assistantText);
+            }
         }
 
         return new ExtractionInput(context.toString().trim(), current.toString().trim());
