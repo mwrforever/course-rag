@@ -5,8 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.commerce.rag.constants.PreferenceKeys;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 
 /** MemoryProperties 默认值测试（与 application.yml memory 段一致） */
 class MemoryPropertiesTest {
@@ -49,5 +52,39 @@ class MemoryPropertiesTest {
         assertTrue(PreferenceKeys.isMultiValue("course_direction"));
         assertFalse(PreferenceKeys.isMultiValue("response_language"));
         assertEquals("回答语言", PreferenceKeys.LABELS.get("response_language"));
+    }
+
+    @Test
+    @DisplayName("episodic 默认 — writeHigh 0.7、权重 0.4/0.3/0.3、typeWeights、预算 1200、召回 5/0.30/10（spec §8.3）")
+    void episodicDefaults() {
+        var e = props.getEpisodic();
+        assertEquals(0.7, e.getWriteHigh());
+        assertEquals(0.4, e.getWeightExplicitness());
+        assertEquals(0.3, e.getWeightConfidence());
+        assertEquals(0.3, e.getWeightImportance());
+        assertEquals(1200, e.getTokenBudget());
+        assertEquals(5, e.getRecallTopK());
+        assertEquals(0.30, e.getRecallMinScore());
+        assertEquals(10, e.getPrefetchTopK());
+        assertEquals(1.0, e.getTypeWeights().get("learning_goal"));
+        assertEquals(0.95, e.getTypeWeights().get("resolved_question"));
+        assertEquals(0.9, e.getTypeWeights().get("learning_progress"));
+        assertEquals(0.8, e.getTypeWeights().get("personal_context"));
+    }
+
+    @Test
+    @DisplayName("episodic Binder 绑定 yml 片段 — kebab-case→camelCase、type-weights Map 解析")
+    void bindsYmlValues() {
+        MapConfigurationPropertySource source = new MapConfigurationPropertySource(Map.of(
+                "memory.episodic.write-high", "0.7",
+                "memory.episodic.recall-top-k", "5",
+                "memory.episodic.type-weights.learning_goal", "1.0",
+                "memory.episodic.type-weights.personal_context", "0.8"));
+        MemoryProperties bound =
+                new Binder(source).bind("memory", MemoryProperties.class).orElse(new MemoryProperties());
+        assertEquals(0.7, bound.getEpisodic().getWriteHigh());
+        assertEquals(5, bound.getEpisodic().getRecallTopK());
+        assertTrue(bound.getEpisodic().getTypeWeights().containsKey("learning_goal"));
+        assertEquals(1.0, bound.getEpisodic().getTypeWeights().get("learning_goal"));
     }
 }

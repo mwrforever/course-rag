@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * 记忆体系配置（spec §7.8/§8.3 —— 阈值/权重/预算/曲线全部配置化，零硬编码）
  *
  * <p>绑定 YAML 路径 {@code memory.*}：extraction=提取流水线（模型/防抖/超时/线程），
- * preference=偏好决策阈值权重（本计划 4/5 消费）；episodic 段留待计划 5/5。
+ * preference=偏好决策阈值权重，episodic=经历记忆决策与召回配置（spec §8.2/§8.3）。
  *
  * @author commerce-rag
  */
@@ -22,6 +22,9 @@ public class MemoryProperties {
 
     /** 偏好记忆决策配置 */
     private Preference preference = new Preference();
+
+    /** 经历记忆决策与召回配置（spec §8.3） */
+    private Episodic episodic = new Episodic();
 
     @Data
     public static class Extraction {
@@ -67,5 +70,31 @@ public class MemoryProperties {
         private int cacheMaxSize = 256;
         /** 枚举型 key 的 value 归一化词表（key → {原始值 → 规范值}），spec §7.4-② */
         private Map<String, Map<String, String>> valueSynonyms = new HashMap<>();
+    }
+
+    @Data
+    public static class Episodic {
+        /** memory_score 写入阈值（≥ 写入；< 此值 IGNORE，无观察池），spec §8.3 */
+        private double writeHigh = 0.7;
+        /** memory_score 权重：explicitness（spec §8.3） */
+        private double weightExplicitness = 0.4;
+        /** memory_score 权重：confidence（spec §8.3） */
+        private double weightConfidence = 0.3;
+        /** memory_score 权重：importance × typeWeight（spec §8.3） */
+        private double weightImportance = 0.3;
+        /** 类型权重系统校正（type → 权重），spec §8.3：learning_goal=1.0/resolved_question=0.95/learning_progress=0.9/personal_context=0.8 */
+        private Map<String, Double> typeWeights = new HashMap<>(Map.of(
+                "learning_goal", 1.0,
+                "resolved_question", 0.95,
+                "learning_progress", 0.9,
+                "personal_context", 0.8));
+        /** 注入独立预算（spec §8.8：1200 token，与偏好 500+1500 互不挤占） */
+        private int tokenBudget = 1200;
+        /** 召回返回条数上限（spec §8.7 Top-K） */
+        private int recallTopK = 5;
+        /** 召回最低 Milvus COSINE 分数（低于阈值不注入，spec §8.8「有阈值」） */
+        private double recallMinScore = 0.30;
+        /** Milvus 召回预取条数（分数过滤前多取，防 topK 截断过早） */
+        private int prefetchTopK = 10;
     }
 }

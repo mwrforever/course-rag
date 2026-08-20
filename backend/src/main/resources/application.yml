@@ -349,3 +349,17 @@ memory:
         简单: 基础
         deep: 深入
         深入: 深入
+  episodic:
+    write-high: 0.70              # memory_score 写入阈值（≥0.7 写入；<0.7 IGNORE 无观察池，spec §8.3）
+    weight-explicitness: 0.4      # memory_score = 0.4e + 0.3c + 0.3*(importance*typeWeight)
+    weight-confidence: 0.3
+    weight-importance: 0.3
+    type-weights:                 # typeWeight 系统校正（spec §8.3）
+      learning_goal: 1.0
+      resolved_question: 0.95
+      learning_progress: 0.9
+      personal_context: 0.8
+    token-budget: 1200            # 注入独立预算（与偏好 500+1500 互不挤占，总≤3200）
+    recall-top-k: 5               # 召回返回条数上限
+    recall-min-score: 0.30        # 召回最低 COSINE 分数（低于阈值不注入）
+    prefetch-top-k: 10            # Milvus 召回预取条数（分数过滤前多取）
