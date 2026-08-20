@@ -96,3 +96,23 @@ GraphConfig.postgresSaver 与 MilvusConfig 已豁免（构造器真实建连，�
 正常路径 + 边界 + 异常三类场景；禁止空断言凑覆盖率；禁止针对已废弃行为的测试。
 
 ---
+
+---
+
+## 4. Milvus sparse/BM25 检索恢复（milvus-sdk-java EmbeddedText bug）— 暂缓，用户 2026-08-18 拍板搁置
+
+**背景**（2026-08-18 S1 计划 2/5 手动验证发现）：milvus-sdk-java（2.6.11 及 2.6.21）的
+`EmbeddedText` 在 sparse/混合检索与服务端 BM25 Function 不兼容（GitHub issue
+milvus-io/milvus-sdk-java#1402，仍 Open），服务端 INTERNAL 后 SDK 无限重试至超时（实测 75 次/210s）
+静默失败；pymilvus 同请求正常。已加 `retrieval.sparse-enabled=false` 降级开关（dense-only 检索，
+实测 1.6s 正常），全文检索能力暂时关闭。
+
+**当前状态**：**已降级不阻塞**（dense-only 检索可用），用户 2026-08-18 指示暂缓、后置处理。
+
+**恢复方案候选**（执行时选择其一，均需回归验证）：
+- [ ] 等 milvus-sdk-java 修复 EmbeddedText（关注 issue #1402，修复后 `retrieval.sparse-enabled=true` 一行还原）
+- [ ] 应用侧 BM25 向量方案：ETL 自行计算 sparse 向量（需中文分词器）+ Milvus collection 重建去掉 BM25
+      Function（sparse 字段改存向量 + IP 检索），检索用 SparseFloatVec——改动大（schema/ETL/检索三处）
+- [ ] 附件链路（计划 3/5）已定案**保持纯向量**（用户 2026-08-18 拍板），不受本项影响
+
+---
