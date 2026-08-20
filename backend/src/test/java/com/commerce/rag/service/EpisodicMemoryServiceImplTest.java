@@ -233,12 +233,4 @@ class EpisodicMemoryServiceImplTest {
         r.setValidity("superseded");
         return r;
     }
-
-    /** Milvus SearchResult（entity 携带 memory_id 字符串 + score） */
-    private static SearchResp.SearchResult result(String memoryId, float score) {
-        return SearchResp.SearchResult.builder()
-                .entity(Map.of(MilvusCollectionInitializer.FIELD_MEMORY_ID, memoryId))
-                .score(score)
-                .build();
-    }
 }

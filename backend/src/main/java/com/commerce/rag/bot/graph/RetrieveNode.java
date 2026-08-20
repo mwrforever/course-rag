@@ -165,7 +165,9 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         // Episodic 召回（spec §8.7）：recall_history 动态 validity 过滤，仅命中写入 metadata（非每轮注入）
         // 置于 queries 判空后、系统检索空/非空两分支返回前的公共段：无论 document 是否注入都尝试召回，
         // episodic_context 与 document_context 通道独立，互不影响
-        recallEpisodic(config, plan, plan.rewrittenQueries().get(0));
+        // 召回查询取已过滤非空重写查询的首条（queries.get(0)），与上方 queries 构建口径一致，
+        // 避免首条重写查询为 null/空白时该轮经历记忆召回被静默跳过
+        recallEpisodic(config, plan, queries.get(0).queryText());
 
         // 4. 检索（并行 + RRF 融合 + SHA256 去重 + Rerank 在 SearchKnowledgeTool 内完成）
         List<KnowledgeChunk> chunks =
