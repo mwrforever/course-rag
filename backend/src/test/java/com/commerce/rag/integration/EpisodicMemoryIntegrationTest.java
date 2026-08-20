@@ -1,0 +1,145 @@
+package com.commerce.rag.integration;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.commerce.rag.config.MilvusCollectionInitializer;
+import com.commerce.rag.record.EpisodicExtractionResult;
+import com.commerce.rag.record.EpisodicMemoryExtraction;
+import com.commerce.rag.record.EpisodicMemoryRef;
+import com.commerce.rag.service.IEpisodicMemoryService;
+import com.commerce.rag.test.IntegrationTestBase;
+import io.milvus.v2.service.vector.request.SearchReq;
+import io.milvus.v2.service.vector.response.SearchResp;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+
+/**
+ * 经历记忆服务集成测试 —— 真实 PG 落库/状态机流转 + mock Milvus 召回（spec §8.5-§8.7）
+ *
+ * <p>兜底价值：本类 useContext 全覆盖 SQL 段（this.lambdaQuery/save/lambdaUpdate/getById/listByIds）
+ * 与 Spring wiring（@Service + @RequiredArgsConstructor 装配，基准类 C-1 教训：新 @Service 必须过一条
+ * 集成测试兜 wiring，缺 @Component 会静默挂全量 @SpringBootTest）。
+ *
+ * <p>数据隔离：IntegrationTestBase.setUpBase() 前置清理业务表/Redis + 模型 stub；本类 @BeforeEach
+ * 额外清 user_episodic_memory（基类 cleanupBusinessTables 不含该表），防跨用例残留。
+ */
+class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
+
+    @Autowired
+    private IEpisodicMemoryService episodicMemoryService;
+
+    @BeforeEach
+    void setUpEpisodic() {
+        jdbcTemplate.update("DELETE FROM user_episodic_memory");
+    }
+
+    @Test
+    @DisplayName("applyExtraction — CREATE 条目落库 active 行（SQL 段与 wiring 兜底）")
+    void applyExtraction_createRoundTrip_persistsRow() {
+        Long userId = registerUser("epi_test_1", "STUDENT");
+        int written = episodicMemoryService.applyExtraction(
+                userId,
+                99L,
+                new EpisodicExtractionResult(List.of(new EpisodicMemoryExtraction(
+                        // structuredFacts 传 null：实体 structured_facts(String)→jsonb 映射无 typeHandler，
+                        // MP 非 null String 直插 jsonb 报错（Task 1 实体层遗留，见报告问题 3），落库断言不涉及该列
+                        true, "CREATE", "learning_progress", "已完成 Java 集合泛型", "集合摘要", null, 0.8, 0.8, 0.8, null))));
+        assertEquals(1, written, "CREATE 生效动作计 1");
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT content, summary, validity, version, source_session_id, importance FROM user_episodic_memory"
+                        + " WHERE user_id=? AND deleted=0",
+                userId);
+        assertEquals("已完成 Java 集合泛型", row.get("content"));
+        assertEquals("集合摘要", row.get("summary"));
+        assertEquals("active", row.get("validity"));
+        assertEquals(1, ((Number) row.get("version")).intValue());
+        assertEquals(99L, ((Number) row.get("source_session_id")).longValue());
+        // importance = 0.8 × typeWeight(learning_progress=0.9) = 0.72 → NUMERIC(4,3)
+        assertEquals(0, new BigDecimal("0.720").compareTo((BigDecimal) row.get("importance")));
+    }
+
+    @Test
+    @DisplayName("applyExtraction — UPDATE 旧行 superseded + 新行 active version=2")
+    void applyExtraction_update_supersedesOldCreatesNew() {
+        Long userId = registerUser("epi_test_2", "STUDENT");
+        // 预置 active 行（v1），UPDATE 条目 merge_target 命中其 content
+        jdbcTemplate.update(
+                "INSERT INTO user_episodic_memory (id, user_id, type, content, summary, validity, version, deleted)"
+                        + " VALUES (?, ?, 'learning_goal', '旧目标', '旧摘要', 'active', 1, 0)",
+                800201L,
+                userId);
+        int written = episodicMemoryService.applyExtraction(
+                userId,
+                null,
+                new EpisodicExtractionResult(List.of(new EpisodicMemoryExtraction(
+                        // structuredFacts 传 null：原因见 createRoundTrip 用例注释（实体 structured_facts jsonb 映射遗留）
+                        true, "UPDATE", "learning_goal", "新目标", "新摘要", null, 0.8, 0.8, 0.8, "旧目标"))));
+        assertEquals(1, written, "UPDATE 生效动作计 1");
+
+        String oldValidity = jdbcTemplate.queryForObject(
+                "SELECT validity FROM user_episodic_memory WHERE id=?", String.class, 800201L);
+        assertEquals("superseded", oldValidity, "旧行状态流转 superseded");
+        Map<String, Object> newRow = jdbcTemplate.queryForMap(
+                "SELECT content, validity, version FROM user_episodic_memory"
+                        + " WHERE user_id=? AND type='learning_goal' AND validity='active' AND deleted=0",
+                userId);
+        assertEquals("新目标", newRow.get("content"));
+        assertEquals("active", newRow.get("validity"));
+        assertEquals(2, ((Number) newRow.get("version")).intValue(), "新行版本 = 旧行 + 1");
+    }
+
+    @Test
+    @DisplayName("recall — mock Milvus 定位(memory_id+user_id 过滤) → PG 取数 → 按分降序 ref 列表")
+    void recall_returnsRefs() {
+        Long userId = registerUser("epi_test_3", "STUDENT");
+        // 预置两条 active 行（真实 PG，供 listByIds 取数）
+        jdbcTemplate.update(
+                "INSERT INTO user_episodic_memory (id, user_id, type, content, summary, validity, version, deleted)"
+                        + " VALUES (?, ?, 'learning_progress', '完成 Python 基础', 'Py 摘要', 'active', 1, 0)",
+                800301L,
+                userId);
+        jdbcTemplate.update(
+                "INSERT INTO user_episodic_memory (id, user_id, type, content, summary, validity, version, deleted)"
+                        + " VALUES (?, ?, 'resolved_question', 'SQL 索引优化', 'SQL 摘要', 'active', 1, 0)",
+                800302L,
+                userId);
+        when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f, 0.3f});
+        // mock Milvus 召回：高分为 800302、低分为 800301（实体带 memory_id 字符串）
+        when(milvusClientV2.search(any(SearchReq.class)))
+                .thenReturn(SearchResp.builder()
+                        .searchResults(List.of(List.of(
+                                SearchResp.SearchResult.builder()
+                                        .entity(Map.of(MilvusCollectionInitializer.FIELD_MEMORY_ID, "800302"))
+                                        .score(0.9f)
+                                        .build(),
+                                SearchResp.SearchResult.builder()
+                                        .entity(Map.of(MilvusCollectionInitializer.FIELD_MEMORY_ID, "800301"))
+                                        .score(0.5f)
+                                        .build())))
+                        .build());
+
+        List<EpisodicMemoryRef> refs = episodicMemoryService.recall(userId, "查询", false, 5);
+        assertEquals(2, refs.size());
+        assertEquals(Long.valueOf(800302L), refs.get(0).id(), "按分降序最高分在前");
+        assertEquals("SQL 索引优化", refs.get(0).content());
+        assertEquals(Long.valueOf(800301L), refs.get(1).id());
+        // 硬隔离：Milvus 过滤表达式必须携带 user_id
+        verify(milvusClientV2, times(1))
+                .search(argThat(req -> req != null
+                        && req.getFilter() != null
+                        && req.getFilter().contains(MilvusCollectionInitializer.FIELD_MEMORY_USER_ID)
+                        && req.getFilter().contains(String.valueOf(userId))));
+    }
+}
