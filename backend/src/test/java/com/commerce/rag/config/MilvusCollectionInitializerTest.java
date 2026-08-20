@@ -4,10 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.milvus.v2.client.MilvusClientV2;
+import io.milvus.v2.common.DataType;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq.FieldSchema;
 import io.milvus.v2.service.collection.request.DescribeCollectionReq;
@@ -39,7 +41,7 @@ class MilvusCollectionInitializerTest {
     }
 
     @Test
-    @DisplayName("schema 不匹配（缺 sha256）— drop 后重建")
+    @DisplayName("schema 不匹配（缺 sha256）— knowledge/memory 均 drop 重建")
     void schemaMismatch_dropsAndRecreates() {
         when(milvusClientV2.hasCollection(any(HasCollectionReq.class))).thenReturn(true);
         DescribeCollectionResp desc = DescribeCollectionResp.builder()
@@ -50,32 +52,47 @@ class MilvusCollectionInitializerTest {
 
         initializer().run(null);
 
-        verify(milvusClientV2).dropCollection(any(DropCollectionReq.class));
+        // run() 依次 ensure knowledge + memory，两集合均 schema 不匹配，各 drop 一次
+        verify(milvusClientV2, times(2)).dropCollection(any(DropCollectionReq.class));
     }
 
     @Test
     @DisplayName("schema 匹配 — 不 drop 不重建")
     void schemaMatches_skipsRebuild() {
         when(milvusClientV2.hasCollection(any(HasCollectionReq.class))).thenReturn(true);
-        DescribeCollectionResp desc = DescribeCollectionResp.builder()
-                .fieldNames(List.of(
-                        "chunk_id",
-                        "doc_id",
-                        "kb_id",
-                        "content",
-                        "heading_path",
-                        "dense_vector",
-                        "sparse_vector",
-                        "chunk_index",
-                        "token_count",
-                        "course_id",
-                        "content_type",
-                        "image_url",
-                        "sha256",
-                        "updated_at"))
-                .build();
+        // 按集合返回各自完整的期望字段集 → 两集合 schema 均匹配，均不 drop 不重建
         when(milvusClientV2.describeCollection(any(DescribeCollectionReq.class)))
-                .thenReturn(desc);
+                .thenAnswer(inv -> {
+                    DescribeCollectionReq req = inv.getArgument(0);
+                    if (MilvusCollectionInitializer.COLLECTION_MEMORY.equals(req.getCollectionName())) {
+                        return DescribeCollectionResp.builder()
+                                .fieldNames(List.of(
+                                        MilvusCollectionInitializer.FIELD_MEMORY_ID,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_USER_ID,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_TYPE,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_VALIDITY,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_EMBEDDING,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_UPDATED_AT))
+                                .build();
+                    }
+                    return DescribeCollectionResp.builder()
+                            .fieldNames(List.of(
+                                    "chunk_id",
+                                    "doc_id",
+                                    "kb_id",
+                                    "content",
+                                    "heading_path",
+                                    "dense_vector",
+                                    "sparse_vector",
+                                    "chunk_index",
+                                    "token_count",
+                                    "course_id",
+                                    "content_type",
+                                    "image_url",
+                                    "sha256",
+                                    "updated_at"))
+                            .build();
+                });
 
         initializer().run(null);
 
@@ -131,9 +148,12 @@ class MilvusCollectionInitializerTest {
         initializer().run(null);
 
         ArgumentCaptor<CreateCollectionReq> captor = ArgumentCaptor.forClass(CreateCollectionReq.class);
-        verify(milvusClientV2).createCollection(captor.capture());
+        verify(milvusClientV2, times(2)).createCollection(captor.capture());
+        // 第一个请求为 knowledge_chunks（run() 先初始化 knowledge 再 memory）
+        CreateCollectionReq knowledgeReq = captor.getAllValues().get(0);
+        assertEquals("knowledge_chunks", knowledgeReq.getCollectionName());
         // SDK 2.6.11 无 CollectionSchema.getFieldNames()，取 getFieldSchemaList() 映射字段名
-        List<String> fields = captor.getValue().getCollectionSchema().getFieldSchemaList().stream()
+        List<String> fields = knowledgeReq.getCollectionSchema().getFieldSchemaList().stream()
                 .map(FieldSchema::getName)
                 .toList();
         assertTrue(fields.contains("content_type") && fields.contains("image_url") && fields.contains("sha256"));
@@ -154,5 +174,54 @@ class MilvusCollectionInitializerTest {
         // Then: 不应调用任何 Milvus 操作
         verify(milvusClientV2, never()).hasCollection(any(HasCollectionReq.class));
         verify(milvusClientV2, never()).createCollection(any(CreateCollectionReq.class));
+    }
+
+    @Test
+    @DisplayName("Collection 均不存在 — 创建两个集合（knowledge + memory），create/load 各 2 次")
+    void run_createsBothCollections() {
+        when(milvusClientV2.hasCollection(any(HasCollectionReq.class))).thenReturn(false);
+
+        initializer().run(null);
+
+        ArgumentCaptor<CreateCollectionReq> captor = ArgumentCaptor.forClass(CreateCollectionReq.class);
+        verify(milvusClientV2, times(2)).createCollection(captor.capture());
+        verify(milvusClientV2, times(2)).loadCollection(any(LoadCollectionReq.class));
+        // 第二个请求为 memory_chunks（run() 先 knowledge 后 memory）
+        CreateCollectionReq memoryReq = captor.getAllValues().get(1);
+        assertEquals(MilvusCollectionInitializer.COLLECTION_MEMORY, memoryReq.getCollectionName());
+    }
+
+    @Test
+    @DisplayName("memory collection schema 含 6 个期望字段，embedding 为 FloatVector(1024) 维")
+    void memoryCollectionSchemaContainsExpectedFields() {
+        when(milvusClientV2.hasCollection(any(HasCollectionReq.class))).thenReturn(false);
+
+        initializer().run(null);
+
+        ArgumentCaptor<CreateCollectionReq> captor = ArgumentCaptor.forClass(CreateCollectionReq.class);
+        verify(milvusClientV2, times(2)).createCollection(captor.capture());
+        // 第二个请求即 memory_chunks
+        CreateCollectionReq memoryReq = captor.getAllValues().get(1);
+        assertEquals(MilvusCollectionInitializer.COLLECTION_MEMORY, memoryReq.getCollectionName());
+
+        List<FieldSchema> memoryFields = memoryReq.getCollectionSchema().getFieldSchemaList();
+        assertEquals(6, memoryFields.size());
+        // 期望 6 字段全集（与 FIELD_MEMORY_* 公开常量一一对应）
+        List<String> names = memoryFields.stream().map(FieldSchema::getName).toList();
+        assertTrue(names.containsAll(List.of(
+                MilvusCollectionInitializer.FIELD_MEMORY_ID,
+                MilvusCollectionInitializer.FIELD_MEMORY_USER_ID,
+                MilvusCollectionInitializer.FIELD_MEMORY_TYPE,
+                MilvusCollectionInitializer.FIELD_MEMORY_VALIDITY,
+                MilvusCollectionInitializer.FIELD_MEMORY_EMBEDDING,
+                MilvusCollectionInitializer.FIELD_MEMORY_UPDATED_AT)));
+
+        // embedding 字段为 FLOAT_VECTOR(1024)（text-embedding-v4）
+        FieldSchema embedding = memoryFields.stream()
+                .filter(f -> MilvusCollectionInitializer.FIELD_MEMORY_EMBEDDING.equals(f.getName()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("memory schema 缺少 embedding 字段"));
+        assertEquals(DataType.FloatVector, embedding.getDataType());
+        assertEquals(1024, embedding.getDimension());
     }
 }

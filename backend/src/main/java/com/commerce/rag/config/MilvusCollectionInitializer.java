@@ -26,7 +26,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 /**
- * Milvus Collection 自动初始化器（v2 API）—— 应用启动时比对重建 {@code knowledge_chunks}
+ * Milvus Collection 自动初始化器（v2 API）—— 应用启动时比对重建 {@code knowledge_chunks} 与 {@code memory_chunks} 双集合
  *
  * <p>核心职责：
  * <ul>
@@ -36,6 +36,7 @@ import org.springframework.stereotype.Component;
  *   <li>14 字段 Schema + BM25 Function + 3 索引一步创建（v2 API：{@code indexParams} 随 {@code createCollection}）</li>
  *   <li>创建后调用 {@code loadCollection} 加载到内存</li>
  *   <li>通过配置开关 {@code milvus.auto-create-collection} 控制是否启用（默认 true）</li>
+ *   <li>{@code memory_chunks} 第二集合（spec §8.5 召回索引，PG 为事实源、Milvus 仅索引，6 字段独立比对）</li>
  *   <li><b>异常降级</b>：Milvus 不可达或创建失败时 log warn 并跳过，不阻断应用启动</li>
  * </ul>
  *
@@ -93,6 +94,17 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
     public static final String FIELD_SHA256 = "sha256";
     public static final String FIELD_UPDATED_AT = "updated_at";
 
+    // ── memory_chunks Collection（spec §8.5 召回索引，PG 为事实源）──
+    public static final String COLLECTION_MEMORY = "memory_chunks";
+
+    // ── memory_chunks 字段名常量（供 Task 6 EpisodicMemoryService 引用）──
+    public static final String FIELD_MEMORY_ID = "memory_id";
+    public static final String FIELD_MEMORY_USER_ID = "user_id";
+    public static final String FIELD_MEMORY_TYPE = "type";
+    public static final String FIELD_MEMORY_VALIDITY = "validity";
+    public static final String FIELD_MEMORY_EMBEDDING = "embedding";
+    public static final String FIELD_MEMORY_UPDATED_AT = "updated_at";
+
     /** 期望 schema 字段全集（14 个）——启动时 describe 比对，不匹配则 drop 重建 */
     private static final List<String> EXPECTED_FIELD_NAMES = List.of(
             FIELD_CHUNK_ID,
@@ -110,6 +122,15 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
             FIELD_SHA256,
             FIELD_UPDATED_AT);
 
+    /** 期望 memory_chunks schema 字段全集（6 个）——启动时 describe 比对，不匹配则 drop 重建（spec §8.5） */
+    private static final List<String> EXPECTED_MEMORY_FIELD_NAMES = List.of(
+            FIELD_MEMORY_ID,
+            FIELD_MEMORY_USER_ID,
+            FIELD_MEMORY_TYPE,
+            FIELD_MEMORY_VALIDITY,
+            FIELD_MEMORY_EMBEDDING,
+            FIELD_MEMORY_UPDATED_AT);
+
     // ── 字段长度常量 ──
     private static final int MAX_LEN_CHUNK_ID = 64;
     private static final int MAX_LEN_DOC_ID = 64;
@@ -120,6 +141,10 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
     private static final int MAX_LEN_CONTENT_TYPE = 20;
     private static final int MAX_LEN_IMAGE_URL = 1000;
     private static final int MAX_LEN_SHA256 = 64;
+    private static final int MAX_LEN_MEMORY_ID = 64;
+    private static final int MAX_LEN_MEMORY_USER_ID = 64;
+    private static final int MAX_LEN_MEMORY_TYPE = 50;
+    private static final int MAX_LEN_MEMORY_VALIDITY = 20;
 
     private final MilvusClientV2 milvusClientV2;
     private final String collectionName;
@@ -168,74 +193,78 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
             return;
         }
 
-        log.info("开始检查 Milvus Collection: name={}", collectionName);
+        log.info("开始检查 Milvus Collections: knowledge={}, memory={}", collectionName, COLLECTION_MEMORY);
         try {
-            initCollection();
+            // 1. 既有 knowledge_chunks（schema 版本校验，spec §12 重建口径不变）
+            ensureCollection(collectionName, buildKnowledgeCollectionSchema(), buildKnowledgeIndexParams());
+            // 2. memory_chunks（spec §8.5 召回索引，独立集合）
+            ensureCollection(COLLECTION_MEMORY, buildMemoryCollectionSchema(), buildMemoryIndexParams());
         } catch (Exception e) {
             // Milvus 不可达或创建失败时降级，不阻断应用启动
-            log.warn("Milvus Collection 初始化失败（应用继续启动）: collection={}, error={}", collectionName, e.getMessage());
+            log.warn("Milvus Collection 初始化失败（应用继续启动）: error={}", e.getMessage());
         }
     }
 
     /**
-     * 执行 Collection 初始化的完整流程
+     * 通用 Collection 确保逻辑（存在则比对 schema，不匹配 drop 重建；不存在直接创建）
      *
      * <p>流程：
      * <ol>
      *   <li>检查 Collection 是否存在</li>
-     *   <li>已存在时 describe 比对 schema，匹配则跳过；不匹配（历史版本）drop 重建</li>
-     *   <li>创建 Collection（14 字段 Schema + BM25 Function + 3 索引一步创建）</li>
+     *   <li>已存在时 describe 比对 schema（按 name 选择期望字段集），匹配则跳过；不匹配（历史版本）drop 重建</li>
+     *   <li>创建 Collection（传入 Schema + 索引一步创建）</li>
      *   <li>加载 Collection 到内存</li>
      * </ol>
      *
+     * @param name    Collection 名称（如 knowledge_chunks / memory_chunks）
+     * @param schema  期望的 Collection Schema
+     * @param indexes 随 Collection 一起创建的索引参数列表
      * @throws RuntimeException Milvus 操作失败时抛出（由 {@link #run} 捕获降级）
      */
-    private void initCollection() {
+    private void ensureCollection(String name, CollectionSchema schema, List<IndexParam> indexes) {
         // 1. 检查 Collection 是否存在
         Boolean exists = milvusClientV2.hasCollection(
-                HasCollectionReq.builder().collectionName(collectionName).build());
+                HasCollectionReq.builder().collectionName(name).build());
 
         if (Boolean.TRUE.equals(exists)) {
-            if (schemaMatches()) {
-                log.info("Milvus Collection 已存在且 schema 匹配，跳过创建: name={}", collectionName);
+            if (schemaMatches(name)) {
+                log.info("Milvus Collection 已存在且 schema 匹配，跳过创建: name={}", name);
                 return;
             }
             // S1 §12：schema 不匹配（历史版本）→ drop 重建（开发库无业务数据，用户已拍板）
-            log.warn("Milvus Collection schema 不匹配，drop 重建: name={}", collectionName);
+            log.warn("Milvus Collection schema 不匹配，drop 重建: name={}", name);
             milvusClientV2.dropCollection(
-                    DropCollectionReq.builder().collectionName(collectionName).build());
+                    DropCollectionReq.builder().collectionName(name).build());
         }
 
-        // 2. 创建 Collection（14 字段 Schema + BM25 Function + 3 索引）
-        log.info("开始创建 Milvus Collection: name={}", collectionName);
-        CollectionSchema schema = buildCollectionSchema();
-        List<IndexParam> indexParams = buildIndexParams();
-
+        // 2. 创建 Collection（Schema + 索引一步创建）
+        log.info("开始创建 Milvus Collection: name={}", name);
         CreateCollectionReq createReq = CreateCollectionReq.builder()
-                .collectionName(collectionName)
+                .collectionName(name)
                 .collectionSchema(schema)
-                .indexParams(indexParams)
+                .indexParams(indexes)
                 .build();
 
         milvusClientV2.createCollection(createReq);
-        log.info("Milvus Collection 创建成功（含 Schema + Function + 索引）: name={}", collectionName);
+        log.info("Milvus Collection 创建成功（含 Schema + Function + 索引）: name={}", name);
 
         // 3. 加载 Collection 到内存
         milvusClientV2.loadCollection(
-                LoadCollectionReq.builder().collectionName(collectionName).build());
-        log.info("Milvus Collection 加载完成: name={}", collectionName);
+                LoadCollectionReq.builder().collectionName(name).build());
+        log.info("Milvus Collection 加载完成: name={}", name);
     }
 
     /**
      * describe 比对实际字段集与期望字段集（双向包含，多余/缺失都视为不匹配）
      *
      * <p>describe 异常或返回空字段信息时保守返回 true（视为匹配）——不因 Milvus 瞬时故障误删有数据 Collection。
+     *
+     * @param name Collection 名称（决定期望字段集：knowledge_chunks 14 字段 / memory_chunks 6 字段）
      */
-    private boolean schemaMatches() {
+    private boolean schemaMatches(String name) {
         try {
-            DescribeCollectionResp resp = milvusClientV2.describeCollection(DescribeCollectionReq.builder()
-                    .collectionName(collectionName)
-                    .build());
+            DescribeCollectionResp resp = milvusClientV2.describeCollection(
+                    DescribeCollectionReq.builder().collectionName(name).build());
             // describe 返回 null/空字段信息（未抛异常）同属异常态——保守视为匹配，不做破坏性 drop。
             // SDK 的 DescribeCollectionResp 构造对 fieldNames 空值默认填充空列表，故空列表也须覆盖
             if (resp == null
@@ -244,23 +273,25 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
                 return true;
             }
             Set<String> actual = new HashSet<>(resp.getFieldNames());
-            return actual.containsAll(EXPECTED_FIELD_NAMES) && EXPECTED_FIELD_NAMES.containsAll(actual);
+            // 按集合选择期望字段集：knowledge 14 字段；memory 6 字段（spec §8.5）
+            List<String> expectedFieldNames =
+                    COLLECTION_MEMORY.equals(name) ? EXPECTED_MEMORY_FIELD_NAMES : EXPECTED_FIELD_NAMES;
+            return actual.containsAll(expectedFieldNames) && expectedFieldNames.containsAll(actual);
         } catch (Exception e) {
-            log.warn(
-                    "Milvus describe 失败，保守视为 schema 匹配（跳过重建）: collection={}, error={}", collectionName, e.getMessage());
+            log.warn("Milvus describe 失败，保守视为 schema 匹配（跳过重建）: collection={}, error={}", name, e.getMessage());
             return true;
         }
     }
 
     /**
-     * 构建 Collection Schema —— 14 个字段 + BM25 Function
+     * 构建 knowledge_chunks Schema —— 14 个字段 + BM25 Function
      *
      * <p>字段定义必须与 {@code SearchKnowledgeTool.OUTPUT_FIELDS} 和
      * {@code EtlPipeline.insertToMilvus} 的字段完全一致。
      *
      * @return CollectionSchema
      */
-    private CollectionSchema buildCollectionSchema() {
+    private CollectionSchema buildKnowledgeCollectionSchema() {
         CollectionSchema schema = CollectionSchema.builder().build();
 
         // 1. chunk_id — 主键（VARCHAR(64)，手动指定，非自增）
@@ -372,7 +403,7 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
     }
 
     /**
-     * 构建 3 个索引参数（随 Collection 一起创建）
+     * 构建 knowledge_chunks 的 3 个索引参数（随 Collection 一起创建）
      *
      * <ul>
      *   <li>dense_vector: HNSW, COSINE, M=16, efConstruction=200</li>
@@ -382,7 +413,7 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
      *
      * @return 索引参数列表
      */
-    private List<IndexParam> buildIndexParams() {
+    private List<IndexParam> buildKnowledgeIndexParams() {
         List<IndexParam> indexParams = new ArrayList<>();
 
         // 1. dense_vector: HNSW + COSINE
@@ -403,6 +434,97 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
         // 3. course_id: INVERTED（标量索引，加速过滤表达式）
         indexParams.add(IndexParam.builder()
                 .fieldName(FIELD_COURSE_ID)
+                .indexType(IndexParam.IndexType.INVERTED)
+                .build());
+
+        return indexParams;
+    }
+
+    /**
+     * 构建 memory_chunks Schema —— 6 字段（spec §8.5：仅索引，完整事实回 PG 取数）
+     *
+     * @return CollectionSchema
+     */
+    private CollectionSchema buildMemoryCollectionSchema() {
+        CollectionSchema schema = CollectionSchema.builder().build();
+
+        // 1. memory_id — 主键（对应 PG 雪花 id 的字符串，VARCHAR(64)）
+        schema.addField(AddFieldReq.builder()
+                .fieldName(FIELD_MEMORY_ID)
+                .dataType(DataType.VarChar)
+                .maxLength(MAX_LEN_MEMORY_ID)
+                .isPrimaryKey(true)
+                .autoID(false)
+                .build());
+
+        // 2. user_id — 硬隔离过滤键
+        schema.addField(AddFieldReq.builder()
+                .fieldName(FIELD_MEMORY_USER_ID)
+                .dataType(DataType.VarChar)
+                .maxLength(MAX_LEN_MEMORY_USER_ID)
+                .build());
+
+        // 3. type — 记忆分类（白名单枚举序列化，用于按 type 卡召回）
+        schema.addField(AddFieldReq.builder()
+                .fieldName(FIELD_MEMORY_TYPE)
+                .dataType(DataType.VarChar)
+                .maxLength(MAX_LEN_MEMORY_TYPE)
+                .build());
+
+        // 4. validity — 状态机（recall_history 动态过滤键）
+        schema.addField(AddFieldReq.builder()
+                .fieldName(FIELD_MEMORY_VALIDITY)
+                .dataType(DataType.VarChar)
+                .maxLength(MAX_LEN_MEMORY_VALIDITY)
+                .build());
+
+        // 5. embedding — dense 向量（text-embedding-v4，1024 维，summary+content 合并向量）
+        schema.addField(AddFieldReq.builder()
+                .fieldName(FIELD_MEMORY_EMBEDDING)
+                .dataType(DataType.FloatVector)
+                .dimension(embeddingDim)
+                .build());
+
+        // 6. updated_at — 更新时间戳（Unix epoch 秒）
+        schema.addField(AddFieldReq.builder()
+                .fieldName(FIELD_MEMORY_UPDATED_AT)
+                .dataType(DataType.Int64)
+                .build());
+
+        return schema;
+    }
+
+    /**
+     * 构建 memory_chunks 索引 —— embedding HNSW/COSINE + user_id/type/validity INVERTED
+     *
+     * @return 索引参数列表
+     */
+    private List<IndexParam> buildMemoryIndexParams() {
+        List<IndexParam> indexParams = new ArrayList<>();
+
+        // 1. embedding: HNSW + COSINE（dense 向量召回）
+        indexParams.add(IndexParam.builder()
+                .fieldName(FIELD_MEMORY_EMBEDDING)
+                .indexType(IndexParam.IndexType.HNSW)
+                .metricType(IndexParam.MetricType.COSINE)
+                .extraParams(Map.of("M", hnswM, "efConstruction", hnswEfConstruction))
+                .build());
+
+        // 2. user_id: INVERTED（硬隔离过滤加速）
+        indexParams.add(IndexParam.builder()
+                .fieldName(FIELD_MEMORY_USER_ID)
+                .indexType(IndexParam.IndexType.INVERTED)
+                .build());
+
+        // 3. type: INVERTED（按记忆类型卡召回）
+        indexParams.add(IndexParam.builder()
+                .fieldName(FIELD_MEMORY_TYPE)
+                .indexType(IndexParam.IndexType.INVERTED)
+                .build());
+
+        // 4. validity: INVERTED（状态机动态过滤键）
+        indexParams.add(IndexParam.builder()
+                .fieldName(FIELD_MEMORY_VALIDITY)
                 .indexType(IndexParam.IndexType.INVERTED)
                 .build());
 
