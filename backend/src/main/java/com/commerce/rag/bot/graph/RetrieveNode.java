@@ -255,7 +255,7 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
                     plan.recallHistory());
         } catch (NumberFormatException e) {
             log.warn("recallEpisodic: userId 非法字符串，跳过经历记忆召回: {}", userId);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.warn("recallEpisodic: 召回异常，降级不注入（不影响主流程）: userId={}", userId, e);
         }
     }
