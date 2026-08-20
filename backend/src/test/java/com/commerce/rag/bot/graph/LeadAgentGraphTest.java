@@ -15,6 +15,7 @@ import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.hook.CoalescingInterceptor;
 import com.commerce.rag.bot.hook.CustomSummarizationHook;
 import com.commerce.rag.bot.hook.DocumentAssemblerInterceptor;
+import com.commerce.rag.bot.hook.EpisodicInterceptor;
 import com.commerce.rag.bot.hook.PreferenceInterceptor;
 import com.commerce.rag.bot.hook.ReminderHook;
 import com.commerce.rag.bot.hook.WarningHook;
@@ -23,6 +24,7 @@ import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.commerce.rag.bot.rewrite.QueryUnderstandingService;
 import com.commerce.rag.bot.tool.CourseApiTool;
 import com.commerce.rag.config.GraphConfig;
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -72,6 +74,9 @@ class LeadAgentGraphTest {
     private DocumentAssemblerInterceptor documentAssemblerInterceptor;
 
     @Mock
+    private EpisodicInterceptor episodicInterceptor;
+
+    @Mock
     private PreferenceInterceptor preferenceInterceptor;
 
     @Mock
@@ -111,6 +116,7 @@ class LeadAgentGraphTest {
                 customSummarizationHook,
                 coalescingInterceptor,
                 documentAssemblerInterceptor,
+                episodicInterceptor,
                 preferenceInterceptor,
                 reminderHook,
                 warningHook,
@@ -137,6 +143,7 @@ class LeadAgentGraphTest {
                 customSummarizationHook,
                 coalescingInterceptor,
                 documentAssemblerInterceptor,
+                episodicInterceptor,
                 preferenceInterceptor,
                 reminderHook,
                 warningHook,
@@ -160,6 +167,7 @@ class LeadAgentGraphTest {
                 customSummarizationHook,
                 coalescingInterceptor,
                 documentAssemblerInterceptor,
+                episodicInterceptor,
                 preferenceInterceptor,
                 reminderHook,
                 warningHook,
@@ -192,6 +200,65 @@ class LeadAgentGraphTest {
         assertNotNull(compiled.getNodeAction("queryUnderstandingNode"), "应注册 queryUnderstandingNode 节点");
         assertNotNull(compiled.getNodeAction("retrieveNode"), "应注册 retrieveNode 节点");
         assertNotNull(compiled.getNodeAction("reactAgent"), "应注册 reactAgent 节点");
+    }
+
+    @Test
+    @DisplayName("build → EpisodicInterceptor 已注册进 ReactAgent 拦截器链（4 个，含经历记忆尾部注入）")
+    void build_registersEpisodicInterceptor() throws Exception {
+        CompiledGraph compiled = newGraph().build();
+
+        List<?> interceptors = reactAgentModelInterceptors(compiled);
+        assertEquals(4, interceptors.size(), "ReactAgent 拦截器应为 4 个（coalescing/document/preference/episodic）");
+        assertTrue(interceptors.contains(episodicInterceptor), "拦截器链应包含 EpisodicInterceptor");
+    }
+
+    /**
+     * 反射读取编译图 reactAgent 节点内 ReactAgent 的 modelInterceptors 列表
+     *
+     * <p>SAA 未对拦截器暴露公开 getter（Builder.interceptors() 仅写入 Builder，ReactAgent
+     * 构造器再复制到自身 modelInterceptors 字段），编译图亦无法直接查询；getNodeAction 返回
+     * node_async 包装的 lambda（内部捕获 AgentToSubCompiledGraphNodeAdapter，其 this$0 持
+     * ReactAgent），此处深度受限递归查找持有 modelInterceptors 字段的对象，注册序验证专用。
+     */
+    @SuppressWarnings("unchecked")
+    private List<?> reactAgentModelInterceptors(CompiledGraph compiled) throws Exception {
+        Object holder = findFieldHolder(compiled.getNodeAction("reactAgent"), "modelInterceptors", 0);
+        assertNotNull(holder, "reactAgent 节点内应存在持有 modelInterceptors 的 ReactAgent 实例");
+        Field interceptorsField = holder.getClass().getDeclaredField("modelInterceptors");
+        interceptorsField.setAccessible(true);
+        return (List<?>) interceptorsField.get(holder);
+    }
+
+    /** 深度受限递归：在对象图中查找声明了指定字段名的对象（跳过高水位容器与 JDK 类防环） */
+    private Object findFieldHolder(Object node, String fieldName, int depth) {
+        if (node == null
+                || depth > 6
+                || node instanceof List
+                || node instanceof Map
+                || node.getClass().getName().startsWith("java.")) {
+            return null;
+        }
+        for (Field f : node.getClass().getDeclaredFields()) {
+            if (f.getName().equals(fieldName)) {
+                return node;
+            }
+        }
+        for (Field f : node.getClass().getDeclaredFields()) {
+            try {
+                f.setAccessible(true);
+                Object v = f.get(node);
+                if (v == null || v == node) {
+                    continue;
+                }
+                Object found = findFieldHolder(v, fieldName, depth + 1);
+                if (found != null) {
+                    return found;
+                }
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                // 不可访问字段 / 模块受限跳过（不影响注册断言）
+            }
+        }
+        return null;
     }
 
     @Test

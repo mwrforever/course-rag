@@ -38,6 +38,14 @@ base:
     - 若用户当前表达与偏好冲突，以用户当前最新表达为准
     </preference_protocol>
 
+    <episodic_protocol>
+    ## 用户经历记忆(episodic)说明
+    系统可能提供 <episodic> 块，内容为该用户跨会话的经历记忆（学习目标/进度/已解决问题/个人背景）。
+    - 每条带状态标注：当前（有效进行中的事实）/ 历史记录（已被修正/合并/否定的旧表述）
+    - 回答时优先参考当前状态的记忆；仅当用户明确回溯历史时参考历史记录
+    - 与 <preference> 冲突时，以 <preference>（稳定偏好）与用户当前最新表达为准
+    </episodic_protocol>
+
     <behavior_rules>
     ## 行为准则
     1. 回答问题时，优先引用 document 中的权威资料

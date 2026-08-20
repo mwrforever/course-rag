@@ -14,6 +14,7 @@ import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
 import com.commerce.rag.bot.hook.CoalescingInterceptor;
 import com.commerce.rag.bot.hook.CustomSummarizationHook;
 import com.commerce.rag.bot.hook.DocumentAssemblerInterceptor;
+import com.commerce.rag.bot.hook.EpisodicInterceptor;
 import com.commerce.rag.bot.hook.PreferenceInterceptor;
 import com.commerce.rag.bot.hook.ReminderHook;
 import com.commerce.rag.bot.hook.WarningHook;
@@ -101,6 +102,7 @@ public class LeadAgentGraph {
     private final CustomSummarizationHook customSummarizationHook;
     private final CoalescingInterceptor coalescingInterceptor;
     private final DocumentAssemblerInterceptor documentAssemblerInterceptor;
+    private final EpisodicInterceptor episodicInterceptor;
     private final PreferenceInterceptor preferenceInterceptor;
     private final ReminderHook reminderHook;
     private final WarningHook warningHook;
@@ -117,6 +119,7 @@ public class LeadAgentGraph {
             CustomSummarizationHook customSummarizationHook,
             CoalescingInterceptor coalescingInterceptor,
             DocumentAssemblerInterceptor documentAssemblerInterceptor,
+            EpisodicInterceptor episodicInterceptor,
             PreferenceInterceptor preferenceInterceptor,
             ReminderHook reminderHook,
             WarningHook warningHook,
@@ -131,6 +134,7 @@ public class LeadAgentGraph {
         this.customSummarizationHook = customSummarizationHook;
         this.coalescingInterceptor = coalescingInterceptor;
         this.documentAssemblerInterceptor = documentAssemblerInterceptor;
+        this.episodicInterceptor = episodicInterceptor;
         this.preferenceInterceptor = preferenceInterceptor;
         this.reminderHook = reminderHook;
         this.warningHook = warningHook;
@@ -166,7 +170,7 @@ public class LeadAgentGraph {
 
         // 7. 编译
         CompiledGraph compiled = stateGraph.compile(compileConfig);
-        log.info("LeadAgentGraph 编译完成: nodes={}, hooks={}, interceptors={}, runLimit={}", 3, 4, 3, runLimit);
+        log.info("LeadAgentGraph 编译完成: nodes={}, hooks={}, interceptors={}, runLimit={}", 3, 4, 4, runLimit);
         return compiled;
     }
 
@@ -221,7 +225,7 @@ public class LeadAgentGraph {
     }
 
     /**
-     * 构建 ReactAgent —— 配备工具 + 4 个 Hook + 3 个 Interceptor + systemPrompt
+     * 构建 ReactAgent —— 配备工具 + 4 个 Hook + 4 个 Interceptor + systemPrompt
      */
     private ReactAgent buildReactAgent() {
         // 加载 systemPrompt（静态通道）—— loadRaw 直接返回 YAML 叶子值原始文本，不加 key 前缀
@@ -253,8 +257,9 @@ public class LeadAgentGraph {
                         warningHook, // 后面注册 → AFTER_MODEL 先执行
                         limitHook // 最后注册 → AFTER_MODEL 最先执行
                         )
-                // Interceptor 注册（顺序无冲突：coalescing 合并请求、document 末尾注入、preference 前置注入）
-                .interceptors(coalescingInterceptor, documentAssemblerInterceptor, preferenceInterceptor)
+                // Interceptor 注册（顺序无冲突：coalescing 合并请求、document/episodic 末尾注入、preference 前置注入）
+                .interceptors(
+                        coalescingInterceptor, documentAssemblerInterceptor, preferenceInterceptor, episodicInterceptor)
                 .includeContents(true)
                 .returnReasoningContents(false)
                 .build();
