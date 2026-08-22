@@ -127,7 +127,6 @@ class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
                         + " VALUES (?, ?, 'resolved_question', 'SQL 索引优化', 'SQL 摘要', 'active', 1, 0)",
                 800302L,
                 userId);
-        when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f, 0.3f});
         // mock Milvus 召回：高分为 800302、低分为 800301（实体带 memory_id 字符串）
         when(milvusClientV2.search(any(SearchReq.class)))
                 .thenReturn(SearchResp.builder()
@@ -142,7 +141,8 @@ class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
                                         .build())))
                         .build());
 
-        List<EpisodicMemoryRef> refs = episodicMemoryService.recall(userId, "查询", false, 5);
+        // 查询向量由 RetrieveNode 预嵌入传入（方案 3-1-a：集成直调传向量，不再内部 embed）
+        List<EpisodicMemoryRef> refs = episodicMemoryService.recall(userId, new float[] {0.1f, 0.2f, 0.3f}, false, 5);
         assertEquals(2, refs.size());
         assertEquals(Long.valueOf(800302L), refs.get(0).id(), "按分降序最高分在前");
         assertEquals("SQL 索引优化", refs.get(0).content());
@@ -247,7 +247,6 @@ class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
                         + " VALUES (?, ?, 'learning_progress', '历史进度', '摘要', 'superseded', 1, 0)",
                 800702L,
                 userId);
-        when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
         when(milvusClientV2.search(any(SearchReq.class)))
                 .thenReturn(SearchResp.builder()
                         .searchResults(List.of(List.of(
@@ -261,7 +260,8 @@ class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
                                         .build())))
                         .build());
 
-        List<EpisodicMemoryRef> refs = episodicMemoryService.recall(userId, "查询", true, 5);
+        // 查询向量由 RetrieveNode 预嵌入传入（方案 3-1-a：集成直调传向量，不再内部 embed）
+        List<EpisodicMemoryRef> refs = episodicMemoryService.recall(userId, new float[] {0.1f, 0.2f}, true, 5);
 
         assertEquals(2, refs.size(), "recallHistory=true 历史行放行");
         assertTrue(refs.stream().anyMatch(r -> "superseded".equals(r.validity())), "含历史态行");

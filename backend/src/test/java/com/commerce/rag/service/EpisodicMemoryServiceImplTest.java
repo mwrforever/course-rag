@@ -154,47 +154,35 @@ class EpisodicMemoryServiceImplTest {
     @Test
     @DisplayName("recall — Milvus 故障降级返回空列表（不抛异常）")
     void recall_milvusFailure_returnsEmpty() {
-        when(embedding.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
         when(milvus.search(any(SearchReq.class))).thenThrow(new RuntimeException("milvus down"));
-        assertTrue(service.recall(7L, "查询", false, 5).isEmpty());
+        assertTrue(service.recall(7L, new float[] {0.1f, 0.2f}, false, 5).isEmpty());
     }
 
     @Test
-    @DisplayName("recall — userId/query 空守卫 → 空列表（不进检索链路）")
+    @DisplayName("recall — userId/查询向量空守卫 → 空列表（不进检索链路）")
     void recall_nullGuard_returnsEmpty() {
-        assertTrue(service.recall(null, "查询", false, 5).isEmpty(), "userId 为空不进检索");
-        assertTrue(service.recall(7L, null, false, 5).isEmpty(), "query 为空不进检索");
-        assertTrue(service.recall(7L, "   ", false, 5).isEmpty(), "query 空白不进检索");
-    }
-
-    @Test
-    @DisplayName("recall — embedding 空向量 → 降级空列表（无向量不索引检索）")
-    void recall_emptyEmbedding_returnsEmpty() {
-        when(embedding.embed(anyString())).thenReturn(new float[0]);
-        assertTrue(service.recall(7L, "查询", false, 5).isEmpty());
-        // null 向量同样降级
-        when(embedding.embed(anyString())).thenReturn(null);
-        assertTrue(service.recall(7L, "查询", false, 5).isEmpty());
+        assertTrue(service.recall(null, new float[] {0.1f, 0.2f}, false, 5).isEmpty(), "userId 为空不进检索");
+        assertTrue(service.recall(7L, null, false, 5).isEmpty(), "查询向量 null 不进检索");
+        assertTrue(service.recall(7L, new float[0], false, 5).isEmpty(), "查询向量空数组不进检索");
     }
 
     @Test
     @DisplayName("recall — Milvus 无召回结果 → 空列表（searchResults 空 / 内层第一行空）")
     void recall_emptySearchResults_returnsEmpty() {
-        when(embedding.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
+        float[] vector = new float[] {0.1f, 0.2f};
         when(milvus.search(any(SearchReq.class)))
                 .thenReturn(SearchResp.builder().searchResults(List.of()).build());
-        assertTrue(service.recall(7L, "查询", false, 5).isEmpty(), "searchResults 整体为空降级空列表");
+        assertTrue(service.recall(7L, vector, false, 5).isEmpty(), "searchResults 整体为空降级空列表");
 
         when(milvus.search(any(SearchReq.class)))
                 .thenReturn(
                         SearchResp.builder().searchResults(List.of(List.of())).build());
-        assertTrue(service.recall(7L, "查询", false, 5).isEmpty(), "内层召回列表为空降级空列表");
+        assertTrue(service.recall(7L, vector, false, 5).isEmpty(), "内层召回列表为空降级空列表");
     }
 
     @Test
     @DisplayName("recall — memory_id 缺失/脏数据逐条跳过 → ids 空降级空列表（不阻断召回）")
     void recall_malformedMemoryIds_skipsAndDegrades() {
-        when(embedding.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
         // 第一条 entity=null（memory_id 缺失 → continue）、第二条 memory_id 非数字（NumberFormatException → 跳过），
         // 两条均被丢弃 → ids 空 → 降级空列表（不进入 PG 取数，无需 MP 上下文）
         when(milvus.search(any(SearchReq.class)))
@@ -209,7 +197,7 @@ class EpisodicMemoryServiceImplTest {
                                         .score(0.9f)
                                         .build())))
                         .build());
-        assertTrue(service.recall(7L, "查询", false, 5).isEmpty(), "脏 memory_id 全部跳过降级空列表");
+        assertTrue(service.recall(7L, new float[] {0.1f, 0.2f}, false, 5).isEmpty(), "脏 memory_id 全部跳过降级空列表");
     }
 
     @Test

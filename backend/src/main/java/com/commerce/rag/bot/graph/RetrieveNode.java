@@ -192,17 +192,23 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         // 附件上下文提前读取（纯内存 metadata 读，供并行任务与非空分支共用）
         AttachmentContext attachmentContext = readAttachmentContext(config);
 
+        // 附件 user-document 子块任务先行（与下方预 embed 并行：互不依赖）
+        CompletableFuture<String> userDocFuture = CompletableFuture.supplyAsync(
+                () -> buildUserDocumentText(attachmentContext, originalQuery), retrieveExecutor);
+
+        // 方案 3-1-a：首条重写查询预嵌入一次（远程调用），向量同时供经历记忆召回与知识检索首条
+        // 复用——同文本两次 embed 收敛为一次（费用/配额省半）；失败/空向量返回 null，
+        // recall/检索各自走既有降级（回退为内部自嵌，行为与改造前等价）
+        float[] preVector = embedSafely(queries.get(0).queryText());
+
         // 2-3 并行编排（性能优化报告）：episodic 召回 ∥ 知识检索 ∥ 附件局部检索 embed 三段相互独立的
         // 远程 IO 并行执行——检索节点延迟从「三段之和」降为「约等于最慢一段」；document_context 由
         // join 后主线程写入（episodic_context 由 recallEpisodic 任务内写入，不同键 + join 建立
         // happens-before，无可见性问题）
-        CompletableFuture<Void> episodicFuture = CompletableFuture.runAsync(
-                () -> recallEpisodic(config, plan, queries.get(0).queryText()), retrieveExecutor);
+        CompletableFuture<Void> episodicFuture =
+                CompletableFuture.runAsync(() -> recallEpisodic(config, plan, preVector), retrieveExecutor);
         CompletableFuture<List<KnowledgeChunk>> chunksFuture = CompletableFuture.supplyAsync(
-                () -> searchKnowledgeTool.searchKnowledge(queries).chunks(), retrieveExecutor);
-        // 附件 user-document 子块预计算（无附件上下文 → buildUserDocumentText 立即返回 null，不开远程调用）
-        CompletableFuture<String> userDocFuture = CompletableFuture.supplyAsync(
-                () -> buildUserDocumentText(attachmentContext, originalQuery), retrieveExecutor);
+                () -> searchKnowledgeTool.searchKnowledge(queries, preVector).chunks(), retrieveExecutor);
 
         // recallEpisodic 内部已全异常降级（不会抛出）；附件 embed 异常与改造前同步路径等价地向上传播
         episodicFuture.join();
@@ -250,15 +256,17 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
      * <p>规则：recall_history=true → 不带 validity 过滤（全量召回）；false → 仅召 active，
      * 由 {@link IEpisodicMemoryService#recall} 内部实现（spec §8.7 动态 validity）。
      *
-     * <p>降级：无 userId / userId 非法字符串 / 召回异常 / 无命中 → 不写 metadata
+     * <p>降级：无 userId / userId 非法字符串 / 预嵌入向量为空（召回失败）/ 无命中 → 不写 metadata
      * （EpisodicInterceptor 原样透传），记忆缺失不影响主文档检索与回答。
      *
      * @param config      RunnableConfig（metadata：userId 读取 + episodic_context 写入通道）
      * @param plan        QueryPlan（recallHistory 动态过滤上游）
-     * @param recallQuery 召回查询文本（重写查询首条）
+     * @param queryVector 召回查询向量（{@link #embedSafely} 预嵌入的首条重写查询向量，复用不重复 embed；
+     *                    null/空 → 跳过召回）
      */
-    private void recallEpisodic(RunnableConfig config, QueryPlan plan, String recallQuery) {
-        if (recallQuery == null || recallQuery.isBlank()) {
+    private void recallEpisodic(RunnableConfig config, QueryPlan plan, float[] queryVector) {
+        if (queryVector == null || queryVector.length == 0) {
+            log.debug("recallEpisodic: 查询向量为空，跳过经历记忆召回");
             return;
         }
         // 全链路 user_id 硬隔离（spec §10-6）：从 metadata 读 PreferenceInterceptor.KEY_USER_ID（String）
@@ -273,7 +281,7 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
             Long parsedUserId = Long.parseLong(userId);
             List<EpisodicMemoryRef> refs = episodicMemoryService.recall(
                     parsedUserId,
-                    recallQuery,
+                    queryVector,
                     plan.recallHistory(),
                     properties.getEpisodic().getRecallTopK());
             if (refs == null || refs.isEmpty()) {
@@ -292,6 +300,25 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
             log.warn("recallEpisodic: userId 非法字符串，跳过经历记忆召回: {}", userId);
         } catch (RuntimeException e) {
             log.warn("recallEpisodic: 召回异常，降级不注入（不影响主流程）: userId={}", userId, e);
+        }
+    }
+
+    /**
+     * 首条重写查询预嵌入（方案 3-1-a：一次远程调用供经历记忆召回与知识检索首条共用）。
+     *
+     * <p>降级语义：embedding 异常/空向量返回 null——recallEpisodic 跳过召回（无向量不检索），
+     * 知识检索内部回退自嵌（其自身还有空向量降级），与改造前行为等价，不中断主流程。
+     *
+     * @param text 首条重写查询文本（非空白）
+     * @return 查询向量；失败/空向量返回 null
+     */
+    private float[] embedSafely(String text) {
+        try {
+            float[] vector = embeddingModel.embed(text);
+            return (vector == null || vector.length == 0) ? null : vector;
+        } catch (RuntimeException e) {
+            log.warn("retrieveNode: 查询预嵌入失败（降级两链路内部兜底）: error={}", e.getMessage());
+            return null;
         }
     }
 
