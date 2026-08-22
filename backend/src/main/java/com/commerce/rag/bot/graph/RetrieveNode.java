@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
@@ -69,7 +70,8 @@ import org.springframework.stereotype.Component;
  *       无 userId → 降级不写，不影响主文档检索与回答</li>
  *   <li>并行编排（2026-08-22 性能优化报告 2-3）：episodic 召回、知识检索、附件局部检索向量 embed
  *       三段相互独立的远程 IO 经本节点独立 2 线程池并行执行（与 SearchKnowledgeTool 内部
- *       searchExecutor 隔离，避免自阻塞），join 后由主线程统一写 metadata——检索节点延迟从
+ *       searchExecutor 隔离，避免自阻塞）；document_context 由 join 后主线程写入、episodic_context
+ *       由 recallEpisodic 任务内写入（join 建立 happens-before，后续读取可见）——检索节点延迟从
  *       「三段之和」降为「约等于最慢一段」，高并发对话时不再白占 runPool worker</li>
  * </ol>
  *
@@ -124,9 +126,10 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         this.episodicMemoryService = episodicMemoryService;
         this.properties = properties;
         // 独立小线程池（不与 SearchKnowledgeTool 内部 searchExecutor 共用，避免检索任务与召回任务
-        // 互抢 4 线程形成自阻塞）；daemon 线程随 JVM 退出，带前缀便于 thread dump 排查
+        // 互抢 4 线程形成自阻塞）；daemon 线程随 JVM 退出，带前缀+序号便于 thread dump 排查
+        AtomicInteger seq = new AtomicInteger(1);
         this.retrieveExecutor = Executors.newFixedThreadPool(Math.max(1, parallelism), r -> {
-            Thread t = new Thread(r, "retrieve-node-");
+            Thread t = new Thread(r, "retrieve-node-" + seq.getAndIncrement());
             t.setDaemon(true);
             return t;
         });
@@ -190,8 +193,9 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         AttachmentContext attachmentContext = readAttachmentContext(config);
 
         // 2-3 并行编排（性能优化报告）：episodic 召回 ∥ 知识检索 ∥ 附件局部检索 embed 三段相互独立的
-        // 远程 IO 并行执行——检索节点延迟从「三段之和」降为「约等于最慢一段」；metadata 写入由
-        // join 后的主线程统一执行，避免并行任务写同一 Map 的可见性问题
+        // 远程 IO 并行执行——检索节点延迟从「三段之和」降为「约等于最慢一段」；document_context 由
+        // join 后主线程写入（episodic_context 由 recallEpisodic 任务内写入，不同键 + join 建立
+        // happens-before，无可见性问题）
         CompletableFuture<Void> episodicFuture = CompletableFuture.runAsync(
                 () -> recallEpisodic(config, plan, queries.get(0).queryText()), retrieveExecutor);
         CompletableFuture<List<KnowledgeChunk>> chunksFuture = CompletableFuture.supplyAsync(
