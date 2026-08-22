@@ -165,7 +165,7 @@ class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
                         + " VALUES (?, ?, 'learning_progress', '已学会 Java 泛型', '泛型摘要', 'active', 1, 0)",
                 800401L,
                 userId);
-        // embedding 供 buildUpsertById 反查旧行组装索引（SQL 段 + wiring 兜底）
+        // embedding 供索引同步组装（旧行直接复用批内视图行，SQL 段 + wiring 兜底）
         when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
         int written = episodicMemoryService.applyExtraction(
                 userId,
@@ -400,6 +400,26 @@ class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
 
         // 事务提交后 afterCommit 路径应执行索引 upsert（Milvus 仅索引，PG 事实源不受影响）
         verify(milvusClientV2, times(1)).upsert(any(UpsertReq.class));
+    }
+
+    @Test
+    @DisplayName("applyExtraction — 同批多条生效动作合并为单次 upsert（data 含多行，O(N)→O(1) 远程调用）")
+    void applyExtraction_batchIndexSync_singleUpsertWithMultipleRows() {
+        Long userId = registerUser("epi_test_13", "STUDENT");
+        when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
+        episodicMemoryService.applyExtraction(
+                userId,
+                null,
+                new EpisodicExtractionResult(List.of(
+                        new EpisodicMemoryExtraction(
+                                true, "CREATE", "learning_progress", "已完成 Spring 事务", "事务", null, 0.85, 0.9, 0.9, null),
+                        new EpisodicMemoryExtraction(
+                                true, "CREATE", "resolved_question", "解决索引失效问题", "索引", null, 0.85, 0.9, 0.9, null))));
+
+        // 两条 CREATE 合并进同一次 upsert（2 行 data），仅 1 次 Milvus gRPC 往返
+        verify(milvusClientV2, times(1))
+                .upsert(argThat(req ->
+                        req != null && req.getData() != null && req.getData().size() == 2));
     }
 
     @Test

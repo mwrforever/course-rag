@@ -30,7 +30,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -50,13 +49,14 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * （防 N+1），再逐条「决策 → 执行」——执行后同步批内内存视图，使同批后序条目可见前序写入
  * （同批去重/merge_target 定位/version 演算全部基于最新视图，防批内脏读）。
  *
- * <p>Milvus 仅索引（spec §8.5）：事务内只做 DB 写并登记索引同步任务，事务提交后
- * （TransactionSynchronization afterCommit）再 best-effort 同步——远程 embedding/Milvus 调用
- * 不持有 DB 连接；索引同步失败仅记日志不回滚 DB（PG 为事实源，召回 Milvus 定位 → PG 取数，
+ * <p>Milvus 仅索引（spec §8.5）：事务内只做 DB 写并登记索引同步目标（旧行流转直接复用批内
+ * 视图行，无提交后反查），事务提交后（TransactionSynchronization afterCommit）再 best-effort
+ * 批量同步（逐行 embed + 单次 upsert 合并）——远程 embedding/Milvus 调用不持有 DB 连接；
+ * 索引同步失败仅记日志不回滚 DB（PG 为事实源，召回 Milvus 定位 → PG 取数，
  * Milvus 故障降级返回空召回，是检索体验降级非数据破坏）。
  *
  * <p>测试注意（计划 4/5 实证）：this.lambdaQuery() 不可 Mockito 直测，SQL 段由集成测试覆盖；
- * 纯规则段（toExistingMemoriesText/toWriteRow/buildUpsert/buildUpsertById/syncIndexBestEffort）
+ * 纯规则段（toExistingMemoriesText/toWriteRow/buildUpsert/syncIndexBatchBestEffort）
  * 下沉 public 纯函数直测。
  *
  * <p>SDK 适配（与计划简报差异，均以 milvus-sdk-java 2.6.11 v2 实际签名核对为准）：
@@ -66,7 +66,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  *    {@code outputFields/searchParams/annsField/filter} 均直接挂在 SearchReq——AnnSearchReq 仅用于
  *    HybridSearchReq，简报的 {@code data(List.of(annReq))} 与 {@code outFields(...)} 均编译不过；
  * ③ 主键批量取数不用内置 listByIds/getById（全字段 SELECT 会在 TIMESTAMPTZ→LocalDateTime 整行映射时
- *    抛转换异常，真实 PG 集成实测），改链式 in / 按需取列（见 recall/buildUpsertById），召回排序过滤
+ *    抛转换异常，真实 PG 集成实测），改链式 in / 按需取列（见 recall），召回排序过滤
  *    下沉 public buildRefs 纯函数直测。
  *
  * @author commerce-rag
@@ -121,6 +121,7 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
         List<UserEpisodicMemory> allRows = this.lambdaQuery()
                 .select(
                         UserEpisodicMemory::getId,
+                        UserEpisodicMemory::getUserId,
                         UserEpisodicMemory::getType,
                         UserEpisodicMemory::getContent,
                         UserEpisodicMemory::getSummary,
@@ -132,19 +133,20 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
         Map<String, List<UserEpisodicMemory>> rowsByType = allRows.stream()
                 .collect(Collectors.groupingBy(UserEpisodicMemory::getType, Collectors.toCollection(ArrayList::new)));
 
-        // 索引同步任务登记表：事务内只收集（含远程 embedding/Milvus 的构建与写入延后到提交后执行，
-        // 不持有 DB 连接，BUG-06 修复——spec §8.5 索引 best-effort 语义不变）
-        List<Runnable> indexSyncTasks = new ArrayList<>();
+        // 索引同步目标登记表：事务内只收集（含远程 embedding 的构建与写入延后到提交后执行，
+        // 不持有 DB 连接；旧行流转直接复用批内视图行，无需提交后反查 PG）——BUG-06 修复后
+        // 再合并为单次批量 upsert（报告 2-2 方案 2），远程调用次数 O(动作数) → O(1)
+        List<IndexSyncTarget> indexSyncTargets = new ArrayList<>();
         // 逐条「决策 → 执行」：决策基于批前快照 + 批内已执行写入的内存视图（执行后同步视图，
         // 同批去重/merge_target 定位/version 演算全部可见前序写入，防批内脏读）
         int written = 0;
         for (EpisodicMemoryExtraction memory : result.memories()) {
             List<UserEpisodicMemory> rows = rowsByType.computeIfAbsent(memory.type(), k -> new ArrayList<>());
             EpisodicAction action = decisionEngine.decide(memory, rows);
-            written += execute(userId, sourceSessionId, action, rows, indexSyncTasks);
+            written += execute(userId, sourceSessionId, action, rows, indexSyncTargets);
         }
         // 事务提交后统一执行索引同步（PG 写已可见；回滚则不执行，索引与事实源保持一致）
-        runIndexSyncAfterCommit(indexSyncTasks);
+        runIndexSyncAfterCommit(indexSyncTargets);
         if (written > 0) {
             log.info(
                     "经历记忆落库: userId={}, 生效动作={}, 条目={}条",
@@ -156,10 +158,11 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
     }
 
     /**
-     * 执行单个决策动作（PG 写 + 批内视图同步 + 登记索引同步任务）
+     * 执行单个决策动作（PG 写 + 批内视图同步 + 登记索引同步目标）
      *
-     * @param view 该 type 的批内内存视图（执行后同步，使同批后序决策可见前序写入；仅在
-     *             applyExtraction 批处理链路上传入）
+     * @param view              该 type 的批内内存视图（执行后同步，使同批后序决策可见前序写入；仅在
+     *                          applyExtraction 批处理链路上传入）
+     * @param indexSyncTargets  索引同步目标登记表（事务提交后批量同步，见 {@link #runIndexSyncAfterCommit}）
      * @return 1=生效写操作 / 0=IGNORE 无操作
      */
     private int execute(
@@ -167,18 +170,21 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
             Long sourceSessionId,
             EpisodicAction action,
             List<UserEpisodicMemory> view,
-            List<Runnable> indexSyncTasks) {
+            List<IndexSyncTarget> indexSyncTargets) {
         switch (action.type()) {
             case CREATE -> {
                 // 新事实：写 active 新行（version=1），随后登记索引同步
                 UserEpisodicMemory row = toWriteRow(userId, sourceSessionId, action, "active");
                 save(row);
                 view.add(row);
-                indexSyncTasks.add(() -> syncIndexBestEffort(() -> buildUpsert(row, "active")));
+                indexSyncTargets.add(new IndexSyncTarget(row, "active"));
             }
             case UPDATE, MERGE -> {
                 // 旧行状态流转（spec §8.6：UPDATE→superseded，MERGE→merged）后新建 active 行 version+1
                 String oldValidity = action.type() == EpisodicActionType.UPDATE ? "superseded" : "merged";
+                // 旧行直接复用批内视图行（决策阶段已取回，含组装 embedding 所需的 summary/content/userId），
+                // 登记索引同步目标时不需再按 id 反查 PG（报告 2-2 方案 3：消除每动作一次反查）
+                UserEpisodicMemory oldRow = findTargetRow(view, action);
                 this.lambdaUpdate()
                         .eq(UserEpisodicMemory::getId, action.targetRowId())
                         .set(UserEpisodicMemory::getValidity, oldValidity)
@@ -192,20 +198,23 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
                 view.removeIf(r -> r.getId().equals(action.targetRowId()));
                 view.add(row);
                 // 旧行索引置历史态 + 新行索引写入（各 best-effort，失败不影响 DB）
-                indexSyncTasks.add(() -> syncIndexBestEffort(
-                        () -> buildUpsertById(action.targetRowId(), action.memoryType(), oldValidity)));
-                indexSyncTasks.add(() -> syncIndexBestEffort(() -> buildUpsert(row, "active")));
+                if (oldRow != null) {
+                    indexSyncTargets.add(new IndexSyncTarget(oldRow, oldValidity));
+                }
+                indexSyncTargets.add(new IndexSyncTarget(row, "active"));
             }
             case INVALIDATE -> {
                 // 用户明确否定：目标行 validity=invalidated（无新行）
+                UserEpisodicMemory oldRow = findTargetRow(view, action);
                 this.lambdaUpdate()
                         .eq(UserEpisodicMemory::getId, action.targetRowId())
                         .set(UserEpisodicMemory::getValidity, "invalidated")
                         .set(UserEpisodicMemory::getUpdatedAt, LocalDateTime.now())
                         .update();
                 view.removeIf(r -> r.getId().equals(action.targetRowId()));
-                indexSyncTasks.add(() -> syncIndexBestEffort(
-                        () -> buildUpsertById(action.targetRowId(), action.memoryType(), "invalidated")));
+                if (oldRow != null) {
+                    indexSyncTargets.add(new IndexSyncTarget(oldRow, "invalidated"));
+                }
             }
             case IGNORE -> {
                 log.debug("经历记忆忽略: type={}, content={}", action.memoryType(), action.content());
@@ -216,29 +225,63 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
     }
 
     /**
-     * 事务提交后执行索引同步任务（BUG-06 修复：远程 embedding/Milvus 调用不持有 DB 连接）。
+     * 在批内视图按 targetRowId 定位旧行（决策阶段已取回该行，供索引同步复用）
+     *
+     * <p>targetRowId 由决策引擎从 view 行中选出，正常必在视图内；防御性为空时仅跳过旧行索引同步
+     * （best-effort 语义），不阻断 PG 写。
+     *
+     * @param view   该 type 的批内内存视图
+     * @param action 决策动作（targetRowId 定位目标行）
+     * @return 旧行对象；不在视图内返回 null
+     */
+    private UserEpisodicMemory findTargetRow(List<UserEpisodicMemory> view, EpisodicAction action) {
+        if (action.targetRowId() == null) {
+            return null;
+        }
+        for (UserEpisodicMemory r : view) {
+            if (r.getId().equals(action.targetRowId())) {
+                return r;
+            }
+        }
+        log.warn(
+                "经历记忆索引同步跳过旧行（targetRowId 不在批内视图）: type={}, targetRowId={}", action.memoryType(), action.targetRowId());
+        return null;
+    }
+
+    /**
+     * 事务提交后执行索引同步（BUG-06 修复：远程 embedding/Milvus 调用不持有 DB 连接；
+     * 报告 2-2 方案 2：全批合并为单次 upsert）。
      *
      * <p>事务活跃（applyExtraction 经 Spring 代理）时注册 afterCommit 回调，提交后执行；事务回滚
      * 则不执行（索引与事实源保持一致）；非事务环境（单测直调等）直接执行，保持与事务语义等价。
      *
-     * @param tasks 登记的索引同步任务（空则无操作）
+     * @param targets 登记的索引同步目标（空则无操作）
      */
-    private void runIndexSyncAfterCommit(List<Runnable> tasks) {
-        if (tasks.isEmpty()) {
+    private void runIndexSyncAfterCommit(List<IndexSyncTarget> targets) {
+        if (targets.isEmpty()) {
             return;
         }
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    tasks.forEach(Runnable::run);
+                    syncIndexBatchBestEffort(targets);
                 }
             });
         } else {
-            // 非事务环境：直接同步（与事务内语义等价，任务内各自 best-effort 防异常外泄）
-            tasks.forEach(Runnable::run);
+            // 非事务环境：直接同步（与事务语义等价，方法内逐行/整批 best-effort 防异常外泄）
+            syncIndexBatchBestEffort(targets);
         }
     }
+
+    /**
+     * 待同步索引的（记忆行, 目标有效态）对 —— 事务内登记、提交后统一批量同步；
+     * public 嵌套 record：{@link #syncIndexBatchBestEffort} 为 public 直测入口，参数类型须可访问
+     *
+     * @param row      记忆行（新增行或批内视图旧行，含组装 embedding 所需的全部字段）
+     * @param validity 该行在 Milvus 索引中的目标 validity（active/历史态）
+     */
+    public record IndexSyncTarget(UserEpisodicMemory row, String validity) {}
 
     // ========================================================================
     // 召回（spec §8.7）
@@ -416,7 +459,8 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
     }
 
     /**
-     * 新增行的 Milvus 索引 upsert（embedding = summary+content 合并，spec §8.4）
+     * 生成单行 Milvus 索引 upsert 请求（embedding = summary+content 合并，spec §8.4；
+     * 供 {@link #syncIndexBatchBestEffort} 逐行调用后并入批量列表，public 供单测直测）
      *
      * @return UpsertReq；embedding 空向量时返回 null（索引同步跳过，避免写入无效空向量）
      */
@@ -428,50 +472,71 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
             log.warn("经历记忆索引同步跳过（embedding 空向量）: memoryId={}", row.getId());
             return null;
         }
-        return buildMemoryUpsert(
+        JsonObject jsonRow = buildMemoryUpsertRow(
                 String.valueOf(row.getId()), String.valueOf(row.getUserId()), row.getType(), validity, vector);
+        return UpsertReq.builder()
+                .collectionName(MilvusCollectionInitializer.COLLECTION_MEMORY)
+                .data(List.of(jsonRow))
+                .build();
     }
 
     /**
-     * 旧行状态流转后的 Milvus 索引 upsert（按 id 反查 content/summary 组装 embedding）
+     * 批量同步 memory_chunks 索引（spec §8.5 best-effort：失败仅记日志不回滚 DB）。
      *
-     * @return UpsertReq；目标行不存在或 embedding 空向量时返回 null（索引同步跳过）
+     * <p>实现（报告 2-2 方案 2）：逐行 buildUpsert（embed 远程调用不可避免），单行 embedding
+     * 失败/空向量仅跳过该行不拖垮整批；全部成功行合并为<b>单次</b> upsert 请求
+     * （UpsertReq.data 支持多行，gRPC 往返次数 O(动作数) → O(1)）。public 供单测直测。
+     *
+     * @param targets 待同步目标列表（空/null 则无操作）
      */
-    public UpsertReq buildUpsertById(Long targetRowId, String memoryType, String validity) {
-        // 按需取列反查旧行（不用内置 getById——全字段映射 created_at/updated_at 在 TIMESTAMPTZ→LocalDateTime 失败，
-        // 会静默吞掉索引同步；只取组装 embedding 所需列）
-        UserEpisodicMemory old = this.lambdaQuery()
-                .select(
-                        UserEpisodicMemory::getId,
-                        UserEpisodicMemory::getUserId,
-                        UserEpisodicMemory::getSummary,
-                        UserEpisodicMemory::getContent)
-                .eq(UserEpisodicMemory::getId, targetRowId)
-                .one();
-        if (old == null) {
-            return null;
+    public void syncIndexBatchBestEffort(List<IndexSyncTarget> targets) {
+        if (targets == null || targets.isEmpty()) {
+            return;
         }
-        String text = (old.getSummary() == null ? "" : old.getSummary()) + "\n"
-                + (old.getContent() == null ? "" : old.getContent());
-        float[] vector = embeddingModel.embed(text);
-        if (vector == null || vector.length == 0) {
-            log.warn("经历记忆索引同步跳过（embedding 空向量）: memoryId={}", targetRowId);
-            return null;
+        List<JsonObject> rows = new ArrayList<>();
+        for (IndexSyncTarget target : targets) {
+            try {
+                // 每行生成单行 upsert 请求（含 embed，空向量返回 null 跳过），行数据并入批量列表
+                UpsertReq req = buildUpsert(target.row(), target.validity());
+                if (req != null && req.getData() != null) {
+                    rows.addAll(req.getData());
+                }
+            } catch (RuntimeException e) {
+                // 单行 embedding 异常仅跳过该行（best-effort 语义，不拖垮整批）
+                log.warn(
+                        "经历记忆索引同步跳过单行（embedding 异常）: memoryId={}, error={}",
+                        target.row().getId(),
+                        e.getMessage());
+            }
         }
-        return buildMemoryUpsert(
-                String.valueOf(old.getId()), String.valueOf(old.getUserId()), memoryType, validity, vector);
+        if (rows.isEmpty()) {
+            log.debug("经历记忆索引同步跳过：本批全部行无有效向量，不发起 upsert");
+            return;
+        }
+        try {
+            milvusClientV2.upsert(UpsertReq.builder()
+                    .collectionName(MilvusCollectionInitializer.COLLECTION_MEMORY)
+                    .data(rows)
+                    .build());
+        } catch (RuntimeException e) {
+            // 索引同步失败仅降级（Milvus 为运行时异常），不影响 DB 事务写（spec §8.5 PG 为事实源）
+            log.warn("Milvus memory_chunks 批量索引同步失败（忽略，不影响 DB 写）: {}", e.getMessage());
+        }
     }
 
     /**
-     * 组装 memory_chunks 单行 UpsertReq（6 字段与 MilvusCollectionInitializer 常量严格一致，
+     * 组装 memory_chunks 单行 Gson JsonObject（6 字段与 MilvusCollectionInitializer 常量严格一致，
      * spec §8.5：memory_id 主键 + user_id/type/validity 过滤键 + embedding 向量 + updated_at）
      *
      * <p>说明：milvus-sdk-java 2.6.11 v2 的 {@link UpsertReq#setData} 接收
      * {@code List<com.google.gson.JsonObject>}（Gson 行式，同 EtlPipeline 既有用法），
      * 标量字段 addProperty、向量字段 add(JsonArray)，与简报的 {@code List.of(List.of(...))} 不符，
      * 以 SDK 实际签名为准（见本模块实现）。
+     *
+     * @return 单行行式 JsonObject（供单行 upsert 或批量合并 {@code data} 列表复用）
      */
-    private UpsertReq buildMemoryUpsert(String memoryId, String userId, String type, String validity, float[] vector) {
+    private JsonObject buildMemoryUpsertRow(
+            String memoryId, String userId, String type, String validity, float[] vector) {
         JsonObject row = new JsonObject();
         row.addProperty(MilvusCollectionInitializer.FIELD_MEMORY_ID, memoryId);
         row.addProperty(MilvusCollectionInitializer.FIELD_MEMORY_USER_ID, userId);
@@ -486,23 +551,7 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
         row.addProperty(
                 MilvusCollectionInitializer.FIELD_MEMORY_UPDATED_AT,
                 Instant.now().getEpochSecond());
-        return UpsertReq.builder()
-                .collectionName(MilvusCollectionInitializer.COLLECTION_MEMORY)
-                .data(List.of(row))
-                .build();
-    }
-
-    /** Milvus 索引同步 best-effort（异常仅记日志不回滚，spec §8.5）；public 供单测直测 */
-    public void syncIndexBestEffort(Supplier<UpsertReq> supplier) {
-        try {
-            UpsertReq req = supplier.get();
-            if (req != null) {
-                milvusClientV2.upsert(req);
-            }
-        } catch (RuntimeException e) {
-            // 索引同步失败仅降级（Milvus 为运行时异常），不影响 DB 事务写（spec §8.5 PG 为事实源）
-            log.warn("Milvus memory_chunks 索引同步失败（忽略，不影响 DB 写）: {}", e.getMessage());
-        }
+        return row;
     }
 
     /** double → BigDecimal（保留 3 位小数，与 NUMERIC(4,3) 一致） */
