@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -18,8 +19,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.stereotype.Service;
@@ -27,22 +31,24 @@ import org.springframework.stereotype.Service;
 /**
  * 记忆提取流水线 —— run 完成后异步触发 + 30s 防抖 + 独立线程池（偏好 spec §7.6 / 经历 spec §8.4）
  *
- * <p>双通道：偏好提取与经历记忆提取各持独立 pending/futures Map + 独立执行器，
- * 同 userId 同窗口互不取消对方（spec §8.4 两流水线互不阻塞），共用同一防抖调度器。
+ * <p>双通道：偏好提取与经历记忆提取各持独立 pending/futures Map + 独立调度器 + 独立执行器，
+ * 同 userId 同窗口互不取消对方（spec §8.4 两流水线互不阻塞），任一通道的 LLM 阻塞/超时
+ * （单次至多 {@code timeout-ms}）不会占用另一通道的调度与执行线程。
  *
  * <p>机制：
  * <ol>
  *   <li>{@link #submit}：偏好通道，按 user_id 投递，窗口内同用户消息合并（最新语义覆盖，等价防抖去重）；
  *       重复调度会取消上一个 ScheduledFuture（ScheduledThreadPoolExecutor.cancel 语义）</li>
  *   <li>{@link #submitEpisodic}：经历通道，同样按 user_id 投递 + 30s 防抖合并，pending/futures 独立于偏好通道</li>
- *   <li>窗口到期 → {@link #execute}（偏好）/ {@link #executeEpisodic}（经历）：取最新批次 → 组装提取输入
- *       → 已读记忆（偏好同义收敛 / 经历 merge_target 参考）→ 提取 LLM（CompletableFuture + get(timeout) 超时）
- *       → 决策 → PG 原子写（applyExtraction 事务）</li>
- *   <li>失败降级：提取失败/JSON 解析失败/超时 → 丢弃本批 + 记日志，不重试、不影响主链路</li>
+ *   <li>窗口到期（偏好 {@link #execute} / 经历 {@link #executeEpisodic}，各在独立调度线程）：
+ *       取最新批次 → 组装提取输入 → 已读记忆（偏好同义收敛 / 经历 merge_target 参考）→ 提取 LLM
+ *       （提交独立执行器 + CompletableFuture + get(timeout) 超时）→ 决策 → PG 原子写（applyExtraction 事务）</li>
+ *   <li>失败降级：提取失败/JSON 解析失败/超时/执行队列满（有界）→ 丢弃本批 + 记日志，不重试、不影响主链路</li>
  * </ol>
  *
- * <p>线程模型：偏好/经历各独立执行小线程池（不占 runPool/ETL 线程、互不阻塞），
- * 共用同一防抖调度器 {@code memory.extraction.threads}，调度器与执行器 daemon 线程随 JVM 退出。
+ * <p>线程模型：偏好/经历各独立调度器与执行器（均不占 runPool/ETL 线程、双通道互不阻塞），
+ * 线程数 {@code memory.extraction.threads}，执行器为有界队列（{@code memory.extraction.queue-capacity}，
+ * 拒绝即按失败降级丢弃本批）；所有线程 daemon 随 JVM 退出且带通道前缀 + 序号（thread dump 可辨）。
  *
  * @author commerce-rag
  */
@@ -51,6 +57,7 @@ import org.springframework.stereotype.Service;
 public class MemoryExtractionPipeline {
 
     private final ScheduledExecutorService scheduler;
+    private final ScheduledExecutorService schedulerEpisodic;
     private final ExecutorService extractionExecutor;
     private final int windowSeconds;
     private final long timeoutMs;
@@ -73,10 +80,10 @@ public class MemoryExtractionPipeline {
     private final ExecutorService episodicExecutor;
 
     /**
-     * 手写构造器：需要在构造内完成属性绑定 + 创建独立线程池（调度/执行分离，偏好/经历执行器互不阻塞），
-     * 因此不使用 @RequiredArgsConstructor 生成式构造器。
+     * 手写构造器：需要在构造内完成属性绑定 + 创建独立线程池（偏好/经历各独立调度器与执行器、
+     * 有界队列 + 序号线程工厂），因此不使用 @RequiredArgsConstructor 生成式构造器。
      *
-     * @param properties                   记忆体系配置（extraction 段：防抖窗口/超时/线程数）
+     * @param properties                   记忆体系配置（extraction 段：防抖窗口/超时/线程数/队列容量）
      * @param inputAssembler               提取输入组装器
      * @param extractionService            偏好提取服务（LLM 提取 + JSON 解析）
      * @param preferenceService            偏好服务（已读偏好 + 决策落库）
@@ -98,29 +105,43 @@ public class MemoryExtractionPipeline {
         this.episodicExtractionService = episodicExtractionService;
         this.episodicMemoryService = episodicMemoryService;
         int threads = Math.max(1, properties.getExtraction().getThreads());
-        // 防抖调度器：偏好/经历共用（memory.extraction.threads 线程数，pairwise 独立通道避免互相阻塞）
-        this.scheduler = Executors.newScheduledThreadPool(threads, r -> {
-            Thread t = new Thread(r, "memory-extract-");
+        int queueCapacity = Math.max(1, properties.getExtraction().getQueueCapacity());
+        // 偏好防抖调度器（独立于经历通道：偏好 LLM 阻塞/超时不影响经历调度，spec §8.4 互不阻塞）
+        this.scheduler = Executors.newScheduledThreadPool(threads, namedThreadFactory("memory-sched-pref-"));
+        // 经历防抖调度器（独立于偏好通道）
+        this.schedulerEpisodic = Executors.newScheduledThreadPool(threads, namedThreadFactory("memory-sched-epi-"));
+        // 偏好提取执行器：有界队列（拒绝即按失败降级丢弃本批），线程带序号可排查
+        this.extractionExecutor = new ThreadPoolExecutor(
+                threads,
+                threads,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(queueCapacity),
+                namedThreadFactory("memory-extract-pref-"));
+        // 经历提取执行器（与偏好同规）
+        this.episodicExecutor = new ThreadPoolExecutor(
+                threads,
+                threads,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(queueCapacity),
+                namedThreadFactory("memory-extract-epi-"));
+    }
+
+    /** 通道前缀 + 自增序号的 daemon 线程工厂（thread dump 可区分池内线程） */
+    private static ThreadFactory namedThreadFactory(String prefix) {
+        AtomicInteger seq = new AtomicInteger(1);
+        return r -> {
+            Thread t = new Thread(r, prefix + seq.getAndIncrement());
             t.setDaemon(true);
             return t;
-        });
-        // 偏好提取执行器（独立线程池，spec §7.6）
-        this.extractionExecutor = Executors.newFixedThreadPool(threads, r -> {
-            Thread t = new Thread(r, "memory-extract-call-");
-            t.setDaemon(true);
-            return t;
-        });
-        // 经历提取执行器（独立线程池，与偏好互不阻塞，spec §8.4）
-        this.episodicExecutor = Executors.newFixedThreadPool(threads, r -> {
-            Thread t = new Thread(r, "episodic-extract-call-");
-            t.setDaemon(true);
-            return t;
-        });
+        };
     }
 
     @PreDestroy
     public void destroy() {
         scheduler.shutdownNow();
+        schedulerEpisodic.shutdownNow();
         extractionExecutor.shutdownNow();
         episodicExecutor.shutdownNow();
     }
@@ -147,7 +168,13 @@ public class MemoryExtractionPipeline {
         log.debug("偏好提取已投递，防抖窗口 {}s: userId={}", windowSeconds, userId);
     }
 
-    /** 调度到期的执行入口（防抖合并后取最新批次，仅保留每用户一份待执行任务） */
+    /**
+     * 调度到期的执行入口（防抖合并后取最新批次，仅保留每用户一份待执行任务）。
+     *
+     * <p>执行整体在调度线程完成：偏好/经历已各持独立调度器（互不阻塞），调度线程至多被
+     * {@code future.get(timeout)} 等待占用（单通道并发上限=调度线程数）；LLM 调用提交到
+     * 独立执行器（有界队列），调度线程与执行器线程分池，无单池任务互等死锁。
+     */
     void execute(Long userId) {
         futures.remove(userId);
         List<Message> messages = pending.remove(userId);
@@ -158,7 +185,7 @@ public class MemoryExtractionPipeline {
     }
 
     /**
-     * 执行提取-决策-落库链路（真实调度与直测共用，包可见供单测直测）
+     * 执行提取-决策-落库链路（真实调度提交到执行器线程执行；包可见供单测直测）
      *
      * @param userId   所属用户
      * @param messages 本批消息（最新语义）
@@ -243,11 +270,17 @@ public class MemoryExtractionPipeline {
             prev.cancel(false);
         }
         futuresEpisodic.put(
-                userId, scheduler.schedule(() -> executeEpisodic(userId, sessionId), windowSeconds, TimeUnit.SECONDS));
+                userId,
+                schedulerEpisodic.schedule(() -> executeEpisodic(userId, sessionId), windowSeconds, TimeUnit.SECONDS));
         log.debug("经历记忆提取已投递，防抖窗口 {}s: userId={}", windowSeconds, userId);
     }
 
-    /** 经历记忆调度到期的执行入口（防抖合并后取最新批次，仅保留每用户一份待执行任务） */
+    /**
+     * 经历记忆调度到期的执行入口（防抖合并后取最新批次，仅保留每用户一份待执行任务）。
+     *
+     * <p>与偏好通道同规：执行整体在独立调度线程完成，LLM 调用提交到独立执行器，
+     * 两通道调度/执行互不阻塞。
+     */
     void executeEpisodic(Long userId, Long sessionId) {
         futuresEpisodic.remove(userId);
         List<Message> messages = pendingEpisodic.remove(userId);

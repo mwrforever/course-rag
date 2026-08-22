@@ -74,9 +74,9 @@ public class SseEventTransformer {
             case AGENT_MODEL_STREAMING -> transformModelStreaming(streaming, runState);
             case AGENT_MODEL_FINISHED -> transformModelFinished(streaming, runState);
             case AGENT_TOOL_FINISHED -> transformToolFinished(streaming, runState);
-                // AGENT_TOOL_STREAMING: 工具节点通常同步执行，不产生流式 delta，忽略
-                // AGENT_HOOK_*: 拦截器事件，前端不需要
-                // GRAPH_NODE_*: 图节点级别事件，前端不需要逐节点感知
+            // AGENT_TOOL_STREAMING: 工具节点通常同步执行，不产生流式 delta，忽略
+            // AGENT_HOOK_*: 拦截器事件，前端不需要
+            // GRAPH_NODE_*: 图节点级别事件，前端不需要逐节点感知
             default -> List.of();
         };
     }

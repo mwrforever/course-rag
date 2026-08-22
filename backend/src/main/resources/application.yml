@@ -314,7 +314,8 @@ memory:
     model: qwen3.7-flash        # 偏好/记忆提取模型（spec §7.6 独立配置）
     debounce-window-seconds: 30 # run 完成后的防抖窗口，同用户窗口内消息合并
     timeout-ms: 10000           # 提取 LLM 调用超时，超时丢弃本批不重试
-    threads: 2                  # 防抖调度线程数（独立小线程池）
+    threads: 2                  # 防抖调度线程数（偏好/经历各独立小线程池）
+    queue-capacity: 32          # 提取执行器队列容量（有界队列，拒绝即按失败降级丢弃本批）
   preference:
     write-high: 0.75            # write_score 直接写阈值
     observe-low: 0.50           # write_score 观察池阈值
@@ -363,3 +364,4 @@ memory:
     recall-top-k: 5               # 召回返回条数上限
     recall-min-score: 0.30        # 召回最低 COSINE 分数（低于阈值不注入）
     prefetch-top-k: 10            # Milvus 召回预取条数（分数过滤前多取）
+    existing-text-limit: 100      # {existing} 注入提取 prompt 的 active 记忆行数上限（防无界膨胀）

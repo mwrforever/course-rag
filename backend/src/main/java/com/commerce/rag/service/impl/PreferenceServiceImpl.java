@@ -16,6 +16,9 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -49,7 +52,6 @@ public class PreferenceServiceImpl extends ServiceImpl<UserPreferenceMapper, Use
         if (result == null) {
             return 0;
         }
-        List<PreferenceAction> actions = new ArrayList<>();
 
         // 1. DELETE 意图先执行（用户明确否定，系统软删，spec §7.5；无需观察期）
         if (result.deletions() != null) {
@@ -58,45 +60,72 @@ public class PreferenceServiceImpl extends ServiceImpl<UserPreferenceMapper, Use
             }
         }
 
-        // 2. 逐候选决策 + 收集动作（每候选取该 key 既有行——决策与执行在同一事务内，避免脏读）
-        if (result.candidates() != null) {
-            for (PreferenceCandidate candidate : result.candidates()) {
-                List<UserPreference> rows = this.lambdaQuery()
-                        .select(
-                                UserPreference::getId,
-                                UserPreference::getKey,
-                                UserPreference::getValue,
-                                UserPreference::getStatus,
-                                UserPreference::getObservationCount,
-                                UserPreference::getVersion,
-                                UserPreference::getWriteScore)
-                        .eq(UserPreference::getUserId, userId)
-                        .eq(UserPreference::getKey, candidate.key())
-                        .list();
-                actions.add(decisionEngine.decide(candidate, rows));
-            }
-        }
+        // 2. 批量取行：本批候选涉及的全部 key 一次 in 查询（防 N+1），按 key 内存分组——批前快照
+        //    （必须位于 deletions 之后，软删行不进入决策视图）
+        if (result.candidates() != null && !result.candidates().isEmpty()) {
+            Set<String> keys =
+                    result.candidates().stream().map(PreferenceCandidate::key).collect(Collectors.toSet());
+            List<UserPreference> allRows = this.lambdaQuery()
+                    .select(
+                            UserPreference::getId,
+                            UserPreference::getKey,
+                            UserPreference::getValue,
+                            UserPreference::getStatus,
+                            UserPreference::getObservationCount,
+                            UserPreference::getVersion,
+                            UserPreference::getWriteScore)
+                    .eq(UserPreference::getUserId, userId)
+                    .in(UserPreference::getKey, keys)
+                    .list();
+            Map<String, List<UserPreference>> rowsByKey = allRows.stream()
+                    .collect(Collectors.groupingBy(UserPreference::getKey, Collectors.toCollection(ArrayList::new)));
 
-        // 3. 逐个执行动作（事务内，异常整体回滚）
-        int written = 0;
-        for (PreferenceAction action : actions) {
-            written += execute(userId, action);
+            // 3. 逐候选「决策 → 执行」：决策基于批前快照 + 批内已执行写入的内存视图（执行后同步视图，
+            //    同批同 key 后序候选可见前序写入——单值 key 冲突转 UPDATE/REINFORCE 而非撞唯一索引）
+            int written = 0;
+            for (PreferenceCandidate candidate : result.candidates()) {
+                List<UserPreference> rows = rowsByKey.computeIfAbsent(candidate.key(), k -> new ArrayList<>());
+                PreferenceAction action = decisionEngine.decide(candidate, rows);
+                written += execute(userId, action, rows);
+            }
+            if (written > 0) {
+                log.info(
+                        "偏好提取落库: userId={}, 生效动作={}, 候选={}条",
+                        userId,
+                        written,
+                        result.candidates().size());
+            }
+            return written;
         }
-        if (written > 0) {
-            log.info("偏好提取落库: userId={}, 生效动作={}, 候选={}条", userId, written, actions.size());
-        }
-        return written;
+        return 0;
     }
 
     /**
      * 执行单个决策动作（返回 1=生效写操作/0=IGNORE 无操作）
+     *
+     * @param view 该 key 的批内内存视图（执行后同步，使同批后序候选可见前序写入；
+     *             仅在 applyExtraction 批处理链路上传入）
      */
-    private int execute(Long userId, PreferenceAction action) {
+    private int execute(Long userId, PreferenceAction action, List<UserPreference> view) {
         switch (action.type()) {
-            case CREATE_ACTIVE -> save(toWriteRow(userId, action, "active", "explicit"));
-            case CREATE_OBSERVING -> save(toWriteRow(userId, action, "observing", "explicit"));
-            case REINFORCE -> updateStats(action.targetRowId(), action);
-            case OBSERVE_REINFORCE -> updateStats(action.targetRowId(), action);
+            case CREATE_ACTIVE -> {
+                UserPreference row = toWriteRow(userId, action, "active", "explicit");
+                save(row);
+                view.add(row);
+            }
+            case CREATE_OBSERVING -> {
+                UserPreference row = toWriteRow(userId, action, "observing", "explicit");
+                save(row);
+                view.add(row);
+            }
+            case REINFORCE -> {
+                updateStats(action.targetRowId(), action);
+                syncView(view, action, null);
+            }
+            case OBSERVE_REINFORCE -> {
+                updateStats(action.targetRowId(), action);
+                syncView(view, action, null);
+            }
             case OBSERVE_RESET -> {
                 // 观察池覆盖 value、count 重置 1、分数重算（spec §7.5 方向变了重新观察）
                 this.lambdaUpdate()
@@ -107,6 +136,7 @@ public class PreferenceServiceImpl extends ServiceImpl<UserPreferenceMapper, Use
                         .set(UserPreference::getWriteScore, bd(action.writeScore()))
                         .set(UserPreference::getUpdatedAt, LocalDateTime.now())
                         .update();
+                syncView(view, action, null);
             }
             case PROMOTE -> {
                 // 晋升撞车：旧 active 软删审计（spec §7.5「旧值行保留审计」）
@@ -122,11 +152,16 @@ public class PreferenceServiceImpl extends ServiceImpl<UserPreferenceMapper, Use
                         .set(UserPreference::getSource, "implicit")
                         .set(UserPreference::getUpdatedAt, LocalDateTime.now())
                         .update();
+                syncView(view, action, action.supersededRowId());
             }
             case UPDATE -> {
                 // 明确冲突：旧 active 软删审计 + 新 active version+1（spec §7.5）
                 this.removeById(action.supersededRowId());
-                save(toWriteRow(userId, action, "active", "explicit"));
+                UserPreference row = toWriteRow(userId, action, "active", "explicit");
+                save(row);
+                // 视图同步：旧行退出（软删审计）后新行加入
+                view.removeIf(r -> r.getId().equals(action.supersededRowId()));
+                view.add(row);
             }
             case IGNORE -> {
                 log.debug("偏好候选忽略: userId={}, key={}, value={}", userId, action.key(), action.value());
@@ -134,6 +169,37 @@ public class PreferenceServiceImpl extends ServiceImpl<UserPreferenceMapper, Use
             }
         }
         return 1;
+    }
+
+    /**
+     * 行级状态写后同步批内内存视图（REINFORCE/OBSERVE_REINFORCE/OBSERVE_RESET/PROMOTE 用）——
+     * 决策引擎后续读取 status/value/observationCount/version 等字段均以视图为准
+     *
+     * @param view          该 key 的批内内存视图
+     * @param action        已执行动作（携带目标行 ID 与重算后的计数/分数）
+     * @param removedRowId  软删审计的行 ID（PROMOTE 撞车旧行），null 表示无
+     */
+    private void syncView(List<UserPreference> view, PreferenceAction action, Long removedRowId) {
+        if (removedRowId != null) {
+            view.removeIf(r -> r.getId().equals(removedRowId));
+        }
+        for (UserPreference r : view) {
+            if (r.getId().equals(action.targetRowId())) {
+                // 与 lambdaUpdate 同步更新：计数/分数/状态（PROMOTE 转 active）与 value（OBSERVE_RESET 覆盖）
+                r.setObservationCount(action.count());
+                r.setStability(bd(action.stability()));
+                r.setWriteScore(bd(action.writeScore()));
+                if (action.type() == PreferenceActionType.PROMOTE) {
+                    r.setStatus("active");
+                    r.setValue(action.value());
+                    r.setSource("implicit");
+                }
+                if (action.type() == PreferenceActionType.OBSERVE_RESET) {
+                    r.setValue(action.value());
+                }
+                return;
+            }
+        }
     }
 
     /** 分数重算（REINFORCE/OBSERVE_REINFORCE：count+1 + stability/writeScore 重算） */

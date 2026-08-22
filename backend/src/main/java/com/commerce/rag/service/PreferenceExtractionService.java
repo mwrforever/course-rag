@@ -63,11 +63,14 @@ public class PreferenceExtractionService {
         }
         try {
             Map<String, String> sections = promptLoader.loadSections("memory-extraction.yml");
-            String system = sections.getOrDefault("memory-extraction.system", "");
+            // system 段同样替换占位符（open 型 key 同义收敛规则引用 {existing}，避免悬空占位符发给模型）
+            String existingText = existingValuesText == null ? "无" : existingValuesText;
+            String system =
+                    sections.getOrDefault("memory-extraction.system", "").replace("{existing}", existingText);
             String instruction = sections.getOrDefault("memory-extraction.instruction", "")
                     .replace("{context}", input.contextText() == null ? "" : input.contextText())
                     .replace("{current}", input.currentText())
-                    .replace("{existing}", existingValuesText == null ? "无" : existingValuesText);
+                    .replace("{existing}", existingText);
 
             String content = chatClient
                     .prompt()
@@ -138,7 +141,9 @@ public class PreferenceExtractionService {
                     String key = node.path("key").asText("");
                     String value = node.path("value").asText("");
                     if (PreferenceKeys.isKnown(key) && value != null && !value.isBlank()) {
-                        deletions.add(new PreferenceDeletion(key, value));
+                        // 删除意图同样归一化（与候选对称：库里存的是归一化规范值，
+                        // 原样透传会导致 softDelete 精确匹配永不命中——用户撤回的偏好被静默保留）
+                        deletions.add(new PreferenceDeletion(key, normalizeValue(key, value)));
                     }
                 }
             }

@@ -46,7 +46,8 @@ class EpisodicMemoryServiceImplTest {
     private final EpisodicDecisionEngine engine = new EpisodicDecisionEngine(props);
     private final MilvusClientV2 milvus = mock(MilvusClientV2.class);
     private final EmbeddingModel embedding = mock(EmbeddingModel.class);
-    private final EpisodicMemoryServiceImpl service = new EpisodicMemoryServiceImpl(engine, milvus, embedding, props);
+    private final EpisodicMemoryServiceImpl service =
+            new EpisodicMemoryServiceImpl(engine, milvus, embedding, props, 64);
 
     @Test
     @DisplayName("toExistingMemoriesText — active 记忆行转「标签:内容」行，空返回「无」")
@@ -200,7 +201,7 @@ class EpisodicMemoryServiceImplTest {
     @DisplayName("applyExtraction — userId=null / result=null / memories 空 → 返回 0 且不触发决策")
     void applyExtraction_nullGuard_returnsZero() {
         EpisodicDecisionEngine mockEngine = mock(EpisodicDecisionEngine.class);
-        EpisodicMemoryServiceImpl svc = new EpisodicMemoryServiceImpl(mockEngine, milvus, embedding, props);
+        EpisodicMemoryServiceImpl svc = new EpisodicMemoryServiceImpl(mockEngine, milvus, embedding, props, 64);
         var result = new EpisodicExtractionResult(List.of(
                 new EpisodicMemoryExtraction(true, "CREATE", "learning_goal", "内容", "摘要", null, 0.8, 0.8, 0.8, null)));
         assertEquals(0, svc.applyExtraction(null, 1L, result), "userId 为空不写库");

@@ -29,12 +29,16 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
-import lombok.RequiredArgsConstructor;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * 用户经历记忆服务实现 —— 决策执行/落库 + Milvus 索引同步 + 召回（spec §8.5/§8.6/§8.7）
@@ -42,9 +46,14 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>本 service 主表操作走内置链式（this.lambdaQuery/lambdaUpdate/save），按需取列；
  * 软删走 @TableLogic（removeById 置 deleted=1，审计保留物理行）。
  *
- * <p>Milvus 仅索引（spec §8.5）：applyExtraction 内 DB 写为事务原子，索引同步为 best-effort
- * （异常捕获记录日志，不回滚 DB）；召回链路 Milvus 定位 → PG 主键批量取数，Milvus 故障降级
- * 返回空召回（记忆缺失是检索体验降级，非数据破坏）。
+ * <p>批处理语义（spec §8.5 单批原子）：applyExtraction 先按 distinct type 一次批量取既有行
+ * （防 N+1），再逐条「决策 → 执行」——执行后同步批内内存视图，使同批后序条目可见前序写入
+ * （同批去重/merge_target 定位/version 演算全部基于最新视图，防批内脏读）。
+ *
+ * <p>Milvus 仅索引（spec §8.5）：事务内只做 DB 写并登记索引同步任务，事务提交后
+ * （TransactionSynchronization afterCommit）再 best-effort 同步——远程 embedding/Milvus 调用
+ * 不持有 DB 连接；索引同步失败仅记日志不回滚 DB（PG 为事实源，召回 Milvus 定位 → PG 取数，
+ * Milvus 故障降级返回空召回，是检索体验降级非数据破坏）。
  *
  * <p>测试注意（计划 4/5 实证）：this.lambdaQuery() 不可 Mockito 直测，SQL 段由集成测试覆盖；
  * 纯规则段（toExistingMemoriesText/toWriteRow/buildUpsert/buildUpsertById/syncIndexBestEffort）
@@ -64,7 +73,6 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMapper, UserEpisodicMemory>
         implements IEpisodicMemoryService {
 
@@ -72,6 +80,31 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
     private final MilvusClientV2 milvusClientV2;
     private final EmbeddingModel embeddingModel;
     private final MemoryProperties properties;
+    /** HNSW 检索 ef 参数（配置键 milvus.hnsw-ef，与 MilvusCollectionInitializer 索引参数同源配置化） */
+    private final int hnswEf;
+
+    /**
+     * 手写构造器（非 @RequiredArgsConstructor）：hnswEf 属 Milvus 阈值配置，经 {@code @Value} 注入
+     * （与 MilvusCollectionInitializer 的 @Value 构造参数先例一致），故不交给 Lombok 生成。
+     *
+     * @param decisionEngine 经历记忆决策引擎（纯规则）
+     * @param milvusClientV2 Milvus v2 客户端（索引同步/召回定位）
+     * @param embeddingModel 向量模型（索引 embedding + 召回查询向量）
+     * @param properties     记忆体系配置（episodic 段：阈值/权重/召回）
+     * @param hnswEf         HNSW 检索 ef 参数（milvus.hnsw-ef，默认 64）
+     */
+    public EpisodicMemoryServiceImpl(
+            EpisodicDecisionEngine decisionEngine,
+            MilvusClientV2 milvusClientV2,
+            EmbeddingModel embeddingModel,
+            MemoryProperties properties,
+            @Value("${milvus.hnsw-ef:64}") int hnswEf) {
+        this.decisionEngine = decisionEngine;
+        this.milvusClientV2 = milvusClientV2;
+        this.embeddingModel = embeddingModel;
+        this.properties = properties;
+        this.hnswEf = hnswEf;
+    }
 
     @Override
     @Transactional
@@ -82,45 +115,66 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
         if (result.memories() == null || result.memories().isEmpty()) {
             return 0;
         }
-        List<EpisodicAction> actions = new ArrayList<>();
-        // 逐记忆决策：取该 (user_id, type) 既有 active 行——决策与执行同一事务内，避免脏读
-        for (EpisodicMemoryExtraction memory : result.memories()) {
-            List<UserEpisodicMemory> rows = this.lambdaQuery()
-                    .select(
-                            UserEpisodicMemory::getId,
-                            UserEpisodicMemory::getType,
-                            UserEpisodicMemory::getContent,
-                            UserEpisodicMemory::getSummary,
-                            UserEpisodicMemory::getValidity,
-                            UserEpisodicMemory::getVersion)
-                    .eq(UserEpisodicMemory::getUserId, userId)
-                    .eq(UserEpisodicMemory::getType, memory.type())
-                    .list();
-            actions.add(decisionEngine.decide(memory, rows));
-        }
-        // 逐个执行动作（事务内，异常整体回滚；IGNORE 不计）
+        // 批量取行：本批涉及的全部 type 一次 in 查询（防 N+1），按 type 内存分组——批前快照
+        Set<String> types =
+                result.memories().stream().map(EpisodicMemoryExtraction::type).collect(Collectors.toSet());
+        List<UserEpisodicMemory> allRows = this.lambdaQuery()
+                .select(
+                        UserEpisodicMemory::getId,
+                        UserEpisodicMemory::getType,
+                        UserEpisodicMemory::getContent,
+                        UserEpisodicMemory::getSummary,
+                        UserEpisodicMemory::getValidity,
+                        UserEpisodicMemory::getVersion)
+                .eq(UserEpisodicMemory::getUserId, userId)
+                .in(UserEpisodicMemory::getType, types)
+                .list();
+        Map<String, List<UserEpisodicMemory>> rowsByType = allRows.stream()
+                .collect(Collectors.groupingBy(UserEpisodicMemory::getType, Collectors.toCollection(ArrayList::new)));
+
+        // 索引同步任务登记表：事务内只收集（含远程 embedding/Milvus 的构建与写入延后到提交后执行，
+        // 不持有 DB 连接，BUG-06 修复——spec §8.5 索引 best-effort 语义不变）
+        List<Runnable> indexSyncTasks = new ArrayList<>();
+        // 逐条「决策 → 执行」：决策基于批前快照 + 批内已执行写入的内存视图（执行后同步视图，
+        // 同批去重/merge_target 定位/version 演算全部可见前序写入，防批内脏读）
         int written = 0;
-        for (EpisodicAction action : actions) {
-            written += execute(userId, sourceSessionId, action);
+        for (EpisodicMemoryExtraction memory : result.memories()) {
+            List<UserEpisodicMemory> rows = rowsByType.computeIfAbsent(memory.type(), k -> new ArrayList<>());
+            EpisodicAction action = decisionEngine.decide(memory, rows);
+            written += execute(userId, sourceSessionId, action, rows, indexSyncTasks);
         }
+        // 事务提交后统一执行索引同步（PG 写已可见；回滚则不执行，索引与事实源保持一致）
+        runIndexSyncAfterCommit(indexSyncTasks);
         if (written > 0) {
-            log.info("经历记忆落库: userId={}, 生效动作={}, 条目={}条", userId, written, actions.size());
+            log.info(
+                    "经历记忆落库: userId={}, 生效动作={}, 条目={}条",
+                    userId,
+                    written,
+                    result.memories().size());
         }
         return written;
     }
 
     /**
-     * 执行单个决策动作（PG 写 + Milvus 索引 best-effort 同步）
+     * 执行单个决策动作（PG 写 + 批内视图同步 + 登记索引同步任务）
      *
+     * @param view 该 type 的批内内存视图（执行后同步，使同批后序决策可见前序写入；仅在
+     *             applyExtraction 批处理链路上传入）
      * @return 1=生效写操作 / 0=IGNORE 无操作
      */
-    private int execute(Long userId, Long sourceSessionId, EpisodicAction action) {
+    private int execute(
+            Long userId,
+            Long sourceSessionId,
+            EpisodicAction action,
+            List<UserEpisodicMemory> view,
+            List<Runnable> indexSyncTasks) {
         switch (action.type()) {
             case CREATE -> {
-                // 新事实：写 active 新行（version=1），随后同步索引
+                // 新事实：写 active 新行（version=1），随后登记索引同步
                 UserEpisodicMemory row = toWriteRow(userId, sourceSessionId, action, "active");
                 save(row);
-                syncIndexBestEffort(() -> buildUpsert(row, "active"));
+                view.add(row);
+                indexSyncTasks.add(() -> syncIndexBestEffort(() -> buildUpsert(row, "active")));
             }
             case UPDATE, MERGE -> {
                 // 旧行状态流转（spec §8.6：UPDATE→superseded，MERGE→merged）后新建 active 行 version+1
@@ -134,9 +188,13 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
                 UserEpisodicMemory row = toWriteRow(userId, sourceSessionId, action, "active");
                 row.setVersion(action.version());
                 save(row);
+                // 视图同步：旧行退出 active 视图、新行加入（后序决策基于最新状态）
+                view.removeIf(r -> r.getId().equals(action.targetRowId()));
+                view.add(row);
                 // 旧行索引置历史态 + 新行索引写入（各 best-effort，失败不影响 DB）
-                syncIndexBestEffort(() -> buildUpsertById(action.targetRowId(), action.memoryType(), oldValidity));
-                syncIndexBestEffort(() -> buildUpsert(row, "active"));
+                indexSyncTasks.add(() -> syncIndexBestEffort(
+                        () -> buildUpsertById(action.targetRowId(), action.memoryType(), oldValidity)));
+                indexSyncTasks.add(() -> syncIndexBestEffort(() -> buildUpsert(row, "active")));
             }
             case INVALIDATE -> {
                 // 用户明确否定：目标行 validity=invalidated（无新行）
@@ -145,7 +203,9 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
                         .set(UserEpisodicMemory::getValidity, "invalidated")
                         .set(UserEpisodicMemory::getUpdatedAt, LocalDateTime.now())
                         .update();
-                syncIndexBestEffort(() -> buildUpsertById(action.targetRowId(), action.memoryType(), "invalidated"));
+                view.removeIf(r -> r.getId().equals(action.targetRowId()));
+                indexSyncTasks.add(() -> syncIndexBestEffort(
+                        () -> buildUpsertById(action.targetRowId(), action.memoryType(), "invalidated")));
             }
             case IGNORE -> {
                 log.debug("经历记忆忽略: type={}, content={}", action.memoryType(), action.content());
@@ -153,6 +213,31 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
             }
         }
         return 1;
+    }
+
+    /**
+     * 事务提交后执行索引同步任务（BUG-06 修复：远程 embedding/Milvus 调用不持有 DB 连接）。
+     *
+     * <p>事务活跃（applyExtraction 经 Spring 代理）时注册 afterCommit 回调，提交后执行；事务回滚
+     * 则不执行（索引与事实源保持一致）；非事务环境（单测直调等）直接执行，保持与事务语义等价。
+     *
+     * @param tasks 登记的索引同步任务（空则无操作）
+     */
+    private void runIndexSyncAfterCommit(List<Runnable> tasks) {
+        if (tasks.isEmpty()) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    tasks.forEach(Runnable::run);
+                }
+            });
+        } else {
+            // 非事务环境：直接同步（与事务内语义等价，任务内各自 best-effort 防异常外泄）
+            tasks.forEach(Runnable::run);
+        }
     }
 
     // ========================================================================
@@ -183,7 +268,7 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
                     .data(List.of(new FloatVec(vector)))
                     .annsField(MilvusCollectionInitializer.FIELD_MEMORY_EMBEDDING)
                     .metricType(IndexParam.MetricType.COSINE)
-                    .searchParams(Map.of("ef", 64))
+                    .searchParams(Map.of("ef", hnswEf))
                     .limit(prefetch)
                     .outputFields(List.of(MilvusCollectionInitializer.FIELD_MEMORY_ID))
                     .filter(filter)
@@ -248,10 +333,15 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
 
     @Override
     public String findActiveMemoriesText(Long userId) {
+        // 有界截断：{existing} 仅作 merge_target 原文引用参考，取最近更新的前 N 行即可
+        // （记忆量增长后 prompt 无界膨胀会导致提取超时/降级，spec §8.4；非分页 .list() 不受
+        // PaginationInnerInterceptor maxLimit 保护，故显式 LIMIT）
         List<UserEpisodicMemory> active = this.lambdaQuery()
                 .select(UserEpisodicMemory::getType, UserEpisodicMemory::getContent)
                 .eq(UserEpisodicMemory::getUserId, userId)
                 .eq(UserEpisodicMemory::getValidity, "active")
+                .orderByDesc(UserEpisodicMemory::getUpdatedAt)
+                .last("LIMIT " + Math.max(1, properties.getEpisodic().getExistingTextLimit()))
                 .list();
         return toExistingMemoriesText(active);
     }
