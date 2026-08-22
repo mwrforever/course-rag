@@ -322,16 +322,15 @@ class RetrieveNodeTest {
         // 预嵌入向量供 recall/检索复用（3-1 方案 a）
         when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
         // 召回阻塞（模拟 Milvus+PG 慢链路），直到检索被验证已调用后释放
-        when(episodicMemoryService.recall(eq(42L), any(), anyBoolean(), anyInt()))
-                .thenAnswer(inv -> {
-                    recallStarted.countDown();
-                    try {
-                        releaseRecall.await(5, TimeUnit.SECONDS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    return List.of();
-                });
+        when(episodicMemoryService.recall(eq(42L), any(), eq(false), anyInt())).thenAnswer(inv -> {
+            recallStarted.countDown();
+            try {
+                releaseRecall.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return List.of();
+        });
         // 检索完成即标记（不依赖召回）
         when(searchKnowledgeTool.searchKnowledge(any(), any())).thenAnswer(inv -> {
             searchDone.countDown();
@@ -374,14 +373,14 @@ class RetrieveNodeTest {
         when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of(k)));
         when(contextBuilderService.buildDocument(anyString(), any(), any())).thenReturn("<document>D</document>");
         EpisodicMemoryRef ref = new EpisodicMemoryRef(1L, "resolved_question", "上次用夹逼定理求过极限", "夹逼定理", "active", 0.9);
-        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), anyBoolean(), eq(5)))
+        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(false), eq(5)))
                 .thenReturn(List.of(ref));
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
 
         assertTrue(result.isEmpty());
         // recall_history=false → recall 被调用（active validity 过滤，spec §8.7），查询向量为预嵌入首条
-        verify(episodicMemoryService).recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), anyBoolean(), eq(5));
+        verify(episodicMemoryService).recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(false), eq(5));
         // 命中 → episodic_context 写入 metadata（与 document 同通道，不落 state）
         assertEquals(List.of(ref), config.metadata().get().get(EpisodicInterceptor.KEY_EPISODIC_CONTEXT));
     }
@@ -399,8 +398,7 @@ class RetrieveNodeTest {
 
         when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
         when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of()));
-        when(episodicMemoryService.recall(eq(42L), any(), anyBoolean(), anyInt()))
-                .thenReturn(List.of());
+        when(episodicMemoryService.recall(eq(42L), any(), eq(false), anyInt())).thenReturn(List.of());
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
 
@@ -408,7 +406,7 @@ class RetrieveNodeTest {
         // 首条重写查询文本只被 embed 一次（recall 与检索首条复用同一向量，消重断言）
         verify(embeddingModel, times(1)).embed("高等数学 学习方法");
         // 同一向量对象传入 recall 与 searchKnowledge（预嵌入结果复用）
-        verify(episodicMemoryService).recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), anyBoolean(), anyInt());
+        verify(episodicMemoryService).recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(false), anyInt());
         verify(searchKnowledgeTool).searchKnowledge(any(), argThat(RetrieveNodeTest::isQueryVector));
     }
 
@@ -426,14 +424,14 @@ class RetrieveNodeTest {
         when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
         when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of()));
         EpisodicMemoryRef ref = new EpisodicMemoryRef(2L, "learning_progress", "之前学到红黑树旋转", "红黑树", "superseded", 0.8);
-        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), anyBoolean(), eq(5)))
+        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(true), eq(5)))
                 .thenReturn(List.of(ref));
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
 
         assertTrue(result.isEmpty());
         // recall_history=true → 全量召回（无 active 过滤，superseded 历史记忆也可命中）
-        verify(episodicMemoryService).recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), anyBoolean(), eq(5));
+        verify(episodicMemoryService).recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(true), eq(5));
         assertEquals(List.of(ref), config.metadata().get().get(EpisodicInterceptor.KEY_EPISODIC_CONTEXT));
     }
 
@@ -490,7 +488,7 @@ class RetrieveNodeTest {
                         "c1", "内容", "", "讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "h".repeat(64)))));
         when(contextBuilderService.buildDocument(anyString(), any(), any())).thenReturn("<document>D</document>");
         // 召回服务异常 → 降级（仅记日志），主文档检索与回答不中断
-        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), anyBoolean(), eq(5)))
+        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(false), eq(5)))
                 .thenThrow(new RuntimeException("召回服务异常"));
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
@@ -521,7 +519,7 @@ class RetrieveNodeTest {
                         "c1", "内容", "", "讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "h".repeat(64)))));
         when(contextBuilderService.buildDocument(anyString(), any(), any())).thenReturn("<document>D</document>");
         // 无命中 → 空列表
-        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), anyBoolean(), eq(5)))
+        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(false), eq(5)))
                 .thenReturn(List.of());
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);

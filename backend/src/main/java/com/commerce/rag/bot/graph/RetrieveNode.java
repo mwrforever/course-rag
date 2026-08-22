@@ -73,6 +73,9 @@ import org.springframework.stereotype.Component;
  *       searchExecutor 隔离，避免自阻塞）；document_context 由 join 后主线程写入、episodic_context
  *       由 recallEpisodic 任务内写入（join 建立 happens-before，后续读取可见）——检索节点延迟从
  *       「三段之和」降为「约等于最慢一段」，高并发对话时不再白占 runPool worker</li>
+ *   <li>首条重写查询预嵌入（性能优化报告 3-1 方案 a）：embed 一次首条重写查询文本，
+ *       向量同时供经历记忆召回与知识检索首条复用（同文本两次远程 embed 收敛为一次）；
+ *       预嵌入失败/空向量 → 召回跳过（降级不注入）、知识检索内部自嵌兜底，不中断主流程</li>
  * </ol>
  *
  * <p>失败降级：检索异常 → 不写 document，ReactAgent 直接回答并记日志；系统检索空结果 →
@@ -317,9 +320,17 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
             float[] vector = embeddingModel.embed(text);
             return (vector == null || vector.length == 0) ? null : vector;
         } catch (RuntimeException e) {
-            log.warn("retrieveNode: 查询预嵌入失败（降级两链路内部兜底）: error={}", e.getMessage());
+            log.warn("retrieveNode: 查询预嵌入失败（降级两链路内部兜底）: query={}, error={}", truncateQuery(text), e.getMessage());
             return null;
         }
+    }
+
+    /** 日志用查询文本摘要（超长截断，避免日志膨胀） */
+    private static String truncateQuery(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= 30 ? text : text.substring(0, 30) + "...";
     }
 
     /**
