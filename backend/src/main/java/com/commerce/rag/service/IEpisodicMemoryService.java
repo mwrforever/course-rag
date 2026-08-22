@@ -40,14 +40,17 @@ public interface IEpisodicMemoryService extends IService<UserEpisodicMemory> {
     String findActiveMemoriesText(Long userId);
 
     /**
-     * 经历记忆召回（spec §8.7：embedding → Milvus(user_id 过滤 + recall_history 动态 validity)
+     * 经历记忆召回（spec §8.7：Milvus(user_id 过滤 + recall_history 动态 validity)
      * → memory_id → PG 主键批量取数 → 分数过滤 → topK）
      *
+     * <p>查询向量由上游 {@code RetrieveNode} 预嵌入传入（方案 3-1-a：首条重写查询的 embedding
+     * 与知识检索共用一次远程调用，不重复 embed）；向量为空直接降级空召回。
+     *
      * @param userId        所属用户（硬隔离过滤键）
-     * @param queryText     查询文本（用户原问题/重写查询）
+     * @param queryVector   召回查询向量（RetrieveNode 预嵌入，null/空 → 直接返回空列表）
      * @param recallHistory recall_history=false → validity=="active"；true → 不带 validity 条件（全量召回）
      * @param topK          返回条数上限
      * @return 按召回分降序的引用列表（无命中/失败返回空列表）
      */
-    List<EpisodicMemoryRef> recall(Long userId, String queryText, boolean recallHistory, int topK);
+    List<EpisodicMemoryRef> recall(Long userId, float[] queryVector, boolean recallHistory, int topK);
 }

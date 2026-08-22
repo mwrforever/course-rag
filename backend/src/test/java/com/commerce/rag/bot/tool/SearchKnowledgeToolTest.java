@@ -91,7 +91,7 @@ class SearchKnowledgeToolTest {
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
 
         // When
-        List<KnowledgeChunk> result = tool.searchSingle(query);
+        List<KnowledgeChunk> result = tool.searchSingle(query, null);
 
         // Then
         assertEquals(1, result.size());
@@ -121,7 +121,7 @@ class SearchKnowledgeToolTest {
         ArgumentCaptor<HybridSearchReq> reqCaptor = ArgumentCaptor.forClass(HybridSearchReq.class);
 
         // When
-        List<KnowledgeChunk> result = tool.searchSingle(query);
+        List<KnowledgeChunk> result = tool.searchSingle(query, null);
 
         // Then
         verify(milvusClientV2).hybridSearch(reqCaptor.capture());
@@ -147,7 +147,7 @@ class SearchKnowledgeToolTest {
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenThrow(new RuntimeException("连接超时"));
 
         // When
-        List<KnowledgeChunk> result = tool.searchSingle(query);
+        List<KnowledgeChunk> result = tool.searchSingle(query, null);
 
         // Then: 降级返回空列表，不抛异常
         assertNotNull(result);
@@ -162,7 +162,7 @@ class SearchKnowledgeToolTest {
         when(embeddingModel.embed("测试查询")).thenThrow(new RuntimeException("Embedding服务不可用"));
 
         // When
-        List<KnowledgeChunk> result = tool.searchSingle(query);
+        List<KnowledgeChunk> result = tool.searchSingle(query, null);
 
         // Then: 降级返回空列表
         assertNotNull(result);
@@ -178,7 +178,7 @@ class SearchKnowledgeToolTest {
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(null);
 
         // When
-        List<KnowledgeChunk> result = tool.searchSingle(query);
+        List<KnowledgeChunk> result = tool.searchSingle(query, null);
 
         // Then
         assertNotNull(result);
@@ -217,8 +217,8 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchKnowledge 空查询列表 — 直接返回空结果，不触达 Milvus/融合/精排")
     void searchKnowledge_emptyQueries_returnsEmpty() {
-        assertTrue(tool.searchKnowledge(null).chunks().isEmpty());
-        assertTrue(tool.searchKnowledge(List.of()).chunks().isEmpty());
+        assertTrue(tool.searchKnowledge(null, null).chunks().isEmpty());
+        assertTrue(tool.searchKnowledge(List.of(), null).chunks().isEmpty());
 
         verifyNoInteractions(milvusClientV2, fusionService, rerankService);
     }
@@ -238,7 +238,7 @@ class SearchKnowledgeToolTest {
         when(fusionService.fuse(anyMap())).thenReturn(List.of(k1, k2));
         when(rerankService.rerank("Redis 配置", List.of(k1, k2))).thenReturn(List.of(k2, k1));
 
-        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q1, q2));
+        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q1, q2), null);
 
         // 精排结果即最终输出（k2 在前）
         assertEquals(2, result.chunks().size());
@@ -270,7 +270,7 @@ class SearchKnowledgeToolTest {
         when(fusionService.fuse(anyMap())).thenReturn(List.of(high, low)); // RRF 降序：high 在前
         when(rerankService.rerank("Redis 配置", List.of(high))).thenReturn(List.of(high));
 
-        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q1, q2));
+        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q1, q2), null);
 
         // rerank 仅收到去重后的 1 条（同 hash 保留首次出现的 high）
         verify(rerankService)
@@ -297,7 +297,7 @@ class SearchKnowledgeToolTest {
                 .thenReturn(List.of(
                         new KnowledgeChunk("c1", "相同内容文本。", "", "", "h1", 0.0, IntentType.KNOWLEDGE_QUESTION, null)));
 
-        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q));
+        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q), null);
 
         // 无 sha256 时 ContentHash.of(content) 归一化相同 → 也去重为 1 条
         verify(rerankService).rerank(eq("查询"), argThat(list -> list.size() == 1));
@@ -310,7 +310,7 @@ class SearchKnowledgeToolTest {
         TypedQuery q = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
         when(embeddingModel.embed("查询")).thenThrow(new RuntimeException("Milvus 连接失败"));
 
-        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q));
+        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q), null);
 
         assertTrue(result.chunks().isEmpty());
         // 降级后融合/精排在空结果上正常走通
@@ -333,7 +333,7 @@ class SearchKnowledgeToolTest {
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
 
         long start = System.currentTimeMillis();
-        KnowledgeSearchResult result = tool.searchKnowledge(List.of(fast, slow));
+        KnowledgeSearchResult result = tool.searchKnowledge(List.of(fast, slow), null);
         long elapsed = System.currentTimeMillis() - start;
 
         // 约 10s 超时即返回，不等待慢查询完成
@@ -351,7 +351,7 @@ class SearchKnowledgeToolTest {
         TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
         when(embeddingModel.embed("查询")).thenReturn(new float[0]);
 
-        assertTrue(tool.searchSingle(query).isEmpty());
+        assertTrue(tool.searchSingle(query, null).isEmpty());
         verify(milvusClientV2, never()).hybridSearch(any());
     }
 
@@ -361,7 +361,7 @@ class SearchKnowledgeToolTest {
         TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
         when(embeddingModel.embed("查询")).thenReturn(null);
 
-        assertTrue(tool.searchSingle(query).isEmpty());
+        assertTrue(tool.searchSingle(query, null).isEmpty());
     }
 
     @Test
@@ -373,7 +373,7 @@ class SearchKnowledgeToolTest {
         when(resp.getSearchResults()).thenReturn(null);
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
 
-        assertTrue(tool.searchSingle(query).isEmpty());
+        assertTrue(tool.searchSingle(query, null).isEmpty());
     }
 
     @Test
@@ -385,7 +385,7 @@ class SearchKnowledgeToolTest {
         when(resp.getSearchResults()).thenReturn(List.of());
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
 
-        assertTrue(tool.searchSingle(query).isEmpty());
+        assertTrue(tool.searchSingle(query, null).isEmpty());
     }
 
     @Test
@@ -396,7 +396,7 @@ class SearchKnowledgeToolTest {
         SearchResp searchResp = mockSearchResp();
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
 
-        tool.searchSingle(query);
+        tool.searchSingle(query, null);
 
         ArgumentCaptor<HybridSearchReq> reqCaptor = ArgumentCaptor.forClass(HybridSearchReq.class);
         verify(milvusClientV2).hybridSearch(reqCaptor.capture());
@@ -419,7 +419,7 @@ class SearchKnowledgeToolTest {
         SearchResp searchResp = mockSearchResp();
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
 
-        tool.searchSingle(query);
+        tool.searchSingle(query, null);
 
         ArgumentCaptor<HybridSearchReq> reqCaptor = ArgumentCaptor.forClass(HybridSearchReq.class);
         verify(milvusClientV2).hybridSearch(reqCaptor.capture());
@@ -459,7 +459,7 @@ class SearchKnowledgeToolTest {
         when(resp.getSearchResults()).thenReturn(List.of(List.of(withNullEntity, partial)));
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
 
-        List<KnowledgeChunk> chunks = tool.searchSingle(query);
+        List<KnowledgeChunk> chunks = tool.searchSingle(query, null);
 
         assertEquals(1, chunks.size());
         assertEquals("chunk_002", chunks.get(0).chunkId());
@@ -474,7 +474,7 @@ class SearchKnowledgeToolTest {
         when(embeddingModel.embed((String) null)).thenReturn(new float[] {0.1f});
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(null);
 
-        assertTrue(tool.searchSingle(query).isEmpty());
+        assertTrue(tool.searchSingle(query, null).isEmpty());
     }
 
     @Test
@@ -485,6 +485,52 @@ class SearchKnowledgeToolTest {
         when(embeddingModel.embed(longText)).thenReturn(new float[] {0.1f});
         when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenThrow(new RuntimeException("连接失败"));
 
-        assertTrue(tool.searchSingle(query).isEmpty());
+        assertTrue(tool.searchSingle(query, null).isEmpty());
+    }
+
+    @Test
+    @DisplayName("searchSingle — 传入预向量时不再调用 embed（方案 3-1-a 首条消重）")
+    void searchSingle_withPrecomputedVector_skipsEmbed() {
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "如何配置Redis", null);
+        float[] pre = new float[] {0.5f, 0.6f};
+        SearchResp searchResp = mockSearchResp();
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
+
+        List<KnowledgeChunk> result = tool.searchSingle(query, pre);
+
+        assertEquals(1, result.size());
+        // 预向量非空 → 内部不再 embed（同文本两次远程调用收敛为一次）
+        verify(embeddingModel, never()).embed(anyString());
+        // 预向量透传进 dense 检索请求
+        ArgumentCaptor<HybridSearchReq> cap = ArgumentCaptor.forClass(HybridSearchReq.class);
+        verify(milvusClientV2).hybridSearch(cap.capture());
+        AnnSearchReq dense = cap.getValue().getSearchRequests().get(0);
+        FloatVec vec = (FloatVec) dense.getVectors().get(0);
+        // FloatVec 内部以 List<Float> 承载向量（float[] 构造器转 List），逐元素断言透传正确
+        @SuppressWarnings("unchecked")
+        List<Float> vectorData = (List<Float>) vec.getData();
+        assertEquals(pre[0], vectorData.get(0), 1e-4f);
+        assertEquals(pre[1], vectorData.get(1), 1e-4f);
+    }
+
+    @Test
+    @DisplayName("searchKnowledge — 预向量仅作用于首条查询，其余查询仍内部 embed")
+    void searchKnowledge_preVectorOnlyFirstQuery() {
+        TypedQuery q1 = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "Redis 配置", null);
+        TypedQuery q2 = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "Redis 哨兵", null);
+        // 首条有预向量 → "Redis 配置" 不再 embed；第二条仍需 self-embed
+        when(embeddingModel.embed("Redis 哨兵")).thenReturn(new float[] {0.2f});
+        SearchResp searchResp = mockSearchResp();
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(searchResp);
+        KnowledgeChunk k1 = new KnowledgeChunk("c1", "内容1", "", "", "h1", 0.9, IntentType.KNOWLEDGE_QUESTION, null);
+        when(fusionService.fuse(anyMap())).thenReturn(List.of(k1));
+        when(rerankService.rerank(eq("Redis 配置"), any())).thenReturn(List.of(k1));
+
+        KnowledgeSearchResult result = tool.searchKnowledge(List.of(q1, q2), new float[] {0.1f, 0.2f});
+
+        assertEquals(1, result.chunks().size());
+        // 首条不重复 embed；第二条照常 embed
+        verify(embeddingModel, never()).embed("Redis 配置");
+        verify(embeddingModel, times(1)).embed("Redis 哨兵");
     }
 }

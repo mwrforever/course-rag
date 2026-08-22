@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -74,6 +75,14 @@ class RetrieveNodeTest {
         return t;
     });
 
+    /** 预嵌入向量桩值（3-1 方案 a：首条重写查询 embed 一次供 recall/检索复用；argThat 内容匹配断言） */
+    private static final float[] QUERY_VECTOR = new float[] {0.1f, 0.2f};
+
+    /** 预嵌入向量内容匹配器（与 QUERY_VECTOR 内容一致） */
+    private static boolean isQueryVector(float[] v) {
+        return v != null && v.length == 2 && v[0] == 0.1f && v[1] == 0.2f;
+    }
+
     @Mock
     private SearchKnowledgeTool searchKnowledgeTool;
 
@@ -122,7 +131,9 @@ class RetrieveNodeTest {
         when(courseNameMapper.mapCourseNames(List.of("高等数学"))).thenReturn(List.of("101"));
         KnowledgeChunk k =
                 new KnowledgeChunk("c1", "内容", "", "讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "h".repeat(64));
-        when(searchKnowledgeTool.searchKnowledge(any())).thenReturn(new KnowledgeSearchResult(List.of(k)));
+        // 预嵌入（首条重写查询向量，供 recall/检索复用）
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of(k)));
         when(contextBuilderService.buildDocument("高等数学怎么学", List.of("高等数学 学习方法"), List.of(k)))
                 .thenReturn("<document>D</document>");
 
@@ -134,10 +145,12 @@ class RetrieveNodeTest {
         assertEquals(
                 "<document>D</document>",
                 config.metadata().get().get(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT));
-        // TypedQuery 携带 courseIds 过滤
+        // TypedQuery 携带 courseIds 过滤；预向量复用不重复 embed
         verify(searchKnowledgeTool)
-                .searchKnowledge(argThat(queries ->
-                        queries.size() == 1 && queries.get(0).courseIds().equals(List.of("101"))));
+                .searchKnowledge(
+                        argThat(queries -> queries.size() == 1
+                                && queries.get(0).courseIds().equals(List.of("101"))),
+                        argThat(RetrieveNodeTest::isQueryVector));
     }
 
     @Test
@@ -149,12 +162,13 @@ class RetrieveNodeTest {
         RunnableConfig config =
                 RunnableConfig.builder().addMetadata("userId", "u1").build();
         when(courseNameMapper.mapCourseNames(List.of("未知课程"))).thenReturn(List.of());
-        when(searchKnowledgeTool.searchKnowledge(any())).thenReturn(new KnowledgeSearchResult(List.of()));
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of()));
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
 
         verify(searchKnowledgeTool)
-                .searchKnowledge(argThat(queries -> queries.get(0).courseIds() == null));
+                .searchKnowledge(argThat(queries -> queries.get(0).courseIds() == null), any());
         // 空结果不写 document、不调 ContextBuilder（实现短路）
         verify(contextBuilderService, never()).buildDocument(any(), any(), any());
         assertTrue(config.metadata().get().get(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT) == null);
@@ -179,8 +193,8 @@ class RetrieveNodeTest {
                 .build();
 
         // 系统检索为空 → 系统侧组装不触发，仅执行附件局部检索链路
-        when(searchKnowledgeTool.searchKnowledge(any())).thenReturn(new KnowledgeSearchResult(List.of()));
         when(embeddingModel.embed(anyString())).thenReturn(new float[] {1.0f, 0.0f});
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of()));
         when(localSearchService.search(anyList(), any(), anyInt()))
                 .thenReturn(List.of(new DocumentLocalChunk("图表纵轴为销量", new float[] {1.0f}, 0)));
         when(contextBuilderService.buildUserDocument(anyList(), anyMap()))
@@ -211,7 +225,7 @@ class RetrieveNodeTest {
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
 
-        verify(searchKnowledgeTool, never()).searchKnowledge(any());
+        verify(searchKnowledgeTool, never()).searchKnowledge(any(), any());
         verify(courseNameMapper, never()).mapCourseNames(any());
         assertTrue(config.metadata().get().get(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT) == null);
         assertTrue(result.isEmpty());
@@ -226,7 +240,7 @@ class RetrieveNodeTest {
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
 
-        verify(searchKnowledgeTool, never()).searchKnowledge(any());
+        verify(searchKnowledgeTool, never()).searchKnowledge(any(), any());
         assertTrue(result.isEmpty());
     }
 
@@ -255,11 +269,11 @@ class RetrieveNodeTest {
         // 系统检索（与既有用例一致）
         KnowledgeChunk k =
                 new KnowledgeChunk("c1", "内容", "", "讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "h".repeat(64));
-        when(searchKnowledgeTool.searchKnowledge(any())).thenReturn(new KnowledgeSearchResult(List.of(k)));
+        when(embeddingModel.embed(anyString())).thenReturn(new float[] {1.0f, 0.0f});
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of(k)));
         when(contextBuilderService.buildDocument(anyString(), any(), any()))
                 .thenReturn("<document>\n检索说明:...\n</system-document>\n</document>");
         // 局部检索链：embed(原问题) → search → buildUserDocument → appendUserDocument
-        when(embeddingModel.embed(anyString())).thenReturn(new float[] {1.0f, 0.0f});
         when(localSearchService.search(anyList(), any(), anyInt()))
                 .thenReturn(List.of(new DocumentLocalChunk("红色代表本季度", new float[] {2.0f}, 1)));
         when(contextBuilderService.buildUserDocument(anyList(), anyMap()))
@@ -305,19 +319,20 @@ class RetrieveNodeTest {
                 .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
                 .build();
 
-        // 召回阻塞（模拟 embed+Milvus+PG 慢链路），直到检索被验证已调用后释放
-        when(episodicMemoryService.recall(eq(42L), anyString(), anyBoolean(), anyInt()))
-                .thenAnswer(inv -> {
-                    recallStarted.countDown();
-                    try {
-                        releaseRecall.await(5, TimeUnit.SECONDS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    return List.of();
-                });
+        // 预嵌入向量供 recall/检索复用（3-1 方案 a）
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        // 召回阻塞（模拟 Milvus+PG 慢链路），直到检索被验证已调用后释放
+        when(episodicMemoryService.recall(eq(42L), any(), eq(false), anyInt())).thenAnswer(inv -> {
+            recallStarted.countDown();
+            try {
+                releaseRecall.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return List.of();
+        });
         // 检索完成即标记（不依赖召回）
-        when(searchKnowledgeTool.searchKnowledge(any())).thenAnswer(inv -> {
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenAnswer(inv -> {
             searchDone.countDown();
             return new KnowledgeSearchResult(List.of());
         });
@@ -354,18 +369,45 @@ class RetrieveNodeTest {
         when(courseNameMapper.mapCourseNames(List.of("高等数学"))).thenReturn(List.of("101"));
         KnowledgeChunk k =
                 new KnowledgeChunk("c1", "内容", "", "讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "h".repeat(64));
-        when(searchKnowledgeTool.searchKnowledge(any())).thenReturn(new KnowledgeSearchResult(List.of(k)));
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of(k)));
         when(contextBuilderService.buildDocument(anyString(), any(), any())).thenReturn("<document>D</document>");
         EpisodicMemoryRef ref = new EpisodicMemoryRef(1L, "resolved_question", "上次用夹逼定理求过极限", "夹逼定理", "active", 0.9);
-        when(episodicMemoryService.recall(42L, "高等数学 学习方法", false, 5)).thenReturn(List.of(ref));
+        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(false), eq(5)))
+                .thenReturn(List.of(ref));
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
 
         assertTrue(result.isEmpty());
-        // recall_history=false → recall 被调用（active validity 过滤，spec §8.7），查询取重写查询首条
-        verify(episodicMemoryService).recall(42L, "高等数学 学习方法", false, 5);
+        // recall_history=false → recall 被调用（active validity 过滤，spec §8.7），查询向量为预嵌入首条
+        verify(episodicMemoryService).recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(false), eq(5));
         // 命中 → episodic_context 写入 metadata（与 document 同通道，不落 state）
         assertEquals(List.of(ref), config.metadata().get().get(EpisodicInterceptor.KEY_EPISODIC_CONTEXT));
+    }
+
+    @Test
+    @DisplayName("apply — 首条重写查询仅预嵌入一次（方案 3-1-a：recall 与知识检索共享向量，不重复 embed）")
+    void apply_preEmbedOnce_reusedByRecallAndSearch() throws Exception {
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 学习方法"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("高等数学怎么学"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
+                .build();
+
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of()));
+        when(episodicMemoryService.recall(eq(42L), any(), eq(false), anyInt())).thenReturn(List.of());
+
+        Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
+
+        assertTrue(result.isEmpty());
+        // 首条重写查询文本只被 embed 一次（recall 与检索首条复用同一向量，消重断言）
+        verify(embeddingModel, times(1)).embed("高等数学 学习方法");
+        // 同一向量对象传入 recall 与 searchKnowledge（预嵌入结果复用）
+        verify(episodicMemoryService).recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(false), anyInt());
+        verify(searchKnowledgeTool).searchKnowledge(any(), argThat(RetrieveNodeTest::isQueryVector));
     }
 
     @Test
@@ -379,15 +421,17 @@ class RetrieveNodeTest {
                 .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
                 .build();
         // 系统检索为空：验证 recall 独立于 document 分支执行（公共段先于检索空/非空两分支）
-        when(searchKnowledgeTool.searchKnowledge(any())).thenReturn(new KnowledgeSearchResult(List.of()));
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of()));
         EpisodicMemoryRef ref = new EpisodicMemoryRef(2L, "learning_progress", "之前学到红黑树旋转", "红黑树", "superseded", 0.8);
-        when(episodicMemoryService.recall(42L, "之前说的红黑树旋转", true, 5)).thenReturn(List.of(ref));
+        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(true), eq(5)))
+                .thenReturn(List.of(ref));
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
 
         assertTrue(result.isEmpty());
         // recall_history=true → 全量召回（无 active 过滤，superseded 历史记忆也可命中）
-        verify(episodicMemoryService).recall(42L, "之前说的红黑树旋转", true, 5);
+        verify(episodicMemoryService).recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(true), eq(5));
         assertEquals(List.of(ref), config.metadata().get().get(EpisodicInterceptor.KEY_EPISODIC_CONTEXT));
     }
 
@@ -404,7 +448,7 @@ class RetrieveNodeTest {
 
         assertTrue(result.isEmpty());
         // 非 knowledge_question 分支不召回（spec §8.7 仅知识问题触发）
-        verify(episodicMemoryService, never()).recall(anyLong(), anyString(), anyBoolean(), anyInt());
+        verify(episodicMemoryService, never()).recall(anyLong(), any(), anyBoolean(), anyInt());
     }
 
     @Test
@@ -416,14 +460,15 @@ class RetrieveNodeTest {
                 new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("极限怎么求"))));
         // metadata 不含 userId（不 addMetadata）→ spec §10-6 硬隔离，跳过召回
         RunnableConfig config = RunnableConfig.builder().threadId("s1").build();
-        when(searchKnowledgeTool.searchKnowledge(any())).thenReturn(new KnowledgeSearchResult(List.of()));
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of()));
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
 
         assertTrue(result.isEmpty());
         // 无 userId → 不调用 recall；主文档检索照常执行（不中断）
-        verify(episodicMemoryService, never()).recall(anyLong(), anyString(), anyBoolean(), anyInt());
-        verify(searchKnowledgeTool).searchKnowledge(any());
+        verify(episodicMemoryService, never()).recall(anyLong(), any(), anyBoolean(), anyInt());
+        verify(searchKnowledgeTool).searchKnowledge(any(), any());
     }
 
     @Test
@@ -437,12 +482,14 @@ class RetrieveNodeTest {
                 .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
                 .build();
 
-        when(searchKnowledgeTool.searchKnowledge(any()))
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any()))
                 .thenReturn(new KnowledgeSearchResult(List.of(new KnowledgeChunk(
                         "c1", "内容", "", "讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "h".repeat(64)))));
         when(contextBuilderService.buildDocument(anyString(), any(), any())).thenReturn("<document>D</document>");
         // 召回服务异常 → 降级（仅记日志），主文档检索与回答不中断
-        when(episodicMemoryService.recall(42L, "高等数学 学习方法", false, 5)).thenThrow(new RuntimeException("召回服务异常"));
+        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(false), eq(5)))
+                .thenThrow(new RuntimeException("召回服务异常"));
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
 
@@ -466,12 +513,14 @@ class RetrieveNodeTest {
                 .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
                 .build();
 
-        when(searchKnowledgeTool.searchKnowledge(any()))
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any()))
                 .thenReturn(new KnowledgeSearchResult(List.of(new KnowledgeChunk(
                         "c1", "内容", "", "讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "h".repeat(64)))));
         when(contextBuilderService.buildDocument(anyString(), any(), any())).thenReturn("<document>D</document>");
         // 无命中 → 空列表
-        when(episodicMemoryService.recall(42L, "高等数学 学习方法", false, 5)).thenReturn(List.of());
+        when(episodicMemoryService.recall(eq(42L), argThat(RetrieveNodeTest::isQueryVector), eq(false), eq(5)))
+                .thenReturn(List.of());
 
         Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
 
@@ -482,5 +531,57 @@ class RetrieveNodeTest {
                 config.metadata().get().get(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT));
         // 无命中 → 不写 episodic_context（EpisodicInterceptor 原样透传）
         assertTrue(config.metadata().get().get(EpisodicInterceptor.KEY_EPISODIC_CONTEXT) == null);
+    }
+
+    @Test
+    @DisplayName("apply — 预嵌入失败/空向量：跳过召回且不写 episodic_context，文档检索照常（噪声隔离不中断）")
+    void apply_preEmbedFails_recallSkipped_documentStillInjected() throws Exception {
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 学习方法"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("高等数学怎么学"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
+                .build();
+
+        // 预嵌入抛异常 → embedSafely 捕获返回 null → 召回跳过；检索仍执行（其内部自嵌兜底属
+        // SearchKnowledgeTool 行为，此处 mock 直接返回命中结果验证编排不中断且 document 照常注入）
+        when(embeddingModel.embed(anyString())).thenThrow(new RuntimeException("embedding 服务不可用"));
+        KnowledgeChunk k =
+                new KnowledgeChunk("c1", "内容", "", "讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "h".repeat(64));
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of(k)));
+        when(contextBuilderService.buildDocument(anyString(), any(), any())).thenReturn("<document>D</document>");
+
+        Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
+
+        assertTrue(result.isEmpty());
+        // 预嵌入失败 → 不调 recall（无向量不检索），主文档检索与回答不中断
+        verify(episodicMemoryService, never()).recall(anyLong(), any(), anyBoolean(), anyInt());
+        verify(searchKnowledgeTool).searchKnowledge(any(), any());
+        assertEquals(
+                "<document>D</document>",
+                config.metadata().get().get(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT));
+        assertTrue(config.metadata().get().get(EpisodicInterceptor.KEY_EPISODIC_CONTEXT) == null);
+    }
+
+    @Test
+    @DisplayName("apply — 预嵌入返回空向量：与失败同降级（召回跳过，检索照常）")
+    void apply_preEmbedEmptyVector_recallSkipped() throws Exception {
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 学习方法"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("高等数学怎么学"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
+                .build();
+
+        when(embeddingModel.embed(anyString())).thenReturn(new float[0]);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of()));
+
+        Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
+
+        assertTrue(result.isEmpty());
+        verify(episodicMemoryService, never()).recall(anyLong(), any(), anyBoolean(), anyInt());
+        verify(searchKnowledgeTool).searchKnowledge(any(), any());
     }
 }

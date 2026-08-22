@@ -127,10 +127,15 @@ public class SearchKnowledgeTool {
      * <p>返回 KnowledgeSearchResult 对象（record DTO），非 String。
      * S1 检索链路重构：本方法由 RetrieveNode（图节点）调用，检索结果不直接进入模型上下文。
      *
-     * @param queries 查询重写后的多条覆盖性查询
+     * <p>预向量消重（方案 3-1-a）：首条查询若是经历记忆召回重复使用的文本，其向量由
+     * RetrieveNode 预嵌入 {@code firstQueryVector} 传入——query[0] 不再次远程 embed，
+     * 其余查询仍内部 embed；null/空则 query[0] 走内部自嵌兜底（与改造前行为等价）。
+     *
+     * @param queries           查询重写后的多条覆盖性查询
+     * @param firstQueryVector  首条查询的预嵌入向量（null/空 → 内部自嵌兜底）
      * @return 去重、融合、精排后的知识检索结果
      */
-    public KnowledgeSearchResult searchKnowledge(List<TypedQuery> queries) {
+    public KnowledgeSearchResult searchKnowledge(List<TypedQuery> queries, float[] firstQueryVector) {
         if (queries == null || queries.isEmpty()) {
             return new KnowledgeSearchResult(Collections.emptyList());
         }
@@ -138,7 +143,7 @@ public class SearchKnowledgeTool {
         log.info("开始知识检索: queries={}", queries.size());
 
         // 1. 并行检索
-        Map<TypedQuery, List<KnowledgeChunk>> rawResults = searchInParallel(queries);
+        Map<TypedQuery, List<KnowledgeChunk>> rawResults = searchInParallel(queries, firstQueryVector);
 
         // 2. RRF 融合 + chunk_id 去重
         List<KnowledgeChunk> fused = fusionService.fuse(rawResults);
@@ -163,13 +168,17 @@ public class SearchKnowledgeTool {
 
     /**
      * 并行检索 —— 每条 TypedQuery 独立查询 Milvus，CompletableFuture.allOf 汇总
+     *
+     * @param queries           查询列表
+     * @param firstQueryVector  首条查询的预嵌入向量（null/空 → 首条内部自嵌兜底）
      */
-    private Map<TypedQuery, List<KnowledgeChunk>> searchInParallel(List<TypedQuery> queries) {
+    private Map<TypedQuery, List<KnowledgeChunk>> searchInParallel(List<TypedQuery> queries, float[] firstQueryVector) {
         Map<TypedQuery, List<KnowledgeChunk>> results = new LinkedHashMap<>();
 
         @SuppressWarnings("unchecked")
         CompletableFuture<Void>[] futures = queries.stream()
-                .map(q -> CompletableFuture.supplyAsync(() -> searchSingle(q), searchExecutor)
+                .map(q -> CompletableFuture.supplyAsync(
+                                () -> searchSingle(q, isFirst(q, queries) ? firstQueryVector : null), searchExecutor)
                         .thenAccept(chunks -> {
                             synchronized (results) {
                                 results.put(q, chunks);
@@ -186,12 +195,18 @@ public class SearchKnowledgeTool {
         return results;
     }
 
+    /** 判断查询是否为列表首条（与调用方传入的预向量对应） */
+    private static boolean isFirst(TypedQuery candidate, List<TypedQuery> queries) {
+        return !queries.isEmpty() && queries.get(0) == candidate;
+    }
+
     /**
      * 单条查询的 Milvus 混合检索逻辑（v2 API：hybridSearch）
      *
      * <p>流程：
      * <ol>
-     *   <li>使用 EmbeddingModel 将 query.queryText() 向量化 → dense 向量</li>
+     *   <li>查询向量化：{@code precomputedVector} 非空（首条查询预嵌入，方案 3-1-a 消重）
+     *       则直接复用，否则使用 EmbeddingModel 将 query.queryText() 向量化 → dense 向量</li>
      *   <li>构建 Milvus 过滤表达式（仅 course_id 子句，无 courseIds 时不设过滤）</li>
      *   <li>构建 dense AnnSearchReq（FloatVec + COSINE）</li>
      *   <li>构建 sparse AnnSearchReq（EmbeddedText + BM25）</li>
@@ -202,13 +217,16 @@ public class SearchKnowledgeTool {
      *
      * <p>降级：任何异常时返回空列表，不中断主流程。
      *
-     * @param query 类型化查询
+     * @param query              类型化查询
+     * @param precomputedVector  预嵌入向量（首条查询传入；null/空 → 内部自嵌兜底）
      * @return 检索到的 KnowledgeChunk 列表（可能为空）
      */
-    List<KnowledgeChunk> searchSingle(TypedQuery query) {
+    List<KnowledgeChunk> searchSingle(TypedQuery query, float[] precomputedVector) {
         try {
-            // 1. 向量化查询文本（dense 向量）
-            float[] denseVector = embeddingModel.embed(query.queryText());
+            // 1. 向量化查询文本（dense 向量）：优先复用首条查询的预嵌入向量（不重复远程调用）
+            float[] denseVector = (precomputedVector != null && precomputedVector.length > 0)
+                    ? precomputedVector
+                    : embeddingModel.embed(query.queryText());
             if (denseVector == null || denseVector.length == 0) {
                 log.warn("Embedding 返回空向量: query={}", truncate(query.queryText(), 30));
                 return Collections.emptyList();

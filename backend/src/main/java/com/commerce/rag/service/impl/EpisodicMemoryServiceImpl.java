@@ -288,17 +288,13 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
     // ========================================================================
 
     @Override
-    public List<EpisodicMemoryRef> recall(Long userId, String queryText, boolean recallHistory, int topK) {
-        if (userId == null || queryText == null || queryText.isBlank()) {
+    public List<EpisodicMemoryRef> recall(Long userId, float[] queryVector, boolean recallHistory, int topK) {
+        if (userId == null || queryVector == null || queryVector.length == 0) {
             return List.of();
         }
         int prefetch = properties.getEpisodic().getPrefetchTopK();
         try {
-            float[] vector = embeddingModel.embed(queryText);
-            if (vector == null || vector.length == 0) {
-                log.warn("经历记忆召回: embedding 空向量，跳过: userId={}", userId);
-                return List.of();
-            }
+            // 查询向量由 RetrieveNode 预嵌入传入（方案 3-1-a：与知识检索首条共用一次远程调用），此处不再 embed
             // 动态 validity 过滤（spec §8.7）：recall_history=false 默认只召 active；true 全量含历史
             String filter = MilvusCollectionInitializer.FIELD_MEMORY_USER_ID + " == \"" + userId + "\""
                     + (recallHistory
@@ -308,7 +304,7 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
             // HybridSearchReq，见 SearchKnowledgeTool；SQL 同 SDK 实际签名，简报差异见本模块类注释）
             SearchReq searchReq = SearchReq.builder()
                     .collectionName(MilvusCollectionInitializer.COLLECTION_MEMORY)
-                    .data(List.of(new FloatVec(vector)))
+                    .data(List.of(new FloatVec(queryVector)))
                     .annsField(MilvusCollectionInitializer.FIELD_MEMORY_EMBEDDING)
                     .metricType(IndexParam.MetricType.COSINE)
                     .searchParams(Map.of("ef", hnswEf))
