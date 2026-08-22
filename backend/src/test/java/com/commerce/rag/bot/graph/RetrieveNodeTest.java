@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,6 +38,11 @@ import com.commerce.rag.service.AttachmentLocalSearchService;
 import com.commerce.rag.service.IEpisodicMemoryService;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -60,6 +66,13 @@ class RetrieveNodeTest {
 
     /** 真实属性对象：recallTopK 取默认 5，供 recall 断言精确匹配 */
     private MemoryProperties memoryProperties = new MemoryProperties();
+
+    /** 检索并行执行器（daemon：不阻塞测试 JVM 退出；2 线程与生产配置同构） */
+    private final ExecutorService retrieveExecutor = Executors.newFixedThreadPool(2, r -> {
+        Thread t = new Thread(r, "test-retrieve-node-");
+        t.setDaemon(true);
+        return t;
+    });
 
     @Mock
     private SearchKnowledgeTool searchKnowledgeTool;
@@ -90,7 +103,8 @@ class RetrieveNodeTest {
                 localSearchService,
                 embeddingModel,
                 episodicMemoryService,
-                memoryProperties);
+                memoryProperties,
+                2);
     }
 
     @Test
@@ -273,6 +287,56 @@ class RetrieveNodeTest {
         assertEquals(merged, config.metadata().get().get(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT));
         assertTrue(String.valueOf(config.metadata().get().get(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT))
                 .contains("<user-document>"));
+    }
+
+    @Test
+    @DisplayName("apply — episodic 召回与知识检索并行执行（互不等待，检索延迟取最慢段）")
+    void apply_runsEpisodicRecallAndKnowledgeSearchInParallel() throws Exception {
+        // 并行性证明：召回阻塞在 latch 期间，知识检索须已被调用（若串行，检索要等召回释放才开始，
+        // searchDone 不会在召回阻塞期内完成）
+        CountDownLatch recallStarted = new CountDownLatch(1);
+        CountDownLatch searchDone = new CountDownLatch(1);
+        CountDownLatch releaseRecall = new CountDownLatch(1);
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 学习方法"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("高等数学怎么学"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
+                .build();
+
+        // 召回阻塞（模拟 embed+Milvus+PG 慢链路），直到检索被验证已调用后释放
+        when(episodicMemoryService.recall(eq(42L), anyString(), anyBoolean(), anyInt()))
+                .thenAnswer(inv -> {
+                    recallStarted.countDown();
+                    try {
+                        releaseRecall.await(5, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return List.of();
+                });
+        // 检索完成即标记（不依赖召回）
+        when(searchKnowledgeTool.searchKnowledge(any())).thenAnswer(inv -> {
+            searchDone.countDown();
+            return new KnowledgeSearchResult(List.of());
+        });
+
+        // apply 在独立线程执行（其内部 join 会等待阻塞中的召回任务）
+        CompletableFuture<Map<String, Object>> applyFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+                return RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        // 召回已启动且阻塞中；此时检索已完成 → 证明两段并行（串行实现下检索要等召回释放才启动）
+        assertTrue(recallStarted.await(5, TimeUnit.SECONDS), "召回任务已启动");
+        assertTrue(searchDone.await(5, TimeUnit.SECONDS), "召回阻塞期间知识检索已并行完成（未等召回释放）");
+        releaseRecall.countDown();
+        Map<String, Object> result = applyFuture.get(5, TimeUnit.SECONDS);
+        assertTrue(result.isEmpty());
     }
 
     @Test

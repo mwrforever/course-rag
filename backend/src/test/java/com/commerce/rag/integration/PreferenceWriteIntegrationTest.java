@@ -265,6 +265,51 @@ class PreferenceWriteIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("同批单值 key 双候选（明确冲突）→ 第二条转 UPDATE，不撞唯一索引、整批不回滚（BUG-03）")
+    void applyExtraction_sameBatchConflict_updatesInsteadOfViolatingIndex() {
+        Long userId = registerUser("pref_test_batch1", "STUDENT");
+        // 同批两条同 key 候选（LLM 一批输出矛盾值）：第二条必须看到第一条的写入 → UPDATE 而非再次 CREATE
+        int written = preferenceService.applyExtraction(
+                userId,
+                new PreferenceExtractionResult(
+                        List.of(
+                                new PreferenceCandidate("response_language", "英文", 0.9, 0.9),
+                                new PreferenceCandidate("response_language", "中文", 0.9, 0.9)),
+                        List.of()));
+        assertEquals(2, written, "CREATE_ACTIVE + UPDATE 各计 1（整批不回滚）");
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT value, status, version FROM user_preference"
+                        + " WHERE user_id=? AND key='response_language' AND deleted=0",
+                userId);
+        assertEquals("中文", row.get("value"), "后序候选作为最新明确表达生效");
+        assertEquals("active", row.get("status"));
+        assertEquals(2, ((Number) row.get("version")).intValue(), "冲突 UPDATE 新行 version+1");
+        Long deletedCnt = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM user_preference" + " WHERE user_id=? AND key='response_language' AND deleted=1",
+                Long.class,
+                userId);
+        assertEquals(1L, deletedCnt, "被替换的英文软删审计");
+    }
+
+    @Test
+    @DisplayName("同批同 key 同 value 双候选 → 第二条 REINFORCE 计数累加，无重复行（BUG-03 批内强引用）")
+    void applyExtraction_sameBatchSameValue_reinforces() {
+        Long userId = registerUser("pref_test_batch2", "STUDENT");
+        var same = new PreferenceCandidate("response_language", "中文", 0.9, 0.9);
+        int written = preferenceService.applyExtraction(
+                userId, new PreferenceExtractionResult(List.of(same, same), List.of()));
+        assertEquals(2, written, "CREATE_ACTIVE + REINFORCE 各计 1");
+
+        Long count = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM user_preference WHERE user_id=? AND deleted=0", Long.class, userId);
+        assertEquals(1L, count, "同批同 value 只保留一行（唯一索引未被撞）");
+        Integer obs = jdbcTemplate.queryForObject(
+                "SELECT observation_count FROM user_preference WHERE user_id=?", Integer.class, userId);
+        assertEquals(2, obs, "第二条 REINFORCE 使计数 +1 → 2");
+    }
+
+    @Test
     @DisplayName("findExistingValuesText — active 偏好转「标签:值」注入文本")
     void findExistingValuesText_returnsLabels() {
         Long userId = registerUser("pref_test_label", "STUDENT");

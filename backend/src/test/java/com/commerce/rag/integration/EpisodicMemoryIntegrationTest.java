@@ -16,6 +16,7 @@ import com.commerce.rag.record.EpisodicMemoryRef;
 import com.commerce.rag.service.IEpisodicMemoryService;
 import com.commerce.rag.test.IntegrationTestBase;
 import io.milvus.v2.service.vector.request.SearchReq;
+import io.milvus.v2.service.vector.request.UpsertReq;
 import io.milvus.v2.service.vector.response.SearchResp;
 import java.math.BigDecimal;
 import java.util.List;
@@ -164,7 +165,7 @@ class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
                         + " VALUES (?, ?, 'learning_progress', '已学会 Java 泛型', '泛型摘要', 'active', 1, 0)",
                 800401L,
                 userId);
-        // embedding 供 buildUpsertById 反查旧行组装索引（SQL 段 + wiring 兜底）
+        // embedding 供索引同步组装（旧行直接复用批内视图行，SQL 段 + wiring 兜底）
         when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
         int written = episodicMemoryService.applyExtraction(
                 userId,
@@ -270,5 +271,179 @@ class EpisodicMemoryIntegrationTest extends IntegrationTestBase {
                         && req.getFilter() != null
                         && req.getFilter().contains(MilvusCollectionInitializer.FIELD_MEMORY_USER_ID)
                         && req.getFilter().contains(String.valueOf(userId))));
+    }
+
+    @Test
+    @DisplayName("applyExtraction — 同批同 type 同 content 两条 CREATE → 仅落一行 active（BUG-02 批内去重）")
+    void applyExtraction_sameBatchDuplicateCreate_deduped() {
+        Long userId = registerUser("epi_test_8", "STUDENT");
+        // 同批两条完全相同的 CREATE：第二条应看到批内已写入行 → 重复 IGNORE（修复前快照决策会落两行）
+        int written = episodicMemoryService.applyExtraction(
+                userId,
+                null,
+                new EpisodicExtractionResult(List.of(
+                        new EpisodicMemoryExtraction(
+                                true, "CREATE", "learning_goal", "三个月内转行 Python", "转行目标", null, 0.85, 0.9, 0.9, null),
+                        new EpisodicMemoryExtraction(
+                                true,
+                                "CREATE",
+                                "learning_goal",
+                                "三个月内转行 Python",
+                                "转行目标",
+                                null,
+                                0.85,
+                                0.9,
+                                0.9,
+                                null))));
+        assertEquals(1, written, "第二条重复 CREATE 应 IGNORE，生效动作计 1");
+        Long activeCount = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM user_episodic_memory WHERE user_id=? AND validity='active' AND deleted=0",
+                Long.class,
+                userId);
+        assertEquals(1L, activeCount, "同批重复条目只留一行 active（去重不被绕过）");
+    }
+
+    @Test
+    @DisplayName("applyExtraction — 批内 CREATE 后 INVALIDATE 同内容：目标行可见并成功否定（BUG-02 批内前后关联）")
+    void applyExtraction_batchCreateThenInvalidate_targetVisible() {
+        Long userId = registerUser("epi_test_9", "STUDENT");
+        // 用户同轮先陈述（CREATE）后否认（INVALIDATE 同 content）：INVALIDATE 决策必须看到本批 CREATE 的行
+        int written = episodicMemoryService.applyExtraction(
+                userId,
+                null,
+                new EpisodicExtractionResult(List.of(
+                        new EpisodicMemoryExtraction(
+                                true,
+                                "CREATE",
+                                "learning_progress",
+                                "正在学 Django 框架",
+                                "Django",
+                                null,
+                                0.85,
+                                0.9,
+                                0.9,
+                                null),
+                        new EpisodicMemoryExtraction(
+                                true,
+                                "INVALIDATE",
+                                "learning_progress",
+                                "正在学 Django 框架",
+                                null,
+                                null,
+                                0.8,
+                                0.8,
+                                0.8,
+                                "正在学 Django 框架"))));
+        assertEquals(2, written, "CREATE + INVALIDATE 各计 1 个生效动作");
+        Long activeCount = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM user_episodic_memory WHERE user_id=? AND validity='active' AND deleted=0",
+                Long.class,
+                userId);
+        assertEquals(0L, activeCount, "被用户明确否定的事实不得以 active 留存");
+        Long invalidated = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM user_episodic_memory WHERE user_id=? AND validity='invalidated' AND deleted=0",
+                Long.class,
+                userId);
+        assertEquals(1L, invalidated, "批内 CREATE 的行被 INVALIDATE 置否定态");
+    }
+
+    @Test
+    @DisplayName("applyExtraction — 批内链式 UPDATE：后一条定位前一条的新行，version 依次递增（BUG-02/BUG-12 版本链）")
+    void applyExtraction_batchSequentialUpdate_versionChain() {
+        Long userId = registerUser("epi_test_10", "STUDENT");
+        // 预置 active 旧行 v1；批内两条 UPDATE：第二条的 merge_target 指向第一条产出的新行内容
+        jdbcTemplate.update(
+                "INSERT INTO user_episodic_memory (id, user_id, type, content, summary, validity, version, deleted)"
+                        + " VALUES (?, ?, 'learning_goal', '旧目标', '旧摘要', 'active', 1, 0)",
+                800801L,
+                userId);
+        int written = episodicMemoryService.applyExtraction(
+                userId,
+                null,
+                new EpisodicExtractionResult(List.of(
+                        new EpisodicMemoryExtraction(
+                                true, "UPDATE", "learning_goal", "新目标", "新摘要", null, 0.85, 0.9, 0.9, "旧目标"),
+                        new EpisodicMemoryExtraction(
+                                true, "UPDATE", "learning_goal", "更新目标", "更新摘要", null, 0.85, 0.9, 0.9, "新目标"))));
+        assertEquals(2, written, "两条 UPDATE 各计 1 个生效动作");
+
+        // 版本链 1→2→3：旧行 superseded、中间行 superseded、末行 active v3（无 version 重复）
+        assertEquals(
+                "superseded",
+                jdbcTemplate.queryForObject(
+                        "SELECT validity FROM user_episodic_memory WHERE id=?", String.class, 800801L));
+        Map<String, Object> last = jdbcTemplate.queryForMap(
+                "SELECT content, validity, version FROM user_episodic_memory"
+                        + " WHERE user_id=? AND type='learning_goal' AND validity='active' AND deleted=0",
+                userId);
+        assertEquals("更新目标", last.get("content"), "链式 UPDATE 最终落最新内容");
+        assertEquals(3, ((Number) last.get("version")).intValue(), "末行 version = 旧行+1 链式递增");
+
+        List<Integer> versions = jdbcTemplate.queryForList(
+                "SELECT version FROM user_episodic_memory WHERE user_id=? AND deleted=0 ORDER BY version",
+                Integer.class,
+                userId);
+        assertEquals(List.of(1, 2, 3), versions, "批内版本链无重复（各次 UPDATE 基于最新视图演算）");
+    }
+
+    @Test
+    @DisplayName("applyExtraction — 索引同步在事务提交后执行（BUG-06：embedding/Milvus 不持有 DB 连接）")
+    void applyExtraction_indexSyncRunsAfterCommit() {
+        Long userId = registerUser("epi_test_11", "STUDENT");
+        // 索引同步需要非空 embedding 向量才会构造 UpsertReq 并调 Milvus
+        when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
+        episodicMemoryService.applyExtraction(
+                userId,
+                null,
+                new EpisodicExtractionResult(List.of(new EpisodicMemoryExtraction(
+                        true, "CREATE", "learning_progress", "完成 Milvus 集成", "Milvus", null, 0.85, 0.9, 0.9, null))));
+
+        // 事务提交后 afterCommit 路径应执行索引 upsert（Milvus 仅索引，PG 事实源不受影响）
+        verify(milvusClientV2, times(1)).upsert(any(UpsertReq.class));
+    }
+
+    @Test
+    @DisplayName("applyExtraction — 同批多条生效动作合并为单次 upsert（data 含多行，O(N)→O(1) 远程调用）")
+    void applyExtraction_batchIndexSync_singleUpsertWithMultipleRows() {
+        Long userId = registerUser("epi_test_13", "STUDENT");
+        when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
+        episodicMemoryService.applyExtraction(
+                userId,
+                null,
+                new EpisodicExtractionResult(List.of(
+                        new EpisodicMemoryExtraction(
+                                true, "CREATE", "learning_progress", "已完成 Spring 事务", "事务", null, 0.85, 0.9, 0.9, null),
+                        new EpisodicMemoryExtraction(
+                                true, "CREATE", "resolved_question", "解决索引失效问题", "索引", null, 0.85, 0.9, 0.9, null))));
+
+        // 两条 CREATE 合并进同一次 upsert（2 行 data），仅 1 次 Milvus gRPC 往返
+        verify(milvusClientV2, times(1))
+                .upsert(argThat(req ->
+                        req != null && req.getData() != null && req.getData().size() == 2));
+    }
+
+    @Test
+    @DisplayName("findActiveMemoriesText — 超 existing-text-limit 截断（BUG-05：{existing} 无界膨胀）")
+    void findActiveMemoriesText_limitedRows() {
+        Long userId = registerUser("epi_test_12", "STUDENT");
+        // 预置 105 行 active（超过默认 limit 100）：{existing} 注入文本必须被截断，防止记忆量增长后 prompt 膨胀；
+        // updated_at 显式递增（i 越大越新），保证 orderByDesc(updatedAt) 截断结果确定
+        for (int i = 1; i <= 105; i++) {
+            jdbcTemplate.update(
+                    "INSERT INTO user_episodic_memory"
+                            + " (id, user_id, type, content, summary, validity, version, deleted, updated_at)"
+                            + " VALUES (?, ?, 'learning_progress', ?, '摘要', 'active', 1, 0, now() - (? * interval '1 minute'))",
+                    810000L + i,
+                    userId,
+                    "进度内容" + i,
+                    105 - i);
+        }
+
+        String text = episodicMemoryService.findActiveMemoriesText(userId);
+
+        assertEquals(100, text.split("\n").length, "注入提取 prompt 的已有记忆行数受 limit 截断");
+        assertTrue(text.contains("进度内容105"), "截断保留最近更新行（orderByDesc updatedAt）");
+        // 行级精确匹配：子串「进度内容1」会误命中 10/100/105，需按行尾断言最旧行被截断
+        assertTrue(!text.contains("进度内容1\n"), "最旧行被截断");
     }
 }

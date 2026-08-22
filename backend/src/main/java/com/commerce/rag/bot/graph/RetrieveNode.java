@@ -22,6 +22,7 @@ import com.commerce.rag.retrieval.CourseNameMapper;
 import com.commerce.rag.service.AttachmentLocalSearchService;
 import com.commerce.rag.service.AttachmentOrchestrator;
 import com.commerce.rag.service.IEpisodicMemoryService;
+import jakarta.annotation.PreDestroy;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -29,11 +30,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -63,6 +68,11 @@ import org.springframework.stereotype.Component;
  *       metadata["episodic_context"]（{@link EpisodicInterceptor#KEY_EPISODIC_CONTEXT}，与
  *       document 同通道——不落 state/checkpoint，EpisodicInterceptor 尾部注入）；召回异常/无命中/
  *       无 userId → 降级不写，不影响主文档检索与回答</li>
+ *   <li>并行编排（2026-08-22 性能优化报告 2-3）：episodic 召回、知识检索、附件局部检索向量 embed
+ *       三段相互独立的远程 IO 经本节点独立 2 线程池并行执行（与 SearchKnowledgeTool 内部
+ *       searchExecutor 隔离，避免自阻塞）；document_context 由 join 后主线程写入、episodic_context
+ *       由 recallEpisodic 任务内写入（join 建立 happens-before，后续读取可见）——检索节点延迟从
+ *       「三段之和」降为「约等于最慢一段」，高并发对话时不再白占 runPool worker</li>
  * </ol>
  *
  * <p>失败降级：检索异常 → 不写 document，ReactAgent 直接回答并记日志；系统检索空结果 →
@@ -70,9 +80,9 @@ import org.springframework.stereotype.Component;
  * user-document 的 document shell（spec §5.4 附件语料不丢）；经历记忆召回异常/无命中 →
  * 不写 episodic_context（EpisodicInterceptor 原样透传），记忆缺失不影响回答。
  *
- * <p>本类为手写单构造器（7 依赖：SearchKnowledgeTool / CourseNameMapper / ContextBuilderService
- * / AttachmentLocalSearchService / EmbeddingModel / IEpisodicMemoryService / MemoryProperties，
- * Spring 按单构造器自动注入，无需 @Autowired）。
+ * <p>本类为手写单构造器（8 依赖：SearchKnowledgeTool / CourseNameMapper / ContextBuilderService
+ * / AttachmentLocalSearchService / EmbeddingModel / IEpisodicMemoryService / MemoryProperties /
+ * 检索并行度配置，Spring 按单构造器自动注入，无需 @Autowired）。
  *
  * <p>注：本类与项目接口 {@link com.commerce.rag.bot.graph.OverAllState}（KEY_QUERY_PLAN
  * 定义处）同包，但 apply 签名需用框架的 {@code com.alibaba.cloud.ai.graph.OverAllState}
@@ -96,6 +106,8 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
     private final EmbeddingModel embeddingModel;
     private final IEpisodicMemoryService episodicMemoryService;
     private final MemoryProperties properties;
+    /** 检索节点并行执行器（独立 2 线程池，与 SearchKnowledgeTool 内部池隔离，报告 2-3） */
+    private final ExecutorService retrieveExecutor;
 
     public RetrieveNode(
             SearchKnowledgeTool searchKnowledgeTool,
@@ -104,7 +116,8 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
             AttachmentLocalSearchService localSearchService,
             EmbeddingModel embeddingModel,
             IEpisodicMemoryService episodicMemoryService,
-            MemoryProperties properties) {
+            MemoryProperties properties,
+            @Value("${retrieval.retrieve-node-parallelism:2}") int parallelism) {
         this.searchKnowledgeTool = searchKnowledgeTool;
         this.courseNameMapper = courseNameMapper;
         this.contextBuilderService = contextBuilderService;
@@ -112,6 +125,20 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         this.embeddingModel = embeddingModel;
         this.episodicMemoryService = episodicMemoryService;
         this.properties = properties;
+        // 独立小线程池（不与 SearchKnowledgeTool 内部 searchExecutor 共用，避免检索任务与召回任务
+        // 互抢 4 线程形成自阻塞）；daemon 线程随 JVM 退出，带前缀+序号便于 thread dump 排查
+        AtomicInteger seq = new AtomicInteger(1);
+        this.retrieveExecutor = Executors.newFixedThreadPool(Math.max(1, parallelism), r -> {
+            Thread t = new Thread(r, "retrieve-node-" + seq.getAndIncrement());
+            t.setDaemon(true);
+            return t;
+        });
+    }
+
+    /** 释放检索并行执行器线程（应用关闭时；daemon 线程不阻塞 JVM 退出） */
+    @PreDestroy
+    public void destroy() {
+        retrieveExecutor.shutdownNow();
     }
 
     /**
@@ -162,24 +189,30 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
             return CompletableFuture.completedFuture(Map.of());
         }
 
-        // Episodic 召回（spec §8.7）：recall_history 动态 validity 过滤，仅命中写入 metadata（非每轮注入）
-        // 置于 queries 判空后、系统检索空/非空两分支返回前的公共段：无论 document 是否注入都尝试召回，
-        // episodic_context 与 document_context 通道独立，互不影响
-        // 召回查询取已过滤非空重写查询的首条（queries.get(0)），与上方 queries 构建口径一致，
-        // 避免首条重写查询为 null/空白时该轮经历记忆召回被静默跳过
-        recallEpisodic(config, plan, queries.get(0).queryText());
-
-        // 4. 检索（并行 + RRF 融合 + SHA256 去重 + Rerank 在 SearchKnowledgeTool 内完成）
-        List<KnowledgeChunk> chunks =
-                searchKnowledgeTool.searchKnowledge(queries).chunks();
-        // 附件上下文（worker 写入 metadata）提前读取：系统检索并入前即拿到，
-        // 系统库无命中时仍须注入 <user-document>（spec §5.4 两者合并注入）
+        // 附件上下文提前读取（纯内存 metadata 读，供并行任务与非空分支共用）
         AttachmentContext attachmentContext = readAttachmentContext(config);
+
+        // 2-3 并行编排（性能优化报告）：episodic 召回 ∥ 知识检索 ∥ 附件局部检索 embed 三段相互独立的
+        // 远程 IO 并行执行——检索节点延迟从「三段之和」降为「约等于最慢一段」；document_context 由
+        // join 后主线程写入（episodic_context 由 recallEpisodic 任务内写入，不同键 + join 建立
+        // happens-before，无可见性问题）
+        CompletableFuture<Void> episodicFuture = CompletableFuture.runAsync(
+                () -> recallEpisodic(config, plan, queries.get(0).queryText()), retrieveExecutor);
+        CompletableFuture<List<KnowledgeChunk>> chunksFuture = CompletableFuture.supplyAsync(
+                () -> searchKnowledgeTool.searchKnowledge(queries).chunks(), retrieveExecutor);
+        // 附件 user-document 子块预计算（无附件上下文 → buildUserDocumentText 立即返回 null，不开远程调用）
+        CompletableFuture<String> userDocFuture = CompletableFuture.supplyAsync(
+                () -> buildUserDocumentText(attachmentContext, originalQuery), retrieveExecutor);
+
+        // recallEpisodic 内部已全异常降级（不会抛出）；附件 embed 异常与改造前同步路径等价地向上传播
+        episodicFuture.join();
+        List<KnowledgeChunk> chunks = chunksFuture.join();
+        String userDocument = userDocFuture.join();
 
         // 系统检索为空：仅当有附件上下文才组装仅含 <user-document> 的 document shell 注入
         // （ReactAgent 仍直接回答，但附件局部语料不丢，spec §5.4）
         if (chunks.isEmpty()) {
-            String emptyShell = buildEmptySystemDocument(attachmentContext, originalQuery);
+            String emptyShell = buildEmptySystemDocument(userDocument);
             if (emptyShell != null && !emptyShell.isBlank()) {
                 config.metadata().ifPresent(m -> m.put(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT, emptyShell));
             }
@@ -197,9 +230,9 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
             log.info("retrieveNode: document 组装为空，跳过注入");
             return CompletableFuture.completedFuture(Map.of());
         }
-        // 合并附件 user-document 子块（无附件上下文/无命中则原样返回 systemDocument）
+        // 合并附件 user-document 子块（无 user-document 子块 → 原样返回 systemDocument）
         // final 合并结果，供下方 lambda 捕获（document 已被上面赋值，非 effectively final）
-        final String mergedDocument = mergeUserDocument(document, originalQuery, attachmentContext);
+        final String mergedDocument = mergeUserDocument(document, userDocument);
         config.metadata().ifPresent(m -> m.put(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT, mergedDocument));
         log.info(
                 "retrieveNode 完成: intent={}, 候选={}条, 注入 document（{} 字符）",
@@ -263,17 +296,14 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
     }
 
     /**
-     * 合并附件 user-document 子块 —— 系统 document 非空时在 `</document>` 前并入（spec §5.3/§5.4）
+     * 合并附件 user-document 子块 —— 系统 document 非空时在 `</document>` 前并入（spec §5.3/§5.4）。
+     * user-document 由并行任务预计算（{@link #buildUserDocumentText}），此处仅做空值判断与合并。
      *
-     * <p>无附件上下文/无命中 → 原样返回 systemDocument（不产生 user-document 子块）。
-     *
-     * @param document          既有 systemDocument（buildDocument 输出，非 null）
-     * @param originalQuery     用户原问题（局部检索查询向量来源）
-     * @param attachmentContext 附件上下文（null/无附件 → 原样返回既有 document）
+     * @param document    既有 systemDocument（buildDocument 输出，非 null）
+     * @param userDocument 预计算的 user-document 子块文本（无附件上下文/无命中 → 原样返回既有 document）
      * @return 合并后的 document 文本
      */
-    private String mergeUserDocument(String document, String originalQuery, AttachmentContext attachmentContext) {
-        String userDocument = buildUserDocumentText(attachmentContext, originalQuery);
+    private String mergeUserDocument(String document, String userDocument) {
         // 无 user-document 子块（无附件上下文/无命中）→ 原样返回系统 document，不调用 appendUserDocument
         // （保持既有合并行为：无附件时不触发合并调用）
         if (userDocument == null || userDocument.isBlank()) {
@@ -332,12 +362,10 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
      * 局部语料以 &lt;document&gt; 壳注入，否则文档语料整体丢失。以空 shell 为底调用
      * {@link ContextBuilderService#appendUserDocument} 把 user-document 合并进 `</document>` 前。
      *
-     * @param attachmentContext 附件上下文（null/无附件 → 返回 null，不注入）
-     * @param originalQuery     用户原问题（局部检索查询向量来源）
-     * @return 仅含 user-document 的 document shell；无任何可注入内容返回 null
+     * @param userDocument 预计算的 user-document 子块文本（null/空白 → 返回 null，不注入）
+     * @return 仅含 user-document 的 document shell；无可注入内容返回 null
      */
-    private String buildEmptySystemDocument(AttachmentContext attachmentContext, String originalQuery) {
-        String userDocument = buildUserDocumentText(attachmentContext, originalQuery);
+    private String buildEmptySystemDocument(String userDocument) {
         if (userDocument == null || userDocument.isBlank()) {
             return null;
         }

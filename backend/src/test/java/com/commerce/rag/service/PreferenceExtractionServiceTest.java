@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -135,5 +136,39 @@ class PreferenceExtractionServiceTest {
         assertEquals("简洁", svc.normalizeValue("response_verbosity", "brief"));
         assertEquals("原始值", svc.normalizeValue("response_verbosity", "原始值"));
         assertEquals("Python", svc.normalizeValue("course_direction", "Python"));
+    }
+
+    @Test
+    @DisplayName("parse — deletions 与 candidates 对称归一化（BUG-04：softDelete 按库中规范值精确匹配）")
+    void parse_deletionsNormalizedLikeCandidates() {
+        PreferenceExtractionService svc = newService(mock(ChatModel.class));
+        // deletions 携带同义变体（brief→简洁）：归一化后与落库规范值一致，撤回才能命中
+        PreferenceExtractionResult result =
+                svc.parse("{\"candidates\":[],\"deletions\":[{\"key\":\"response_verbosity\",\"value\":\"brief\"}]}");
+        assertEquals(1, result.deletions().size());
+        assertEquals("简洁", result.deletions().get(0).value(), "删除意图 value 应归一化为规范值");
+        // 开放型 key 无词表 → 原样保留
+        PreferenceExtractionResult open =
+                svc.parse("{\"candidates\":[],\"deletions\":[{\"key\":\"course_direction\",\"value\":\"前端\"}]}");
+        assertEquals("前端", open.deletions().get(0).value(), "开放型 key 删除按原值");
+    }
+
+    @Test
+    @DisplayName("extract — system 提示词中的 {existing} 占位符被替换（BUG-08：悬空占位符不发模型）")
+    void extract_systemPlaceholderReplaced() {
+        ChatModel chatModel = mock(ChatModel.class);
+        when(chatModel.call(any(Prompt.class)))
+                .thenReturn(new ChatResponse(
+                        List.of(new Generation(new AssistantMessage("{\"candidates\":[],\"deletions\":[]}")))));
+        PreferenceExtractionService svc = newService(chatModel);
+        svc.extract(new ExtractionInput("", "当前对话"), "回答语言:中文");
+
+        ArgumentCaptor<Prompt> captor = ArgumentCaptor.forClass(Prompt.class);
+        verify(chatModel).call(captor.capture());
+        String systemText = captor.getValue().getInstructions().stream()
+                .map(m -> m.getText() == null ? "" : m.getText())
+                .reduce("", (a, b) -> a + b);
+        assertTrue(!systemText.contains("{existing}"), "system 不应携带悬空 {existing} 占位符");
+        assertTrue(systemText.contains("回答语言:中文"), "system 应携带已替换的已有偏好文本");
     }
 }

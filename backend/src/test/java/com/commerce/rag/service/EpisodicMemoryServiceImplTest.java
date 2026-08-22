@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -36,9 +37,9 @@ import org.springframework.ai.embedding.EmbeddingModel;
 /**
  * 经历记忆服务纯函数测试 —— 注：this.lambdaQuery()/save/update 不可 Mockito 直测（MP 实证），
  * SQL 装配段由 Testcontainers 集成覆盖（见 EpisodicMemoryIntegrationTest）；本类只测纯函数：
- * toExistingMemoriesText / toWriteRow / syncIndexBestEffort 决策 / recall 降级 / buildRefs 召回筛选
- * （召回 PG 取数下沉集成，筛选/排序/截断下沉 public buildRefs 直测，brief 的 spy 覆写 listByIds 不再适用——
- * 见 EpisodicMemoryServiceImpl 类注释 ③）。
+ * toExistingMemoriesText / toWriteRow / syncIndexBatchBestEffort 决策与批量合并 / recall 降级 /
+ * buildRefs 召回筛选（召回 PG 取数下沉集成，筛选/排序/截断下沉 public buildRefs 直测，brief 的 spy
+ * 覆写 listByIds 不再适用——见 EpisodicMemoryServiceImpl 类注释 ③）。
  */
 class EpisodicMemoryServiceImplTest {
 
@@ -46,7 +47,8 @@ class EpisodicMemoryServiceImplTest {
     private final EpisodicDecisionEngine engine = new EpisodicDecisionEngine(props);
     private final MilvusClientV2 milvus = mock(MilvusClientV2.class);
     private final EmbeddingModel embedding = mock(EmbeddingModel.class);
-    private final EpisodicMemoryServiceImpl service = new EpisodicMemoryServiceImpl(engine, milvus, embedding, props);
+    private final EpisodicMemoryServiceImpl service =
+            new EpisodicMemoryServiceImpl(engine, milvus, embedding, props, 64);
 
     @Test
     @DisplayName("toExistingMemoriesText — active 记忆行转「标签:内容」行，空返回「无」")
@@ -88,17 +90,65 @@ class EpisodicMemoryServiceImplTest {
     }
 
     @Test
-    @DisplayName("syncIndexBestEffort — Milvus upsert 抛异常仅吞掉，不向调用方抛出")
-    void syncIndexBestEffort_swallowsMilvusFailure() {
-        UserEpisodicMemory row = memory("learning_progress", "已完成 Java 集合");
-        row.setId(11L);
-        row.setUserId(7L);
-        row.setSummary("摘要");
-        // 注入非空 embedding（buildUpsert 空向量时跳过生成请求，需先保证请求可被构建）
+    @DisplayName("syncIndexBatchBestEffort — 多行合并为单次 upsert（gRPC 往返 O(N) → O(1)）")
+    void syncIndexBatchBestEffort_mergesRowsIntoSingleUpsert() {
+        when(embedding.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
+        UserEpisodicMemory r1 = upsertRow(11L, 7L, "learning_progress", "内容一", "摘要一");
+        UserEpisodicMemory r2 = upsertRow(12L, 7L, "resolved_question", "内容二", "摘要二");
+
+        service.syncIndexBatchBestEffort(List.of(
+                new EpisodicMemoryServiceImpl.IndexSyncTarget(r1, "active"),
+                new EpisodicMemoryServiceImpl.IndexSyncTarget(r2, "active")));
+
+        // 两行并入同一次 upsert（data 含 2 行），远程调用次数收敛为 1
+        verify(milvus, times(1))
+                .upsert(argThat(req ->
+                        req != null && req.getData() != null && req.getData().size() == 2));
+    }
+
+    @Test
+    @DisplayName("syncIndexBatchBestEffort — 单行 embedding 异常/空向量仅跳过该行，不拖垮整批")
+    void syncIndexBatchBestEffort_skipsFailedAndEmptyRows() {
+        // 第一行 embedding 抛异常、第二行返回空向量、第三行正常 → 仅第三行进入批量 upsert
+        UserEpisodicMemory bad = upsertRow(11L, 7L, "learning_progress", "坏行", "摘要");
+        UserEpisodicMemory empty = upsertRow(12L, 7L, "resolved_question", "空向量行", "摘要");
+        UserEpisodicMemory good = upsertRow(13L, 7L, "learning_goal", "正常行", "摘要");
+        when(embedding.embed("摘要\n坏行")).thenThrow(new RuntimeException("embedding 服务不可用"));
+        when(embedding.embed("摘要\n空向量行")).thenReturn(new float[0]);
+        when(embedding.embed("摘要\n正常行")).thenReturn(new float[] {0.1f, 0.2f});
+
+        service.syncIndexBatchBestEffort(List.of(
+                new EpisodicMemoryServiceImpl.IndexSyncTarget(bad, "active"),
+                new EpisodicMemoryServiceImpl.IndexSyncTarget(empty, "active"),
+                new EpisodicMemoryServiceImpl.IndexSyncTarget(good, "active")));
+
+        verify(milvus, times(1))
+                .upsert(argThat(req -> req != null
+                        && req.getData() != null
+                        && req.getData().size() == 1
+                        && req.getData()
+                                .get(0)
+                                .get(MilvusCollectionInitializer.FIELD_MEMORY_ID)
+                                .getAsString()
+                                .equals("13")));
+    }
+
+    @Test
+    @DisplayName("syncIndexBatchBestEffort — Milvus upsert 抛异常仅吞掉，不向调用方抛出")
+    void syncIndexBatchBestEffort_swallowsMilvusFailure() {
         when(embedding.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
         doThrow(new RuntimeException("milvus down")).when(milvus).upsert(any(UpsertReq.class));
-        assertDoesNotThrow(() -> service.syncIndexBestEffort(() -> service.buildUpsert(row, "active")));
-        verify(milvus, times(1)).upsert(any(UpsertReq.class));
+
+        assertDoesNotThrow(() -> service.syncIndexBatchBestEffort(List.of(new EpisodicMemoryServiceImpl.IndexSyncTarget(
+                upsertRow(11L, 7L, "learning_progress", "内容", "摘要"), "active"))));
+    }
+
+    @Test
+    @DisplayName("syncIndexBatchBestEffort — 空/null 目标不发起任何 upsert")
+    void syncIndexBatchBestEffort_emptyTargets_noUpsert() {
+        service.syncIndexBatchBestEffort(List.of());
+        service.syncIndexBatchBestEffort(null);
+        verify(milvus, never()).upsert(any(UpsertReq.class));
     }
 
     @Test
@@ -200,7 +250,7 @@ class EpisodicMemoryServiceImplTest {
     @DisplayName("applyExtraction — userId=null / result=null / memories 空 → 返回 0 且不触发决策")
     void applyExtraction_nullGuard_returnsZero() {
         EpisodicDecisionEngine mockEngine = mock(EpisodicDecisionEngine.class);
-        EpisodicMemoryServiceImpl svc = new EpisodicMemoryServiceImpl(mockEngine, milvus, embedding, props);
+        EpisodicMemoryServiceImpl svc = new EpisodicMemoryServiceImpl(mockEngine, milvus, embedding, props, 64);
         var result = new EpisodicExtractionResult(List.of(
                 new EpisodicMemoryExtraction(true, "CREATE", "learning_goal", "内容", "摘要", null, 0.8, 0.8, 0.8, null)));
         assertEquals(0, svc.applyExtraction(null, 1L, result), "userId 为空不写库");
@@ -214,6 +264,17 @@ class EpisodicMemoryServiceImplTest {
         UserEpisodicMemory r = new UserEpisodicMemory();
         r.setType(type);
         r.setContent(content);
+        return r;
+    }
+
+    /** 构造带 id/userId/type/content/summary 的行（索引同步批量测试用） */
+    private static UserEpisodicMemory upsertRow(long id, long userId, String type, String content, String summary) {
+        UserEpisodicMemory r = new UserEpisodicMemory();
+        r.setId(id);
+        r.setUserId(userId);
+        r.setType(type);
+        r.setContent(content);
+        r.setSummary(summary);
         return r;
     }
 

@@ -17,7 +17,10 @@ import com.commerce.rag.record.PreferenceCandidate;
 import com.commerce.rag.record.PreferenceExtractionResult;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -180,6 +183,47 @@ class MemoryExtractionPipelineTest {
         long elapsed = System.currentTimeMillis() - start;
         assertTrue(elapsed < 800, "超时路径应快速返回（不等待外部 LLM），实际耗时 " + elapsed + "ms");
         verify(pref, never()).applyExtraction(eq(1L), any());
+    }
+
+    @Test
+    @DisplayName("执行 — LLM 执行器队列满时新批次被拒绝并快速丢弃，不抛异常、不落库（BUG-09：有界队列降级）")
+    void execute_llmQueueFull_discardsBatchQuickly() throws Exception {
+        MemoryProperties props = new MemoryProperties();
+        props.getExtraction().setThreads(1);
+        props.getExtraction().setQueueCapacity(1);
+        PreferenceExtractionService extract = mock(PreferenceExtractionService.class);
+        IPreferenceService pref = mock(IPreferenceService.class);
+        when(pref.findExistingValuesText(any())).thenReturn("无");
+        MemoryExtractionPipeline p = new MemoryExtractionPipeline(
+                props,
+                new MemoryExtractionInputAssembler(),
+                extract,
+                pref,
+                mock(EpisodicExtractionService.class),
+                mock(IEpisodicMemoryService.class));
+
+        // 占死执行器：threads=1 的唯一工作线程 + 容量 1 的队列各放一个阻塞任务（模拟 LLM 故障极端堆积）
+        ThreadPoolExecutor llmPool = (ThreadPoolExecutor) ReflectionTestUtils.getField(p, "extractionExecutor");
+        CountDownLatch release = new CountDownLatch(1);
+        Runnable block = () -> {
+            try {
+                release.await(60, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+        llmPool.submit(block);
+        llmPool.submit(block);
+
+        // 新批次提交 LLM 调用 → 队列满 → supplyAsync 拒绝 → executeInternal 内部捕获丢弃（快速返回）
+        long start = System.currentTimeMillis();
+        p.executeInternal(9L, List.of(new UserMessage("当前问题"), new AssistantMessage("回答")));
+        long elapsed = System.currentTimeMillis() - start;
+        release.countDown();
+
+        assertTrue(elapsed < 2000, "队列满应快速拒绝丢弃（不等待执行器线程），实际耗时 " + elapsed + "ms");
+        verify(pref, never()).applyExtraction(eq(9L), any());
+        verify(extract, never()).extract(any(), any());
     }
 
     // ==================== 经历记忆通道（spec §8.4） ====================

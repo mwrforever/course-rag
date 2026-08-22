@@ -125,6 +125,23 @@ class PromptLoaderTest {
     }
 
     @Test
+    @DisplayName("loadSections — 二次加载命中缓存（同一实例，不重复读盘解析）")
+    void loadSections_secondCall_usesCache() {
+        Map<String, String> first = promptLoader.loadSections("caption.yml");
+        Map<String, String> second = promptLoader.loadSections("caption.yml");
+
+        assertSame(first, second, "二次加载应命中缓存返回同一实例");
+    }
+
+    @Test
+    @DisplayName("loadSections — 返回不可变 Map（防调用方修改污染共享缓存）")
+    void loadSections_returnsUnmodifiableMap() {
+        Map<String, String> sections = promptLoader.loadSections("caption.yml");
+
+        assertThrows(UnsupportedOperationException.class, () -> sections.put("x", "y"), "共享缓存不可被调用方修改");
+    }
+
+    @Test
     @DisplayName("loadRaw → 多叶子歧义按现有实现返回第一个叶子（嵌套优先）")
     void loadRaw_multiLeaf_returnsFirstEncounteredLeaf() {
         // 夹具 test-multi-leaf.yml：先遍历到嵌套 sub.leaf，再遇到 first → 返回第一个（嵌套叶子）

@@ -36,6 +36,8 @@ public class MemoryProperties {
         private long timeoutMs = 10_000L;
         /** 防抖调度线程数（独立小线程池，不占主链路线程） */
         private int threads = 2;
+        /** 提取执行器队列容量（有界队列：极端故障时任务不无限堆积，拒绝即按失败降级丢弃本批） */
+        private int queueCapacity = 32;
     }
 
     @Data
@@ -96,5 +98,7 @@ public class MemoryProperties {
         private double recallMinScore = 0.30;
         /** Milvus 召回预取条数（分数过滤前多取，防 topK 截断过早） */
         private int prefetchTopK = 10;
+        /** {existing} 注入提取 prompt 的 active 记忆行数上限（防记忆量增长后 prompt 无界膨胀，spec §8.4） */
+        private int existingTextLimit = 100;
     }
 }

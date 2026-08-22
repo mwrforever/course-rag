@@ -1,6 +1,7 @@
 package com.commerce.rag.bot.graph;
 
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,9 @@ public class PromptLoader {
     private static final Logger log = LoggerFactory.getLogger(PromptLoader.class);
 
     private final Map<String, String> cache = new ConcurrentHashMap<>();
+    /** sections 展平结果缓存（模板为 classpath 静态资源，启动后不变，无一致性维护成本） */
+    private final Map<String, Map<String, String>> sectionsCache = new ConcurrentHashMap<>();
+
     private final Yaml yaml = new Yaml();
 
     /**
@@ -94,12 +98,18 @@ public class PromptLoader {
      * @return 展平路径 → 叶子文本（加载失败返回空 Map）
      */
     public Map<String, String> loadSections(String fileName) {
+        // 首次加载读盘 + YAML 解析后入缓存（QU 节点每轮对话路径，避免反复磁盘 IO；模板启动后不变）
+        return sectionsCache.computeIfAbsent(fileName, this::doLoadSections);
+    }
+
+    private Map<String, String> doLoadSections(String fileName) {
         try (InputStream is = new ClassPathResource("prompts/" + fileName).getInputStream()) {
             Map<String, Object> data = yaml.load(is);
             Map<String, String> result = new LinkedHashMap<>();
             flattenLeaves(data, "", result);
             log.info("已加载提示词模板(sections): {} ({} 段)", fileName, result.size());
-            return result;
+            // 不可变包装：缓存 Map 被多个调用方共享，防止某调用方修改污染共享缓存
+            return Collections.unmodifiableMap(result);
         } catch (Exception e) {
             log.error("加载提示词模板(sections)失败: {}", fileName, e);
             return Map.of();
