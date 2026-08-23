@@ -539,7 +539,7 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
         // 1 次批量查涉及的文档
         Set<Long> docIds = chunks.stream().map(DocumentChunk::getDocId).collect(Collectors.toSet());
         Map<Long, Document> docMap =
-                documentMapper.selectBatchIds(docIds).stream().collect(Collectors.toMap(Document::getId, d -> d));
+                documentMapper.selectByIds(docIds).stream().collect(Collectors.toMap(Document::getId, d -> d));
         // L-5: 知识库归属校验先收集 kbId 去重，一次批量查询建 Map（原循环内对同一 kbId 重复 selectById）
         Set<Long> kbIds = chunks.stream()
                 .map(c -> docMap.get(c.getDocId()))
@@ -549,7 +549,7 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
                 .collect(Collectors.toSet());
         Map<Long, KnowledgeBase> kbMap = kbIds.isEmpty()
                 ? Map.of()
-                : knowledgeBaseMapper.selectBatchIds(kbIds).stream()
+                : knowledgeBaseMapper.selectByIds(kbIds).stream()
                         .collect(Collectors.toMap(KnowledgeBase::getId, kb -> kb));
         for (DocumentChunk chunk : chunks) {
             Document doc = docMap.get(chunk.getDocId());

@@ -647,7 +647,7 @@ class DocumentChunkServiceTest {
         DocumentChunk c3 = chunk(3L, "10");
         c3.setDocId(20L);
         when(chunkMapper.selectList(any())).thenReturn(List.of(c1, c2, c3));
-        when(documentMapper.selectBatchIds(any())).thenReturn(List.of(doc(10L, 100L, null), doc(20L, 100L, null)));
+        when(documentMapper.selectByIds(any())).thenReturn(List.of(doc(10L, 100L, null), doc(20L, 100L, null)));
         when(chunkMapper.update(any(), any())).thenReturn(3);
 
         chunkService.batchUpdate(List.of(1L, 2L, 3L), "COURSE_INFO", "COURSE_123", 100L, false);
@@ -664,9 +664,9 @@ class DocumentChunkServiceTest {
         DocumentChunk c = chunk(1L, "10");
         c.setDocId(10L);
         when(chunkMapper.selectList(any())).thenReturn(List.of(c));
-        when(documentMapper.selectBatchIds(any())).thenReturn(List.of(doc(10L, 999L, 7L)));
+        when(documentMapper.selectByIds(any())).thenReturn(List.of(doc(10L, 999L, 7L)));
         // L-5: 知识库归属校验走批量查询（原循环内逐次 selectById）
-        when(knowledgeBaseMapper.selectBatchIds(any())).thenReturn(List.of(kb(7L, 100L)));
+        when(knowledgeBaseMapper.selectByIds(any())).thenReturn(List.of(kb(7L, 100L)));
         when(chunkMapper.update(any(), any())).thenReturn(1);
 
         chunkService.batchUpdate(List.of(1L), "COURSE_INFO", null, 100L, false);
@@ -694,7 +694,7 @@ class DocumentChunkServiceTest {
         DocumentChunk c = chunk(1L, "10");
         c.setDocId(10L);
         when(chunkMapper.selectList(any())).thenReturn(List.of(c));
-        // documentMapper.selectBatchIds 无 stub → Mockito 默认空列表，docMap 不含 docId=10
+        // documentMapper.selectByIds 无 stub → Mockito 默认空列表，docMap 不含 docId=10
 
         BizException ex = assertThrows(
                 BizException.class,
@@ -709,7 +709,7 @@ class DocumentChunkServiceTest {
         DocumentChunk c = chunk(1L, "10");
         c.setDocId(10L);
         when(chunkMapper.selectList(any())).thenReturn(List.of(c));
-        when(documentMapper.selectBatchIds(any())).thenReturn(List.of(doc(10L, 100L, null)));
+        when(documentMapper.selectByIds(any())).thenReturn(List.of(doc(10L, 100L, null)));
 
         BizException ex = assertThrows(
                 BizException.class,
@@ -747,7 +747,7 @@ class DocumentChunkServiceTest {
         DocumentChunk c = chunk(1L, "10");
         c.setDocId(10L);
         when(chunkMapper.selectList(any())).thenReturn(List.of(c));
-        when(documentMapper.selectBatchIds(any())).thenReturn(List.of(doc(10L, 100L, null)));
+        when(documentMapper.selectByIds(any())).thenReturn(List.of(doc(10L, 100L, null)));
 
         BizException ex = assertThrows(BizException.class, () -> chunkService.batchCorrected(List.of(1L), 200L, false));
         assertEquals(403, ex.getCode());
@@ -899,7 +899,7 @@ class DocumentChunkServiceTest {
         DocumentChunk c = chunk(1L, "10");
         c.setDocId(10L);
         when(chunkMapper.selectList(any())).thenReturn(List.of(c));
-        when(documentMapper.selectBatchIds(any())).thenReturn(List.of(doc(10L, 100L, null)));
+        when(documentMapper.selectByIds(any())).thenReturn(List.of(doc(10L, 100L, null)));
         when(chunkMapper.update(any(), any())).thenReturn(1);
 
         // 非超管 → checkOwnershipBatch 批量查询 + docId 收集 = 2 次 selectList，均应投影
