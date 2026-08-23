@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.convert.DocumentConverterImpl;
 import com.commerce.rag.entity.Document;
@@ -329,9 +330,13 @@ class DocumentServiceTest {
     // ==================== reparse / download 成功路径 ====================
 
     @Test
-    @DisplayName("reparse → 软删旧分片、重置状态并重新触发 ETL")
+    @DisplayName("reparse → 终态文档软删旧分片、CAS 重置 PENDING 并重新触发 ETL")
     void reparse_resetsAndTriggersEtl() {
-        when(documentMapper.selectById(1L)).thenReturn(mockDoc(1L, 100L));
+        Document doc = mockDoc(1L, 100L);
+        // B2-2: 终态（INDEXED）文档——CAS 条件更新命中 1 行
+        doc.setParseStatus("INDEXED");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        when(documentMapper.update(isNull(), any())).thenReturn(1);
         // etlPool mock：execute 直接同步执行提交的任务，模拟真实线程池行为
         doAnswer(invocation -> {
                     ((Runnable) invocation.getArgument(0)).run();
@@ -342,13 +347,47 @@ class DocumentServiceTest {
 
         documentService.reparse(1L, 100L, false);
 
-        // 旧分片软删 + 文档状态重置为 PENDING
-        verify(chunkMapper).update(isNull(), any());
-        verify(documentMapper).update(isNull(), any());
+        // 状态守卫条件真实进入 wrapper：仅终态集合（INDEXED/FAILED/CHUNKED）可重置回 PENDING
+        ArgumentCaptor<LambdaUpdateWrapper<Document>> wrapperCaptor =
+                ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(documentMapper).update(isNull(), wrapperCaptor.capture());
+        String sqlSegment = wrapperCaptor.getValue().getSqlSegment();
+        String paramValues =
+                String.valueOf(wrapperCaptor.getValue().getParamNameValuePairs().values());
+        assertTrue(sqlSegment.contains("parse_status"), "CAS 守卫应含 parse_status IN 条件: " + sqlSegment);
+        assertTrue(
+                paramValues.contains("INDEXED") && paramValues.contains("FAILED") && paramValues.contains("CHUNKED"),
+                "终态集合应为 INDEXED/FAILED/CHUNKED: " + paramValues);
+        // 旧分片软删必须位于 CAS 重置成功之后（执行中文档不得被误删分片）
+        InOrder inOrder = inOrder(documentMapper, chunkMapper);
+        inOrder.verify(documentMapper).update(isNull(), any());
+        inOrder.verify(chunkMapper).update(isNull(), any());
         // 重新触发 ETL（etlPool mock 直接执行任务）
         verify(etlPipeline).process(1L);
         // 统计缓存失效（先写 DB 后失效）
         assertNull(dashboardStatsCache.getIfPresent("whatever"));
+    }
+
+    @Test
+    @DisplayName("B2-2: reparse 执行中文档（PENDING/中间态）→ 409 且不软删分片、不重置状态、不触发 ETL")
+    void reparse_executing_throws409_noResetNoChunkSoftDelete() {
+        Document doc = mockDoc(1L, 100L);
+        // ETL 管道执行中的中间态（状态机：PENDING→PARSING→…→EMBEDDING→INDEXED）
+        doc.setParseStatus("EMBEDDING");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        // CAS 条件更新未命中（parse_status 不在终态集合）返回 0 行
+        when(documentMapper.update(isNull(), any())).thenReturn(0);
+
+        BizException ex = assertThrows(BizException.class, () -> documentService.reparse(1L, 100L, false));
+
+        // 409 冲突：提示执行中稍后重试（而非无条件重置后双管道并发）
+        assertEquals(409, ex.getCode());
+        // 不软删旧分片（执行中管道的分片不得被误删）
+        verify(chunkMapper, never()).update(any(), any());
+        // 不提交 ETL、不重跑管道
+        verify(etlPool, never()).execute(any());
+        // 仅一次 CAS 条件更新（守卫本身），不得再有无条件的第二次重置
+        verify(documentMapper, times(1)).update(isNull(), any());
     }
 
     @Test

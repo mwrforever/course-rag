@@ -317,11 +317,21 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
     /**
      * 重新解析文档（从 MinIO 拉原文件重新 ETL）
      *
-     * <p>权限校验：operatorId 必须与文档 created_by 一致（TEACHER 只能重新解析自己的文档）
+     * <p>权限校验：operatorId 必须与文档 created_by 一致（TEACHER 只能重新解析自己的文档）。
+     *
+     * <p>B2-2 状态守卫（CAS）：重置 PENDING 采用条件更新——仅终态
+     * （INDEXED=已索引 / FAILED=失败 / CHUNKED=分片完成可恢复）可重置；
+     * PENDING（已排队）与中间执行态（PARSING/PARSED/CHUNKING/EMBEDDING）更新返回 0 行，
+     * 抛 409 冲突。原实现无条件重置会把执行中文档改回 PENDING，绕过 EtlPipeline.process
+     * 的抢占 CAS（其仅拦 PENDING/FAILED 竞争），第二个管道抢占成功与执行中管道双跑：
+     * 分片 delete-then-insert 交错、parsedContentCache 互踩、终态互相覆盖、Milvus 双跑。
+     *
+     * <p>软删旧分片置于条件更新成功之后——执行中文档的分片不得被误删。
      *
      * @param id         文档 ID
      * @param operatorId 操作者 ID（从 AuthInterceptor 注入的 userId 获取）
      * @param isAdmin    是否为超管（超管旁路）
+     * @throws BizException 409——文档处于排队/执行中状态（未达终态），不可重解析
      */
     public void reparse(Long id, Long operatorId, boolean isAdmin) {
         Document doc = documentMapper.selectById(id);
@@ -332,20 +342,28 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
         // 权限校验：只有文档创建者才能重新解析（超管旁路）
         checkOwnership(doc, operatorId, isAdmin);
 
-        // 软删旧分片
+        // B2-2: CAS 重置——仅终态（INDEXED/FAILED/CHUNKED）可重置回 PENDING；
+        // 返回 0 行 = 文档已排队或管道执行中（大 PDF 全程可达分钟级），拒绝并提示稍后重试
+        // 合规：Wrappers 静态工厂 + lambda 链式（宪法「Wrapper 一律 lambda 链式构建，禁止 new」）
+        int claimed = documentMapper.update(
+                null,
+                Wrappers.<Document>lambdaUpdate()
+                        .eq(Document::getId, id)
+                        .in(Document::getParseStatus, "INDEXED", "FAILED", "CHUNKED")
+                        .set(Document::getParseStatus, "PENDING")
+                        .set(Document::getErrorMessage, null)
+                        .set(Document::getChunkCount, 0)
+                        .set(Document::getUpdatedAt, LocalDateTime.now()));
+        if (claimed == 0) {
+            log.warn("重新解析被拒绝（文档解析执行中，未达终态）: docId={}, 当前状态={}", id, doc.getParseStatus());
+            throw new BizException(ErrorCode.CONFLICT, "文档解析执行中，请稍后重试");
+        }
+
+        // 软删旧分片（B2-2: 置于 CAS 成功之后——执行中文档不得被误删分片）
         LambdaUpdateWrapper<DocumentChunk> chunkWrapper = Wrappers.<DocumentChunk>lambdaUpdate()
                 .eq(DocumentChunk::getDocId, id)
                 .set(DocumentChunk::getDeleted, System.currentTimeMillis());
         chunkMapper.update(null, chunkWrapper);
-
-        // 重置状态
-        LambdaUpdateWrapper<Document> docWrapper = Wrappers.<Document>lambdaUpdate()
-                .eq(Document::getId, id)
-                .set(Document::getParseStatus, "PENDING")
-                .set(Document::getErrorMessage, null)
-                .set(Document::getChunkCount, 0)
-                .set(Document::getUpdatedAt, LocalDateTime.now());
-        documentMapper.update(null, docWrapper);
 
         // 重新触发 ETL（M-7：队列满快速失败，不再 CallerRuns 内联阻塞重解析请求线程）
         submitEtlOrFail(id);
