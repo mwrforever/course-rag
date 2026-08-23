@@ -28,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 知识库服务 —— 封装 knowledge_base 表的 CRUD + 级联删除
@@ -164,10 +165,16 @@ public class KnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, K
     /**
      * 删除知识库（级联软删 + Milvus 清理）
      *
+     * <p>B2-5 事务说明：document_chunk → document → knowledge_base 三条软删 UPDATE 在同一事务内
+     * 原子执行，中途失败整体回滚，避免留下"chunk 已删而 document 仍存活"的中间态。
+     * Milvus/MinIO 清理位于事务最前段：外部资源失败时事务内尚无任何 PG 写、回滚零代价；
+     * 外部资源先行 + 幂等删除的既有重试收敛语义保持不变（事务注解不改变既有执行顺序）。
+     *
      * @param id         知识库 ID
      * @param operatorId 操作者 ID
      * @param isAdmin    是否为超管（超管旁路）
      */
+    @Transactional
     public void delete(Long id, Long operatorId, boolean isAdmin) {
         KnowledgeBase kb = knowledgeBaseMapper.selectById(id);
         if (kb == null) {

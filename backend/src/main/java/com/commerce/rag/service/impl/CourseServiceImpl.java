@@ -39,6 +39,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 /**
@@ -225,10 +226,16 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
      *
      * <p>级联影响：course_content + course_schedule + course_teacher + course_enrollment + document_chunk(课程专属)
      *
+     * <p>B2-5 事务说明：六条软删 UPDATE（content→schedule→teacher→enrollment→chunk→course）在同一事务内
+     * 原子执行，中途失败整体回滚，避免留下"课程已删而排期/选课仍 active"的跨表中间态。
+     * Milvus 清理位于事务最前段：其失败时事务内尚无任何 PG 写、回滚零代价；外部资源先行 + 幂等删除
+     * 的既有重试收敛语义保持不变（事务注解不改变既有执行顺序）。
+     *
      * @param courseId      课程 ID
      * @param currentUserId 当前操作用户 ID（用于权限校验）
      * @param isAdmin       是否为超管（超管旁路）
      */
+    @Transactional
     public void deleteCourse(Long courseId, Long currentUserId, boolean isAdmin) {
         checkOwnership(courseId, currentUserId, isAdmin);
         long ts = System.currentTimeMillis();

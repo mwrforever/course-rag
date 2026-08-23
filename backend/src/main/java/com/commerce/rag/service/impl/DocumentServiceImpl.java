@@ -32,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 文档服务 —— 封装 document 表的 CRUD + MinIO 文件管理 + ETL 触发
@@ -240,10 +241,16 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
      * 删除顺序（P1-4 Bug 3 修复）：先删 MinIO 外部对象，失败上抛阻断，PG 记录保留可重试；
      * removeObject 幂等，重试可收敛。
      *
+     * <p>B2-5 事务说明：document_chunk → document 两条软删 UPDATE 在同一事务内原子执行，
+     * 中途失败整体回滚，避免留下"chunk 已删而 document 仍存活（chunk_count 非 0）"的中间态。
+     * MinIO/Milvus 清理位于事务最前段：外部资源失败时事务内尚无任何 PG 写、回滚零代价；
+     * 外部资源先行 + 幂等删除的既有重试收敛语义保持不变（事务注解不改变既有执行顺序）。
+     *
      * @param id         文档 ID
      * @param operatorId 操作者 ID（从 AuthInterceptor 注入的 userId 获取）
      * @param isAdmin    是否为超管（超管旁路）
      */
+    @Transactional
     public void delete(Long id, Long operatorId, boolean isAdmin) {
         Document doc = documentMapper.selectById(id);
         if (doc == null) {

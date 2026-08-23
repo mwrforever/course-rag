@@ -24,6 +24,7 @@ import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.service.impl.CourseServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.github.benmanes.caffeine.cache.Cache;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
@@ -35,6 +36,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionAttribute;
 
 /**
  * ICourseService 权限单元测试 —— 课程详情归属校验（P0-2g）
@@ -405,5 +408,21 @@ class CourseServiceTest {
         course.setId(id);
         course.setCreatedBy(createdBy);
         return course;
+    }
+
+    // ==================== B2-5 级联软删事务原子性 ====================
+
+    /** Spring 事务元数据解析器 —— 与生产事务切面同一解析路径，验证注解会被识别且异常触发回滚 */
+    private static final AnnotationTransactionAttributeSource TX_SOURCE = new AnnotationTransactionAttributeSource();
+
+    @Test
+    @DisplayName("B2-5: deleteCourse 标注 @Transactional 且运行时异常触发回滚")
+    void deleteCourse_isTransactional_rollsBackOnRuntimeFailure() throws NoSuchMethodException {
+        Method method = CourseServiceImpl.class.getMethod("deleteCourse", Long.class, Long.class, boolean.class);
+        TransactionAttribute attr = TX_SOURCE.getTransactionAttribute(method, CourseServiceImpl.class);
+
+        // 注解存在（事务切面可识别）且 RuntimeException 触发回滚（默认回滚规则）
+        assertNotNull(attr, "deleteCourse 应标注 @Transactional（B2-5：六连 UPDATE 原子性）");
+        assertTrue(attr.rollbackOn(new RuntimeException("级联软删中途失败")));
     }
 }

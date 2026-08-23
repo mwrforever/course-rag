@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 会话服务 —— 封装 chat_session 表的 CRUD 操作
@@ -180,9 +181,14 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
     /**
      * 删除会话（级联软删消息 + Run）
      *
+     * <p>B2-5 事务说明：chat_message → chat_run → chat_session 三条软删 UPDATE 在同一事务内原子执行，
+     * 中途任一步失败（连接池耗尽/瞬时故障）整体回滚，避免出现"消息已删而会话仍存活"的中间态。
+     * 方法内无外部资源调用（纯 PG 写），事务边界即方法边界。
+     *
      * @param sessionId 会话 ID
      * @param operatorId 操作者 ID（用于审计日志）
      */
+    @Transactional
     public void deleteSession(Long sessionId, Long operatorId) {
         long ts = System.currentTimeMillis();
         // 级联软删 chat_message + chat_run（使用 MyBatis-Plus LambdaUpdateWrapper）

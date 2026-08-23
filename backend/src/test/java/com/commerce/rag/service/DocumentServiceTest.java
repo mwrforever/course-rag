@@ -22,6 +22,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionAttribute;
 
 /**
  * IDocumentService 权限校验单元测试 —— 改名/下载/上传的归属校验（P0-2a/b/c）
@@ -391,5 +394,21 @@ class DocumentServiceTest {
 
         assertSame(stream, result.inputStream());
         assertEquals("pdf", result.fileType());
+    }
+
+    // ==================== B2-5 级联软删事务原子性 ====================
+
+    /** Spring 事务元数据解析器 —— 与生产事务切面同一解析路径，验证注解会被识别且异常触发回滚 */
+    private static final AnnotationTransactionAttributeSource TX_SOURCE = new AnnotationTransactionAttributeSource();
+
+    @Test
+    @DisplayName("B2-5: delete 标注 @Transactional 且运行时异常触发回滚")
+    void delete_isTransactional_rollsBackOnRuntimeFailure() throws NoSuchMethodException {
+        Method method = DocumentServiceImpl.class.getMethod("delete", Long.class, Long.class, boolean.class);
+        TransactionAttribute attr = TX_SOURCE.getTransactionAttribute(method, DocumentServiceImpl.class);
+
+        // 注解存在（事务切面可识别）且 RuntimeException 触发回滚（默认回滚规则）
+        assertNotNull(attr, "delete 应标注 @Transactional（B2-5：chunk→document 两连 UPDATE 原子性）");
+        assertTrue(attr.rollbackOn(new RuntimeException("级联软删中途失败")));
     }
 }

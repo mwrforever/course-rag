@@ -19,6 +19,7 @@ import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.KnowledgeBaseVO;
 import com.github.benmanes.caffeine.cache.Cache;
+import java.lang.reflect.Method;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -29,6 +30,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionAttribute;
 
 /**
  * IKnowledgeBaseService 单元测试 —— Mock Mapper + EtlPipeline
@@ -258,5 +261,21 @@ class KnowledgeBaseServiceTest {
         when(knowledgeBaseMapper.selectById(99L)).thenReturn(null);
 
         assertThrows(IllegalArgumentException.class, () -> knowledgeBaseService.update(99L, "新名", null, 1L, true));
+    }
+
+    // ==================== B2-5 级联软删事务原子性 ====================
+
+    /** Spring 事务元数据解析器 —— 与生产事务切面同一解析路径，验证注解会被识别且异常触发回滚 */
+    private static final AnnotationTransactionAttributeSource TX_SOURCE = new AnnotationTransactionAttributeSource();
+
+    @Test
+    @DisplayName("B2-5: delete 标注 @Transactional 且运行时异常触发回滚")
+    void delete_isTransactional_rollsBackOnRuntimeFailure() throws NoSuchMethodException {
+        Method method = KnowledgeBaseServiceImpl.class.getMethod("delete", Long.class, Long.class, boolean.class);
+        TransactionAttribute attr = TX_SOURCE.getTransactionAttribute(method, KnowledgeBaseServiceImpl.class);
+
+        // 注解存在（事务切面可识别）且 RuntimeException 触发回滚（默认回滚规则）
+        assertNotNull(attr, "delete 应标注 @Transactional（B2-5：chunk→document→kb 三连 UPDATE 原子性）");
+        assertTrue(attr.rollbackOn(new RuntimeException("级联软删中途失败")));
     }
 }
