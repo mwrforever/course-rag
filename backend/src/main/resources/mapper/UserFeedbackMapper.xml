@@ -33,4 +33,18 @@
         WHERE deleted = 0 AND created_at &gt;= #{start}
     </select>
 
+    <!-- P1-5 反馈 upsert 单条 SQL（原 selectOne + insert/update 两往返）：
+         冲突目标带 WHERE deleted = 0 谓词以推断 partial 唯一索引 uniq_feedback_message；
+         软删行不在索引内不构成冲突 → 正常插新行；冲突时仅更新赞踩/意图（幂等，并发双击安全），
+         session_id/created_at 保持既有行；RETURNING 取回落库后行（PG 支持 INSERT..RETURNING 走查询通道）；
+         deleted/created_at 由列缺省补 0/now()。 -->
+    <select id="upsertFeedback" resultType="com.commerce.rag.entity.UserFeedback">
+        INSERT INTO user_feedback (id, user_id, session_id, message_id, is_liked, intent_type)
+        VALUES (#{id}, #{userId}, #{sessionId}, #{messageId}, #{isLiked}, #{intentType})
+        ON CONFLICT (user_id, message_id) WHERE deleted = 0
+        DO UPDATE SET is_liked = EXCLUDED.is_liked,
+                      intent_type = EXCLUDED.intent_type
+        RETURNING id, user_id, session_id, message_id, is_liked, intent_type, created_at
+    </select>
+
 </mapper>

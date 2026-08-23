@@ -46,4 +46,17 @@ public interface UserFeedbackMapper extends BaseMapper<UserFeedback> {
      * @return 单行 {total_count, liked_count}
      */
     Map<String, Object> selectFeedbackStatsByPeriod(@Param("start") LocalDateTime start);
+
+    /**
+     * 反馈 upsert（P1-5）：INSERT ... ON CONFLICT 单条 SQL，替代 selectOne + insert/update 两往返
+     *
+     * <p>冲突目标为 partial 唯一索引 uniq_feedback_message(user_id, message_id) WHERE deleted = 0
+     * （V6:325）——冲突目标必须带 WHERE 谓词才能推断 partial 索引；软删行（deleted=1）不在
+     * 索引内、不构成冲突，按新行正常插入。冲突时仅更新赞踩与意图（session_id/created_at 保持既有行），
+     * 并发双击从撞唯一索引异常收敛为幂等更新。SQL 在 UserFeedbackMapper.xml 映射实现。
+     *
+     * @param feedback 待写入的反馈（id 需调用方预生成雪花 ID；冲突路径该 id 被丢弃）
+     * @return RETURNING 落库后行（插入=新行，冲突=既有行更新后的状态）
+     */
+    UserFeedback upsertFeedback(UserFeedback feedback);
 }
