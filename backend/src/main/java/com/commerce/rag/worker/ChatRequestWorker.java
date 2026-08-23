@@ -305,7 +305,8 @@ public class ChatRequestWorker {
                                 // 推送失败不得中断后续清理与状态回写
                                 log.error("runPool 拒绝后推送 ERROR 终态事件失败: runId={}", rejectedRunIdStr, pushEx);
                             }
-                            // ② 清理 ring（先推事件再清理，投递线程先消费完 ERROR 事件再随 close 退出）
+                            // ② 清理 ring（close 具备 B2-1 drain 语义：置 closed 后等投递线程把 outbox 中
+                            //    已入队的 ERROR 事件投递给订阅者、排空后才 complete——先推后清不吞事件）
                             try {
                                 bridge.removeRing(rejectedRunIdStr);
                             } catch (Exception removeEx) {
