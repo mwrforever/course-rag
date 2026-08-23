@@ -76,6 +76,39 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
     private final Cache<String, Object> dashboardStatsCache;
 
     /**
+     * B 端分片视图投影 wrapper（P1-3）：只取 DocumentChunkVO 全部 22 组件对应列。
+     *
+     * <p>dense_vector（1024 维 float 约 4KB/行）VO 不消费，分页每行白白传输后丢弃；
+     * metadata_json 保留（VO 第 13 位组件有消费）。findPage / findPending 共用。
+     */
+    private LambdaQueryWrapper<DocumentChunk> chunkVoProjection() {
+        return Wrappers.<DocumentChunk>lambdaQuery()
+                .select(
+                        DocumentChunk::getId,
+                        DocumentChunk::getDocId,
+                        DocumentChunk::getKbId,
+                        DocumentChunk::getChunkIndex,
+                        DocumentChunk::getContent,
+                        DocumentChunk::getHeadingPath,
+                        DocumentChunk::getParentTitle,
+                        DocumentChunk::getStartPage,
+                        DocumentChunk::getEndPage,
+                        DocumentChunk::getTokenCount,
+                        DocumentChunk::getCollectionType,
+                        DocumentChunk::getCourseId,
+                        DocumentChunk::getMetadataJson,
+                        DocumentChunk::getMilvusPk,
+                        DocumentChunk::getParentChunkId,
+                        DocumentChunk::getPrevChunkId,
+                        DocumentChunk::getNextChunkId,
+                        DocumentChunk::getCharOffsetStart,
+                        DocumentChunk::getCharOffsetEnd,
+                        DocumentChunk::getCorrectionStatus,
+                        DocumentChunk::getCreatedAt,
+                        DocumentChunk::getUpdatedAt);
+    }
+
+    /**
      * 按 ID 查询分片（B 端管理，含权限校验）
      *
      * @param id     分片 ID
@@ -88,9 +121,9 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
         if (chunk == null) {
             return null;
         }
-        // TEACHER 只能查看自己创建的文档的分片
+        // TEACHER 只能查看自己创建的文档的分片（P1-6：复用已查实体，不再同行二查）
         if ("TEACHER".equals(role)) {
-            checkOwnership(id, userId, false);
+            checkOwnership(chunk, userId, false);
         }
         return chunkConverter.toVO(chunk);
     }
@@ -114,8 +147,8 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
         if ("TEACHER".equals(role) && userId != null) {
             entityPage = chunkMapper.selectPageFilteredByTeacher(pageObj, docId, kbId, false, userId);
         } else {
-            LambdaQueryWrapper<DocumentChunk> wrapper =
-                    Wrappers.<DocumentChunk>lambdaQuery().orderByAsc(DocumentChunk::getChunkIndex);
+            // P1-3：投影仅取 VO 所需 22 列（不含 dense_vector，每行约 4KB 向量分页后即丢弃）
+            LambdaQueryWrapper<DocumentChunk> wrapper = chunkVoProjection().orderByAsc(DocumentChunk::getChunkIndex);
             if (docId != null) {
                 wrapper.eq(DocumentChunk::getDocId, docId);
             }
@@ -144,7 +177,8 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
         if (chunk == null) {
             throw new IllegalArgumentException("分片不存在: id=" + id);
         }
-        checkOwnership(id, userId, isAdmin);
+        // P1-6：复用已查实体做归属校验，不再同行二查
+        checkOwnership(chunk, userId, isAdmin);
 
         // 更新 PG content
         LambdaUpdateWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaUpdate()
@@ -171,7 +205,8 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
         if (chunk == null) {
             return;
         }
-        checkOwnership(id, userId, isAdmin);
+        // P1-6：复用已查实体做归属校验，不再同行二查
+        checkOwnership(chunk, userId, isAdmin);
 
         // Milvus 清理
         etlPipeline.deleteFromMilvusByChunkId(String.valueOf(id));
@@ -220,42 +255,59 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
     /**
      * 查询分片上下文（父/前/当前/后）
      *
+     * <p>P1-10：主分片与相邻分片均按 DocumentChunkVO 投影（原 selectById 全列含
+     * dense_vector 约 4KB/行）；相邻分片照抄同文件 C 端 {@link #findContext(Long)} 范式——
+     * 指针收集去重后一次 in 批量查询建 Map（原逐指针最多 3 次主键查询）。
+     *
      * @param id     分片 ID
      * @param userId 当前用户 ID（TEACHER 数据权限过滤）
      * @param role   当前用户角色（TEACHER 时校验 ownership）
-     * @return 包含 parent / prev / current / next 的 Map（value 为分片视图对象，不含 denseVector）
+     * @return 包含 parent / prev / current / next 的 Map（value 为分片视图对象，不含 denseVector；
+     *         指针为空或相邻分片已软删/不存在时对应 value 为 null，key 不变）
      */
     public Map<String, DocumentChunkVO> findContext(Long id, Long userId, String role) {
-        DocumentChunk current = chunkMapper.selectById(id);
+        // 主分片按 VO 投影查询（P1-10，原 selectById 全列）
+        DocumentChunk current = chunkMapper.selectOne(chunkVoProjection().eq(DocumentChunk::getId, id));
         if (current == null) {
             throw new IllegalArgumentException("分片不存在: id=" + id);
         }
-        // TEACHER 只能查看自己创建的文档的分片
+        // TEACHER 只能查看自己创建的文档的分片（P1-6：复用已查实体，不再同行二查）
         if ("TEACHER".equals(role)) {
-            checkOwnership(id, userId, false);
+            checkOwnership(current, userId, false);
         }
 
-        DocumentChunk parent = null;
-        DocumentChunk prev = null;
-        DocumentChunk next = null;
-
-        if (current.getParentChunkId() != null) {
-            parent = chunkMapper.selectById(current.getParentChunkId());
-        }
-        if (current.getPrevChunkId() != null) {
-            prev = chunkMapper.selectById(current.getPrevChunkId());
-        }
-        if (current.getNextChunkId() != null) {
-            next = chunkMapper.selectById(current.getNextChunkId());
-        }
+        // 相邻分片指针收集 + 一次批量查询（投影与主分片一致，同为 DocumentChunkVO）
+        List<Long> neighborIds = Stream.of(
+                        current.getParentChunkId(), current.getPrevChunkId(), current.getNextChunkId())
+                .filter(Objects::nonNull)
+                .toList();
+        Map<Long, DocumentChunk> neighborMap = neighborIds.isEmpty()
+                ? Map.of()
+                : chunkMapper.selectList(chunkVoProjection().in(DocumentChunk::getId, neighborIds)).stream()
+                        .collect(Collectors.toMap(DocumentChunk::getId, c -> c));
 
         Map<String, DocumentChunkVO> context = new HashMap<>();
         // 上下文四件套逐条转 VO（可能为 null 的相邻分片保持 null，key 不变）
-        context.put("parent", parent != null ? chunkConverter.toVO(parent) : null);
-        context.put("prev", prev != null ? chunkConverter.toVO(prev) : null);
+        context.put("parent", neighborVo(neighborMap, current.getParentChunkId()));
+        context.put("prev", neighborVo(neighborMap, current.getPrevChunkId()));
         context.put("current", chunkConverter.toVO(current));
-        context.put("next", next != null ? chunkConverter.toVO(next) : null);
+        context.put("next", neighborVo(neighborMap, current.getNextChunkId()));
         return context;
+    }
+
+    /**
+     * 邻居分片转 VO —— 指针为空或邻居已软删/不存在（批量结果缺该 id）时返回 null
+     *
+     * @param neighborMap 相邻分片批量查询结果（id → 实体）
+     * @param pointer     主分片上的邻居指针（parent/prev/next，可为 null）
+     * @return 邻居分片视图对象，无可用邻居返回 null
+     */
+    private DocumentChunkVO neighborVo(Map<Long, DocumentChunk> neighborMap, Long pointer) {
+        if (pointer == null) {
+            return null;
+        }
+        DocumentChunk neighbor = neighborMap.get(pointer);
+        return neighbor == null ? null : chunkConverter.toVO(neighbor);
     }
 
     /**
@@ -387,7 +439,12 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
         // P0-1 + 用户裁决（2026-08-15）：标注同步走文档级（syncDocToMilvus）——
         // 按涉及的 docId 去重后逐文档重建 Milvus 行（调用次数 = 文档数而非分片数）；
         // 失败上抛阻断，可重试收敛
-        Set<Long> docIds = chunkMapper.selectBatchIds(new HashSet<>(ids)).stream()
+        // P1-6：docId 收集只消费 doc_id，按需取两列（原 selectBatchIds 全列取回含 dense_vector 约 4KB/行）
+        Set<Long> docIds = chunkMapper
+                .selectList(Wrappers.<DocumentChunk>lambdaQuery()
+                        .select(DocumentChunk::getId, DocumentChunk::getDocId)
+                        .in(DocumentChunk::getId, ids))
+                .stream()
                 .map(DocumentChunk::getDocId)
                 .collect(Collectors.toSet());
         for (Long docId : docIds) {
@@ -438,7 +495,8 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
         if ("TEACHER".equals(role) && userId != null) {
             entityPage = chunkMapper.selectPageFilteredByTeacher(pageObj, docId, kbId, true, userId);
         } else {
-            LambdaQueryWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaQuery()
+            // P1-3：投影仅取 VO 所需 22 列（不含 dense_vector，每行约 4KB 向量分页后即丢弃）
+            LambdaQueryWrapper<DocumentChunk> wrapper = chunkVoProjection()
                     .eq(DocumentChunk::getCorrectionStatus, "PENDING")
                     .orderByAsc(DocumentChunk::getChunkIndex);
             if (kbId != null) {
@@ -469,9 +527,12 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
         if (isAdmin) {
             return;
         }
-        // 1 次批量查全部分片（selectBatchIds 自动过滤软删；去重后数量不匹配说明存在不存在的 id）
+        // 1 次批量查全部分片（P1-6：按需取 id/doc_id 两列，原 selectBatchIds 全列含 dense_vector；
+        // wrapper 查询同样自动过滤软删；去重后数量不匹配说明存在不存在的 id）
         Set<Long> uniqueIds = new HashSet<>(chunkIds);
-        List<DocumentChunk> chunks = chunkMapper.selectBatchIds(uniqueIds);
+        List<DocumentChunk> chunks = chunkMapper.selectList(Wrappers.<DocumentChunk>lambdaQuery()
+                .select(DocumentChunk::getId, DocumentChunk::getDocId)
+                .in(DocumentChunk::getId, uniqueIds));
         if (chunks.size() != uniqueIds.size()) {
             throw new BizException(ErrorCode.NOT_FOUND, "分片不存在");
         }
@@ -510,11 +571,14 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
     }
 
     /**
-     * 权限校验 —— 经 doc_id→document.created_by 校验分片 ownership（P2-1：含知识库属主旁路）
+     * 权限校验（按 ID）—— 内部查询分片后委托实体重载
+     *
+     * <p>仅供调用方尚未查询分片的路径使用（updateCollectionType）；已查实体的路径
+     * 请用 {@link #checkOwnership(DocumentChunk, Long, boolean)}，避免同行二次主键查询（P1-6）。
      *
      * @param chunkId 分片 ID
      * @param userId  操作者 ID
-     * @param isAdmin 是否为超管（超管旁路）
+     * @param isAdmin 是否为超管（超管旁路，不校验 ownership）
      */
     private void checkOwnership(Long chunkId, Long userId, boolean isAdmin) {
         if (isAdmin) {
@@ -523,6 +587,24 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
         DocumentChunk chunk = chunkMapper.selectById(chunkId);
         if (chunk == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "分片不存在: id=" + chunkId);
+        }
+        checkOwnership(chunk, userId, false);
+    }
+
+    /**
+     * 权限校验（实体重载，P1-6）—— 接收调用方已查询的分片实体，消除同行二次 selectById
+     *
+     * <p>参照 DocumentServiceImpl.checkOwnership(Document, Long, boolean) 范式；
+     * 归属规则不变（P2-1）：文档属主 或 所属知识库属主。
+     *
+     * @param chunk   已查询的分片实体（不允许为 null——调用方需先完成判空）
+     * @param userId  操作者 ID
+     * @param isAdmin 是否为超管（超管旁路，不校验 ownership）
+     * @throws BizException 文档不存在抛 404；非文档/知识库属主抛 403
+     */
+    private void checkOwnership(DocumentChunk chunk, Long userId, boolean isAdmin) {
+        if (isAdmin) {
+            return;
         }
         Document doc = documentMapper.selectById(chunk.getDocId());
         if (doc == null) {
