@@ -20,6 +20,12 @@ import org.springframework.validation.annotation.Validated;
  *     max-size: 4
  *     queue-capacity: 20
  *     thread-name-prefix: etl-
+ *   image-executor:
+ *     core-size: 2
+ *     max-size: 4
+ *     queue-capacity: 20
+ *     thread-name-prefix: etl-image-
+ *     process-timeout-seconds: 60
  *   chunk:
  *     size: 768
  *     min-chunk-size-chars: 64
@@ -37,6 +43,7 @@ import org.springframework.validation.annotation.Validated;
 public record EtlProperties(
         @Min(1) int maxFileSizeMb,
         Executor executor,
+        ImageExecutor imageExecutor,
         Chunk chunk,
         @Min(1) int embeddingBatchSize,
         @NotBlank String captionModel,
@@ -49,6 +56,20 @@ public record EtlProperties(
      */
     public record Executor(
             @Min(1) int coreSize, @Min(1) int maxSize, @Min(1) int queueCapacity, @NotBlank String threadNamePrefix) {}
+
+    /**
+     * ETL 图片并行池配置（P2-2b：图片 upload+caption 子任务专用池——不得复用 etlPool，
+     * ETL 主任务占用 etlPool 时子任务同池排队会自锁死）
+     *
+     * <p>processTimeoutSeconds：单图处理（MinIO 上传 + VLM caption）超时——超时图片跳过
+     * 标注（记 warn），不阻断文档 ETL（spec §4.2 单图失败跳过边界）。
+     */
+    public record ImageExecutor(
+            @Min(1) int coreSize,
+            @Min(1) int maxSize,
+            @Min(1) int queueCapacity,
+            @NotBlank String threadNamePrefix,
+            @Min(1) int processTimeoutSeconds) {}
 
     /**
      * 文本分块参数（Spring AI TokenTextSplitter 映射：size=chunkSizeTokens，

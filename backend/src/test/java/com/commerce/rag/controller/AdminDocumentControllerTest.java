@@ -45,6 +45,7 @@ class AdminDocumentControllerTest {
         EtlProperties props = new EtlProperties(
                 100,
                 new EtlProperties.Executor(2, 4, 20, "etl-"),
+                new EtlProperties.ImageExecutor(3, 3, 20, "etl-image-", 60),
                 new EtlProperties.Chunk(768, 64),
                 16,
                 "qwen3.7-flash",

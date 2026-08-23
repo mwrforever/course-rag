@@ -26,14 +26,18 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.apache.tika.extractor.EmbeddedDocumentExtractor;
@@ -59,15 +63,16 @@ import org.springframework.transaction.support.TransactionTemplate;
  * B 端后续批量修正 chunk 元数据（collection_type / course_id）。
  *
  * <p>线程池：core-size=2, max-size=4, queue-capacity=20, thread-name-prefix=etl-
- * （由 EtlConfig.etlPool 提供，调用方通过 execute() 提交）。
+ * （由 EtlConfig.etlPool 提供，调用方通过 execute() 提交）；
+ * 图片 upload+caption 子任务走独立 etlImagePool（P2-2b，防主任务占用 etlPool 时子任务自锁）。
  *
  * <p>Milvus upsert 策略：delete-then-insert。
  * PG 冗余 dense_vector（BYTEA）避免回查 Milvus。
  *
- * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（11 个 private final 依赖：
+ * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（12 个 private final 依赖：
  * DocumentMapper / DocumentChunkMapper / MinioStorageService / EmbeddingModel /
- * MilvusClientV2 / EtlProperties / dashboardStatsCache / XhtmlDocumentParser / TableChunker /
- * ImageCaptionService / TransactionTemplate）。
+ * MilvusClientV2 / EtlProperties / etlImagePool / dashboardStatsCache / XhtmlDocumentParser /
+ * TableChunker / ImageCaptionService / TransactionTemplate）。
  *
  * @author commerce-rag
  */
@@ -95,6 +100,13 @@ public class EtlPipeline {
     private final EmbeddingModel embeddingModel;
     private final MilvusClientV2 milvusClientV2;
     private final EtlProperties etlProperties;
+
+    /**
+     * ETL 图片并行池（P2-2b：图片 upload+caption 子任务专用，与 etlPool 隔离——
+     * ETL 主任务占用 etlPool 时子任务同池排队自锁死；池大小同时是 VLM 并发上限）
+     */
+    @Qualifier("etlImagePool")
+    private final ThreadPoolExecutor etlImagePool;
 
     /** Dashboard 统计缓存（TTL 60 秒；ETL 状态写入后失效，覆盖分片数/终态变更，先写 DB 后失效——一致性铁律） */
     @Qualifier("dashboardStatsCache")
@@ -363,38 +375,101 @@ public class EtlPipeline {
 
     /**
      * 组装待落库分片 —— 按文档顺序遍历结构分区，按类型分片
-     * （文本走 TokenTextSplitter；表格走 TableChunker；图片分区于 Task 7 接入）
+     * （文本走 TokenTextSplitter；表格走 TableChunker；图片 upload+caption 并行，P2-2b）
+     *
+     * <p>P2-2b 图片并行编排（两遍式）：
+     * <ol>
+     *   <li>第一遍串行：文本/表格分片原位组装；图片做<b>本地判定</b>（小图标/装饰图过滤 +
+     *       字节去重，无远程 IO）——判定顺序与结果和串行实现一致；有效图片提交
+     *       {@code etlImagePool} 并行执行 MinIO 上传 + VLM caption（每图独立 future +
+     *       单图超时），槽位按文档原序占位</li>
+     *   <li>第二遍回填：按文档原序 join——chunkIndex 与图片位置语义不随完成顺序变化；
+     *       单图失败/超时仅跳过该图（记 warn），文档 ETL 继续（spec §4.2）</li>
+     * </ol>
      *
      * @param doc    文档实体（图片分片 MinIO 上传需要 kbId）
      * @param parsed 解析后的结构化分区
      */
+    @SuppressWarnings("unchecked")
     private List<ChunkSpec> buildChunkSpecs(Document doc, ParsedContent parsed) {
-        List<ChunkSpec> specs = new ArrayList<>();
-        // 图片字节级去重表（sha256 → MinIO objectKey），仅本文件内有效（同图只处理一次）
-        Map<String, String> processedImages = new HashMap<>();
+        // 槽位列表：文本/表格为已成品 spec；图片为并行 future（join 后按位回填）
+        List<Object> slots = new ArrayList<>();
+        // 图片字节级去重表（sha256 已提交标记），仅本文件内有效（同图只处理一次）
+        Set<String> processedImageHashes = new HashSet<>();
         for (ParsedContent.ParsedSection section : parsed.sections()) {
             if (section instanceof ParsedContent.TextSection text) {
-                specs.addAll(splitTextSection(text));
+                slots.addAll(splitTextSection(text));
             } else if (section instanceof ParsedContent.TableSection table) {
-                specs.addAll(tableChunker.chunk(table.html(), table.headingPath()));
+                slots.addAll(tableChunker.chunk(table.html(), table.headingPath()));
             } else if (section instanceof ParsedContent.ImageSection image) {
-                // 图片：过滤 → 字节去重 → MinIO 上传 → caption → image chunk
-                // 单图失败仅跳过该图（记 warn），文档 ETL 继续（spec §4.2）
-                try {
-                    ChunkSpec spec = buildImageChunk(doc, image, processedImages);
-                    if (spec != null) {
-                        specs.add(spec);
-                    }
-                } catch (Exception e) {
-                    log.warn(
-                            "图片处理失败，跳过该图（文档 ETL 继续）: docId={}, resource={}, error={}",
+                // 第一遍（串行本地判定）：小图标/装饰图过滤 + 字节去重，与串行实现语义一致
+                if (ImageFilter.isSmallIcon(image.bytes(), etlProperties.imageMinSizeKb())) {
+                    log.info(
+                            "图片过滤（小于 {}KB）: docId={}, resource={}",
+                            etlProperties.imageMinSizeKb(),
                             doc.getId(),
-                            image.resourceName(),
-                            e.getMessage());
+                            image.resourceName());
+                    continue;
                 }
+                if (ImageFilter.isDecorative(image.bytes())) {
+                    log.info("图片过滤（装饰图）: docId={}, resource={}", doc.getId(), image.resourceName());
+                    continue;
+                }
+                String byteHash = ContentHash.sha256Hex(image.bytes());
+                if (!processedImageHashes.add(byteHash)) {
+                    log.info("图片字节去重（同图只处理一次）: docId={}, resource={}", doc.getId(), image.resourceName());
+                    continue;
+                }
+                // 第二段：upload+caption 远程 IO 并行（池内独立执行，单图超时由 orTimeout 隔离；
+                // 队列满拒绝（AbortPolicy）同样走单图失败跳过语义）
+                slots.add(CompletableFuture.supplyAsync(() -> processImageSpec(doc, image), etlImagePool)
+                        .orTimeout(etlProperties.imageExecutor().processTimeoutSeconds(), TimeUnit.SECONDS));
+            }
+        }
+        // 第二遍：按文档原序 join 回填（future 异常 = 单图失败/超时 → 跳过该图，文档 ETL 继续）
+        List<ChunkSpec> specs = new ArrayList<>(slots.size());
+        for (Object slot : slots) {
+            if (slot instanceof ChunkSpec spec) {
+                specs.add(spec);
+                continue;
+            }
+            CompletableFuture<ChunkSpec> future = (CompletableFuture<ChunkSpec>) slot;
+            try {
+                ChunkSpec spec = future.join();
+                if (spec != null) {
+                    specs.add(spec);
+                }
+            } catch (CompletionException e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                log.warn("图片处理失败/超时，跳过该图（文档 ETL 继续）: docId={}, error={}", doc.getId(), cause.getMessage());
             }
         }
         return specs;
+    }
+
+    /**
+     * 单图处理：MinIO 上传 → VLM caption → 图片分片规格（P2-2b：在 etlImagePool 线程并行执行）
+     *
+     * <p>容错语义与串行实现一致：caption 为空返回 null（该图跳过）；
+     * 上传/caption 异常与单图超时由调用方统一按「跳过该图」捕获处理（spec §4.2）。
+     *
+     * @param doc   文档实体（kbId 用于 MinIO objectKey）
+     * @param image 图片分区（字节 + MIME + 章节路径）
+     * @return 图片分片规格；caption 为空返回 null
+     */
+    private ChunkSpec processImageSpec(Document doc, ParsedContent.ImageSection image) {
+        String objectKey = uploadImage(doc, image);
+        String caption = imageCaptionService.caption(image.bytes(), image.mimeType());
+        if (caption == null || caption.isBlank()) {
+            log.warn("图片 caption 为空，跳过该图: docId={}, resource={}", doc.getId(), image.resourceName());
+            return null;
+        }
+        Map<String, String> meta = new LinkedHashMap<>();
+        meta.put("resourceName", image.resourceName());
+        if (image.headingPath() != null && !image.headingPath().isBlank()) {
+            meta.put("headingPath", image.headingPath());
+        }
+        return new ChunkSpec(caption, image.headingPath(), "image", objectKey, new Gson().toJson(meta), null, null);
     }
 
     /**
@@ -435,47 +510,6 @@ public class EtlPipeline {
                 existing.size(),
                 unique.size());
         return unique;
-    }
-
-    /**
-     * 图片分片：过滤小图标/装饰图 → 字节级去重（同图只处理一次）→ MinIO 上传 → VLM caption
-     *
-     * @return 图片分片规格；被过滤/跳过时返回 null
-     */
-    private ChunkSpec buildImageChunk(
-            Document doc, ParsedContent.ImageSection image, Map<String, String> processedImages) {
-        if (ImageFilter.isSmallIcon(image.bytes(), etlProperties.imageMinSizeKb())) {
-            log.info(
-                    "图片过滤（小于 {}KB）: docId={}, resource={}",
-                    etlProperties.imageMinSizeKb(),
-                    doc.getId(),
-                    image.resourceName());
-            return null;
-        }
-        if (ImageFilter.isDecorative(image.bytes())) {
-            log.info("图片过滤（装饰图）: docId={}, resource={}", doc.getId(), image.resourceName());
-            return null;
-        }
-        // 图片字节 sha256 去重：同图只 caption + 上传一次（内存级，spec §4.2）
-        String byteHash = ContentHash.sha256Hex(image.bytes());
-        if (processedImages.containsKey(byteHash)) {
-            log.info("图片字节去重（同图只处理一次）: docId={}, resource={}", doc.getId(), image.resourceName());
-            return null;
-        }
-        String objectKey = uploadImage(doc, image);
-        processedImages.put(byteHash, objectKey);
-
-        String caption = imageCaptionService.caption(image.bytes(), image.mimeType());
-        if (caption == null || caption.isBlank()) {
-            log.warn("图片 caption 为空，跳过该图: docId={}, resource={}", doc.getId(), image.resourceName());
-            return null;
-        }
-        Map<String, String> meta = new LinkedHashMap<>();
-        meta.put("resourceName", image.resourceName());
-        if (image.headingPath() != null && !image.headingPath().isBlank()) {
-            meta.put("headingPath", image.headingPath());
-        }
-        return new ChunkSpec(caption, image.headingPath(), "image", objectKey, new Gson().toJson(meta), null, null);
     }
 
     /**

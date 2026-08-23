@@ -163,6 +163,12 @@ etl:
     max-size: 4
     queue-capacity: 20
     thread-name-prefix: etl-
+  image-executor:                     # P2-2b: 图片 upload+caption 并行池（与 etlPool 隔离防子任务自锁）
+    core-size: 2
+    max-size: 4
+    queue-capacity: 20
+    thread-name-prefix: etl-image-
+    process-timeout-seconds: 60       # 单图处理超时（超时跳过该图标注，不阻断文档 ETL）
   chunk:
     size: 768                        # TokenTextSplitter chunkSizeTokens
     min-chunk-size-chars: 64         # 过小 chunk 并入前一个的阈值（spec §4.1）

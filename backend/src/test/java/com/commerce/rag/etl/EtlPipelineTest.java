@@ -34,8 +34,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -91,11 +97,26 @@ class EtlPipelineTest {
 
     private EtlPipeline etlPipeline;
 
+    /** ETL 图片并行池（真实小池：daemon 不阻塞测试 JVM 退出；3 线程满足三图同时在途断言） */
+    private final ThreadPoolExecutor etlImagePool =
+            new ThreadPoolExecutor(3, 3, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(20), r -> {
+                Thread t = new Thread(r, "test-etl-image-");
+                t.setDaemon(true);
+                return t;
+            });
+
+    @AfterEach
+    void tearDown() {
+        // 释放测试图片池，防止线程跨用例残留
+        etlImagePool.shutdownNow();
+    }
+
     @BeforeEach
     void setUp() {
         EtlProperties props = new EtlProperties(
                 100,
                 new EtlProperties.Executor(2, 4, 20, "etl-"),
+                new EtlProperties.ImageExecutor(3, 3, 20, "etl-image-", 60),
                 new EtlProperties.Chunk(768, 64),
                 16,
                 "qwen3.7-flash",
@@ -115,6 +136,7 @@ class EtlPipelineTest {
                 embeddingModel,
                 milvusClientV2,
                 props,
+                etlImagePool,
                 dashboardStatsCache,
                 new XhtmlDocumentParser(),
                 new TableChunker(props),
@@ -503,6 +525,7 @@ class EtlPipelineTest {
         EtlProperties smallBatchProps = new EtlProperties(
                 100,
                 new EtlProperties.Executor(2, 4, 20, "etl-"),
+                new EtlProperties.ImageExecutor(3, 3, 20, "etl-image-", 60),
                 new EtlProperties.Chunk(768, 64),
                 16,
                 "qwen3.7-flash",
@@ -516,6 +539,7 @@ class EtlPipelineTest {
                 embeddingModel,
                 milvusClientV2,
                 smallBatchProps,
+                etlImagePool,
                 dashboardStatsCache,
                 new XhtmlDocumentParser(),
                 new TableChunker(smallBatchProps),
@@ -794,6 +818,121 @@ class EtlPipelineTest {
         verify(chunkMapper).batchInsert(batchCaptor.capture());
         DocumentChunk chunk = ((List<DocumentChunk>) batchCaptor.getValue()).get(0);
         assertEquals("text", chunk.getContentType());
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 图片 upload+caption 并行执行（P2-2b：三图同时在途，串行不可能）且按原序回填")
+    void chunkDocument_imagesProcessedInParallel_assembledInDocumentOrder() throws Exception {
+        Document doc = new Document();
+        doc.setId(8L);
+        doc.setKbId(80L);
+        when(documentMapper.selectById(8L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        when(minioStorageService.uploadFile(eq(80L), anyString(), any(InputStream.class), eq("png")))
+                .thenReturn("80/img.png");
+        // caption 屏障：三张图全部在途（started==3）才放行——串行实现下第 2/3 张永远到不了屏障
+        CountDownLatch allInFlight = new CountDownLatch(3);
+        CountDownLatch release = new CountDownLatch(1);
+        when(imageCaptionService.caption(any(byte[].class), eq("image/png"))).thenAnswer(inv -> {
+            byte[] bytes = inv.getArgument(0);
+            allInFlight.countDown();
+            try {
+                release.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return "描述-" + bytes.length;
+        });
+        Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
+        field.setAccessible(true);
+        // 三张有效图（≥10KB，字节长度互异用于落库断言区分）
+        ((ConcurrentHashMap<Long, ParsedContent>) field.get(etlPipeline))
+                .put(
+                        8L,
+                        new ParsedContent(List.of(
+                                new ParsedContent.ImageSection("图1", "image/png", new byte[10 * 1024], "img1.png"),
+                                new ParsedContent.ImageSection("图2", "image/png", new byte[11 * 1024], "img2.png"),
+                                new ParsedContent.ImageSection("图3", "image/png", new byte[12 * 1024], "img3.png"))));
+        doAnswer(inv -> {
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(800L);
+                    }
+                    return list.size();
+                })
+                .when(chunkMapper)
+                .batchInsert(anyList());
+
+        // chunkDocument 会阻塞在 caption 屏障上，异步执行
+        CompletableFuture<Void> run = CompletableFuture.runAsync(() -> {
+            try {
+                etlPipeline.chunkDocument(8L);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        // 三张图片同时在途（并行证明：串行下第 1 张未放行前第 2/3 张不会进入 caption）
+        assertTrue(allInFlight.await(5, TimeUnit.SECONDS), "三张图片应同时在途（upload+caption 并行执行）");
+        release.countDown();
+        run.get(10, TimeUnit.SECONDS);
+
+        // 落库顺序 = 文档原序（并行完成顺序不影响 chunkIndex 语义）
+        ArgumentCaptor<List> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper).batchInsert(batchCaptor.capture());
+        List<DocumentChunk> chunks = (List<DocumentChunk>) batchCaptor.getValue();
+        assertEquals(3, chunks.size());
+        assertEquals("描述-" + 10 * 1024, chunks.get(0).getContent(), "第 1 张图应排在首位");
+        assertEquals("描述-" + 11 * 1024, chunks.get(1).getContent(), "第 2 张图保持文档原序");
+        assertEquals("描述-" + 12 * 1024, chunks.get(2).getContent(), "第 3 张图保持文档原序");
+    }
+
+    @Test
+    @DisplayName("chunkDocument — 并行下单图失败隔离：中间图 caption 抛异常仅跳过该图，其余按原序落库（P2-2b）")
+    void chunkDocument_parallelSingleImageFailure_isolated() throws Exception {
+        Document doc = new Document();
+        doc.setId(9L);
+        doc.setKbId(90L);
+        when(documentMapper.selectById(9L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        when(minioStorageService.uploadFile(eq(90L), anyString(), any(InputStream.class), eq("png")))
+                .thenReturn("90/img.png");
+        // 中间图（11KB）caption 抛异常，其余两张正常
+        when(imageCaptionService.caption(any(byte[].class), eq("image/png"))).thenAnswer(inv -> {
+            byte[] bytes = inv.getArgument(0);
+            if (bytes.length == 11 * 1024) {
+                throw new RuntimeException("VLM 服务不可用");
+            }
+            return "描述-" + bytes.length;
+        });
+        Field field = EtlPipeline.class.getDeclaredField("parsedContentCache");
+        field.setAccessible(true);
+        ((ConcurrentHashMap<Long, ParsedContent>) field.get(etlPipeline))
+                .put(
+                        9L,
+                        new ParsedContent(List.of(
+                                new ParsedContent.ImageSection("图1", "image/png", new byte[10 * 1024], "img1.png"),
+                                new ParsedContent.ImageSection("图2", "image/png", new byte[11 * 1024], "img2.png"),
+                                new ParsedContent.ImageSection("图3", "image/png", new byte[12 * 1024], "img3.png"))));
+        doAnswer(inv -> {
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(900L);
+                    }
+                    return list.size();
+                })
+                .when(chunkMapper)
+                .batchInsert(anyList());
+
+        etlPipeline.chunkDocument(9L);
+
+        // 失败图片跳过不阻断：其余两张按原序落库，文档状态 CHUNKED
+        ArgumentCaptor<List> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper).batchInsert(batchCaptor.capture());
+        List<DocumentChunk> chunks = (List<DocumentChunk>) batchCaptor.getValue();
+        assertEquals(2, chunks.size(), "失败图跳过，其余两张落库");
+        assertEquals("描述-" + 10 * 1024, chunks.get(0).getContent());
+        assertEquals("描述-" + 12 * 1024, chunks.get(1).getContent());
     }
 
     @Test
