@@ -353,6 +353,20 @@ class ChatStreamEntryTest {
         verify(worker, never()).cancel(anyString());
     }
 
+    @Test
+    @DisplayName("cancel → 已终态 run（COMPLETED/CANCELLED/ERROR）返回 409 且不写取消标记（B2-7）")
+    void cancel_withTerminalRun_returns409WithoutCancelFlag() {
+        // 已终态 run 的 processRequest 早已结束并清理 cancelFlags——再放行 cancel 会令
+        // worker.cancel 无条件新建的条目永久残留（小而确定的内存泄漏）
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
+
+        BizException ex = assertThrows(BizException.class, () -> entry.cancel("123", mockRequestWithUserId(123L)));
+
+        assertEquals(409, ex.getCode(), "终态 run 取消应返回 409（状态冲突）");
+        // 不再下发 worker.cancel → cancelFlags 不新建条目
+        verify(worker, never()).cancel(anyString());
+    }
+
     // ==================== reconnect() 测试（P1-2 终态判定 + replayAndSubscribe） ====================
 
     @Test
