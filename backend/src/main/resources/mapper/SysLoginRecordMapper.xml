@@ -2,11 +2,14 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.commerce.rag.mapper.SysLoginRecordMapper">
 
-    <!-- 锁定用户+设备类型的活跃记录（FOR UPDATE 行锁，PG 降级互踢的原子性保障） -->
+    <!-- 锁定用户+设备类型的活跃记录（FOR UPDATE 行锁，PG 降级互踢的原子性保障）。
+         B1-1：id != newLoginId 排除本次登录刚插入的新记录——登录时序为先 createLoginRecord
+         后互踢，不排除会把新会话误判为旧设备（Redis 故障降级期间登录即自吊销） -->
     <select id="selectActiveForUpdate" resultType="com.commerce.rag.entity.SysLoginRecord">
         SELECT id, user_id, jti_at, jti_rt, device_type, device_info, ip_address, expires_at, status
         FROM sys_login_record
         WHERE user_id = #{userId} AND device_type = #{deviceType} AND status = 'ACTIVE' AND deleted = 0
+        AND id != #{newLoginId}
         FOR UPDATE
     </select>
 

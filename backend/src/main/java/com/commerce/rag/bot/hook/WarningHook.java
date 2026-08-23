@@ -16,7 +16,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,9 +68,6 @@ public class WarningHook extends MessagesModelHook {
 
     /** metadata 中 function_call 的键名 */
     private static final String FUNCTION_CALL_KEY = "function_call";
-
-    /** 当 ThreadState 不可用时，用作降级的本地告警缓冲 */
-    private final List<String> fallbackWarnings = new CopyOnWriteArrayList<>();
 
     /** F#3 死循环检测配置 */
     private final LoopDetectionProperties loopDetectionProperties;
@@ -424,7 +420,10 @@ public class WarningHook extends MessagesModelHook {
      * <p>通过 CompiledGraph.updateState 方法写入，走 State 的 AppendStrategy reducer，
      * 而非直接 mutate threadState Map 中的 List。
      *
-     * <p>如果 ThreadState 不可用，降级写入本地 fallbackWarnings 缓冲。
+     * <p>如果 ThreadState 不可用/写入失败，降级<b>仅记日志</b>（含 threadId 关联）——
+     * B3-6 前降级写入组件级全局缓冲，任意 run 的 beforeModel 会取走全部缓冲并注入
+     * 他人对话上下文（跨用户串扰）；告警为非关键数据，检测侧后续轮次仍会重新告警，
+     * 丢弃注入无业务损失。
      *
      * @param config  运行配置
      * @param warning 告警内容
@@ -441,8 +440,8 @@ public class WarningHook extends MessagesModelHook {
         } catch (Exception e) {
             log.debug("写入 safety_warnings 失败: {}", e.getMessage());
         }
-        // 降级：写入本地缓冲
-        addWarningFallback(warning);
+        // B3-6 降级：仅记日志（threadId 关联），不进任何跨 run 缓冲（消除串扰注入面）
+        log.warn("告警降级仅记日志（不注入模型上下文）: threadId={}, warning={}", resolveThreadId(config), warning);
     }
 
     /**
@@ -450,6 +449,9 @@ public class WarningHook extends MessagesModelHook {
      *
      * <p>读取后通过 {@code CompiledGraph.updateState} 走 State reducer 清空
      * {@code safety_warnings}，确保 checkpoint 一致（而非直接 mutate threadState List）。
+     *
+     * <p>B3-6：只消费本 run state 内的告警——State 不可用时返回空列表
+     * （不再兜底读取全局缓冲，告警已在写入侧降级为日志）。
      */
     @SuppressWarnings("unchecked")
     private List<String> drainWarnings(RunnableConfig config) {
@@ -472,22 +474,7 @@ public class WarningHook extends MessagesModelHook {
         } catch (Exception e) {
             log.debug("读取 safety_warnings 失败: {}", e.getMessage());
         }
-
-        // 降级：读取本地缓冲
-        if (warnings.isEmpty() && !fallbackWarnings.isEmpty()) {
-            warnings.addAll(fallbackWarnings);
-            fallbackWarnings.clear();
-        }
-
         return warnings;
-    }
-
-    /**
-     * 降级路径：当 State 不可用时，通过此方法写入本地缓冲
-     */
-    public void addWarningFallback(String warning) {
-        fallbackWarnings.add(warning);
-        log.debug("告警写入本地缓冲: {}", warning);
     }
 
     // ==================== Per-thread 状态管理 ====================

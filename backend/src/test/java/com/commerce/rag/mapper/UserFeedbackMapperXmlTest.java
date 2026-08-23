@@ -2,6 +2,7 @@ package com.commerce.rag.mapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.commerce.rag.entity.UserFeedback;
 import com.commerce.rag.test.IntegrationTestBase;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -125,5 +126,97 @@ class UserFeedbackMapperXmlTest extends IntegrationTestBase {
                 feedbackMapper.selectFeedbackStatsByPeriod(LocalDateTime.parse("2026-08-10T00:00:00"));
         assertEquals(6L, ((Number) fullPeriod.get("total_count")).longValue(), "全周期 total 应为 6（软删排除）");
         assertEquals(4L, ((Number) fullPeriod.get("liked_count")).longValue(), "全周期 liked 应为 4（null 意图赞计入）");
+    }
+
+    // ==================== P1-5：upsert ON CONFLICT 执行级三分支 ====================
+
+    /** upsert 专用用户 ID（与 @BeforeEach 预置的 3001 隔离） */
+    private static final long UPSERT_USER = 4001L;
+
+    /** 清理 upsert 用例数据（每分支独立准备数据形态） */
+    private void cleanUpsertRows() {
+        jdbcTemplate.update("DELETE FROM user_feedback WHERE user_id = ?", UPSERT_USER);
+    }
+
+    /** 构造 upsert 入参实体（id 由调用方模拟 service 取号；liked 赞踩三态传 Boolean） */
+    private UserFeedback upsertInput(long id, Boolean liked, String intentType) {
+        UserFeedback feedback = new UserFeedback();
+        feedback.setId(id);
+        feedback.setUserId(UPSERT_USER);
+        feedback.setSessionId(6001L);
+        feedback.setMessageId(7001L);
+        feedback.setIsLiked(liked);
+        feedback.setIntentType(intentType);
+        return feedback;
+    }
+
+    /**
+     * P1-5 分支一：不存在 → 插入新行。RETURNING 返回新行（id = 入参生成的雪花 ID），
+     * DB 落库 is_liked/intent_type 与入参一致，deleted 补缺省 0。
+     */
+    @Test
+    void upsertFeedback不存在时插入新行() {
+        cleanUpsertRows();
+
+        UserFeedback saved = feedbackMapper.upsertFeedback(upsertInput(9001L, Boolean.TRUE, "TECHNICAL_QA"));
+
+        assertEquals(9001L, saved.getId(), "插入分支 RETURNING id 应为入参生成的新 ID");
+        assertEquals(Boolean.TRUE, saved.getIsLiked(), "RETURNING is_liked 应为本次值");
+        assertEquals("TECHNICAL_QA", saved.getIntentType(), "RETURNING intent_type 应为本次值");
+        assertEquals(6001L, saved.getSessionId(), "RETURNING session_id 应为本次值");
+        Long deleted = jdbcTemplate.queryForObject("SELECT deleted FROM user_feedback WHERE id = 9001", Long.class);
+        assertEquals(0L, deleted, "deleted 应由列缺省补 0");
+    }
+
+    /**
+     * P1-5 分支二：存在（deleted=0）→ 幂等更新同一行。id/session_id/created_at 保持既有行，
+     * 仅 is_liked/intent_type 更新为本次值；表中行数不变（并发双击不再撞唯一索引）。
+     */
+    @Test
+    void upsertFeedback存在时幂等更新同行() {
+        cleanUpsertRows();
+        // 预置既有反馈（踩、TECHNICAL_QA）
+        jdbcTemplate.update(
+                "INSERT INTO user_feedback (id, user_id, session_id, message_id, is_liked, intent_type, deleted,"
+                        + " created_at) VALUES (8001, ?, 5001, 7001, FALSE, 'TECHNICAL_QA', 0, now())",
+                UPSERT_USER);
+
+        // upsert 改为赞 + COURSE_INFO（入参 id 9002 在冲突路径被丢弃）
+        UserFeedback saved = feedbackMapper.upsertFeedback(upsertInput(9002L, Boolean.TRUE, "COURSE_INFO"));
+
+        assertEquals(8001L, saved.getId(), "冲突分支 RETURNING id 应为既有行 id（入参 id 被丢弃）");
+        assertEquals(5001L, saved.getSessionId(), "冲突分支不应覆盖既有行 session_id");
+        assertEquals(Boolean.TRUE, saved.getIsLiked(), "赞踩应更新为本次值");
+        assertEquals("COURSE_INFO", saved.getIntentType(), "意图应更新为本次值");
+        Integer rows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_feedback WHERE user_id = ?", Integer.class, UPSERT_USER);
+        assertEquals(1, rows, "幂等更新后应仍只有一行（不新增）");
+        Long oldRow = jdbcTemplate.queryForObject(
+                "SELECT id FROM user_feedback WHERE user_id = ? AND deleted = 0", Long.class, UPSERT_USER);
+        assertEquals(8001L, oldRow, "被更新的应是既有行本身");
+    }
+
+    /**
+     * P1-5 分支三：既有行已软删（deleted=1，不在 partial 唯一索引内）→ 不构成冲突，
+     * 正常插入新行；软删旧行保留（审计轨迹不丢）。
+     */
+    @Test
+    void upsertFeedback软删行不冲突时插入新行() {
+        cleanUpsertRows();
+        // 预置同 user_id + message_id 的软删行
+        jdbcTemplate.update(
+                "INSERT INTO user_feedback (id, user_id, session_id, message_id, is_liked, intent_type, deleted,"
+                        + " created_at) VALUES (8002, ?, 5001, 7001, TRUE, 'TECHNICAL_QA', 1, now())",
+                UPSERT_USER);
+
+        UserFeedback saved = feedbackMapper.upsertFeedback(upsertInput(9003L, Boolean.TRUE, "COURSE_INFO"));
+
+        assertEquals(9003L, saved.getId(), "软删行不在索引内不构成冲突，应插入新行");
+        Integer liveRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_feedback WHERE user_id = ? AND deleted = 0", Integer.class, UPSERT_USER);
+        assertEquals(1, liveRows, "新行 deleted=0 生效");
+        Integer totalRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_feedback WHERE user_id = ?", Integer.class, UPSERT_USER);
+        assertEquals(2, totalRows, "软删旧行应保留（共 2 行：1 软删 + 1 新行）");
     }
 }

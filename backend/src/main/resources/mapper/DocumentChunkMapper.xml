@@ -4,12 +4,14 @@
 
     <!-- 教师数据权限分页查询（perf P3-2）：doc_id IN 子查询替代「应用层取全量 doc id + IN 列表」——
          教师文档数千时 IN 列表超长、执行计划退化；子查询在 DB 侧完成过滤（document.created_by 已有索引），
-         应用层零搬运。deleted=0 由 SQL 显式过滤（自定义 SQL 不经过 @TableLogic 生成）。 -->
+         应用层零搬运。deleted=0 由 SQL 显式过滤（自定义 SQL 不经过 @TableLogic 生成）。
+         P1-3：投影裁去 dense_vector（1024 维 float 约 4KB/行，DocumentChunkVO 不消费，分页后即丢弃）；
+         metadata_json 保留（VO 第 13 位组件有消费）。 -->
     <select id="selectPageFilteredByTeacher" resultType="com.commerce.rag.entity.DocumentChunk">
         SELECT id, doc_id, kb_id, chunk_index, content, heading_path, parent_title,
                start_page, end_page, token_count, collection_type, course_id, metadata_json,
                milvus_pk, parent_chunk_id, prev_chunk_id, next_chunk_id,
-               char_offset_start, char_offset_end, correction_status, dense_vector,
+               char_offset_start, char_offset_end, correction_status,
                deleted, created_at, updated_at
         FROM document_chunk
         WHERE deleted = 0
@@ -26,18 +28,43 @@
         ORDER BY chunk_index
     </select>
 
-    <!-- M-1: next_chunk_id 批量回填——分片落库后一次性回填全部链路指针
-         （原逐分片单条 UPDATE，N 分片 N 次 SQL → 单条 CASE WHEN 批量 UPDATE）。 -->
-    <update id="batchUpdateNextChunkIds">
+    <!-- P1-4/P2-4: 分片批量插入——ETL chunking 阶段落库原逐条 insert（N 分片 N 次往返）
+         → foreach multi-values 单语句批插。id 显式携带：MyBatis-Plus MybatisParameterHandler 对
+         INSERT 的集合参数自动填充 @TableId(ASSIGN_ID) 雪花（实测见 BatchInsertIdFillTest 与
+         DocumentChunkMapperXmlTest.batchInsert批量插入并自动填充雪花ID）；created_at/updated_at/deleted
+         等列不携带，由列默认值接管（与 MP insert 的 NOT_NULL 字段策略语义一致）。 -->
+    <insert id="batchInsert">
+        INSERT INTO document_chunk (id, doc_id, kb_id, chunk_index, content, heading_path,
+            token_count, collection_type, course_id, content_type, image_url, sha256,
+            metadata_json, prev_chunk_id, char_offset_start, char_offset_end, correction_status)
+        VALUES
+        <foreach collection="chunks" item="c" separator=",">
+            (#{c.id}, #{c.docId}, #{c.kbId}, #{c.chunkIndex}, #{c.content}, #{c.headingPath},
+             #{c.tokenCount}, #{c.collectionType}, #{c.courseId}, #{c.contentType}, #{c.imageUrl},
+             #{c.sha256}, #{c.metadataJson}, #{c.prevChunkId}, #{c.charOffsetStart},
+             #{c.charOffsetEnd}, #{c.correctionStatus})
+        </foreach>
+    </insert>
+
+    <!-- M-1 + P1-4: prev/next 链双向批量回填——分片批插后 ID 已由 MP 填充，
+         单条 CASE WHEN 批量 UPDATE 同时回填前驱行的 next 与后继行的 prev
+         （原逐条 insert 时 prev 随行落库，批插前 ID 未知故双向均由本语句回填）。 -->
+    <update id="batchUpdateChunkLinks">
         UPDATE document_chunk
         SET next_chunk_id = CASE id
             <foreach collection="pairs" item="p">
                 WHEN #{p.prevChunkId} THEN #{p.nextChunkId}
             </foreach>
             ELSE next_chunk_id
+        END,
+        prev_chunk_id = CASE id
+            <foreach collection="pairs" item="p">
+                WHEN #{p.nextChunkId} THEN #{p.prevChunkId}
+            </foreach>
+            ELSE prev_chunk_id
         END
         WHERE id IN
-        <foreach collection="pairs" item="p" open="(" separator="," close=")">#{p.prevChunkId}</foreach>
+        <foreach collection="pairs" item="p" open="(" separator="," close=")">#{p.prevChunkId}, #{p.nextChunkId}</foreach>
     </update>
 
     <!-- H-3: dense_vector + milvus_pk 批量回写——向量化阶段批量 embedding 后一次性回写

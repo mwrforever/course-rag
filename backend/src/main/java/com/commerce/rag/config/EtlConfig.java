@@ -44,4 +44,34 @@ public class EtlConfig {
                         .build(),
                 new ThreadPoolExecutor.AbortPolicy());
     }
+
+    /**
+     * ETL 图片并行池（P2-2b：图片 upload+caption 子任务专用）
+     *
+     * <p><b>不得复用 etlPool</b>——ETL 主任务（chunkDocument 全流程）占用 etlPool 线程，
+     * 图片子任务同池提交会排队等待主任务释放形成自锁死（池内主任务又在 join 子任务）；
+     * 亦不复用 F7 的 attachmentPool（附件域聊天路径专用，ETL 图片突发会挤占对话关键路径）。
+     * 与 etlPool 同哲学：AbortPolicy 快速失败 + 有界队列，拒绝/异常由 EtlPipeline 按
+     * 「单图失败跳过」语义兜底（spec §4.2）。
+     *
+     * <p>生命周期：@Bean 推断 destroy（shutdown），与 etlPool 一致由 Spring 容器管理。
+     *
+     * @param props ETL 配置（image-executor 段）
+     * @return 配置好的 ThreadPoolExecutor（守护线程 + 有界队列 + AbortPolicy）
+     */
+    @Bean("etlImagePool")
+    public ThreadPoolExecutor etlImagePool(EtlProperties props) {
+        EtlProperties.ImageExecutor exec = props.imageExecutor();
+        return new ThreadPoolExecutor(
+                exec.coreSize(),
+                exec.maxSize(),
+                60L,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(exec.queueCapacity()),
+                new ThreadFactoryBuilder()
+                        .setNameFormat(exec.threadNamePrefix() + "%d")
+                        .setDaemon(true)
+                        .build(),
+                new ThreadPoolExecutor.AbortPolicy());
+    }
 }

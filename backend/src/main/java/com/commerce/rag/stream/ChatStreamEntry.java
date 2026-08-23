@@ -198,10 +198,18 @@ public class ChatStreamEntry {
      * 取消正在执行的 run。
      *
      * <p>归属校验：run 必须属于当前用户（P0-3，不匹配 404 不泄露存在性）。
+     *
+     * <p>B2-7 终态校验：已终态（COMPLETED/CANCELLED/ERROR）的 run 无可取消对象，
+     * 直接 409 拒绝——否则 worker.cancel 会在 cancelFlags 无条件新建条目，而其唯一
+     * 清理路径（processRequest.finally）早已执行，条目将永久残留（内存泄漏）。
      */
     public ResponseEntity<Void> cancel(String runId, HttpServletRequest httpRequest) {
         Long userId = AuthInterceptor.getCurrentUserId(httpRequest);
-        checkRunOwnership(runId, userId);
+        ChatRunVO run = checkRunOwnership(runId, userId);
+        // B2-7: 终态 run 拒绝取消（409 语义），不再写 cancelFlags
+        if (run != null && isTerminalStatus(run.status())) {
+            throw new BizException(ErrorCode.CONFLICT, "Run 已结束，无法取消");
+        }
         worker.cancel(runId);
         log.info("取消请求已发送: runId={}", runId);
         return ResponseEntity.ok().build();
@@ -458,8 +466,9 @@ public class ChatStreamEntry {
      *
      * @param runId  Run 唯一标识（字符串）
      * @param userId 当前登录用户 ID
+     * @return 校验通过的 Run 视图对象（调用方可复用其状态等字段，避免二次查询）
      */
-    private void checkRunOwnership(String runId, Long userId) {
+    private ChatRunVO checkRunOwnership(String runId, Long userId) {
         Long runIdLong;
         try {
             runIdLong = Long.parseLong(runId);
@@ -470,6 +479,7 @@ public class ChatStreamEntry {
         if (run == null || !run.userId().equals(userId)) {
             throw new BizException(ErrorCode.NOT_FOUND, "Run 不存在");
         }
+        return run;
     }
 
     /**

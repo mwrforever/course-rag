@@ -25,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -98,7 +99,14 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         user.setRole(request.role());
         user.setStatus("ACTIVE");
         user.setCreatedBy(createdBy);
-        userMapper.insert(user);
+        try {
+            userMapper.insert(user);
+        } catch (DataIntegrityViolationException e) {
+            // B2-8: check-then-insert 竞态兜底——并发创建同名用户时查重双双通过、后者撞
+            // uniq_sys_user_username，转 409 而非全局 503（语义与查重命中的友好提示一致）
+            log.warn("并发创建用户名冲突: username={}, operator={}", request.username(), createdBy);
+            throw new BizException(ErrorCode.CONFLICT, "用户名已存在（并发操作冲突），请刷新后重试", e);
+        }
 
         // 统计失效：学生数可能已变更（先写 DB 后失效——BUG-2 修复）
         dashboardStatsCache.invalidateAll();

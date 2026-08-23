@@ -22,12 +22,40 @@ class EtlConfigTest {
         EtlProperties props = new EtlProperties(
                 100,
                 new EtlProperties.Executor(2, 4, 20, "etl-"),
+                new EtlProperties.ImageExecutor(3, 3, 20, "etl-image-", 60),
                 new EtlProperties.Chunk(768, 64),
                 16,
                 "qwen3.7-flash",
                 10,
-                new EtlProperties.Table(25, 30, 2));
+                new EtlProperties.Table(25, 30, 2),
+                500);
         ThreadPoolExecutor pool = new EtlConfig().etlPool(props);
+
+        try {
+            assertEquals(2, pool.getCorePoolSize());
+            assertEquals(4, pool.getMaximumPoolSize());
+            assertEquals(20, ((LinkedBlockingQueue<?>) pool.getQueue()).remainingCapacity());
+            assertInstanceOf(ThreadPoolExecutor.AbortPolicy.class, pool.getRejectedExecutionHandler());
+            assertTrue(pool.getThreadFactory().newThread(() -> {}).isDaemon());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("etlImagePool 创建 ETL 图片并行池（P2-2b：与 etlPool 隔离防子任务自锁——core/max/有界队列/AbortPolicy）")
+    void etlImagePool_buildsIsolatedImagePool() {
+        EtlProperties props = new EtlProperties(
+                100,
+                new EtlProperties.Executor(2, 4, 20, "etl-"),
+                new EtlProperties.ImageExecutor(2, 4, 20, "etl-image-", 60),
+                new EtlProperties.Chunk(768, 64),
+                16,
+                "qwen3.7-flash",
+                10,
+                new EtlProperties.Table(25, 30, 2),
+                500);
+        ThreadPoolExecutor pool = new EtlConfig().etlImagePool(props);
 
         try {
             assertEquals(2, pool.getCorePoolSize());

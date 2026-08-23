@@ -6,7 +6,9 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.commerce.rag.dto.UserDTO;
 import com.commerce.rag.entity.SysLoginRecord;
+import com.commerce.rag.exception.BizException;
 import com.commerce.rag.mapper.SysLoginRecordMapper;
 import com.commerce.rag.properties.AuthProperties;
 import com.commerce.rag.test.MybatisPlusTestHelper;
@@ -98,6 +100,9 @@ class AuthSessionServiceTest {
     @Test
     @DisplayName("updateLoginRecordOnRefresh → 更新 jti_at/jti_rt/expires_at（RT 旋转后滑动过期时间）")
     void updateLoginRecordOnRefresh_updatesLoginRecord() {
+        // 正常路径：定位命中 1 行（B1-2 后 0 行会抛 401，happy path 须显式 stub 1 行）
+        when(loginRecordMapper.update(isNull(), any())).thenReturn(1);
+
         authSessionService.updateLoginRecordOnRefresh(123L, "old-jti-rt", "new-jti-at", "new-jti-rt");
 
         ArgumentCaptor<LambdaUpdateWrapper> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
@@ -115,6 +120,45 @@ class AuthSessionServiceTest {
 
         assertDoesNotThrow(
                 () -> authSessionService.updateLoginRecordOnRefresh(123L, "old-jti-rt", "new-jti-at", "new-jti-rt"));
+    }
+
+    @Test
+    @DisplayName("updateLoginRecordOnRefresh → 定位 0 行（RT 旋转脱节）→ 抛 401 强制重新登录（B1-2）")
+    void updateLoginRecordOnRefresh_zeroRows_throws401() {
+        // 脱节场景：记录停留在更旧的 jti_rt（历史 update 失败），按当前 oldJtiRt 定位恒 0 行——
+        // 静默放行会让后续 revokeOnLogout/disableUser 全部吊销不到用户实际持有的 RT
+        when(loginRecordMapper.update(isNull(), any())).thenReturn(0);
+
+        BizException ex = assertThrows(
+                BizException.class,
+                () -> authSessionService.updateLoginRecordOnRefresh(123L, "old-jti-rt", "new-jti-at", "new-jti-rt"));
+
+        assertEquals(401, ex.getCode(), "会话脱节应按 401 语义拒绝刷新，强制重新登录");
+    }
+
+    // ==================== assertUserActiveOnRefresh（B1-2 刷新用户状态校验） ====================
+
+    @Test
+    @DisplayName("assertUserActiveOnRefresh → ACTIVE 用户：放行，不吊销")
+    void assertUserActiveOnRefresh_activeUser_passes() {
+        UserDTO active = new UserDTO(123L, "user", "测试用户", "STUDENT", "ACTIVE", LocalDateTime.now());
+
+        assertDoesNotThrow(() -> authSessionService.assertUserActiveOnRefresh(active));
+        verifyNoInteractions(deviceKickService);
+    }
+
+    @Test
+    @DisplayName("assertUserActiveOnRefresh → 禁用用户：拒绝刷新（403）并吊销全部活跃会话（B1-2）")
+    void assertUserActiveOnRefresh_disabledUser_rejectsAndRevokes() {
+        // 禁用用户若不拒绝，可凭未吊销 RT 无限旋转续命（AT 每 15min 换新，「禁用」永久失效）
+        UserDTO disabled = new UserDTO(123L, "user", "测试用户", "STUDENT", "DISABLED", LocalDateTime.now());
+
+        BizException ex =
+                assertThrows(BizException.class, () -> authSessionService.assertUserActiveOnRefresh(disabled));
+
+        assertEquals(403, ex.getCode(), "禁用用户刷新应对齐 login 的 403 语义");
+        // 吊销全部活跃会话（login_record 置 REVOKED + 活跃 jti 入黑名单），操作人记为用户自身
+        verify(deviceKickService).disableUser(123L, 123L);
     }
 
     @Test

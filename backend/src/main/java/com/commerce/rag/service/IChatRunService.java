@@ -69,13 +69,15 @@ public interface IChatRunService extends IService<ChatRun> {
     List<AttachmentRecord> findRecentAttachments(Long sessionId, Long excludeRunId, int limit);
 
     /**
-     * 查询超时未结束的 ACTIVE run（M-8 巡检用）
+     * 查询滞留的 ACTIVE/QUEUED run（M-8 巡检 + B2-3 QUEUED 扩展）
      *
-     * <p>进程崩溃/runPool 拒绝后 run 可能滞留 ACTIVE，uniq_active_run_per_session
-     * 使该会话后续对话恒 409——由巡检定时任务扫描并置 ERROR 解锁。
+     * <p>进程崩溃/runPool 拒绝后 run 可能滞留 ACTIVE；附件处理窗口内崩溃或停机丢弃
+     * 排队任务会滞留 QUEUED（两者均占据 uniq_active_run_per_session 使该会话后续对话
+     * 恒 409）——由巡检定时任务扫描并置 ERROR 解锁。
      *
      * @param startedBefore started_at 早于该时间的 ACTIVE run（视为超时）
-     * @return 超时 run 的视图对象列表（仅 id/status）
+     * @param queuedBefore  created_at 早于该时间的 QUEUED run（视为滞留，B2-3）
+     * @return 滞留 run 的视图对象列表（仅 id/status）
      */
-    List<ChatRunVO> findStaleActive(LocalDateTime startedBefore);
+    List<ChatRunVO> findStaleActive(LocalDateTime startedBefore, LocalDateTime queuedBefore);
 }

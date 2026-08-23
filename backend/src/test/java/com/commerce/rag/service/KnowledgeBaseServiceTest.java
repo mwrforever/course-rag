@@ -19,6 +19,7 @@ import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.KnowledgeBaseVO;
 import com.github.benmanes.caffeine.cache.Cache;
+import java.lang.reflect.Method;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -29,6 +30,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionAttribute;
 
 /**
  * IKnowledgeBaseService 单元测试 —— Mock Mapper + EtlPipeline
@@ -81,6 +85,20 @@ class KnowledgeBaseServiceTest {
         assertEquals("ACTIVE", result.status());
         assertEquals(1L, result.createdBy());
         verify(knowledgeBaseMapper).insert(any(KnowledgeBase.class));
+    }
+
+    @Test
+    @DisplayName("B2-8: create 并发重名撞知识库唯一索引 → 转 BizException 409 而非 503")
+    void create_uniqueViolationOnInsert_throwsConflict() {
+        // 竞态窗口：并发同名创建双双走到 insert，后者撞 uniq_knowledge_base_name（重名唯一）
+        when(knowledgeBaseMapper.insert(any(KnowledgeBase.class)))
+                .thenThrow(new DataIntegrityViolationException("uniq_knowledge_base_name 冲突"));
+
+        BizException ex = assertThrows(BizException.class, () -> knowledgeBaseService.create("同名库", "描述", 1L));
+
+        // 语义应为 409（知识库名已存在/重复操作请刷新），而非 DataAccessException 全局映射的 503
+        assertEquals(409, ex.getCode());
+        assertTrue(ex.getMessage().contains("已存在"));
     }
 
     @Test
@@ -258,5 +276,21 @@ class KnowledgeBaseServiceTest {
         when(knowledgeBaseMapper.selectById(99L)).thenReturn(null);
 
         assertThrows(IllegalArgumentException.class, () -> knowledgeBaseService.update(99L, "新名", null, 1L, true));
+    }
+
+    // ==================== B2-5 级联软删事务原子性 ====================
+
+    /** Spring 事务元数据解析器 —— 与生产事务切面同一解析路径，验证注解会被识别且异常触发回滚 */
+    private static final AnnotationTransactionAttributeSource TX_SOURCE = new AnnotationTransactionAttributeSource();
+
+    @Test
+    @DisplayName("B2-5: delete 标注 @Transactional 且运行时异常触发回滚")
+    void delete_isTransactional_rollsBackOnRuntimeFailure() throws NoSuchMethodException {
+        Method method = KnowledgeBaseServiceImpl.class.getMethod("delete", Long.class, Long.class, boolean.class);
+        TransactionAttribute attr = TX_SOURCE.getTransactionAttribute(method, KnowledgeBaseServiceImpl.class);
+
+        // 注解存在（事务切面可识别）且 RuntimeException 触发回滚（默认回滚规则）
+        assertNotNull(attr, "delete 应标注 @Transactional（B2-5：chunk→document→kb 三连 UPDATE 原子性）");
+        assertTrue(attr.rollbackOn(new RuntimeException("级联软删中途失败")));
     }
 }

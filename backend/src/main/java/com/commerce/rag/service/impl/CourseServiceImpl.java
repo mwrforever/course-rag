@@ -27,6 +27,7 @@ import com.commerce.rag.mapper.CourseTeacherMapper;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.service.ICourseQueryService;
 import com.commerce.rag.service.ICourseService;
+import com.commerce.rag.service.ICourseTeacherService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import java.math.BigDecimal;
@@ -38,7 +39,9 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 /**
@@ -75,6 +78,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
     private final CourseContentMapper courseContentMapper;
     private final CourseScheduleMapper courseScheduleMapper;
     private final CourseTeacherMapper courseTeacherMapper;
+    /** 课程-教师关联服务 —— addTeachers 批量插入（saveBatch）载体（P1-9） */
+    private final ICourseTeacherService courseTeacherService;
+
     private final CourseEnrollmentMapper courseEnrollmentMapper;
     private final DocumentChunkMapper documentChunkMapper;
     private final EtlPipeline etlPipeline;
@@ -225,10 +231,16 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
      *
      * <p>级联影响：course_content + course_schedule + course_teacher + course_enrollment + document_chunk(课程专属)
      *
+     * <p>B2-5 事务说明：六条软删 UPDATE（content→schedule→teacher→enrollment→chunk→course）在同一事务内
+     * 原子执行，中途失败整体回滚，避免留下"课程已删而排期/选课仍 active"的跨表中间态。
+     * Milvus 清理位于事务最前段：其失败时事务内尚无任何 PG 写、回滚零代价；外部资源先行 + 幂等删除
+     * 的既有重试收敛语义保持不变（事务注解不改变既有执行顺序）。
+     *
      * @param courseId      课程 ID
      * @param currentUserId 当前操作用户 ID（用于权限校验）
      * @param isAdmin       是否为超管（超管旁路）
      */
+    @Transactional
     public void deleteCourse(Long courseId, Long currentUserId, boolean isAdmin) {
         checkOwnership(courseId, currentUserId, isAdmin);
         long ts = System.currentTimeMillis();
@@ -299,31 +311,48 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
     /**
      * 添加授课教师（批量，跳过已存在的）
      *
+     * <p>P1-9 事务与批处理说明：新增关联经 ICourseTeacherService.saveBatch 一次批插
+     * （JDBC 批处理 + 自动填充雪花 ID），替代原逐条 insert（N 教师 N 次 SQL）；
+     * saveBatch 须在事务内调用（宪法：批处理整体原子性），本方法以 @Transactional 保证。
+     *
      * @param courseId      课程 ID
      * @param teacherIds    教师 ID 列表
      * @param currentUserId 当前操作用户 ID
      */
+    @Transactional
     public void addTeachers(Long courseId, List<Long> teacherIds, Long currentUserId, boolean isAdmin) {
         checkOwnership(courseId, currentUserId, isAdmin);
-        // 查询已存在的教师关联
+        // 查询已存在的教师关联（P1-9: 按需投影——仅取 teacher_id 列，@TableLogic 自动过滤已删关联）
         LambdaQueryWrapper<CourseTeacher> existWrapper = Wrappers.<CourseTeacher>lambdaQuery()
+                .select(CourseTeacher::getTeacherId)
                 .eq(CourseTeacher::getCourseId, courseId)
                 .in(CourseTeacher::getTeacherId, teacherIds);
         List<Long> existingTeacherIds = courseTeacherMapper.selectList(existWrapper).stream()
                 .map(CourseTeacher::getTeacherId)
                 .collect(Collectors.toList());
 
-        // 插入新关联
-        int added = 0;
-        for (Long teacherId : teacherIds) {
-            if (!existingTeacherIds.contains(teacherId)) {
-                CourseTeacher ct = new CourseTeacher();
-                ct.setCourseId(courseId);
-                ct.setTeacherId(teacherId);
-                courseTeacherMapper.insert(ct);
-                added++;
+        // 收集待新增关联（先查重的幂等语义保持），空集合不触发批插
+        List<CourseTeacher> toCreate = teacherIds.stream()
+                .filter(teacherId -> !existingTeacherIds.contains(teacherId))
+                .map(teacherId -> {
+                    CourseTeacher ct = new CourseTeacher();
+                    ct.setCourseId(courseId);
+                    ct.setTeacherId(teacherId);
+                    return ct;
+                })
+                .collect(Collectors.toList());
+        if (!toCreate.isEmpty()) {
+            try {
+                // 单次批插（事务内，N 条 → 1 次批处理 SQL 往返）
+                courseTeacherService.saveBatch(toCreate);
+            } catch (DataIntegrityViolationException e) {
+                // B2-8: check-then-insert 竞态兜底——并发添加相同教师时查重双双落空、后插入者撞
+                // uniq_course_teacher(course_id, teacher_id)，转 409 而非全局 503
+                log.warn("并发添加授课教师冲突: courseId={}, teacherIds={}", courseId, teacherIds);
+                throw new BizException(ErrorCode.CONFLICT, "授课教师已存在（并发操作冲突），请刷新后重试", e);
             }
         }
+        int added = toCreate.size();
         log.info("添加教师: courseId={}, teacherIds={}, added={}", courseId, teacherIds, added);
     }
 
@@ -394,7 +423,14 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
             cc.setContentType(contentType);
             cc.setContent(content);
             cc.setSortOrder(CONTENT_SORT_ORDER.getOrDefault(contentType, 0));
-            courseContentMapper.insert(cc);
+            try {
+                courseContentMapper.insert(cc);
+            } catch (DataIntegrityViolationException e) {
+                // B2-8: check-then-insert 竞态兜底——并发首插双双 selectOne 落空时后者撞
+                // uniq_course_content_type(course_id, content_type)，转 409 而非全局 503
+                log.warn("并发创建课程内容冲突: courseId={}, contentType={}", courseId, contentType);
+                throw new BizException(ErrorCode.CONFLICT, "课程内容已存在（并发操作冲突），请刷新后重试", e);
+            }
         }
         // 内容变更影响学生端内容读取，失效该课程相关缓存键（先写 DB 后失效）
         courseQueryService.evictCourse(courseId);

@@ -2,6 +2,7 @@ package com.commerce.rag.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.incrementer.IdentifierGenerator;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -42,6 +43,15 @@ public class UserFeedbackServiceImpl extends ServiceImpl<UserFeedbackMapper, Use
 
     private final UserFeedbackMapper feedbackMapper;
 
+    /**
+     * 雪花 ID 生成器（MP 自动装配的 IdentifierGenerator）
+     *
+     * <p>P1-5：upsert 走自定义 XML SQL，ASSIGN_ID 的自动填充仅在 BaseMapper.insert 生效，
+     * 故 service 显式取号（与 ASSIGN_ID 同源同策略，非手动 IdWorker）；
+     * 冲突路径该 ID 被丢弃，以 RETURNING 返回的既有行 id 为准。
+     */
+    private final IdentifierGenerator identifierGenerator;
+
     /** 用户反馈转换器 —— Entity 出 service 边界前转 VO */
     private final UserFeedbackConverter feedbackConverter;
 
@@ -52,55 +62,39 @@ public class UserFeedbackServiceImpl extends ServiceImpl<UserFeedbackMapper, Use
     /**
      * 创建反馈（或更新已有反馈）
      *
-     * <p>UNIQUE(user_id, message_id) 约束：同一用户同一消息只允许一条反馈。
+     * <p>P1-5：单条 upsert SQL（ON CONFLICT (user_id, message_id) WHERE deleted = 0），
+     * 替代原 selectOne + insert/update 两往返；并发双击从撞唯一索引异常收敛为幂等更新。
+     * 返回值语义与原实现一致：插入=新行状态，冲突=既有行身份（id/sessionId）+ 本次赞踩与意图。
      * user_id 取自当前登录用户（P0-2h：防止跨用户伪造赞踩）。
      *
      * @param userId     反馈用户 ID（当前登录用户）
-     * @param sessionId  会话 ID
+     * @param sessionId  会话 ID（冲突路径不覆盖既有行 session_id）
      * @param messageId  消息 ID
      * @param isLiked    是否点赞（NULL/TRUE/FALSE）
      * @param intentType 意图类型
      * @return 已持久化的反馈视图对象（实体不出 service 边界）
      */
     public UserFeedbackVO create(Long userId, Long sessionId, Long messageId, Boolean isLiked, String intentType) {
-        // 查询是否已有该用户的反馈（按 user_id + message_id 唯一定位）
-        LambdaQueryWrapper<UserFeedback> wrapper = Wrappers.<UserFeedback>lambdaQuery()
-                .eq(UserFeedback::getUserId, userId)
-                .eq(UserFeedback::getMessageId, messageId);
-        UserFeedback existing = feedbackMapper.selectOne(wrapper);
-
-        if (existing != null) {
-            // 更新已有反馈
-            LambdaUpdateWrapper<UserFeedback> updateWrapper = Wrappers.<UserFeedback>lambdaUpdate()
-                    .eq(UserFeedback::getId, existing.getId())
-                    .set(UserFeedback::getIsLiked, isLiked)
-                    .set(UserFeedback::getIntentType, intentType);
-            feedbackMapper.update(null, updateWrapper);
-            existing.setIsLiked(isLiked);
-            existing.setIntentType(intentType);
-            // 统计失效：点赞状态已变更（先写 DB 后失效，一致性铁律）
-            dashboardStatsCache.invalidateAll();
-            log.info("更新反馈: feedbackId={}, isLiked={}", existing.getId(), isLiked);
-            return feedbackConverter.toVO(existing);
-        }
-
-        // 创建新反馈
         UserFeedback feedback = new UserFeedback();
         feedback.setUserId(userId);
         feedback.setSessionId(sessionId);
         feedback.setMessageId(messageId);
         feedback.setIsLiked(isLiked);
         feedback.setIntentType(intentType);
-        feedbackMapper.insert(feedback);
-        // 统计失效：反馈数已变更（先写 DB 后失效，一致性铁律）
+        // 自定义 upsert SQL 需显式生成雪花 ID（冲突路径被 RETURNING 的既有行 id 覆盖）
+        feedback.setId(identifierGenerator.nextId(feedback).longValue());
+
+        // 单条 upsert：不存在→插入新行；存在（deleted=0）→幂等更新赞踩与意图；软删行→插新行
+        UserFeedback saved = feedbackMapper.upsertFeedback(feedback);
+        // 统计失效：反馈已写入（先写 DB 后失效，一致性铁律——时机与原实现一致）
         dashboardStatsCache.invalidateAll();
         log.info(
-                "创建反馈: feedbackId={}, userId={}, messageId={}, isLiked={}",
-                feedback.getId(),
+                "写入反馈（upsert）: feedbackId={}, userId={}, messageId={}, isLiked={}",
+                saved.getId(),
                 userId,
                 messageId,
                 isLiked);
-        return feedbackConverter.toVO(feedback);
+        return feedbackConverter.toVO(saved);
     }
 
     /**

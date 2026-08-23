@@ -5,6 +5,7 @@ import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
+import com.commerce.rag.bot.graph.RetrieveNode;
 import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
@@ -54,6 +55,7 @@ import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
@@ -166,12 +168,14 @@ public class ChatRequestWorker {
 
         // M-8: ACTIVE run 巡检——进程崩溃/runPool 拒绝后 run 滞留 ACTIVE，
         // uniq_active_run_per_session 锁死会话（后续对话恒 409），每 60s 扫描置 ERROR 解锁
+        // B2-3: 首扫 initial delay=0——启动即执行一次，兜底停机丢弃排队任务/崩溃滞留的
+        // ACTIVE/QUEUED run（此前首扫在 60s 后，滚动重启窗口内会话最长 409 一分钟以上）
         sweepScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "chat-run-sweep");
             t.setDaemon(true);
             return t;
         });
-        sweepScheduler.scheduleAtFixedRate(this::sweepStaleRuns, 60, 60, TimeUnit.SECONDS);
+        sweepScheduler.scheduleAtFixedRate(this::sweepStaleRuns, 0, 60, TimeUnit.SECONDS);
 
         log.info(
                 "ChatRequestWorker 启动: stream={}, group={}",
@@ -203,27 +207,35 @@ public class ChatRequestWorker {
     }
 
     /**
-     * M-8: 巡检超时未结束的 ACTIVE run（超时阈值 = worker.run-pool.stale-run-timeout-minutes）
+     * M-8 + B2-3: 巡检滞留的 ACTIVE/QUEUED run 并置 ERROR 解锁会话
      *
-     * <p>进程崩溃（先 ACK 后执行，P3-2 裁决下消息直接丢失）或 runPool 拒绝后，
-     * run 滞留 ACTIVE 被 uniq_active_run_per_session 锁死——该会话后续对话恒 409。
-     * 巡检将超过阈值的 ACTIVE run 置 ERROR（endedAt 由 updateStatus 自动设置），
+     * <p>ACTIVE 超时阈值 = worker.run-pool.stale-run-timeout-minutes（started_at 判定）；
+     * QUEUED 滞留阈值 = worker.run-pool.stale-queued-timeout-minutes（created_at 判定，
+     * B2-3——附件处理发生在转 ACTIVE 之前，该窗口内进程崩溃/停机丢任务的 run 全程
+     * 停留 QUEUED，且同样占据 uniq_active_run_per_session 锁死会话）。
+     *
+     * <p>巡检将滞留 run 置 ERROR（endedAt 由 updateStatus 自动设置），
      * 失败可见可手动重试。与 P1-5 的完成时刻短重试互补（覆盖执行期崩溃场景）。
      */
     private void sweepStaleRuns() {
         try {
-            LocalDateTime threshold = LocalDateTime.now().minusMinutes(workerProperties.staleRunTimeoutMinutes());
-            List<ChatRunVO> stale = chatRunService.findStaleActive(threshold);
+            LocalDateTime startedBefore = LocalDateTime.now().minusMinutes(workerProperties.staleRunTimeoutMinutes());
+            LocalDateTime queuedBefore = LocalDateTime.now().minusMinutes(workerProperties.staleQueuedTimeoutMinutes());
+            List<ChatRunVO> stale = chatRunService.findStaleActive(startedBefore, queuedBefore);
             for (ChatRunVO run : stale) {
                 try {
                     chatRunService.updateStatus(run.id(), "ERROR");
-                    log.warn("巡检发现超时 ACTIVE run，置 ERROR 解锁会话: runId={}, sessionId={}", run.id(), run.sessionId());
+                    log.warn(
+                            "巡检发现滞留 run（ACTIVE/QUEUED 超时），置 ERROR 解锁会话: runId={}, sessionId={}, status={}",
+                            run.id(),
+                            run.sessionId(),
+                            run.status());
                 } catch (Exception e) {
                     log.error("巡检置 ERROR 失败: runId={}", run.id(), e);
                 }
             }
         } catch (Exception e) {
-            log.error("ACTIVE run 巡检失败（下轮重试）", e);
+            log.error("滞留 run 巡检失败（下轮重试）", e);
         }
     }
 
@@ -271,7 +283,37 @@ public class ChatRequestWorker {
                         // Redis Stream 所有新对话滞留；改为快速失败：消息已 ACK，
                         // run 状态回写 ERROR 解锁 uniq_active_run_per_session（会话可重试）
                         Object runIdObj = msg.getValue().get("runId");
-                        Long rejectedRunId = runIdObj == null ? null : parseLongQuietly(String.valueOf(runIdObj));
+                        String rejectedRunIdStr = runIdObj == null ? null : String.valueOf(runIdObj);
+                        Long rejectedRunId = rejectedRunIdStr == null ? null : parseLongQuietly(rejectedRunIdStr);
+                        // B2-1: 入口 chat() 在 XADD 前已 createRing + subscribe，被拒 run 不经过
+                        // processRequest（其 finally 负责 removeRing）——必须在此补齐终态三件套，
+                        // 否则客户端永久"生成中"（重连对未 close 的 ring 必返回 true，不进 PG 补终态降级）
+                        // 且 ring + 阻塞在 outbox.take() 的投递线程永久泄漏
+                        if (rejectedRunIdStr != null) {
+                            // ① 推送 ERROR 终态事件（与 handleError 终态语义一致：payload 含 runId + ERROR；
+                            //    run 从未执行、无任何事件入 ring，seq 从 1 起）
+                            try {
+                                Map<String, Object> payload = new LinkedHashMap<>();
+                                payload.put("runId", rejectedRunIdStr);
+                                payload.put("status", "ERROR");
+                                payload.put("message", "当前排队请求过多，请稍后重试");
+                                bridge.push(
+                                        rejectedRunIdStr,
+                                        new SseEvent(
+                                                SseEventType.ERROR, 1, toJson(payload), System.currentTimeMillis()));
+                            } catch (Exception pushEx) {
+                                // 推送失败不得中断后续清理与状态回写
+                                log.error("runPool 拒绝后推送 ERROR 终态事件失败: runId={}", rejectedRunIdStr, pushEx);
+                            }
+                            // ② 清理 ring（close 具备 B2-1 drain 语义：置 closed 后等投递线程把 outbox 中
+                            //    已入队的 ERROR 事件投递给订阅者、排空后才 complete——先推后清不吞事件）
+                            try {
+                                bridge.removeRing(rejectedRunIdStr);
+                            } catch (Exception removeEx) {
+                                log.error("runPool 拒绝后清理 ring 失败: runId={}", rejectedRunIdStr, removeEx);
+                            }
+                        }
+                        // ③ run 状态回写 ERROR（解锁会话，失败可见可重试）
                         if (rejectedRunId != null) {
                             try {
                                 chatRunService.updateStatus(rejectedRunId, "ERROR");
@@ -411,6 +453,16 @@ public class ChatRequestWorker {
         AtomicReference<NodeOutput> lastOutput = new AtomicReference<>();
         // 标记是否已发生错误/取消（防止 doOnComplete 覆盖状态）
         AtomicBoolean errored = new AtomicBoolean(false);
+        // B2-4: 终态事件已推送标记——doOnComplete 推 END 后终态回写（updateStatusWithRetry
+        // 3 次耗尽上抛）进入 catch 时，不得再经 handleError 推第二个终态事件（客户端
+        // 状态机收到双终态）；compareAndSet 保证 doOnComplete/onErrorResume/catch 三路径仅一个生效
+        AtomicBoolean terminalPushed = new AtomicBoolean(false);
+        // B2-4: 消息已持久化标记——doOnComplete 落库成功后终态回写失败进入 catch 时，
+        // 跳过二次 persistMessages（重复落库防线，另有 V13 (run_id,seq) 唯一索引兜底）
+        AtomicBoolean persisted = new AtomicBoolean(false);
+        // B3-5: SOURCES 事件已推送标记——检索来源 metadata 就绪后首个 chunk 处推一次
+        // （CAS 保证 doOnNext 多次触发仅推送一次；chat/unknown 意图无来源则不推）
+        AtomicBoolean sourcesPushed = new AtomicBoolean(false);
 
         // 1. pre-run 快照（在 try 之前捕获：captureSnapshot 内部异常已兜底返回 null；
         //    单次赋值保持 effectively final，供 onErrorResume/doOnComplete lambda 捕获，
@@ -434,6 +486,8 @@ public class ChatRequestWorker {
                     .doOnNext(chunk -> {
                         // 取消检测
                         checkCancelled(runIdStr);
+                        // B3-5：检索来源就绪后补推 SOURCES 事件（首个回答 token 前，一次性）
+                        maybePushSources(runIdStr, runState, config, sourcesPushed);
                         // 记录最后输出（用于持久化）
                         lastOutput.set(chunk);
                         // transform → bridge.push
@@ -445,14 +499,17 @@ public class ChatRequestWorker {
                         // P0-7: 与 catch 分支对齐的兜底——handleCancelled/handleError 内部
                         // （bridge.push / updateStatus）再抛异常不得从 Reactor 链传播，
                         // 否则 blockLast 抛出 → 落入 catch 分支二次 handleError（双终态）+ 重复持久化
-                        try {
-                            if (e instanceof CancelledException) {
-                                handleCancelled(runIdStr, runId, runState, config, snapshot);
-                            } else {
-                                handleError(runIdStr, runId, runState, e);
+                        // B2-4: compareAndSet 占位终态——后续 catch 分支不再推第二个终态
+                        if (terminalPushed.compareAndSet(false, true)) {
+                            try {
+                                if (e instanceof CancelledException) {
+                                    handleCancelled(runIdStr, runId, runState, config, snapshot);
+                                } else {
+                                    handleError(runIdStr, runId, runState, e);
+                                }
+                            } catch (Exception errorEx) {
+                                log.error("onErrorResume 分支终态处理失败 runId={}", runId, errorEx);
                             }
-                        } catch (Exception errorEx) {
-                            log.error("onErrorResume 分支终态处理失败 runId={}", runId, errorEx);
                         }
                         // 持久化已收集的消息（游标 = pre-run checkpoint 消息数，只落本轮新增）
                         persistMessages(
@@ -460,6 +517,7 @@ public class ChatRequestWorker {
                                 sessionId,
                                 userQuery,
                                 attachmentsJson,
+                                readSourcesJson(config),
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
                                 lastOutput.get());
                         return Mono.empty();
@@ -472,13 +530,17 @@ public class ChatRequestWorker {
                         // 先持久化消息、再推 END + 写 COMPLETED 终态——
                         // 「run 终态 = 数据已完整落库」语义（chat_message 与状态非原子，
                         // 先状态后落库会让外部观察者在终态可见时查到空消息表）
-                        persistMessages(
+                        persisted.set(persistMessages(
                                 runId,
                                 sessionId,
                                 userQuery,
                                 attachmentsJson,
+                                readSourcesJson(config),
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
-                                lastOutput.get());
+                                lastOutput.get()));
+                        // B2-4: 先占位终态标记再调 handleCompleted——其推 END 后 updateStatusWithRetry
+                        // 若耗尽上抛，catch 分支据此跳过第二个终态事件（客户端只认首个终态）
+                        terminalPushed.set(true);
                         handleCompleted(runIdStr, runId, runState);
                         // 偏好提取异步触发（spec §7.6：run 完成、SSE 已发送完后异步，不阻塞用户响应；
                         // 仅 COMPLETED 触发——error/cancel 路径不提取）
@@ -494,18 +556,31 @@ public class ChatRequestWorker {
             errored.set(true);
             // P0-4b 修复：补齐终态——推送 ERROR 事件 + 持久化已收集消息（与 onErrorResume 分支对齐）。
             // handleError 单独兜底：其内部状态更新失败不得阻断消息持久化（修复审查 finding）
-            try {
-                handleError(runIdStr, runId, runState, e);
-            } catch (Exception errorEx) {
-                log.error("handleError 执行失败 runId={}", runId, errorEx);
+            // B2-4: 终态事件已推送（doOnComplete 的 END / onErrorResume 的终态）时不再推第二个
+            // 终态事件——客户端状态机只认首个终态；run 滞留 ACTIVE 由 M-8 巡检兜底收敛为 ERROR
+            if (terminalPushed.compareAndSet(false, true)) {
+                try {
+                    handleError(runIdStr, runId, runState, e);
+                } catch (Exception errorEx) {
+                    log.error("handleError 执行失败 runId={}", runId, errorEx);
+                }
+            } else {
+                log.warn("终态事件已推送，跳过 catch 分支二次终态处理（run 状态由巡检兜底收敛）: runId={}", runId);
             }
-            persistMessages(
-                    runId,
-                    sessionId,
-                    userQuery,
-                    attachmentsJson,
-                    snapshot != null ? snapshot.historyMessageCount() : 0,
-                    lastOutput.get());
+            // B2-4: 消息已持久化（doOnComplete 落库成功）时跳过二次 persistMessages——
+            // 完成时刻 DB 故障恢复后重复整批插入会造成 chat_message 成倍重复
+            if (persisted.get()) {
+                log.info("消息已持久化，跳过 catch 分支重复持久化: runId={}", runId);
+            } else {
+                persisted.set(persistMessages(
+                        runId,
+                        sessionId,
+                        userQuery,
+                        attachmentsJson,
+                        readSourcesJson(config),
+                        snapshot != null ? snapshot.historyMessageCount() : 0,
+                        lastOutput.get()));
+            }
         } finally {
             bridge.removeRing(runIdStr);
             cancelFlags.remove(runIdStr);
@@ -608,16 +683,21 @@ public class ChatRequestWorker {
      * @param sessionId        会话 ID
      * @param userQuery        本轮用户问题原文
      * @param attachmentsJson  本轮输入附件 JSON 数组字符串（已校验合法，落用户消息行 attachments_json，spec §5.1）
+     * @param sourcesJson      检索引用来源 JSON 数组字符串（B3-5：assistant 正文行 sources_json；
+     *                         null/空按 "[]" 处理——chat/unknown 意图与空检索场景）
      * @param historyCursor    持久化游标（pre-run checkpoint 中 messages 数，P0-4a）：
      *                         仅持久化 rawList 中 index >= historyCursor 的新增消息，避免历史消息每轮重插
      * @param lastOutput       流式输出的最后一个 NodeOutput（可为 null，此时仅持久化用户消息）
+     * @return true=已落库（含 (run_id,seq) 唯一索引冲突的幂等跳过，调用方不得重试）；
+     *         false=落库失败且未确认写入（调用方可重试）
      */
     @SuppressWarnings("unchecked")
-    private void persistMessages(
+    private boolean persistMessages(
             Long runId,
             Long sessionId,
             String userQuery,
             String attachmentsJson,
+            String sourcesJson,
             int historyCursor,
             NodeOutput lastOutput) {
         List<ChatMessage> messages = new ArrayList<>();
@@ -648,7 +728,7 @@ public class ChatRequestWorker {
                         if (msg instanceof UserMessage) {
                             continue;
                         }
-                        List<ChatMessage> converted = toChatMessages(msg, runId, sessionId);
+                        List<ChatMessage> converted = toChatMessages(msg, runId, sessionId, sourcesJson);
                         for (ChatMessage cm : converted) {
                             cm.setSeq(seq++);
                             messages.add(cm);
@@ -663,10 +743,20 @@ public class ChatRequestWorker {
             try {
                 chatMessageService.batchInsert(messages);
                 log.info("持久化消息: runId={}, count={}", runId, messages.size());
+                return true;
+            } catch (DataIntegrityViolationException e) {
+                // B2-4 数据层兜底：(run_id,seq) 唯一索引（V13 uniq_chat_message_run_seq）冲突
+                // = 本批消息已落库（完成路径重试/双路径重复调用），幂等跳过——按已落库处理，
+                // 调用方不得因该冲突再次重试
+                log.warn("消息已落库（(run_id,seq) 唯一索引冲突），幂等跳过重复落库: runId={}, count={}", runId, messages.size());
+                return true;
             } catch (Exception e) {
                 log.error("消息持久化失败 runId={}", runId, e);
+                return false;
             }
         }
+        // 无消息需落库（防御分支：用户消息恒存在，正常不达此处）——视为已处理
+        return true;
     }
 
     /**
@@ -680,8 +770,14 @@ public class ChatRequestWorker {
      * 一个 ToolResponseMessage 产出多个 TOOL_RESULT 记录。
      * UserMessage 产出一条 USER 记录。
      * 其他类型（SystemMessage 等）跳过。
+     *
+     * @param msg         Spring AI 消息对象
+     * @param runId       Run ID
+     * @param sessionId   会话 ID
+     * @param sourcesJson 检索引用来源 JSON（B3-5：仅 assistant 正文行落 sources_json，空/blank 按 "[]"）
+     * @return 转换后的 ChatMessage 实体列表（0~N 条）
      */
-    private List<ChatMessage> toChatMessages(Message msg, Long runId, Long sessionId) {
+    private List<ChatMessage> toChatMessages(Message msg, Long runId, Long sessionId, String sourcesJson) {
         List<ChatMessage> result = new ArrayList<>();
 
         if (msg instanceof UserMessage) {
@@ -714,7 +810,8 @@ public class ChatRequestWorker {
                 cm.setRunId(runId);
                 cm.setRole("ASSISTANT");
                 cm.setContent(text);
-                cm.setSourcesJson("[]");
+                // B3-5：assistant 正文行落真实检索来源（引用依据）；其余行（thinking/TOOL_*）保持 "[]"
+                cm.setSourcesJson(sourcesJson == null || sourcesJson.isBlank() ? "[]" : sourcesJson);
                 result.add(cm);
             }
             // 工具调用 —— 实时 TOOL_CALL 事件 schema 一致化（P1-2）：toolCallId/toolName/input
@@ -910,6 +1007,74 @@ public class ChatRequestWorker {
     // ========================================================================
     // 辅助方法
     // ========================================================================
+
+    /**
+     * 补推 SOURCES 事件（B3-5，契约补齐——docs/plans/2026-07-16-frontend-design.md §1.6.4
+     * SSE 10 事件之一，此前全链路零发送）
+     *
+     * <p>时机：RetrieveNode 检索命中非空后把来源列表写入 config.metadata()
+     * （{@link RetrieveNode#KEY_RETRIEVAL_SOURCES}），本方法在来源就绪后的首个 chunk 处
+     * 推送一次（早于该 chunk 的 THINKING/DELTA 事件——首个回答 token 前）；
+     * chat/unknown 意图与空检索无来源则不推（sourcesJson 同理保持 "[]"）。
+     *
+     * <p>payload 结构：契约文档未细化，按最小可用 {@code {"sources":[{chunkId,docTitle,headingPath,score}]}}
+     * （前端「引用来源」卡片列表渲染所需字段）。
+     *
+     * @param runIdStr      Run 唯一标识（ring 键）
+     * @param runState      SSE 事件序列状态（seqId 递增）
+     * @param config        RunnableConfig（贯穿全图共享的 metadata 通道）
+     * @param sourcesPushed 本 run 的 SOURCES 已推送标记（CAS 保证仅推一次）
+     */
+    private void maybePushSources(
+            String runIdStr,
+            SseEventTransformer.RunState runState,
+            RunnableConfig config,
+            AtomicBoolean sourcesPushed) {
+        if (sourcesPushed.get()) {
+            return;
+        }
+        Object sources = config.metadata()
+                .map(m -> m.get(RetrieveNode.KEY_RETRIEVAL_SOURCES))
+                .orElse(null);
+        if (!(sources instanceof List<?> list) || list.isEmpty()) {
+            return;
+        }
+        if (sourcesPushed.compareAndSet(false, true)) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("sources", list);
+            bridge.push(
+                    runIdStr,
+                    new SseEvent(
+                            SseEventType.SOURCES, runState.nextSeq(), toJson(payload), System.currentTimeMillis()));
+            log.info("已推送 SOURCES 事件: runId={}, 来源数={}", runIdStr, list.size());
+        }
+    }
+
+    /**
+     * 读取检索来源 JSON（B3-5：chat_message.sources_json 持久化用）
+     *
+     * <p>从 config.metadata() 读 RetrieveNode 写入的来源列表并序列化为 JSON 数组；
+     * 无来源（chat/unknown 意图/空检索）或序列化失败返回 {@code "[]"}
+     * （契约第 2 节：集合字段恒输出 [] 而非 null）。
+     *
+     * @param config RunnableConfig（贯穿全图共享的 metadata 通道）
+     * @return 来源 JSON 数组字符串，无来源时为 "[]"
+     */
+    private String readSourcesJson(RunnableConfig config) {
+        Object sources = config.metadata()
+                .map(m -> m.get(RetrieveNode.KEY_RETRIEVAL_SOURCES))
+                .orElse(null);
+        if (!(sources instanceof List<?> list) || list.isEmpty()) {
+            return "[]";
+        }
+        try {
+            return objectMapper.writeValueAsString(list);
+        } catch (JsonProcessingException e) {
+            // 序列化失败降级为空数组（来源缺失不影响消息落库主流程）
+            log.warn("检索来源 JSON 序列化失败，sourcesJson 降级为空数组: {}", e.getMessage());
+            return "[]";
+        }
+    }
 
     /**
      * 取消检测：如果 cancelFlags 中 runId 对应的标记为 true，抛出 CancelledException。

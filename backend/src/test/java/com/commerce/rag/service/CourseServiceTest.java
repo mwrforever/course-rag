@@ -24,17 +24,23 @@ import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.service.impl.CourseServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.github.benmanes.caffeine.cache.Cache;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionAttribute;
 
 /**
  * ICourseService 权限单元测试 —— 课程详情归属校验（P0-2g）
@@ -57,6 +63,10 @@ class CourseServiceTest {
     @Mock
     private CourseTeacherMapper courseTeacherMapper;
 
+    /** 课程-教师关联服务（P1-9：addTeachers 批量插入载体） */
+    @Mock
+    private ICourseTeacherService courseTeacherService;
+
     @Mock
     private CourseEnrollmentMapper courseEnrollmentMapper;
 
@@ -72,6 +82,10 @@ class CourseServiceTest {
     /** Dashboard 统计缓存（Mock——级联软删路径的失效钩子仅需不抛异常） */
     @Mock
     private Cache<String, Object> dashboardStatsCache;
+
+    /** saveBatch 批插参数捕获器（P1-9：批插内容等价断言） */
+    @Captor
+    private ArgumentCaptor<List<CourseTeacher>> batchCaptor;
 
     private ICourseService courseService;
 
@@ -89,6 +103,7 @@ class CourseServiceTest {
                 courseContentMapper,
                 courseScheduleMapper,
                 courseTeacherMapper,
+                courseTeacherService,
                 courseEnrollmentMapper,
                 documentChunkMapper,
                 etlPipeline,
@@ -256,19 +271,55 @@ class CourseServiceTest {
     }
 
     @Test
-    @DisplayName("addTeachers → 跳过已存在教师，插入新教师")
-    void addTeachers_skipsExisting() {
+    @DisplayName("P1-9: addTeachers → 跳过已存在教师，新增集合单次批量插入（内容等价）")
+    void addTeachers_skipsExisting_batchesInsert() {
         when(courseInfoMapper.selectById(1L)).thenReturn(course(1L, 7L));
         CourseTeacher existing = new CourseTeacher();
         existing.setTeacherId(2L);
         when(courseTeacherMapper.selectList(any())).thenReturn(List.of(existing));
 
-        courseService.addTeachers(1L, List.of(2L, 3L), 7L, false);
+        courseService.addTeachers(1L, List.of(2L, 3L, 4L), 7L, false);
 
-        // 仅插入新教师 3（2 已存在）——captor 精确断言插入对象
-        ArgumentCaptor<CourseTeacher> captor = ArgumentCaptor.forClass(CourseTeacher.class);
-        verify(courseTeacherMapper, times(1)).insert(captor.capture());
-        assertEquals(3L, captor.getValue().getTeacherId());
+        // P1-9: N 次单条 insert → 1 次 saveBatch 批插（仅含新教师 3/4，courseId 逐条带齐）
+        verify(courseTeacherService).saveBatch(batchCaptor.capture());
+        List<CourseTeacher> batched = batchCaptor.getValue();
+        assertEquals(2, batched.size());
+        assertEquals(
+                List.of(3L, 4L),
+                batched.stream().map(CourseTeacher::getTeacherId).collect(Collectors.toList()));
+        batched.forEach(ct -> assertEquals(1L, ct.getCourseId()));
+        // 逐条 insert 已被批插取代
+        verify(courseTeacherMapper, never()).insert(any(CourseTeacher.class));
+    }
+
+    @Test
+    @DisplayName("P1-9: addTeachers → 无新教师时不触发批插（幂等语义保持）")
+    void addTeachers_allExisting_noBatchInsert() {
+        when(courseInfoMapper.selectById(1L)).thenReturn(course(1L, 7L));
+        CourseTeacher existing = new CourseTeacher();
+        existing.setTeacherId(2L);
+        when(courseTeacherMapper.selectList(any())).thenReturn(List.of(existing));
+
+        courseService.addTeachers(1L, List.of(2L), 7L, false);
+
+        // 查重后无新增集合 → 不调用 saveBatch
+        verify(courseTeacherService, never()).saveBatch(anyList());
+    }
+
+    @Test
+    @DisplayName("B2-8: addTeachers 并发批插撞 course_teacher 唯一索引 → 转 BizException 409 而非 503")
+    void addTeachers_uniqueViolationOnBatchInsert_throwsConflict() {
+        when(courseInfoMapper.selectById(1L)).thenReturn(course(1L, 7L));
+        // 竞态窗口：两请求查重均未见教师 3，后插入者撞 uniq_course_teacher(course_id, teacher_id)
+        when(courseTeacherMapper.selectList(any())).thenReturn(List.of());
+        when(courseTeacherService.saveBatch(anyList()))
+                .thenThrow(new DataIntegrityViolationException("uniq_course_teacher 冲突"));
+
+        BizException ex = assertThrows(BizException.class, () -> courseService.addTeachers(1L, List.of(3L), 7L, false));
+
+        // 语义应为 409（教师已在授课列表/重复操作请刷新），而非 DataAccessException 全局映射的 503
+        assertEquals(409, ex.getCode());
+        assertTrue(ex.getMessage().contains("已存在"));
     }
 
     @Test
@@ -327,6 +378,23 @@ class CourseServiceTest {
 
         verify(courseContentMapper).insert(any(CourseContent.class));
         verify(courseQueryService).evictCourse(1L);
+    }
+
+    @Test
+    @DisplayName("B2-8: updateContent 并发首插撞 course_content 唯一索引 → 转 BizException 409 而非 503")
+    void updateContent_uniqueViolationOnInsert_throwsConflict() {
+        when(courseInfoMapper.selectById(1L)).thenReturn(course(1L, 7L));
+        // 并发双击竞态窗口：两请求 selectOne 均得 null，后插入者撞 uniq_course_content_type
+        when(courseContentMapper.selectOne(any())).thenReturn(null);
+        when(courseContentMapper.insert(any(CourseContent.class)))
+                .thenThrow(new DataIntegrityViolationException("uniq_course_content_type 冲突"));
+
+        BizException ex =
+                assertThrows(BizException.class, () -> courseService.updateContent(1L, "faq", "内容", 7L, false));
+
+        // 语义应为 409（已存在/重复操作），而非 DataAccessException 全局映射的 503
+        assertEquals(409, ex.getCode());
+        assertTrue(ex.getMessage().contains("已存在"));
     }
 
     @Test
@@ -405,5 +473,33 @@ class CourseServiceTest {
         course.setId(id);
         course.setCreatedBy(createdBy);
         return course;
+    }
+
+    // ==================== B2-5 级联软删事务原子性 ====================
+
+    /** Spring 事务元数据解析器 —— 与生产事务切面同一解析路径，验证注解会被识别且异常触发回滚 */
+    private static final AnnotationTransactionAttributeSource TX_SOURCE = new AnnotationTransactionAttributeSource();
+
+    @Test
+    @DisplayName("B2-5: deleteCourse 标注 @Transactional 且运行时异常触发回滚")
+    void deleteCourse_isTransactional_rollsBackOnRuntimeFailure() throws NoSuchMethodException {
+        Method method = CourseServiceImpl.class.getMethod("deleteCourse", Long.class, Long.class, boolean.class);
+        TransactionAttribute attr = TX_SOURCE.getTransactionAttribute(method, CourseServiceImpl.class);
+
+        // 注解存在（事务切面可识别）且 RuntimeException 触发回滚（默认回滚规则）
+        assertNotNull(attr, "deleteCourse 应标注 @Transactional（B2-5：六连 UPDATE 原子性）");
+        assertTrue(attr.rollbackOn(new RuntimeException("级联软删中途失败")));
+    }
+
+    @Test
+    @DisplayName("P1-9: addTeachers 标注 @Transactional（saveBatch 批处理须在事务内整体原子）")
+    void addTeachers_isTransactional_forSaveBatch() throws NoSuchMethodException {
+        Method method =
+                CourseServiceImpl.class.getMethod("addTeachers", Long.class, List.class, Long.class, boolean.class);
+        TransactionAttribute attr = TX_SOURCE.getTransactionAttribute(method, CourseServiceImpl.class);
+
+        // 宪法约束：saveBatch（JDBC 批处理）须在事务内调用，保证批量插入整体原子性
+        assertNotNull(attr, "addTeachers 应标注 @Transactional（saveBatch 事务性批处理）");
+        assertTrue(attr.rollbackOn(new RuntimeException("批插中途失败")));
     }
 }

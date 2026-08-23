@@ -18,6 +18,7 @@ import com.commerce.rag.service.impl.ChatSessionServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.ChatSessionVO;
 import com.commerce.rag.vo.SessionVO;
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
@@ -29,6 +30,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionAttribute;
 
 /**
  * IChatSessionService 单元测试 —— 会话 CRUD 与级联删除
@@ -194,5 +197,34 @@ class ChatSessionServiceTest {
         verify(messageMapper).update(isNull(), any());
         verify(runMapper).update(isNull(), any());
         verify(sessionMapper).update(isNull(), any());
+    }
+
+    // ==================== B2-5 级联软删事务原子性 ====================
+
+    /** Spring 事务元数据解析器 —— 与生产事务切面同一解析路径，验证注解会被识别且异常触发回滚 */
+    private static final AnnotationTransactionAttributeSource TX_SOURCE = new AnnotationTransactionAttributeSource();
+
+    @Test
+    @DisplayName("B2-5: deleteSession 标注 @Transactional 且运行时异常触发回滚")
+    void deleteSession_isTransactional_rollsBackOnRuntimeFailure() throws NoSuchMethodException {
+        Method method = ChatSessionServiceImpl.class.getMethod("deleteSession", Long.class, Long.class);
+        TransactionAttribute attr = TX_SOURCE.getTransactionAttribute(method, ChatSessionServiceImpl.class);
+
+        // 注解存在（事务切面可识别）且 RuntimeException 触发回滚（默认回滚规则）
+        assertNotNull(attr, "deleteSession 应标注 @Transactional（B2-5：三连 UPDATE 原子性）");
+        assertTrue(attr.rollbackOn(new RuntimeException("级联软删中途失败")));
+    }
+
+    @Test
+    @DisplayName("B2-5: deleteSession 中途失败 → 异常上抛且会话软删不执行（已执行的消息软删由事务回滚）")
+    void deleteSession_midwayFailure_blocksSessionDelete() {
+        // 第二步 chat_run 软删抛异常（模拟连接池耗尽/瞬时故障）——第一步 chat_message 已执行
+        when(runMapper.update(isNull(), any())).thenThrow(new RuntimeException("chat_run 软删失败"));
+
+        assertThrows(RuntimeException.class, () -> sessionService.deleteSession(1L, 9L));
+
+        // 第一步已执行（其不落库由 @Transactional 回滚保证），后续会话软删被异常阻断
+        verify(messageMapper).update(isNull(), any());
+        verify(sessionMapper, never()).update(isNull(), any());
     }
 }

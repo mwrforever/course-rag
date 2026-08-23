@@ -148,8 +148,8 @@ retrieval:
   rerank-threshold: 0.30
   # S1 spec §3.1：每条重写查询的 Milvus 混合检索预取数量（与注入 Top-N 构成 4x rerank 缓冲）
   prefetch-top-k: 20
-  # 性能优化报告 2-3：RetrieveNode 三段远程 IO 并行执行器线程数
-  retrieve-node-parallelism: 2
+  # 性能优化报告 2-3：RetrieveNode 三段远程 IO 并行执行器线程数（P2-3：2→3，三任务各有线程，最重的知识检索不再排队）
+  retrieve-node-parallelism: 3
 
 # ── ETL 分块参数 ──
 etl:
@@ -163,6 +163,12 @@ etl:
     max-size: 4
     queue-capacity: 20
     thread-name-prefix: etl-
+  image-executor:                     # P2-2b: 图片 upload+caption 并行池（与 etlPool 隔离防子任务自锁）
+    core-size: 2
+    max-size: 4
+    queue-capacity: 20
+    thread-name-prefix: etl-image-
+    process-timeout-seconds: 60       # 单图处理超时（超时跳过该图标注，不阻断文档 ETL）
   chunk:
     size: 768                        # TokenTextSplitter chunkSizeTokens
     min-chunk-size-chars: 64         # 过小 chunk 并入前一个的阈值（spec §4.1）
@@ -171,6 +177,7 @@ etl:
     rows-per-chunk: 25               # 大表分组名义行数（spec §4.3「每 20~30 行一组」）
     max-rows-per-chunk: 30           # 分组行数硬上限（token 动态调整）
     overlap-rows: 2                  # 相邻子 chunk 间重叠行数（spec §4.3「1~2 行」）
+  chunk-insert-batch-size: 500       # P1-4: 分片批量插入分批上限（防超长 SQL）
 
 # ── 对话配置 ──
 chat:
@@ -281,6 +288,11 @@ auth:
   # 设备类型枚举（当前仅 WEB_DESKTOP）
   device-types:
     - WEB_DESKTOP
+  # B1-4: 过期黑名单自动清理调度间隔（秒，默认 3600=1h）——
+  # 定时软删 sys_token_blacklist 中 expires_at < now() 的行（配合 countByJti 的过期过滤），
+  # 防止 refresh 旋转/互踢/禁用/登出写入的黑名单行无限增长
+  blacklist:
+    cleanup-interval-seconds: 3600
 
 # ── Worker 线程池（对话执行，与 ETL 独立）──
 # L-12: core-size/max-size 为实际生效值（WorkerConfig 直接读取，原"动态计算+fallback"注释无逻辑）
@@ -294,6 +306,9 @@ worker:
     # M-8: ACTIVE run 巡检超时（分钟）——run 滞留 ACTIVE 会锁死会话（uniq_active_run_per_session），
     # 巡检每 60s 扫描一次，超过该时长未结束的 ACTIVE run 置 ERROR 解锁
     stale-run-timeout-minutes: 10
+    # B2-3: 滞留 QUEUED run 回收阈值（分钟）——附件处理窗口内崩溃/优雅停机丢弃排队任务时
+    # run 滞留 QUEUED（同样占据会话唯一索引），巡检按 created_at 超过该时长判定滞留并置 ERROR 解锁
+    stale-queued-timeout-minutes: 5
 
 logging:
   level:
@@ -307,8 +322,15 @@ attachment:
   document-max-size-mb: 50     # 单个文档上限
   max-count: 10                # 单次消息附件个数上限
   total-max-size-mb: 100       # 单次消息附件合计上限
-  cache-max-size: 100          # Caffeine 附件处理结果缓存条数（LRU）
+  cache-max-size: 100          # Caffeine 附件处理结果缓存条目数（LRU）
   cache-expire-minutes: 30     # 附件处理结果缓存失效时间
+  embedding-batch-size: 16     # P2-1: 文档附件批量向量化批大小（与 etl.embedding-batch-size 同范式）
+  process-timeout-ms: 60000    # P2-2: 附件并行处理总超时（超时丢弃未完成附件，保留已完成结果）
+  executor:                    # P2-2: 附件并行池（下载/图片 caption 并行基底，与 ETL/检索/记忆池隔离）
+    core-size: 2
+    max-size: 4
+    queue-capacity: 20
+    thread-name-prefix: attachment-
 
 # ── S1 记忆体系（spec §7.8/§8.3：阈值/权重/预算/曲线全配置化）──
 memory:

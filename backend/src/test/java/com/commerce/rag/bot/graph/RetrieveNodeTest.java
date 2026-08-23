@@ -2,6 +2,7 @@ package com.commerce.rag.bot.graph;
 
 import static com.commerce.rag.bot.graph.OverAllState.KEY_QUERY_PLAN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -33,6 +34,7 @@ import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.DocumentLocalChunk;
 import com.commerce.rag.record.EpisodicMemoryRef;
 import com.commerce.rag.record.ImageCaptionResult;
+import com.commerce.rag.record.RetrievalSource;
 import com.commerce.rag.retrieval.ContextBuilderService;
 import com.commerce.rag.retrieval.CourseNameMapper;
 import com.commerce.rag.service.AttachmentLocalSearchService;
@@ -582,6 +584,119 @@ class RetrieveNodeTest {
 
         assertTrue(result.isEmpty());
         verify(episodicMemoryService, never()).recall(anyLong(), any(), anyBoolean(), anyInt());
+        verify(searchKnowledgeTool).searchKnowledge(any(), any());
+    }
+
+    // ==================== B3-5：检索来源列表（SOURCES 事件/sourcesJson 数据源） ====================
+
+    @Test
+    @DisplayName("apply — 检索命中非空：来源列表写入 metadata（KEY_RETRIEVAL_SOURCES，B3-5）")
+    void apply_retrievalHit_writesRetrievalSources() throws Exception {
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 学习方法"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("高等数学怎么学"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("s1")
+                .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
+                .build();
+
+        // 两条精排命中（docTitle 已由 B3-3 回查填充）
+        KnowledgeChunk k1 = new KnowledgeChunk(
+                "c1", "内容1", "", "高等数学讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "a".repeat(64));
+        KnowledgeChunk k2 = new KnowledgeChunk(
+                "c2", "内容2", "", "学习方法FAQ", "第二节", 0.8, IntentType.KNOWLEDGE_QUESTION, "b".repeat(64));
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of(k1, k2)));
+        when(contextBuilderService.buildDocument(anyString(), any(), any())).thenReturn("<document>D</document>");
+
+        Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
+
+        assertTrue(result.isEmpty(), "来源列表不写 state");
+        // metadata 通道：List<RetrievalSource>，按精排顺序携带 chunkId/docTitle/headingPath/score
+        Object written = config.metadata().get().get(RetrieveNode.KEY_RETRIEVAL_SOURCES);
+        assertNotNull(written, "检索命中非空应写入来源列表 metadata");
+        @SuppressWarnings("unchecked")
+        List<RetrievalSource> sources = (List<RetrievalSource>) written;
+        assertEquals(2, sources.size());
+        assertEquals("c1", sources.get(0).chunkId());
+        assertEquals("高等数学讲义", sources.get(0).docTitle());
+        assertEquals("第一章", sources.get(0).headingPath());
+        assertEquals(0.9, sources.get(0).score(), 0.001);
+        assertEquals("c2", sources.get(1).chunkId());
+    }
+
+    @Test
+    @DisplayName("apply — 检索空结果/chat 意图：不写来源列表（无 SOURCES，sourcesJson 保持空数组）")
+    void apply_emptyRetrieval_noRetrievalSources() throws Exception {
+        QueryPlan plan =
+                new QueryPlan(IntentType.KNOWLEDGE_QUESTION, List.of("冷门问题"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("冷门问题"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("s1")
+                .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
+                .build();
+
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of()));
+
+        Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
+
+        assertTrue(result.isEmpty());
+        // 检索空 → 不写来源 metadata（worker 侧不推 SOURCES、sourcesJson 保持 "[]"）
+        assertTrue(config.metadata().get().get(RetrieveNode.KEY_RETRIEVAL_SOURCES) == null);
+
+        // chat 意图：不进检索分支，同样不写
+        RunnableConfig chatConfig = RunnableConfig.builder()
+                .threadId("s2")
+                .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
+                .build();
+        OverAllState chatState = new OverAllState(Map.of(
+                KEY_QUERY_PLAN, new QueryPlan(IntentType.CHAT, List.of("你好"), new QueryPlanFilters(List.of()), false)));
+        RetrieveNodeTestUtil.apply(newRetrieveNode(), chatState, chatConfig);
+        assertTrue(chatConfig.metadata().get().get(RetrieveNode.KEY_RETRIEVAL_SOURCES) == null);
+    }
+
+    // ==================== B3-4：附件局部检索 embed 降级 ====================
+
+    @Test
+    @DisplayName("apply — 附件局部检索 embed 异常降级：跳过文档局部检索，知识检索与回答继续（不 ERROR）")
+    void apply_attachmentEmbedFails_skipsLocalSearchButContinues() throws Exception {
+        // 附件上下文：1 图片 caption + 1 文档附件（文档附件非空触发局部检索 embed，B3-4 故障面）
+        AttachmentContext attachmentContext = new AttachmentContext(
+                List.of(new ImageCaptionResult("图片1:红色图表", "a.png")),
+                Map.of("0/doc.pdf", List.of(new DocumentLocalChunk("图表纵轴为销量", new float[] {1.0f}, 0))));
+        QueryPlan plan =
+                new QueryPlan(IntentType.KNOWLEDGE_QUESTION, List.of("红色图表含义"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("红色图表含义"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("s1")
+                .addMetadata("attachmentContext", attachmentContext)
+                .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
+                .build();
+
+        // embedding 全线故障：预嵌入降级 null（既有行为），附件局部检索 embed 也抛 → 必须降级而非 run ERROR
+        when(embeddingModel.embed(anyString())).thenThrow(new RuntimeException("embedding 服务不可用"));
+        KnowledgeChunk k =
+                new KnowledgeChunk("c1", "内容", "", "讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "h".repeat(64));
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of(k)));
+        when(contextBuilderService.buildDocument(anyString(), any(), any())).thenReturn("<document>D</document>");
+        // caption 不依赖 embed，仍应注入（user-document 仅含 caption 行）
+        when(contextBuilderService.buildUserDocument(anyList(), anyMap()))
+                .thenReturn("<user-document>\n  [图片1:红色图表]\n</user-document>");
+        when(contextBuilderService.appendUserDocument(anyString(), anyString())).thenReturn("<document>D+U</document>");
+
+        Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
+
+        // run 不 ERROR：apply 正常返回空增量，document 照常注入（知识检索结果 + caption）
+        assertTrue(result.isEmpty());
+        assertEquals(
+                "<document>D+U</document>",
+                config.metadata().get().get(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT));
+        // 局部检索被跳过（无查询向量不检索）；知识检索照常执行
+        verify(localSearchService, never()).search(anyList(), any(), anyInt());
         verify(searchKnowledgeTool).searchKnowledge(any(), any());
     }
 }

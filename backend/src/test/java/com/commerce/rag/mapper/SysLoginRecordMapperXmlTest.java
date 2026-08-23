@@ -84,15 +84,31 @@ class SysLoginRecordMapperXmlTest extends IntegrationTestBase {
     /**
      * selectActiveForUpdate：FOR UPDATE 行锁查询在事务内真实执行不报错，
      * 且只返回该用户该设备的 ACTIVE 未删除记录（REVOKED / 软删 / 他用户均排除）。
+     * newLoginId 传 0（不命中任何预置记录，验证不干扰其它过滤条件）。
      */
     @Test
     @Transactional
     void selectActiveForUpdate仅返回活跃未删除记录() {
-        List<SysLoginRecord> records = loginRecordMapper.selectActiveForUpdate(USER_ID, DEVICE);
+        List<SysLoginRecord> records = loginRecordMapper.selectActiveForUpdate(USER_ID, DEVICE, 0L);
         assertEquals(2, records.size(), "应只返回 2 条 ACTIVE 记录（REVOKED/软删/他用户均排除）");
         assertTrue(records.stream().allMatch(r -> "ACTIVE".equals(r.getStatus())), "结果应全部为 ACTIVE");
         Set<Long> ids = records.stream().map(SysLoginRecord::getId).collect(Collectors.toSet());
         assertEquals(Set.of(101L, 102L), ids, "应精确命中预置的两条活跃记录");
+    }
+
+    /**
+     * B1-1：selectActiveForUpdate 必须排除指定的当前登录记录——
+     * 登录时序为「先 createLoginRecord 插入 ACTIVE 新记录，后执行互踢」，
+     * PG 降级互踢若把新记录查回会把刚登录的会话误判为旧设备（自吊销、新 jti 入黑名单，
+     * Redis 故障期间登录链路完全不可用）。排除 101（模拟刚插入的新记录）后应仅返回 102。
+     */
+    @Test
+    @Transactional
+    void selectActiveForUpdate排除当前登录记录() {
+        List<SysLoginRecord> records = loginRecordMapper.selectActiveForUpdate(USER_ID, DEVICE, 101L);
+        assertEquals(1, records.size(), "排除新登录记录后应仅返回 1 条旧 ACTIVE 记录");
+        assertEquals(102L, records.get(0).getId(), "应返回未被排除的旧活跃记录 102");
+        assertTrue(records.stream().noneMatch(r -> r.getId().equals(101L)), "被排除的新登录记录不得出现在结果集（B1-1 自吊销保护）");
     }
 
     /**

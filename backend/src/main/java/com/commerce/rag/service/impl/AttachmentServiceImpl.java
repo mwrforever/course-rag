@@ -1,5 +1,6 @@
 package com.commerce.rag.service.impl;
 
+import com.commerce.rag.constants.AttachmentConstants;
 import com.commerce.rag.enums.AttachmentType;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
@@ -22,15 +23,17 @@ import org.springframework.web.multipart.MultipartFile;
 /**
  * 用户附件服务实现 —— 上传校验（spec §5.2 限额定稿）+ MinIO 落盘/下载
  *
- * <p>kbId 固定传 0L：附件是会话级局部上下文，不归属任何知识库（spec §5.1）。
+ * <p>kbId 固定 {@link AttachmentConstants#ATTACHMENT_KB_ID}（0L）：附件是会话级局部上下文，
+ * 不归属任何知识库（spec §5.1）。
  *
  * <p>校验顺序：附件非空 → 单次个数限额 → 合计大小限额 → 第一遍全量逐文件校验（类型白名单 →
  * 单文件大小限额，不落盘）→ 全部通过后第二遍逐个 MinIO 落盘。任一校验不过立即抛
  * BizException(400)，保证非法请求不产生任何落盘（杜绝混合上传时前序合法文件成为 MinIO
  * 孤儿对象）。
  *
- * <p>下载：按 objectKey 读 MinIO 字节流，对象不存在或读取失败统一抛 BizException(404)
- * （附件为短期会话资源，缺失视为「不存在或已过期」）。
+ * <p>下载：先校验 objectKey 前缀必须是附件区（"0/"，B3-2 越权防护——objectKey 客户端可控，
+ * 不校验则可直读同 bucket 的 B 端知识库文档等任意对象），再按 objectKey 读 MinIO 字节流；
+ * 对象不存在或读取失败统一抛 BizException(404)（附件为短期会话资源，缺失视为「不存在或已过期」）。
  */
 @Slf4j
 @Service
@@ -101,6 +104,12 @@ public class AttachmentServiceImpl implements IAttachmentService {
 
     @Override
     public byte[] download(String objectKey) {
+        // 越权校验（B3-2）：objectKey 客户端可控（ChatRequest.attachments 任意构造），
+        // 必须限定附件区前缀——否则可构造知识库 objectKey（{kb_id}/...）直读同 bucket 任意对象
+        if (objectKey == null || !objectKey.startsWith(AttachmentConstants.ATTACHMENT_OBJECT_KEY_PREFIX)) {
+            log.warn("附件下载被拒（objectKey 不在附件区）: objectKey={}", objectKey);
+            throw new BizException(ErrorCode.FORBIDDEN, "无权访问该附件资源");
+        }
         // 从 MinIO 取附件字节流并一次性读全（objectKey 不存在/读取失败视为附件已消失）
         try (InputStream in = minioStorageService.downloadFile(objectKey)) {
             return in.readAllBytes();
@@ -118,7 +127,8 @@ public class AttachmentServiceImpl implements IAttachmentService {
         // 生成 32 位 hex uuid 作 objectKey 主体（与业务主键解耦）
         String uuid = UUID.randomUUID().toString().replace("-", "");
         try (InputStream in = file.getInputStream()) {
-            String objectKey = minioStorageService.uploadFile(0L, uuid, in, ext);
+            // 落盘 kbId 引用常量（与下载侧前缀校验同源，防止两处数值漂移）
+            String objectKey = minioStorageService.uploadFile(AttachmentConstants.ATTACHMENT_KB_ID, uuid, in, ext);
             return new AttachmentRecord(
                     type.name().toLowerCase(Locale.ROOT), objectKey, file.getOriginalFilename(), file.getSize());
         } catch (IOException e) {

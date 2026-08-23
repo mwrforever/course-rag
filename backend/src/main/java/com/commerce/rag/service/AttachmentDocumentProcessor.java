@@ -46,16 +46,19 @@ public class AttachmentDocumentProcessor {
     /** 分片最小字符数（spec §4.1 与 ETL 同参，过滤纯标点/空白碎块） */
     private final int minChunkSizeChars;
 
+    /** 批量向量化批大小（P2-1：一次 embedding 请求携带多条文本） */
+    private final int embeddingBatchSize;
+
     /**
      * 正式构造器（Spring 依赖注入）
      *
      * <p>chunkSize/minChunkSizeChars 按 spec §4.1 硬编码 768/64（与 ETL 文档分片同参），
-     * 不新增配置项。
+     * 不新增配置项；embeddingBatchSize 读 attachment.embedding-batch-size（P2-1 批量向量化）。
      *
      * @param embeddingModel 向量化模型（Spring AI 装配的 EmbeddingModel bean）
      * @param cacheService   附件处理结果缓存（Task 4 产物）
-     * @param properties     仅 DI 签名作用，方法体不消费配置（chunkSize/minChunkSizeChars 按
-     *                       spec §4.1 硬编码，不读属性），保证类在多构造器下仍被 Spring 选中
+     * @param properties     附件配置（消费 embeddingBatchSize；chunkSize/minChunkSizeChars 按
+     *                       spec §4.1 硬编码，不读属性）
      */
     @Autowired
     public AttachmentDocumentProcessor(
@@ -64,26 +67,33 @@ public class AttachmentDocumentProcessor {
         this.cacheService = cacheService;
         this.chunkSize = 768;
         this.minChunkSizeChars = 64;
+        this.embeddingBatchSize = properties.embeddingBatchSize();
     }
 
     /**
-     * 测试构造器（直接给切分参数，服务包内单测传 100/64 触发真实切分）
+     * 测试构造器（直接给切分/批量参数，服务包内单测传 100/64 触发真实切分）
      *
      * @param embeddingModel    向量化模型 mock（匿名类实现 call）
      * @param cacheService      附件处理结果缓存
      * @param chunkSize         分片目标 token 数
      * @param minChunkSizeChars 分片最小字符数
+     * @param embeddingBatchSize 批量向量化批大小
      */
     AttachmentDocumentProcessor(
-            EmbeddingModel embeddingModel, AttachmentCacheService cacheService, int chunkSize, int minChunkSizeChars) {
+            EmbeddingModel embeddingModel,
+            AttachmentCacheService cacheService,
+            int chunkSize,
+            int minChunkSizeChars,
+            int embeddingBatchSize) {
         this.embeddingModel = embeddingModel;
         this.cacheService = cacheService;
         this.chunkSize = chunkSize;
         this.minChunkSizeChars = minChunkSizeChars;
+        this.embeddingBatchSize = embeddingBatchSize;
     }
 
     /**
-     * 处理文档附件：解析 → 切分 → 逐块向量化（结果按字节 hash 缓存）
+     * 处理文档附件：解析 → 切分 → 批量向量化（结果按字节 hash 缓存）
      *
      * <p>缓存未命中才真正执行解析/向量化；同文件字节重复出现直接命中 Caffeine（同文档只处理一次）。
      *
@@ -99,7 +109,7 @@ public class AttachmentDocumentProcessor {
     }
 
     /**
-     * 实际处理（缓存未命中时执行）：Tika 解析 → jsoup 提取纯文本 → TextChunkSplitter 切分 → 逐块向量化
+     * 实际处理（缓存未命中时执行）：Tika 解析 → jsoup 提取纯文本 → TextChunkSplitter 切分 → 批量向量化
      *
      * <p>解析失败返回空列表（不抛异常、不中断对话，warn 中文日志留痕）。
      *
@@ -121,12 +131,19 @@ public class AttachmentDocumentProcessor {
             TextChunkSplitter splitter = new TextChunkSplitter(chunkSize, minChunkSizeChars);
             List<String> pieces = splitter.splitText(plainText);
 
-            // 3. 逐块向量化（embed(String) 返回 float[]，Spring AI 1.1.2 便利方法）
+            // 3. 批量向量化（P2-1：按批大小分批调用 embed(List)，一次请求携带多条文本，
+            //    调用次数 = 分片数/批大小，大文档附件首 token 延迟从数十秒降到秒级；
+            //    批内空向量块跳过（不入结果，序号保留原始文档位置）；单批调用异常由外层
+            //    catch 兜底返回空语料——与原逐块失败中断语义等价）
             List<DocumentLocalChunk> chunks = new ArrayList<>(pieces.size());
-            for (int i = 0; i < pieces.size(); i++) {
-                float[] vector = embeddingModel.embed(pieces.get(i));
-                if (vector != null && vector.length > 0) {
-                    chunks.add(new DocumentLocalChunk(pieces.get(i), vector, i));
+            for (int start = 0; start < pieces.size(); start += embeddingBatchSize) {
+                List<String> batch = pieces.subList(start, Math.min(start + embeddingBatchSize, pieces.size()));
+                List<float[]> vectors = embeddingModel.embed(batch);
+                for (int i = 0; i < batch.size(); i++) {
+                    float[] vector = vectors.get(i);
+                    if (vector != null && vector.length > 0) {
+                        chunks.add(new DocumentLocalChunk(batch.get(i), vector, start + i));
+                    }
                 }
             }
             log.info("文档附件处理完成: name={}, 分片数={}", name, chunks.size());

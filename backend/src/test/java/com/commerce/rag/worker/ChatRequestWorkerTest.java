@@ -10,6 +10,7 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
+import com.commerce.rag.bot.graph.RetrieveNode;
 import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.properties.StreamProperties;
@@ -18,6 +19,7 @@ import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.record.DocumentLocalChunk;
 import com.commerce.rag.record.ImageCaptionResult;
+import com.commerce.rag.record.RetrievalSource;
 import com.commerce.rag.service.AttachmentOrchestrator;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
@@ -26,15 +28,19 @@ import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEvent;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.SseEventType;
+import com.commerce.rag.vo.ChatRunVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -50,6 +56,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
@@ -210,19 +217,29 @@ class ChatRequestWorkerTest {
         return (ConcurrentHashMap<String, AtomicBoolean>) f.get(worker);
     }
 
-    /** 通过反射调用 private persistMessages（P0-4a 游标去重用例：验证仅持久化游标后的新增消息） */
-    private void invokePersistMessages(
+    /** 通过反射调用 private persistMessages（P0-4a 游标去重用例：验证仅持久化游标后的新增消息）
+     * 返回落库结果（B2-4：true=已落库/幂等跳过；false=落库失败可由调用方重试） */
+    private boolean invokePersistMessages(
             Long runId,
             Long sessionId,
             String userQuery,
             String attachmentsJson,
+            String sourcesJson,
             int historyCursor,
             NodeOutput lastOutput)
             throws Exception {
         Method method = ChatRequestWorker.class.getDeclaredMethod(
-                "persistMessages", Long.class, Long.class, String.class, String.class, int.class, NodeOutput.class);
+                "persistMessages",
+                Long.class,
+                Long.class,
+                String.class,
+                String.class,
+                String.class,
+                int.class,
+                NodeOutput.class);
         method.setAccessible(true);
-        method.invoke(worker, runId, sessionId, userQuery, attachmentsJson, historyCursor, lastOutput);
+        return (Boolean) method.invoke(
+                worker, runId, sessionId, userQuery, attachmentsJson, sourcesJson, historyCursor, lastOutput);
     }
 
     // ==================== cancel() 测试 ====================
@@ -441,7 +458,7 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(state);
 
         // When: 游标=2（历史 2 条）
-        invokePersistMessages(1L, 1L, "本轮问题", "[]", 2, lastOutput);
+        invokePersistMessages(1L, 1L, "本轮问题", "[]", "[]", 2, lastOutput);
 
         // Then: 仅持久化本轮（USER 用户消息 + 本轮新增 assistant）
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -504,6 +521,87 @@ class ChatRequestWorkerTest {
         assertTrue(messages.get(1) instanceof AssistantMessage, "回滚后 messages[1] 应为 AssistantMessage");
     }
 
+    // ==================== B3-5：SOURCES 事件 + sourcesJson 真实来源 ====================
+
+    @Test
+    @DisplayName("SOURCES（B3-5）— 检索来源就绪后推一次 SOURCES 事件，assistant 正文 sourcesJson 落真实来源")
+    @SuppressWarnings("unchecked")
+    void processRequest_retrievalSources_pushesSourcesEventAndPersistsSourcesJson() throws Exception {
+        // 图流时序模拟：chunk1（检索完成前，无来源）→ 模拟 RetrieveNode 写入来源 metadata → chunk2（最终 state）
+        NodeOutput before = mock(NodeOutput.class);
+        lenient().when(before.state()).thenReturn(null);
+        AssistantMessage assistantMsg = new AssistantMessage("引用资料的回答");
+        OverAllState finalState = new OverAllState(Map.of("messages", List.of(assistantMsg)));
+        NodeOutput after = mock(NodeOutput.class);
+        lenient().when(after.state()).thenReturn(finalState);
+
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenAnswer(inv -> {
+            RunnableConfig cfg = inv.getArgument(1);
+            return Flux.create(sink -> {
+                sink.next(before);
+                // 模拟 RetrieveNode 检索完成：来源列表写入 metadata（B3-5 通道）
+                cfg.metadata()
+                        .ifPresent(m -> m.put(
+                                RetrieveNode.KEY_RETRIEVAL_SOURCES,
+                                List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9))));
+                sink.next(after);
+                sink.complete();
+            });
+        });
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "高等数学怎么学"));
+
+        // SOURCES 事件恰好推送一次（检索完成处、首个回答 token 前），payload 含来源字段
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        List<SseEvent> sourcesEvents = evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.SOURCES)
+                .toList();
+        assertEquals(1, sourcesEvents.size(), "SOURCES 事件应恰好推送一次");
+        assertTrue(sourcesEvents.get(0).payload().contains("高等数学讲义"), "payload 应含来源文档标题");
+        assertTrue(sourcesEvents.get(0).payload().contains("c1"), "payload 应含 chunkId");
+
+        // assistant 正文行 sourcesJson 持久化真实来源（非 "[]"）
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(msgCaptor.capture());
+        List<ChatMessage> inserted = msgCaptor.getValue();
+        ChatMessage assistantRow = inserted.stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应存在 assistant 正文行"));
+        assertTrue(assistantRow.getSourcesJson().contains("高等数学讲义"), "assistant 正文 sourcesJson 应为真实来源");
+    }
+
+    @Test
+    @DisplayName("SOURCES（B3-5）— 无检索来源（chat/unknown 意图）：不推 SOURCES、sourcesJson 保持 \"[]\"")
+    @SuppressWarnings("unchecked")
+    void processRequest_noRetrievalSources_neverPushesSourcesEvent() throws Exception {
+        // chat 意图：图流不写来源 metadata（RetrieveNode 不检索）
+        NodeOutput chunk = mock(NodeOutput.class);
+        AssistantMessage assistantMsg = new AssistantMessage("直接对话回答");
+        OverAllState finalState = new OverAllState(Map.of("messages", List.of(assistantMsg)));
+        when(chunk.state()).thenReturn(finalState);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(chunk));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // 无来源 → 不推 SOURCES 事件
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        assertTrue(
+                evtCaptor.getAllValues().stream().noneMatch(e -> e.type() == SseEventType.SOURCES),
+                "无检索来源不得推送 SOURCES 事件");
+
+        // sourcesJson 保持 "[]"（契约第 2 节：集合字段恒输出 []）
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(msgCaptor.capture());
+        ChatMessage assistantRow = msgCaptor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应存在 assistant 正文行"));
+        assertEquals("[]", assistantRow.getSourcesJson());
+    }
+
     // ==================== P1-2 工具消息落库格式（与实时事件 schema 一致） ====================
 
     @Test
@@ -526,7 +624,7 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(state);
 
         // When: 游标=0（全部新增）
-        invokePersistMessages(1L, 1L, "课程问题", "[]", 0, lastOutput);
+        invokePersistMessages(1L, 1L, "课程问题", "[]", "[]", 0, lastOutput);
 
         // Then: TOOL_CALL 落库 content 为实时 schema（toolCallId/toolName/input）
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -668,6 +766,180 @@ class ChatRequestWorkerTest {
         // createGroup 异常被吞掉，消费循环继续进入 XREADGROUP
         verify(streamOps, timeout(3000).atLeast(1))
                 .read(any(Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class));
+
+        worker.stop();
+        Thread.sleep(100);
+    }
+
+    // ==================== runPool 队列满拒绝分支（B2-1） ====================
+
+    @Test
+    @DisplayName("runPool 队列满拒绝 → 推送 ERROR 终态事件 + 清理 ring + 状态回写 ERROR（B2-1）")
+    void consumeLoop_poolRejected_pushesTerminalEventCleansRingAndMarksError() throws Exception {
+        // Given: runPool 提交即拒绝（8 线程 + 100 队列全满），消息含合法 runId
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+        when(streamOps.read(any(Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
+                .thenReturn(List.of(record));
+        when(runPool.submit(any(Runnable.class))).thenThrow(new RejectedExecutionException("队列已满"));
+
+        worker.start();
+
+        // Then: ERROR 终态事件推送到入口已建的 ring（payload 含 runId 与 ERROR 终态标记，
+        // 客户端据此结束"生成中"状态；无该事件则重连也永久无终态）
+        // 说明：mock read 无阻塞语义会连续重读同一消息，拒绝分支被反复触发，故用 atLeast(1)
+        ArgumentCaptor<SseEvent> eventCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, timeout(3000).atLeast(1)).push(eq("100"), eventCaptor.capture());
+        SseEvent rejectedEvent = eventCaptor.getAllValues().get(0);
+        assertEquals(SseEventType.ERROR, rejectedEvent.type());
+        assertTrue(rejectedEvent.payload().contains("\"runId\":\"100\""), "事件 payload 应含 runId");
+        assertTrue(rejectedEvent.payload().contains("\"status\":\"ERROR\""), "事件 payload 应含 ERROR 终态标记");
+        // Then: ring 被清理（否则 ring + 阻塞在 outbox.take() 的投递线程永久泄漏）
+        verify(bridge, timeout(3000).atLeast(1)).removeRing("100");
+        // Then: run 状态回写 ERROR（解锁 uniq_active_run_per_session）
+        verify(chatRunService, timeout(3000).atLeast(1)).updateStatus(100L, "ERROR");
+
+        worker.stop();
+        Thread.sleep(100);
+    }
+
+    @Test
+    @DisplayName("runPool 拒绝 → 终态事件推送失败不中断 ring 清理与状态回写（B2-1）")
+    void consumeLoop_poolRejected_pushFailureStillCleansRingAndMarksError() throws Exception {
+        // Given: runPool 拒绝且 bridge.push 抛异常（复合故障——推送失败不得中断清理链）
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+        when(streamOps.read(any(Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
+                .thenReturn(List.of(record));
+        when(runPool.submit(any(Runnable.class))).thenThrow(new RejectedExecutionException("队列已满"));
+        doThrow(new RuntimeException("ring 推送失败")).when(bridge).push(eq("100"), any(SseEvent.class));
+
+        worker.start();
+
+        // Then: 清理与状态回写仍执行（推送失败仅记日志）
+        verify(bridge, timeout(3000).atLeast(1)).removeRing("100");
+        verify(chatRunService, timeout(3000).atLeast(1)).updateStatus(100L, "ERROR");
+
+        worker.stop();
+        Thread.sleep(100);
+    }
+
+    // ==================== 完成时刻 DB 故障双终态防护（B2-4） ====================
+
+    @Test
+    @DisplayName("完成回写耗尽 → END 已推送后 catch 不再推第二终态、消息不重复落库（B2-4）")
+    void processRequest_statusUpdateExhaustsAfterEnd_noSecondTerminalOrDoublePersist() throws Exception {
+        // Given: 图流正常完成，但 COMPLETED 终态回写 3 次重试全部失败（完成时刻 DB 持续故障）
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+        // ACTIVE 转换显式放行（严格桩模式下未匹配的调用会抛 PotentialStubbingProblem）
+        doNothing().when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
+        doThrow(new RuntimeException("数据库不可用")).when(chatRunService).updateStatus(anyLong(), eq("COMPLETED"));
+
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 终态事件仅推送一次（END(COMPLETED) 在异常前已推送），不再追加 ERROR 双终态
+        ArgumentCaptor<SseEvent> eventCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), eventCaptor.capture());
+        List<SseEvent> terminalEvents = eventCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.END || e.type() == SseEventType.ERROR)
+                .toList();
+        assertEquals(1, terminalEvents.size(), "终态事件应仅推送一次，实际: " + terminalEvents);
+        assertEquals(SseEventType.END, terminalEvents.get(0).type(), "首个（唯一）终态应为 END(COMPLETED)");
+        assertTrue(terminalEvents.get(0).payload().contains("COMPLETED"));
+        // Then: doOnComplete 已成功落库（1 次），catch 分支不再二次 persistMessages 重复落库
+        verify(chatMessageService, times(1)).batchInsert(anyList());
+        // Then: 不再经 handleError 回写 ERROR（客户端已见 COMPLETED，DB 滞留 ACTIVE 由 M-8 巡检兜底收敛）
+        verify(chatRunService, never()).updateStatus(100L, "ERROR");
+    }
+
+    @Test
+    @DisplayName("persistMessages → 批量插入撞 (run_id,seq) 唯一索引按已落库幂等处理（B2-4 数据层兜底）")
+    void persistMessages_uniqueIndexConflict_treatedAsPersisted() throws Exception {
+        // Given: 本批消息已落库（重复调用场景），唯一索引拒绝重复插入
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(null);
+        doThrow(new DataIntegrityViolationException("重复键违反唯一约束 uniq_chat_message_run_seq"))
+                .when(chatMessageService)
+                .batchInsert(anyList());
+
+        // When: 幂等跳过、不外抛异常，返回 true（已落库，调用方不再重试）
+        boolean persisted = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
+
+        assertTrue(persisted, "唯一索引冲突应按已落库处理（幂等跳过）");
+        verify(chatMessageService).batchInsert(anyList());
+    }
+
+    @Test
+    @DisplayName("persistMessages → 非冲突 DB 异常返回 false（可由 catch 分支重试补落库）")
+    void persistMessages_genericDbFailure_returnFalseForRetry() throws Exception {
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(null);
+        doThrow(new RuntimeException("连接池耗尽")).when(chatMessageService).batchInsert(anyList());
+
+        boolean persisted = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
+
+        // 落库失败且非幂等冲突 → 返回 false，允许 catch 分支重试（消息未落库，重试无害）
+        assertFalse(persisted);
+        verify(chatMessageService).batchInsert(anyList());
+    }
+
+    // ==================== 巡检覆盖滞留 QUEUED（B2-3） ====================
+
+    /** 反射调用 private sweepStaleRuns（巡检入口） */
+    private void invokeSweepStaleRuns() throws Exception {
+        Method method = ChatRequestWorker.class.getDeclaredMethod("sweepStaleRuns");
+        method.setAccessible(true);
+        method.invoke(worker);
+    }
+
+    @Test
+    @DisplayName("巡检 → 滞留 QUEUED run 置 ERROR（B2-3：按 created_at 超阈值判定，解锁会话 409）")
+    void sweepStaleRuns_staleQueued_resetsToError() throws Exception {
+        // Given: ACTIVE 超时阈值 10min、QUEUED 滞留阈值 5min，巡检查回一条滞留 QUEUED run
+        when(workerProperties.staleRunTimeoutMinutes()).thenReturn(10);
+        when(workerProperties.staleQueuedTimeoutMinutes()).thenReturn(5);
+        when(chatRunService.findStaleActive(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of(new ChatRunVO(
+                        101L, 1L, 1L, "QUEUED", LocalDateTime.now().minusMinutes(30))));
+
+        invokeSweepStaleRuns();
+
+        // Then: 滞留 QUEUED run 被置 ERROR（解除 uniq_active_run_per_session 会话锁死）
+        verify(chatRunService).updateStatus(101L, "ERROR");
+        // Then: QUEUED 阈值按 stale-queued-timeout-minutes 计算（created_at < now-5min）
+        ArgumentCaptor<LocalDateTime> queuedBefore = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(chatRunService).findStaleActive(any(LocalDateTime.class), queuedBefore.capture());
+        long minutes =
+                Duration.between(queuedBefore.getValue(), LocalDateTime.now()).toMinutes();
+        assertTrue(minutes >= 4 && minutes <= 6, "QUEUED 阈值应为 now-5min（实际 " + minutes + "min）");
+    }
+
+    @Test
+    @DisplayName("巡检 → 未超时的 QUEUED/ACTIVE（SQL 过滤后无返回）不动作")
+    void sweepStaleRuns_noStaleRuns_noStatusUpdate() throws Exception {
+        when(workerProperties.staleRunTimeoutMinutes()).thenReturn(10);
+        when(workerProperties.staleQueuedTimeoutMinutes()).thenReturn(5);
+        when(chatRunService.findStaleActive(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+
+        invokeSweepStaleRuns();
+
+        // Then: 无滞留 run 时不得误置任何状态
+        verify(chatRunService, never()).updateStatus(anyLong(), anyString());
+    }
+
+    @Test
+    @DisplayName("启动时立即执行一次巡检（B2-3：兜底停机丢弃排队任务场景）")
+    void start_runsStartupSweep() throws Exception {
+        worker.start();
+
+        // initial delay=0：启动即扫描一次滞留 ACTIVE/QUEUED run（此前首扫在 60s 后，
+        // 滚动重启丢任务场景下会话最长 409 一分钟以上）
+        verify(chatRunService, timeout(2000).atLeast(1))
+                .findStaleActive(any(LocalDateTime.class), any(LocalDateTime.class));
 
         worker.stop();
         Thread.sleep(100);
@@ -990,7 +1262,7 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(state);
 
         // When
-        invokePersistMessages(1L, 1L, "本轮问题", "[]", 0, lastOutput);
+        invokePersistMessages(1L, 1L, "本轮问题", "[]", "[]", 0, lastOutput);
 
         // Then: 仅落库本轮 USER 查询 + ASSISTANT 补充回答，不重复 USER
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -1009,19 +1281,19 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(null);
 
         // 不抛异常即验证通过（异常在 persistMessages 内部被吞并）
-        invokePersistMessages(1L, 1L, "问题", "[]", 0, lastOutput);
+        invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
         verify(chatMessageService).batchInsert(anyList());
     }
 
     // ==================== toChatMessages 分支 ====================
 
-    /** 反射调用 private toChatMessages */
+    /** 反射调用 private toChatMessages（B3-5 后含 sourcesJson 参数） */
     @SuppressWarnings("unchecked")
     private List<ChatMessage> invokeToChatMessages(Message msg, Long runId, Long sessionId) throws Exception {
-        Method method =
-                ChatRequestWorker.class.getDeclaredMethod("toChatMessages", Message.class, Long.class, Long.class);
+        Method method = ChatRequestWorker.class.getDeclaredMethod(
+                "toChatMessages", Message.class, Long.class, Long.class, String.class);
         method.setAccessible(true);
-        return (List<ChatMessage>) method.invoke(worker, msg, runId, sessionId);
+        return (List<ChatMessage>) method.invoke(worker, msg, runId, sessionId, "[]");
     }
 
     @Test

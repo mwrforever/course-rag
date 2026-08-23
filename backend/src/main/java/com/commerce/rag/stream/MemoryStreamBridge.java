@@ -155,6 +155,9 @@ public class MemoryStreamBridge {
         final List<SseEmitter> subscribers;
         volatile boolean closed;
 
+        /** B2-1: close 等待投递线程排空 outbox 的上限（毫秒）——超时兜底防慢客户端 send 卡死调用方 */
+        private static final long CLOSE_DRAIN_TIMEOUT_MS = 3000;
+
         /** 回放/订阅与 push 写入共享的锁（回放区间收集与广播入队原子，保证不丢不重 + 顺序） */
         private final Object stateLock = new Object();
 
@@ -202,21 +205,39 @@ public class MemoryStreamBridge {
 
         /**
          * 投递线程主循环：FIFO 逐条处理（单线程天然有序——回放批次先于其后广播事件）。
+         *
+         * <p>B2-1 drain 语义：{@code closed} 置位后转入非阻塞排空模式——继续投递 outbox 中
+         * 已入队事件（push 在锁内先于 close 检查 closed，close 后不再有新入队，排空即终态），
+         * 排空完毕才退出线程；{@link #close()} 由此保证「push 紧邻 removeRing 的时序下，
+         * 已入队的终态事件仍投递给订阅者后才 complete」，事件不因 close 被吞。
          */
         private void deliveryLoop() {
-            while (!closed) {
+            while (true) {
+                Deliverable item;
+                if (closed) {
+                    // drain 模式：非阻塞取剩余事件，队列排空即退出
+                    item = outbox.poll();
+                    if (item == null) {
+                        break;
+                    }
+                } else {
+                    try {
+                        item = outbox.take();
+                    } catch (InterruptedException e) {
+                        // close() 的中断唤醒（仅 close 会中断本线程）：不恢复中断标志、
+                        // 不直接退出——回到循环头按 closed 转入 drain 分支排空剩余事件
+                        continue;
+                    }
+                }
                 try {
-                    Deliverable item = outbox.take();
                     if (item.replay) {
                         deliverReplay(item.emitter, item.replayEvents);
                     } else {
                         deliverBroadcast(item.event);
                     }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
                 } catch (Exception e) {
-                    // 单条投递异常不终止线程（防御：complete 并发导致的 IllegalStateException 等）
+                    // 单条投递异常不终止线程（防御：complete 并发导致的 IllegalStateException 等）；
+                    // drain 模式下同样继续排空剩余事件
                     log.warn("投递线程处理异常（跳过该事件）: runId={}, err={}", runId, e.getMessage());
                 }
             }
@@ -370,12 +391,38 @@ public class MemoryStreamBridge {
             }
         }
 
+        /**
+         * 关闭 ring（B2-1 drain 语义改造）。
+         *
+         * <p>顺序保证：置 closed（此后 push/replayAndSubscribe 在锁内检查 closed，不再入队）
+         * → 中断唤醒阻塞在 take() 的投递线程并<b>等待其排空 outbox 中已入队事件</b>
+         * （有界等待，防慢客户端 send 永久卡住调用方）→ 排空完毕后再 complete 全部订阅者。
+         * 由此「push 终态事件 → 紧邻 removeRing」的时序（如 runPool 拒绝快速失败分支）
+         * 下，事件在订阅者被 complete 前完成投递，不再被吞。
+         *
+         * <p>等待超时兜底：投递线程阻塞在 socket send 超过 {@link #CLOSE_DRAIN_TIMEOUT_MS}
+         * 时不再等待、直接 complete（该订阅者的连接已实质卡死，complete 触发前端重连后
+         * 经 PG/重连降级补终态；与既有超时清理行为一致）。
+         */
         void close() {
             synchronized (stateLock) {
                 if (closed) {
                     return;
                 }
                 closed = true;
+            }
+            // 唤醒阻塞在 take() 的投递线程促使其转入 drain 分支；阻塞在 socket send 上时
+            // 中断不打断发送，由其完成本次 send 后回到循环头继续排空
+            Thread thread = deliveryThread;
+            if (thread != null) {
+                thread.interrupt();
+                try {
+                    // 等待 drain 完毕（正常路径毫秒级：close 时 outbox 常已排空，
+                    // take() 被中断唤醒后 poll 到空即退出）
+                    thread.join(CLOSE_DRAIN_TIMEOUT_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             }
             for (SseEmitter emitter : subscribers) {
                 try {
@@ -385,12 +432,6 @@ public class MemoryStreamBridge {
                 }
             }
             subscribers.clear();
-            // 中断投递线程（阻塞在 take() 上时立即退出；阻塞在 socket send 上时
-            // 等待发送失败后自然退出——daemon 线程，不阻止 JVM 退出）
-            Thread thread = deliveryThread;
-            if (thread != null) {
-                thread.interrupt();
-            }
         }
 
         /**

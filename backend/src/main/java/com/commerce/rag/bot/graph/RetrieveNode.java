@@ -17,6 +17,7 @@ import com.commerce.rag.properties.MemoryProperties;
 import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.DocumentLocalChunk;
 import com.commerce.rag.record.EpisodicMemoryRef;
+import com.commerce.rag.record.RetrievalSource;
 import com.commerce.rag.retrieval.ContextBuilderService;
 import com.commerce.rag.retrieval.CourseNameMapper;
 import com.commerce.rag.service.AttachmentLocalSearchService;
@@ -69,7 +70,7 @@ import org.springframework.stereotype.Component;
  *       document 同通道——不落 state/checkpoint，EpisodicInterceptor 尾部注入）；召回异常/无命中/
  *       无 userId → 降级不写，不影响主文档检索与回答</li>
  *   <li>并行编排（2026-08-22 性能优化报告 2-3）：episodic 召回、知识检索、附件局部检索向量 embed
- *       三段相互独立的远程 IO 经本节点独立 2 线程池并行执行（与 SearchKnowledgeTool 内部
+ *       三段相互独立的远程 IO 经本节点独立小线程池（默认 3 线程，P2-3）并行执行（与 SearchKnowledgeTool 内部
  *       searchExecutor 隔离，避免自阻塞）；document_context 由 join 后主线程写入、episodic_context
  *       由 recallEpisodic 任务内写入（join 建立 happens-before，后续读取可见）——检索节点延迟从
  *       「三段之和」降为「约等于最慢一段」，高并发对话时不再白占 runPool worker</li>
@@ -102,6 +103,14 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
     /** 文档附件局部检索返回条数上限（spec §5.4 局部检索 Top-K） */
     private static final int LOCAL_SEARCH_TOP_K = 3;
 
+    /**
+     * 检索来源列表 metadata 键（B3-5：SOURCES 事件与 chat_message.sourcesJson 的数据通道）。
+     * 检索命中非空时写入 {@code List<RetrievalSource>}，ChatRequestWorker 读取后推 SOURCES
+     * 事件并持久化 sourcesJson；与 document_context 同通道——不写 State、不进 checkpoint
+     * （瞬时上下文，仅本轮 run 生命周期内有效）。
+     */
+    public static final String KEY_RETRIEVAL_SOURCES = "retrieval_sources";
+
     private final SearchKnowledgeTool searchKnowledgeTool;
     private final CourseNameMapper courseNameMapper;
     private final ContextBuilderService contextBuilderService;
@@ -109,7 +118,7 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
     private final EmbeddingModel embeddingModel;
     private final IEpisodicMemoryService episodicMemoryService;
     private final MemoryProperties properties;
-    /** 检索节点并行执行器（独立 2 线程池，与 SearchKnowledgeTool 内部池隔离，报告 2-3） */
+    /** 检索节点并行执行器（独立小线程池，与 SearchKnowledgeTool 内部池隔离，报告 2-3；P2-3 默认 3 线程） */
     private final ExecutorService retrieveExecutor;
 
     public RetrieveNode(
@@ -120,7 +129,7 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
             EmbeddingModel embeddingModel,
             IEpisodicMemoryService episodicMemoryService,
             MemoryProperties properties,
-            @Value("${retrieval.retrieve-node-parallelism:2}") int parallelism) {
+            @Value("${retrieval.retrieve-node-parallelism:3}") int parallelism) {
         this.searchKnowledgeTool = searchKnowledgeTool;
         this.courseNameMapper = courseNameMapper;
         this.contextBuilderService = contextBuilderService;
@@ -129,7 +138,9 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         this.episodicMemoryService = episodicMemoryService;
         this.properties = properties;
         // 独立小线程池（不与 SearchKnowledgeTool 内部 searchExecutor 共用，避免检索任务与召回任务
-        // 互抢 4 线程形成自阻塞）；daemon 线程随 JVM 退出，带前缀+序号便于 thread dump 排查
+        // 互抢 4 线程形成自阻塞）；P2-3 默认 3 线程——三段任务（附件局部检索/经历召回/知识检索）各有
+        // 线程可占，最重的知识检索不再因 2 线程池排队延后（有附件场景退化修复）；
+        // daemon 线程随 JVM 退出，带前缀+序号便于 thread dump 排查
         AtomicInteger seq = new AtomicInteger(1);
         this.retrieveExecutor = Executors.newFixedThreadPool(Math.max(1, parallelism), r -> {
             Thread t = new Thread(r, "retrieve-node-" + seq.getAndIncrement());
@@ -213,7 +224,8 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         CompletableFuture<List<KnowledgeChunk>> chunksFuture = CompletableFuture.supplyAsync(
                 () -> searchKnowledgeTool.searchKnowledge(queries, preVector).chunks(), retrieveExecutor);
 
-        // recallEpisodic 内部已全异常降级（不会抛出）；附件 embed 异常与改造前同步路径等价地向上传播
+        // recallEpisodic 内部已全异常降级（不会抛出）；附件局部检索 embed 异常在
+        // buildUserDocumentText 内降级为 null（跳过局部检索，B3-4），三段 join 均不向上传播
         episodicFuture.join();
         List<KnowledgeChunk> chunks = chunksFuture.join();
         String userDocument = userDocFuture.join();
@@ -232,6 +244,12 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
                     emptyShell != null);
             return CompletableFuture.completedFuture(Map.of());
         }
+
+        // B3-5：检索命中非空 → 来源列表（chunkId/docTitle/headingPath/score）写入 metadata，
+        // ChatRequestWorker 读取后推 SOURCES 事件并持久化 chat_message.sourcesJson（与
+        // document_context 同通道，不落 state/checkpoint）；chat/unknown 意图与空检索不写
+        // （worker 侧不推 SOURCES、sourcesJson 保持 "[]"）
+        config.metadata().ifPresent(m -> m.put(KEY_RETRIEVAL_SOURCES, buildSources(chunks)));
 
         // 5. 组装 <document>（system-document）并合并 <user-document>（附件上下文，spec §5.3/§5.4）
         String document = contextBuilderService.buildDocument(originalQuery, plan.rewrittenQueries(), chunks);
@@ -334,6 +352,21 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
     }
 
     /**
+     * 组装检索来源列表（B3-5：SOURCES 事件与 sourcesJson 的载荷）
+     *
+     * <p>按精排顺序映射为 {@link RetrievalSource}（最小可用字段：chunkId/docTitle/headingPath/score，
+     * 依据前端设计 §1.6.4「sources → 列表渲染」——契约文档未细化 payload 结构）。
+     *
+     * @param chunks 精排后的检索命中（非空）
+     * @return 来源列表（与入参同序）
+     */
+    private static List<RetrievalSource> buildSources(List<KnowledgeChunk> chunks) {
+        return chunks.stream()
+                .map(c -> new RetrievalSource(c.chunkId(), c.docTitle(), c.headingPath(), c.score()))
+                .toList();
+    }
+
+    /**
      * 合并附件 user-document 子块 —— 系统 document 非空时在 `</document>` 前并入（spec §5.3/§5.4）。
      * user-document 由并行任务预计算（{@link #buildUserDocumentText}），此处仅做空值判断与合并。
      *
@@ -376,16 +409,23 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         if (attachmentContext.documents() != null
                 && !attachmentContext.documents().isEmpty()) {
             // 用户原问题作局部检索查询向量（spec §5.4：附件文档内容不参与系统检索查询）
-            float[] queryVector = embeddingModel.embed(originalQuery);
-            for (Map.Entry<String, List<DocumentLocalChunk>> entry :
-                    attachmentContext.documents().entrySet()) {
-                // 某附件分片列表可能为空 → search 返回空列表，docHits 不 put（组装容忍）
-                List<DocumentLocalChunk> hits =
-                        localSearchService.search(entry.getValue(), queryVector, LOCAL_SEARCH_TOP_K);
-                if (!hits.isEmpty()) {
-                    docHits.put(
-                            entry.getKey(),
-                            hits.stream().map(DocumentLocalChunk::text).toList());
+            // B3-4 降级：embed 异常/空向量 → 查询向量置 null 跳过文档附件局部检索（无向量不检索），
+            // caption 照常注入、知识检索与回答不中断（与 embedSafely 同款降级语义，
+            // 兑现类注释「检索异常不写 document 即直答」的降级承诺）
+            float[] queryVector = embedSafely(originalQuery);
+            if (queryVector == null) {
+                log.warn("retrieveNode: 附件局部检索查询向量获取失败，跳过文档附件局部检索（不影响回答）");
+            } else {
+                for (Map.Entry<String, List<DocumentLocalChunk>> entry :
+                        attachmentContext.documents().entrySet()) {
+                    // 某附件分片列表可能为空 → search 返回空列表，docHits 不 put（组装容忍）
+                    List<DocumentLocalChunk> hits =
+                            localSearchService.search(entry.getValue(), queryVector, LOCAL_SEARCH_TOP_K);
+                    if (!hits.isEmpty()) {
+                        docHits.put(
+                                entry.getKey(),
+                                hits.stream().map(DocumentLocalChunk::text).toList());
+                    }
                 }
             }
         }

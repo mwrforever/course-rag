@@ -202,6 +202,47 @@ class MemoryStreamBridgeTest {
         assertDoesNotThrow(() -> bridge.removeRing("nonexistent"));
     }
 
+    @Test
+    @DisplayName("B2-1 close 前入队事件仍被投递（drain 语义）— push 后紧邻 removeRing，outbox 积压事件不因 close 被吞")
+    void removeRing_afterPush_pendingOutboxEventsStillDelivered() throws Exception {
+        SseEmitter mockEmitter = mock(SseEmitter.class);
+        // 首个 send 阻塞：确保 close 发生时投递线程卡在 send、事件 1 仍积压在 outbox
+        // （复现「push→removeRing 紧邻时序」：终态事件入队后立即清理 ring）
+        CountDownLatch sendBlocked = new CountDownLatch(1);
+        CountDownLatch releaseSend = new CountDownLatch(1);
+        doAnswer(inv -> {
+                    if (sendBlocked.getCount() > 0) {
+                        sendBlocked.countDown();
+                        releaseSend.await();
+                    }
+                    return null;
+                })
+                .when(mockEmitter)
+                .send(any(SseEmitter.SseEventBuilder.class));
+        bridge.createRing("run1");
+        bridge.subscribe("run1", mockEmitter);
+        bridge.push("run1", event(0)); // 投递线程取走并阻塞在首个 send
+        assertTrue(sendBlocked.await(3, TimeUnit.SECONDS), "投递线程应已阻塞在首个 send");
+        bridge.push("run1", event(1)); // 积压在 outbox（投递线程被卡未消费）
+
+        // 异步线程 close：等待 closed 置位（closed 后 subscribe 必返回 false）再放行首个 send，
+        // 确保「事件 1 仍积压时 close 语义已生效」的确定性时序
+        Thread closer = new Thread(() -> bridge.removeRing("run1"));
+        closer.start();
+        SseEmitter probe = mock(SseEmitter.class);
+        long deadline = System.currentTimeMillis() + 3000;
+        while (bridge.subscribe("run1", probe) && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        releaseSend.countDown();
+        closer.join(5000);
+
+        // 事件 0 + 积压的事件 1 均送达订阅者（close 前入队的事件不丢——drain 语义），随后 complete
+        awaitSendCount(mockEmitter, 2);
+        verify(mockEmitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+        verify(mockEmitter, timeout(3000).times(1)).complete();
+    }
+
     // ==================== 多订阅者测试 ====================
 
     @Test

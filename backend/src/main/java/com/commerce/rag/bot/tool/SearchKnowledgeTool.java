@@ -6,6 +6,7 @@ import com.commerce.rag.config.MilvusCollectionInitializer;
 import com.commerce.rag.record.ContentHash;
 import com.commerce.rag.retrieval.FusionService;
 import com.commerce.rag.retrieval.RerankService;
+import com.commerce.rag.service.IDocumentService;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.IndexParam;
 import io.milvus.v2.service.vector.request.AnnSearchReq;
@@ -14,15 +15,19 @@ import io.milvus.v2.service.vector.request.data.EmbeddedText;
 import io.milvus.v2.service.vector.request.data.FloatVec;
 import io.milvus.v2.service.vector.request.ranker.RRFRanker;
 import io.milvus.v2.service.vector.response.SearchResp;
+import jakarta.annotation.PreDestroy;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -87,6 +92,9 @@ public class SearchKnowledgeTool {
     private final RerankService rerankService;
     private final EmbeddingModel embeddingModel;
     private final MilvusClientV2 milvusClientV2;
+    /** 文档标题批量回查（B3-3：docTitle 按 doc_id 填充，经 Service 层不直访数据层） */
+    private final IDocumentService documentService;
+
     private final int rrfK;
     /** Milvus 混合检索返回的 Top-K 数量（每条重写查询的预取量，spec §3.1 配置化） */
     private final int prefetchTopK;
@@ -104,6 +112,7 @@ public class SearchKnowledgeTool {
             RerankService rerankService,
             EmbeddingModel embeddingModel,
             MilvusClientV2 milvusClientV2,
+            IDocumentService documentService,
             @Value("${milvus.sparse-bm25-k:60}") int rrfK,
             @Value("${retrieval.prefetch-top-k:20}") int prefetchTopK,
             @Value("${retrieval.sparse-enabled:false}") boolean sparseEnabled) {
@@ -111,14 +120,27 @@ public class SearchKnowledgeTool {
         this.rerankService = rerankService;
         this.embeddingModel = embeddingModel;
         this.milvusClientV2 = milvusClientV2;
+        this.documentService = documentService;
         this.rrfK = rrfK;
         this.prefetchTopK = prefetchTopK;
         this.sparseEnabled = sparseEnabled;
+        // 检索并行池：daemon 线程随 JVM 退出，线程名带序号（search-knowledge-N）便于 thread dump 排查（B1-3）
+        AtomicInteger seq = new AtomicInteger(1);
         this.searchExecutor = Executors.newFixedThreadPool(4, r -> {
-            Thread t = new Thread(r, "search-knowledge-");
+            Thread t = new Thread(r, "search-knowledge-" + seq.getAndIncrement());
             t.setDaemon(true);
             return t;
         });
+    }
+
+    /**
+     * 释放检索并行池（应用停机时调用，B1-3 生命周期配对——全仓业务线程池统一关闭钩子惯例，
+     * 与 RetrieveNode#destroy 同款）：shutdownNow 中断在途检索并丢弃排队任务，
+     * 避免停机时池内任务被直接丢弃且无优雅终止路径。
+     */
+    @PreDestroy
+    public void destroy() {
+        searchExecutor.shutdownNow();
     }
 
     /**
@@ -297,7 +319,9 @@ public class SearchKnowledgeTool {
                 return Collections.emptyList();
             }
 
-            // 8. 映射为 KnowledgeChunk 列表
+            // 8. 映射为 KnowledgeChunk 列表（B3-3：docTitle 按 doc_id 批量回查 PG document.title 填充，
+            //    替代恒空串——spec §3.2「来源文档」标注）
+            Map<Long, String> docTitles = loadDocTitles(results);
             List<KnowledgeChunk> chunks = new ArrayList<>(results.size());
             for (SearchResp.SearchResult sr : results) {
                 Map<String, Object> entity = sr.getEntity();
@@ -312,8 +336,9 @@ public class SearchKnowledgeTool {
 
                 // S1 意图-检索解耦：不再从 collection_type 解析意图，构造传 null（上游节点判定）
                 String sha256 = getStr(entity, MilvusCollectionInitializer.FIELD_SHA256);
+                String docTitle = resolveDocTitle(getStr(entity, MilvusCollectionInitializer.FIELD_DOC_ID), docTitles);
                 chunks.add(new KnowledgeChunk(
-                        chunkId, content, "", "", headingPath, score, null, sha256.isBlank() ? null : sha256));
+                        chunkId, content, "", docTitle, headingPath, score, null, sha256.isBlank() ? null : sha256));
             }
 
             log.debug("单条检索完成: type={}, 结果数={}", query.collectionType(), chunks.size());
@@ -384,6 +409,70 @@ public class SearchKnowledgeTool {
         Object val = entity.get(key);
         if (val == null) return "";
         return String.valueOf(val);
+    }
+
+    /**
+     * 按检索结果中的 doc_id 批量回查 PG document.title（B3-3，spec §3.2 来源文档标注）
+     *
+     * <p>doc_id 去重后经 {@link IDocumentService#mapTitlesByIds} 单次 in 查询
+     * （N 结果 → 1 次往返，@Tool 侧不直访数据层）；回查失败降级返回空表——
+     * docTitle 保持空串，由 ContextBuilderService 的 blankTo 兜底显示「未知」，不阻断检索。
+     *
+     * @param results 单条查询的 Milvus 检索结果行
+     * @return docId → title 映射（无可解析 doc_id 或回查失败时为空 Map）
+     */
+    private Map<Long, String> loadDocTitles(List<SearchResp.SearchResult> results) {
+        Set<Long> docIds = new LinkedHashSet<>();
+        for (SearchResp.SearchResult sr : results) {
+            if (sr.getEntity() == null) {
+                continue;
+            }
+            Long docId = parseDocId(getStr(sr.getEntity(), MilvusCollectionInitializer.FIELD_DOC_ID));
+            if (docId != null) {
+                docIds.add(docId);
+            }
+        }
+        if (docIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        try {
+            Map<Long, String> titles = documentService.mapTitlesByIds(docIds);
+            return titles != null ? titles : Collections.emptyMap();
+        } catch (Exception e) {
+            // 回查失败降级：标题缺失不影响检索主流程（docTitle 空串 → 前端显示「未知」）
+            log.warn("docTitle 回查失败，降级为未知（不阻断检索）: docIds={}, error={}", docIds, e.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
+    /**
+     * 解析 Milvus doc_id 标量（VarChar 存储的雪花 ID 字符串）为 Long
+     *
+     * @return 可解析的 docId；缺失/空白/非数字返回 null（旧数据兼容，跳过回查）
+     */
+    private static Long parseDocId(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 按 doc_id 从回查结果取标题（null 安全：Map.of 对 null key 查询会抛 NPE，须先判空）
+     *
+     * @return 标题；docId 不可解析/无命中返回空串
+     */
+    private static String resolveDocTitle(String rawDocId, Map<Long, String> docTitles) {
+        Long docId = parseDocId(rawDocId);
+        if (docId == null) {
+            return "";
+        }
+        String title = docTitles.get(docId);
+        return title == null ? "" : title;
     }
 
     private static String truncate(String s, int maxLen) {

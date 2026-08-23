@@ -148,10 +148,12 @@ public class RerankService {
             return null;
         }
         // 用 rerank score 替换原始 score，保留其余字段（8 字段，对照设计 §2.4）
+        // source 已废弃恒空串（docTitle 为替代字段，B1-5 弃用收尾）：透传空串字面量，
+        // 与 SearchKnowledgeTool 构造口径一致，不再触发 @Deprecated accessor 调用
         return new KnowledgeChunk(
                 original.chunkId(),
                 original.content(),
-                original.source(),
+                "",
                 original.docTitle(),
                 original.headingPath(),
                 dws.getScore(),

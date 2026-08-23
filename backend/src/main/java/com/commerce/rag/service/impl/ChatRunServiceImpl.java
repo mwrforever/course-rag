@@ -183,20 +183,26 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
     }
 
     /**
-     * 查询超时未结束的 ACTIVE run（M-8 巡检用）
+     * 查询滞留的 ACTIVE/QUEUED run（M-8 巡检 + B2-3 QUEUED 扩展）
      *
-     * <p>本 service 主表查询走内置链式（this.lambdaQuery），按需取列仅 id/status。
+     * <p>查询目标虽为本 service 主表，但既有实现走 runMapper + Wrappers 静态工厂
+     * （or 嵌套分支链式构建），保持该写法。按需取列仅 id/status。
+     * 两分支整体包在一层 and 内，避免与逻辑删除条件（deleted=0）因 OR 优先级产生
+     * 「deleted=0 AND (ACTIVE 分支) OR (QUEUED 分支)」的错误展开。
      *
      * @param startedBefore started_at 早于该时间的 ACTIVE run（视为超时）
-     * @return 超时 run 的视图对象列表
+     * @param queuedBefore  created_at 早于该时间的 QUEUED run（视为滞留，B2-3：
+     *                      附件处理窗口内崩溃/停机丢任务的 run 全程停留 QUEUED）
+     * @return 滞留 run 的视图对象列表
      */
-    public List<ChatRunVO> findStaleActive(LocalDateTime startedBefore) {
+    public List<ChatRunVO> findStaleActive(LocalDateTime startedBefore, LocalDateTime queuedBefore) {
         return runMapper
                 .selectList(Wrappers.<ChatRun>lambdaQuery()
                         .select(ChatRun::getId, ChatRun::getStatus)
-                        .eq(ChatRun::getStatus, "ACTIVE")
-                        .isNotNull(ChatRun::getStartedAt)
-                        .lt(ChatRun::getStartedAt, startedBefore))
+                        .and(w -> w.and(a -> a.eq(ChatRun::getStatus, "ACTIVE")
+                                        .isNotNull(ChatRun::getStartedAt)
+                                        .lt(ChatRun::getStartedAt, startedBefore))
+                                .or(q -> q.eq(ChatRun::getStatus, "QUEUED").lt(ChatRun::getCreatedAt, queuedBefore))))
                 .stream()
                 .map(chatRunConverter::toVO)
                 .toList();

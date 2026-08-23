@@ -19,11 +19,13 @@ class TableChunkerTest {
     private static final EtlProperties PROPS = new EtlProperties(
             100,
             new EtlProperties.Executor(2, 4, 20, "etl-"),
+            new EtlProperties.ImageExecutor(3, 3, 20, "etl-image-", 60),
             new EtlProperties.Chunk(768, 64),
             16,
             "qwen3.7-flash",
             10,
-            new EtlProperties.Table(25, 30, 2));
+            new EtlProperties.Table(25, 30, 2),
+            500);
 
     private final TableChunker chunker = new TableChunker(PROPS);
 

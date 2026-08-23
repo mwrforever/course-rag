@@ -2,7 +2,10 @@ package com.commerce.rag.auth;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.commerce.rag.dto.UserDTO;
 import com.commerce.rag.entity.SysLoginRecord;
+import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.mapper.SysLoginRecordMapper;
 import com.commerce.rag.properties.AuthProperties;
 import java.time.LocalDateTime;
@@ -23,8 +26,10 @@ import org.springframework.stereotype.Service;
  *   <li>AuthProperties — Token 有效期配置（accessTokenExpiry/refreshTokenExpiry）</li>
  * </ul>
  *
- * <p>注意：update 类操作均内置 try/catch 降级（失败仅 warn 日志，不阻断调用方主流程），
- * 与迁移前 AuthController 内的语义完全一致。
+ * <p>注意：update 类操作的降级语义分层——登出吊销（revokeOnLogout/revokeLoginRecord）
+ * 失败仅 warn 降级（幂等，不阻断登出）；RT 旋转更新（updateLoginRecordOnRefresh）返回
+ * 0 行时抛 401 强制重新登录（B1-2：会话脱节静默放行会使黑名单吊销体系永久失效），
+ * 仅 DB 异常瞬时故障走 warn 降级（脱节由下一次刷新按 0 行检出）。
  *
  * @author commerce-rag
  */
@@ -80,14 +85,25 @@ public class AuthSessionService {
      *
      * <p>按 userId + 旧 jti_rt + ACTIVE 定位记录，覆盖 jti_at/jti_rt/expires_at/updated_at。
      * expires_at 随 RT 旋转同步滑动（now + RT 有效期），保证登出时 RT 黑名单 TTL
-     * 能完整覆盖旋转后 RT 的密码学生命周期。更新失败仅 warn 降级（不阻断刷新主流程）。
+     * 能完整覆盖旋转后 RT 的密码学生命周期。
+     *
+     * <p>更新结果语义（B1-2）：
+     * <ul>
+     *   <li>update 异常（DB 瞬时故障）：仅 warn 降级不阻断——新 Token 照常签发，
+     *       脱节在用户下一次 refresh 时按「0 行」检出并强制重新登录；</li>
+     *   <li>update 返回 0 行（定位失败=会话脱节）：抛 401 强制重新登录——若静默放行，
+     *       记录将永远停留在更旧的 jti_rt，后续 revokeOnLogout/disableUser 按 ACTIVE 记录
+     *       吊销的 RT 均非用户实际持有，黑名单吊销体系对该用户永久失效。</li>
+     * </ul>
      *
      * @param userId    用户 ID
      * @param oldJtiRt  旧 RT 的 jti（用于定位记录）
      * @param newJtiAt  新 AT 的 jti
      * @param newJtiRt  新 RT 的 jti
+     * @throws BizException UNAUTHORIZED(401)：按 oldJtiRt 定位不到 ACTIVE 记录（会话脱节），强制重新登录
      */
     public void updateLoginRecordOnRefresh(Long userId, String oldJtiRt, String newJtiAt, String newJtiRt) {
+        int updated;
         try {
             LambdaUpdateWrapper<SysLoginRecord> wrapper = Wrappers.<SysLoginRecord>lambdaUpdate()
                     .eq(SysLoginRecord::getUserId, userId)
@@ -99,9 +115,35 @@ public class AuthSessionService {
                             SysLoginRecord::getExpiresAt,
                             LocalDateTime.now().plusSeconds(authProperties.refreshTokenExpiry()))
                     .set(SysLoginRecord::getUpdatedAt, LocalDateTime.now());
-            loginRecordMapper.update(null, wrapper);
+            updated = loginRecordMapper.update(null, wrapper);
         } catch (Exception e) {
             log.warn("刷新时更新 login_record 失败: userId={}, oldJtiRt={}", userId, oldJtiRt, e);
+            return;
+        }
+        // B1-2：0 行=按当前 oldJtiRt 定位不到 ACTIVE 记录（会话脱节），fail-closed 拒绝刷新
+        if (updated == 0) {
+            log.warn("RT 旋转后 login_record 定位失败（会话脱节），拒绝刷新强制重新登录: userId={}, oldJtiRt={}", userId, oldJtiRt);
+            throw new BizException(ErrorCode.UNAUTHORIZED, "登录会话状态异常，请重新登录");
+        }
+    }
+
+    /**
+     * 刷新时校验用户状态（对齐 login 的 ACTIVE 校验语义，B1-2）
+     *
+     * <p>refresh 原实现只取最新角色/显示名不校验状态——被禁用用户只要 RT 未入黑名单
+     * 即可无限旋转续命（AT 每 15min 换新），「禁用」对该用户永久失效。此处对齐 login：
+     * 非 ACTIVE 状态拒绝刷新，并调用 {@link DeviceKickService#disableUser} 吊销该用户
+     * 全部活跃会话（login_record 置 REVOKED + 活跃 jti 双入黑名单），消除权限残留。
+     *
+     * @param user 刷新用户信息（sysUserService.findById 返回；该接口查无用户时已抛 404，此处恒非 null）
+     * @throws BizException FORBIDDEN(403)：用户状态非 ACTIVE（禁用/删除），吊销后拒绝刷新
+     */
+    public void assertUserActiveOnRefresh(UserDTO user) {
+        if (!"ACTIVE".equals(user.status())) {
+            log.warn("刷新 Token 被拒绝：用户状态非 ACTIVE，吊销其全部活跃会话: userId={}, status={}", user.id(), user.status());
+            // 全量吊销（操作人记为用户自身，与 refresh RT 复用检测的 disableUser 调用惯例一致）
+            deviceKickService.disableUser(user.id(), user.id());
+            throw new BizException(ErrorCode.FORBIDDEN, "用户已被禁用");
         }
     }
 

@@ -27,7 +27,9 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 知识库服务 —— 封装 knowledge_base 表的 CRUD + 级联删除
@@ -73,7 +75,14 @@ public class KnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, K
         kb.setDescription(description);
         kb.setStatus("ACTIVE");
         kb.setCreatedBy(createdBy);
-        knowledgeBaseMapper.insert(kb);
+        try {
+            knowledgeBaseMapper.insert(kb);
+        } catch (DataIntegrityViolationException e) {
+            // B2-8: 并发重名兜底——同名知识库并发创建时后者撞 uniq_knowledge_base_name(name)，
+            // 转 409 而非全局 503（提示语义：重名，请更换名称后重试）
+            log.warn("并发创建知识库名冲突: name={}, createdBy={}", name, createdBy);
+            throw new BizException(ErrorCode.CONFLICT, "知识库名称已存在，请更换名称后重试", e);
+        }
         // 统计失效：知识库数已变更（先写 DB 后失效——BUG-2 修复）
         dashboardStatsCache.invalidateAll();
         log.info("创建知识库: kbId={}, name={}, createdBy={}", kb.getId(), name, createdBy);
@@ -164,10 +173,16 @@ public class KnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, K
     /**
      * 删除知识库（级联软删 + Milvus 清理）
      *
+     * <p>B2-5 事务说明：document_chunk → document → knowledge_base 三条软删 UPDATE 在同一事务内
+     * 原子执行，中途失败整体回滚，避免留下"chunk 已删而 document 仍存活"的中间态。
+     * Milvus/MinIO 清理位于事务最前段：外部资源失败时事务内尚无任何 PG 写、回滚零代价；
+     * 外部资源先行 + 幂等删除的既有重试收敛语义保持不变（事务注解不改变既有执行顺序）。
+     *
      * @param id         知识库 ID
      * @param operatorId 操作者 ID
      * @param isAdmin    是否为超管（超管旁路）
      */
+    @Transactional
     public void delete(Long id, Long operatorId, boolean isAdmin) {
         KnowledgeBase kb = knowledgeBaseMapper.selectById(id);
         if (kb == null) {

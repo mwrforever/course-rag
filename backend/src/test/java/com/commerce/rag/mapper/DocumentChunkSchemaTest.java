@@ -1,6 +1,7 @@
 package com.commerce.rag.mapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.commerce.rag.test.IntegrationTestBase;
 import java.util.Map;
@@ -59,5 +60,18 @@ class DocumentChunkSchemaTest extends IntegrationTestBase {
         } finally {
             jdbcTemplate.update("DELETE FROM document_chunk WHERE id = ?", chunkId);
         }
+    }
+
+    @Test
+    @DisplayName("V14 迁移 — DEFAULT 课程分片复合部分索引存在（P1-1，谓词只含 deleted=0）")
+    void v14DefaultCourseIndex_existsAfterFlyway() {
+        // Flyway 在 Spring 上下文启动时已执行 V14；断言索引存在且谓词不含排除 DEFAULT 的条件
+        Map<String, Object> index =
+                jdbcTemplate.queryForMap("SELECT indexdef FROM pg_indexes WHERE tablename = 'document_chunk'"
+                        + " AND indexname = 'idx_document_chunk_course_default'");
+        String def = String.valueOf(index.get("indexdef"));
+        assertTrue(def.contains("(course_id, chunk_index)"), "复合列应为 (course_id, chunk_index)——覆盖 J2/J3 过滤与排序");
+        assertTrue(def.contains("WHERE (deleted = 0)"), "谓词应为 deleted = 0（软删行不入索引）");
+        assertTrue(!def.contains("course_id <> 'DEFAULT'"), "谓词不得排除 DEFAULT——排除后 J3 仍全表扫");
     }
 }

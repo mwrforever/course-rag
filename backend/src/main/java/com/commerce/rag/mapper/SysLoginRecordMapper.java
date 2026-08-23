@@ -16,8 +16,18 @@ import org.apache.ibatis.annotations.Mapper;
 @Mapper
 public interface SysLoginRecordMapper extends BaseMapper<SysLoginRecord> {
 
-    /** 锁定某用户+设备类型的活跃登录记录（FOR UPDATE 行锁，PG 降级互踢用） */
-    List<SysLoginRecord> selectActiveForUpdate(Long userId, String deviceType);
+    /**
+     * 锁定某用户+设备类型的活跃登录记录（FOR UPDATE 行锁，PG 降级互踢用）。
+     *
+     * <p>B1-1：newLoginId 为本次登录刚插入的新记录主键（登录时序为先 createLoginRecord 后互踢），
+     * SQL 层以 {@code id != #{newLoginId}} 排除，防止降级互踢把新会话误判为旧设备导致自吊销。
+     * 参数非空（由 insert 回填主键，恒有值）；传 null 将导致 PG {@code id != NULL} 恒为假而返回空集。
+     *
+     * @param userId     用户 ID
+     * @param deviceType 设备类型
+     * @param newLoginId 本次登录的新记录主键（排除条件，非空）
+     */
+    List<SysLoginRecord> selectActiveForUpdate(Long userId, String deviceType, Long newLoginId);
 
     /** 按 id 置 REVOKED（updated_at 数据库生成） */
     int updateStatusById(Long id);

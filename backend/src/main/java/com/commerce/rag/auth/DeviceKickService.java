@@ -11,7 +11,9 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
@@ -295,12 +297,27 @@ public class DeviceKickService {
 
     /**
      * PG 降级：设备互踢（FOR UPDATE 行锁事务）
+     *
+     * <p>B1-1 修复：登录时序为「先 createLoginRecord 插入 ACTIVE 新记录，后执行互踢」，
+     * 降级查询必须排除 newLoginId（SQL 层 {@code id != #{newLoginId}} + 此处防御性过滤双层保障），
+     * 否则 Redis 故障期间刚插入的新记录被误判为旧设备——新记录置 REVOKED、新 jti 双入
+     * PG 黑名单，登录响应 200 但下一个请求即 401（自吊销）。
+     *
+     * @param userId     用户 ID
+     * @param deviceType 设备类型
+     * @param newJtiAt   新 Access Token 的 jti
+     * @param newJtiRt   新 Refresh Token 的 jti
+     * @param newLoginId 本次登录的新记录主键（非空，insert 回填；排除条件）
      */
     @Transactional
     public KickResult kickAndLoginPgFallback(
             Long userId, String deviceType, String newJtiAt, String newJtiRt, Long newLoginId) {
-        // 行锁：锁定该用户+设备类型的活跃记录（XML 内 FOR UPDATE 行锁）
-        List<SysLoginRecord> oldRecords = loginRecordMapper.selectActiveForUpdate(userId, deviceType);
+        // 行锁：锁定该用户+设备类型的活跃记录（XML 内 FOR UPDATE 行锁，已排除 newLoginId）；
+        // SQL 已排除的前提下再作防御性过滤，兜底结果集混入新记录的行序不定/脏数据场景
+        List<SysLoginRecord> oldRecords =
+                loginRecordMapper.selectActiveForUpdate(userId, deviceType, newLoginId).stream()
+                        .filter(record -> !Objects.equals(record.getId(), newLoginId))
+                        .collect(Collectors.toList());
 
         String oldJtiAt = "";
         String oldJtiRt = "";

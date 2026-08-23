@@ -13,6 +13,7 @@ import com.commerce.rag.dto.LoginResponse;
 import com.commerce.rag.dto.RefreshRequest;
 import com.commerce.rag.dto.UserDTO;
 import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.properties.AuthProperties;
 import com.commerce.rag.record.AuthUserView;
 import com.commerce.rag.service.ISysUserService;
@@ -308,5 +309,37 @@ class AuthControllerTest {
         // 短路：黑名单检查不再执行、未生成新 Token
         verify(deviceKickService, never()).isBlacklisted(anyString());
         verify(tokenService, never()).generateJti();
+    }
+
+    @Test
+    @DisplayName("refresh → 禁用用户：403 拒绝刷新并吊销，不签发新 Token（B1-2）")
+    void refresh_disabledUser_throws403AndRevokes() {
+        Claims claims = mock(Claims.class);
+        when(tokenService.validateToken("disabled-rt")).thenReturn(claims);
+        when(tokenService.extractTokenType(claims)).thenReturn("REFRESH");
+        when(tokenService.extractJti(claims)).thenReturn("old-jti-rt");
+        when(tokenService.extractUserId(claims)).thenReturn(1L);
+        when(deviceKickService.markRefreshTokenUsedAtomic("old-jti-rt")).thenReturn(true);
+        when(deviceKickService.isBlacklisted("old-jti-rt")).thenReturn(false);
+        // 用户已被禁用（原实现不校验状态，禁用用户可无限旋转续命）——
+        // 状态校验+吊销编排下沉 AuthSessionService，此处 stub 其拒绝行为（403）
+        when(sysUserService.findById(1L))
+                .thenReturn(new UserDTO(1L, "testuser", "测试用户", "STUDENT", "DISABLED", LocalDateTime.now()));
+        doThrow(new BizException(ErrorCode.FORBIDDEN, "用户已被禁用"))
+                .when(authSessionService)
+                .assertUserActiveOnRefresh(any(UserDTO.class));
+
+        BizException ex = assertThrows(
+                BizException.class, () -> authController.refresh(new RefreshRequest("disabled-rt"), httpResponse));
+
+        assertEquals(403, ex.getCode());
+        // 状态校验编排下沉 AuthSessionService（内部 disableUser 全量吊销活跃会话）
+        verify(authSessionService).assertUserActiveOnRefresh(any(UserDTO.class));
+        // 短路：不生成新 Token、不写黑名单、不更新 login_record
+        verify(tokenService, never()).generateJti();
+        verify(deviceKickService, never())
+                .addToBlacklist(anyString(), anyString(), anyLong(), anyLong(), anyString(), any());
+        verify(authSessionService, never())
+                .updateLoginRecordOnRefresh(anyLong(), anyString(), anyString(), anyString());
     }
 }
