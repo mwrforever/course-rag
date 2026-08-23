@@ -193,4 +193,44 @@ class CourseQueryServiceTest {
         assertThat(courseQueryCache.getIfPresent("search:java:1")).isNull();
         assertThat(courseQueryCache.getIfPresent("course:2")).isNotNull();
     }
+
+    @Test
+    @DisplayName("P1-2 evictCourse 同步清理 byTitle 课程名映射键——课程增删改名后 QU 映射不再脏读")
+    void evictCourse_removesByTitleKeys() {
+        // 预置：课程名映射键（QU 节点课程名→course_id 底座）与无关键
+        courseQueryCache.put("byTitle:高等数学", List.of(new CourseInfo()));
+        courseQueryCache.put("byTitle:线性代数", List.of());
+        courseQueryCache.put("course:1", new CourseInfo());
+        courseQueryCache.put("course:2", new CourseInfo());
+
+        service.evictCourse(1L);
+
+        // byTitle:* 全族失效（课程增删改名都可能改变课程名→course_id 映射）
+        assertThat(courseQueryCache.getIfPresent("byTitle:高等数学")).isNull();
+        assertThat(courseQueryCache.getIfPresent("byTitle:线性代数")).isNull();
+        // 无关课程的详情键不受影响
+        assertThat(courseQueryCache.getIfPresent("course:2")).isNotNull();
+    }
+
+    @Test
+    @DisplayName("P1-2 byTitle 失效后再次查询回源 DB（缓存不再命中，拿到最新映射）")
+    void evictCourse_byTitleReloadedFromDbAfterEviction() {
+        CourseInfo stale = new CourseInfo();
+        stale.setId(1L);
+        when(courseInfoMapper.selectList(any())).thenReturn(List.of(stale));
+
+        // 第一次查询写入缓存
+        service.findByTitle("高等数学");
+        // 课程删除/改名 → evictCourse 失效 byTitle:*
+        service.evictCourse(1L);
+        // 再次查询必须回源（若 byTitle 未失效则第二次命中缓存、mapper 只调用 1 次）
+        CourseInfo fresh = new CourseInfo();
+        fresh.setId(9L);
+        when(courseInfoMapper.selectList(any())).thenReturn(List.of(fresh));
+
+        List<CourseInfo> result = service.findByTitle("高等数学");
+
+        assertThat(result.get(0).getId()).isEqualTo(9L);
+        verify(courseInfoMapper, times(2)).selectList(any());
+    }
 }

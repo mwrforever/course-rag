@@ -177,7 +177,12 @@ public class CourseQueryServiceImpl implements ICourseQueryService {
      * 失效课程相关缓存（一致性铁律：写方先写 DB 后调用）
      *
      * <p>精确失效详情/内容/排期键（course/contents/schedule:{courseId}），
-     * 并清理 search:* 前缀的列表键（课程数据变更影响列表可见性与排序）。
+     * 并清理 search:* / byTitle:* 前缀键：
+     * <ul>
+     *   <li>search:* —— 课程数据变更影响列表可见性与排序</li>
+     *   <li>byTitle:* —— 课程增删/改名改变课程名→course_id 映射（P1-2：QU 节点过滤底座，
+     *       漏失效会导致最长 5 分钟脏读——已删课程仍被映射、改名后新旧名映射错位）</li>
+     * </ul>
      *
      * @param courseId 发生变更的课程 ID
      */
@@ -186,6 +191,6 @@ public class CourseQueryServiceImpl implements ICourseQueryService {
         courseQueryCache.invalidate("course:" + id);
         courseQueryCache.invalidate("contents:" + id);
         courseQueryCache.invalidate("schedule:" + id);
-        courseQueryCache.asMap().keySet().removeIf(k -> k.startsWith("search:"));
+        courseQueryCache.asMap().keySet().removeIf(k -> k.startsWith("search:") || k.startsWith("byTitle:"));
     }
 }
