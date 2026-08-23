@@ -14,8 +14,9 @@ import org.apache.ibatis.annotations.Param;
  * 文档分片 Mapper —— MyBatis-Plus BaseMapper 接口
  *
  * <p>单表 CRUD 由 BaseMapper 提供，无需手写 SQL；
- * 教师数据权限分页查询（doc_id IN 子查询，perf P3-2）与批量回写
- * （next_chunk_id 链路回填 M-1 / dense_vector 向量回写 H-3）在 DocumentChunkMapper.xml 中映射实现。
+ * 教师数据权限分页查询（doc_id IN 子查询，perf P3-2）与批量读写
+ * （分片批插 P1-4 / 链路双向回填 M-1+P1-4 / dense_vector 向量回写 H-3）
+ * 在 DocumentChunkMapper.xml 中映射实现。
  *
  * @author commerce-rag
  */
@@ -43,12 +44,29 @@ public interface DocumentChunkMapper extends BaseMapper<DocumentChunk> {
             @Param("userId") Long userId);
 
     /**
-     * 批量回填 next_chunk_id（M-1：原逐分片单条 UPDATE → 单条 CASE WHEN 批量 UPDATE）
+     * 批量插入分片（P1-4/P2-4：ETL chunking 阶段原逐条 insert N 次往返 → foreach multi-values 单语句批插）
      *
-     * @param pairs 链路回填对（prevChunkId → 后继 chunkId），不允许为空
+     * <p>ID 供给：无需显式预生成——MyBatis-Plus MybatisParameterHandler 对 INSERT 语句的
+     * 集合参数自动填充 @TableId(ASSIGN_ID) 雪花 ID（实测验证见 BatchInsertIdFillTest），
+     * 语句显式携带 id 列；created_at/updated_at/deleted 等列不携带，由列默认值接管
+     * （与 MP insert 的 NOT_NULL 字段策略语义一致）。
+     *
+     * @param chunks 待插入分片列表（ID 为空时由 MP 参数处理器填充），不允许为空
      * @return 受影响行数
      */
-    int batchUpdateNextChunkIds(@Param("pairs") List<ChunkLinkPair> pairs);
+    int batchInsert(@Param("chunks") List<DocumentChunk> chunks);
+
+    /**
+     * 批量回填 prev/next 链路双向指针（M-1 + P1-4：原逐分片单条 UPDATE → 单条 CASE WHEN 批量 UPDATE）
+     *
+     * <p>批插后分片 ID 已由 MP 参数处理器填充，链组装移到插入后：前驱行的 next_chunk_id 与
+     * 后继行的 prev_chunk_id 在同一条 UPDATE 中回填（原逐条 insert 时 prev 随行落库，
+     * 批插前 ID 未知故 prev 也改由本方法回填）。
+     *
+     * @param pairs 链路回填对（prevChunkId → 后继 nextChunkId），不允许为空
+     * @return 受影响行数
+     */
+    int batchUpdateChunkLinks(@Param("pairs") List<ChunkLinkPair> pairs);
 
     /**
      * 批量回写 dense_vector + milvus_pk（H-3：原逐分片单条 UPDATE → 单条 CASE WHEN 批量 UPDATE）

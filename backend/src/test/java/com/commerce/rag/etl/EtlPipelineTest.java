@@ -45,6 +45,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * EtlPipeline 单元测试 —— Mock 所有依赖（v2 API）
@@ -77,6 +81,10 @@ class EtlPipelineTest {
     @Mock
     private ImageCaptionService imageCaptionService;
 
+    /** 事务管理器 mock（TransactionTemplate 透传用——单测验证管道逻辑，不验证真实回滚） */
+    @Mock
+    private PlatformTransactionManager transactionManager;
+
     /** Dashboard 统计缓存（真实 Caffeine 实例，状态写入失效钩子验证用） */
     private final Cache<String, Object> dashboardStatsCache =
             Caffeine.newBuilder().build();
@@ -92,7 +100,14 @@ class EtlPipelineTest {
                 16,
                 "qwen3.7-flash",
                 10,
-                new EtlProperties.Table(25, 30, 2));
+                new EtlProperties.Table(25, 30, 2),
+                500);
+        // 事务模板：mock 管理器直接放行（getTransaction 返回 mock status，commit 为空操作），
+        // 使 executeWithoutResult 透传执行管道落库逻辑
+        lenient()
+                .when(transactionManager.getTransaction(any(TransactionDefinition.class)))
+                .thenReturn(mock(TransactionStatus.class));
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
         etlPipeline = new EtlPipeline(
                 documentMapper,
                 chunkMapper,
@@ -103,7 +118,8 @@ class EtlPipelineTest {
                 dashboardStatsCache,
                 new XhtmlDocumentParser(),
                 new TableChunker(props),
-                imageCaptionService);
+                imageCaptionService,
+                transactionTemplate);
     }
 
     @Test
@@ -177,7 +193,16 @@ class EtlPipelineTest {
                 .thenReturn(new ByteArrayInputStream("这是测试内容。\n\n第二段落内容。".getBytes()));
         // 以下 stub 用于管道后续阶段（chunkDocument / embedAndIndex），
         // Tika 在纯单测环境下解析行为不确定，用 lenient 避免不必要 stub 报错
-        lenient().when(chunkMapper.insert(any(DocumentChunk.class))).thenReturn(1);
+        lenient()
+                .doAnswer(inv -> {
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(1L);
+                    }
+                    return list.size();
+                })
+                .when(chunkMapper)
+                .batchInsert(anyList());
         lenient().when(chunkMapper.selectList(any())).thenReturn(List.of());
         when(documentMapper.update(any(), any())).thenReturn(1);
 
@@ -188,6 +213,8 @@ class EtlPipelineTest {
         verify(documentMapper, atLeastOnce()).update(any(), any());
         // 验证从 MinIO 下载了文件
         verify(minioStorageService).downloadFile("10/1.pdf");
+        // P1-4: process 链内文档主键查询收敛为 1 次（原 parse/chunk/embed 各查一次共 4 次）
+        verify(documentMapper, times(1)).selectById(1L);
     }
 
     @Test
@@ -247,7 +274,16 @@ class EtlPipelineTest {
         lenient()
                 .when(minioStorageService.downloadFile("10/1.pdf"))
                 .thenReturn(new ByteArrayInputStream("测试内容。\n\n第二段。".getBytes()));
-        lenient().when(chunkMapper.insert(any(DocumentChunk.class))).thenReturn(1);
+        lenient()
+                .doAnswer(inv -> {
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(1L);
+                    }
+                    return list.size();
+                })
+                .when(chunkMapper)
+                .batchInsert(anyList());
         lenient().when(chunkMapper.selectList(any())).thenReturn(List.of());
 
         etlPipeline.process(1L);
@@ -390,21 +426,27 @@ class EtlPipelineTest {
         // 单个超过 chunkSize(768) token 的长正文（含 ASCII "RAG"，无 .?! 回卷点），触发 TokenTextSplitter 按 token 切为多片
         String longPara = ("RAG检索增强生成是一种结合检索与生成的架构范式，向量数据库负责存储嵌入向量。" + "混合检索融合了向量相似度与关键词匹配两种召回信号。").repeat(30);
         seedParsedContent(1L, longPara);
-        // mock insert 赋自增 id，建立 prev/next 链
+        // mock batchInsert 模拟 MP 参数处理器填充递增雪花 ID（真实行为实测见 BatchInsertIdFillTest）
         java.util.concurrent.atomic.AtomicLong idSeq = new java.util.concurrent.atomic.AtomicLong(100);
         doAnswer(inv -> {
-                    inv.getArgument(0, DocumentChunk.class).setId(idSeq.getAndIncrement());
-                    return 1;
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(idSeq.getAndIncrement());
+                    }
+                    return list.size();
                 })
                 .when(chunkMapper)
-                .insert(any(DocumentChunk.class));
+                .batchInsert(anyList());
 
         etlPipeline.chunkDocument(1L);
 
         // 长文本被拆成多个分片
-        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
-        verify(chunkMapper, atLeast(3)).insert(captor.capture());
-        List<DocumentChunk> inserted = captor.getAllValues();
+        ArgumentCaptor<List> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper, atLeast(1)).batchInsert(batchCaptor.capture());
+        List<DocumentChunk> inserted = batchCaptor.getAllValues().stream()
+                .flatMap(b -> ((List<DocumentChunk>) b).stream())
+                .toList();
+        assertTrue(inserted.size() >= 3, "长文本应至少分出 3 片: " + inserted.size());
         // 首分片无 prev；后续分片 prev 指向前一个（时间序链）
         assertNull(inserted.get(0).getPrevChunkId());
         assertEquals(inserted.get(0).getId(), inserted.get(1).getPrevChunkId());
@@ -418,15 +460,97 @@ class EtlPipelineTest {
         assertTrue(inserted.stream().allMatch(c -> c.getParentChunkId() == null));
         // token 估算非零（TokenEstimator.estimate 执行）
         assertTrue(inserted.get(0).getTokenCount() > 0);
+        // 批插后每个实体 ID 已填充（P1-4：MP 参数处理器行为，链组装前提）
+        assertTrue(inserted.stream().allMatch(c -> c.getId() != null && c.getId() > 0));
         // 分片数回写文档
         verify(documentMapper, atLeastOnce()).update(any(), any());
-        // M-1：next_chunk_id 单条批量回填（收集全部链路对，非逐分片 UPDATE）
+        // M-1/P1-4：prev/next 链双向回填（收集全部链路对，单条批量 UPDATE）
         ArgumentCaptor<List> linkCaptor = ArgumentCaptor.forClass(List.class);
-        verify(chunkMapper).batchUpdateNextChunkIds(linkCaptor.capture());
+        verify(chunkMapper).batchUpdateChunkLinks(linkCaptor.capture());
         List<ChunkLinkPair> pairs = linkCaptor.getValue();
         assertFalse(pairs.isEmpty());
+        assertEquals(inserted.size() - 1, pairs.size(), "链回填对数应等于分片数-1");
         assertEquals(inserted.get(0).getId(), pairs.get(0).prevChunkId());
         assertEquals(inserted.get(1).getId(), pairs.get(0).nextChunkId());
+        // 逐条 insert 已被批插取代（N 次单条往返不再发生）
+        verify(chunkMapper, never()).insert(any(DocumentChunk.class));
+    }
+
+    @Test
+    @DisplayName("P1-4: chunkDocument — 分片数超批上限时按 ceil(N/上限) 次批插，总行数/chunkIndex/链回填与逐条一致")
+    void chunkDocument_insertPartitioned_byBatchSize() throws Exception {
+        Document doc = new Document();
+        doc.setId(11L);
+        doc.setKbId(110L);
+        when(documentMapper.selectById(11L)).thenReturn(doc);
+        when(documentMapper.update(any(), any())).thenReturn(1);
+        // 查库：无已有 hash（去重不跳过）
+        when(chunkMapper.selectList(any())).thenReturn(List.of());
+        // 长文本触发多分片（≥3 片）——解析结果注入被测的小批上限管道实例（见下方构造后 seed）
+        String longPara = ("RAG检索增强生成是一种结合检索与生成的架构范式，向量数据库负责存储嵌入向量。" + "混合检索融合了向量相似度与关键词匹配两种召回信号。").repeat(30);
+        AtomicLong idSeq = new AtomicLong(1100);
+        doAnswer(inv -> {
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(idSeq.getAndIncrement());
+                    }
+                    return list.size();
+                })
+                .when(chunkMapper)
+                .batchInsert(anyList());
+
+        // 批上限 2 的管道实例（验证分批防超长 SQL 行为）
+        EtlProperties smallBatchProps = new EtlProperties(
+                100,
+                new EtlProperties.Executor(2, 4, 20, "etl-"),
+                new EtlProperties.Chunk(768, 64),
+                16,
+                "qwen3.7-flash",
+                10,
+                new EtlProperties.Table(25, 30, 2),
+                2);
+        EtlPipeline smallBatchPipeline = new EtlPipeline(
+                documentMapper,
+                chunkMapper,
+                minioStorageService,
+                embeddingModel,
+                milvusClientV2,
+                smallBatchProps,
+                dashboardStatsCache,
+                new XhtmlDocumentParser(),
+                new TableChunker(smallBatchProps),
+                imageCaptionService,
+                new TransactionTemplate(transactionManager));
+        // 解析结果 seed 到被测的小批上限管道实例（反射注入 parsedContentCache）
+        Field cacheField = EtlPipeline.class.getDeclaredField("parsedContentCache");
+        cacheField.setAccessible(true);
+        ((ConcurrentHashMap<Long, ParsedContent>) cacheField.get(smallBatchPipeline))
+                .put(11L, new ParsedContent(List.of(new ParsedContent.TextSection("", longPara))));
+
+        smallBatchPipeline.chunkDocument(11L);
+
+        // 至少 2 批（分片数 ≥3、批上限 2）且每批不超上限
+        ArgumentCaptor<List> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper, atLeast(2)).batchInsert(batchCaptor.capture());
+        List<List<DocumentChunk>> batches = batchCaptor.getAllValues().stream()
+                .map(b -> (List<DocumentChunk>) b)
+                .toList();
+        assertTrue(
+                batches.stream().allMatch(b -> b.size() <= 2),
+                "每批行数不应超过批上限 2: " + batches.stream().map(List::size).toList());
+        // 总行数与分片数一致（跨批无丢失/重复）
+        List<DocumentChunk> all = batches.stream().flatMap(List::stream).toList();
+        assertTrue(all.size() >= 3, "长文本应至少分出 3 片: " + all.size());
+        // chunkIndex 连续 0..n-1（批插不破坏顺序语义）
+        for (int i = 0; i < all.size(); i++) {
+            assertEquals(i, all.get(i).getChunkIndex(), "chunkIndex 应连续: 位置=" + i);
+        }
+        // 插入后每个实体 ID 已填充（批插后链组装的前提）
+        assertTrue(all.stream().allMatch(c -> c.getId() != null && c.getId() > 0), "批插后实体 ID 应非空");
+        // 链回填仍为单条批量 UPDATE（对数 = 分片数-1，与逐条 insert 语义一致）
+        ArgumentCaptor<List> linkCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper).batchUpdateChunkLinks(linkCaptor.capture());
+        assertEquals(all.size() - 1, ((List<ChunkLinkPair>) linkCaptor.getValue()).size(), "链回填对数应等于分片数-1");
     }
 
     @Test
@@ -439,22 +563,27 @@ class EtlPipelineTest {
         when(documentMapper.update(any(), any())).thenReturn(1);
         seedParsedContent(2L, "这是短文本内容，不足一个分片大小。");
         doAnswer(inv -> {
-                    inv.getArgument(0, DocumentChunk.class).setId(200L);
-                    return 1;
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(200L);
+                    }
+                    return list.size();
                 })
                 .when(chunkMapper)
-                .insert(any(DocumentChunk.class));
+                .batchInsert(anyList());
 
         etlPipeline.chunkDocument(2L);
 
-        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
-        verify(chunkMapper).insert(captor.capture());
-        DocumentChunk chunk = captor.getValue();
+        ArgumentCaptor<List> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper).batchInsert(batchCaptor.capture());
+        DocumentChunk chunk = ((List<DocumentChunk>) batchCaptor.getValue()).get(0);
         assertEquals("DEFAULT", chunk.getCourseId());
         assertEquals(0, chunk.getChunkIndex());
         assertNull(chunk.getParentChunkId());
         assertNull(chunk.getPrevChunkId());
         assertEquals("TECHNICAL_QA", chunk.getCollectionType());
+        // 单分片无链：不触发链回填
+        verify(chunkMapper, never()).batchUpdateChunkLinks(anyList());
     }
 
     @Test
@@ -475,18 +604,24 @@ class EtlPipelineTest {
                                 new ParsedContent.TextSection("第二章", "第二章的正文内容。".repeat(10)))));
         java.util.concurrent.atomic.AtomicLong idSeq = new java.util.concurrent.atomic.AtomicLong(300);
         doAnswer(inv -> {
-                    inv.getArgument(0, DocumentChunk.class).setId(idSeq.getAndIncrement());
-                    return 1;
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(idSeq.getAndIncrement());
+                    }
+                    return list.size();
                 })
                 .when(chunkMapper)
-                .insert(any(DocumentChunk.class));
+                .batchInsert(anyList());
 
         etlPipeline.chunkDocument(3L);
 
-        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
-        verify(chunkMapper, atLeast(2)).insert(captor.capture());
-        assertTrue(captor.getAllValues().stream().anyMatch(c -> "第一章".equals(c.getHeadingPath())));
-        assertTrue(captor.getAllValues().stream().anyMatch(c -> "第二章".equals(c.getHeadingPath())));
+        ArgumentCaptor<List> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper, atLeast(1)).batchInsert(batchCaptor.capture());
+        List<DocumentChunk> inserted = batchCaptor.getAllValues().stream()
+                .flatMap(b -> ((List<DocumentChunk>) b).stream())
+                .toList();
+        assertTrue(inserted.stream().anyMatch(c -> "第一章".equals(c.getHeadingPath())));
+        assertTrue(inserted.stream().anyMatch(c -> "第二章".equals(c.getHeadingPath())));
     }
 
     @Test
@@ -509,18 +644,24 @@ class EtlPipelineTest {
                 .put(4L, new ParsedContent(List.of(new ParsedContent.TextSection("", longBody + tail))));
         java.util.concurrent.atomic.AtomicLong idSeq = new java.util.concurrent.atomic.AtomicLong(400);
         doAnswer(inv -> {
-                    inv.getArgument(0, DocumentChunk.class).setId(idSeq.getAndIncrement());
-                    return 1;
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(idSeq.getAndIncrement());
+                    }
+                    return list.size();
                 })
                 .when(chunkMapper)
-                .insert(any(DocumentChunk.class));
+                .batchInsert(anyList());
 
         etlPipeline.chunkDocument(4L);
 
-        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
-        verify(chunkMapper, atLeast(1)).insert(captor.capture());
+        ArgumentCaptor<List> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper, atLeast(1)).batchInsert(batchCaptor.capture());
+        List<DocumentChunk> inserted = batchCaptor.getAllValues().stream()
+                .flatMap(b -> ((List<DocumentChunk>) b).stream())
+                .toList();
         assertTrue(
-                captor.getAllValues().stream()
+                inserted.stream()
                         .noneMatch(c ->
                                 c.getContent().length() < 64 && c.getContent().endsWith("完。")),
                 "过小尾块应并入前一个分片");
@@ -544,17 +685,20 @@ class EtlPipelineTest {
                                 "<table><tr><th>名称</th><th>价格</th></tr><tr><td>课程A</td><td>1999</td></tr></table>"))));
         java.util.concurrent.atomic.AtomicLong idSeq = new java.util.concurrent.atomic.AtomicLong(500);
         doAnswer(inv -> {
-                    inv.getArgument(0, DocumentChunk.class).setId(idSeq.getAndIncrement());
-                    return 1;
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(idSeq.getAndIncrement());
+                    }
+                    return list.size();
                 })
                 .when(chunkMapper)
-                .insert(any(DocumentChunk.class));
+                .batchInsert(anyList());
 
         etlPipeline.chunkDocument(5L);
 
-        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
-        verify(chunkMapper).insert(captor.capture());
-        DocumentChunk chunk = captor.getValue();
+        ArgumentCaptor<List> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper).batchInsert(batchCaptor.capture());
+        DocumentChunk chunk = ((List<DocumentChunk>) batchCaptor.getValue()).get(0);
         assertEquals("table", chunk.getContentType());
         assertEquals("价格表", chunk.getHeadingPath());
         assertTrue(chunk.getContent().contains("| 课程A | 1999 |"));
@@ -583,18 +727,21 @@ class EtlPipelineTest {
                                 new ParsedContent.ImageSection("图例", "image/png", bigImage, "image0.png"))));
         AtomicLong idSeq = new AtomicLong(600);
         doAnswer(inv -> {
-                    inv.getArgument(0, DocumentChunk.class).setId(idSeq.getAndIncrement());
-                    return 1;
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(idSeq.getAndIncrement());
+                    }
+                    return list.size();
                 })
                 .when(chunkMapper)
-                .insert(any(DocumentChunk.class));
+                .batchInsert(anyList());
 
         etlPipeline.chunkDocument(6L);
 
         // 小图被过滤：仅 1 个 image chunk 落库（即文档成功产出且小图标未进入处理管线）
-        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
-        verify(chunkMapper).insert(captor.capture());
-        DocumentChunk chunk = captor.getValue();
+        ArgumentCaptor<List> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper).batchInsert(batchCaptor.capture());
+        DocumentChunk chunk = ((List<DocumentChunk>) batchCaptor.getValue()).get(0);
         assertEquals("image", chunk.getContentType());
         assertEquals("这是一段图片描述", chunk.getContent());
         assertEquals("60/abc.png", chunk.getImageUrl());
@@ -631,18 +778,22 @@ class EtlPipelineTest {
                                 new ParsedContent.TextSection("", "正文内容保证文档非空。"),
                                 new ParsedContent.ImageSection("", "image/png", bigImage, "image1.png"))));
         doAnswer(inv -> {
-                    inv.getArgument(0, DocumentChunk.class).setId(700L);
-                    return 1;
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(700L);
+                    }
+                    return list.size();
                 })
                 .when(chunkMapper)
-                .insert(any(DocumentChunk.class));
+                .batchInsert(anyList());
 
         etlPipeline.chunkDocument(7L);
 
         // 仅文本 chunk 落库（图片跳过），状态 CHUNKED 而非 FAILED
-        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
-        verify(chunkMapper).insert(captor.capture());
-        assertEquals("text", captor.getValue().getContentType());
+        ArgumentCaptor<List> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper).batchInsert(batchCaptor.capture());
+        DocumentChunk chunk = ((List<DocumentChunk>) batchCaptor.getValue()).get(0);
+        assertEquals("text", chunk.getContentType());
     }
 
     @Test
@@ -662,7 +813,7 @@ class EtlPipelineTest {
         seedParsedContent(1L, "   ");
 
         assertThrows(IllegalStateException.class, () -> etlPipeline.chunkDocument(1L));
-        verify(chunkMapper, never()).insert(any(DocumentChunk.class));
+        verify(chunkMapper, never()).batchInsert(anyList());
     }
 
     @Test
@@ -685,11 +836,14 @@ class EtlPipelineTest {
         // 查库：无已有 hash
         when(chunkMapper.selectList(any())).thenReturn(List.of());
         doAnswer(inv -> {
-                    inv.getArgument(0, DocumentChunk.class).setId(800L);
-                    return 1;
+                    List<DocumentChunk> list = inv.getArgument(0);
+                    for (DocumentChunk c : list) {
+                        c.setId(800L);
+                    }
+                    return list.size();
                 })
                 .when(chunkMapper)
-                .insert(any(DocumentChunk.class));
+                .batchInsert(anyList());
 
         etlPipeline.chunkDocument(8L);
 
@@ -706,10 +860,11 @@ class EtlPipelineTest {
                 dedupWrapper.getParamNameValuePairs().values().contains(8L),
                 "去重查询参数应含当前 docId=8: " + dedupWrapper.getParamNameValuePairs());
 
-        ArgumentCaptor<DocumentChunk> captor = ArgumentCaptor.forClass(DocumentChunk.class);
-        verify(chunkMapper).insert(captor.capture());
-        assertEquals(1, captor.getAllValues().size(), "重复内容应只入库一次");
-        assertEquals(64, captor.getValue().getSha256().length());
+        ArgumentCaptor<List> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chunkMapper).batchInsert(batchCaptor.capture());
+        List<DocumentChunk> inserted = (List<DocumentChunk>) batchCaptor.getValue();
+        assertEquals(1, inserted.size(), "重复内容应只入库一次");
+        assertEquals(64, inserted.get(0).getSha256().length());
     }
 
     @Test
@@ -732,7 +887,7 @@ class EtlPipelineTest {
 
         etlPipeline.chunkDocument(9L);
 
-        verify(chunkMapper, never()).insert(any(DocumentChunk.class));
+        verify(chunkMapper, never()).batchInsert(anyList());
         ArgumentCaptor<LambdaUpdateWrapper> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
         verify(documentMapper, atLeastOnce()).update(any(), captor.capture());
         String setValues = captor.getAllValues().stream()

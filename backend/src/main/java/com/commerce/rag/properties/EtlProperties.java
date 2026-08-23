@@ -27,6 +27,7 @@ import org.springframework.validation.annotation.Validated;
  *     rows-per-chunk: 25
  *     max-rows-per-chunk: 30
  *     overlap-rows: 2
+ *   chunk-insert-batch-size: 500
  * </pre>
  *
  * @author commerce-rag
@@ -40,7 +41,8 @@ public record EtlProperties(
         @Min(1) int embeddingBatchSize,
         @NotBlank String captionModel,
         @Min(1) int imageMinSizeKb,
-        Table table) {
+        Table table,
+        @Min(1) int chunkInsertBatchSize) {
 
     /**
      * ETL 线程池配置

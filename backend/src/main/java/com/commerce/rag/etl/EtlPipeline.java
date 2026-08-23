@@ -47,6 +47,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * ETL 异步管道 —— 文档解析 → 文本分片（TokenTextSplitter）→ 向量化 + Milvus 索引
@@ -63,10 +64,10 @@ import org.springframework.stereotype.Component;
  * <p>Milvus upsert 策略：delete-then-insert。
  * PG 冗余 dense_vector（BYTEA）避免回查 Milvus。
  *
- * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（10 个 private final 依赖：
+ * <p>依赖注入：Lombok @RequiredArgsConstructor 构造器注入（11 个 private final 依赖：
  * DocumentMapper / DocumentChunkMapper / MinioStorageService / EmbeddingModel /
  * MilvusClientV2 / EtlProperties / dashboardStatsCache / XhtmlDocumentParser / TableChunker /
- * ImageCaptionService）。
+ * ImageCaptionService / TransactionTemplate）。
  *
  * @author commerce-rag
  */
@@ -108,8 +109,23 @@ public class EtlPipeline {
     /** 图片描述（caption）服务（VLM 生成中文图片描述，Task 7 接入图片分片） */
     private final ImageCaptionService imageCaptionService;
 
+    /**
+     * 编程式事务模板（P2-4：分片落库「软删 + 批插 + 链回填」三写原子化）。
+     * 用 TransactionTemplate 而非 @Transactional——process 异步线程内同类自调用
+     * （this.chunkDocument()）不经过 Spring 代理，注解事务不生效。
+     */
+    private final TransactionTemplate transactionTemplate;
+
     /** 解析内容内存缓存（docId → 结构化分区），仅在同一线程内有效 */
     private final ConcurrentHashMap<Long, ParsedContent> parsedContentCache = new ConcurrentHashMap<>();
+
+    /**
+     * 文档实体缓存（docId → Document，P1-4 顺带：process 链 selectById 收敛）。
+     * process 入口查询一次后传递给三阶段（parse/chunk/embed），消除同请求内 3 次重复主键查询；
+     * 三阶段独立调用时 computeIfAbsent 回源查库。管道自身只改 parse_status/error_message/
+     * chunk_count 等字段，三阶段消费的 sourcePath/title/kbId/courseId 在管道期间不变，复用安全。
+     */
+    private final ConcurrentHashMap<Long, Document> documentCache = new ConcurrentHashMap<>();
 
     // ========================================================================
     // 完整管道入口
@@ -146,6 +162,8 @@ public class EtlPipeline {
                 log.warn("ETL 跳过: docId={} 非 PENDING/FAILED 状态（已在执行或已完成）", docId);
                 return;
             }
+            // P1-4: 文档实体入缓存，三阶段复用（消除 parse/chunk/embed 各自查库的同请求重复主键查询）
+            documentCache.put(docId, doc);
             parseDocument(docId);
             chunkDocument(docId);
             embedAndIndex(docId);
@@ -155,8 +173,10 @@ public class EtlPipeline {
             updateDocStatus(docId, "FAILED", e.getMessage());
         } finally {
             // perf P3-3: 任何路径（含异常）都清理解析内容缓存——parse 成功但 chunk/embed
-            // 失败时缓存残留会随 docId 递增持续增长（反复 reparse 失败即内存泄漏）
+            // 失败时缓存残留会随 docId 递增持续增长（反复 reparse 失败即内存泄漏）；
+            // P1-4: 文档实体缓存同窗口清理（三阶段复用仅限本次管道执行）
             parsedContentCache.remove(docId);
+            documentCache.remove(docId);
         }
     }
 
@@ -170,7 +190,8 @@ public class EtlPipeline {
      * <p>状态：PENDING → PARSING → PARSED
      */
     public void parseDocument(Long docId) throws Exception {
-        Document doc = documentMapper.selectById(docId);
+        // P1-4: process 链内命中文档缓存；独立调用时回源查库
+        Document doc = documentCache.computeIfAbsent(docId, documentMapper::selectById);
         if (doc == null) {
             throw new IllegalStateException("文档不存在: docId=" + docId);
         }
@@ -223,10 +244,20 @@ public class EtlPipeline {
      * <p>新分片模型：buildChunkSpecs 按文档顺序组装 ChunkSpec（文本/表格/图片统一载体，Task 6/7
      * 扩展），删除手写递归分片的父子段落关联；文档内以 prev/next_chunk_id 线性链串联。
      *
+     * <p>P1-4/P2-4 落库批量化：先组装全部实体再一次（分批）batchInsert
+     * （原逐条 insert N 次往返 → ceil(N/批上限) 次）；实体 ID 由 MP MybatisParameterHandler
+     * 在 batchInsert 调用时自动填充 ASSIGN_ID 雪花（实测见 BatchInsertIdFillTest），故
+     * prev/next 链组装移到插入后，经 batchUpdateChunkLinks 单条 CASE WHEN 回填双向指针。
+     *
+     * <p>P2-4 事务：软删旧 chunk + 批插 + 链回填三写包在编程式事务内（TransactionTemplate——
+     * process 异步线程无外层事务，且同类自调用下 @Transactional 代理不生效），失败整体回滚，
+     * 保持 delete-then-insert 幂等。
+     *
      * <p>状态：PARSED → CHUNKING → CHUNKED
      */
     public void chunkDocument(Long docId) {
-        Document doc = documentMapper.selectById(docId);
+        // P1-4: process 链内命中文档缓存；独立调用时回源查库
+        Document doc = documentCache.computeIfAbsent(docId, documentMapper::selectById);
         if (doc == null) {
             throw new IllegalStateException("文档不存在: docId=" + docId);
         }
@@ -254,22 +285,14 @@ public class EtlPipeline {
             return;
         }
 
-        // P2-7: delete-then-insert 幂等化——先软删该文档旧 chunk，再插入新分片
-        chunkMapper.update(
-                null,
-                Wrappers.<DocumentChunk>lambdaUpdate()
-                        .eq(DocumentChunk::getDocId, docId)
-                        .set(DocumentChunk::getDeleted, System.currentTimeMillis()));
-
-        // 落库（M-1：next_chunk_id 回填收集后单条批量 UPDATE）
-        Long prevChunkId = null;
-        List<ChunkLinkPair> linkPairs = new ArrayList<>();
-        int inserted = 0;
+        // P1-4: 组装全部待落库实体（chunkIndex 按序递增；ID 待 batchInsert 时由 MP 填充，
+        // prev/next 链延后到插入后组装——插入前 ID 未知）
+        List<DocumentChunk> chunks = new ArrayList<>(specs.size());
         for (ChunkSpec spec : specs) {
             DocumentChunk chunk = new DocumentChunk();
             chunk.setDocId(docId);
             chunk.setKbId(doc.getKbId());
-            chunk.setChunkIndex(inserted);
+            chunk.setChunkIndex(chunks.size());
             chunk.setContent(spec.content());
             chunk.setSha256(ContentHash.of(spec.content()).sha256());
             chunk.setHeadingPath(spec.headingPath());
@@ -285,30 +308,57 @@ public class EtlPipeline {
             chunk.setCharOffsetStart(spec.charOffsetStart());
             chunk.setCharOffsetEnd(spec.charOffsetEnd());
             chunk.setCorrectionStatus("PENDING");
-            chunk.setPrevChunkId(prevChunkId);
-
-            chunkMapper.insert(chunk);
-
-            // 收集 next_chunk_id 回填对（前驱 → 当前），落库后统一批量 UPDATE
-            if (prevChunkId != null) {
-                linkPairs.add(new ChunkLinkPair(prevChunkId, chunk.getId()));
-            }
-            prevChunkId = chunk.getId();
-            inserted++;
+            chunks.add(chunk);
         }
 
-        // M-1: next_chunk_id 批量回填（单条 CASE WHEN UPDATE）
-        if (!linkPairs.isEmpty()) {
-            chunkMapper.batchUpdateNextChunkIds(linkPairs);
-        }
+        // 落库（P2-7 幂等 + P2-4 事务：软删旧 chunk → 批插新分片 → 链回填，三写原子）
+        transactionTemplate.executeWithoutResult(txStatus -> persistChunks(docId, chunks));
 
         // 更新文档分片数（实际入库数）
-        updateDocChunkCount(docId, inserted);
+        updateDocChunkCount(docId, chunks.size());
 
         // 清理缓存
         parsedContentCache.remove(docId);
 
         updateDocStatus(docId, "CHUNKED", null);
+    }
+
+    /**
+     * 分片落库（事务内三写：软删旧 chunk → 批量插入 → prev/next 链回填）
+     *
+     * <p>P1-4/P2-4：批量插入按 chunk-insert-batch-size 上限分批（防超长 SQL），
+     * 实体 ID 由 MP MybatisParameterHandler 在 INSERT 时自动填充 ASSIGN_ID 雪花；
+     * 插入后 ID 已知，组装线性链并单条 CASE WHEN 批量回填双向指针
+     * （原逐条 insert 时 prev 随行落库，批插后统一回填，行为等价）。
+     *
+     * @param docId  文档 ID（软删旧分片的过滤键）
+     * @param chunks 待落库分片实体列表（按文档顺序；ID 由批插填充后用于链组装）
+     */
+    private void persistChunks(Long docId, List<DocumentChunk> chunks) {
+        // P2-7: delete-then-insert 幂等化——先软删该文档旧 chunk，再插入新分片
+        chunkMapper.update(
+                null,
+                Wrappers.<DocumentChunk>lambdaUpdate()
+                        .eq(DocumentChunk::getDocId, docId)
+                        .set(DocumentChunk::getDeleted, System.currentTimeMillis()));
+
+        // P1-4: 批量插入（原逐条 insert N 次往返 → ceil(N/批上限) 次批处理）
+        int batchSize = etlProperties.chunkInsertBatchSize();
+        for (int start = 0; start < chunks.size(); start += batchSize) {
+            chunkMapper.batchInsert(chunks.subList(start, Math.min(start + batchSize, chunks.size())));
+        }
+
+        // P1-4/M-1: 插入后组装线性链并批量回填 prev/next 双向指针（单条 CASE WHEN UPDATE）
+        List<ChunkLinkPair> linkPairs = new ArrayList<>(chunks.size() - 1);
+        for (int i = 1; i < chunks.size(); i++) {
+            Long prevId = chunks.get(i - 1).getId();
+            Long currId = chunks.get(i).getId();
+            chunks.get(i).setPrevChunkId(prevId);
+            linkPairs.add(new ChunkLinkPair(prevId, currId));
+        }
+        if (!linkPairs.isEmpty()) {
+            chunkMapper.batchUpdateChunkLinks(linkPairs);
+        }
     }
 
     /**
@@ -501,7 +551,8 @@ public class EtlPipeline {
      * <p>状态：CHUNKED → EMBEDDING → INDEXED
      */
     public void embedAndIndex(Long docId) {
-        Document doc = documentMapper.selectById(docId);
+        // P1-4: process 链内命中文档缓存；独立调用时回源查库
+        Document doc = documentCache.computeIfAbsent(docId, documentMapper::selectById);
         if (doc == null) {
             throw new IllegalStateException("文档不存在: docId=" + docId);
         }

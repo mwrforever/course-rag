@@ -171,6 +171,7 @@ etl:
     rows-per-chunk: 25               # 大表分组名义行数（spec §4.3「每 20~30 行一组」）
     max-rows-per-chunk: 30           # 分组行数硬上限（token 动态调整）
     overlap-rows: 2                  # 相邻子 chunk 间重叠行数（spec §4.3「1~2 行」）
+  chunk-insert-batch-size: 500       # P1-4: 分片批量插入分批上限（防超长 SQL）
 
 # ── 对话配置 ──
 chat:

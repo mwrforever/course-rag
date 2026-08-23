@@ -1,6 +1,8 @@
 package com.commerce.rag.mapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -170,25 +172,88 @@ class DocumentChunkMapperXmlTest extends IntegrationTestBase {
     }
 
     /**
-     * M-1: batchUpdateNextChunkIds 执行级验证——单条批量 UPDATE 正确回填 next_chunk_id。
+     * M-1 + P1-4: batchUpdateChunkLinks 执行级验证——单条批量 UPDATE 正确回填 prev/next 双向链指针。
      *
-     * <p>预置分片 1001 → 1002 → 1004 的线性链，批量回填后按 id 校验逐条指针。
+     * <p>预置分片 1001 → 1002 → 1004 的线性链，批量回填后按 id 校验：
+     * 前驱行的 next_chunk_id 与后继行的 prev_chunk_id 同时回填（批插后链组装的双写语义）。
      */
     @Test
-    void batchUpdateNextChunkIds回填链路指针() {
-        int rows = documentChunkMapper.batchUpdateNextChunkIds(
+    void batchUpdateChunkLinks回填链路双向指针() {
+        int rows = documentChunkMapper.batchUpdateChunkLinks(
                 List.of(new ChunkLinkPair(1001L, 1002L), new ChunkLinkPair(1002L, 1004L)));
 
-        assertEquals(2, rows, "批量回填应命中 2 行");
+        assertEquals(3, rows, "批量回填应命中 3 行（1001 的 next + 1002 的 next/prev + 1004 的 prev）");
         Long nextOf1001 =
                 jdbcTemplate.queryForObject("SELECT next_chunk_id FROM document_chunk WHERE id = 1001", Long.class);
         Long nextOf1002 =
                 jdbcTemplate.queryForObject("SELECT next_chunk_id FROM document_chunk WHERE id = 1002", Long.class);
         Long nextOf1004 =
                 jdbcTemplate.queryForObject("SELECT next_chunk_id FROM document_chunk WHERE id = 1004", Long.class);
+        Long prevOf1002 =
+                jdbcTemplate.queryForObject("SELECT prev_chunk_id FROM document_chunk WHERE id = 1002", Long.class);
+        Long prevOf1004 =
+                jdbcTemplate.queryForObject("SELECT prev_chunk_id FROM document_chunk WHERE id = 1004", Long.class);
+        Long prevOf1001 =
+                jdbcTemplate.queryForObject("SELECT prev_chunk_id FROM document_chunk WHERE id = 1001", Long.class);
         assertEquals(1002L, nextOf1001, "1001 的 next_chunk_id 应回填为 1002");
         assertEquals(1004L, nextOf1002, "1002 的 next_chunk_id 应回填为 1004");
-        assertTrue(nextOf1004 == null, "链尾分片（不在回填集合内）应保持 NULL");
+        assertEquals(1001L, prevOf1002, "1002 的 prev_chunk_id 应回填为 1001（双向指针）");
+        assertEquals(1002L, prevOf1004, "1004 的 prev_chunk_id 应回填为 1002（双向指针）");
+        assertTrue(nextOf1004 == null, "链尾分片的 next_chunk_id 应保持 NULL");
+        assertTrue(prevOf1001 == null, "链首分片的 prev_chunk_id 应保持 NULL");
+    }
+
+    /**
+     * P1-4: batchInsert 执行级验证——foreach multi-values 批插 + MP 自动填充 ASSIGN_ID 雪花 ID。
+     *
+     * <p>设计前提实测（当前 MP 3.5.12）：自定义 mapper 方法 List 参数经 MybatisParameterHandler
+     * 自动填充 @TableId(ASSIGN_ID)，无需显式预生成 ID；插入后实体 ID 非空、互不相同且与库中行一致。
+     * 未携带列（created_at/updated_at/deleted）由列默认值接管，与逐条 MP insert 语义一致。
+     */
+    @Test
+    void batchInsert批量插入并自动填充雪花ID() {
+        // 实体形态对齐 EtlPipeline.chunkDocument 的组装产物（collectionType/contentType 等
+        // NOT NULL 列恒有值；created_at/updated_at/deleted 不携带走列默认值）
+        DocumentChunk c1 = new DocumentChunk();
+        c1.setDocId(DOC_A);
+        c1.setKbId(KB_A);
+        c1.setChunkIndex(10);
+        c1.setContent("批插分片一");
+        c1.setContentType("text");
+        c1.setCollectionType("TECHNICAL_QA");
+        c1.setSha256("a".repeat(64));
+        c1.setCorrectionStatus("PENDING");
+        DocumentChunk c2 = new DocumentChunk();
+        c2.setDocId(DOC_A);
+        c2.setKbId(KB_A);
+        c2.setChunkIndex(11);
+        c2.setContent("批插分片二");
+        c2.setContentType("text");
+        c2.setCollectionType("TECHNICAL_QA");
+        c2.setSha256("b".repeat(64));
+        c2.setCorrectionStatus("PENDING");
+
+        int rows = documentChunkMapper.batchInsert(List.of(c1, c2));
+
+        assertEquals(2, rows, "批量插入应写入 2 行");
+        // MP 参数处理器自动填充雪花 ID（设计前提的核心断言）
+        assertNotNull(c1.getId(), "批插后实体 ID 应由 MP 自动填充（ASSIGN_ID）");
+        assertNotNull(c2.getId(), "批插后实体 ID 应由 MP 自动填充（ASSIGN_ID）");
+        assertNotEquals(c1.getId(), c2.getId(), "各实体 ID 应互不相同");
+        // 库中行与实体 ID 一致、业务字段正确落库
+        Long cnt = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM document_chunk WHERE id IN (?, ?) AND doc_id = ? AND content IN (?, ?)",
+                Long.class,
+                c1.getId(),
+                c2.getId(),
+                DOC_A,
+                "批插分片一",
+                "批插分片二");
+        assertEquals(2L, cnt, "库中应存在与实体 ID 一致的 2 行");
+        // 未携带列走列默认值（与逐条 MP insert 的 NOT_NULL 字段策略一致）
+        Long deleted =
+                jdbcTemplate.queryForObject("SELECT deleted FROM document_chunk WHERE id = ?", Long.class, c1.getId());
+        assertEquals(0L, deleted, "deleted 应由列默认值接管为 0");
     }
 
     /**

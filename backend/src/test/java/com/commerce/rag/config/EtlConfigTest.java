@@ -26,7 +26,8 @@ class EtlConfigTest {
                 16,
                 "qwen3.7-flash",
                 10,
-                new EtlProperties.Table(25, 30, 2));
+                new EtlProperties.Table(25, 30, 2),
+                500);
         ThreadPoolExecutor pool = new EtlConfig().etlPool(props);
 
         try {

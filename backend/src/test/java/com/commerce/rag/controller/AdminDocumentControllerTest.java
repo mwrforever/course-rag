@@ -49,7 +49,8 @@ class AdminDocumentControllerTest {
                 16,
                 "qwen3.7-flash",
                 10,
-                new EtlProperties.Table(25, 30, 2));
+                new EtlProperties.Table(25, 30, 2),
+                500);
         controller = new AdminDocumentController(documentService, props);
     }
 
