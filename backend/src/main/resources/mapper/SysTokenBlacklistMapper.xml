@@ -2,8 +2,12 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.commerce.rag.mapper.SysTokenBlacklistMapper">
 
-    <!-- 按 jti 统计黑名单记录数（PG 降级查询，与 Redis 黑名单互补） -->
+    <!-- 按 jti 统计黑名单记录数（PG 降级查询，与 Redis 黑名单互补）。
+         B1-4：expires_at > now() 过滤已过期行——黑名单行的吊销意义随 token 原始有效期
+         结束而消失（jti 一次性不复用），不过滤会使过期行永久参与认证降级查询，
+         且与 Redis 黑名单 TTL 到期自动放行的语义不一致 -->
     <select id="countByJti" resultType="java.lang.Long">
-        SELECT COUNT(*) FROM sys_token_blacklist WHERE jti = #{jti} AND deleted = 0
+        SELECT COUNT(*) FROM sys_token_blacklist
+        WHERE jti = #{jti} AND deleted = 0 AND expires_at > now()
     </select>
 </mapper>

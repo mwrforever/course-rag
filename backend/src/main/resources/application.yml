@@ -281,6 +281,11 @@ auth:
   # 设备类型枚举（当前仅 WEB_DESKTOP）
   device-types:
     - WEB_DESKTOP
+  # B1-4: 过期黑名单自动清理调度间隔（秒，默认 3600=1h）——
+  # 定时软删 sys_token_blacklist 中 expires_at < now() 的行（配合 countByJti 的过期过滤），
+  # 防止 refresh 旋转/互踢/禁用/登出写入的黑名单行无限增长
+  blacklist:
+    cleanup-interval-seconds: 3600
 
 # ── Worker 线程池（对话执行，与 ETL 独立）──
 # L-12: core-size/max-size 为实际生效值（WorkerConfig 直接读取，原"动态计算+fallback"注释无逻辑）
