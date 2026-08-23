@@ -4,12 +4,14 @@
 
     <!-- 教师数据权限分页查询（perf P3-2）：doc_id IN 子查询替代「应用层取全量 doc id + IN 列表」——
          教师文档数千时 IN 列表超长、执行计划退化；子查询在 DB 侧完成过滤（document.created_by 已有索引），
-         应用层零搬运。deleted=0 由 SQL 显式过滤（自定义 SQL 不经过 @TableLogic 生成）。 -->
+         应用层零搬运。deleted=0 由 SQL 显式过滤（自定义 SQL 不经过 @TableLogic 生成）。
+         P1-3：投影裁去 dense_vector（1024 维 float 约 4KB/行，DocumentChunkVO 不消费，分页后即丢弃）；
+         metadata_json 保留（VO 第 13 位组件有消费）。 -->
     <select id="selectPageFilteredByTeacher" resultType="com.commerce.rag.entity.DocumentChunk">
         SELECT id, doc_id, kb_id, chunk_index, content, heading_path, parent_title,
                start_page, end_page, token_count, collection_type, course_id, metadata_json,
                milvus_pk, parent_chunk_id, prev_chunk_id, next_chunk_id,
-               char_offset_start, char_offset_end, correction_status, dense_vector,
+               char_offset_start, char_offset_end, correction_status,
                deleted, created_at, updated_at
         FROM document_chunk
         WHERE deleted = 0
