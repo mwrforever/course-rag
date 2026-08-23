@@ -3,20 +3,26 @@ package com.commerce.rag.bot.hook;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
+import com.alibaba.cloud.ai.graph.agent.ReactAgent;
 import com.alibaba.cloud.ai.graph.agent.hook.messages.AgentCommand;
 import com.commerce.rag.properties.LoopDetectionProperties;
 import com.commerce.rag.properties.TokenBudgetProperties;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -29,8 +35,8 @@ import org.springframework.ai.chat.messages.UserMessage;
  *
  * <p>注意事项：
  * <ul>
- *   <li>WarningHook 继承 MessagesModelHook，测试中 getAgent() 返回 null，
- *       告警降级写入 fallbackWarnings（私有字段，通过反射读取）</li>
+ *   <li>WarningHook 继承 MessagesModelHook，测试中 getAgent() 默认返回 null——
+ *       B3-6 后降级告警只进日志（不再写全局缓冲），经 logback ListAppender 捕获断言</li>
  *   <li>AgentCommand.getMessages() 包级可见，通过反射访问</li>
  *   <li>使用 lenient() 避免 UnnecessaryStubbingException</li>
  * </ul>
@@ -42,6 +48,9 @@ class WarningHookTest {
 
     /** 被测 Hook 实例 */
     private WarningHook hook;
+
+    /** 降级告警日志捕获器（B3-6：降级路径告警只进日志，经 logback 捕获断言） */
+    private final ListAppender<ILoggingEvent> logWatcher = new ListAppender<>();
 
     /** Mock RunnableConfig，threadId 固定为 "test-thread-1" */
     private RunnableConfig config;
@@ -66,6 +75,25 @@ class WarningHookTest {
         // Mock RunnableConfig —— lenient 避免 beforeModel 测试中未调用时报错
         config = mock(RunnableConfig.class);
         lenient().when(config.threadId()).thenReturn(Optional.of("test-thread-1"));
+
+        // B3-6：降级告警只进日志——挂 logback 捕获器观测（原 fallbackWarnings 反射读取已随字段移除）
+        Logger hookLogger = (Logger) LoggerFactory.getLogger(WarningHook.class);
+        hookLogger.addAppender(logWatcher);
+        logWatcher.start();
+    }
+
+    @AfterEach
+    void tearDown() {
+        // 卸载日志捕获器，避免跨用例事件残留
+        ((Logger) LoggerFactory.getLogger(WarningHook.class)).detachAppender(logWatcher);
+    }
+
+    /** 读取降级告警日志行（B3-6：state 写失败的告警只记日志、含 threadId 关联） */
+    private List<String> degradedWarningLogs() {
+        return logWatcher.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .filter(msg -> msg.contains("告警降级仅记日志"))
+                .toList();
     }
 
     // ==================== afterModel 基础测试 ====================
@@ -98,11 +126,11 @@ class WarningHookTest {
         // 工具名 "hashTool" 不在 overrides 中，走默认阈值 warn=3，2 次调用不会触发工具告警
         // 第 1 次：hash count=1，无告警
         hook.afterModel(List.of(new UserMessage("q"), buildAssistantWithToolCall("hashTool", "重复内容")), config);
-        assertTrue(getFallbackWarnings(hook).isEmpty(), "第 1 次不应有告警");
+        assertTrue(degradedWarningLogs().isEmpty(), "第 1 次不应有告警");
 
         // 第 2 次：hash count=2，触发告警（hash warn=2）
         hook.afterModel(List.of(new UserMessage("q"), buildAssistantWithToolCall("hashTool", "重复内容")), config);
-        List<String> warnings = getFallbackWarnings(hook);
+        List<String> warnings = degradedWarningLogs();
         assertFalse(warnings.isEmpty(), "第 2 次应触发 hash 告警");
         assertTrue(warnings.stream().anyMatch(w -> w.contains("hash")), "告警内容应包含 hash");
     }
@@ -137,7 +165,7 @@ class WarningHookTest {
             AssistantMessage msg = buildAssistantWithToolCall("defaultTool", "调用" + i);
             hook.afterModel(List.of(new UserMessage("q"), msg), config);
         }
-        List<String> warnings = getFallbackWarnings(hook);
+        List<String> warnings = degradedWarningLogs();
         assertFalse(warnings.isEmpty(), "第 3 次应触发工具频率告警");
         assertTrue(warnings.stream().anyMatch(w -> w.contains("defaultTool")), "告警内容应包含工具名 defaultTool");
     }
@@ -168,12 +196,12 @@ class WarningHookTest {
         // 第 1 次：count=1，无告警
         AssistantMessage msg1 = buildAssistantWithToolCall("listCourses", "查询1");
         hook.afterModel(List.of(new UserMessage("q"), msg1), config);
-        assertTrue(getFallbackWarnings(hook).isEmpty(), "第 1 次不应有告警");
+        assertTrue(degradedWarningLogs().isEmpty(), "第 1 次不应有告警");
 
         // 第 2 次：count=2，触发告警（override warn=2）
         AssistantMessage msg2 = buildAssistantWithToolCall("listCourses", "查询2");
         hook.afterModel(List.of(new UserMessage("q"), msg2), config);
-        List<String> warnings = getFallbackWarnings(hook);
+        List<String> warnings = degradedWarningLogs();
         assertFalse(warnings.isEmpty(), "第 2 次应触发 listCourses 告警");
         assertTrue(warnings.stream().anyMatch(w -> w.contains("listCourses")), "告警内容应包含 listCourses");
     }
@@ -188,7 +216,7 @@ class WarningHookTest {
         List<Message> msgs = List.of(new UserMessage(longText), new AssistantMessage("回答"));
         hook.afterModel(msgs, config);
 
-        List<String> warnings = getFallbackWarnings(hook);
+        List<String> warnings = degradedWarningLogs();
         assertFalse(warnings.isEmpty(), "应触发 Token 告警");
         assertTrue(warnings.stream().anyMatch(w -> w.contains("Token")), "告警内容应包含 Token");
     }
@@ -277,12 +305,12 @@ class WarningHookTest {
     void naturalEndCleanup_stateClearedAfterNoToolCalls() throws Exception {
         // 第 1 次：AssistantMessage 无 toolCalls → 状态被清理
         hook.afterModel(List.of(new UserMessage("q"), new AssistantMessage("内容A")), config);
-        assertTrue(getFallbackWarnings(hook).isEmpty(), "第 1 次不应有告警");
+        assertTrue(degradedWarningLogs().isEmpty(), "第 1 次不应有告警");
 
         // 第 2 次：相同内容，但状态已清理 → hash count=1，无告警
         // 若状态未清理，hash count=2 会触发告警（warn=2）
         hook.afterModel(List.of(new UserMessage("q"), new AssistantMessage("内容A")), config);
-        assertTrue(getFallbackWarnings(hook).isEmpty(), "第 2 次不应有告警（状态已被清理，hash count 重新从 1 开始）");
+        assertTrue(degradedWarningLogs().isEmpty(), "第 2 次不应有告警（状态已被清理，hash count 重新从 1 开始）");
     }
 
     // ==================== beforeModel 测试 ====================
@@ -298,28 +326,52 @@ class WarningHookTest {
     }
 
     @Test
-    @DisplayName("beforeModel 有告警 — 注入告警 UserMessage")
-    void beforeModel_withWarnings_injectsUserMessage() throws Exception {
-        // 先写入告警到 fallbackWarnings
-        hook.addWarningFallback("测试告警");
+    @DisplayName("B3-6 正常路径保持 — state 内告警仍被 beforeModel 注入（updateState 通道）")
+    void beforeModel_stateWarnings_injected_normalPath() throws Exception {
+        // 挂载 mock agent：getThreadState 返回 state 内告警（正常路径通道）
+        ReactAgent agent = mock(ReactAgent.class);
+        CompiledGraph graph = mock(CompiledGraph.class);
+        when(agent.getCompiledGraph()).thenReturn(graph);
+        when(agent.getThreadState("test-thread-1")).thenReturn(Map.of("safety_warnings", List.of("Token 预算告警")));
+        hook.setAgent(agent);
 
         List<Message> messages = List.of(new UserMessage("用户提问"));
         AgentCommand cmd = hook.beforeModel(messages, config);
         List<Message> result = getMessagesFromCommand(cmd);
 
-        // 验证：原消息 + 1 条注入的告警消息
+        // 原消息 + 1 条注入的告警 UserMessage（内容含 "⚠️ [" 前缀与告警文本）
         assertEquals(2, result.size(), "应含原始消息 + 1 条告警消息");
         assertEquals("用户提问", result.get(0).getText());
-
-        // 注入的消息应为 UserMessage，内容含 "⚠️ [" 和告警文本
         Message injected = result.get(1);
         assertInstanceOf(UserMessage.class, injected);
-        assertTrue(injected.getText().contains("⚠️ ["), "应含告警前缀");
-        assertTrue(injected.getText().contains("测试告警"), "应含告警内容");
-
-        // 验证 fallbackWarnings 已被排空
-        assertTrue(getFallbackWarnings(hook).isEmpty(), "drainWarnings 后 fallbackWarnings 应为空");
+        assertTrue(injected.getText().contains(WARNING_PREFIX), "应含告警前缀");
+        assertTrue(injected.getText().contains("Token 预算告警"), "应含告警内容");
+        // 取走后经 updateState 清空（State reducer 一致性，正常路径行为保持）
+        verify(graph).updateState(config, Map.of("safety_warnings", List.of()));
     }
+
+    @Test
+    @DisplayName("B3-6 降级路径 — state 写失败告警只进日志，不注入其它 run 的模型上下文（消除跨用户串扰）")
+    void writeWarning_degrade_logsOnly_neverInjectedIntoOtherRun() throws Exception {
+        // run A：getAgent()==null（state 不可用）触发 Token 告警 → 降级只记日志
+        String longText = "a".repeat(3600);
+        hook.afterModel(List.of(new UserMessage(longText), new AssistantMessage("回答")), config);
+
+        // run B：另一 threadId 的 beforeModel —— 不得注入 run A 的降级告警
+        RunnableConfig otherConfig = mock(RunnableConfig.class);
+        lenient().when(otherConfig.threadId()).thenReturn(Optional.of("other-thread-2"));
+        AgentCommand cmd = hook.beforeModel(List.of(new UserMessage("另一用户提问")), otherConfig);
+        List<Message> result = getMessagesFromCommand(cmd);
+
+        assertEquals(1, result.size(), "不得注入其它 run 的降级告警（跨用户串扰已消除）");
+        // 降级告警只进日志（含 threadId 关联），可观测不丢失
+        assertTrue(
+                degradedWarningLogs().stream().anyMatch(msg -> msg.contains("test-thread-1")),
+                "降级告警应记入日志（含 run A threadId）");
+    }
+
+    /** 告警注入消息的文本前缀（⚠️ + 方括号，与 WarningHook 拼装格式一致） */
+    private static final String WARNING_PREFIX = "⚠️ [";
 
     // ==================== 辅助方法 ====================
 
@@ -351,19 +403,5 @@ class WarningHookTest {
         Method method = AgentCommand.class.getDeclaredMethod("getMessages");
         method.setAccessible(true);
         return (List<Message>) method.invoke(command);
-    }
-
-    /**
-     * 通过反射获取 WarningHook 的 fallbackWarnings 列表
-     * （私有字段，需反射访问）
-     *
-     * @param hook WarningHook 实例
-     * @return fallbackWarnings 列表
-     */
-    @SuppressWarnings("unchecked")
-    private List<String> getFallbackWarnings(WarningHook hook) throws Exception {
-        Field field = WarningHook.class.getDeclaredField("fallbackWarnings");
-        field.setAccessible(true);
-        return (List<String>) field.get(hook);
     }
 }
