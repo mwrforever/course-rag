@@ -258,13 +258,14 @@ class DeviceKickServiceTest {
     // ==================== PG 降级方法直测 ====================
 
     @Test
-    @DisplayName("kickAndLoginPgFallback — 行锁查到旧记录 → REVOKED + 双 jti 黑名单")
+    @DisplayName("kickAndLoginPgFallback — 行锁查到旧记录（已排除新记录）→ REVOKED + 双 jti 黑名单")
     void kickAndLoginPgFallback_kicksOldDevice() {
         SysLoginRecord old = new SysLoginRecord();
         old.setId(5L);
         old.setJtiAt("old-at");
         old.setJtiRt("old-rt");
-        when(loginRecordMapper.selectActiveForUpdate(1L, "WEB_DESKTOP")).thenReturn(List.of(old));
+        // 修复后契约：查询携带 newLoginId 排除条件，仅返回旧记录
+        when(loginRecordMapper.selectActiveForUpdate(1L, "WEB_DESKTOP", 99L)).thenReturn(List.of(old));
 
         DeviceKickService.KickResult result =
                 service.kickAndLoginPgFallback(1L, "WEB_DESKTOP", "new-at", "new-rt", 99L);
@@ -272,20 +273,61 @@ class DeviceKickServiceTest {
         assertTrue(result.kicked());
         assertEquals("old-at", result.oldJtiAt());
         assertEquals("old-rt", result.oldJtiRt());
+        // 契约证明：newLoginId 必须传入 mapper（SQL 排除条件的前提，B1-1）
+        verify(loginRecordMapper).selectActiveForUpdate(1L, "WEB_DESKTOP", 99L);
         verify(loginRecordMapper).updateStatusById(5L);
         verify(tokenBlacklistMapper, times(2)).insert(any(SysTokenBlacklist.class));
     }
 
     @Test
-    @DisplayName("kickAndLoginPgFallback — 无旧记录 → kicked=false 不落审计")
-    void kickAndLoginPgFallback_noOldRecord_notKicked() {
-        when(loginRecordMapper.selectActiveForUpdate(1L, "WEB_DESKTOP")).thenReturn(List.of());
+    @DisplayName("kickAndLoginPgFallback — 首次登录：结果仅含刚插入的新记录（生产时序）→ 不自吊销（B1-1）")
+    void kickAndLoginPgFallback_onlyNewRecord_notKicked() {
+        // 生产时序：AuthController 先 createLoginRecord（ACTIVE id=99）后互踢——
+        // 降级查询结果即使含新记录（行序不定/脏数据），也不得把新会话误判为旧设备自吊销
+        SysLoginRecord newRecord = new SysLoginRecord();
+        newRecord.setId(99L);
+        newRecord.setJtiAt("new-at");
+        newRecord.setJtiRt("new-rt");
+        when(loginRecordMapper.selectActiveForUpdate(1L, "WEB_DESKTOP", 99L)).thenReturn(List.of(newRecord));
 
         DeviceKickService.KickResult result =
                 service.kickAndLoginPgFallback(1L, "WEB_DESKTOP", "new-at", "new-rt", 99L);
 
+        // 新记录不得被置 REVOKED、新 jti 不得入黑名单（否则 Redis 故障期间登录即自吊销）
         assertFalse(result.kicked());
-        verifyNoInteractions(tokenBlacklistMapper);
+        verify(loginRecordMapper, never()).updateStatusById(anyLong());
+        verify(tokenBlacklistMapper, never()).insert(any(SysTokenBlacklist.class));
+    }
+
+    @Test
+    @DisplayName("kickAndLoginPgFallback — 结果混含新+旧记录（行序不定）→ 降级踢除排除当前登录，只踢旧记录（B1-1）")
+    void kickAndLoginPgFallback_mixedRecords_kicksOnlyOld() {
+        SysLoginRecord newRecord = new SysLoginRecord();
+        newRecord.setId(99L);
+        newRecord.setJtiAt("new-at");
+        newRecord.setJtiRt("new-rt");
+        SysLoginRecord old = new SysLoginRecord();
+        old.setId(5L);
+        old.setJtiAt("old-at");
+        old.setJtiRt("old-rt");
+        // 新记录排首：模拟无 ORDER BY 时行序不定的最坏情况（原实现 get(0) 恰取到新记录自吊销）
+        when(loginRecordMapper.selectActiveForUpdate(1L, "WEB_DESKTOP", 99L)).thenReturn(List.of(newRecord, old));
+
+        DeviceKickService.KickResult result =
+                service.kickAndLoginPgFallback(1L, "WEB_DESKTOP", "new-at", "new-rt", 99L);
+
+        // 只踢旧设备：旧记录置 REVOKED、旧 jti 双入黑名单；新记录/新 jti 绝不吊销
+        assertTrue(result.kicked());
+        assertEquals("old-at", result.oldJtiAt());
+        assertEquals("old-rt", result.oldJtiRt());
+        verify(loginRecordMapper).updateStatusById(5L);
+        verify(loginRecordMapper, never()).updateStatusById(99L);
+        ArgumentCaptor<SysTokenBlacklist> captor = ArgumentCaptor.forClass(SysTokenBlacklist.class);
+        verify(tokenBlacklistMapper, times(2)).insert(captor.capture());
+        assertTrue(
+                captor.getAllValues().stream()
+                        .noneMatch(b -> "new-at".equals(b.getJti()) || "new-rt".equals(b.getJti())),
+                "新会话 jti 不得入黑名单（自吊销）");
     }
 
     @Test
