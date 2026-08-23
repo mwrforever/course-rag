@@ -10,6 +10,7 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
+import com.commerce.rag.bot.graph.RetrieveNode;
 import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.properties.StreamProperties;
@@ -18,6 +19,7 @@ import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.record.DocumentLocalChunk;
 import com.commerce.rag.record.ImageCaptionResult;
+import com.commerce.rag.record.RetrievalSource;
 import com.commerce.rag.service.AttachmentOrchestrator;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
@@ -222,13 +224,22 @@ class ChatRequestWorkerTest {
             Long sessionId,
             String userQuery,
             String attachmentsJson,
+            String sourcesJson,
             int historyCursor,
             NodeOutput lastOutput)
             throws Exception {
         Method method = ChatRequestWorker.class.getDeclaredMethod(
-                "persistMessages", Long.class, Long.class, String.class, String.class, int.class, NodeOutput.class);
+                "persistMessages",
+                Long.class,
+                Long.class,
+                String.class,
+                String.class,
+                String.class,
+                int.class,
+                NodeOutput.class);
         method.setAccessible(true);
-        return (Boolean) method.invoke(worker, runId, sessionId, userQuery, attachmentsJson, historyCursor, lastOutput);
+        return (Boolean) method.invoke(
+                worker, runId, sessionId, userQuery, attachmentsJson, sourcesJson, historyCursor, lastOutput);
     }
 
     // ==================== cancel() 测试 ====================
@@ -447,7 +458,7 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(state);
 
         // When: 游标=2（历史 2 条）
-        invokePersistMessages(1L, 1L, "本轮问题", "[]", 2, lastOutput);
+        invokePersistMessages(1L, 1L, "本轮问题", "[]", "[]", 2, lastOutput);
 
         // Then: 仅持久化本轮（USER 用户消息 + 本轮新增 assistant）
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -510,6 +521,87 @@ class ChatRequestWorkerTest {
         assertTrue(messages.get(1) instanceof AssistantMessage, "回滚后 messages[1] 应为 AssistantMessage");
     }
 
+    // ==================== B3-5：SOURCES 事件 + sourcesJson 真实来源 ====================
+
+    @Test
+    @DisplayName("SOURCES（B3-5）— 检索来源就绪后推一次 SOURCES 事件，assistant 正文 sourcesJson 落真实来源")
+    @SuppressWarnings("unchecked")
+    void processRequest_retrievalSources_pushesSourcesEventAndPersistsSourcesJson() throws Exception {
+        // 图流时序模拟：chunk1（检索完成前，无来源）→ 模拟 RetrieveNode 写入来源 metadata → chunk2（最终 state）
+        NodeOutput before = mock(NodeOutput.class);
+        lenient().when(before.state()).thenReturn(null);
+        AssistantMessage assistantMsg = new AssistantMessage("引用资料的回答");
+        OverAllState finalState = new OverAllState(Map.of("messages", List.of(assistantMsg)));
+        NodeOutput after = mock(NodeOutput.class);
+        lenient().when(after.state()).thenReturn(finalState);
+
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenAnswer(inv -> {
+            RunnableConfig cfg = inv.getArgument(1);
+            return Flux.create(sink -> {
+                sink.next(before);
+                // 模拟 RetrieveNode 检索完成：来源列表写入 metadata（B3-5 通道）
+                cfg.metadata()
+                        .ifPresent(m -> m.put(
+                                RetrieveNode.KEY_RETRIEVAL_SOURCES,
+                                List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9))));
+                sink.next(after);
+                sink.complete();
+            });
+        });
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "高等数学怎么学"));
+
+        // SOURCES 事件恰好推送一次（检索完成处、首个回答 token 前），payload 含来源字段
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        List<SseEvent> sourcesEvents = evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.SOURCES)
+                .toList();
+        assertEquals(1, sourcesEvents.size(), "SOURCES 事件应恰好推送一次");
+        assertTrue(sourcesEvents.get(0).payload().contains("高等数学讲义"), "payload 应含来源文档标题");
+        assertTrue(sourcesEvents.get(0).payload().contains("c1"), "payload 应含 chunkId");
+
+        // assistant 正文行 sourcesJson 持久化真实来源（非 "[]"）
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(msgCaptor.capture());
+        List<ChatMessage> inserted = msgCaptor.getValue();
+        ChatMessage assistantRow = inserted.stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应存在 assistant 正文行"));
+        assertTrue(assistantRow.getSourcesJson().contains("高等数学讲义"), "assistant 正文 sourcesJson 应为真实来源");
+    }
+
+    @Test
+    @DisplayName("SOURCES（B3-5）— 无检索来源（chat/unknown 意图）：不推 SOURCES、sourcesJson 保持 \"[]\"")
+    @SuppressWarnings("unchecked")
+    void processRequest_noRetrievalSources_neverPushesSourcesEvent() throws Exception {
+        // chat 意图：图流不写来源 metadata（RetrieveNode 不检索）
+        NodeOutput chunk = mock(NodeOutput.class);
+        AssistantMessage assistantMsg = new AssistantMessage("直接对话回答");
+        OverAllState finalState = new OverAllState(Map.of("messages", List.of(assistantMsg)));
+        when(chunk.state()).thenReturn(finalState);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(chunk));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // 无来源 → 不推 SOURCES 事件
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        assertTrue(
+                evtCaptor.getAllValues().stream().noneMatch(e -> e.type() == SseEventType.SOURCES),
+                "无检索来源不得推送 SOURCES 事件");
+
+        // sourcesJson 保持 "[]"（契约第 2 节：集合字段恒输出 []）
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(msgCaptor.capture());
+        ChatMessage assistantRow = msgCaptor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应存在 assistant 正文行"));
+        assertEquals("[]", assistantRow.getSourcesJson());
+    }
+
     // ==================== P1-2 工具消息落库格式（与实时事件 schema 一致） ====================
 
     @Test
@@ -532,7 +624,7 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(state);
 
         // When: 游标=0（全部新增）
-        invokePersistMessages(1L, 1L, "课程问题", "[]", 0, lastOutput);
+        invokePersistMessages(1L, 1L, "课程问题", "[]", "[]", 0, lastOutput);
 
         // Then: TOOL_CALL 落库 content 为实时 schema（toolCallId/toolName/input）
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -774,7 +866,7 @@ class ChatRequestWorkerTest {
                 .batchInsert(anyList());
 
         // When: 幂等跳过、不外抛异常，返回 true（已落库，调用方不再重试）
-        boolean persisted = invokePersistMessages(1L, 1L, "问题", "[]", 0, lastOutput);
+        boolean persisted = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
 
         assertTrue(persisted, "唯一索引冲突应按已落库处理（幂等跳过）");
         verify(chatMessageService).batchInsert(anyList());
@@ -787,7 +879,7 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(null);
         doThrow(new RuntimeException("连接池耗尽")).when(chatMessageService).batchInsert(anyList());
 
-        boolean persisted = invokePersistMessages(1L, 1L, "问题", "[]", 0, lastOutput);
+        boolean persisted = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
 
         // 落库失败且非幂等冲突 → 返回 false，允许 catch 分支重试（消息未落库，重试无害）
         assertFalse(persisted);
@@ -1170,7 +1262,7 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(state);
 
         // When
-        invokePersistMessages(1L, 1L, "本轮问题", "[]", 0, lastOutput);
+        invokePersistMessages(1L, 1L, "本轮问题", "[]", "[]", 0, lastOutput);
 
         // Then: 仅落库本轮 USER 查询 + ASSISTANT 补充回答，不重复 USER
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -1189,19 +1281,19 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(null);
 
         // 不抛异常即验证通过（异常在 persistMessages 内部被吞并）
-        invokePersistMessages(1L, 1L, "问题", "[]", 0, lastOutput);
+        invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
         verify(chatMessageService).batchInsert(anyList());
     }
 
     // ==================== toChatMessages 分支 ====================
 
-    /** 反射调用 private toChatMessages */
+    /** 反射调用 private toChatMessages（B3-5 后含 sourcesJson 参数） */
     @SuppressWarnings("unchecked")
     private List<ChatMessage> invokeToChatMessages(Message msg, Long runId, Long sessionId) throws Exception {
-        Method method =
-                ChatRequestWorker.class.getDeclaredMethod("toChatMessages", Message.class, Long.class, Long.class);
+        Method method = ChatRequestWorker.class.getDeclaredMethod(
+                "toChatMessages", Message.class, Long.class, Long.class, String.class);
         method.setAccessible(true);
-        return (List<ChatMessage>) method.invoke(worker, msg, runId, sessionId);
+        return (List<ChatMessage>) method.invoke(worker, msg, runId, sessionId, "[]");
     }
 
     @Test

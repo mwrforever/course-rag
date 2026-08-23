@@ -5,6 +5,7 @@ import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
+import com.commerce.rag.bot.graph.RetrieveNode;
 import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
@@ -458,6 +459,9 @@ public class ChatRequestWorker {
         // B2-4: 消息已持久化标记——doOnComplete 落库成功后终态回写失败进入 catch 时，
         // 跳过二次 persistMessages（重复落库防线，另有 V13 (run_id,seq) 唯一索引兜底）
         AtomicBoolean persisted = new AtomicBoolean(false);
+        // B3-5: SOURCES 事件已推送标记——检索来源 metadata 就绪后首个 chunk 处推一次
+        // （CAS 保证 doOnNext 多次触发仅推送一次；chat/unknown 意图无来源则不推）
+        AtomicBoolean sourcesPushed = new AtomicBoolean(false);
 
         // 1. pre-run 快照（在 try 之前捕获：captureSnapshot 内部异常已兜底返回 null；
         //    单次赋值保持 effectively final，供 onErrorResume/doOnComplete lambda 捕获，
@@ -481,6 +485,8 @@ public class ChatRequestWorker {
                     .doOnNext(chunk -> {
                         // 取消检测
                         checkCancelled(runIdStr);
+                        // B3-5：检索来源就绪后补推 SOURCES 事件（首个回答 token 前，一次性）
+                        maybePushSources(runIdStr, runState, config, sourcesPushed);
                         // 记录最后输出（用于持久化）
                         lastOutput.set(chunk);
                         // transform → bridge.push
@@ -510,6 +516,7 @@ public class ChatRequestWorker {
                                 sessionId,
                                 userQuery,
                                 attachmentsJson,
+                                readSourcesJson(config),
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
                                 lastOutput.get());
                         return Mono.empty();
@@ -527,6 +534,7 @@ public class ChatRequestWorker {
                                 sessionId,
                                 userQuery,
                                 attachmentsJson,
+                                readSourcesJson(config),
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
                                 lastOutput.get()));
                         // B2-4: 先占位终态标记再调 handleCompleted——其推 END 后 updateStatusWithRetry
@@ -568,6 +576,7 @@ public class ChatRequestWorker {
                         sessionId,
                         userQuery,
                         attachmentsJson,
+                        readSourcesJson(config),
                         snapshot != null ? snapshot.historyMessageCount() : 0,
                         lastOutput.get()));
             }
@@ -673,6 +682,8 @@ public class ChatRequestWorker {
      * @param sessionId        会话 ID
      * @param userQuery        本轮用户问题原文
      * @param attachmentsJson  本轮输入附件 JSON 数组字符串（已校验合法，落用户消息行 attachments_json，spec §5.1）
+     * @param sourcesJson      检索引用来源 JSON 数组字符串（B3-5：assistant 正文行 sources_json；
+     *                         null/空按 "[]" 处理——chat/unknown 意图与空检索场景）
      * @param historyCursor    持久化游标（pre-run checkpoint 中 messages 数，P0-4a）：
      *                         仅持久化 rawList 中 index >= historyCursor 的新增消息，避免历史消息每轮重插
      * @param lastOutput       流式输出的最后一个 NodeOutput（可为 null，此时仅持久化用户消息）
@@ -685,6 +696,7 @@ public class ChatRequestWorker {
             Long sessionId,
             String userQuery,
             String attachmentsJson,
+            String sourcesJson,
             int historyCursor,
             NodeOutput lastOutput) {
         List<ChatMessage> messages = new ArrayList<>();
@@ -715,7 +727,7 @@ public class ChatRequestWorker {
                         if (msg instanceof UserMessage) {
                             continue;
                         }
-                        List<ChatMessage> converted = toChatMessages(msg, runId, sessionId);
+                        List<ChatMessage> converted = toChatMessages(msg, runId, sessionId, sourcesJson);
                         for (ChatMessage cm : converted) {
                             cm.setSeq(seq++);
                             messages.add(cm);
@@ -757,8 +769,14 @@ public class ChatRequestWorker {
      * 一个 ToolResponseMessage 产出多个 TOOL_RESULT 记录。
      * UserMessage 产出一条 USER 记录。
      * 其他类型（SystemMessage 等）跳过。
+     *
+     * @param msg         Spring AI 消息对象
+     * @param runId       Run ID
+     * @param sessionId   会话 ID
+     * @param sourcesJson 检索引用来源 JSON（B3-5：仅 assistant 正文行落 sources_json，空/blank 按 "[]"）
+     * @return 转换后的 ChatMessage 实体列表（0~N 条）
      */
-    private List<ChatMessage> toChatMessages(Message msg, Long runId, Long sessionId) {
+    private List<ChatMessage> toChatMessages(Message msg, Long runId, Long sessionId, String sourcesJson) {
         List<ChatMessage> result = new ArrayList<>();
 
         if (msg instanceof UserMessage) {
@@ -791,7 +809,8 @@ public class ChatRequestWorker {
                 cm.setRunId(runId);
                 cm.setRole("ASSISTANT");
                 cm.setContent(text);
-                cm.setSourcesJson("[]");
+                // B3-5：assistant 正文行落真实检索来源（引用依据）；其余行（thinking/TOOL_*）保持 "[]"
+                cm.setSourcesJson(sourcesJson == null || sourcesJson.isBlank() ? "[]" : sourcesJson);
                 result.add(cm);
             }
             // 工具调用 —— 实时 TOOL_CALL 事件 schema 一致化（P1-2）：toolCallId/toolName/input
@@ -987,6 +1006,74 @@ public class ChatRequestWorker {
     // ========================================================================
     // 辅助方法
     // ========================================================================
+
+    /**
+     * 补推 SOURCES 事件（B3-5，契约补齐——docs/plans/2026-07-16-frontend-design.md §1.6.4
+     * SSE 10 事件之一，此前全链路零发送）
+     *
+     * <p>时机：RetrieveNode 检索命中非空后把来源列表写入 config.metadata()
+     * （{@link RetrieveNode#KEY_RETRIEVAL_SOURCES}），本方法在来源就绪后的首个 chunk 处
+     * 推送一次（早于该 chunk 的 THINKING/DELTA 事件——首个回答 token 前）；
+     * chat/unknown 意图与空检索无来源则不推（sourcesJson 同理保持 "[]"）。
+     *
+     * <p>payload 结构：契约文档未细化，按最小可用 {@code {"sources":[{chunkId,docTitle,headingPath,score}]}}
+     * （前端「引用来源」卡片列表渲染所需字段）。
+     *
+     * @param runIdStr      Run 唯一标识（ring 键）
+     * @param runState      SSE 事件序列状态（seqId 递增）
+     * @param config        RunnableConfig（贯穿全图共享的 metadata 通道）
+     * @param sourcesPushed 本 run 的 SOURCES 已推送标记（CAS 保证仅推一次）
+     */
+    private void maybePushSources(
+            String runIdStr,
+            SseEventTransformer.RunState runState,
+            RunnableConfig config,
+            AtomicBoolean sourcesPushed) {
+        if (sourcesPushed.get()) {
+            return;
+        }
+        Object sources = config.metadata()
+                .map(m -> m.get(RetrieveNode.KEY_RETRIEVAL_SOURCES))
+                .orElse(null);
+        if (!(sources instanceof List<?> list) || list.isEmpty()) {
+            return;
+        }
+        if (sourcesPushed.compareAndSet(false, true)) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("sources", list);
+            bridge.push(
+                    runIdStr,
+                    new SseEvent(
+                            SseEventType.SOURCES, runState.nextSeq(), toJson(payload), System.currentTimeMillis()));
+            log.info("已推送 SOURCES 事件: runId={}, 来源数={}", runIdStr, list.size());
+        }
+    }
+
+    /**
+     * 读取检索来源 JSON（B3-5：chat_message.sources_json 持久化用）
+     *
+     * <p>从 config.metadata() 读 RetrieveNode 写入的来源列表并序列化为 JSON 数组；
+     * 无来源（chat/unknown 意图/空检索）或序列化失败返回 {@code "[]"}
+     * （契约第 2 节：集合字段恒输出 [] 而非 null）。
+     *
+     * @param config RunnableConfig（贯穿全图共享的 metadata 通道）
+     * @return 来源 JSON 数组字符串，无来源时为 "[]"
+     */
+    private String readSourcesJson(RunnableConfig config) {
+        Object sources = config.metadata()
+                .map(m -> m.get(RetrieveNode.KEY_RETRIEVAL_SOURCES))
+                .orElse(null);
+        if (!(sources instanceof List<?> list) || list.isEmpty()) {
+            return "[]";
+        }
+        try {
+            return objectMapper.writeValueAsString(list);
+        } catch (JsonProcessingException e) {
+            // 序列化失败降级为空数组（来源缺失不影响消息落库主流程）
+            log.warn("检索来源 JSON 序列化失败，sourcesJson 降级为空数组: {}", e.getMessage());
+            return "[]";
+        }
+    }
 
     /**
      * 取消检测：如果 cancelFlags 中 runId 对应的标记为 true，抛出 CancelledException。
