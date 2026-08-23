@@ -4,7 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.incrementer.IdentifierGenerator;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.convert.UserFeedbackConverter;
 import com.commerce.rag.convert.UserFeedbackConverterImpl;
 import com.commerce.rag.entity.UserFeedback;
@@ -13,6 +16,7 @@ import com.commerce.rag.service.impl.UserFeedbackServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.UserFeedbackVO;
 import com.github.benmanes.caffeine.cache.Cache;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeAll;
@@ -20,6 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -53,6 +58,14 @@ class UserFeedbackServiceTest {
     /** Dashboard 统计缓存（mock 即可，create/delete 的 invalidateAll 失效钩子验证用） */
     @Mock
     private Cache<String, Object> dashboardStatsCache;
+
+    /** findPage 入参分页对象捕获器（验证 size 回退默认页大小） */
+    @Captor
+    private ArgumentCaptor<Page<UserFeedback>> pageCaptor;
+
+    /** findPage 入参查询条件捕获器（验证意图过滤条件是否进入 wrapper） */
+    @Captor
+    private ArgumentCaptor<LambdaQueryWrapper<UserFeedback>> wrapperCaptor;
 
     @InjectMocks
     private UserFeedbackServiceImpl feedbackService;
@@ -145,6 +158,98 @@ class UserFeedbackServiceTest {
         InOrder inOrder = inOrder(feedbackMapper, dashboardStatsCache);
         inOrder.verify(feedbackMapper).upsertFeedback(any());
         inOrder.verify(dashboardStatsCache).invalidateAll();
+    }
+
+    @Test
+    @DisplayName("findPage — 实体分页转 VO 分页：records 逐条转换、total/current/size 语义保持")
+    void findPage_mapsEntityPageToVoPage() {
+        // 模拟 DB 返回的分页实体（同意图两条反馈，按创建时间降序由 SQL 保证）
+        UserFeedback row1 = new UserFeedback();
+        row1.setId(1L);
+        row1.setUserId(200L);
+        row1.setIsLiked(true);
+        row1.setIntentType("TECHNICAL_QA");
+        UserFeedback row2 = new UserFeedback();
+        row2.setId(2L);
+        row2.setUserId(201L);
+        row2.setIsLiked(false);
+        row2.setIntentType("TECHNICAL_QA");
+        Page<UserFeedback> entityPage = new Page<>(1, 10, 2);
+        entityPage.setRecords(List.of(row1, row2));
+        when(feedbackMapper.selectPage(any(), any())).thenReturn(entityPage);
+
+        IPage<UserFeedbackVO> voPage = feedbackService.findPage(1, 10, "TECHNICAL_QA");
+
+        // records 已转换为 VO（实体不出 service 边界），字段随实体行转换
+        assertEquals(2, voPage.getRecords().size());
+        assertEquals(1L, voPage.getRecords().get(0).id());
+        assertTrue(voPage.getRecords().get(0).isLiked());
+        assertEquals(2L, voPage.getRecords().get(1).id());
+        assertEquals(false, voPage.getRecords().get(1).isLiked());
+        // total/current/size 分页语义保持
+        assertEquals(2, voPage.getTotal());
+        assertEquals(1, voPage.getCurrent());
+        assertEquals(10, voPage.getSize());
+        // 意图非空 → 过滤条件进入 wrapper（B 端按意图筛选生效）；
+        // MP 条件参数惰性渲染，须先触发 getSqlSegment 再查参数对
+        verify(feedbackMapper).selectPage(pageCaptor.capture(), wrapperCaptor.capture());
+        String sqlSegment = wrapperCaptor.getValue().getSqlSegment();
+        assertTrue(sqlSegment.contains("intent_type"), "intentType 过滤列应进入 SQL 片段");
+        assertTrue(
+                wrapperCaptor.getValue().getParamNameValuePairs().containsValue("TECHNICAL_QA"),
+                "intentType 条件值应进入查询参数");
+    }
+
+    @Test
+    @DisplayName("findPage — size 非正回退默认每页 20 条，空白意图不加过滤条件")
+    void findPage_invalidSizeAndBlankIntent_fallsBackToDefaults() {
+        // 空结果页：size=0 → 默认 20；intentType 空白 → 不拼接意图条件
+        Page<UserFeedback> emptyPage = new Page<>(1, 20, 0);
+        emptyPage.setRecords(List.of());
+        when(feedbackMapper.selectPage(any(), any())).thenReturn(emptyPage);
+
+        IPage<UserFeedbackVO> voPage = feedbackService.findPage(1, 0, "   ");
+
+        assertTrue(voPage.getRecords().isEmpty());
+        assertEquals(0, voPage.getTotal());
+        // size 非正时以默认页大小 20 落库查询
+        verify(feedbackMapper).selectPage(pageCaptor.capture(), wrapperCaptor.capture());
+        assertEquals(20, pageCaptor.getValue().getSize(), "size=0 应回退默认每页 20 条");
+        // 空白意图不产生过滤条件（SQL 片段仅剩排序，不含 intent_type）
+        assertFalse(wrapperCaptor.getValue().getSqlSegment().contains("intent_type"), "空白意图不应产生过滤条件");
+    }
+
+    @Test
+    @DisplayName("findPage — intentType 为 null 不加过滤条件（B 端全量分页浏览）")
+    void findPage_nullIntent_noFilter() {
+        // 未指定意图筛选：分页浏览全量反馈，wrapper 不携带意图条件
+        Page<UserFeedback> emptyPage = new Page<>(1, 20, 0);
+        emptyPage.setRecords(List.of());
+        when(feedbackMapper.selectPage(any(), any())).thenReturn(emptyPage);
+
+        IPage<UserFeedbackVO> voPage = feedbackService.findPage(1, 20, null);
+
+        assertTrue(voPage.getRecords().isEmpty());
+        verify(feedbackMapper).selectPage(pageCaptor.capture(), wrapperCaptor.capture());
+        assertFalse(wrapperCaptor.getValue().getSqlSegment().contains("intent_type"), "null 意图不应产生过滤条件");
+    }
+
+    @Test
+    @DisplayName("findStats — 聚合计数为 NULL 的意图（无赞无踩）兜底为 0")
+    void findStats_nullAggregateCounts_fallbackToZero() {
+        // PG 条件聚合：某意图既无赞也无踩时 count 返回 NULL，对外需统一为 0
+        Map<String, Object> nullRow = new HashMap<>();
+        nullRow.put("intent_type", "chat");
+        nullRow.put("liked_count", null);
+        nullRow.put("disliked_count", null);
+        when(feedbackMapper.selectIntentStats()).thenReturn(List.of(nullRow));
+
+        List<Map<String, Object>> stats = feedbackService.findStats();
+
+        assertEquals(1, stats.size());
+        assertEquals("chat", stats.get(0).get("intentType"));
+        assertEquals(0L, stats.get(0).get("likedCount"), "NULL 赞数应兜底 0");
+        assertEquals(0L, stats.get(0).get("dislikedCount"), "NULL 踩数应兜底 0");
     }
 
     @Test
