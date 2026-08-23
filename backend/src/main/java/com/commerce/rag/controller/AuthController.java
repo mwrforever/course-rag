@@ -142,6 +142,7 @@ public class AuthController {
      *   <li>验证 RT 签名 + 过期</li>
      *   <li>原子检查并标记旧 RT 已使用（一次性旋转，P3 A11 Lua 单条脚本消除 TOCTOU）</li>
      *   <li>检查 RT 是否在黑名单中</li>
+     *   <li>校验用户状态（B1-2：非 ACTIVE 拒绝刷新并吊销全部活跃会话）</li>
      *   <li>生成新 AT + RT</li>
      *   <li>更新 login_record 的 jti_at + jti_rt</li>
      *   <li>旧 jti 入黑名单</li>
@@ -183,8 +184,10 @@ public class AuthController {
 
         // 5.（原 markRefreshTokenUsed 已合并进步骤 3 的原子脚本）
 
-        // 6. 获取用户最新信息（角色可能已变更）
+        // 6. 获取用户最新信息（角色可能已变更）+ 用户状态校验（B1-2：对齐 login 的 ACTIVE 校验，
+        //    禁用用户拒绝刷新并吊销全部活跃会话，防止凭未吊销 RT 无限续命）
         UserDTO userDto = sysUserService.findById(userId);
+        authSessionService.assertUserActiveOnRefresh(userDto);
         String role = userDto.role();
         String displayName = userDto.displayName();
 
