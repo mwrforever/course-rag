@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.commerce.rag.convert.ChatRunConverterImpl;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.exception.ConcurrentRunException;
@@ -12,6 +13,8 @@ import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.service.impl.ChatRunServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.ChatRunVO;
+import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -126,12 +129,47 @@ class ChatRunServiceTest {
         stale.setStatus("ACTIVE");
         when(runMapper.selectList(any())).thenReturn(List.of(stale));
 
-        List<ChatRunVO> result =
-                runService.findStaleActive(java.time.LocalDateTime.now().minusMinutes(10));
+        LocalDateTime now = LocalDateTime.now();
+        List<ChatRunVO> result = runService.findStaleActive(now.minusMinutes(10), now.minusMinutes(5));
 
         assertEquals(1, result.size());
         assertEquals(1L, result.get(0).id());
         assertEquals("ACTIVE", result.get(0).status());
+    }
+
+    @Test
+    @DisplayName("findStaleActive → 同时覆盖滞留 ACTIVE 与滞留 QUEUED（B2-3：QUEUED 按 created_at 超阈值判定）")
+    @SuppressWarnings("unchecked")
+    void findStaleActive_coversStaleActiveAndStaleQueued() {
+        // Given: 一条滞留 ACTIVE + 一条滞留 QUEUED（附件处理窗口崩溃/停机丢任务的 run）
+        ChatRun active = new ChatRun();
+        active.setId(1L);
+        active.setStatus("ACTIVE");
+        ChatRun queued = new ChatRun();
+        queued.setId(2L);
+        queued.setStatus("QUEUED");
+        when(runMapper.selectList(any())).thenReturn(List.of(active, queued));
+
+        LocalDateTime now = LocalDateTime.now();
+        List<ChatRunVO> result = runService.findStaleActive(now.minusMinutes(10), now.minusMinutes(5));
+
+        // Then: 两类滞留 run 均转 VO 返回（巡检统一置 ERROR 解锁会话）
+        assertEquals(2, result.size());
+        assertTrue(result.stream().anyMatch(r -> "ACTIVE".equals(r.status())));
+        assertTrue(result.stream().anyMatch(r -> "QUEUED".equals(r.status())));
+
+        // Then: 查询条件同时包含 ACTIVE（started_at 超时）与 QUEUED（created_at 超时）分支
+        ArgumentCaptor<LambdaQueryWrapper<ChatRun>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(runMapper).selectList(captor.capture());
+        LambdaQueryWrapper<ChatRun> wrapper = captor.getValue();
+        // 注意：先取 sqlSegment（触发嵌套条件合并），嵌套分支的参数才会并入根 wrapper 参数表
+        String sqlSegment = wrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("started_at"), "ACTIVE 分支应按 started_at 判超时");
+        assertTrue(sqlSegment.contains("created_at"), "QUEUED 分支应按 created_at 判超时");
+        assertTrue(sqlSegment.contains("OR"), "ACTIVE 与 QUEUED 两分支应为 OR 关系");
+        Collection<Object> params = wrapper.getParamNameValuePairs().values();
+        assertTrue(params.contains("ACTIVE"), "查询应含 ACTIVE 状态分支");
+        assertTrue(params.contains("QUEUED"), "查询应含 QUEUED 状态分支（B2-3 巡检扩展）");
     }
 
     // ==================== collectUniqueAttachments 后续轮次附件重建聚合（Task 11，spec §5.1） ====================

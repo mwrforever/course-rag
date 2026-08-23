@@ -20,7 +20,7 @@ class WorkerConfigTest {
     @Test
     @DisplayName("runPool 按 yml 配置创建核心/最大线程数、队列容量与 AbortPolicy 的线程池（L-12/M-8）")
     void runPool_buildsPoolPerProperties() {
-        WorkerProperties props = new WorkerProperties(2, 4, 100, "chat-worker-", 10);
+        WorkerProperties props = new WorkerProperties(2, 4, 100, "chat-worker-", 10, 5);
         ThreadPoolExecutor pool = new WorkerConfig().runPool(props);
 
         try {

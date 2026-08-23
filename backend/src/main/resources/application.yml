@@ -299,6 +299,9 @@ worker:
     # M-8: ACTIVE run 巡检超时（分钟）——run 滞留 ACTIVE 会锁死会话（uniq_active_run_per_session），
     # 巡检每 60s 扫描一次，超过该时长未结束的 ACTIVE run 置 ERROR 解锁
     stale-run-timeout-minutes: 10
+    # B2-3: 滞留 QUEUED run 回收阈值（分钟）——附件处理窗口内崩溃/优雅停机丢弃排队任务时
+    # run 滞留 QUEUED（同样占据会话唯一索引），巡检按 created_at 超过该时长判定滞留并置 ERROR 解锁
+    stale-queued-timeout-minutes: 5
 
 logging:
   level:

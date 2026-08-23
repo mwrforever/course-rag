@@ -166,12 +166,14 @@ public class ChatRequestWorker {
 
         // M-8: ACTIVE run 巡检——进程崩溃/runPool 拒绝后 run 滞留 ACTIVE，
         // uniq_active_run_per_session 锁死会话（后续对话恒 409），每 60s 扫描置 ERROR 解锁
+        // B2-3: 首扫 initial delay=0——启动即执行一次，兜底停机丢弃排队任务/崩溃滞留的
+        // ACTIVE/QUEUED run（此前首扫在 60s 后，滚动重启窗口内会话最长 409 一分钟以上）
         sweepScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "chat-run-sweep");
             t.setDaemon(true);
             return t;
         });
-        sweepScheduler.scheduleAtFixedRate(this::sweepStaleRuns, 60, 60, TimeUnit.SECONDS);
+        sweepScheduler.scheduleAtFixedRate(this::sweepStaleRuns, 0, 60, TimeUnit.SECONDS);
 
         log.info(
                 "ChatRequestWorker 启动: stream={}, group={}",
@@ -203,27 +205,35 @@ public class ChatRequestWorker {
     }
 
     /**
-     * M-8: 巡检超时未结束的 ACTIVE run（超时阈值 = worker.run-pool.stale-run-timeout-minutes）
+     * M-8 + B2-3: 巡检滞留的 ACTIVE/QUEUED run 并置 ERROR 解锁会话
      *
-     * <p>进程崩溃（先 ACK 后执行，P3-2 裁决下消息直接丢失）或 runPool 拒绝后，
-     * run 滞留 ACTIVE 被 uniq_active_run_per_session 锁死——该会话后续对话恒 409。
-     * 巡检将超过阈值的 ACTIVE run 置 ERROR（endedAt 由 updateStatus 自动设置），
+     * <p>ACTIVE 超时阈值 = worker.run-pool.stale-run-timeout-minutes（started_at 判定）；
+     * QUEUED 滞留阈值 = worker.run-pool.stale-queued-timeout-minutes（created_at 判定，
+     * B2-3——附件处理发生在转 ACTIVE 之前，该窗口内进程崩溃/停机丢任务的 run 全程
+     * 停留 QUEUED，且同样占据 uniq_active_run_per_session 锁死会话）。
+     *
+     * <p>巡检将滞留 run 置 ERROR（endedAt 由 updateStatus 自动设置），
      * 失败可见可手动重试。与 P1-5 的完成时刻短重试互补（覆盖执行期崩溃场景）。
      */
     private void sweepStaleRuns() {
         try {
-            LocalDateTime threshold = LocalDateTime.now().minusMinutes(workerProperties.staleRunTimeoutMinutes());
-            List<ChatRunVO> stale = chatRunService.findStaleActive(threshold);
+            LocalDateTime startedBefore = LocalDateTime.now().minusMinutes(workerProperties.staleRunTimeoutMinutes());
+            LocalDateTime queuedBefore = LocalDateTime.now().minusMinutes(workerProperties.staleQueuedTimeoutMinutes());
+            List<ChatRunVO> stale = chatRunService.findStaleActive(startedBefore, queuedBefore);
             for (ChatRunVO run : stale) {
                 try {
                     chatRunService.updateStatus(run.id(), "ERROR");
-                    log.warn("巡检发现超时 ACTIVE run，置 ERROR 解锁会话: runId={}, sessionId={}", run.id(), run.sessionId());
+                    log.warn(
+                            "巡检发现滞留 run（ACTIVE/QUEUED 超时），置 ERROR 解锁会话: runId={}, sessionId={}, status={}",
+                            run.id(),
+                            run.sessionId(),
+                            run.status());
                 } catch (Exception e) {
                     log.error("巡检置 ERROR 失败: runId={}", run.id(), e);
                 }
             }
         } catch (Exception e) {
-            log.error("ACTIVE run 巡检失败（下轮重试）", e);
+            log.error("滞留 run 巡检失败（下轮重试）", e);
         }
     }
 

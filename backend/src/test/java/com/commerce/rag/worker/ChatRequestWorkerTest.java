@@ -26,10 +26,13 @@ import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEvent;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.SseEventType;
+import com.commerce.rag.vo.ChatRunVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -720,6 +723,65 @@ class ChatRequestWorkerTest {
         // Then: 清理与状态回写仍执行（推送失败仅记日志）
         verify(bridge, timeout(3000).atLeast(1)).removeRing("100");
         verify(chatRunService, timeout(3000).atLeast(1)).updateStatus(100L, "ERROR");
+
+        worker.stop();
+        Thread.sleep(100);
+    }
+
+    // ==================== 巡检覆盖滞留 QUEUED（B2-3） ====================
+
+    /** 反射调用 private sweepStaleRuns（巡检入口） */
+    private void invokeSweepStaleRuns() throws Exception {
+        Method method = ChatRequestWorker.class.getDeclaredMethod("sweepStaleRuns");
+        method.setAccessible(true);
+        method.invoke(worker);
+    }
+
+    @Test
+    @DisplayName("巡检 → 滞留 QUEUED run 置 ERROR（B2-3：按 created_at 超阈值判定，解锁会话 409）")
+    void sweepStaleRuns_staleQueued_resetsToError() throws Exception {
+        // Given: ACTIVE 超时阈值 10min、QUEUED 滞留阈值 5min，巡检查回一条滞留 QUEUED run
+        when(workerProperties.staleRunTimeoutMinutes()).thenReturn(10);
+        when(workerProperties.staleQueuedTimeoutMinutes()).thenReturn(5);
+        when(chatRunService.findStaleActive(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of(new ChatRunVO(
+                        101L, 1L, 1L, "QUEUED", LocalDateTime.now().minusMinutes(30))));
+
+        invokeSweepStaleRuns();
+
+        // Then: 滞留 QUEUED run 被置 ERROR（解除 uniq_active_run_per_session 会话锁死）
+        verify(chatRunService).updateStatus(101L, "ERROR");
+        // Then: QUEUED 阈值按 stale-queued-timeout-minutes 计算（created_at < now-5min）
+        ArgumentCaptor<LocalDateTime> queuedBefore = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(chatRunService).findStaleActive(any(LocalDateTime.class), queuedBefore.capture());
+        long minutes =
+                Duration.between(queuedBefore.getValue(), LocalDateTime.now()).toMinutes();
+        assertTrue(minutes >= 4 && minutes <= 6, "QUEUED 阈值应为 now-5min（实际 " + minutes + "min）");
+    }
+
+    @Test
+    @DisplayName("巡检 → 未超时的 QUEUED/ACTIVE（SQL 过滤后无返回）不动作")
+    void sweepStaleRuns_noStaleRuns_noStatusUpdate() throws Exception {
+        when(workerProperties.staleRunTimeoutMinutes()).thenReturn(10);
+        when(workerProperties.staleQueuedTimeoutMinutes()).thenReturn(5);
+        when(chatRunService.findStaleActive(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+
+        invokeSweepStaleRuns();
+
+        // Then: 无滞留 run 时不得误置任何状态
+        verify(chatRunService, never()).updateStatus(anyLong(), anyString());
+    }
+
+    @Test
+    @DisplayName("启动时立即执行一次巡检（B2-3：兜底停机丢弃排队任务场景）")
+    void start_runsStartupSweep() throws Exception {
+        worker.start();
+
+        // initial delay=0：启动即扫描一次滞留 ACTIVE/QUEUED run（此前首扫在 60s 后，
+        // 滚动重启丢任务场景下会话最长 409 一分钟以上）
+        verify(chatRunService, timeout(2000).atLeast(1))
+                .findStaleActive(any(LocalDateTime.class), any(LocalDateTime.class));
 
         worker.stop();
         Thread.sleep(100);
