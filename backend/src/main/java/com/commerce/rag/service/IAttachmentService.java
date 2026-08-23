@@ -23,8 +23,11 @@ public interface IAttachmentService {
     /**
      * 按 objectKey 从 MinIO 下载附件字节
      *
-     * @param objectKey 上传时返回的对象键
-     * @return 文件字节（不存在抛 BizException 404）
+     * <p>下载前校验 objectKey 前缀必须是附件区（"0/"，B3-2 越权防护——objectKey 客户端可控，
+     * 非附件区前缀一律拒绝 403，防止经附件链路直读同 bucket 的知识库文档等任意对象）。
+     *
+     * @param objectKey 上传时返回的对象键（必须以附件区前缀开头，不允许为 null）
+     * @return 文件字节（前缀非法抛 BizException 403；不存在/读取失败抛 BizException 404）
      */
     byte[] download(String objectKey);
 }

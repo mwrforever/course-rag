@@ -31,8 +31,9 @@ class AttachmentServiceImplTest {
 
     /** MinIO 存储服务 mock（校验不通过时不产生任何调用） */
     private final MinioStorageService minio = mock(MinioStorageService.class);
-    /** 限额配置：图片 10MB、文档 50MB、单次最多 10 个、合计 ≤100MB */
-    private final AttachmentProperties props = new AttachmentProperties(10, 50, 10, 100, 100, 30);
+    /** 限额配置：图片 10MB、文档 50MB、单次最多 10 个、合计 ≤100MB、批大小 16 */
+    private final AttachmentProperties props = new AttachmentProperties(
+            10, 50, 10, 100, 100, 30, 16, 60000, new AttachmentProperties.Executor(2, 4, 20, "attachment-"));
 
     private final AttachmentServiceImpl service = new AttachmentServiceImpl(minio, props);
 
@@ -150,5 +151,28 @@ class AttachmentServiceImplTest {
         BizException e = assertThrows(BizException.class, () -> service.download("0/ghost.png"));
 
         assertEquals(ErrorCode.NOT_FOUND, e.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("下载知识库区 objectKey（123/ 前缀）— 拒绝 403 且不触达 MinIO（B3-2 越权防护）")
+    void download_knowledgeBasePrefix_rejectedWithoutMinioAccess() {
+        // 知识库文档 objectKey 形如 {kb_id}/{uuid}.{ext}，与附件同 bucket——不得经附件链路读取
+        BizException e = assertThrows(BizException.class, () -> service.download("123/secret-doc.pdf"));
+
+        assertEquals(ErrorCode.FORBIDDEN, e.getErrorCode());
+        verify(minio, never()).downloadFile(any());
+    }
+
+    @Test
+    @DisplayName("下载裸 key / null objectKey — 非附件区前缀一律拒绝 403")
+    void download_bareOrNullKey_rejected() {
+        // 无 "0/" 前缀的裸 uuid key（绕过目录直指对象）同样拒绝
+        BizException bare = assertThrows(BizException.class, () -> service.download("abc123.pdf"));
+        assertEquals(ErrorCode.FORBIDDEN, bare.getErrorCode());
+
+        BizException nullKey = assertThrows(BizException.class, () -> service.download(null));
+        assertEquals(ErrorCode.FORBIDDEN, nullKey.getErrorCode());
+
+        verify(minio, never()).downloadFile(any());
     }
 }
