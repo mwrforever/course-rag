@@ -8,6 +8,7 @@ import com.commerce.rag.retrieval.FusionService;
 import com.commerce.rag.retrieval.RerankService;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.IndexParam;
+import jakarta.annotation.PreDestroy;
 import io.milvus.v2.service.vector.request.AnnSearchReq;
 import io.milvus.v2.service.vector.request.HybridSearchReq;
 import io.milvus.v2.service.vector.request.data.EmbeddedText;
@@ -23,6 +24,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -114,11 +116,23 @@ public class SearchKnowledgeTool {
         this.rrfK = rrfK;
         this.prefetchTopK = prefetchTopK;
         this.sparseEnabled = sparseEnabled;
+        // 检索并行池：daemon 线程随 JVM 退出，线程名带序号（search-knowledge-N）便于 thread dump 排查（B1-3）
+        AtomicInteger seq = new AtomicInteger(1);
         this.searchExecutor = Executors.newFixedThreadPool(4, r -> {
-            Thread t = new Thread(r, "search-knowledge-");
+            Thread t = new Thread(r, "search-knowledge-" + seq.getAndIncrement());
             t.setDaemon(true);
             return t;
         });
+    }
+
+    /**
+     * 释放检索并行池（应用停机时调用，B1-3 生命周期配对——全仓业务线程池统一关闭钩子惯例，
+     * 与 RetrieveNode#destroy 同款）：shutdownNow 中断在途检索并丢弃排队任务，
+     * 避免停机时池内任务被直接丢弃且无优雅终止路径。
+     */
+    @PreDestroy
+    public void destroy() {
+        searchExecutor.shutdownNow();
     }
 
     /**

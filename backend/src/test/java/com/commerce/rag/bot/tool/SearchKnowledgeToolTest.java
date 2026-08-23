@@ -21,6 +21,8 @@ import io.milvus.v2.service.vector.response.SearchResp;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -511,6 +513,42 @@ class SearchKnowledgeToolTest {
         List<Float> vectorData = (List<Float>) vec.getData();
         assertEquals(pre[0], vectorData.get(0), 1e-4f);
         assertEquals(pre[1], vectorData.get(1), 1e-4f);
+    }
+
+    // ==================== B1-3：线程池生命周期与线程命名 ====================
+
+    @Test
+    @DisplayName("destroy 关闭钩子 — 池关闭后新检索任务提交被拒绝（@PreDestroy 生命周期配对）")
+    void destroy_shutdownsExecutor_rejectsNewSearch() {
+        // 应用停机时 @PreDestroy 关闭检索池——关闭后 supplyAsync 提交被拒绝
+        // （RejectedExecutionException 同步抛出，证明关闭钩子确实 shutdown 了池）
+        tool.destroy();
+
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
+        assertThrows(RejectedExecutionException.class, () -> tool.searchKnowledge(List.of(query), null));
+    }
+
+    @Test
+    @DisplayName("检索线程名带序号 — search-knowledge-N（thread dump 可区分线程）")
+    void searchExecutor_threadNamesNumbered() {
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
+        AtomicReference<String> threadName = new AtomicReference<>();
+        when(embeddingModel.embed("查询")).thenAnswer(inv -> {
+            // searchSingle 经 searchExecutor 并行执行，捕获实际执行线程名
+            threadName.set(Thread.currentThread().getName());
+            return new float[] {0.1f};
+        });
+        SearchResp resp = mock(SearchResp.class);
+        when(resp.getSearchResults()).thenReturn(List.of());
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
+        when(fusionService.fuse(anyMap())).thenReturn(List.of());
+        when(rerankService.rerank(eq("查询"), any())).thenReturn(List.of());
+
+        tool.searchKnowledge(List.of(query), null);
+
+        String name = threadName.get();
+        assertNotNull(name, "检索任务应在池线程上执行");
+        assertTrue(name.matches("search-knowledge-\\d+"), "线程名应为 search-knowledge-N（带序号），实际: " + name);
     }
 
     @Test
