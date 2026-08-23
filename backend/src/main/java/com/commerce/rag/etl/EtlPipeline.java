@@ -422,6 +422,10 @@ public class EtlPipeline {
                 }
                 // 第二段：upload+caption 远程 IO 并行（池内独立执行，单图超时由 orTimeout 隔离；
                 // 队列满拒绝（AbortPolicy）同样走单图失败跳过语义）
+                // P2-2b orTimeout 语义：超时仅使 future 异常完成、放弃等待结果——不中断
+                // etlImagePool 线程内进行中的 MinIO/VLM 调用（CompletableFuture 无底层线程中断能力），
+                // 池线程自然跑完当前任务后归还；超时期间该线程仍被占用，由有界队列 +
+                // AbortPolicy（EtlConfig.etlImagePool）兜底限流，不至无界堆积
                 slots.add(CompletableFuture.supplyAsync(() -> processImageSpec(doc, image), etlImagePool)
                         .orTimeout(etlProperties.imageExecutor().processTimeoutSeconds(), TimeUnit.SECONDS));
             }
