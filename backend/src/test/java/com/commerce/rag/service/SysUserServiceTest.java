@@ -30,6 +30,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 /**
@@ -79,6 +80,23 @@ class SysUserServiceTest {
     }
 
     // ==================== create() 测试 ====================
+
+    @Test
+    @DisplayName("B2-8: create 并发撞用户名唯一索引 → 转 BizException 409 而非 503")
+    void create_uniqueViolationOnInsert_throwsConflict() {
+        // 并发双击竞态窗口：两请求查重均通过（selectCount=0），后插入者撞 uniq_sys_user_username
+        when(userMapper.selectCount(any())).thenReturn(0L);
+        when(userMapper.insert(any(SysUser.class)))
+                .thenThrow(new DataIntegrityViolationException("uniq_sys_user_username 冲突"));
+
+        CreateUserRequest request = new CreateUserRequest("testuser", "password123", "测试用户", "STUDENT");
+
+        BizException ex = assertThrows(BizException.class, () -> sysUserService.create(request, 100L));
+
+        // 语义应为 409（用户名已存在/重复操作请刷新），而非 DataAccessException 全局映射的 503
+        assertEquals(409, ex.getCode());
+        assertTrue(ex.getMessage().contains("已存在"));
+    }
 
     @Test
     @DisplayName("create → 正常创建用户")

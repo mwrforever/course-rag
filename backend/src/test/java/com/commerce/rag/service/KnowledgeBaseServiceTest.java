@@ -31,6 +31,7 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.interceptor.TransactionAttribute;
 
 /**
@@ -84,6 +85,20 @@ class KnowledgeBaseServiceTest {
         assertEquals("ACTIVE", result.status());
         assertEquals(1L, result.createdBy());
         verify(knowledgeBaseMapper).insert(any(KnowledgeBase.class));
+    }
+
+    @Test
+    @DisplayName("B2-8: create 并发重名撞知识库唯一索引 → 转 BizException 409 而非 503")
+    void create_uniqueViolationOnInsert_throwsConflict() {
+        // 竞态窗口：并发同名创建双双走到 insert，后者撞 uniq_knowledge_base_name（重名唯一）
+        when(knowledgeBaseMapper.insert(any(KnowledgeBase.class)))
+                .thenThrow(new DataIntegrityViolationException("uniq_knowledge_base_name 冲突"));
+
+        BizException ex = assertThrows(BizException.class, () -> knowledgeBaseService.create("同名库", "描述", 1L));
+
+        // 语义应为 409（知识库名已存在/重复操作请刷新），而非 DataAccessException 全局映射的 503
+        assertEquals(409, ex.getCode());
+        assertTrue(ex.getMessage().contains("已存在"));
     }
 
     @Test
