@@ -316,8 +316,15 @@ attachment:
   document-max-size-mb: 50     # 单个文档上限
   max-count: 10                # 单次消息附件个数上限
   total-max-size-mb: 100       # 单次消息附件合计上限
-  cache-max-size: 100          # Caffeine 附件处理结果缓存条数（LRU）
+  cache-max-size: 100          # Caffeine 附件处理结果缓存条目数（LRU）
   cache-expire-minutes: 30     # 附件处理结果缓存失效时间
+  embedding-batch-size: 16     # P2-1: 文档附件批量向量化批大小（与 etl.embedding-batch-size 同范式）
+  process-timeout-ms: 60000    # P2-2: 附件并行处理总超时（超时丢弃未完成附件，保留已完成结果）
+  executor:                    # P2-2: 附件并行池（下载/图片 caption 并行基底，与 ETL/检索/记忆池隔离）
+    core-size: 2
+    max-size: 4
+    queue-capacity: 20
+    thread-name-prefix: attachment-
 
 # ── S1 记忆体系（spec §7.8/§8.3：阈值/权重/预算/曲线全配置化）──
 memory:
