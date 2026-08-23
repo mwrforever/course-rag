@@ -954,6 +954,97 @@ class EtlPipelineTest {
         assertThrows(IllegalStateException.class, () -> etlPipeline.syncDocToMilvus(99L));
     }
 
+    // ========================================================================
+    // B3-1 修复波次新增：Milvus insert 失败不吞异常（对齐 delete 路径 P0-8 哲学）
+    // ========================================================================
+
+    @Test
+    @DisplayName("B3-1: embedAndIndex — Milvus insert 抛异常 → 计入失败标 FAILED（不误标 INDEXED）+ 半成品清理")
+    void embedAndIndex_milvusInsertFails_setsFailedNotIndexed() {
+        // Given: embed 成功 + PG 向量回写成功 + Milvus insert 抛异常（服务瞬时不可用）
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setKbId(10L);
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        chunk.setDocId(1L);
+        chunk.setKbId(10L);
+        chunk.setContent("内容");
+        when(chunkMapper.selectList(any())).thenReturn(List.of(chunk));
+        when(embeddingModel.embed(anyList())).thenReturn(List.of(new float[] {0.1f, 0.2f}));
+        when(milvusClientV2.insert(any(InsertReq.class))).thenThrow(new RuntimeException("milvus 不可用"));
+
+        etlPipeline.embedAndIndex(1L);
+
+        // Then: 状态 FAILED（非 INDEXED）——向量缺失时文档不得标绿
+        ArgumentCaptor<LambdaUpdateWrapper> wrapperCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(documentMapper, atLeastOnce()).update(any(), wrapperCaptor.capture());
+        String setValues = wrapperCaptor.getAllValues().stream()
+                .map(w -> String.valueOf(w.getParamNameValuePairs().values()))
+                .reduce("", (a, b) -> a + b);
+        assertTrue(setValues.contains("FAILED"), "Milvus insert 失败应标 FAILED: " + setValues);
+        assertFalse(setValues.contains("INDEXED"), "Milvus insert 失败不应误标 INDEXED: " + setValues);
+        // P2-6: FAILED 半成品清理被触发（开头清旧 1 次 + 失败清理 1 次 = 2 次 delete）
+        verify(milvusClientV2, times(2)).delete(any(DeleteReq.class));
+    }
+
+    @Test
+    @DisplayName("B3-1: reEmbedAndUpsert — Milvus insert 失败上抛（阻断调用方，不再静默丢向量）")
+    void reEmbedAndUpsert_milvusInsertFails_throws() {
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        chunk.setDocId(1L);
+        chunk.setKbId(10L);
+        chunk.setContent("新内容");
+        when(chunkMapper.selectById(1L)).thenReturn(chunk);
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setTitle("测试文档");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        when(embeddingModel.embed(anyString())).thenReturn(new float[] {0.1f, 0.2f});
+        // delete 成功（旧向量已删）+ insert 失败——吞异常会让该 chunk 向量从 Milvus 消失且无感知
+        when(milvusClientV2.insert(any(InsertReq.class))).thenThrow(new RuntimeException("milvus 不可用"));
+
+        assertThrows(RuntimeException.class, () -> etlPipeline.reEmbedAndUpsert(1L));
+    }
+
+    @Test
+    @DisplayName("B3-1: syncDocToMilvus — Milvus insert 失败上抛（阻断标注同步，可重试收敛）")
+    void syncDocToMilvus_milvusInsertFails_throws() {
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setTitle("测试文档");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        DocumentChunk vectorized = new DocumentChunk();
+        vectorized.setId(1L);
+        vectorized.setDocId(1L);
+        vectorized.setKbId(10L);
+        vectorized.setDenseVector(new byte[] {0, 0, 0, 0});
+        when(chunkMapper.selectList(any())).thenReturn(List.of(vectorized));
+        when(milvusClientV2.insert(any(InsertReq.class))).thenThrow(new RuntimeException("milvus 不可用"));
+
+        assertThrows(RuntimeException.class, () -> etlPipeline.syncDocToMilvus(1L));
+    }
+
+    @Test
+    @DisplayName("B3-1: syncChunkToMilvus — Milvus insert 失败上抛（同步不静默丢向量）")
+    void syncChunkToMilvus_milvusInsertFails_throws() {
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(1L);
+        chunk.setDocId(1L);
+        chunk.setKbId(10L);
+        chunk.setDenseVector(new byte[] {0, 0, 0, 0});
+        when(chunkMapper.selectById(1L)).thenReturn(chunk);
+        Document doc = new Document();
+        doc.setId(1L);
+        doc.setTitle("测试文档");
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        when(milvusClientV2.insert(any(InsertReq.class))).thenThrow(new RuntimeException("milvus 不可用"));
+
+        assertThrows(RuntimeException.class, () -> etlPipeline.syncChunkToMilvus(1L));
+    }
+
     @Test
     @DisplayName("embedAndIndex 部分失败且 Milvus 半成品清理失败 — 仅告警，仍标 FAILED")
     void embedAndIndex_partialFailure_cleanupDeleteFails_stillFailed() {

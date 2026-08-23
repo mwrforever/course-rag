@@ -802,7 +802,13 @@ public class EtlPipeline {
      * 批量插入多行到 Milvus（v2 API：InsertReq + Gson JsonObject 行式插入）
      *
      * <p>H-3/M-4：一次 InsertReq 携带多行（原逐 chunk 单行 insert，N 次网络往返 → N/批大小 次）。
-     * 插入失败仅记 warn（与单行插入既有语义一致，不阻断文档终态判定）。
+     *
+     * <p>B3-1 修复：插入失败上抛（对齐 delete 路径 P0-8 的处理哲学）——原实现仅记 warn 吞异常，
+     * 导致 embedAndIndex 的 failedCount 不增而误标 INDEXED（向量永久缺失且无重试路径）、
+     * reEmbedAndUpsert/syncDocToMilvus/syncChunkRowToMilvus 同步后向量静默丢失。
+     * 上抛后各调用点的失败语义：embedAndIndex 既有批次 catch 计入 failedCount → 标 FAILED +
+     * P2-6 半成品清理（PENDING/FAILED 可重跑收敛）；其余调用点异常传播阻断调用方（可重试收敛）。
+     * 确保「向量缺失但文档标 INDEXED」不再可能。
      *
      * @param rows Milvus 行列表（每行 13 个字段，不含 sparse_vector —— 服务端 BM25 Function 自动生成）
      */
@@ -815,7 +821,9 @@ public class EtlPipeline {
         try {
             milvusClientV2.insert(insertReq);
         } catch (Exception e) {
-            log.warn("Milvus 批量插入失败: 行数={}, error={}", rows.size(), e.getMessage());
+            // B3-1: 记录行数与错误摘要后上抛，由调用链按各自失败语义处理（不吞异常）
+            log.error("Milvus 批量插入失败（异常上抛）: 行数={}, error={}", rows.size(), e.getMessage());
+            throw e;
         }
     }
 
