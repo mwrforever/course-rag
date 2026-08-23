@@ -43,8 +43,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -69,13 +67,6 @@ class RetrieveNodeTest {
 
     /** 真实属性对象：recallTopK 取默认 5，供 recall 断言精确匹配 */
     private MemoryProperties memoryProperties = new MemoryProperties();
-
-    /** 检索并行执行器（daemon：不阻塞测试 JVM 退出；2 线程与生产配置同构） */
-    private final ExecutorService retrieveExecutor = Executors.newFixedThreadPool(2, r -> {
-        Thread t = new Thread(r, "test-retrieve-node-");
-        t.setDaemon(true);
-        return t;
-    });
 
     /** 预嵌入向量桩值（3-1 方案 a：首条重写查询 embed 一次供 recall/检索复用；argThat 内容匹配断言） */
     private static final float[] QUERY_VECTOR = new float[] {0.1f, 0.2f};
