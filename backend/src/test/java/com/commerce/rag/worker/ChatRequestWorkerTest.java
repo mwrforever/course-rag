@@ -54,6 +54,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
@@ -214,8 +215,9 @@ class ChatRequestWorkerTest {
         return (ConcurrentHashMap<String, AtomicBoolean>) f.get(worker);
     }
 
-    /** 通过反射调用 private persistMessages（P0-4a 游标去重用例：验证仅持久化游标后的新增消息） */
-    private void invokePersistMessages(
+    /** 通过反射调用 private persistMessages（P0-4a 游标去重用例：验证仅持久化游标后的新增消息）
+     * 返回落库结果（B2-4：true=已落库/幂等跳过；false=落库失败可由调用方重试） */
+    private boolean invokePersistMessages(
             Long runId,
             Long sessionId,
             String userQuery,
@@ -226,7 +228,7 @@ class ChatRequestWorkerTest {
         Method method = ChatRequestWorker.class.getDeclaredMethod(
                 "persistMessages", Long.class, Long.class, String.class, String.class, int.class, NodeOutput.class);
         method.setAccessible(true);
-        method.invoke(worker, runId, sessionId, userQuery, attachmentsJson, historyCursor, lastOutput);
+        return (Boolean) method.invoke(worker, runId, sessionId, userQuery, attachmentsJson, historyCursor, lastOutput);
     }
 
     // ==================== cancel() 测试 ====================
@@ -726,6 +728,70 @@ class ChatRequestWorkerTest {
 
         worker.stop();
         Thread.sleep(100);
+    }
+
+    // ==================== 完成时刻 DB 故障双终态防护（B2-4） ====================
+
+    @Test
+    @DisplayName("完成回写耗尽 → END 已推送后 catch 不再推第二终态、消息不重复落库（B2-4）")
+    void processRequest_statusUpdateExhaustsAfterEnd_noSecondTerminalOrDoublePersist() throws Exception {
+        // Given: 图流正常完成，但 COMPLETED 终态回写 3 次重试全部失败（完成时刻 DB 持续故障）
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+        // ACTIVE 转换显式放行（严格桩模式下未匹配的调用会抛 PotentialStubbingProblem）
+        doNothing().when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
+        doThrow(new RuntimeException("数据库不可用")).when(chatRunService).updateStatus(anyLong(), eq("COMPLETED"));
+
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 终态事件仅推送一次（END(COMPLETED) 在异常前已推送），不再追加 ERROR 双终态
+        ArgumentCaptor<SseEvent> eventCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), eventCaptor.capture());
+        List<SseEvent> terminalEvents = eventCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.END || e.type() == SseEventType.ERROR)
+                .toList();
+        assertEquals(1, terminalEvents.size(), "终态事件应仅推送一次，实际: " + terminalEvents);
+        assertEquals(SseEventType.END, terminalEvents.get(0).type(), "首个（唯一）终态应为 END(COMPLETED)");
+        assertTrue(terminalEvents.get(0).payload().contains("COMPLETED"));
+        // Then: doOnComplete 已成功落库（1 次），catch 分支不再二次 persistMessages 重复落库
+        verify(chatMessageService, times(1)).batchInsert(anyList());
+        // Then: 不再经 handleError 回写 ERROR（客户端已见 COMPLETED，DB 滞留 ACTIVE 由 M-8 巡检兜底收敛）
+        verify(chatRunService, never()).updateStatus(100L, "ERROR");
+    }
+
+    @Test
+    @DisplayName("persistMessages → 批量插入撞 (run_id,seq) 唯一索引按已落库幂等处理（B2-4 数据层兜底）")
+    void persistMessages_uniqueIndexConflict_treatedAsPersisted() throws Exception {
+        // Given: 本批消息已落库（重复调用场景），唯一索引拒绝重复插入
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(null);
+        doThrow(new DataIntegrityViolationException("重复键违反唯一约束 uniq_chat_message_run_seq"))
+                .when(chatMessageService)
+                .batchInsert(anyList());
+
+        // When: 幂等跳过、不外抛异常，返回 true（已落库，调用方不再重试）
+        boolean persisted = invokePersistMessages(1L, 1L, "问题", "[]", 0, lastOutput);
+
+        assertTrue(persisted, "唯一索引冲突应按已落库处理（幂等跳过）");
+        verify(chatMessageService).batchInsert(anyList());
+    }
+
+    @Test
+    @DisplayName("persistMessages → 非冲突 DB 异常返回 false（可由 catch 分支重试补落库）")
+    void persistMessages_genericDbFailure_returnFalseForRetry() throws Exception {
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(null);
+        doThrow(new RuntimeException("连接池耗尽")).when(chatMessageService).batchInsert(anyList());
+
+        boolean persisted = invokePersistMessages(1L, 1L, "问题", "[]", 0, lastOutput);
+
+        // 落库失败且非幂等冲突 → 返回 false，允许 catch 分支重试（消息未落库，重试无害）
+        assertFalse(persisted);
+        verify(chatMessageService).batchInsert(anyList());
     }
 
     // ==================== 巡检覆盖滞留 QUEUED（B2-3） ====================

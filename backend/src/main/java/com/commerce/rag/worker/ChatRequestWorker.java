@@ -54,6 +54,7 @@ import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
@@ -450,6 +451,13 @@ public class ChatRequestWorker {
         AtomicReference<NodeOutput> lastOutput = new AtomicReference<>();
         // 标记是否已发生错误/取消（防止 doOnComplete 覆盖状态）
         AtomicBoolean errored = new AtomicBoolean(false);
+        // B2-4: 终态事件已推送标记——doOnComplete 推 END 后终态回写（updateStatusWithRetry
+        // 3 次耗尽上抛）进入 catch 时，不得再经 handleError 推第二个终态事件（客户端
+        // 状态机收到双终态）；compareAndSet 保证 doOnComplete/onErrorResume/catch 三路径仅一个生效
+        AtomicBoolean terminalPushed = new AtomicBoolean(false);
+        // B2-4: 消息已持久化标记——doOnComplete 落库成功后终态回写失败进入 catch 时，
+        // 跳过二次 persistMessages（重复落库防线，另有 V13 (run_id,seq) 唯一索引兜底）
+        AtomicBoolean persisted = new AtomicBoolean(false);
 
         // 1. pre-run 快照（在 try 之前捕获：captureSnapshot 内部异常已兜底返回 null；
         //    单次赋值保持 effectively final，供 onErrorResume/doOnComplete lambda 捕获，
@@ -484,14 +492,17 @@ public class ChatRequestWorker {
                         // P0-7: 与 catch 分支对齐的兜底——handleCancelled/handleError 内部
                         // （bridge.push / updateStatus）再抛异常不得从 Reactor 链传播，
                         // 否则 blockLast 抛出 → 落入 catch 分支二次 handleError（双终态）+ 重复持久化
-                        try {
-                            if (e instanceof CancelledException) {
-                                handleCancelled(runIdStr, runId, runState, config, snapshot);
-                            } else {
-                                handleError(runIdStr, runId, runState, e);
+                        // B2-4: compareAndSet 占位终态——后续 catch 分支不再推第二个终态
+                        if (terminalPushed.compareAndSet(false, true)) {
+                            try {
+                                if (e instanceof CancelledException) {
+                                    handleCancelled(runIdStr, runId, runState, config, snapshot);
+                                } else {
+                                    handleError(runIdStr, runId, runState, e);
+                                }
+                            } catch (Exception errorEx) {
+                                log.error("onErrorResume 分支终态处理失败 runId={}", runId, errorEx);
                             }
-                        } catch (Exception errorEx) {
-                            log.error("onErrorResume 分支终态处理失败 runId={}", runId, errorEx);
                         }
                         // 持久化已收集的消息（游标 = pre-run checkpoint 消息数，只落本轮新增）
                         persistMessages(
@@ -511,13 +522,16 @@ public class ChatRequestWorker {
                         // 先持久化消息、再推 END + 写 COMPLETED 终态——
                         // 「run 终态 = 数据已完整落库」语义（chat_message 与状态非原子，
                         // 先状态后落库会让外部观察者在终态可见时查到空消息表）
-                        persistMessages(
+                        persisted.set(persistMessages(
                                 runId,
                                 sessionId,
                                 userQuery,
                                 attachmentsJson,
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
-                                lastOutput.get());
+                                lastOutput.get()));
+                        // B2-4: 先占位终态标记再调 handleCompleted——其推 END 后 updateStatusWithRetry
+                        // 若耗尽上抛，catch 分支据此跳过第二个终态事件（客户端只认首个终态）
+                        terminalPushed.set(true);
                         handleCompleted(runIdStr, runId, runState);
                         // 偏好提取异步触发（spec §7.6：run 完成、SSE 已发送完后异步，不阻塞用户响应；
                         // 仅 COMPLETED 触发——error/cancel 路径不提取）
@@ -533,18 +547,30 @@ public class ChatRequestWorker {
             errored.set(true);
             // P0-4b 修复：补齐终态——推送 ERROR 事件 + 持久化已收集消息（与 onErrorResume 分支对齐）。
             // handleError 单独兜底：其内部状态更新失败不得阻断消息持久化（修复审查 finding）
-            try {
-                handleError(runIdStr, runId, runState, e);
-            } catch (Exception errorEx) {
-                log.error("handleError 执行失败 runId={}", runId, errorEx);
+            // B2-4: 终态事件已推送（doOnComplete 的 END / onErrorResume 的终态）时不再推第二个
+            // 终态事件——客户端状态机只认首个终态；run 滞留 ACTIVE 由 M-8 巡检兜底收敛为 ERROR
+            if (terminalPushed.compareAndSet(false, true)) {
+                try {
+                    handleError(runIdStr, runId, runState, e);
+                } catch (Exception errorEx) {
+                    log.error("handleError 执行失败 runId={}", runId, errorEx);
+                }
+            } else {
+                log.warn("终态事件已推送，跳过 catch 分支二次终态处理（run 状态由巡检兜底收敛）: runId={}", runId);
             }
-            persistMessages(
-                    runId,
-                    sessionId,
-                    userQuery,
-                    attachmentsJson,
-                    snapshot != null ? snapshot.historyMessageCount() : 0,
-                    lastOutput.get());
+            // B2-4: 消息已持久化（doOnComplete 落库成功）时跳过二次 persistMessages——
+            // 完成时刻 DB 故障恢复后重复整批插入会造成 chat_message 成倍重复
+            if (persisted.get()) {
+                log.info("消息已持久化，跳过 catch 分支重复持久化: runId={}", runId);
+            } else {
+                persisted.set(persistMessages(
+                        runId,
+                        sessionId,
+                        userQuery,
+                        attachmentsJson,
+                        snapshot != null ? snapshot.historyMessageCount() : 0,
+                        lastOutput.get()));
+            }
         } finally {
             bridge.removeRing(runIdStr);
             cancelFlags.remove(runIdStr);
@@ -650,9 +676,11 @@ public class ChatRequestWorker {
      * @param historyCursor    持久化游标（pre-run checkpoint 中 messages 数，P0-4a）：
      *                         仅持久化 rawList 中 index >= historyCursor 的新增消息，避免历史消息每轮重插
      * @param lastOutput       流式输出的最后一个 NodeOutput（可为 null，此时仅持久化用户消息）
+     * @return true=已落库（含 (run_id,seq) 唯一索引冲突的幂等跳过，调用方不得重试）；
+     *         false=落库失败且未确认写入（调用方可重试）
      */
     @SuppressWarnings("unchecked")
-    private void persistMessages(
+    private boolean persistMessages(
             Long runId,
             Long sessionId,
             String userQuery,
@@ -702,10 +730,20 @@ public class ChatRequestWorker {
             try {
                 chatMessageService.batchInsert(messages);
                 log.info("持久化消息: runId={}, count={}", runId, messages.size());
+                return true;
+            } catch (DataIntegrityViolationException e) {
+                // B2-4 数据层兜底：(run_id,seq) 唯一索引（V13 uniq_chat_message_run_seq）冲突
+                // = 本批消息已落库（完成路径重试/双路径重复调用），幂等跳过——按已落库处理，
+                // 调用方不得因该冲突再次重试
+                log.warn("消息已落库（(run_id,seq) 唯一索引冲突），幂等跳过重复落库: runId={}, count={}", runId, messages.size());
+                return true;
             } catch (Exception e) {
                 log.error("消息持久化失败 runId={}", runId, e);
+                return false;
             }
         }
+        // 无消息需落库（防御分支：用户消息恒存在，正常不达此处）——视为已处理
+        return true;
     }
 
     /**
