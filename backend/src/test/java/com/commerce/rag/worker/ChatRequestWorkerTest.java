@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -668,6 +669,57 @@ class ChatRequestWorkerTest {
         // createGroup 异常被吞掉，消费循环继续进入 XREADGROUP
         verify(streamOps, timeout(3000).atLeast(1))
                 .read(any(Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class));
+
+        worker.stop();
+        Thread.sleep(100);
+    }
+
+    // ==================== runPool 队列满拒绝分支（B2-1） ====================
+
+    @Test
+    @DisplayName("runPool 队列满拒绝 → 推送 ERROR 终态事件 + 清理 ring + 状态回写 ERROR（B2-1）")
+    void consumeLoop_poolRejected_pushesTerminalEventCleansRingAndMarksError() throws Exception {
+        // Given: runPool 提交即拒绝（8 线程 + 100 队列全满），消息含合法 runId
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+        when(streamOps.read(any(Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
+                .thenReturn(List.of(record));
+        when(runPool.submit(any(Runnable.class))).thenThrow(new RejectedExecutionException("队列已满"));
+
+        worker.start();
+
+        // Then: ERROR 终态事件推送到入口已建的 ring（payload 含 runId 与 ERROR 终态标记，
+        // 客户端据此结束"生成中"状态；无该事件则重连也永久无终态）
+        // 说明：mock read 无阻塞语义会连续重读同一消息，拒绝分支被反复触发，故用 atLeast(1)
+        ArgumentCaptor<SseEvent> eventCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, timeout(3000).atLeast(1)).push(eq("100"), eventCaptor.capture());
+        SseEvent rejectedEvent = eventCaptor.getAllValues().get(0);
+        assertEquals(SseEventType.ERROR, rejectedEvent.type());
+        assertTrue(rejectedEvent.payload().contains("\"runId\":\"100\""), "事件 payload 应含 runId");
+        assertTrue(rejectedEvent.payload().contains("\"status\":\"ERROR\""), "事件 payload 应含 ERROR 终态标记");
+        // Then: ring 被清理（否则 ring + 阻塞在 outbox.take() 的投递线程永久泄漏）
+        verify(bridge, timeout(3000).atLeast(1)).removeRing("100");
+        // Then: run 状态回写 ERROR（解锁 uniq_active_run_per_session）
+        verify(chatRunService, timeout(3000).atLeast(1)).updateStatus(100L, "ERROR");
+
+        worker.stop();
+        Thread.sleep(100);
+    }
+
+    @Test
+    @DisplayName("runPool 拒绝 → 终态事件推送失败不中断 ring 清理与状态回写（B2-1）")
+    void consumeLoop_poolRejected_pushFailureStillCleansRingAndMarksError() throws Exception {
+        // Given: runPool 拒绝且 bridge.push 抛异常（复合故障——推送失败不得中断清理链）
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+        when(streamOps.read(any(Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
+                .thenReturn(List.of(record));
+        when(runPool.submit(any(Runnable.class))).thenThrow(new RejectedExecutionException("队列已满"));
+        doThrow(new RuntimeException("ring 推送失败")).when(bridge).push(eq("100"), any(SseEvent.class));
+
+        worker.start();
+
+        // Then: 清理与状态回写仍执行（推送失败仅记日志）
+        verify(bridge, timeout(3000).atLeast(1)).removeRing("100");
+        verify(chatRunService, timeout(3000).atLeast(1)).updateStatus(100L, "ERROR");
 
         worker.stop();
         Thread.sleep(100);

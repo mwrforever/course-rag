@@ -271,7 +271,36 @@ public class ChatRequestWorker {
                         // Redis Stream 所有新对话滞留；改为快速失败：消息已 ACK，
                         // run 状态回写 ERROR 解锁 uniq_active_run_per_session（会话可重试）
                         Object runIdObj = msg.getValue().get("runId");
-                        Long rejectedRunId = runIdObj == null ? null : parseLongQuietly(String.valueOf(runIdObj));
+                        String rejectedRunIdStr = runIdObj == null ? null : String.valueOf(runIdObj);
+                        Long rejectedRunId = rejectedRunIdStr == null ? null : parseLongQuietly(rejectedRunIdStr);
+                        // B2-1: 入口 chat() 在 XADD 前已 createRing + subscribe，被拒 run 不经过
+                        // processRequest（其 finally 负责 removeRing）——必须在此补齐终态三件套，
+                        // 否则客户端永久"生成中"（重连对未 close 的 ring 必返回 true，不进 PG 补终态降级）
+                        // 且 ring + 阻塞在 outbox.take() 的投递线程永久泄漏
+                        if (rejectedRunIdStr != null) {
+                            // ① 推送 ERROR 终态事件（与 handleError 终态语义一致：payload 含 runId + ERROR；
+                            //    run 从未执行、无任何事件入 ring，seq 从 1 起）
+                            try {
+                                Map<String, Object> payload = new LinkedHashMap<>();
+                                payload.put("runId", rejectedRunIdStr);
+                                payload.put("status", "ERROR");
+                                payload.put("message", "当前排队请求过多，请稍后重试");
+                                bridge.push(
+                                        rejectedRunIdStr,
+                                        new SseEvent(
+                                                SseEventType.ERROR, 1, toJson(payload), System.currentTimeMillis()));
+                            } catch (Exception pushEx) {
+                                // 推送失败不得中断后续清理与状态回写
+                                log.error("runPool 拒绝后推送 ERROR 终态事件失败: runId={}", rejectedRunIdStr, pushEx);
+                            }
+                            // ② 清理 ring（先推事件再清理，投递线程先消费完 ERROR 事件再随 close 退出）
+                            try {
+                                bridge.removeRing(rejectedRunIdStr);
+                            } catch (Exception removeEx) {
+                                log.error("runPool 拒绝后清理 ring 失败: runId={}", rejectedRunIdStr, removeEx);
+                            }
+                        }
+                        // ③ run 状态回写 ERROR（解锁会话，失败可见可重试）
                         if (rejectedRunId != null) {
                             try {
                                 chatRunService.updateStatus(rejectedRunId, "ERROR");
