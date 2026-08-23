@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.vo.DocumentVO;
 import java.io.InputStream;
+import java.util.Collection;
+import java.util.Map;
 
 /**
  * 文档管理服务接口 —— 上传/查询/更新/删除/重新解析/下载（主表 Document）
@@ -40,6 +42,17 @@ public interface IDocumentService extends IService<Document> {
      * 按 ID 查询文档（带归属校验）
      */
     DocumentVO findById(Long id, Long userId, String role);
+
+    /**
+     * 批量查询文档标题（docId → title 映射，B3-3：检索链路按 doc_id 回填 KnowledgeChunk.docTitle）
+     *
+     * <p>单次 in 查询按需取列（id/title），供 bot/tool 检索结果组装「来源文档」标注
+     * （spec §3.2）——@Tool 侧经 Service 封装访问 document 表，不直访数据层。
+     *
+     * @param docIds 文档 ID 集合（不允许为空集合以外的 null——空集合/null 直接返回空 Map）
+     * @return docId → title 映射；文档不存在/标题为 null 的条目不出现（调用方按缺省处理）
+     */
+    Map<Long, String> mapTitlesByIds(Collection<Long> docIds);
 
     /**
      * 分页查询文档（支持知识库/状态/关键词/排序过滤 + 教师数据权限）

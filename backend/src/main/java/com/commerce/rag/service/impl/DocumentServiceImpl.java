@@ -22,7 +22,9 @@ import com.commerce.rag.vo.DocumentVO;
 import com.github.benmanes.caffeine.cache.Cache;
 import java.io.InputStream;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -138,6 +140,31 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
 
         // Entity 出 service 边界前转 VO（sourcePath 因 VO 无此字段自然忽略）
         return documentConverter.toVO(doc);
+    }
+
+    /**
+     * 批量查询文档标题（B3-3：检索链路按 doc_id 回填「来源文档」标注）
+     *
+     * <p>本 service 主表内置链式按需取列（id/title），单次 in 查询批量返回；
+     * 纯读操作，无缓存（每次检索命中的 docId 集合不同，缓存收益低且引入失效复杂度）。
+     * 调用方（SearchKnowledgeTool）负责回查失败的降级兜底。
+     *
+     * @param docIds 文档 ID 集合（null/空集合返回空 Map，不发起查询）
+     * @return docId → title 映射；已删除/标题为 null 的文档不出现
+     */
+    @Override
+    public Map<Long, String> mapTitlesByIds(Collection<Long> docIds) {
+        if (docIds == null || docIds.isEmpty()) {
+            return Map.of();
+        }
+        // 本 service 主表：this.lambdaQuery() 链式 + 按需取列（宪法规范），一次 in 批量查询
+        return this.lambdaQuery()
+                .select(Document::getId, Document::getTitle)
+                .in(Document::getId, docIds)
+                .list()
+                .stream()
+                .filter(doc -> doc.getId() != null && doc.getTitle() != null)
+                .collect(Collectors.toMap(Document::getId, Document::getTitle, (a, b) -> a));
     }
 
     /**

@@ -10,6 +10,7 @@ import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
 import com.commerce.rag.config.MilvusCollectionInitializer;
 import com.commerce.rag.retrieval.FusionService;
 import com.commerce.rag.retrieval.RerankService;
+import com.commerce.rag.service.IDocumentService;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.IndexParam;
 import io.milvus.v2.service.vector.request.AnnSearchReq;
@@ -21,6 +22,7 @@ import io.milvus.v2.service.vector.response.SearchResp;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,11 +57,15 @@ class SearchKnowledgeToolTest {
     @Mock
     private RerankService rerankService;
 
+    @Mock
+    private IDocumentService documentService;
+
     private SearchKnowledgeTool tool;
 
     @BeforeEach
     void setUp() {
-        tool = new SearchKnowledgeTool(fusionService, rerankService, embeddingModel, milvusClientV2, 60, 20, false);
+        tool = new SearchKnowledgeTool(
+                fusionService, rerankService, embeddingModel, milvusClientV2, documentService, 60, 20, false);
     }
 
     /**
@@ -415,7 +421,8 @@ class SearchKnowledgeToolTest {
     @Test
     @DisplayName("searchSingle 混合检索请求 — sparse 开关开启时 dense + sparse 双路 + RRF 融合")
     void searchSingle_hybridRequest_denseAndSparse() {
-        tool = new SearchKnowledgeTool(fusionService, rerankService, embeddingModel, milvusClientV2, 60, 20, true);
+        tool = new SearchKnowledgeTool(
+                fusionService, rerankService, embeddingModel, milvusClientV2, documentService, 60, 20, true);
         TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "如何配置Redis", null);
         when(embeddingModel.embed("如何配置Redis")).thenReturn(new float[] {0.1f, 0.2f});
         SearchResp searchResp = mockSearchResp();
@@ -549,6 +556,112 @@ class SearchKnowledgeToolTest {
         String name = threadName.get();
         assertNotNull(name, "检索任务应在池线程上执行");
         assertTrue(name.matches("search-knowledge-\\d+"), "线程名应为 search-knowledge-N（带序号），实际: " + name);
+    }
+
+    // ==================== B3-3：docTitle 按 doc_id 批量回查 PG 填充 ====================
+
+    /** 构造带 doc_id 的 mock 检索结果行 */
+    private SearchResp.SearchResult searchResultWithDoc(String chunkId, String docId) {
+        return SearchResp.SearchResult.builder()
+                .score(0.9f)
+                .entity(Map.of(
+                        "chunk_id",
+                        chunkId,
+                        "content",
+                        "内容-" + chunkId,
+                        "heading_path",
+                        "Ch1",
+                        "doc_id",
+                        docId,
+                        "sha256",
+                        "a".repeat(64)))
+                .build();
+    }
+
+    private SearchResp respOf(SearchResp.SearchResult... results) {
+        SearchResp resp = mock(SearchResp.class);
+        when(resp.getSearchResults()).thenReturn(List.of(List.of(results)));
+        return resp;
+    }
+
+    @Test
+    @DisplayName("searchSingle — docTitle 按 doc_id 回查 PG document.title 填充（不再恒空串）")
+    void searchSingle_fillsDocTitleFromDocumentService() {
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
+        when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
+        // 先构造 mock 响应再 stub（避免嵌套 stubbing 的 UnfinishedStubbing）
+        SearchResp resp = respOf(searchResultWithDoc("chunk_001", "101"));
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
+        // docId 101 → 标题「高等数学讲义」（经 Service 层回查，B3-3）
+        when(documentService.mapTitlesByIds(Set.of(101L))).thenReturn(Map.of(101L, "高等数学讲义"));
+
+        List<KnowledgeChunk> result = tool.searchSingle(query, null);
+
+        assertEquals(1, result.size());
+        assertEquals("高等数学讲义", result.get(0).docTitle(), "docTitle 应填充为 PG document.title");
+    }
+
+    @Test
+    @DisplayName("searchSingle — docTitle 回查失败降级：docTitle 空串（ContextBuilder 兜底「未知」），检索不中断")
+    void searchSingle_docTitleLookupFails_degradesToEmpty() {
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
+        when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
+        // 先构造 mock 响应再 stub（避免嵌套 stubbing 的 UnfinishedStubbing）
+        SearchResp resp = respOf(searchResultWithDoc("chunk_001", "101"));
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
+        // PG 回查异常（如数据库瞬时故障）→ 降级空表，不阻断检索
+        when(documentService.mapTitlesByIds(any())).thenThrow(new RuntimeException("PG 不可用"));
+
+        List<KnowledgeChunk> result = tool.searchSingle(query, null);
+
+        // 检索结果不丢，docTitle 保持空串（由 ContextBuilderService blankTo 兜底「未知」）
+        assertEquals(1, result.size());
+        assertEquals("", result.get(0).docTitle());
+        assertEquals("chunk_001", result.get(0).chunkId());
+    }
+
+    @Test
+    @DisplayName("searchSingle — 多 chunk 相同 doc_id 去重后一次 in 回查（N 结果 → 1 次批量查询）")
+    void searchSingle_duplicateDocIds_singleBatchedLookup() {
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
+        when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
+        // 3 条结果：doc_id 101 出现两次 + 102 一次 → 去重为 {101,102} 单次批量回查
+        // 先构造 mock 响应再 stub（避免嵌套 stubbing 的 UnfinishedStubbing）
+        SearchResp resp = respOf(
+                searchResultWithDoc("chunk_001", "101"),
+                searchResultWithDoc("chunk_002", "101"),
+                searchResultWithDoc("chunk_003", "102"));
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
+        when(documentService.mapTitlesByIds(any())).thenReturn(Map.of(101L, "讲义A", 102L, "讲义B"));
+
+        List<KnowledgeChunk> result = tool.searchSingle(query, null);
+
+        // 一次批量回查，入参为去重后的 docId 集合
+        verify(documentService, times(1))
+                .mapTitlesByIds(argThat(ids -> ids.size() == 2 && ids.contains(101L) && ids.contains(102L)));
+        assertEquals(3, result.size());
+        assertEquals("讲义A", result.get(0).docTitle());
+        assertEquals("讲义A", result.get(1).docTitle());
+        assertEquals("讲义B", result.get(2).docTitle());
+    }
+
+    @Test
+    @DisplayName("searchSingle — doc_id 缺失/非法（空串、非数字）不触发回查，docTitle 空串")
+    void searchSingle_missingOrInvalidDocId_noLookup() {
+        TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "查询", null);
+        when(embeddingModel.embed("查询")).thenReturn(new float[] {0.1f});
+        // 先构造 mock 响应再 stub（避免嵌套 stubbing 的 UnfinishedStubbing）
+        SearchResp resp =
+                respOf(searchResultWithDoc("chunk_001", ""), searchResultWithDoc("chunk_002", "not-a-number"));
+        when(milvusClientV2.hybridSearch(any(HybridSearchReq.class))).thenReturn(resp);
+
+        List<KnowledgeChunk> result = tool.searchSingle(query, null);
+
+        // 全部 doc_id 不可解析 → 不发起回查
+        verifyNoInteractions(documentService);
+        assertEquals(2, result.size());
+        assertEquals("", result.get(0).docTitle());
+        assertEquals("", result.get(1).docTitle());
     }
 
     @Test
