@@ -21,7 +21,7 @@ import type { CourseDTO, DocumentChunkVO, KnowledgeBaseVO } from '@/lib/types'
  * 2. 筛选与分页：kbId 下拉 + docId 输入，仅后端两参；变更重置页码
  * 3. 勾选状态管理：行勾选/全选/部分选择/批量按钮出现条件与计数
  * 4. 批量修正 Dialog：表单校验（全「不改」禁提交）/ 课程远程搜索选择器 /
- *    提交体 {ids, collectionType?, courseId?}（不改省略、通用 DEFAULT 显式 null）/ loading 态
+ *    提交体 {ids, collectionType?, courseId?}（不改省略、通用 DEFAULT 显式 'DEFAULT'）/ loading 态
  * 5. 标记已修正：二次确认（危险按钮 + 不可撤销文案）→ POST batch-corrected → 行消失
  * 6. 编辑 Drawer：mono textarea 全文 + 元数据只读区 + 保存 PUT 体 + 重向量化提示
  * 7. 上下文 Drawer：parent/prev/current/next 时间线，null 节点不渲染，失败可重试
