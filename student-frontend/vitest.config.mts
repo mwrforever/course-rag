@@ -18,7 +18,8 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "lcov"],
-      // 覆盖率圈定已实现文件（Task 7 三文件 + Task 8 首页与组件 + Task 9 课程列表/工作台）。
+      // 覆盖率圈定已实现文件（Task 7 三文件 + Task 8 首页与组件 + Task 9 课程列表/工作台
+      // + Task 10 SSE 解析器）。
       // 暂不计入的文件与原因：site-header/middleware（middleware 跑在 edge runtime，
       // 无法在 jsdom 单测环境加载 next/server；site-header 导航激活态随导航任务落地后补测）；
       // 后续任务交付各自测试后逐步放宽 include 至 src 全量。
@@ -26,6 +27,7 @@ export default defineConfig({
         "src/lib/api.ts",
         "src/lib/auth-context.tsx",
         "src/lib/query-provider.tsx",
+        "src/lib/sse-parser.ts",
         "src/lib/time.ts",
         "src/app/*/login/page.tsx",
         "src/app/*/page.tsx",
@@ -44,6 +46,7 @@ export default defineConfig({
         lines: 80,
         "src/lib/api.ts": { lines: 100 },
         "src/lib/auth-context.tsx": { lines: 100 },
+        "src/lib/sse-parser.ts": { lines: 100 },
         "src/app/*/login/page.tsx": { lines: 100 },
       },
     },
