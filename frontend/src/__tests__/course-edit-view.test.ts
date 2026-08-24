@@ -83,7 +83,7 @@ function course(id: string, over: Partial<CourseDTO> = {}): CourseDTO {
     duration: '8 课时',
     tags: ['RAG', '入门'],
     rating: 0,
-    learningCount: '42',
+    learningCount: 42,
     enrollmentLink: 'https://apply.example.com/rag',
     status: 'ACTIVE',
     createdBy: '1001',

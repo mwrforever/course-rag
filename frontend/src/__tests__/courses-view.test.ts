@@ -39,7 +39,7 @@ function course(id: string, over: Partial<CourseDTO> = {}): CourseDTO {
     duration: '8 课时',
     tags: ['RAG'],
     rating: 0,
-    learningCount: '42',
+    learningCount: 42,
     enrollmentLink: '',
     status: 'ACTIVE',
     createdBy: '1001',
