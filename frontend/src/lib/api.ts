@@ -360,12 +360,13 @@ export const enrollmentApi = {
 
 /** 用户域（AdminUserController）：教师限己建学生，添加教师仅超管 */
 export const userApi = {
+  // 注：后端 AdminUserController.list 仅支持 page/size/role/status 四参（无 keyword，
+  // 审核 Important-1 删除防静默失效）
   list: (params?: {
     page?: number
     size?: number
     role?: UserRole
     status?: UserStatus
-    keyword?: string
   }) => request<PageResponse<UserDTO>>({ method: 'get', url: '/admin/users', params }),
   create: (data: CreateUserRequest) =>
     request<UserDTO>({ method: 'post', url: '/admin/users', data }),

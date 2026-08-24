@@ -615,7 +615,7 @@ describe('api client：接口函数拼装', () => {
   })
 
   it('userApi：用户管理方法/参数/状态与密码接口', async () => {
-    await userApi.list({ page: 1, size: 20, role: 'STUDENT', status: 'ACTIVE', keyword: '张' })
+    await userApi.list({ page: 1, size: 20, role: 'STUDENT', status: 'ACTIVE' })
     let config = lastCall('/admin/users')
     expect(config.method).toBe('get')
     expect(config.params).toEqual({
