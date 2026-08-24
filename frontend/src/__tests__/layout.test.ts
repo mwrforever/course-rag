@@ -16,7 +16,29 @@ import type { UserRole } from '@/lib/types'
  * 2. 顶栏 56px slate-900 + 品牌名；侧栏 220px 分组；内容区 max-w-[1400px]
  * 3. 头像下拉：显示名/角色展示 + 退出登录（调登出接口并跳登录页）
  * 4. 页头标题来自当前路由 meta.title
+ *
+ * 仪表盘子页于 Task 17 落地（KPI 卡）：此处 mock api 层返回稳定数据，
+ * 断言仪表盘 KPI 与快捷入口在布局壳内正常渲染（避免真实 axios 网络调用）。
  */
+
+/** 仪表盘接口 mock：稳定 KPI 数据（计数全 string，likeRate 浮点） */
+vi.mock('@/lib/api', () => ({
+  ApiError: class ApiError extends Error {},
+  dashboardApi: {
+    stats: () =>
+      Promise.resolve({
+        documentCount: '12',
+        pendingChunkCount: '3',
+        knowledgeBaseCount: '4',
+      }),
+    feedbackStats: () =>
+      Promise.resolve({ studentCount: '30', feedbackCount: '90', likeRate: 0.5 }),
+    feedbackTrend: () => Promise.resolve([]),
+  },
+  documentApi: {
+    list: () => Promise.resolve({ records: [], total: '0', page: 1, size: 5 }),
+  },
+}))
 
 /** 写入指定角色的登录态 */
 function setLoginRole(role: UserRole) {
@@ -118,9 +140,9 @@ describe('AdminLayout 渲染', () => {
     expect(wrapper.text()).not.toContain('会话审计')
     expect(wrapper.text()).not.toContain('安全审计')
 
-    // 内容区限宽，子路由页面经 RouterView 渲染（仪表盘「刷新」按钮在场）
+    // 内容区限宽，子路由页面经 RouterView 渲染（仪表盘 KPI 卡在场）
     expect(wrapper.find('.max-w-\\[1400px\\]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('刷新')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('文档总数'))
     wrapper.unmount()
   })
 

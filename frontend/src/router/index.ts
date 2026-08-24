@@ -66,7 +66,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'knowledge-bases',
         name: 'knowledge-bases',
-        component: () => import('@/views/KnowledgeBaseListView.vue'),
+        component: () => import('@/views/KnowledgeBasesView.vue'),
         meta: pageMeta('知识库', BOTH_ROLES),
       },
       {

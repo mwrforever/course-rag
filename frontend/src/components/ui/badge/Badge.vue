@@ -21,6 +21,8 @@ const badgeVariants = cva(
         danger: 'border-transparent bg-red-50 text-red-600',
         warning: 'border-transparent bg-amber-50 text-amber-600',
         info: 'border-transparent bg-sky-50 text-sky-600',
+        // violet：分片状态 CHUNKING/CHUNKED（设计 §2.5 状态可视化体系）
+        violet: 'border-transparent bg-violet-50 text-violet-600',
         outline: 'border-border bg-surface text-text-muted',
       },
     },

@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '@/App.vue'
 import { createAppRouter } from '@/router'
@@ -13,7 +13,29 @@ import type { LoginResponse } from '@/lib/types'
  *
  * 覆盖：未登录访问受保护路由被守卫重定向到登录页；登录后进入仪表盘
  * （渲染 AdminLayout 布局壳 + 仪表盘页）；已登录访问登录页被送回仪表盘。
+ *
+ * 仪表盘子页于 Task 17 落地（KPI 卡）：此处 mock api 层返回稳定数据，
+ * 断言 KPI 卡与快捷入口在壳内渲染（避免真实 axios 网络调用污染冒烟）。
  */
+
+/** 仪表盘接口 mock：稳定 KPI 数据（文档总数 12 由布局冒烟直接断言） */
+vi.mock('@/lib/api', () => ({
+  ApiError: class ApiError extends Error {},
+  dashboardApi: {
+    stats: () =>
+      Promise.resolve({
+        documentCount: '12',
+        pendingChunkCount: '3',
+        knowledgeBaseCount: '4',
+      }),
+    feedbackStats: () =>
+      Promise.resolve({ studentCount: '30', feedbackCount: '90', likeRate: 0.5 }),
+    feedbackTrend: () => Promise.resolve([]),
+  },
+  documentApi: {
+    list: () => Promise.resolve({ records: [], total: '0', page: 1, size: 5 }),
+  },
+}))
 describe('App 冒烟', () => {
   beforeEach(() => {
     // 每个用例独立存储实例，避免登录态串扰
@@ -56,14 +78,14 @@ describe('App 冒烟', () => {
     await router.push('/dashboard')
     await router.isReady()
 
-    // 仪表盘页面渲染在 AdminLayout 壳内（顶栏品牌 + 侧导航 + 页面按钮）
+    // 仪表盘页面渲染在 AdminLayout 壳内（顶栏品牌 + 侧导航 + KPI 卡）
     expect(router.currentRoute.value.name).toBe('dashboard')
     expect(wrapper.text()).toContain('仪表盘')
     expect(wrapper.text()).toContain('知识库管理后台')
-    expect(wrapper.text()).toContain('刷新')
-    // 仪表盘「刷新」按钮为主 CTA（bg-brand 语义 token）
-    const brandButton = wrapper.findAll('button').find((b) => b.text() === '刷新')
-    expect(brandButton?.classes()).toContain('bg-brand')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('文档总数'))
+    // KPI 数值（mock 文档总数 12）与快捷入口在壳内渲染
+    await vi.waitFor(() => expect(wrapper.text()).toContain('12'))
+    expect(wrapper.text()).toContain('上传文档')
     wrapper.unmount()
   })
 
