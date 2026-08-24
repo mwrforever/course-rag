@@ -362,12 +362,8 @@ export const enrollmentApi = {
 export const userApi = {
   // 注：后端 AdminUserController.list 仅支持 page/size/role/status 四参（无 keyword，
   // 审核 Important-1 删除防静默失效）
-  list: (params?: {
-    page?: number
-    size?: number
-    role?: UserRole
-    status?: UserStatus
-  }) => request<PageResponse<UserDTO>>({ method: 'get', url: '/admin/users', params }),
+  list: (params?: { page?: number; size?: number; role?: UserRole; status?: UserStatus }) =>
+    request<PageResponse<UserDTO>>({ method: 'get', url: '/admin/users', params }),
   create: (data: CreateUserRequest) =>
     request<UserDTO>({ method: 'post', url: '/admin/users', data }),
   get: (id: string) => request<UserDTO>({ method: 'get', url: `/admin/users/${id}` }),
