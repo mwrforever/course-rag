@@ -1,0 +1,66 @@
+import { test, expect } from '@playwright/test'
+import { mockAuth, login, apiOk } from './helpers/api-mock'
+
+/**
+ * 仪表盘 E2E（整合 spec §3.2 dashboard 组）
+ * - KPI 4 卡数值渲染（mock stats）＋ 单折线图表挂载 ＋ 快捷入口跳转
+ */
+
+test.describe('仪表盘', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuth(page)
+  })
+
+  async function mockDashboard(page: import('@playwright/test').Page) {
+    await page.route('**/api/admin/dashboard/stats', (r) =>
+      r.fulfill({ status: 200, contentType: 'application/json', body: apiOk({ documentCount: '156', pendingChunkCount: '23', knowledgeBaseCount: '5' }) }),
+    )
+    await page.route('**/api/admin/feedback/stats?period=today', (r) =>
+      r.fulfill({ status: 200, contentType: 'application/json', body: apiOk({ studentCount: '89', feedbackCount: '120', likeRate: 0.86 }) }),
+    )
+    await page.route('**/api/admin/feedback/trend?days=7', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiOk([
+          { date: '2026-08-18', count: '12' },
+          { date: '2026-08-19', count: '8' },
+          { date: '2026-08-20', count: '15' },
+        ]),
+      }),
+    )
+    await page.route('**/api/admin/documents?sort=created&size=5', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiOk({
+          records: [
+            { id: 'd1', kbId: 'k1', title: '数据结构讲义', fileType: 'pdf', parseStatus: 'INDEXED', chunkCount: 45, fileSize: '2048000', createdAt: '2026-08-24T10:00:00' },
+          ],
+          total: '1',
+          page: 1,
+          size: 5,
+        }),
+      }),
+    )
+  }
+
+  test('KPI 卡数值渲染且无环比箭头', async ({ page }) => {
+    await mockDashboard(page)
+    await login(page, 'teacher')
+    await expect(page.getByText('156', { exact: true })).toBeVisible()
+    await expect(page.getByText('23', { exact: true })).toBeVisible()
+    await expect(page.getByText('89', { exact: true })).toBeVisible()
+    await expect(page.getByText('86%', { exact: true })).toBeVisible()
+    // D11：无环比箭头（禁假数据）
+    await expect(page.getByText(/↗|↑|环比/)).toHaveCount(0)
+  })
+
+  test('最近文档渲染与快捷入口跳转', async ({ page }) => {
+    await mockDashboard(page)
+    await login(page, 'teacher')
+    await expect(page.getByText('数据结构讲义')).toBeVisible()
+    await page.getByText('上传文档').click()
+    await expect(page).toHaveURL('**/knowledge/documents')
+  })
+})

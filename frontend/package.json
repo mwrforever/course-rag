@@ -12,7 +12,7 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
     "test:cov": "vitest run --coverage",
-    "e2e": "echo \"e2e 占位：随后续任务落地（暂未接入 Playwright）\""
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource/geist-mono": "^5.3.0",
