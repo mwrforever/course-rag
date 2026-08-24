@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+/* ===== 设计令牌（设计文档 §1.2，Tailwind v4 CSS-first 方案，无 tailwind.config.ts） =====
+   stone 暖中性 + teal 唯一强调色；组件只允许引用本层语义 token，禁止直写 Primitive 色值 */
+@theme {
+  --color-bg: #fafaf9;
+  --color-surface: #ffffff;
+  --color-surface-2: #f5f5f4;
+  --color-border: #e7e5e4;
+  --color-text: #1c1917;
+  --color-muted: #78716c;
+  --color-subtle: #a8a29e;
+  --color-brand: #0d9488;
+  --color-brand-strong: #0f766e;
+  --color-brand-soft: #ccfbf1;
+  --color-brand-light: #f0fdfa;
+  --color-success: #16a34a;
+  --color-danger: #dc2626;
+  --color-warning: #d97706;
+  /* 字体变量由 layout.tsx 的 next/font 注入（--font-outfit/--font-noto/--font-geist-mono） */
+  --font-display: var(--font-outfit), var(--font-noto), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
+}
+
+/* ===== 基础层：全站默认底色、文字色与字体栈（引用 @theme 语义 token） ===== */
+@layer base {
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-display);
+  }
+}
