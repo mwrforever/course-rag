@@ -183,6 +183,30 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
     }
 
     /**
+     * 查会话内已完成 run 的 ID 列表（R1 学生历史消息两步查询第一步）
+     *
+     * <p>M3 处置：历史回显剔除非 COMPLETED run 的半截内容——调用方
+     * （ChatMessageServiceImpl.findStudentMessagesBySession）以本列表做
+     * run_id IN 过滤，仅保留 USER 行与 COMPLETED run 的非 USER 行。
+     * 与 findStaleActive 同款 runMapper + Wrappers 静态工厂写法（可测性：
+     * 纯 Mockito 可 mock selectList 验证条件），按需取列仅 id。
+     *
+     * @param sessionId 会话 ID（须已通过归属校验）
+     * @return COMPLETED 状态的 runId 列表（无则为空列表，调用方退化为仅查 USER 行）
+     */
+    public List<Long> findCompletedRunIds(Long sessionId) {
+        // 两步查询第一步：仅取 COMPLETED run 的 id 列（不取 meta_json 等大字段）
+        return runMapper
+                .selectList(Wrappers.<ChatRun>lambdaQuery()
+                        .select(ChatRun::getId)
+                        .eq(ChatRun::getSessionId, sessionId)
+                        .eq(ChatRun::getStatus, "COMPLETED"))
+                .stream()
+                .map(ChatRun::getId)
+                .toList();
+    }
+
+    /**
      * 查询滞留的 ACTIVE/QUEUED run（M-8 巡检 + B2-3 QUEUED 扩展）
      *
      * <p>查询目标虽为本 service 主表，但既有实现走 runMapper + Wrappers 静态工厂

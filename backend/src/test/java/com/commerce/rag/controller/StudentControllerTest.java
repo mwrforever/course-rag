@@ -10,16 +10,23 @@ import com.commerce.rag.dto.ApiResponse;
 import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.dto.PageResponse;
 import com.commerce.rag.exception.BizException;
+import com.commerce.rag.record.AttachmentRecord;
+import com.commerce.rag.record.RetrievalSource;
+import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.service.IDocumentChunkService;
 import com.commerce.rag.service.IEnrollmentService;
 import com.commerce.rag.stream.ChatStreamEntry;
+import com.commerce.rag.vo.ChatSessionVO;
 import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
 import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.vo.StudentCourseVO;
+import com.commerce.rag.vo.StudentMessageVO;
 import jakarta.servlet.http.HttpServletRequest;
+import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,6 +38,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -52,6 +60,9 @@ class StudentControllerTest {
     private IChatSessionService sessionService;
 
     @Mock
+    private IChatMessageService messageService;
+
+    @Mock
     private IDocumentChunkService documentChunkService;
 
     @Mock
@@ -61,7 +72,8 @@ class StudentControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new StudentController(enrollmentService, sessionService, documentChunkService, chatStreamEntry);
+        controller = new StudentController(
+                enrollmentService, sessionService, messageService, documentChunkService, chatStreamEntry);
     }
 
     private HttpServletRequest studentRequest(Long userId) {
@@ -283,6 +295,114 @@ class StudentControllerTest {
         ApiResponse<SessionVO> result = controller.createSession(studentRequest(5L), Map.of("title", "自定义标题"));
 
         assertEquals("自定义标题", result.data().title());
+    }
+
+    // ==================== 历史消息（R1 补口 A） ====================
+
+    /** 构造归属用户的会话摘要 VO（归属校验经 sessionService.findById 出参完成） */
+    private ChatSessionVO chatSessionVO(Long id, Long userId) {
+        return new ChatSessionVO(
+                id,
+                userId,
+                "会话" + id,
+                "ACTIVE",
+                LocalDateTime.of(2026, 8, 15, 10, 0),
+                "qwen3.8-max",
+                LocalDateTime.of(2026, 8, 15, 9, 0));
+    }
+
+    /** 构造带解析后 sources/attachments 的学生消息 VO（模拟 service 出参） */
+    private StudentMessageVO studentMessageVO(Long id, String role) {
+        return new StudentMessageVO(
+                id,
+                role,
+                "内容-" + id,
+                null,
+                "knowledge_question",
+                10L,
+                1,
+                LocalDateTime.of(2026, 8, 15, 9, 1),
+                List.of(new RetrievalSource("101", "RAG 讲义", "Ch3 > 3.2", 0.87)),
+                List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1024L)));
+    }
+
+    @Test
+    @DisplayName("历史消息 → 归属校验通过后返回分页消息（含 sources/attachments 解析数组）")
+    void sessionMessages_returnsParsedArrays() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 5L));
+        Page<StudentMessageVO> paged = new Page<>(1, 200);
+        paged.setRecords(List.of(studentMessageVO(1L, "USER"), studentMessageVO(2L, "ASSISTANT")));
+        paged.setTotal(2);
+        when(messageService.findStudentMessagesBySession(1L, 1, 200)).thenReturn(paged);
+
+        ApiResponse<PageResponse<StudentMessageVO>> result = controller.sessionMessages(studentRequest(5L), 1L, 1, 200);
+
+        PageResponse<StudentMessageVO> data = result.data();
+        assertEquals(0, result.code());
+        assertEquals(2, data.records().size());
+        assertEquals(2L, data.total());
+        assertEquals(1, data.page());
+        assertEquals(200, data.size());
+        StudentMessageVO first = data.records().get(0);
+        assertEquals(1L, first.id());
+        assertEquals("USER", first.role());
+        assertEquals("knowledge_question", first.intentType());
+        assertEquals(10L, first.runId());
+        // sources 为服务端解析后的对象数组（chunkId/docTitle/headingPath/score）
+        assertEquals(1, first.sources().size());
+        assertEquals("RAG 讲义", first.sources().get(0).docTitle());
+        assertEquals(0.87, first.sources().get(0).score());
+        // attachments 为服务端解析后的对象数组（type/url/name/size）
+        assertEquals("0/a.png", first.attachments().get(0).url());
+        assertEquals(1024L, first.attachments().get(0).size());
+    }
+
+    @Test
+    @DisplayName("历史消息 → 会话不存在抛 404，不触发消息查询")
+    void sessionMessages_sessionNotFound_throws404() {
+        when(sessionService.findById(99L)).thenReturn(null);
+
+        BizException ex =
+                assertThrows(BizException.class, () -> controller.sessionMessages(studentRequest(5L), 99L, 1, 200));
+
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
+        assertEquals("会话不存在", ex.getMessage());
+        verify(messageService, never()).findStudentMessagesBySession(anyLong(), anyInt(), anyInt());
+    }
+
+    @Test
+    @DisplayName("历史消息 → 非本人会话抛 403（会话语义，与 ChatStreamEntry 先例一致）")
+    void sessionMessages_notOwner_throws403() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 9L));
+
+        BizException ex =
+                assertThrows(BizException.class, () -> controller.sessionMessages(studentRequest(5L), 1L, 1, 200));
+
+        assertEquals(HttpStatus.FORBIDDEN.value(), ex.getCode());
+        assertEquals("无权查看此会话", ex.getMessage());
+        verify(messageService, never()).findStudentMessagesBySession(anyLong(), anyInt(), anyInt());
+    }
+
+    @Test
+    @DisplayName("历史消息 → 分页参数缺省为 page=1 与 size=200（注解 defaultValue + 透传）")
+    void sessionMessages_defaultPageParams_are1And200() throws Exception {
+        // 注解层：@RequestParam defaultValue 断言（缺省契约由 MVC 层按注解填充）
+        Method method = StudentController.class.getMethod(
+                "sessionMessages", HttpServletRequest.class, Long.class, int.class, int.class);
+        Parameter[] params = method.getParameters();
+        assertEquals("1", params[2].getAnnotation(RequestParam.class).defaultValue());
+        assertEquals("200", params[3].getAnnotation(RequestParam.class).defaultValue());
+
+        // 行为层：缺省值（1/200）透传给 service
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 5L));
+        Page<StudentMessageVO> paged = new Page<>(1, 200);
+        paged.setRecords(List.of());
+        paged.setTotal(0);
+        when(messageService.findStudentMessagesBySession(1L, 1, 200)).thenReturn(paged);
+
+        controller.sessionMessages(studentRequest(5L), 1L, 1, 200);
+
+        verify(messageService).findStudentMessagesBySession(1L, 1, 200);
     }
 
     // ==================== J8: SSE 流式对话 ====================

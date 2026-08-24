@@ -172,6 +172,33 @@ class ChatRunServiceTest {
         assertTrue(params.contains("QUEUED"), "查询应含 QUEUED 状态分支（B2-3 巡检扩展）");
     }
 
+    @Test
+    @DisplayName("findCompletedRunIds → 查会话内 COMPLETED run 的 ID 列表（按需取列，R1 历史消息两步查询第一步）")
+    @SuppressWarnings("unchecked")
+    void findCompletedRunIds_returnsCompletedRunIdsOnly() {
+        ChatRun completed = new ChatRun();
+        completed.setId(10L);
+        completed.setStatus("COMPLETED");
+        when(runMapper.selectList(any())).thenReturn(List.of(completed));
+
+        List<Long> runIds = runService.findCompletedRunIds(1L);
+
+        // Then: 仅返回 runId 列表（供消息表 run_id IN 过滤，剔除取消/异常 run 的半截内容）
+        assertEquals(List.of(10L), runIds);
+
+        // Then: 查询条件为 session_id + status=COMPLETED，投影仅 id 列
+        ArgumentCaptor<LambdaQueryWrapper<ChatRun>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(runMapper).selectList(captor.capture());
+        LambdaQueryWrapper<ChatRun> wrapper = captor.getValue();
+        String sqlSegment = wrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("session_id"), "应按会话过滤: " + sqlSegment);
+        assertTrue(sqlSegment.contains("status"), "应按状态过滤: " + sqlSegment);
+        assertTrue(wrapper.getSqlSelect().contains("id"), "投影应仅取 id 列: " + wrapper.getSqlSelect());
+        assertFalse(wrapper.getSqlSelect().contains("meta_json"), "不应取 meta_json 等大字段");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("COMPLETED"), "状态参数应为 COMPLETED");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(1L), "会话参数应为入参 sessionId");
+    }
+
     // ==================== collectUniqueAttachments 后续轮次附件重建聚合（Task 11，spec §5.1） ====================
     // 说明：findRecentAttachments 的 SQL 获取段走 this.lambdaQuery()（宪法主表内置链式），
     // MP 3.5.12 该链式构建时内窥真实 MapperProxy（MybatisUtils.getMapperProxy），纯 Mockito 无法

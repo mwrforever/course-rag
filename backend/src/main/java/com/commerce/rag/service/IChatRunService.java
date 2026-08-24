@@ -69,6 +69,18 @@ public interface IChatRunService extends IService<ChatRun> {
     List<AttachmentRecord> findRecentAttachments(Long sessionId, Long excludeRunId, int limit);
 
     /**
+     * 查会话内已完成 run 的 ID 列表（R1 学生历史消息两步查询第一步）
+     *
+     * <p>M3 处置：历史回显仅保留 USER 行与 COMPLETED run 的非 USER 行，
+     * 取消/异常 run 的半截 assistant 内容（thinking/工具行/正文）剔除，
+     * 与实时对话「已停止生成」标注语义一致。
+     *
+     * @param sessionId 会话 ID（须已通过归属校验）
+     * @return COMPLETED 状态的 runId 列表（无则为空列表）
+     */
+    List<Long> findCompletedRunIds(Long sessionId);
+
+    /**
      * 查询滞留的 ACTIVE/QUEUED run（M-8 巡检 + B2-3 QUEUED 扩展）
      *
      * <p>进程崩溃/runPool 拒绝后 run 可能滞留 ACTIVE；附件处理窗口内崩溃或停机丢弃
