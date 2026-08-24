@@ -187,7 +187,7 @@ export interface CourseScheduleVO {
   updatedAt: string
 }
 
-/** 课程（后端 dto/CourseDTO）：price/rating 为 BigDecimal 按 number 接收；tags 可空数组 */
+/** 课程（后端 dto/CourseDTO）：price/rating 为 BigDecimal 按 number 接收；learningCount 为 Long 序列化 string；tags 可空数组 */
 export interface CourseDTO {
   id: string
   title: string
@@ -199,7 +199,7 @@ export interface CourseDTO {
   duration: string
   tags: string[] | null
   rating: number
-  learningCount: number
+  learningCount: string
   enrollmentLink: string
   status: CourseStatus
   createdBy: string

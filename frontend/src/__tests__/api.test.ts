@@ -565,11 +565,13 @@ describe('api client：接口函数拼装', () => {
     await courseApi.contents('c-9')
     expect(lastCall('/admin/courses/c-9/contents').method).toBe('get')
 
-    // 内容单 Tab 保存：body 为裸 JSON 字符串（设计 §2.4.4）
+    // 内容单 Tab 保存：body 为裸 JSON 字符串，Content-Type 显式 application/json
+    // （后端 @RequestBody String 接收：axios 字符串 data 原样透传，不带引号包裹）
     await courseApi.updateContent('c-9', 'intro', '## 课程介绍正文')
     const contentConfig = lastCall('/admin/courses/c-9/contents/intro')
     expect(contentConfig.method).toBe('put')
     expect(contentConfig.data).toBe('## 课程介绍正文')
+    expect(contentConfig.headers?.['Content-Type']).toBe('application/json')
 
     await courseApi.batchContents('c-9', [{ contentType: 'intro', content: 'x', sortOrder: 1 }])
     expect(lastCall('/admin/courses/c-9/contents').method).toBe('put')

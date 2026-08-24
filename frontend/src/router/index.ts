@@ -91,7 +91,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'courses',
         name: 'courses',
-        component: () => import('@/views/CourseListView.vue'),
+        component: () => import('@/views/CoursesView.vue'),
         meta: pageMeta('课程管理', BOTH_ROLES),
       },
       {

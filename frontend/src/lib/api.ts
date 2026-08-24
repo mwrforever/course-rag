@@ -324,6 +324,11 @@ export const courseApi = {
       method: 'put',
       url: `/admin/courses/${id}/contents/${contentType}`,
       data: content,
+      // 裸字符串 body：显式声明 application/json（后端 @RequestBody String 接收）；
+      // axios 默认 transformRequest 遇到 application/json 会把字符串 JSON.stringify
+      // 成带引号形式，必须替换为该请求专属 transformRequest 原样透传（不加引号）
+      headers: { 'Content-Type': 'application/json' },
+      transformRequest: [(data) => data],
     }),
   batchContents: (id: string, contents: CourseContentDTO[]) =>
     request<void>({ method: 'put', url: `/admin/courses/${id}/contents`, data: contents }),
