@@ -180,7 +180,7 @@ describe("chatReducer 纯函数", () => {
     expect(s.streaming).toBe(false);
   });
 
-  it("用例1 扩展：metadata 幂等——同 runId 二推仅更新 model/sessionId，不重复建槽", () => {
+  it("用例1 扩展：metadata 幂等：同 runId 二推仅更新 model/sessionId，不重复建槽", () => {
     let s = chatReducer(createInitialState(null), {
       type: "metadata",
       runId: "run-1",
@@ -249,7 +249,7 @@ describe("chatReducer 纯函数", () => {
     expect(s.messages[0].tools[0]).toMatchObject({ status: "success", output: { hits: 2 } });
   });
 
-  it("用例4 扩展：toolCallId 空串容错——按到达顺序（索引兜底）配对", () => {
+  it("用例4 扩展：toolCallId 空串容错：按到达顺序（索引兜底）配对", () => {
     let s = streamingWithAi({ messages: [aiMsg()] });
     s = chatReducer(s, { type: "tool_call", toolCallId: "", toolName: "a", input: null });
     s = chatReducer(s, { type: "tool_call", toolCallId: "", toolName: "b", input: null });
@@ -405,6 +405,51 @@ describe("chatReducer 纯函数", () => {
     expect(s).toBe(afterEnd);
   });
 
+  it("用例8 扩展（Critical-1）：end COMPLETED 后 send 新 run 重置 run 级终态与锚点（多轮追问前提）", () => {
+    // 修复回归锚点：send 未重置 endedStatus 时，新 run 的 metadata 被 isTerminal
+    // 幂等守卫整体吞掉，streaming 永久 true 页面假死
+    const s0: ChatStreamState = {
+      ...createInitialState(null),
+      streaming: false,
+      endedStatus: "COMPLETED",
+      lastEventId: 10,
+      runId: "run-1",
+      sessionId: "sess-1",
+      messages: [
+        userMsg(),
+        aiMsg({ endStatus: "COMPLETED", messageId: "msg-1", text: "第一轮回答" }),
+      ],
+    };
+    const s = chatReducer(s0, { type: "send", id: "u-2", query: "追问", attachments: [] });
+    // 关键：终态/runId/锚点清除，幂等守卫解除，新流事件得以落位
+    expect(s.endedStatus).toBeNull();
+    expect(s.runId).toBeNull();
+    expect(s.lastEventId).toBeNull();
+    expect(s.streaming).toBe(true);
+    expect(s.error).toBeNull();
+    // 保留既有消息（含首轮终态与反馈 id）与会话归属
+    expect(s.messages).toHaveLength(3);
+    expect(s.messages[1]).toMatchObject({
+      id: "run-1",
+      text: "第一轮回答",
+      endStatus: "COMPLETED",
+      messageId: "msg-1",
+    });
+    expect(s.messages[2]).toMatchObject({ id: "u-2", role: "user", content: "追问" });
+    expect(s.sessionId).toBe("sess-1");
+    // 新 run 的流事件可正常落位（2026 修复前此步被整体忽略）
+    const s2 = chatReducer(s, {
+      type: "metadata",
+      runId: "run-2",
+      sessionId: "sess-1",
+      model: "m2",
+      seq: 1,
+    });
+    expect(s2.messages).toHaveLength(4);
+    expect(s2.messages[3]).toMatchObject({ id: "run-2", role: "assistant", model: "m2" });
+    expect(s2.lastEventId).toBe(1);
+  });
+
   it("用例8 send：追加用户消息（含附件）、置 streaming、清历史错误", () => {
     const attach: AttachmentRecord = { type: "image", url: "obj-1", name: "a.png", size: "1024" };
     const s0: ChatStreamState = {
@@ -427,17 +472,25 @@ describe("chatReducer 纯函数", () => {
     expect(s.error).toBeNull();
   });
 
-  it("用例8 语义：已有活跃 run 时 send 不重置 streaming（409 走 hook 层拦截，流向零污染）", () => {
-    const s0 = streamingWithAi(); // streaming=true 的活跃 run
+  it("用例8 语义：send 重置 run 级锚点/终态（runId/lastEventId/endedStatus），保留消息与会话归属（409 由 hook 层拦截，流向零污染）", () => {
+    const s0: ChatStreamState = {
+      ...streamingWithAi(),
+      endedStatus: "COMPLETED",
+      lastEventId: 5,
+    };
     const s = chatReducer(s0, { type: "send", id: "u-2", query: "再问", attachments: [] });
     expect(s.streaming).toBe(true);
     expect(s.messages).toHaveLength(3);
-    // 活跃 run 的会话归属不被新 send 覆盖
-    expect(s.runId).toBe("run-1");
+    // 会话归属与既有消息不被新 send 覆盖（历史消息滚屏不受影响）；run 级锚点随新 run 重置
+    expect(s.runId).toBeNull();
+    expect(s.lastEventId).toBeNull();
+    expect(s.endedStatus).toBeNull();
     expect(s.sessionId).toBe("sess-1");
+    expect(s.messages[0]).toMatchObject({ id: "u-1", role: "user", content: "问题" });
+    expect(s.messages[2]).toMatchObject({ id: "u-2", role: "user", content: "再问" });
   });
 
-  it("用例8 语义：发送失败（409）不落 error 不落终态——reducer 视角为「无动作」（hook 层验证）", () => {
+  it("用例8 语义：发送失败（409）不落 error 不落终态：reducer 视角为「无动作」（hook 层验证）", () => {
     // 契约：409 由 hook 在 dispatch 前拦截，streaming 保持、error 保持 null；
     // 此处验证 reducer 中不存在任何会把 409 写进状态的动作
     const s = chatReducer(streamingWithAi(), { type: "reconnect" });
@@ -759,6 +812,102 @@ describe("useChatStream 集成", () => {
     expect(result.current.state.messages[1]).toMatchObject({ role: "assistant", id: "run-1" });
   });
 
+  it("Critical-1 全链路：首轮 end COMPLETED 后追问，新 run 事件全部正常落位（终态恢复/反馈 id 更新/第二轮 CANCELLED 后缀）", async () => {
+    // 多轮追问回归：send 未重置 endedStatus 时，第二轮 metadata 被 isTerminal 守卫吞掉，
+    // streaming 永久 true 页面假死（三轮可控流模拟首轮 COMPLETED → 二轮 COMPLETED → 三轮 CANCELLED）
+    const streams = [controllableSse(), controllableSse(), controllableSse()];
+    let postCount = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") {
+        return streams[postCount++].response;
+      }
+      throw new Error(`未预期的请求: ${input}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+
+    // 第一轮：thinking + delta 推流至 end COMPLETED
+    await act(async () => {
+      await result.current.send("第一问", []);
+    });
+    await act(async () => {
+      streams[0].push(
+        frame(1, "metadata", J({ runId: "run-1", sessionId: "sess-1", model: "m1" })),
+      );
+      streams[0].push(frame(2, "thinking", J({ delta: "思1" })));
+      streams[0].push(frame(3, "delta", J({ text: "第一轮回答" })));
+      streams[0].push(
+        frame(4, "end", J({ runId: "run-1", status: "COMPLETED", messageId: "msg-1" })),
+      );
+    });
+    await waitFor(() => expect(result.current.state.endedStatus).toBe("COMPLETED"));
+    expect(result.current.state.streaming).toBe(false);
+    expect(result.current.state.lastEventId).toBe(4);
+
+    // 第二轮追问：终态被 send 清除，新流 metadata/thinking/delta/end 全部正常落位
+    await act(async () => {
+      await result.current.send("追问", []);
+    });
+    await act(async () => {
+      streams[1].push(
+        frame(1, "metadata", J({ runId: "run-2", sessionId: "sess-1", model: "m1" })),
+      );
+      streams[1].push(frame(2, "thinking", J({ delta: "思2" })));
+      streams[1].push(frame(3, "delta", J({ text: "第二轮回答" })));
+      streams[1].push(
+        frame(4, "end", J({ runId: "run-2", status: "COMPLETED", messageId: "msg-2" })),
+      );
+    });
+    await waitFor(() => expect(result.current.state.endedStatus).toBe("COMPLETED"));
+    const st2 = result.current.state;
+    expect(st2.streaming).toBe(false);
+    // 两轮 AI 消息各自完整落位，互不污染
+    expect(st2.messages).toHaveLength(4);
+    expect(st2.messages[1]).toMatchObject({
+      id: "run-1",
+      text: "第一轮回答",
+      endStatus: "COMPLETED",
+      messageId: "msg-1",
+    });
+    expect(st2.messages[3]).toMatchObject({
+      id: "run-2",
+      role: "assistant",
+      thinking: "思2",
+      text: "第二轮回答",
+      endStatus: "COMPLETED",
+      messageId: "msg-2",
+    });
+    // 反馈语义：messageId 已更新为第二轮值（J5 反馈接口唯一来源）
+    expect(st2.messages[3].messageId).toBe("msg-2");
+    expect(st2.runId).toBe("run-2");
+    expect(st2.sessionId).toBe("sess-1");
+
+    // 第三轮 end CANCELLED：停止后缀落在第三轮自己的消息上，前两轮不被污染
+    await act(async () => {
+      await result.current.send("再问", []);
+    });
+    await act(async () => {
+      streams[2].push(
+        frame(1, "metadata", J({ runId: "run-3", sessionId: "sess-1", model: "m1" })),
+      );
+      streams[2].push(frame(2, "delta", J({ text: "部分回答" })));
+      streams[2].push(frame(3, "end", J({ runId: "run-3", status: "CANCELLED" })));
+    });
+    await waitFor(() => expect(result.current.state.endedStatus).toBe("CANCELLED"));
+    const st3 = result.current.state;
+    expect(st3.messages).toHaveLength(6);
+    expect(st3.messages[5]).toMatchObject({
+      id: "run-3",
+      text: `部分回答${STOPPED_SUFFIX}`,
+      endStatus: "CANCELLED",
+      messageId: null,
+    });
+    // 第二轮不受第三轮 CANCELLED 影响（正文无后缀、反馈 id 仍是 msg-2）
+    expect(st3.messages[3]).toMatchObject({ id: "run-2", text: "第二轮回答", messageId: "msg-2" });
+    expect(st3.messages[1]).toMatchObject({ id: "run-1", text: "第一轮回答", messageId: "msg-1" });
+    expect(st3.streaming).toBe(false);
+    expect(st3.error).toBeNull();
+  });
+
   it("cancel：POST runId/cancel 后流以 end CANCELLED 收尾（停止后缀）；终态后再 cancel 的 409 静默", async () => {
     const ctrl = controllableSse();
     let cancelCalls = 0;
@@ -835,8 +984,21 @@ describe("useChatStream 集成", () => {
     await act(async () => {
       ctrl.push(md());
       ctrl.push(frame(2, "delta", J({ text: "部分答案" })));
+      // 断流前预置来源卡（M10 降级续流不得清掉已有来源卡）
+      ctrl.push(
+        frame(
+          3,
+          "sources",
+          J({
+            sources: [
+              { chunkId: "c-1", docTitle: "数据结构讲义", headingPath: "Ch3", score: 0.87 },
+            ],
+          }),
+        ),
+      );
     });
     expect(result.current.state.runId).toBe("run-1");
+    expect(result.current.state.messages[1].sources).toHaveLength(1);
 
     // t=15s 前无任何行：未够 30s 不触发
     await act(async () => {
@@ -853,24 +1015,98 @@ describe("useChatStream 集成", () => {
     expect(
       fetchMock.mock.calls.filter((c) => (c[1] as RequestInit)?.method === "GET"),
     ).toHaveLength(0);
-    // 心跳后累计 31s（t=46s ≥ 45s）：触发重连，URL 携带最后事件锚点 lastEventId=2
+    // 心跳后累计 31s（t=46s ≥ 45s）：触发重连，URL 携带最后事件锚点 lastEventId=3
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_000);
     });
     const getCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === "GET")!;
-    expect(String(getCall[0])).toBe("/api/v1/student/chat/run-1/reconnect?lastEventId=2");
+    expect(String(getCall[0])).toBe("/api/v1/student/chat/run-1/reconnect?lastEventId=3");
 
-    // M10 锚点：重连续流不回放 metadata/sources——不新建 AI 槽、不重复来源卡，仅续接正文
+    // M10 锚点：重连续流不回放 metadata/sources：不新建 AI 槽、不重复来源卡、不清已有来源卡，仅续接正文
     await act(async () => {
-      reconnectCtrl.push(frame(3, "delta", J({ text: "续流内容" })));
+      reconnectCtrl.push(frame(4, "delta", J({ text: "续流内容" })));
     });
     expect(result.current.state.messages).toHaveLength(2);
     expect(result.current.state.messages[1]).toMatchObject({
       model: "qwen3.8-max",
-      sources: [],
+      // 非平凡断言：断流前预置的来源卡在降级续流后原样保留（未被清空/覆盖/重复）
+      sources: [{ chunkId: "c-1", docTitle: "数据结构讲义", headingPath: "Ch3", score: 0.87 }],
       text: "部分答案续流内容",
     });
+    expect(result.current.state.lastEventId).toBe(4);
+  });
+
+  it("Critical-1 锚点：终态后新 run 断流重连携带新 run 自己的锚点，不携带上一 run 的锚点", async () => {
+    // 回归锚点：send 未重置 lastEventId 时，run2 断流重连会拿 run1 的 seq 去重放，
+    // 后端按错误序列回放（run1 的 seq 在 run2 流中不存在）
+    vi.useFakeTimers();
+    const ctrl1 = controllableSse();
+    const ctrl2 = controllableSse();
+    const reconnectCtrl = controllableSse();
+    let postCount = 0;
+    let getCount = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/student/chat") && init?.method === "POST") {
+        return postCount++ === 0 ? ctrl1.response : ctrl2.response;
+      }
+      if (init?.method === "GET") {
+        getCount += 1;
+        return getCount === 1 ? reconnectCtrl.response : jsonRes(503, { code: 503, message: "忙" });
+      }
+      throw new Error(`未预期的请求: ${url}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+
+    // 第一轮完整推流（锚点累积到 run1 的 seq=3）至 end COMPLETED
+    await act(async () => {
+      await result.current.send("第一问", []);
+    });
+    await act(async () => {
+      ctrl1.push(frame(1, "metadata", J({ runId: "run-1", sessionId: "sess-1", model: "m1" })));
+      ctrl1.push(frame(2, "delta", J({ text: "第一轮回答" })));
+      ctrl1.push(frame(3, "end", J({ runId: "run-1", status: "COMPLETED", messageId: "m1" })));
+    });
+    expect(result.current.state.endedStatus).toBe("COMPLETED");
     expect(result.current.state.lastEventId).toBe(3);
+
+    // 第二轮 send：锚点立即清零（不带参/空值），不得携带 run1 的 seq=3
+    await act(async () => {
+      await result.current.send("追问", []);
+    });
+    expect(result.current.state.lastEventId).toBeNull();
+    expect(result.current.state.runId).toBeNull();
+    expect(result.current.state.endedStatus).toBeNull();
+
+    // run2 消费两个事件（seq 1/2）后断流 30s
+    await act(async () => {
+      ctrl2.push(frame(1, "metadata", J({ runId: "run-2", sessionId: "sess-1", model: "m1" })));
+      ctrl2.push(frame(2, "delta", J({ text: "第二轮部分" })));
+    });
+    expect(result.current.state.lastEventId).toBe(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    const getCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === "GET")!;
+    // 重连携带 run2 自己的锚点（seq=2），全程未出现 run1 的 seq=3
+    expect(String(getCall[0])).toBe("/api/v1/student/chat/run-2/reconnect?lastEventId=2");
+    expect(getCount).toBe(1);
+
+    // 续流落在 run2 的消息上（不建新槽），run1 消息保持终态原样
+    await act(async () => {
+      reconnectCtrl.push(frame(3, "delta", J({ text: "续流内容" })));
+    });
+    const st = result.current.state;
+    expect(st.messages).toHaveLength(4);
+    expect(st.messages[3]).toMatchObject({ id: "run-2", text: "第二轮部分续流内容" });
+    expect(st.messages[1]).toMatchObject({
+      id: "run-1",
+      text: "第一轮回答",
+      endStatus: "COMPLETED",
+    });
+    expect(st.streaming).toBe(true);
+    expect(st.error).toBeNull();
   });
 
   it("重连指数退避：3 次失败（1s/2s 间隔）后错误分级 retryable 且 streaming=false", async () => {
@@ -1068,6 +1304,70 @@ describe("useChatStream 集成", () => {
       });
     });
     expect(result.current.state.streaming).toBe(false);
+  });
+
+  it("Minor-3：流被干净关闭（done）且未终态：视为断流走既有重连路径（不落错误、续流成功）", async () => {
+    // 兜底回归：服务端未发 end/error 直接掐流（如网关超时）。此前 EOF 无任何处理，
+    // streaming 永久 true 且断流计时已被 finally 清除，页面假死；修复后与 30s 断流同语义
+    vi.useFakeTimers();
+    const ctrl = controllableSse();
+    const reconnectCtrl = controllableSse();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/student/chat") && init?.method === "POST") return ctrl.response;
+      if (init?.method === "GET") return reconnectCtrl.response;
+      throw new Error(`未预期的请求: ${url}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+    await act(async () => {
+      await result.current.send("你好", []);
+    });
+    await act(async () => {
+      ctrl.push(md());
+      ctrl.push(frame(2, "delta", J({ text: "部分" })));
+    });
+
+    // 服务端干净关闭连接（done=true），未发 end/error
+    await act(async () => {
+      ctrl.close();
+    });
+    // 立即走重连路径（第 1 次立即尝试，无需等 30s），携带最后事件锚点
+    const getCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === "GET")!;
+    expect(String(getCall[0])).toBe("/api/v1/student/chat/run-1/reconnect?lastEventId=2");
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(true);
+
+    // 重连续流成功：正文续接，未建新槽
+    await act(async () => {
+      reconnectCtrl.push(frame(3, "delta", J({ text: "续流" })));
+    });
+    expect(result.current.state.messages).toHaveLength(2);
+    expect(result.current.state.messages[1].text).toBe("部分续流");
+    expect(result.current.state.streaming).toBe(true);
+    expect(result.current.state.error).toBeNull();
+  });
+
+  it("Minor-3 扩展：流干净关闭且已终态（end COMPLETED 后收流）：不触发重连（正常收尾）", async () => {
+    vi.useFakeTimers();
+    const ctrl = controllableSse();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") return ctrl.response;
+      throw new Error(`未预期的请求: ${input}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+    await act(async () => {
+      await result.current.send("你好", []);
+    });
+    await act(async () => {
+      ctrl.push(md());
+      ctrl.push(frame(2, "end", J({ runId: "run-1", status: "COMPLETED", messageId: "m1" })));
+      ctrl.close(); // end 终态落位后服务端正常收流
+    });
+    expect(result.current.state.endedStatus).toBe("COMPLETED");
+    // 终态后 EOF 不触发重连（fetch 只被 POST 调用过一次）
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.state.streaming).toBe(false);
+    expect(result.current.state.error).toBeNull();
   });
 
   it("发送阶段 401（刷新失败已全局登出）：error auth 分级 + send reject", async () => {

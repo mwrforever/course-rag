@@ -1,5 +1,5 @@
 /**
- * useChatStream——对话页 SSE 10 事件状态机（Task 11 核心）
+ * useChatStream：对话页 SSE 10 事件状态机（Task 11 核心）
  *
  * 职责（设计文档 §1.5.4 + 契约 §5/§6）：
  * - chatReducer：纯函数状态机，消费 10 种 SSE 事件（metadata/thinking/thinking_end/
@@ -11,6 +11,8 @@
  * 关键设计决策：
  * - 事件 id 行（seq）→ state.lastEventId，作为断流重连锚点（reconnect?lastEventId=）
  * - 首个终态幂等：endedStatus/error 任一落位后，后续流事件整体忽略
+ * - 多轮追问：send 重置 endedStatus/runId/lastEventId，run 级终态与锚点随新 run 重新
+ *   累积（首轮 end 后不清除会被幂等守卫吞掉新流事件，导致 streaming 永久 true）
  * - run 级 error 事件与 error 状态分流：retryable（run 级 ERROR / 连接中断）/
  *   replay_failed（重连 REPLAY_FAILED）/ auth（发送阶段 401 刷新失败）
  * - tool_result 按 toolCallId 配对；空串容错按到达顺序（索引兜底）配对
@@ -238,7 +240,18 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
         endStatus: null,
         messageId: null,
       };
-      return { ...state, messages: [...state.messages, userMsg], streaming: true, error: null };
+      // 关键：新 run 起始必须重置 run 级终态与锚点。上一轮 end 落位后若不清除，
+      // 新 run 的 metadata 等流事件会被 isTerminal 幂等守卫整体吞掉，streaming 永久 true 页面假死；
+      // 消息历史（messages）与会话归属（sessionId）保留，本 run 的锚点重新从零累积
+      return {
+        ...state,
+        messages: [...state.messages, userMsg],
+        streaming: true,
+        error: null,
+        endedStatus: null,
+        runId: null,
+        lastEventId: null,
+      };
     }
     case "metadata": {
       // metadata：建 AI 槽（同 runId 二推幂等仅补 model）；sessionId 暴露供 UI replace URL
@@ -299,7 +312,7 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
       }));
     }
     case "tool_result": {
-      // tool_result：按 toolCallId 配对转成功态；空串容错——同一 find 谓词下，
+      // tool_result：按 toolCallId 配对转成功态；空串容错：同一 find 谓词下，
       // 空串工具卡按到达顺序（首个 pending）配对，等价于索引兜底
       if (isTerminal(state)) return state;
       return updateLastAssistant(applySeq(state, action.seq), (msg) => {
@@ -552,6 +565,10 @@ export function useChatStream(initialSessionId: string | null): {
    */
   async function consumeStream(response: Response, gen: number): Promise<void> {
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    // 本流内是否已消费终态事件（end/error）：独立于 React 提交时机做 EOF 判定，
+    // stateRef 经 effect 更新晚于 dispatch（宏任务），流尾紧邻终态事件时读到的是旧值，
+    // 直接以事件流本身为准（确定性判定，且保证已终态收流的 EOF 不触发重连）
+    let finished = false;
     try {
       if (!response.body) {
         // 响应体缺失（异常空流）：视为连接失败，错误分级
@@ -571,7 +588,10 @@ export function useChatStream(initialSessionId: string | null): {
           if (!action) return;
           dispatch(action);
           // 终态事件（end/error）到达后断流计时已无意义，立即清除
-          if (action.type === "end" || action.type === "error") clearStallTimer();
+          if (action.type === "end" || action.type === "error") {
+            finished = true;
+            clearStallTimer();
+          }
         },
         onHeartbeat: () => {
           // 心跳保活帧：重置 30s 断流计时（设计 §1.5.4 :heartbeat 行）
@@ -586,6 +606,19 @@ export function useChatStream(initialSessionId: string | null): {
         // 任意字节到达均视为活跃，重置断流窗口后再喂解析器
         armStallTimer(gen);
         feed(decoder.decode(value, { stream: true }));
+      }
+      // 流尾 flush 兜底：{stream:true} 模式下解码器可能滞留断流前残包末尾的多字节字符
+      // （如汉字被截断在最后一个 chunk），收尾 decode() 把剩余字节也喂给解析器，避免尾部内容缺失
+      feed(decoder.decode());
+      // 流被服务端干净关闭（done）但本流未消费任何终态事件（end/error）：
+      // 视为连接被服务端断开（与 30s 断流同一语义），走既有断流路径
+      // （runReconnect 指数退避续流），不重复造第二套错误分级；
+      // 已终态/已错误为正常收尾，不再动作
+      if (genRef.current === gen && !finished) {
+        const current = stateRef.current;
+        if (current.endedStatus === null && current.error === null && current.streaming) {
+          void runReconnect();
+        }
       }
     } catch {
       // 读取异常（连接被服务端掐断等）：非世代变更导致的错误分级为 retryable
@@ -627,7 +660,7 @@ export function useChatStream(initialSessionId: string | null): {
         }
         const current = stateRef.current;
         // 重连期间终态/新 run 到达（如用户另开新问题）→ 放弃本次重连；
-        // 注：错误态不在此列——手动重试入口（reconnect 动作）已先清错误
+        // 注：错误态不在此列，手动重试入口（reconnect 动作）已先清错误
         if (current.endedStatus !== null) return;
         const runId = current.runId;
         if (!runId) return;
@@ -700,7 +733,7 @@ export function useChatStream(initialSessionId: string | null): {
 
   /**
    * 取消当前 run：POST /student/chat/{runId}/cancel（尽力而为）。
-   * 终态后再取消后端 409、网络失败等一律静默——流仍会走 end 终态收尾，不污染状态
+   * 终态后再取消后端 409、网络失败等一律静默：流仍会走 end 终态收尾，不污染状态
    */
   async function cancel(): Promise<void> {
     const runId = stateRef.current.runId;
