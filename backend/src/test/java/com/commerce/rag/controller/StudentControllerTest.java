@@ -13,6 +13,7 @@ import com.commerce.rag.exception.BizException;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.record.RetrievalSource;
 import com.commerce.rag.service.IChatMessageService;
+import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.service.IDocumentChunkService;
 import com.commerce.rag.service.IEnrollmentService;
@@ -63,6 +64,9 @@ class StudentControllerTest {
     private IChatMessageService messageService;
 
     @Mock
+    private IChatRunService runService;
+
+    @Mock
     private IDocumentChunkService documentChunkService;
 
     @Mock
@@ -73,7 +77,7 @@ class StudentControllerTest {
     @BeforeEach
     void setUp() {
         controller = new StudentController(
-                enrollmentService, sessionService, messageService, documentChunkService, chatStreamEntry);
+                enrollmentService, sessionService, messageService, runService, documentChunkService, chatStreamEntry);
     }
 
     private HttpServletRequest studentRequest(Long userId) {
@@ -403,6 +407,60 @@ class StudentControllerTest {
         controller.sessionMessages(studentRequest(5L), 1L, 1, 200);
 
         verify(messageService).findStudentMessagesBySession(1L, 1, 200);
+    }
+
+    // ==================== 删除会话（R3 补口 C） ====================
+
+    @Test
+    @DisplayName("删除会话 → 会话不存在抛 404，不触发活跃 run 校验与删除")
+    void deleteSession_sessionNotFound_throws404() {
+        when(sessionService.findById(99L)).thenReturn(null);
+
+        BizException ex = assertThrows(BizException.class, () -> controller.deleteSession(studentRequest(5L), 99L));
+
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
+        assertEquals("会话不存在", ex.getMessage());
+        verify(runService, never()).existsActiveRun(anyLong());
+        verify(sessionService, never()).deleteSession(anyLong(), anyLong());
+    }
+
+    @Test
+    @DisplayName("删除会话 → 非本人会话抛 403，不触发活跃 run 校验与删除")
+    void deleteSession_notOwner_throws403() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 9L));
+
+        BizException ex = assertThrows(BizException.class, () -> controller.deleteSession(studentRequest(5L), 1L));
+
+        assertEquals(HttpStatus.FORBIDDEN.value(), ex.getCode());
+        assertEquals("无权删除此会话", ex.getMessage());
+        verify(runService, never()).existsActiveRun(anyLong());
+        verify(sessionService, never()).deleteSession(anyLong(), anyLong());
+    }
+
+    @Test
+    @DisplayName("删除会话 → 存在 QUEUED/ACTIVE run 时抛 409，级联软删不执行")
+    void deleteSession_activeRun_throws409() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 5L));
+        when(runService.existsActiveRun(1L)).thenReturn(true);
+
+        BizException ex = assertThrows(BizException.class, () -> controller.deleteSession(studentRequest(5L), 1L));
+
+        assertEquals(HttpStatus.CONFLICT.value(), ex.getCode());
+        assertEquals("会话正在对话中，请稍后删除", ex.getMessage());
+        verify(sessionService, never()).deleteSession(anyLong(), anyLong());
+    }
+
+    @Test
+    @DisplayName("删除会话 → 归属本人且无活跃 run 时级联软删（操作者=当前用户）")
+    void deleteSession_ownerIdle_deletes() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 5L));
+        when(runService.existsActiveRun(1L)).thenReturn(false);
+
+        ApiResponse<Void> result = controller.deleteSession(studentRequest(5L), 1L);
+
+        assertEquals(0, result.code());
+        assertNull(result.data());
+        verify(sessionService).deleteSession(1L, 5L);
     }
 
     // ==================== J8: SSE 流式对话 ====================

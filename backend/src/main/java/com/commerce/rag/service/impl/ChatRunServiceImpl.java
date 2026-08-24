@@ -231,4 +231,24 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
                 .map(chatRunConverter::toVO)
                 .toList();
     }
+
+    /**
+     * 判断会话是否存在活跃 run（R3 删除接口 409 守卫）
+     *
+     * <p>本 service 主表走内置链式（this.lambdaQuery）+ exists() 短路探存
+     * （仅发 selectCount，不取行）。活跃定义与 uniq_active_run_per_session
+     * 部分唯一索引一致：status ∈ {QUEUED, ACTIVE}；@TableLogic 自动附加
+     * deleted=0，已级联软删的 run 不参与判定。
+     *
+     * @param sessionId 会话 ID（须已通过归属校验）
+     * @return true=存在活跃 run（调用方据此抛 409 阻断删除）；false=仅剩终态 run 或无 run
+     */
+    @Override
+    public boolean existsActiveRun(Long sessionId) {
+        // 活跃 run 探存：QUEUED/ACTIVE 任一存在即视为对话进行中（删除守卫依据）
+        return this.lambdaQuery()
+                .eq(ChatRun::getSessionId, sessionId)
+                .in(ChatRun::getStatus, "QUEUED", "ACTIVE")
+                .exists();
+    }
 }

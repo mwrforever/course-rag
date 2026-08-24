@@ -92,4 +92,16 @@ public interface IChatRunService extends IService<ChatRun> {
      * @return 滞留 run 的视图对象列表（仅 id/status）
      */
     List<ChatRunVO> findStaleActive(LocalDateTime startedBefore, LocalDateTime queuedBefore);
+
+    /**
+     * 判断会话是否存在活跃 run（R3 删除接口 409 守卫）
+     *
+     * <p>活跃定义与 uniq_active_run_per_session 部分唯一索引一致：
+     * status ∈ {QUEUED, ACTIVE}。会话删除前由 controller 调用，
+     * 返回 true 时应阻断删除（会话正在对话中）。
+     *
+     * @param sessionId 会话 ID（须已通过归属校验）
+     * @return true=存在 QUEUED/ACTIVE run；false=仅剩终态 run（COMPLETED/CANCELLED/ERROR）或无 run
+     */
+    boolean existsActiveRun(Long sessionId);
 }

@@ -5,6 +5,8 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.repository.AbstractRepository;
+import com.baomidou.mybatisplus.extension.repository.CrudRepository;
 import com.commerce.rag.convert.ChatRunConverterImpl;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.exception.ConcurrentRunException;
@@ -13,6 +15,7 @@ import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.service.impl.ChatRunServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.ChatRunVO;
+import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -283,5 +286,67 @@ class ChatRunServiceTest {
         // Then: 返回空列表而非 null，worker 据此跳过附件处理
         assertNotNull(result);
         assertTrue(result.isEmpty());
+    }
+
+    // ==================== existsActiveRun 活跃 run 存在性守卫（R3 删除接口 409 前置校验） ====================
+
+    /**
+     * 注入链式查询依赖的继承字段（baseMapper/entityClass）
+     *
+     * <p>纯 Mockito 下 {@code this.lambdaQuery()} 构建链时会经 getEntityClass → getMapperClass
+     * → MybatisUtils.getMapperProxy 内窥真实 Mapper 代理（mock 非代理对象直接失败）；
+     * 预置 entityClass 与 baseMapper 两个字段即可绕开内窥，使 selectCount 可被 mock 驱动。
+     */
+    private void injectChainFields() throws Exception {
+        Field baseMapper = CrudRepository.class.getDeclaredField("baseMapper");
+        baseMapper.setAccessible(true);
+        baseMapper.set(runService, runMapper);
+        Field entityClass = AbstractRepository.class.getDeclaredField("entityClass");
+        entityClass.setAccessible(true);
+        entityClass.set(runService, ChatRun.class);
+    }
+
+    @Test
+    @DisplayName("existsActiveRun → 会话存在 QUEUED/ACTIVE run 时返回 true（R3 删除 409 守卫依据）")
+    @SuppressWarnings("unchecked")
+    void existsActiveRun_queuedOrActiveRun_returnsTrue() throws Exception {
+        // Given: 会话内有活跃 run（selectCount 命中 1 行）
+        injectChainFields();
+        when(runMapper.selectCount(any())).thenReturn(1L);
+
+        // When
+        boolean exists = runService.existsActiveRun(1L);
+
+        // Then: 活跃 run 存在（调用方据此抛 409 阻断删除）
+        assertTrue(exists);
+
+        // Then: 查询条件为 session_id 等值 + status IN (QUEUED, ACTIVE)
+        ArgumentCaptor<LambdaQueryWrapper<ChatRun>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(runMapper).selectCount(captor.capture());
+        LambdaQueryWrapper<ChatRun> wrapper = captor.getValue();
+        String sqlSegment = wrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("session_id"), "应按会话过滤: " + sqlSegment);
+        assertTrue(sqlSegment.toUpperCase().contains("IN"), "活跃状态应为 IN 条件（QUEUED/ACTIVE）: " + sqlSegment);
+        Collection<Object> params = wrapper.getParamNameValuePairs().values();
+        assertTrue(params.contains(1L), "会话参数应为入参 sessionId");
+        assertTrue(params.contains("QUEUED"), "状态集合应含 QUEUED");
+        assertTrue(params.contains("ACTIVE"), "状态集合应含 ACTIVE");
+    }
+
+    @Test
+    @DisplayName("existsActiveRun → 会话仅剩终态 run（COMPLETED 等）时返回 false（允许删除）")
+    @SuppressWarnings("unchecked")
+    void existsActiveRun_onlyTerminalRuns_returnsFalse() throws Exception {
+        // Given: 会话内仅终态 run（QUEUED/ACTIVE 无命中，selectCount 为 0）
+        injectChainFields();
+        when(runMapper.selectCount(any())).thenReturn(0L);
+
+        // When
+        boolean exists = runService.existsActiveRun(1L);
+
+        // Then: 无活跃 run，删除链路放行
+        assertFalse(exists);
+        // 查询仍发出（确认 false 来自 DB 判空而非异常短路）
+        verify(runMapper).selectCount(any());
     }
 }
