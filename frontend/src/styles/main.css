@@ -51,7 +51,7 @@
 
   /* ---- 字体族：Geist（拉丁/数字）+ Noto Sans SC（中文）+ Geist Mono（等宽：时间戳/分数/代码） ---- */
   --font-sans:
-    'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+    'Geist Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
 }
 

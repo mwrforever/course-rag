@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration;
  * <p>核心职责：将 Long/long 统一序列化为字符串。雪花 ID 为 19 位数字，超出 JS
  * Number.MAX_SAFE_INTEGER（2^53-1），以 JSON number 下发必然导致前端精度丢失
  * （反馈 messageId、会话 id、分片 id 等全部错位）。影响范围为一切 Long 来源字段
- * （id/total/fileSize/learningCount/各统计计数），见
+ * （id/total/fileSize/各统计计数；Integer 字段如 learningCount/chunkCount/capacity 保持 number），见
  * docs/backed/2026-08-24-后端功能调整.md §一（R0）。
  *
  * <p>实现方式（与 Spring Boot 3 自动配置的兼容性考量）：
