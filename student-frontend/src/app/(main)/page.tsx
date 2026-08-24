@@ -22,8 +22,10 @@ const LIBRARY_SPAN_CLASS: Record<1 | 2 | 3 | 4, string> = {
 /**
  * 计算资料库入口条应占列数（补齐当前行剩余列，cell 数=课程数+1 且不产生空 cell，设计 §1.5.1）
  *
- * 摆放规则：首卡 2x2 占行 1-2 的列 1-2；其余课程卡按行主序 1x1 依次摆放；
- * 入口条紧随其后，span 等于其落点行的剩余列数（1/2/3/4），保证网格无空洞。
+ * 摆放规则（网格模式）：n≥3 时首卡 2x2 占行 1-2 的列 1-2，其余课程卡按行主序 1x1
+ * 依次摆放；n=2 时首卡降级宽幅 2x1（零空洞方案，见下），推导结果与本算法一致
+ * （首卡 r1c1-2 + 次卡 r1c3 + 入口条 r1c4 → span1）。入口条紧随其后，span 等于其
+ * 落点行的剩余列数（1/2/3/4），保证网格无空洞。
  *
  * @param courseCount 课程数（仅在 ≥2 的网格模式调用）
  * @returns 入口条应占列数
@@ -126,7 +128,8 @@ function LibraryEntry() {
  * 首页（设计 §1.5.1，全 CSR）
  *
  * 结构：Hero 不对称分栏（问候 + 主 CTA + AI 徽标呼吸浮标）→ 我的课程 Bento 橱窗
- * （首卡 2x2 + 1x1 卡 + 资料库入口条，课程 ≤1 退化单卡）→ 最近会话（最多 5 条，
+ * （n≥3 首卡 2x2、n=2 首卡降级宽幅 2x1 零空洞规则 + 1x1 卡 + 资料库入口条，
+ * 课程 ≤1 退化单卡居中）→ 最近会话（最多 5 条，
  * 相对时间 + 继续跳转）→ Footer。
  *
  * 四态全覆盖（设计 §1.7）：Loading 骨架 / Empty 空态 / Error 横幅+重试 / 正常态，
@@ -225,7 +228,9 @@ export default function HomePage() {
             </motion.div>
           </div>
         ) : (
-          // 网格模式：首卡 2x2，其余 1x1，入口条按 librarySpan 补齐行尾
+          // 网格模式：n≥3 首卡 2x2（视觉层级）；n=2 时首卡降级宽幅 2x1（零空洞规则——
+          // 首卡 r1c1-2 + 次卡 r1c3 + 入口条 r1c4，单行铺满，避免 2x2 占用行 2 后
+          // 行 2 c3-4 出现 2 个空 cell）
           <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-4">
             {courses.map((course, index) => (
               <motion.div
@@ -233,7 +238,13 @@ export default function HomePage() {
                 initial={reduceMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...CELL_TRANSITION, delay: index * 0.06 }}
-                className={index === 0 ? "col-span-1 md:col-span-2 md:row-span-2" : "col-span-1"}
+                className={
+                  index === 0
+                    ? courses.length === 2
+                      ? "col-span-1 md:col-span-2"
+                      : "col-span-1 md:col-span-2 md:row-span-2"
+                    : "col-span-1"
+                }
               >
                 <CourseCard course={course} priority={index === 0} />
               </motion.div>
@@ -274,7 +285,7 @@ export default function HomePage() {
               <li key={session.id}>
                 <Link
                   href={`/chat/${session.id}`}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-sm transition-all duration-200 hover:border-brand/30 hover:shadow-md hover:shadow-teal-900/5 focus-visible:ring-2 focus-visible:ring-brand"
+                  className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-sm transition-[transform,opacity] duration-200 motion-reduce:transition-none hover:border-brand/30 hover:shadow-md hover:shadow-teal-900/5 focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   <ChatCircleText size={18} aria-hidden className="shrink-0 text-brand" />
                   <span className="min-w-0 flex-1 truncate text-[15px] text-text">

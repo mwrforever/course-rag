@@ -3,8 +3,9 @@
  *
  * 首页四态全覆盖（设计 §1.7）：Loading 骨架 / Empty 空态 / Error 横幅+重试 / 正常态。
  * 数据层以 vi.mock 注入（react-query 用 QueryClient 包裹并关闭 retry，避免测试噪音）；
- * 覆盖：Hero 问候与 CTA 跳转、Bento 课程网格（首卡 2x2、资料库入口条跨度、单卡退化）、
- * 无课程空态、错误横幅重试闭环、最近会话渲染（相对时间 + 继续跳转）、会话空态。
+ * 覆盖：Hero 问候与 CTA 跳转、Bento 课程网格（n≥3 首卡 2x2、n=2 首卡宽幅 2x1 零空洞、
+ * 资料库入口条跨度、单卡退化）、无课程空态、错误横幅重试闭环、最近会话渲染
+ * （相对时间 + 继续跳转）、会话空态。
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -187,6 +188,29 @@ describe("首页四态：我的课程", () => {
     expect(card.parentElement).not.toHaveClass("md:col-span-2");
     expect(screen.getByRole("link", { name: /通用资料库/ })).toBeInTheDocument();
   });
+
+  it("正常态：n=2 首卡降级宽幅 2x1，单行铺满零空洞（不产生 2 个空 cell）", async () => {
+    apiMock.getMyCourses.mockResolvedValue([
+      makeCourse({ id: "c1", title: "课程甲", coverImage: "http://localhost:9000/b/c1.jpg" }),
+      makeCourse({ id: "c2", title: "课程乙" }),
+    ]);
+    apiMock.getSessions.mockResolvedValue(EMPTY_SESSIONS);
+    renderHome();
+    await screen.findByText("课程甲");
+
+    // 首卡宽幅 2x1：占行 1 列 1-2，不再 row-span-2（否则 2x2 占满行 2 后行 2 c3-4 空洞）
+    const lead = screen.getByRole("link", { name: /课程甲/ });
+    expect(lead.parentElement).toHaveClass("col-span-1", "md:col-span-2");
+    expect(lead.parentElement).not.toHaveClass("md:row-span-2");
+    // 次卡 1x1 落 r1c3 + 入口条 span1 落 r1c4 → 单行铺满
+    expect(screen.getByRole("link", { name: /课程乙/ }).parentElement).toHaveClass("col-span-1");
+    const library = screen.getByRole("link", { name: /通用资料库/ });
+    expect(library.parentElement).toHaveClass("col-span-1");
+    // 零空洞验证：Bento 网格恰 3 个 cell（2 课程卡 + 1 入口条），无多余空格占位
+    const grid = library.parentElement!.parentElement!;
+    expect(grid.className).toContain("md:grid-cols-4");
+    expect(grid.children).toHaveLength(3);
+  });
 });
 
 describe("首页：最近会话", () => {
@@ -241,7 +265,7 @@ describe("首页：最近会话", () => {
 });
 
 describe("librarySpan 资料库入口条跨度（不产生空 cell）", () => {
-  it("2 门：第 1 行余 1 列", () => {
+  it("2 门：第 1 行余 1 列（宽幅 2x1 首卡 + 次卡 + 入口条铺满单行）", () => {
     expect(librarySpan(2)).toBe(1);
   });
   it("3 门：第 2 行余 2 列", () => {

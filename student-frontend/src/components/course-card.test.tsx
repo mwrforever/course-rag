@@ -44,9 +44,22 @@ describe("CourseCard 课程卡", () => {
   it("无封面：category 映射低饱和渐变学科兜底", () => {
     const { rerender } = render(<CourseCard course={makeCourse({ category: "计算机科学" })} />);
     expect(screen.getByTestId("cover-fallback")).toHaveClass("from-sky-100");
-    // 切换为未知 category：走默认渐变
+    // 切换为未知 category：走默认渐变（语义 token surface-2 收尾，不直写 stone 色值）
     rerender(<CourseCard course={makeCourse({ category: null })} />);
-    expect(screen.getByTestId("cover-fallback")).toHaveClass("from-brand-light");
+    expect(screen.getByTestId("cover-fallback")).toHaveClass("from-brand-light", "to-surface-2");
+  });
+
+  it("装饰 hover 的 reduced-motion 覆盖就位（无过渡、CTA 常显）", () => {
+    render(<CourseCard course={makeCourse()} />);
+    const link = screen.getByRole("link", { name: /数据结构与算法/ });
+    // 卡片 Link：过渡收窄为只动画 transform/opacity，reduced-motion 下完全无过渡
+    expect(link.className).toContain("transition-[transform,opacity]");
+    expect(link.className).toContain("motion-reduce:transition-none");
+    // hover CTA：reduced-motion 下常显（滑入/淡入类被 motion-reduce 覆盖为终态）且无过渡
+    const cta = screen.getByText("进入课程");
+    expect(cta.className).toContain("motion-reduce:translate-y-0");
+    expect(cta.className).toContain("motion-reduce:opacity-100");
+    expect(cta.className).toContain("motion-reduce:transition-none");
   });
 
   it("标题 2 行截断 class 就位", () => {

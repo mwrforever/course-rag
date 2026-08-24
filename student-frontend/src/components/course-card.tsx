@@ -46,10 +46,10 @@ const CATEGORY_FALLBACKS: ReadonlyArray<{
   { keywords: ["艺术", "音乐", "设计"], icon: Palette, gradient: "from-orange-100 to-yellow-100" },
 ];
 
-/** 默认兜底：未知/空 category（teal 低饱和渐变 + 书本图标） */
+/** 默认兜底：未知/空 category（teal 低饱和渐变 + 书本图标，末端收 semantic 层 surface-2） */
 const DEFAULT_FALLBACK: { icon: Icon; gradient: string } = {
   icon: BookOpen,
-  gradient: "from-brand-light to-stone-100",
+  gradient: "from-brand-light to-surface-2",
 };
 
 /**
@@ -83,7 +83,10 @@ export interface CourseCardProps {
  * 数字 tabular-nums，可空字段按需省略）。
  *
  * 动效（设计 §1.6）：hover 封面 scale(1.02) + 卡片阴影抬升 + 「进入课程」CTA 滑入（200ms）；
- * prefers-reduced-motion 或检测不可用时 hover 缩放静态。
+ * 铁律只动画 transform/opacity——卡片 Link 过渡收窄为 transform/opacity，
+ * border/阴影等装饰变化瞬时生效（简单处理，不做伪元素）；CSS 侧 hover 均由
+ * motion-reduce: 变体覆盖（reduced-motion 下无过渡、CTA 常显）；
+ * prefers-reduced-motion 或检测不可用时 motion whileHover 缩放静态。
  *
  * 封面错误兜底实现：next/image 不支持 onError，error 事件不冒泡但走捕获阶段，
  * 由封面容器 onErrorCapture 接住底层 img 的 error 后切换兜底渐变。
@@ -101,7 +104,7 @@ export function CourseCard({ course, priority = false }: CourseCardProps) {
   return (
     <Link
       href={`/courses/${course.id}`}
-      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm transition-all duration-200 hover:border-brand/30 hover:shadow-md hover:shadow-teal-900/5 focus-visible:ring-2 focus-visible:ring-brand"
+      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm transition-[transform,opacity] duration-200 motion-reduce:transition-none hover:border-brand/30 hover:shadow-md hover:shadow-teal-900/5 focus-visible:ring-2 focus-visible:ring-brand"
     >
       {/* 封面区：16:9；hover 微缩放（reduced-motion 静态）+ 「进入课程」CTA 从底部滑入 */}
       <motion.div
@@ -127,10 +130,11 @@ export function CourseCard({ course, priority = false }: CourseCardProps) {
             <FallbackIcon size={44} aria-hidden className="text-stone-400" />
           </div>
         )}
-        {/* hover CTA 滑入（纯装饰提示，整卡即链接，aria-hidden 避免重复读屏） */}
+        {/* hover CTA 滑入（纯装饰提示，整卡即链接，aria-hidden 避免重复读屏）；
+            只动画 transform/opacity；reduced-motion 下常显且无过渡（motion-reduce: 变体） */}
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-full items-center justify-center bg-linear-to-t from-stone-900/60 to-transparent px-3 py-2.5 text-sm font-medium text-white opacity-0 transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100"
+          className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-full items-center justify-center bg-linear-to-t from-stone-900/60 to-transparent px-3 py-2.5 text-sm font-medium text-white opacity-0 transition-[transform,opacity] duration-200 motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none group-hover:translate-y-0 group-hover:opacity-100"
         >
           进入课程
         </span>
