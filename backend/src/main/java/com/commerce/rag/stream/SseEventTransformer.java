@@ -70,13 +70,15 @@ public class SseEventTransformer {
             return List.of();
         }
 
+        // 以下事件类型前端不需要感知，统一忽略：AGENT_TOOL_STREAMING（工具节点通常
+        // 同步执行，不产生流式 delta）、AGENT_HOOK_*（拦截器事件）、GRAPH_NODE_*
+        // （图节点级事件）。注释置于 switch 之外：palantir-java-format 对 switch
+        // 体内注释的缩进判定随版本漂移（CI 与本地解析到不同 palantir 版本时
+        // spotless:check 结果相反，2026-08-24 CI 实证），移出后消除分歧源。
         return switch (type) {
             case AGENT_MODEL_STREAMING -> transformModelStreaming(streaming, runState);
             case AGENT_MODEL_FINISHED -> transformModelFinished(streaming, runState);
             case AGENT_TOOL_FINISHED -> transformToolFinished(streaming, runState);
-            // AGENT_TOOL_STREAMING: 工具节点通常同步执行，不产生流式 delta，忽略
-            // AGENT_HOOK_*: 拦截器事件，前端不需要
-            // GRAPH_NODE_*: 图节点级别事件，前端不需要逐节点感知
             default -> List.of();
         };
     }
