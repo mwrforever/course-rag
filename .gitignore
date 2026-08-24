@@ -29,6 +29,7 @@ node_modules/
 out/
 dist/
 .turbo/
+coverage/
 
 # ── 环境变量（含 Next.js） ──
 .env

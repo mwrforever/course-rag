@@ -69,6 +69,18 @@ public interface IChatRunService extends IService<ChatRun> {
     List<AttachmentRecord> findRecentAttachments(Long sessionId, Long excludeRunId, int limit);
 
     /**
+     * 查会话内已完成 run 的 ID 列表（R1 学生历史消息两步查询第一步）
+     *
+     * <p>M3 处置：历史回显仅保留 USER 行与 COMPLETED run 的非 USER 行，
+     * 取消/异常 run 的半截 assistant 内容（thinking/工具行/正文）剔除，
+     * 与实时对话「已停止生成」标注语义一致。
+     *
+     * @param sessionId 会话 ID（须已通过归属校验）
+     * @return COMPLETED 状态的 runId 列表（无则为空列表）
+     */
+    List<Long> findCompletedRunIds(Long sessionId);
+
+    /**
      * 查询滞留的 ACTIVE/QUEUED run（M-8 巡检 + B2-3 QUEUED 扩展）
      *
      * <p>进程崩溃/runPool 拒绝后 run 可能滞留 ACTIVE；附件处理窗口内崩溃或停机丢弃
@@ -80,4 +92,16 @@ public interface IChatRunService extends IService<ChatRun> {
      * @return 滞留 run 的视图对象列表（仅 id/status）
      */
     List<ChatRunVO> findStaleActive(LocalDateTime startedBefore, LocalDateTime queuedBefore);
+
+    /**
+     * 判断会话是否存在活跃 run（R3 删除接口 409 守卫）
+     *
+     * <p>活跃定义与 uniq_active_run_per_session 部分唯一索引一致：
+     * status ∈ {QUEUED, ACTIVE}。会话删除前由 controller 调用，
+     * 返回 true 时应阻断删除（会话正在对话中）。
+     *
+     * @param sessionId 会话 ID（须已通过归属校验）
+     * @return true=存在 QUEUED/ACTIVE run；false=仅剩终态 run（COMPLETED/CANCELLED/ERROR）或无 run
+     */
+    boolean existsActiveRun(Long sessionId);
 }

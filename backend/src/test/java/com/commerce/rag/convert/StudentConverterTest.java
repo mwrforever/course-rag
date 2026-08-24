@@ -2,6 +2,7 @@ package com.commerce.rag.convert;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.entity.ChatSession;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.DocumentChunk;
@@ -10,6 +11,7 @@ import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
 import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.vo.StudentCourseVO;
+import com.commerce.rag.vo.StudentMessageVO;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
@@ -160,5 +162,84 @@ class StudentConverterTest {
                         LocalDateTime.of(2026, 8, 15, 10, 0),
                         LocalDateTime.of(2026, 8, 15, 9, 0)));
         assertThat(vo.toString()).contains("会话一");
+    }
+
+    // ==================== 学生历史消息转换（R1 补口 A：sources/attachments JSON 解析） ====================
+
+    /** 构造带 JSON 字段的消息实体（service 两步查询投影行） */
+    private ChatMessage messageRow(String sourcesJson, String attachmentsJson) {
+        ChatMessage msg = new ChatMessage();
+        msg.setId(1L);
+        msg.setRole("ASSISTANT");
+        msg.setContent("回答内容");
+        msg.setMessageType(null);
+        msg.setIntentType("knowledge_question");
+        msg.setRunId(10L);
+        msg.setSeq(3);
+        msg.setCreatedAt(LocalDateTime.of(2026, 8, 15, 9, 1));
+        msg.setSourcesJson(sourcesJson);
+        msg.setAttachmentsJson(attachmentsJson);
+        return msg;
+    }
+
+    @Test
+    @DisplayName("消息实体 → 学生消息视图：sourcesJson 合法数组解析为来源列表，全字段同名映射")
+    void toStudentMessageVO_parsesLegalSourcesJson() {
+        ChatMessage msg = messageRow(
+                "[{\"chunkId\":\"101\",\"docTitle\":\"RAG 讲义\",\"headingPath\":\"Ch3 > 3.2\",\"score\":0.87}]", "[]");
+
+        StudentMessageVO vo = converter.toStudentMessageVO(msg);
+
+        // 同名字段直映射（Long 字段经 R0 全局序列化为 string 输出，VO 内仍为 Long）
+        assertThat(vo.id()).isEqualTo(1L);
+        assertThat(vo.role()).isEqualTo("ASSISTANT");
+        assertThat(vo.content()).isEqualTo("回答内容");
+        assertThat(vo.intentType()).isEqualTo("knowledge_question");
+        assertThat(vo.runId()).isEqualTo(10L);
+        assertThat(vo.seq()).isEqualTo(3);
+        assertThat(vo.createdAt()).isEqualTo(LocalDateTime.of(2026, 8, 15, 9, 1));
+        // sourcesJson 解析为 RetrievalSource 列表（与实时 SOURCES 事件同构）
+        assertThat(vo.sources()).hasSize(1);
+        assertThat(vo.sources().get(0).chunkId()).isEqualTo("101");
+        assertThat(vo.sources().get(0).docTitle()).isEqualTo("RAG 讲义");
+        assertThat(vo.sources().get(0).headingPath()).isEqualTo("Ch3 > 3.2");
+        assertThat(vo.sources().get(0).score()).isEqualTo(0.87);
+    }
+
+    @Test
+    @DisplayName("消息实体 → 学生消息视图：sourcesJson 非法 JSON 兜底空列表（不阻断历史回显）")
+    void toStudentMessageVO_illegalSourcesJson_fallsBackToEmpty() {
+        StudentMessageVO vo = converter.toStudentMessageVO(messageRow("{not-json", "[]"));
+
+        assertThat(vo.sources()).isNotNull().isEmpty();
+    }
+
+    @Test
+    @DisplayName("消息实体 → 学生消息视图：sourcesJson 为 null 兜底空列表")
+    void toStudentMessageVO_nullSourcesJson_fallsBackToEmpty() {
+        StudentMessageVO vo = converter.toStudentMessageVO(messageRow(null, "[]"));
+
+        assertThat(vo.sources()).isNotNull().isEmpty();
+    }
+
+    @Test
+    @DisplayName("消息实体 → 学生消息视图：attachmentsJson 合法/非法/null 三态解析")
+    void toStudentMessageVO_attachmentsJsonThreeStates() {
+        // 合法 JSON → 解析为附件列表
+        StudentMessageVO legal = converter.toStudentMessageVO(
+                messageRow("[]", "[{\"type\":\"image\",\"url\":\"0/a.png\",\"name\":\"a.png\",\"size\":1024}]"));
+        assertThat(legal.attachments()).hasSize(1);
+        assertThat(legal.attachments().get(0).type()).isEqualTo("image");
+        assertThat(legal.attachments().get(0).url()).isEqualTo("0/a.png");
+        assertThat(legal.attachments().get(0).name()).isEqualTo("a.png");
+        assertThat(legal.attachments().get(0).size()).isEqualTo(1024L);
+
+        // 非法 JSON → 兜底空列表
+        StudentMessageVO illegal = converter.toStudentMessageVO(messageRow("[]", "{not-json"));
+        assertThat(illegal.attachments()).isNotNull().isEmpty();
+
+        // null → 兜底空列表（assistant 行恒空）
+        StudentMessageVO nullJson = converter.toStudentMessageVO(messageRow("[]", null));
+        assertThat(nullJson.attachments()).isNotNull().isEmpty();
     }
 }

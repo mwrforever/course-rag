@@ -22,6 +22,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -38,6 +41,7 @@ import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -437,7 +441,8 @@ class ChatStreamEntryTest {
 
         // Then: 终态分支——不 subscribe、不启动心跳（无额外 push）；PG 回放已执行
         verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
-        verify(chatMessageService).findByRunId(123L);
+        // R2 改造适配：COMPLETED 终态补 messageId——findByRunId 由 PG 回放 + messageId 解析各查一次
+        verify(chatMessageService, times(2)).findByRunId(123L);
         assertNotNull(emitter);
     }
 
@@ -774,6 +779,168 @@ class ChatStreamEntryTest {
         // Then: 查询异常不中断重连，降级为仅订阅实时事件
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
         assertNotNull(emitter);
+    }
+
+    // ==================== R2 补口 B：reconnect 补发 end 事件携带 messageId（按 COMPLETED 过滤，M2） ====================
+
+    /**
+     * 反射读取未初始化 SseEmitter 缓冲的 send 数据（ResponseBodyEmitter.earlySendAttempts，
+     * Spring 6.2 中为 Set 类型），用于断言 reconnect 补发 end 事件的 payload 内容
+     * （emitter 未挂 handler 前 send 全部缓存于该集合）
+     */
+    private List<String> sentDataStrings(SseEmitter emitter) throws Exception {
+        Field field = ResponseBodyEmitter.class.getDeclaredField("earlySendAttempts");
+        field.setAccessible(true);
+        Collection<?> attempts = (Collection<?>) field.get(emitter);
+        Method getData = ResponseBodyEmitter.DataWithMediaType.class.getMethod("getData");
+        getData.setAccessible(true);
+        List<String> result = new ArrayList<>();
+        for (Object attempt : attempts) {
+            Object data = getData.invoke(attempt);
+            if (data instanceof String text) {
+                result.add(text);
+            }
+        }
+        return result;
+    }
+
+    /** 从 emitter 已发送数据中提取 end 事件 payload（唯一以 {"runId" 开头的 JSON 字符串） */
+    private String endPayloadOf(SseEmitter emitter) throws Exception {
+        return sentDataStrings(emitter).stream()
+                .filter(s -> s.startsWith("{\"runId\""))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应补发 end 事件 payload"));
+    }
+
+    /** 反射调用 private resolveAssistantMessageId（M2：仅 COMPLETED run 的 assistant 正文行可作反馈目标） */
+    private String invokeResolveAssistantMessageId(String runId) throws Exception {
+        Method method = ChatStreamEntry.class.getDeclaredMethod("resolveAssistantMessageId", String.class);
+        method.setAccessible(true);
+        return (String) method.invoke(entry, runId);
+    }
+
+    @Test
+    @DisplayName("R2 resolveAssistantMessageId → COMPLETED run 取最后一条 assistant 正文行 ID（字符串）")
+    void resolveAssistantMessageId_completedRun_返回最后正文行ID() throws Exception {
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(
+                        new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, 123L, 1, null),
+                        new ChatMessageVO(8L, "ASSISTANT", "工具调用", "TOOL_CALL", null, 123L, 2, null),
+                        new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, 123L, 3, null)));
+
+        // 反向扫描跳过 thinking/TOOL_* 行，命中最后一条正文行（messageType==null）
+        assertEquals("777", invokeResolveAssistantMessageId("123"));
+    }
+
+    @Test
+    @DisplayName("R2 resolveAssistantMessageId → run 非 COMPLETED（M2）返回 null 且不查消息表（半截内容不作反馈目标）")
+    void resolveAssistantMessageId_非COMPLETED状态_返回null() throws Exception {
+        // CANCELLED run 的半截 assistant 行虽已落库，但不得作为反馈目标（M2 状态过滤）
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "CANCELLED", null));
+
+        assertNull(invokeResolveAssistantMessageId("123"), "非 COMPLETED run 必须返回 null（M2）");
+        verify(chatMessageService, never()).findByRunId(anyLong());
+    }
+
+    @Test
+    @DisplayName("R2 resolveAssistantMessageId → 状态查询异常降级返回 null（end 事件 messageId 可空容忍）")
+    void resolveAssistantMessageId_查询异常_返回null() throws Exception {
+        when(chatRunService.findById(123L)).thenThrow(new RuntimeException("数据库不可用"));
+
+        assertNull(invokeResolveAssistantMessageId("123"));
+    }
+
+    @Test
+    @DisplayName("R2 reconnect PG 回放成功 + run COMPLETED → 补发 end 含 assistant messageId（第二处补发点）")
+    void reconnect_terminalRunCompleted_endPayloadCarriesMessageId() throws Exception {
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        // PG 消息：thinking + assistant 正文（id=777）——replay 与 messageId 解析共用同一查询结果
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(
+                        new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, 123L, 1, null),
+                        new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, 123L, 2, null)));
+
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // end payload 的 messageId 恒字符串（与 runId 字符串风格一致）
+        String endPayload = endPayloadOf(emitter);
+        assertTrue(endPayload.contains("\"status\":\"COMPLETED\""), "终态应为 COMPLETED: " + endPayload);
+        assertTrue(
+                endPayload.contains("\"messageId\":\"777\""), "end payload 应含 assistant 正文行 messageId: " + endPayload);
+    }
+
+    @Test
+    @DisplayName("R2 reconnect PG 回放成功 + run CANCELLED → 补发 end 不含 messageId 键")
+    void reconnect_terminalRunCancelled_endPayloadHasNoMessageId() throws Exception {
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "CANCELLED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "半截回答", null, null, 123L, 2, null)));
+
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // CANCELLED 终态 payload 与既有格式一致（仅 runId/status），不带 messageId 键
+        assertEquals("{\"runId\":\"123\",\"status\":\"CANCELLED\"}", endPayloadOf(emitter));
+    }
+
+    @Test
+    @DisplayName("R2 reconnect COMPLETED 但无 assistant 正文行（异常/未落库窗口）→ end 的 messageId 显式 null")
+    void reconnect_completedNoAssistantRow_endMessageIdExplicitNull() throws Exception {
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        // 仅 thinking 行（正文缺失）：run 完成但反馈目标不可解析 → 显式 null（前端可空容忍）
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, 123L, 1, null)));
+
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        assertTrue(endPayloadOf(emitter).contains("\"messageId\":null"), "无法解析 assistant 正文行时 messageId 应显式 null");
+    }
+
+    @Test
+    @DisplayName("R2 reconnect PG 无数据 + subscribe 失败 + closedRun COMPLETED → 补发 end 含 messageId（第一处补发点）")
+    void reconnect_pgEmpty_subscribeFalse_closedRunCompleted_endCarriesMessageId() throws Exception {
+        // findById 四次消费：归属校验(ACTIVE) → 终态判定(ACTIVE) → closedRun(COMPLETED) → resolve 复查(COMPLETED)
+        when(chatRunService.findById(123L))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        // findByRunId 两次消费：replayFromPg 无历史（-1）→ messageId 解析返回 assistant 正文行
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(null)
+                .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, 123L, 2, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
+
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        assertTrue(endPayloadOf(emitter).contains("\"messageId\":\"777\""), "ring 关闭竞态补发 end 应含 messageId");
+    }
+
+    @Test
+    @DisplayName("R2 reconnect PG 回放成功 + subscribe 失败 + closedRun COMPLETED → 补发带 id 的 end 含 messageId（第三处补发点）")
+    void reconnect_pgData_subscribeFalse_closedRunCompleted_endCarriesMessageId() throws Exception {
+        when(chatRunService.findById(123L))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, 123L, 1, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
+
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        assertTrue(endPayloadOf(emitter).contains("\"messageId\":\"777\""), "订阅关闭竞态补发 end 应含 messageId");
     }
 
     // ==================== startHeartbeat() 心跳调度器（真实 scheduler） ====================

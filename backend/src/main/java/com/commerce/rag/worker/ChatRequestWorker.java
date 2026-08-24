@@ -1,5 +1,7 @@
 package com.commerce.rag.worker;
 
+import static com.commerce.rag.bot.graph.OverAllState.KEY_QUERY_PLAN;
+
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
@@ -7,6 +9,7 @@ import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
 import com.commerce.rag.bot.graph.RetrieveNode;
 import com.commerce.rag.bot.hook.WarningHook;
+import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.StreamProperties;
@@ -14,6 +17,7 @@ import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.record.ImageCaptionResult;
+import com.commerce.rag.record.PersistOutcome;
 import com.commerce.rag.service.AttachmentOrchestrator;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
@@ -511,7 +515,8 @@ public class ChatRequestWorker {
                                 log.error("onErrorResume 分支终态处理失败 runId={}", runId, errorEx);
                             }
                         }
-                        // 持久化已收集的消息（游标 = pre-run checkpoint 消息数，只落本轮新增）
+                        // 持久化已收集的消息（游标 = pre-run checkpoint 消息数，只落本轮新增）；
+                        // R2：错误终态不带 messageId，返回的 assistantMessageId 在此分支不消费
                         persistMessages(
                                 runId,
                                 sessionId,
@@ -530,18 +535,20 @@ public class ChatRequestWorker {
                         // 先持久化消息、再推 END + 写 COMPLETED 终态——
                         // 「run 终态 = 数据已完整落库」语义（chat_message 与状态非原子，
                         // 先状态后落库会让外部观察者在终态可见时查到空消息表）
-                        persisted.set(persistMessages(
+                        // R2 补口 B：落库返回 assistant 正文行回填 ID，END 事件据此携带 messageId
+                        PersistOutcome outcome = persistMessages(
                                 runId,
                                 sessionId,
                                 userQuery,
                                 attachmentsJson,
                                 readSourcesJson(config),
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
-                                lastOutput.get()));
+                                lastOutput.get());
+                        persisted.set(outcome.persisted());
                         // B2-4: 先占位终态标记再调 handleCompleted——其推 END 后 updateStatusWithRetry
                         // 若耗尽上抛，catch 分支据此跳过第二个终态事件（客户端只认首个终态）
                         terminalPushed.set(true);
-                        handleCompleted(runIdStr, runId, runState);
+                        handleCompleted(runIdStr, runId, runState, outcome.assistantMessageId());
                         // 偏好提取异步触发（spec §7.6：run 完成、SSE 已发送完后异步，不阻塞用户响应；
                         // 仅 COMPLETED 触发——error/cancel 路径不提取）
                         triggerPreferenceExtraction(userId, lastOutput.get());
@@ -572,14 +579,16 @@ public class ChatRequestWorker {
             if (persisted.get()) {
                 log.info("消息已持久化，跳过 catch 分支重复持久化: runId={}", runId);
             } else {
-                persisted.set(persistMessages(
+                // R2：错误终态不带 messageId，此分支仅消费 persisted 标记
+                PersistOutcome retryOutcome = persistMessages(
                         runId,
                         sessionId,
                         userQuery,
                         attachmentsJson,
                         readSourcesJson(config),
                         snapshot != null ? snapshot.historyMessageCount() : 0,
-                        lastOutput.get()));
+                        lastOutput.get());
+                persisted.set(retryOutcome.persisted());
             }
         } finally {
             bridge.removeRing(runIdStr);
@@ -688,11 +697,13 @@ public class ChatRequestWorker {
      * @param historyCursor    持久化游标（pre-run checkpoint 中 messages 数，P0-4a）：
      *                         仅持久化 rawList 中 index >= historyCursor 的新增消息，避免历史消息每轮重插
      * @param lastOutput       流式输出的最后一个 NodeOutput（可为 null，此时仅持久化用户消息）
-     * @return true=已落库（含 (run_id,seq) 唯一索引冲突的幂等跳过，调用方不得重试）；
-     *         false=落库失败且未确认写入（调用方可重试）
+     * @return 落库结果（R2 补口 B）：persisted=true=已落库（含 (run_id,seq) 唯一索引冲突的幂等跳过，
+     *         调用方不得重试）；false=落库失败且未确认写入（调用方可重试）；
+     *         assistantMessageId=assistant 正文行（role=ASSISTANT 且 messageType==null）落库回填的
+     *         雪花 ID——幂等跳过/失败/无正文行时为 null（END 事件 messageId 显式 null 降级）
      */
     @SuppressWarnings("unchecked")
-    private boolean persistMessages(
+    private PersistOutcome persistMessages(
             Long runId,
             Long sessionId,
             String userQuery,
@@ -702,6 +713,10 @@ public class ChatRequestWorker {
             NodeOutput lastOutput) {
         List<ChatMessage> messages = new ArrayList<>();
         int seq = 0;
+
+        // R2 意图落库修复：从最终 state 的查询计划取意图规范名小写（修复 intent_type 恒 NULL；
+        // 无计划（异常中断/QU 未写入）返回 null，正文行 intent_type 保持 null——存量行不受影响）
+        String intentType = resolveIntentType(lastOutput);
 
         // 1. 用户消息（携带本轮附件列表，供前端渲染/审计回放 —— spec §5.1 双存决策）
         ChatMessage userMsg = new ChatMessage();
@@ -731,6 +746,11 @@ public class ChatRequestWorker {
                         List<ChatMessage> converted = toChatMessages(msg, runId, sessionId, sourcesJson);
                         for (ChatMessage cm : converted) {
                             cm.setSeq(seq++);
+                            // R2：仅 assistant 正文行（messageType==null）标注意图——
+                            // thinking/TOOL_* 行与用户行不落（意图描述的是本轮 AI 回答性质）
+                            if (intentType != null && "ASSISTANT".equals(cm.getRole()) && cm.getMessageType() == null) {
+                                cm.setIntentType(intentType);
+                            }
                             messages.add(cm);
                         }
                     }
@@ -743,20 +763,65 @@ public class ChatRequestWorker {
             try {
                 chatMessageService.batchInsert(messages);
                 log.info("持久化消息: runId={}, count={}", runId, messages.size());
-                return true;
+                // R2：saveBatch 返回后实体 ID 已回填，反向扫描取最后一条 assistant 正文行 ID
+                return new PersistOutcome(true, resolveAssistantBodyId(messages));
             } catch (DataIntegrityViolationException e) {
                 // B2-4 数据层兜底：(run_id,seq) 唯一索引（V13 uniq_chat_message_run_seq）冲突
                 // = 本批消息已落库（完成路径重试/双路径重复调用），幂等跳过——按已落库处理，
                 // 调用方不得因该冲突再次重试
                 log.warn("消息已落库（(run_id,seq) 唯一索引冲突），幂等跳过重复落库: runId={}, count={}", runId, messages.size());
-                return true;
+                return new PersistOutcome(true, null);
             } catch (Exception e) {
                 log.error("消息持久化失败 runId={}", runId, e);
-                return false;
+                return new PersistOutcome(false, null);
             }
         }
         // 无消息需落库（防御分支：用户消息恒存在，正常不达此处）——视为已处理
-        return true;
+        return new PersistOutcome(true, null);
+    }
+
+    /**
+     * 反向扫描定位最后一条 assistant 正文行的落库回填 ID（R2 补口 B）。
+     *
+     * <p>正文行判定：role=ASSISTANT 且 messageType==null（thinking/TOOL_CALL/TOOL_RESULT 行、
+     * 用户行均跳过）。反向扫描保证多轮 assistant 输出场景取到「最终回答」；
+     * batchInsert（saveBatch）返回后实体雪花 ID 已回填，直接读取即可。
+     *
+     * @param messages 本批已落库的消息实体列表（ID 已回填）
+     * @return 最后一条 assistant 正文行 ID；无正文行时返回 null
+     */
+    private Long resolveAssistantBodyId(List<ChatMessage> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessage cm = messages.get(i);
+            if ("ASSISTANT".equals(cm.getRole()) && cm.getMessageType() == null) {
+                return cm.getId();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 从最终 state 的查询计划解析意图规范名（R2 意图落库修复）。
+     *
+     * <p>KEY_QUERY_PLAN 由 queryUnderstandingNode 写入（ReplaceStrategy，每次 run 覆盖），
+     * 取 {@link QueryPlan#intent()} 的小写规范名（knowledge_question / chat / unknown，
+     * 与条件边路由键一致）。异常中断（lastOutput=null）或计划缺失时返回 null——
+     * 正文行 intent_type 保持 null，前端按可空处理。
+     *
+     * @param lastOutput 流式输出的最后一个 NodeOutput（可为 null）
+     * @return 意图规范名小写；无 state/无计划/类型不符时返回 null
+     */
+    private String resolveIntentType(NodeOutput lastOutput) {
+        if (lastOutput == null || lastOutput.state() == null) {
+            return null;
+        }
+        return lastOutput
+                .state()
+                .value(KEY_QUERY_PLAN)
+                .filter(QueryPlan.class::isInstance)
+                .map(QueryPlan.class::cast)
+                .map(plan -> plan.intent().code())
+                .orElse(null);
     }
 
     /**
@@ -850,15 +915,32 @@ public class ChatRequestWorker {
     // ========================================================================
 
     /**
-     * 处理正常完成：END 事件 + 状态 COMPLETED。
+     * 处理正常完成：END 事件（含 messageId）+ 状态 COMPLETED。
+     *
+     * <p>R2 补口 B：END payload 扩为 {@code {runId, status:"COMPLETED", messageId}}——
+     * messageId 为 assistant 正文行落库回填雪花 ID 的字符串形式（与 runId 字符串风格一致），
+     * 幂等跳过/无正文行/异常降级时显式 null（前端 {@code messageId?: string | null} 可空容忍）。
+     * 调用先于本方法的 persistMessages 已完成落库，时序天然保证 ID 可用。
      *
      * <p>P1-5：updateStatus 走短重试（3 次递增退避）——完成时刻 DB 瞬时故障若直接上抛，
      * run 滞留 ACTIVE，uniq_active_run_per_session 使该会话后续 chat() 永久 409 锁死；
      * 瞬时故障恢复后重试可收敛到 COMPLETED。
+     *
+     * @param runIdStr          Run 唯一标识（字符串）
+     * @param runId             Run ID（Long）
+     * @param runState          SSE 事件序列状态
+     * @param assistantMessageId assistant 正文行落库回填 ID（可为 null——幂等跳过/无正文行）
      */
-    private void handleCompleted(String runIdStr, Long runId, SseEventTransformer.RunState runState) {
-        String payload = toJson(Map.of("runId", runIdStr, "status", "COMPLETED"));
-        bridge.push(runIdStr, new SseEvent(SseEventType.END, runState.nextSeq(), payload, System.currentTimeMillis()));
+    private void handleCompleted(
+            String runIdStr, Long runId, SseEventTransformer.RunState runState, Long assistantMessageId) {
+        // LinkedHashMap：messageId 需显式输出 null（Map.of 不支持 null 值）且保证字段序稳定
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("runId", runIdStr);
+        payload.put("status", "COMPLETED");
+        payload.put("messageId", assistantMessageId == null ? null : assistantMessageId.toString());
+        bridge.push(
+                runIdStr,
+                new SseEvent(SseEventType.END, runState.nextSeq(), toJson(payload), System.currentTimeMillis()));
         updateStatusWithRetry(runId, "COMPLETED");
     }
 

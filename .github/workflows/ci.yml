@@ -41,3 +41,91 @@ jobs:
           name: jacoco-coverage-report
           path: backend/target/site/jacoco
           if-no-files-found: ignore
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 前端 CI（frontend + e2e）：Task 6/15 创建前端工程前为占位，
+  # 检测到 student-frontend 与 frontend 两目录齐备后才实际执行（否则全部步骤跳过通过）
+  # 链路：冻结安装依赖 → lint/typecheck/覆盖率单测 → 跨引用断言 → Playwright E2E
+  # ─────────────────────────────────────────────────────────────────────────────
+  frontend:
+    name: 前端质量门禁（lint/typecheck/单测/跨引用断言）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 前端工程落地检测：student-frontend（Task 6）与 frontend（Task 15）齐备后置 ready=true
+      - name: 检测前端工程是否已落地
+        id: frontend_ready
+        run: |
+          if [ -d student-frontend ] && [ -d frontend ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 安装 pnpm 9
+        uses: pnpm/action-setup@v4
+        with:
+          version: "9"
+        if: steps.frontend_ready.outputs.ready == 'true'
+
+      - name: 安装 Node 22（启用 pnpm 依赖缓存）
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+        if: steps.frontend_ready.outputs.ready == 'true'
+
+      - name: 安装依赖（按锁文件冻结安装）
+        run: pnpm install --frozen-lockfile
+        if: steps.frontend_ready.outputs.ready == 'true'
+
+      - name: lint + 类型检查 + 覆盖率单测
+        run: pnpm lint && pnpm typecheck && pnpm test:cov
+        if: steps.frontend_ready.outputs.ready == 'true'
+
+      - name: 跨前端引用断言（宪法：双前端禁止互引）
+        run: pnpm check:cross-imports
+        if: steps.frontend_ready.outputs.ready == 'true'
+
+  e2e:
+    name: 前端 E2E（Playwright chromium）
+    runs-on: ubuntu-latest
+    needs: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      # 与 frontend job 相同的落地检测：占位期内跳过全部步骤，目录齐备后生效
+      - name: 检测前端工程是否已落地
+        id: frontend_ready
+        run: |
+          if [ -d student-frontend ] && [ -d frontend ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 安装 pnpm 9
+        uses: pnpm/action-setup@v4
+        with:
+          version: "9"
+        if: steps.frontend_ready.outputs.ready == 'true'
+
+      - name: 安装 Node 22（启用 pnpm 依赖缓存）
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+        if: steps.frontend_ready.outputs.ready == 'true'
+
+      - name: 安装依赖（按锁文件冻结安装）
+        run: pnpm install --frozen-lockfile
+        if: steps.frontend_ready.outputs.ready == 'true'
+
+      - name: 安装 Playwright chromium（含系统依赖）
+        run: pnpm -r exec playwright install --with-deps chromium
+        if: steps.frontend_ready.outputs.ready == 'true'
+
+      - name: 运行 E2E 测试
+        run: pnpm e2e
+        if: steps.frontend_ready.outputs.ready == 'true'

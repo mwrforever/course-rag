@@ -4,19 +4,26 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.convert.ChatSessionConverterImpl;
+import com.commerce.rag.convert.StudentConverterImpl;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.mapper.ChatMessageMapper;
 import com.commerce.rag.service.impl.ChatMessageServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.ChatMessageVO;
+import com.commerce.rag.vo.StudentMessageVO;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -37,12 +44,18 @@ class ChatMessageServiceTest {
     @Mock
     private ChatMessageMapper messageMapper;
 
+    @Mock
+    private IChatRunService chatRunService;
+
     /** 被测实现（spy：saveBatch 为 MP 框架方法，mock 环境无 SqlSessionFactory，stub 后验证调用） */
     private ChatMessageServiceImpl messageService;
 
     @BeforeEach
     void setUp() {
-        messageService = spy(new ChatMessageServiceImpl(messageMapper, new ChatSessionConverterImpl()));
+        // 构造参数顺序与 @RequiredArgsConstructor 字段声明一致：
+        // messageMapper → chatSessionConverter → studentConverter → chatRunService
+        messageService = spy(new ChatMessageServiceImpl(
+                messageMapper, new ChatSessionConverterImpl(), new StudentConverterImpl(), chatRunService));
     }
 
     @Test
@@ -141,5 +154,113 @@ class ChatMessageServiceTest {
         long count = messageService.countByRunId(10L);
 
         assertEquals(5L, count);
+    }
+
+    // ==================== findStudentMessagesBySession（R1 补口 A：学生历史消息） ====================
+
+    /** 构造带 sources/attachments JSON 的消息行（模拟 DB 投影行） */
+    private ChatMessage studentRow(Long id, String role, Long runId) {
+        ChatMessage msg = new ChatMessage();
+        msg.setId(id);
+        msg.setSessionId(1L);
+        msg.setRole(role);
+        msg.setContent("内容-" + id);
+        msg.setIntentType("knowledge_question");
+        msg.setRunId(runId);
+        msg.setSeq(1);
+        msg.setCreatedAt(LocalDateTime.of(2026, 8, 15, 9, 1));
+        msg.setSourcesJson("[{\"chunkId\":101,\"docTitle\":\"RAG 讲义\",\"headingPath\":\"Ch3 > 3.2\",\"score\":0.87}]");
+        msg.setAttachmentsJson("[{\"type\":\"image\",\"url\":\"0/a.png\",\"name\":\"a.png\",\"size\":1024}]");
+        return msg;
+    }
+
+    @Test
+    @DisplayName("findStudentMessagesBySession → 复合排序 createdAt asc + seq asc，投影含 sources_json/attachments_json")
+    @SuppressWarnings("unchecked")
+    void findStudentMessagesBySession_ordersByCreatedAtAscSeqAsc() {
+        // Given: 会话内有一个 COMPLETED run
+        when(chatRunService.findCompletedRunIds(1L)).thenReturn(List.of(10L));
+        Page<ChatMessage> returned = new Page<>(1, 200);
+        returned.setRecords(List.of(studentRow(1L, "USER", null), studentRow(2L, "ASSISTANT", 10L)));
+        returned.setTotal(2);
+        when(messageMapper.selectPage(any(), any())).thenReturn(returned);
+
+        // When: 查询学生历史消息
+        IPage<StudentMessageVO> result = messageService.findStudentMessagesBySession(1L, 1, 200);
+
+        // Then: 分页结果转 VO（sources/attachments JSON 解析为对象数组）
+        assertEquals(2, result.getRecords().size());
+        StudentMessageVO first = result.getRecords().get(0);
+        assertEquals("USER", first.role());
+        assertEquals("RAG 讲义", first.sources().get(0).docTitle());
+        assertEquals("0/a.png", first.attachments().get(0).url());
+        assertEquals(2L, result.getTotal());
+
+        // Then: 排序为 createdAt asc + seq asc 复合（M5 同根因：批内 created_at 相同排序不稳定）
+        ArgumentCaptor<LambdaQueryWrapper<ChatMessage>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(messageMapper).selectPage(any(), captor.capture());
+        String sqlSegment = captor.getValue().getSqlSegment();
+        assertTrue(sqlSegment.contains("created_at ASC"), "应为 createdAt 升序: " + sqlSegment);
+        assertTrue(sqlSegment.contains("seq ASC"), "应为 seq 升序（复合排序第二键）: " + sqlSegment);
+
+        // Then: 按需取列——投影含 sources_json/attachments_json 两列（服务端解析 JSON 用）
+        String sqlSelect = captor.getValue().getSqlSelect();
+        assertTrue(sqlSelect.contains("sources_json"), "投影应含 sources_json: " + sqlSelect);
+        assertTrue(sqlSelect.contains("attachments_json"), "投影应含 attachments_json: " + sqlSelect);
+    }
+
+    @Test
+    @DisplayName("findStudentMessagesBySession → 非 COMPLETED 的 run 仅保留 USER 行（M3 半截过滤）")
+    @SuppressWarnings("unchecked")
+    void findStudentMessagesBySession_filtersIncompleteRunRows() {
+        // Given: 会话内 run 10 已完成、run 20 已取消（CANCELLED run 的 assistant 行应被 SQL 过滤剔除）
+        when(chatRunService.findCompletedRunIds(1L)).thenReturn(List.of(10L));
+        Page<ChatMessage> returned = new Page<>(1, 200);
+        returned.setRecords(List.of(studentRow(1L, "USER", null), studentRow(2L, "ASSISTANT", 10L)));
+        returned.setTotal(2);
+        when(messageMapper.selectPage(any(), any())).thenReturn(returned);
+
+        messageService.findStudentMessagesBySession(1L, 1, 200);
+
+        // Then: 过滤条件为 role = 'USER' OR run_id IN (completedRunIds)（半截内容剔除下沉 SQL，无 N+1）
+        ArgumentCaptor<LambdaQueryWrapper<ChatMessage>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(messageMapper).selectPage(any(), captor.capture());
+        String sqlSegment = captor.getValue().getSqlSegment();
+        assertTrue(sqlSegment.contains("role"), "应含 role 条件: " + sqlSegment);
+        assertTrue(sqlSegment.contains("run_id"), "应含 run_id IN 条件: " + sqlSegment);
+        assertTrue(sqlSegment.contains("OR"), "USER 行与 COMPLETED run 行应为 OR 关系: " + sqlSegment);
+        Collection<Object> params = captor.getValue().getParamNameValuePairs().values();
+        assertTrue(params.contains("USER"), "参数应含 USER 角色值");
+        assertTrue(params.contains(10L), "参数应含已完成 runId");
+        assertFalse(params.contains(20L), "未完成 runId 不应进入查询参数");
+    }
+
+    @Test
+    @DisplayName("findStudentMessagesBySession → 会话无 COMPLETED run 时退化为仅查 USER 行，size 超限钳制 500")
+    @SuppressWarnings("unchecked")
+    void findStudentMessagesBySession_noCompletedRunAndSizeClamp() {
+        // Given: 会话内无 COMPLETED run（全部 run 被取消/异常）
+        when(chatRunService.findCompletedRunIds(1L)).thenReturn(List.of());
+        Page<ChatMessage> returned = new Page<>(1, 500);
+        returned.setRecords(List.of(studentRow(1L, "USER", null)));
+        returned.setTotal(1);
+        when(messageMapper.selectPage(any(), any())).thenReturn(returned);
+
+        // When: 传入超限 size=10000
+        IPage<StudentMessageVO> result = messageService.findStudentMessagesBySession(1L, 1, 10000);
+
+        // Then: 仅返回 USER 行，size 已钳制为 500
+        assertEquals(1, result.getRecords().size());
+        assertEquals("USER", result.getRecords().get(0).role());
+        assertEquals(500, result.getSize());
+
+        // Then: 空 completedRunIds 不生成 IN ()（非法 SQL），条件退化为 role = 'USER'
+        ArgumentCaptor<LambdaQueryWrapper<ChatMessage>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        ArgumentCaptor<Page<ChatMessage>> pageCaptor = ArgumentCaptor.forClass(Page.class);
+        verify(messageMapper).selectPage(pageCaptor.capture(), captor.capture());
+        assertEquals(500, pageCaptor.getValue().getSize(), "分页对象 size 应钳制为 500");
+        String sqlSegment = captor.getValue().getSqlSegment();
+        assertFalse(sqlSegment.contains("IN"), "空 runId 列表不应生成 IN 条件: " + sqlSegment);
+        assertTrue(captor.getValue().getParamNameValuePairs().containsValue("USER"));
     }
 }

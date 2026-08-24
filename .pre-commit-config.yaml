@@ -49,6 +49,21 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # 前端 lint+format（各端独立；仅变更对应目录时触发，零依赖 Node 运行时
+      # 经 corepack 调用 pnpm——CI 与本地均可用）
+      - id: frontend-lint-c
+        name: C 端 student-frontend eslint+prettier
+        entry: bash -c 'cd student-frontend && corepack pnpm exec eslint --cache . && corepack pnpm exec prettier --check .'
+        language: system
+        files: ^student-frontend/
+        stages: [pre-commit]
+      - id: frontend-lint-b
+        name: B 端 frontend eslint+prettier
+        entry: bash -c 'cd frontend && corepack pnpm exec eslint --cache . && corepack pnpm exec prettier --check .'
+        language: system
+        files: ^frontend/
+        stages: [pre-commit]
+
       # pre-push 阶段（每次推送全量验证，避免拖慢每次提交）：
       # 单测(JUnit5+Mockito) + SpotBugs 静态分析 + JaCoCo 覆盖率门禁(≥80%)
       - id: mvn-verify

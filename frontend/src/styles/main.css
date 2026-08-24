@@ -1,0 +1,72 @@
+/* ============================ 字体（自托管 @font-face，非 Google CDN） ============================ */
+/* Geist / Geist Mono（拉丁与数字）：经 @fontsource 包自托管（npm 静态资源，随 Vite 打包，无外部 CDN 依赖） */
+@import '@fontsource/geist-sans/400.css';
+@import '@fontsource/geist-sans/500.css';
+@import '@fontsource/geist-sans/600.css';
+@import '@fontsource/geist-sans/700.css';
+@import '@fontsource/geist-mono/400.css';
+@import '@fontsource/geist-mono/500.css';
+/* Noto Sans SC：仅引入 latin 子集（自托管体积可控）；CJK 字形回退系统字体栈
+   （PingFang SC / Microsoft YaHei），与直接拉取完整 CJK 字体文件效果一致且更轻 */
+@import '@fontsource/noto-sans-sc/latin-400.css';
+@import '@fontsource/noto-sans-sc/latin-500.css';
+@import '@fontsource/noto-sans-sc/latin-700.css';
+
+/* ============================ Tailwind v4（CSS-first，无 config 文件） ============================ */
+@import 'tailwindcss';
+
+/* ============================ 设计令牌（设计 §2.2：Primitive → Semantic） ============================ */
+@theme {
+  /* ---- Primitive 色板锚点：slate 冷中性 + blue 唯一强调（与 Tailwind 默认值一致，显式声明供语义层引用） ---- */
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-700: #334155;
+  --color-slate-900: #0f172a;
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-300: #93c5fd;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+
+  /* ---- Semantic 语义层：组件与页面只允许引用这层（bg-brand/text-text/border-border 等工具类由此生成） ---- */
+  --color-bg: var(--color-slate-50); /* 全站背景 */
+  --color-surface: #ffffff; /* 卡片/表面（顶栏侧栏除外） */
+  --color-surface-2: var(--color-slate-100); /* 次表面 / hover 底 */
+  --color-border: var(--color-slate-200); /* 1px 分隔线 */
+  --color-text: var(--color-slate-900); /* 主文字 */
+  --color-text-muted: var(--color-slate-500); /* 次级文字 */
+  --color-text-subtle: var(--color-slate-400); /* 辅助文字/占位 */
+  --color-brand: var(--color-blue-600); /* 唯一 accent：CTA/链接/激活态 */
+  --color-brand-strong: var(--color-blue-700); /* hover */
+  --color-brand-soft: var(--color-blue-100); /* 标签/选中浅底 */
+
+  /* ---- 状态语义色：只表达状态不作装饰（设计 §0.2-5） ---- */
+  --color-success: #16a34a;
+  --color-danger: #dc2626;
+  --color-warning: #d97706;
+  --color-info: #0ea5e9;
+
+  /* ---- 字体族：Geist（拉丁/数字）+ Noto Sans SC（中文）+ Geist Mono（等宽：时间戳/分数/代码） ---- */
+  --font-sans:
+    'Geist Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system,
+    sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+}
+
+/* ============================ 全局基础层 ============================ */
+@layer base {
+  html {
+    /* 默认字体族 */
+    font-family: var(--font-sans);
+    /* 全站数字等宽（设计 §2.2：全部数字 font-variant-numeric: tabular-nums） */
+    font-variant-numeric: tabular-nums;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+  }
+}

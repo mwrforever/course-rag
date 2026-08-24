@@ -66,6 +66,9 @@ class AuthIntegrationTest extends IntegrationTestBase {
         assertTrue(accessToken != null && !accessToken.isEmpty(), "应签发 Access Token");
         assertTrue(refreshToken != null && !refreshToken.isEmpty(), "应签发 Refresh Token");
         assertEquals("STUDENT", data.get("role").asText(), "角色应为 STUDENT");
+        // R0 契约显式守卫：userId 为雪花 Long，必须以字符串序列化下发（防 JS Number 精度丢失，
+        // 前端反馈/会话等一切 id 按 string 消费——回归守卫防全局 Long→String 序列化被误删）
+        assertTrue(data.get("userId").isTextual(), "userId 应以字符串下发（R0 Long→String 全局序列化契约）");
 
         // 携带 token 访问受保护接口（J1 我的课程，空选课表返回空列表）
         ResponseEntity<String> courses = getWithToken("/api/v1/student/courses", accessToken);
