@@ -18,11 +18,22 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "lcov"],
-      // 覆盖率精确圈定当前已测文件（任务 7 范围：api client + 认证上下文 + 登录页）。
-      // 暂不计入的文件与原因：首页占位与布局壳（冒烟测试不计指标）、site-header/middleware
-      // （middleware 跑在 edge runtime，无法在 jsdom 单测环境加载 next/server）；
+      // 覆盖率圈定已实现文件（Task 7 三文件 + Task 8 首页与组件）。
+      // 暂不计入的文件与原因：site-header/middleware（middleware 跑在 edge runtime，
+      // 无法在 jsdom 单测环境加载 next/server；site-header 导航激活态随导航任务落地后补测）；
       // 后续任务交付各自测试后逐步放宽 include 至 src 全量。
-      include: ["src/lib/api.ts", "src/lib/auth-context.tsx", "src/app/*/login/page.tsx"],
+      include: [
+        "src/lib/api.ts",
+        "src/lib/auth-context.tsx",
+        "src/lib/query-provider.tsx",
+        "src/lib/time.ts",
+        "src/app/*/login/page.tsx",
+        "src/app/*/page.tsx",
+        "src/app/*/layout.tsx",
+        "src/components/ai-badge.tsx",
+        "src/components/course-card.tsx",
+        "src/components/empty-state.tsx",
+      ],
       // 全局行覆盖 80% 兜底；核心文件（api client 与认证，后续所有 C 端任务的地基）行覆盖 100%
       thresholds: {
         lines: 80,
