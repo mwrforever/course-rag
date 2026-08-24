@@ -356,12 +356,13 @@ export interface ChunkCollectionTypeRequest {
 
 /**
  * 批量修正（后端 dto/BatchChunkUpdateRequest，文档级 Milvus 同步可能慢）
- * collectionType/courseId 均可选：未选表示「不改」，后端 null 时不更新对应字段
+ * collectionType/courseId 均可选：未选表示「不改」，后端 null 时不更新对应字段；
+ * courseId 传 'DEFAULT' 表示通用资料库（后端 if (courseId != null) 判定，非 null 即写库同步 Milvus）
  */
 export interface BatchChunkUpdateRequest {
   ids: string[]
   collectionType?: CollectionType
-  courseId?: string | null
+  courseId?: string
 }
 
 /** 批量标记已修正（后端 dto/BatchCorrectedRequest，不可撤销） */

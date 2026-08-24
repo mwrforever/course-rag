@@ -107,7 +107,7 @@ describe('ChunksView：列表渲染与四态', () => {
     vi.useRealTimers()
   })
 
-  it('渲染内容预览（2 行截断 + 全文 tooltip）/ 所属文档 / collectionType Badge 三态 / courseId', async () => {
+  it('渲染内容预览（2 行截断 + 全文 tooltip）/ 所属文档 / collectionType Badge 三态 / courseId（null 与 DEFAULT 双形态）', async () => {
     vi.spyOn(knowledgeBaseApi, 'list').mockResolvedValue(pageOf([kb('kb-1', 'RAG 知识库')], '1'))
     vi.spyOn(chunkApi, 'pending').mockResolvedValue(
       pageOf(
@@ -115,8 +115,10 @@ describe('ChunksView：列表渲染与四态', () => {
           chunk('c-1', { collectionType: 'TECHNICAL_QA', courseId: 'course-100001' }),
           chunk('c-2', { collectionType: 'COURSE_INFO' }),
           chunk('c-3', { content: '未分类长内容'.repeat(30) }),
+          // 后端实测形态：通用资料库 course_id 为字符串 'DEFAULT'（非 null）
+          chunk('c-4', { courseId: 'DEFAULT' }),
         ],
-        '3',
+        '4',
       ),
     )
     const { wrapper } = await mountChunks()
@@ -145,18 +147,24 @@ describe('ChunksView：列表渲染与四态', () => {
     expect(badgeInfo.classes()).toContain('bg-violet-50')
     expect(wrapper.find('[data-testid="chunk-collection-c-3"]').text()).toContain('未分类')
 
-    // courseId：非空显示 id 短格式（title 全文）/ 空显示「通用」灰 Badge
+    // courseId 非空：显示 id 短格式（title 全文）
     const courseCell = wrapper.find('[data-testid="chunk-course-c-1"]')
     expect(courseCell.text()).toContain('#100001')
     expect(courseCell.attributes('title')).toBe('course-100001')
+    // 既有 null 形态：显示「通用」灰 Badge
     expect(wrapper.find('[data-testid="chunk-course-c-2"]').text()).toContain('通用')
+    // 后端实测 'DEFAULT' 字符串形态：同样显示「通用」灰 Badge，绝不渲染成短格式 '#EFAULT'
+    const defaultCell = wrapper.find('[data-testid="chunk-course-c-4"]')
+    expect(defaultCell.text()).toContain('通用')
+    expect(defaultCell.text()).not.toContain('#EFAULT')
+    expect(wrapper.find('[data-testid="chunk-course-c-4"]').classes()).toContain('bg-slate-100')
 
     // 操作列：上下文 / 编辑
     expect(wrapper.find('[data-testid="op-context-c-1"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="op-edit-c-1"]').exists()).toBe(true)
 
     // 分页器总数
-    expect(wrapper.text()).toContain('共 3 条')
+    expect(wrapper.text()).toContain('共 4 条')
     wrapper.unmount()
   })
 
@@ -370,7 +378,7 @@ describe('ChunksView：批量修正 Dialog（表单校验 + 提交体 + loading 
     wrapper.unmount()
   })
 
-  it('不改语义：collectionType 留空省略字段，courseId 选「通用(DEFAULT)」显式传 null', async () => {
+  it('通用(DEFAULT)提交值：courseId 显式传 "DEFAULT"（后端写库并同步 Milvus）', async () => {
     const { wrapper, dialog } = await openBatchDialog()
     const batchSpy = vi.spyOn(chunkApi, 'batchUpdate').mockResolvedValue()
     vi.spyOn(courseApi, 'list').mockResolvedValue(pageOf<CourseDTO>([], '0'))
@@ -381,7 +389,8 @@ describe('ChunksView：批量修正 Dialog（表单校验 + 提交体 + loading 
 
     await dialog.find('[data-testid="submit-batch"]').trigger('click')
     await flushPromises()
-    expect(batchSpy).toHaveBeenCalledWith({ ids: ['c-1'], courseId: null })
+    // 后端 if (courseId != null) 判定：'DEFAULT' 非 null，会实际写库并同步 Milvus
+    expect(batchSpy).toHaveBeenCalledWith({ ids: ['c-1'], courseId: 'DEFAULT' })
     wrapper.unmount()
   })
 
@@ -488,6 +497,40 @@ describe('ChunksView：标记已修正（二次确认，不可撤销）', () => 
     // 勾选清空 → 批量按钮消失
     expect(wrapper.find('[data-testid="batch-corrected"]').exists()).toBe(false)
     expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    wrapper.unmount()
+  })
+
+  it('提交期间禁止取消/Esc/遮罩关闭（与批量 Dialog submitting 拦截一致）', async () => {
+    vi.spyOn(knowledgeBaseApi, 'list').mockResolvedValue(pageOf([kb('kb-1', 'RAG 知识库')], '1'))
+    vi.spyOn(chunkApi, 'pending').mockResolvedValue(pageOf([chunk('c-1')], '1'))
+    // 提交挂起可控：断言期间 Dialog 不可被任何途径关闭
+    let resolveCorrected: () => void = () => {}
+    const correctedSpy = vi
+      .spyOn(chunkApi, 'batchCorrected')
+      .mockImplementation(() => new Promise<void>((resolve) => (resolveCorrected = resolve)))
+    const { wrapper } = await mountChunks()
+
+    await wrapper.find('[data-testid="select-c-1"]').setValue(true)
+    await wrapper.find('[data-testid="batch-corrected"]').trigger('click')
+    const dialog = wrapper.find('[data-testid="corrected-dialog"]')
+    await dialog.find('[data-testid="confirm-corrected"]').trigger('click')
+    await flushPromises()
+
+    // 提交中：取消按钮禁用
+    expect(
+      (dialog.find('[data-testid="cancel-corrected"]').element as HTMLButtonElement).disabled,
+    ).toBe(true)
+    // Esc 与遮罩点击均被 submitting 拦截，Dialog 保持在场
+    await dialog.trigger('keydown', { key: 'Escape' })
+    await dialog.trigger('click')
+    expect(wrapper.find('[data-testid="corrected-dialog"]').exists()).toBe(true)
+    expect(correctedSpy).toHaveBeenCalledTimes(1)
+
+    // 提交完成：Dialog 正常关闭
+    resolveCorrected()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="corrected-dialog"]').exists()).toBe(false)
+    expect(correctedSpy).toHaveBeenCalledWith({ ids: ['c-1'] })
     wrapper.unmount()
   })
 })
@@ -633,6 +676,38 @@ describe('ChunksView：上下文 Drawer（四节点时间线，null 不渲染）
     await flushPromises()
     expect(contextSpy).toHaveBeenCalledTimes(2)
     expect(drawer.find('[data-testid="ctx-current"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('竞态守卫：开 A→关→开 B，A 晚到响应不覆盖 B（快速开关乱序）', async () => {
+    vi.spyOn(knowledgeBaseApi, 'list').mockResolvedValue(pageOf([kb('kb-1', 'RAG 知识库')], '1'))
+    vi.spyOn(chunkApi, 'pending').mockResolvedValue(pageOf([chunk('c-1'), chunk('c-2')], '2'))
+    // A（c-1）请求挂起可控：响应在 B 加载完成之后才 resolve（模拟真实网络乱序）
+    let resolveA: (v: Record<string, DocumentChunkVO>) => void = () => {}
+    const contextSpy = vi.spyOn(chunkApi, 'context').mockImplementation((id: string) => {
+      if (id === 'c-1') {
+        return new Promise<Record<string, DocumentChunkVO>>((resolve) => (resolveA = resolve))
+      }
+      return Promise.resolve({ current: chunk('c-2', { content: 'B 的当前分片' }) })
+    })
+    const { wrapper } = await mountChunks()
+
+    // 开 A（c-1 请求在途，Drawer 处于加载态）
+    await wrapper.find('[data-testid="op-context-c-1"]').trigger('click')
+    expect(contextSpy).toHaveBeenCalledWith('c-1')
+    // 关 A
+    await wrapper.find('[data-testid="close-context"]').trigger('click')
+    expect(wrapper.find('[data-testid="context-drawer"]').exists()).toBe(false)
+    // 开 B（c-2 请求即回）：B 的节点正常渲染
+    await wrapper.find('[data-testid="op-context-c-2"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="ctx-current"]').text()).toContain('B 的当前分片')
+    // A 迟到响应到达：不得回填覆盖 B（序号已过期），loading 态也不被 A 的收尾干扰
+    resolveA({ current: chunk('c-1', { content: 'A 的当前分片' }) })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="ctx-current"]').text()).toContain('B 的当前分片')
+    expect(wrapper.find('[data-testid="ctx-current"]').text()).not.toContain('A 的当前分片')
+    expect(wrapper.find('[data-testid="ctx-loading"]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

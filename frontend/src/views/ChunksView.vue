@@ -9,7 +9,8 @@
  *    collection_type Badge（TECHNICAL_QA 蓝 / COURSE_INFO 紫 / null 灰「未分类」）/
  *    courseId（「通用」灰 Badge 或 id 短格式，无课程名映射接口）/ 操作（上下文/编辑）
  * 3. 批量修正 Dialog（480px）：collectionType 下拉 + courseId 课程搜索选择器，
- *    「不改」语义 = 提交省略对应字段，「通用(DEFAULT)」courseId 显式 null；
+ *    「不改」语义 = 提交省略对应字段，「通用(DEFAULT)」courseId 显式 'DEFAULT'
+ *    （后端 if (courseId != null) 判定，非 null 即写库并同步 Milvus）；
  *    POST batch-update 带 loading 态（文档级 Milvus 同步可能慢）
  * 4. 标记已修正：二次确认（danger + 不可撤销文案）→ POST batch-corrected → 行消失
  * 5. 编辑 Drawer（600px）：mono textarea 全文 + 元数据只读区（headingPath/charOffset
@@ -54,8 +55,9 @@ const COLLECTION_TYPE_OPTIONS: Array<{ value: '' | CollectionType; label: string
 
 /**
  * 批量修正 Dialog 的课程选择三态：
- * - keep：不改（提交省略 courseId 字段）
- * - default：通用（DEFAULT），courseId 显式传 null（后端 null 不更新，与省略等价）
+ * - keep：不改（提交省略 courseId 字段，后端 null 不更新）
+ * - default：通用（DEFAULT），courseId 显式传 'DEFAULT'
+ *   （后端 if (courseId != null) 判定，非 null 即写库并同步 Milvus——真实数据形态即字符串 'DEFAULT'）
  * - course：绑定具体课程，提交 courseId = course.id
  */
 type CourseChoice = { kind: 'keep' } | { kind: 'default' } | { kind: 'course'; course: CourseDTO }
@@ -260,13 +262,14 @@ function pickBatchCourse(choice: CourseChoice) {
 /**
  * 批量修正提交体组装（设计 §2.4.3 工作流第 3 步）
  *
- * 「不改」= 省略对应字段：collectionType 留空省之；course 三态仅 keep 省略，
- * default 显式 courseId=null（后端 null 不更新，语义与省略等价，便于契约可测）。
+ * 「不改」= 省略对应字段：collectionType 留空省之；course 三态仅 keep 省略 courseId，
+ * default 显式传 'DEFAULT'（后端 if (courseId != null) 判定，非 null 即实际写库并同步
+ * Milvus；真实数据形态即字符串 'DEFAULT'，与表格「通用」Badge 口径一致）。
  *
  * @returns 提交体 {ids, collectionType?, courseId?}
  */
 function buildBatchBody() {
-  const body: { ids: string[]; collectionType?: CollectionType; courseId?: string | null } = {
+  const body: { ids: string[]; collectionType?: CollectionType; courseId?: string } = {
     ids: [...selected.value],
   }
   if (batchCollectionType.value) {
@@ -275,7 +278,7 @@ function buildBatchBody() {
   if (batchCourseChoice.value.kind === 'course') {
     body.courseId = batchCourseChoice.value.course.id
   } else if (batchCourseChoice.value.kind === 'default') {
-    body.courseId = null
+    body.courseId = 'DEFAULT'
   }
   return body
 }
@@ -308,6 +311,12 @@ async function submitBatchUpdate() {
 
 const correctedConfirmOpen = ref(false)
 const correctedSubmitting = ref(false)
+
+/** 关闭确认 Dialog：提交期间拦截取消/Esc/遮罩（与批量 Dialog submitting 一致，防误关丢状态） */
+function closeCorrectedConfirm() {
+  if (correctedSubmitting.value) return
+  correctedConfirmOpen.value = false
+}
 
 /**
  * 确认标记已修正：POST batch-corrected {ids}
@@ -390,6 +399,8 @@ const contextError = ref('')
 const contextChunkId = ref('')
 /** 时间线节点（按 CONTEXT_NODES 顺序过滤 null 后填充） */
 const contextNodes = ref<Array<{ key: string; label: string; chunk: DocumentChunkVO }>>([])
+/** 加载请求序号：快速开关竞态守卫——响应仅在序号仍为最新时写入，过期响应丢弃 */
+const contextLoadSeq = ref(0)
 
 /** 上下文接口返回四键 Map（value 为 DocumentChunkVO 或 null） */
 type ContextMap = Record<string, DocumentChunkVO | null>
@@ -400,25 +411,39 @@ async function openContext(c: DocumentChunkVO) {
   await loadContext(c.id)
 }
 
-/** 拉取上下文：四键过滤 null → 时间线节点（key 顺序固定 parent→prev→current→next） */
+/**
+ * 拉取上下文：四键过滤 null → 时间线节点（key 顺序固定 parent→prev→current→next）
+ *
+ * 竞态守卫：每次调用自增请求序号，响应/异常/收尾仅当序号仍为最新时才写入状态；
+ * closeContext 自增序号使在途请求作废——开 A→关→开 B 时 A 的迟到响应不得回填覆盖 B。
+ */
 async function loadContext(id: string) {
+  const seq = ++contextLoadSeq.value
   contextLoading.value = true
   contextError.value = ''
   try {
     const map = (await chunkApi.context(id)) as ContextMap
+    if (seq !== contextLoadSeq.value) return
     contextNodes.value = CONTEXT_NODES.flatMap((n) =>
       map[n.key] ? [{ ...n, chunk: map[n.key] as DocumentChunkVO }] : [],
     )
   } catch (err) {
+    if (seq !== contextLoadSeq.value) return
     contextError.value = messageOf(err, '上下文加载失败，请稍后重试')
   } finally {
-    contextLoading.value = false
+    if (seq === contextLoadSeq.value) {
+      contextLoading.value = false
+    }
   }
 }
 
 function closeContext() {
+  // 使在途请求序号过期：迟到响应不得回填状态（含 loading/error 清理）
+  contextLoadSeq.value++
   contextOpen.value = false
   contextNodes.value = []
+  contextLoading.value = false
+  contextError.value = ''
 }
 </script>
 
@@ -594,9 +619,13 @@ function closeContext() {
                   {{ c.collectionType ?? '未分类' }}
                 </Badge>
               </td>
-              <!-- courseId：无课程名映射，空显「通用」灰 Badge，非空显 id 短格式 -->
+              <!-- courseId：空或 'DEFAULT'（通用资料库真实形态）显「通用」灰 Badge，其余显 id 短格式 -->
               <td class="px-4">
-                <Badge v-if="!c.courseId" :data-testid="`chunk-course-${c.id}`" variant="default">
+                <Badge
+                  v-if="!c.courseId || c.courseId === 'DEFAULT'"
+                  :data-testid="`chunk-course-${c.id}`"
+                  variant="default"
+                >
                   通用
                 </Badge>
                 <span
@@ -810,8 +839,8 @@ function closeContext() {
       v-if="correctedConfirmOpen"
       data-testid="corrected-dialog"
       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-      @keydown.esc="correctedConfirmOpen = false"
-      @click.self="correctedConfirmOpen = false"
+      @keydown.esc="closeCorrectedConfirm"
+      @click.self="closeCorrectedConfirm"
     >
       <div
         class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
@@ -836,7 +865,8 @@ function closeContext() {
           <Button
             variant="outline"
             data-testid="cancel-corrected"
-            @click="correctedConfirmOpen = false"
+            :disabled="correctedSubmitting"
+            @click="closeCorrectedConfirm"
           >
             取消
           </Button>
