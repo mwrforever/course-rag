@@ -623,7 +623,6 @@ describe('api client：接口函数拼装', () => {
       size: 20,
       role: 'STUDENT',
       status: 'ACTIVE',
-      keyword: '张',
     })
 
     await userApi.create({
