@@ -1,0 +1,13 @@
+{
+  "name": "commerce-customer",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test:cov": "pnpm -r test:cov",
+    "e2e": "pnpm -r e2e",
+    "check:cross-imports": "bash tools/check-cross-imports.sh"
+  }
+}

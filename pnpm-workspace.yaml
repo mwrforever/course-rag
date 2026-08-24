@@ -1,0 +1,6 @@
+# pnpm workspace 配置：双前端 Monorepo 包清单
+# student-frontend = C 端学生端（Next.js，Task 6 创建）；frontend = B 端管理端（Vue3，Task 15 创建）
+# pnpm 对不存在的包目录会自动忽略，目录落地前后端工程构建均不受影响
+packages:
+  - student-frontend
+  - frontend
