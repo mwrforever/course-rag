@@ -1,2 +1,11 @@
-// Vitest 全局测试环境装配：注入 @testing-library/jest-dom 的 DOM 断言（toBeInTheDocument 等）
+// Vitest 全局测试环境装配：
+// 1) 注入 @testing-library/jest-dom 的 DOM 断言（toBeInTheDocument 等）
+// 2) 显式注册 RTL cleanup——本项目未开启 vitest globals，RTL 自动清理不生效，
+//    不显式清理会导致跨用例 DOM 累积、查询命中多元素
 import "@testing-library/jest-dom/vitest";
+import { cleanup } from "@testing-library/react";
+import { afterEach } from "vitest";
+
+afterEach(() => {
+  cleanup();
+});
