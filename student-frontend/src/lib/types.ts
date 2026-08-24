@@ -2,9 +2,10 @@
  * C 端接口类型系统（任务 7 地基）
  *
  * 类型铁律（docs/contracts/2026-08-16-接口契约定稿.md §7 / 后端 R0 Jackson Long→String）：
- * - 后端一切 Long 来源字段（id / total / count / fileSize / learningCount / runId / userId 等）按 string 接收，
+ * - 后端一切 Long 来源字段（id / total / fileSize / runId / userId 等）按 string 接收，
  *   防止雪花 ID（19 位）超出 JS Number.MAX_SAFE_INTEGER 精度丢失
- * - Integer（page / size / seq / chunkIndex / startPage / endPage）与浮点（rating / score）保持 number
+ * - Integer 来源字段（learningCount / page / size / seq / chunkIndex / startPage / endPage）
+ *   与浮点（rating / score）保持 number（R0 仅序列化 Long，Integer 不受影响）
  * - 可空对象字段恒输出 null（契约 §2），集合字段恒输出 []
  * - LocalDateTime → ISO-8601 无时区字符串（"2026-08-24T10:15:30"）
  */
@@ -33,7 +34,7 @@ export interface LoginResponse {
   displayName: string;
 }
 
-/** J1 学生课程（StudentCourseVO；rating 为 BigDecimal→number，learningCount 为 Long→string） */
+/** J1 学生课程（StudentCourseVO；rating 为 BigDecimal→number，learningCount 为 Integer→number，不受 R0 Long 铁律影响） */
 export interface StudentCourse {
   id: string;
   title: string;
@@ -42,7 +43,7 @@ export interface StudentCourse {
   instructorName: string | null;
   duration: string | null;
   rating: number | null;
-  learningCount: string;
+  learningCount: number;
 }
 
 /** J2 课程资料分片（ChunkVO；含页码区间 badge 所需 startPage/endPage） */

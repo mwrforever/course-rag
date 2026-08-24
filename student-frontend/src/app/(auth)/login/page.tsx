@@ -31,10 +31,12 @@ function toAlertMessage(error: unknown): string {
   return "登录失败，请稍后重试";
 }
 
-/** 读取回跳地址：仅允许站内路径（防开放重定向），非法值回退首页 */
+/**
+ * 读取回跳地址：仅允许站内路径（防开放重定向，`//` 协议相对地址一并拒绝），非法值回退首页
+ */
 function resolveRedirect(): string {
   const redirect = new URLSearchParams(window.location.search).get("redirect");
-  return redirect && redirect.startsWith("/") ? redirect : "/";
+  return redirect && redirect.startsWith("/") && !redirect.startsWith("//") ? redirect : "/";
 }
 
 /**

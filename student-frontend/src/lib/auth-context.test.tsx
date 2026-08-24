@@ -7,6 +7,17 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+/** 路由与路径 mock：认证过期闭环断言跳转目标与携带的 redirect 参数 */
+const { mockPush, mockPathname } = vi.hoisted(() => ({
+  mockPush: vi.fn(),
+  mockPathname: vi.fn(() => "/courses"),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush, replace: vi.fn(), back: vi.fn() }),
+  usePathname: () => mockPathname(),
+}));
+
 /** 构造 fetch 假响应（与 api.test 同手法，仅实现消费的形状） */
 function res(status: number, body?: unknown): Response {
   const text = body === undefined ? "" : JSON.stringify(body);
@@ -69,6 +80,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.stubGlobal("fetch", fetchMock);
   localStorage.clear();
+  mockPush.mockClear();
 });
 
 afterEach(() => {
@@ -231,6 +243,32 @@ describe("401 刷新失败全局登出联动", () => {
     await act(async () => {
       await expect(api.getMyCourses()).rejects.toThrow();
     });
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("未登录"));
+  });
+
+  it("认证过期闭环：跳转 /login?redirect=当前路径 并展示登录失效 toast", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/auth/login")) return res(200, loginBody("at-1", "rt-1"));
+      // 登录后所有请求 401（AT 过期且 RT 失效场景）
+      return res(401, { code: 401, message: "令牌无效或已过期" });
+    });
+    const { mod, api, Probe } = await fresh();
+    render(
+      <mod.AuthProvider>
+        <Probe />
+      </mod.AuthProvider>,
+    );
+    fireEvent.click(await screen.findByText("触发登录"));
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("已登录"));
+
+    // 认证过期：回调应跳转 /login?redirect=<当前路径>（编码后）并出现 toast 提示
+    await act(async () => {
+      await expect(api.getMyCourses()).rejects.toThrow();
+    });
+    expect(mockPush).toHaveBeenCalledWith("/login?redirect=%2Fcourses");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("登录已失效，请重新登录");
     await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("未登录"));
   });
 });

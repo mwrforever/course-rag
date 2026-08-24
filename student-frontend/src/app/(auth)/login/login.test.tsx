@@ -172,4 +172,12 @@ describe("提交与跳转", () => {
     fillAndSubmit("stu01", "pass123");
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/"));
   });
+
+  it("redirect 为协议相对地址（//evil.com）时拒绝回跳（防协议相对开放重定向）", async () => {
+    window.history.pushState({}, "", "/login?redirect=//evil.example.com");
+    render(<LoginPage />);
+    mockLogin.mockResolvedValue(undefined);
+    fillAndSubmit("stu01", "pass123");
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/"));
+  });
 });
