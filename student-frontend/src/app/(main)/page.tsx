@@ -228,7 +228,7 @@ export default function HomePage() {
             </motion.div>
           </div>
         ) : (
-          // 网格模式：n≥3 首卡 2x2（视觉层级）；n=2 时首卡降级宽幅 2x1（零空洞规则——
+          // 网格模式：n≥3 首卡 2x2（视觉层级）；n=2 时首卡降级宽幅 2x1（零空洞规则：
           // 首卡 r1c1-2 + 次卡 r1c3 + 入口条 r1c4，单行铺满，避免 2x2 占用行 2 后
           // 行 2 c3-4 出现 2 个空 cell）
           <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-4">

@@ -178,7 +178,11 @@ describe("课程工作台：Hero 与资料列表", () => {
     expect(screen.getByText("4.5")).toBeInTheDocument();
     expect(screen.getByText("256 人学习")).toBeInTheDocument();
     expect(screen.getByText("计算机")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /问 AI 助教/ })).toHaveAttribute("href", "/chat");
+    // 问 AI 助教：D7 上下文条面包屑，CTA 携带课程名（encodeURIComponent 编码空格等）
+    expect(screen.getByRole("link", { name: /问 AI 助教/ })).toHaveAttribute(
+      "href",
+      "/chat?course=%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84%E4%B8%8E%E7%AE%97%E6%B3%95",
+    );
     expect(screen.getByRole("link", { name: /浏览资料/ })).toHaveAttribute("href", "#materials");
   });
 

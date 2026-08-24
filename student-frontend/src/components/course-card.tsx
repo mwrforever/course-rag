@@ -85,7 +85,7 @@ export interface CourseCardProps {
  * 数字 tabular-nums，可空字段按需省略）。
  *
  * 动效（设计 §1.6）：hover 封面 scale(1.02) + 卡片阴影抬升 + 「进入课程」CTA 滑入（200ms）；
- * 铁律只动画 transform/opacity——卡片 Link 过渡收窄为 transform/opacity，
+ * 铁律只动画 transform/opacity，卡片 Link 过渡收窄为 transform/opacity，
  * border/阴影等装饰变化瞬时生效（简单处理，不做伪元素）；CSS 侧 hover 均由
  * motion-reduce: 变体覆盖（reduced-motion 下无过渡、CTA 常显）；
  * prefers-reduced-motion 或检测不可用时 motion whileHover 缩放静态。

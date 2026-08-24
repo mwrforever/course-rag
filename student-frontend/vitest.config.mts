@@ -35,12 +35,16 @@ export default defineConfig({
         "src/app/*/layout.tsx",
         "src/app/*/courses/page.tsx",
         "src/app/*/courses/*/page.tsx",
+        "src/app/*/chat/page.tsx",
+        "src/app/*/chat/*/page.tsx",
+        "src/app/*/chat/chat-workspace.tsx",
         "src/components/ai-badge.tsx",
         "src/components/course-card.tsx",
         "src/components/empty-state.tsx",
         "src/components/section-error.tsx",
         "src/components/chunk-item.tsx",
         "src/components/chunk-context-drawer.tsx",
+        "src/components/chat/*.tsx",
       ],
       // 全局行覆盖 80% 兜底；核心文件（api client 与认证，后续所有 C 端任务的地基）行覆盖 100%
       thresholds: {

@@ -177,10 +177,10 @@ export default function CourseWorkbenchPage() {
               {course.learningCount} 人学习
             </span>
           </div>
-          {/* 双 CTA：问 AI 助教（纯前端入口 → /chat，设计 D7）+ 浏览资料（锚点滚动） */}
+          {/* 双 CTA：问 AI 助教（纯前端入口 → /chat?course=课程名，D7 上下文条面包屑）+ 浏览资料（锚点滚动） */}
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
-              href="/chat"
+              href={`/chat?course=${encodeURIComponent(course.title)}`}
               className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-[15px] font-medium text-white transition-colors hover:bg-brand-strong active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-brand"
             >
               <Sparkle size={16} aria-hidden />问 AI 助教

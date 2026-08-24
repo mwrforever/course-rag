@@ -23,6 +23,10 @@
   /* 上下文抽屉滑入/遮罩淡入（设计 §1.5.3；仅动画 transform/opacity，motion-reduce 降级静态） */
   --animate-drawer-in: drawer-in 240ms ease-out;
   --animate-overlay-in: overlay-in 240ms ease-out;
+  /* 对话页动效（设计 §1.6）：打字光标 1s 循环、来源卡 stagger 280ms 滑入、toast/淡入 200ms */
+  --animate-cursor-blink: cursor-blink 1s steps(2, start) infinite;
+  --animate-source-in: source-in 280ms ease-out backwards;
+  --animate-fade-in: fade-in 200ms ease-out;
 
   @keyframes drawer-in {
     from {
@@ -34,6 +38,32 @@
   }
 
   @keyframes overlay-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes cursor-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes source-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes fade-in {
     from {
       opacity: 0;
     }
