@@ -354,10 +354,13 @@ export interface ChunkCollectionTypeRequest {
   courseId?: string | null
 }
 
-/** 批量修正（后端 dto/BatchChunkUpdateRequest，文档级 Milvus 同步可能慢） */
+/**
+ * 批量修正（后端 dto/BatchChunkUpdateRequest，文档级 Milvus 同步可能慢）
+ * collectionType/courseId 均可选：未选表示「不改」，后端 null 时不更新对应字段
+ */
 export interface BatchChunkUpdateRequest {
   ids: string[]
-  collectionType: CollectionType
+  collectionType?: CollectionType
   courseId?: string | null
 }
 

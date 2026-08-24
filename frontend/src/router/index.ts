@@ -56,7 +56,8 @@ export const routes: RouteRecordRaw[] = [
     component: AdminLayout,
     meta: { requiresAuth: true },
     children: [
-      { path: '', redirect: '/dashboard' },
+      // 空 path 子路由显式命名（消除 vue-router 未命名子路由告警；重定向兜底进仪表盘）
+      { path: '', name: 'admin-home', redirect: '/dashboard' },
       {
         path: 'dashboard',
         name: 'dashboard',
@@ -84,7 +85,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'knowledge/chunks',
         name: 'knowledge-chunks',
-        component: () => import('@/views/ChunkWorkspaceView.vue'),
+        component: () => import('@/views/ChunksView.vue'),
         meta: pageMeta('分片修正', BOTH_ROLES),
       },
       {
