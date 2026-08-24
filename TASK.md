@@ -19,7 +19,7 @@ CourseQueryService 等 Caffeine 本地缓存多实例间写失效不互通（脏
 
 ---
 
-## 2. 前端 E2E（Playwright）— 暂缓，待前端落地
+## 2. 前端 E2E（Playwright）— ✅ 已完成（2026-08-24 双前端落地 PR#5/PR#6）
 
 **背景**：CI 集成表要求后端配套 Playwright E2E。当前 `frontend/` 与 `student-frontend/`
 均为空目录（设计文档定 Next.js App Router + TS，**两前端完全独立，禁共享包/跨引用**），
@@ -28,12 +28,11 @@ CourseQueryService 等 Caffeine 本地缓存多实例间写失效不互通（脏
 **前置条件**（AGENTS.md 强制）：前端 AI 对话 / 消息渲染 / 会话界面落地前**必须与用户沟通**；
 管理端界面按生产标准直接落地。
 
-**接入清单**（前端落地后执行）：
-- [ ] `frontend/`（管理端）：Playwright 冒烟 + 核心流程（登录、课程管理、知识库上传、文档管理）
-- [ ] `student-frontend/`（C 端）：AI 对话 SSE 流式渲染（**10 事件协议逐类断言**，协议见设计文档）、
-      会话列表、反馈提交
-- [ ] `.github/workflows/ci.yml` 增加 `e2e` job（playwright install → 启动服务 → 全流程断言）
-- [ ] 两前端 E2E 工程各自独立，不得共享包
+**接入清单**（已全部完成，2026-08-24）：
+- [x] `frontend/`（管理端）：Playwright 23 用例（认证/仪表盘/知识库/文档/分片/课程/用户/反馈-权限）
+- [x] `student-frontend/`（C 端）：Playwright 29 用例（SSE 10 事件逐类断言 + 生命周期 + 附件/反馈）
+- [x] `.github/workflows/ci.yml` e2e job 落地（PR#6 后 CI 三 job 全绿）
+- [x] 两前端 E2E 工程各自独立（route-mock 模式，零共享包）
 
 ---
 
