@@ -123,7 +123,9 @@ jobs:
         if: steps.frontend_ready.outputs.ready == 'true'
 
       - name: 安装 Playwright chromium（含系统依赖）
-        run: pnpm -r exec playwright install --with-deps chromium
+        # 仅在 student-frontend 安装浏览器（ms-playwright 缓存全局共享，两端 E2E 通用）；
+        # 两端并行 --with-deps 同时 apt-get 抢 lock（CI 实证 E: Could not get lock）
+        run: pnpm -C student-frontend exec playwright install --with-deps chromium
         if: steps.frontend_ready.outputs.ready == 'true'
 
       - name: 运行 E2E 测试
