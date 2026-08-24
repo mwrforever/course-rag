@@ -1,0 +1,6 @@
+# 本地忽略：根 .gitignore 已全局覆盖，此文件供 prettier（cwd 读取）等工具排除构建产物
+node_modules/
+dist/
+coverage/
+.vite/
+*.local

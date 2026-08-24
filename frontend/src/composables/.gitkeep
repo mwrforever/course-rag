@@ -1,0 +1,2 @@
+# 占位：composables 目录（组合式函数统一收纳处）
+# 首个组合式函数随 Task 16 落地（如 useDebounce 等），届时删除本文件
