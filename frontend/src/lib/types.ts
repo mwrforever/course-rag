@@ -199,7 +199,7 @@ export interface CourseDTO {
   duration: string
   tags: string[] | null
   rating: number
-  learningCount: string
+  learningCount: number
   enrollmentLink: string
   status: CourseStatus
   createdBy: string
