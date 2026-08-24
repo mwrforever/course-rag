@@ -63,10 +63,10 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: 安装 pnpm 9
+      # version 不显式指定：根 package.json packageManager（pnpm@9.15.9）为唯一事实源
+      # （显式 version 与 packageManager 并存触发 action-setup「Multiple versions」错误）
+      - name: 安装 pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: "9"
         if: steps.frontend_ready.outputs.ready == 'true'
 
       - name: 安装 Node 22（启用 pnpm 依赖缓存）
@@ -105,10 +105,10 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: 安装 pnpm 9
+      # version 不显式指定：根 package.json packageManager（pnpm@9.15.9）为唯一事实源
+      # （显式 version 与 packageManager 并存触发 action-setup「Multiple versions」错误）
+      - name: 安装 pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: "9"
         if: steps.frontend_ready.outputs.ready == 'true'
 
       - name: 安装 Node 22（启用 pnpm 依赖缓存）
