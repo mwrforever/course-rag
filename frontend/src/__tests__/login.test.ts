@@ -129,7 +129,10 @@ describe('LoginView：登录流程与错误分级', () => {
     })
 
     await submitLogin(wrapper as never, 'teacher1', '123456')
-    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('dashboard'))
+    // 目标页懒加载 + 守卫导航：全量并行 + 覆盖率插桩下放宽等待预算（默认 1s 偶发超时）
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('dashboard'), {
+      timeout: 5000,
+    })
     expect(loginSpy).toHaveBeenCalledWith('teacher1', '123456')
     wrapper.unmount()
   })

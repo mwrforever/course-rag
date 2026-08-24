@@ -109,7 +109,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'users',
         name: 'users',
-        component: () => import('@/views/UserListView.vue'),
+        component: () => import('@/views/UsersView.vue'),
         meta: pageMeta('用户管理', BOTH_ROLES),
       },
       {
@@ -121,13 +121,13 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'sessions',
         name: 'sessions',
-        component: () => import('@/views/SessionAuditView.vue'),
+        component: () => import('@/views/SessionsAdminView.vue'),
         meta: pageMeta('会话审计', SUPER_ONLY),
       },
       {
         path: 'security/login-records',
         name: 'login-records',
-        component: () => import('@/views/LoginRecordView.vue'),
+        component: () => import('@/views/LoginRecordsView.vue'),
         meta: pageMeta('登录记录', SUPER_ONLY),
       },
       {

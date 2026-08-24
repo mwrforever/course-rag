@@ -456,12 +456,14 @@ export interface StudentDTO {
   status: string
 }
 
-/** 会话详情（后端 vo/ChatSessionDetailVO，回放 Drawer 只读消息流） */
+/** 会话详情（后端 vo/ChatSessionDetailVO，回放 Drawer 只读消息流：摘要字段 + messages 扁平组合） */
 export interface ChatSessionDetailVO {
   id: string
   userId: string
   title: string
   status: SessionStatus
+  lastMessageAt: string
   model: string
+  createdAt: string
   messages: ChatMessageVO[]
 }
