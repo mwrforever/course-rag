@@ -72,7 +72,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'knowledge/documents',
         name: 'knowledge-documents',
-        component: () => import('@/views/DocumentListView.vue'),
+        component: () => import('@/views/DocumentsView.vue'),
         meta: pageMeta('文档管理', BOTH_ROLES),
       },
       {

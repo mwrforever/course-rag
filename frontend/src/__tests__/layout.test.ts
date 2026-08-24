@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -112,8 +113,11 @@ describe('AdminLayout 渲染', () => {
     const router = createAppRouter()
     await router.push(initialPath)
     await router.isReady()
-    // 内容区经 RouterView 渲染当前子路由页面（仪表盘页含「刷新」主按钮）
-    const wrapper = mount(AdminLayout, { global: { plugins: [pinia, router] } })
+    // 内容区经 RouterView 渲染当前子路由页面（文档页等使用 vue-query 的页面需要 QueryClient）
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = mount(AdminLayout, {
+      global: { plugins: [pinia, router, [VueQueryPlugin, { queryClient }]] },
+    })
     return { wrapper, router, pinia }
   }
 

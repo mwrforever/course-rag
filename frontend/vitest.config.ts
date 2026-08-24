@@ -41,6 +41,8 @@ export default defineConfig({
         'src/stores/auth.ts': { lines: 100 },
         'src/router/index.ts': { lines: 100 },
         'src/layouts/AdminLayout.vue': { lines: 100 },
+        // Task 18 核心 composable：行覆盖 100%（ETL 轮询铁律）
+        'src/composables/use-etl-polling.ts': { lines: 100 },
       },
     },
   },

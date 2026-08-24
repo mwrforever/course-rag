@@ -322,12 +322,13 @@ function statusVariant(status: string) {
     </div>
   </template>
 
-  <!-- 新建/编辑 Dialog 480px（设计 §2.6：label 上置 + 必填 * + 错误红字 input 下方） -->
+  <!-- 新建/编辑 Dialog 480px（设计 §2.6：label 上置 + 必填 * + 错误红字 input 下方；遮罩点击关闭） -->
   <div
     v-if="dialogOpen"
     data-testid="kb-dialog"
     class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
     @keydown.esc="closeDialog"
+    @click.self="closeDialog"
   >
     <div
       class="w-full max-w-[480px] rounded-xl border border-border bg-surface p-6 shadow-md"
@@ -374,12 +375,13 @@ function statusVariant(status: string) {
     </div>
   </div>
 
-  <!-- 删除二次确认 Dialog（danger 实底 + 级联告警，设计 §2.4/§2.6） -->
+  <!-- 删除二次确认 Dialog（danger 实底 + 级联告警，设计 §2.4/§2.6；遮罩点击关闭） -->
   <div
     v-if="deleting"
     data-testid="delete-dialog"
     class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
     @keydown.esc="cancelDelete"
+    @click.self="cancelDelete"
   >
     <div
       class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"

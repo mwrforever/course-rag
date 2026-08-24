@@ -1,0 +1,1114 @@
+<script lang="ts">
+/**
+ * 文档管理页（设计 §2.4.2）
+ *
+ * 能力清单：
+ * 1. 列表表格：☐ 多选 / 文件名（+所属库小字）/ 类型 Badge / 状态 Badge（8 态）/
+ *    分片数 / 上传时间（相对 + 绝对 tooltip）/ 更新时间 / 操作 ⋮ 菜单
+ * 2. 筛选：kbId 下拉 + status 下拉 + q 关键字（搜索按钮/回车提交）
+ * 3. 排序仅 created/updated 两值（后端实测固定降序），排序指示器只在这两列
+ * 4. 上传 Dialog：kbId 必选下拉 + courseId 可选搜索选择器 + 拖拽区
+ *    （pdf/docx/pptx/md/txt ≤100MB）+ 标题 + XHR 进度条；完成关闭并刷新
+ * 5. 批量删除：无后端批量端点（设计 D10）→ 前端循环单条 + Promise.allSettled
+ *    聚合 toast「成功 n / 失败 m」
+ * 6. ETL 轮询：vue-query refetchInterval 由 useEtlPolling 决策（非终态 5s / 全终态停）
+ *
+ * 契约要点：id/total 为 Long 字符串铁律；page/size 为 number；时间 ISO-8601。
+ * 四态：loading 骨架 / empty 含行动入口 / error 横幅重试 / 正常。
+ *
+ * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
+ */
+
+/** 上传文件类型白名单（设计 §2.4.2：B 端白名单，禁与 C 端附件白名单混用） */
+export const UPLOAD_FILE_TYPES = ['pdf', 'docx', 'pptx', 'md', 'txt'] as const
+
+/** 上传大小上限（MB，设计 §2.4.2 ≤100MB；与后端 etl.max-file-size-mb 配置同值） */
+export const UPLOAD_MAX_SIZE_MB = 100
+
+/**
+ * 上传文件合法性校验（类型白名单 + 大小上限）
+ *
+ * @param name 文件名（用于提取扩展名，小写比对）
+ * @param size 文件字节数
+ * @returns 空串表示合法；否则返回中文错误文案（就地展示在表单下方）
+ */
+export function validateUploadFile(name: string, size: number): string {
+  const dot = name.lastIndexOf('.')
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : ''
+  if (!(UPLOAD_FILE_TYPES as readonly string[]).includes(ext)) {
+    return `不支持的文件类型：仅支持 ${UPLOAD_FILE_TYPES.join('/')} 文件`
+  }
+  if (size > UPLOAD_MAX_SIZE_MB * 1024 * 1024) {
+    return `文件大小超过 ${UPLOAD_MAX_SIZE_MB}MB 上限`
+  }
+  return ''
+}
+</script>
+
+<script setup lang="ts">
+/**
+ * 文档管理页主逻辑（vue-query 数据源 + ETL 轮询 + 批量 allSettled + 上传进度）
+ */
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useQuery } from '@tanstack/vue-query'
+import {
+  PhArrowDown,
+  PhDotsThreeVertical,
+  PhDownloadSimple,
+  PhMagnifyingGlass,
+  PhPencilSimple,
+  PhRepeat,
+  PhSpinnerGap,
+  PhTrash,
+  PhUploadSimple,
+  PhWarningCircle,
+} from '@phosphor-icons/vue'
+
+import EtlStatusBadge from '@/components/EtlStatusBadge.vue'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { useEtlPolling } from '@/composables/use-etl-polling'
+import { ApiError, courseApi, documentApi, knowledgeBaseApi } from '@/lib/api'
+import { showToast } from '@/lib/toast'
+import { formatDateTime, formatRelativeTime } from '@/lib/utils'
+
+import type { CourseDTO, DocumentParseStatus, DocumentVO, KnowledgeBaseVO } from '@/lib/types'
+
+/** 每页条数（设计 §2.6 分页器） */
+const PAGE_SIZE = 10
+
+/** 状态筛选选项（设计 §2.5 八态全量） */
+const STATUS_OPTIONS: Array<{ value: DocumentParseStatus; label: string }> = [
+  { value: 'PENDING', label: '排队中' },
+  { value: 'PARSING', label: '解析中' },
+  { value: 'PARSED', label: '解析完成' },
+  { value: 'CHUNKING', label: '分片中' },
+  { value: 'CHUNKED', label: '分片完成' },
+  { value: 'EMBEDDING', label: '向量化中' },
+  { value: 'INDEXED', label: '已入库（终态）' },
+  { value: 'FAILED', label: '失败（终态）' },
+]
+
+const router = useRouter()
+
+// ====================================================================
+// 列表数据（vue-query + ETL 轮询）
+// ====================================================================
+
+/** 筛选条件（kbId/status 变更即触发查询；q 仅搜索按钮提交） */
+const filters = reactive({ kbId: '', status: '', q: '' })
+/** q 输入框草稿：提交前不写入 filters */
+const qInput = ref('')
+const page = ref(1)
+/** 排序值：仅 created/updated（后端实测固定降序，排序指示器只在这两列） */
+const sort = ref<'created' | 'updated'>('created')
+
+/**
+ * 当前页记录镜像：queryFn 每次成功回写，ETL 轮询间隔判定读取。
+ * 之所以不走 query.data 直接派生：useEtlPolling 需在 useQuery 选项内声明，
+ * 直接引用 query 会触发 TDZ 自引用，故以镜像 ref 解耦（无副作用，仅读）。
+ */
+const records = ref<DocumentVO[]>([])
+
+/** 查询参数构造：空筛选值不携带（axios 端 undefined 参数同样会被忽略） */
+function buildListParams() {
+  return {
+    ...(filters.kbId ? { kbId: filters.kbId } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.q ? { q: filters.q } : {}),
+    sort: sort.value,
+    page: page.value,
+    size: PAGE_SIZE,
+  }
+}
+
+/** 查询键：筛选/页码/排序任一变化即触发新查询 */
+const queryKey = computed(() => [
+  'admin-documents',
+  { kbId: filters.kbId, status: filters.status, q: filters.q },
+  page.value,
+  sort.value,
+])
+
+const {
+  data,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey,
+  queryFn: async () => {
+    const res = await documentApi.list(buildListParams())
+    records.value = res.records ?? []
+    return res
+  },
+  // ETL 轮询：列表存在非终态行 → 5000ms 自动刷新；全终态 → false 停止
+  refetchInterval: useEtlPolling(records),
+})
+
+const docs = computed(() => data.value?.records ?? [])
+const total = computed(() => data.value?.total ?? '0')
+const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value) / PAGE_SIZE)))
+
+/** 接口错误分级文案（ApiError 透出 message，503 统一降级；非 ApiError 兜底） */
+function messageOf(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    return err.code === 503 ? '服务暂时不可用，请稍后重试' : err.message
+  }
+  return fallback
+}
+
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '文档列表加载失败，请稍后重试') : '',
+)
+
+/** 知识库选项（筛选下拉 + 所属库小字映射 + 上传下拉），加载失败不阻塞列表 */
+const kbs = ref<KnowledgeBaseVO[]>([])
+const kbNameOf = computed(() => {
+  const map = new Map(kbs.value.map((k) => [k.id, k.name]))
+  return (id: string) => map.get(id) ?? id
+})
+
+onMounted(async () => {
+  try {
+    const res = await knowledgeBaseApi.list({ page: 1, size: 100 })
+    kbs.value = res.records ?? []
+  } catch {
+    // 知识库选项加载失败：筛选仅剩「全部知识库」，上传前用户仍可重进页面恢复
+  }
+})
+
+// ---- 筛选与分页 ----
+
+/** kbId 筛选变更：重置页码第 1 页（查询键变化自动触发拉取） */
+function onFilterKbChange(e: Event) {
+  filters.kbId = (e.target as HTMLSelectElement).value
+  page.value = 1
+}
+
+/** status 筛选变更：重置页码第 1 页 */
+function onFilterStatusChange(e: Event) {
+  filters.status = (e.target as HTMLSelectElement).value
+  page.value = 1
+}
+
+/** q 关键字提交（搜索按钮 / 回车）：去空白后写入 filters 触发查询 */
+function applyKeyword() {
+  filters.q = qInput.value.trim()
+  page.value = 1
+}
+
+/** 切换排序值：点击表头在 created/updated 间切换（后端固定降序，无升序） */
+function changeSort(key: 'created' | 'updated') {
+  if (sort.value !== key) {
+    sort.value = key
+  }
+}
+
+/** 翻页：越界保护（禁用态按钮兜底） */
+function changePage(next: number) {
+  if (next < 1 || next > totalPages.value) return
+  page.value = next
+}
+
+// ====================================================================
+// 多选与批量删除（设计 D10：无批量端点 → 循环单条 + allSettled 聚合）
+// ====================================================================
+
+const selected = ref<Set<string>>(new Set())
+
+/** 单行勾选切换（不可变 Set 拷贝写回，触发响应式） */
+function toggleRow(id: string) {
+  const next = new Set(selected.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  selected.value = next
+}
+
+/** 全选/取消全选当前页 */
+function toggleAll() {
+  const allChecked = docs.value.length > 0 && docs.value.every((d) => selected.value.has(d.id))
+  selected.value = allChecked ? new Set() : new Set(docs.value.map((d) => d.id))
+}
+
+const allSelected = computed(
+  () => docs.value.length > 0 && docs.value.every((d) => selected.value.has(d.id)),
+)
+
+const batchConfirmOpen = ref(false)
+const batchDeleting = ref(false)
+
+/**
+ * 批量删除：循环单条 remove + Promise.allSettled 聚合
+ *
+ * 聚合文案「成功 n / 失败 m」（全部成功 success 色，存在失败 danger 色）；
+ * 完成后清空勾选并刷新列表（失败行保留在列表内，用户可单独重试）。
+ */
+async function confirmBatchDelete() {
+  const ids = [...selected.value]
+  if (ids.length === 0) return
+  batchDeleting.value = true
+  const results = await Promise.allSettled(ids.map((id) => documentApi.remove(id)))
+  const failed = results.filter((r) => r.status === 'rejected').length
+  const succeeded = ids.length - failed
+  showToast(`成功 ${succeeded} / 失败 ${failed}`, failed > 0 ? 'danger' : 'success')
+  batchConfirmOpen.value = false
+  selected.value = new Set()
+  batchDeleting.value = false
+  await refetch()
+}
+
+// ====================================================================
+// 行操作 ⋮ 菜单（查看分片 / 重新解析 / 下载 / 改标题 / 删除）
+// ====================================================================
+
+/** 当前展开菜单的行 id：空串表示全部收起（点击遮罩关闭） */
+const openMenuId = ref('')
+
+function toggleMenu(id: string) {
+  openMenuId.value = openMenuId.value === id ? '' : id
+}
+
+function closeMenu() {
+  openMenuId.value = ''
+}
+
+/** 查看分片：跳转文档详情页（分片列表在详情页） */
+function viewChunks(doc: DocumentVO) {
+  closeMenu()
+  router.push({ name: 'knowledge-document-detail', params: { id: doc.id } })
+}
+
+/** 重新解析：重置 ETL 管道（FAILED 恢复入口，其余状态同样支持） */
+async function handleReparse(doc: DocumentVO) {
+  closeMenu()
+  try {
+    await documentApi.reparse(doc.id)
+    showToast('已重新解析，稍后查看最新状态', 'success')
+    await refetch()
+  } catch (err) {
+    showToast(messageOf(err, '重新解析失败，请稍后重试'), 'danger')
+  }
+}
+
+/** 下载原始文件：blob → 本地锚点落盘（文件名取原始标题） */
+async function handleDownload(doc: DocumentVO) {
+  closeMenu()
+  try {
+    const blob = await documentApi.download(doc.id)
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = doc.title
+    anchor.click()
+    URL.revokeObjectURL(url)
+    showToast('文件已开始下载', 'success')
+  } catch (err) {
+    showToast(messageOf(err, '下载失败，请稍后重试'), 'danger')
+  }
+}
+
+// ---- 改标题 Dialog ----
+
+const renameTarget = ref<DocumentVO | null>(null)
+const renameTitle = ref('')
+const renameError = ref('')
+const renameSubmitting = ref(false)
+
+function openRename(doc: DocumentVO) {
+  closeMenu()
+  renameTarget.value = doc
+  renameTitle.value = doc.title
+  renameError.value = ''
+}
+
+function closeRename() {
+  renameTarget.value = null
+}
+
+/** 保存标题：必填校验 → update → toast → 关闭并刷新列表 */
+async function submitRename() {
+  if (!renameTarget.value) return
+  if (!renameTitle.value.trim()) {
+    renameError.value = '请输入标题'
+    return
+  }
+  renameSubmitting.value = true
+  try {
+    await documentApi.update(renameTarget.value.id, { title: renameTitle.value.trim() })
+    showToast('标题已更新', 'success')
+    closeRename()
+    await refetch()
+  } catch (err) {
+    showToast(messageOf(err, '保存失败，请稍后重试'), 'danger')
+  } finally {
+    renameSubmitting.value = false
+  }
+}
+
+// ---- 单条删除二次确认 ----
+
+const deletingDoc = ref<DocumentVO | null>(null)
+const deletingLoading = ref(false)
+
+function requestDelete(doc: DocumentVO) {
+  closeMenu()
+  deletingDoc.value = doc
+}
+
+function cancelDelete() {
+  deletingDoc.value = null
+}
+
+/** 确认删除：remove → toast → 关闭确认框 → 刷新列表 */
+async function confirmDelete() {
+  if (!deletingDoc.value) return
+  deletingLoading.value = true
+  try {
+    await documentApi.remove(deletingDoc.value.id)
+    showToast('文档已删除', 'success')
+    deletingDoc.value = null
+    selected.value = new Set([...selected.value].filter((id) => id !== deletingDoc.value?.id))
+    await refetch()
+  } catch (err) {
+    showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
+  } finally {
+    deletingLoading.value = false
+  }
+}
+
+// ====================================================================
+// 上传 Dialog（kbId 必选 + courseId 可选 + 拖拽区 + XHR 进度条）
+// ====================================================================
+
+const uploadOpen = ref(false)
+const uploadKbId = ref('')
+const uploadTitle = ref('')
+const uploadFile = ref<File | null>(null)
+const uploadCourse = ref<CourseDTO | null>(null)
+const uploadError = ref('')
+const uploading = ref(false)
+const progress = ref(0)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+/** 课程搜索选择器状态（courseId 可选，缺省不携带） */
+const courseQuery = ref('')
+const courseResults = ref<CourseDTO[]>([])
+const courseSearching = ref(false)
+
+function openUpload() {
+  uploadOpen.value = true
+  uploadError.value = ''
+}
+
+function closeUpload() {
+  if (uploading.value) return
+  uploadOpen.value = false
+  resetUpload()
+}
+
+/** 重置上传表单（关闭 / 成功后清理，避免残留上次选择） */
+function resetUpload() {
+  uploadKbId.value = ''
+  uploadTitle.value = ''
+  uploadFile.value = null
+  uploadCourse.value = null
+  courseQuery.value = ''
+  courseResults.value = []
+  uploadError.value = ''
+  progress.value = 0
+}
+
+/** 课程搜索：输入即查（size 10，可选字段搜索失败静默清空结果） */
+async function searchCourses() {
+  const keyword = courseQuery.value.trim()
+  if (!keyword) {
+    courseResults.value = []
+    return
+  }
+  courseSearching.value = true
+  try {
+    const res = await courseApi.list({ keyword, size: 10 })
+    courseResults.value = res.records ?? []
+  } catch {
+    courseResults.value = []
+  } finally {
+    courseSearching.value = false
+  }
+}
+
+/** 选中课程：填入 chip（可清除）并收起结果列表 */
+function pickCourse(c: CourseDTO) {
+  uploadCourse.value = c
+  courseResults.value = []
+}
+
+/** 拖拽区点击 → 唤起文件选择 */
+function openFilePicker() {
+  fileInputRef.value?.click()
+}
+
+/** 文件选择变化：记录文件并回显（实际校验在提交时统一执行） */
+function onFileChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0] ?? null
+  if (file) {
+    uploadFile.value = file
+  }
+}
+
+/** 拖拽落下：取首个文件（拖拽区 drag 语义，prevent 由模板处理） */
+function onDrop(e: DragEvent) {
+  const file = e.dataTransfer?.files?.[0] ?? null
+  if (file) {
+    uploadFile.value = file
+  }
+}
+
+/** 上传表单校验：kbId 必选 → 标题必填 → 文件必选 → 类型/大小白名单 */
+function validateUpload(): string {
+  if (!uploadKbId.value) return '请选择知识库'
+  if (!uploadTitle.value.trim()) return '请输入标题'
+  if (!uploadFile.value) return '请选择文件'
+  return validateUploadFile(uploadFile.value.name, uploadFile.value.size)
+}
+
+/**
+ * 提交上传：校验 → FormData（kbId/title/file 必传，courseId 选中才携带）→
+ * documentApi.upload 携带进度回调（XHR onUploadProgress → 进度条百分比）。
+ * 成功后 toast、关闭 Dialog、重置表单并刷新列表（新文档 PENDING 进入轮询）。
+ */
+async function submitUpload() {
+  const invalid = validateUpload()
+  if (invalid) {
+    uploadError.value = invalid
+    return
+  }
+  uploadError.value = ''
+  uploading.value = true
+  progress.value = 0
+  const form = new FormData()
+  form.set('kbId', uploadKbId.value)
+  form.set('title', uploadTitle.value.trim())
+  if (uploadCourse.value) {
+    form.set('courseId', uploadCourse.value.id)
+  }
+  form.set('file', uploadFile.value as File)
+  try {
+    await documentApi.upload(form, (p) => {
+      progress.value = p
+    })
+    showToast('上传成功，正在解析', 'success')
+    uploadOpen.value = false
+    resetUpload()
+    await refetch()
+  } catch (err) {
+    showToast(messageOf(err, '上传失败，请稍后重试'), 'danger')
+  } finally {
+    uploading.value = false
+  }
+}
+</script>
+
+<template>
+  <main class="mx-auto max-w-[1400px] px-8 py-6">
+    <!-- 页头操作行：管理知识库链接 + 批量删除（勾选后出现）+ 上传入口 -->
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-text-muted">
+        管理知识库文档与解析状态
+        <router-link
+          to="/knowledge-bases"
+          data-testid="manage-kbs"
+          class="ml-2 text-brand hover:underline"
+        >
+          管理知识库
+        </router-link>
+      </p>
+      <div class="flex items-center gap-2">
+        <Button
+          v-if="selected.size > 0"
+          variant="danger"
+          size="sm"
+          data-testid="batch-delete"
+          @click="batchConfirmOpen = true"
+        >
+          <PhTrash class="h-4 w-4" />
+          批量删除（{{ selected.size }}）
+        </Button>
+        <Button data-testid="upload-doc" @click="openUpload">
+          <PhUploadSimple class="h-4 w-4" />
+          上传文档
+        </Button>
+      </div>
+    </div>
+
+    <!-- 筛选条：kbId / status / q（搜索按钮或回车提交） -->
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <select
+        data-testid="filter-kb"
+        aria-label="按知识库筛选"
+        :value="filters.kbId"
+        class="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+        @change="onFilterKbChange"
+      >
+        <option value="">全部知识库</option>
+        <option v-for="kbItem in kbs" :key="kbItem.id" :value="kbItem.id">
+          {{ kbItem.name }}
+        </option>
+      </select>
+      <select
+        data-testid="filter-status"
+        aria-label="按状态筛选"
+        :value="filters.status"
+        class="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+        @change="onFilterStatusChange"
+      >
+        <option value="">全部状态</option>
+        <option v-for="opt in STATUS_OPTIONS" :key="opt.value" :value="opt.value">
+          {{ opt.label }}
+        </option>
+      </select>
+      <div class="flex items-center gap-2">
+        <input
+          v-model="qInput"
+          data-testid="filter-q"
+          type="text"
+          aria-label="按文件名搜索"
+          placeholder="搜索文件名"
+          class="h-9 w-56 rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+          @keyup.enter="applyKeyword"
+        />
+        <Button variant="outline" size="sm" data-testid="apply-q" @click="applyKeyword">
+          <PhMagnifyingGlass class="h-4 w-4" />
+          搜索
+        </Button>
+      </div>
+    </div>
+
+    <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
+    <div
+      v-if="listError"
+      role="alert"
+      class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
+    >
+      <span class="text-sm text-danger">{{ listError }}</span>
+      <Button variant="outline" size="sm" data-testid="retry-docs" @click="refetch">重试</Button>
+    </div>
+
+    <!-- 加载态：表格骨架屏（表头 + 5 行灰条，与最终表格同形） -->
+    <div
+      v-else-if="isLoading"
+      data-testid="doc-skeleton"
+      class="overflow-hidden rounded-xl border border-border bg-surface"
+      aria-label="文档列表加载中"
+    >
+      <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
+        <div
+          v-for="i in 7"
+          :key="`head-${i}`"
+          class="h-3 w-20 animate-pulse rounded bg-slate-200"
+        />
+      </div>
+      <div
+        v-for="i in 5"
+        :key="`row-${i}`"
+        class="h-11 animate-pulse border-b border-border bg-slate-50"
+      />
+    </div>
+
+    <!-- 空态：一句话 + 上传行动入口（禁裸「暂无数据」） -->
+    <div
+      v-else-if="docs.length === 0"
+      class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
+    >
+      <PhWarningCircle class="h-8 w-8 text-text-subtle" />
+      <p class="mt-3 text-sm font-medium text-text">还没有文档</p>
+      <p class="mt-1 text-xs text-text-muted">上传后自动进入解析管道，可实时查看进度</p>
+      <Button class="mt-4" data-testid="upload-doc-empty" @click="openUpload">
+        <PhUploadSimple class="h-4 w-4" />
+        上传文档
+      </Button>
+    </div>
+
+    <!-- 正常态：分页表格（列：☐/文件名/类型/状态/分片数/上传时间/更新时间/操作） -->
+    <template v-else>
+      <div class="overflow-hidden rounded-xl border border-border bg-surface">
+        <table data-testid="doc-table" class="w-full text-sm">
+          <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
+            <tr>
+              <th class="w-10 px-2 text-center">
+                <!-- 全选：:checked 由 allSelected 计算驱动，@change 切换（无需 v-model） -->
+                <input
+                  type="checkbox"
+                  data-testid="select-all"
+                  aria-label="全选当前页"
+                  :checked="allSelected"
+                  class="h-4 w-4 accent-brand"
+                  @change="toggleAll"
+                />
+              </th>
+              <th class="px-4 py-2.5 font-medium">文件名</th>
+              <th class="px-4 py-2.5 font-medium">类型</th>
+              <th class="px-4 py-2.5 font-medium">状态</th>
+              <th class="px-4 py-2.5 text-right font-medium">分片数</th>
+              <!-- 排序指示器仅 created/updated 两列启用的表头（后端实测两值） -->
+              <th class="px-4 py-2.5 font-medium">
+                <button
+                  type="button"
+                  data-testid="sort-created"
+                  class="inline-flex items-center gap-1 transition-colors duration-150 hover:text-text"
+                  @click="changeSort('created')"
+                >
+                  上传时间
+                  <PhArrowDown
+                    v-if="sort === 'created'"
+                    class="h-3 w-3 text-brand"
+                    aria-label="按上传时间排序"
+                  />
+                </button>
+              </th>
+              <th class="px-4 py-2.5 font-medium">
+                <button
+                  type="button"
+                  data-testid="sort-updated"
+                  class="inline-flex items-center gap-1 transition-colors duration-150 hover:text-text"
+                  @click="changeSort('updated')"
+                >
+                  更新时间
+                  <PhArrowDown
+                    v-if="sort === 'updated'"
+                    class="h-3 w-3 text-brand"
+                    aria-label="按更新时间排序"
+                  />
+                </button>
+              </th>
+              <th class="w-16 px-4 py-2.5 text-right font-medium">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="docItem in docs"
+              :key="docItem.id"
+              :data-testid="`row-${docItem.id}`"
+              class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
+            >
+              <td class="px-2 text-center">
+                <input
+                  type="checkbox"
+                  :data-testid="`select-${docItem.id}`"
+                  aria-label="选择文档"
+                  :checked="selected.has(docItem.id)"
+                  class="h-4 w-4 accent-brand"
+                  @change="toggleRow(docItem.id)"
+                />
+              </td>
+              <td class="max-w-[240px] px-4">
+                <p class="truncate font-medium text-text" :title="docItem.title">
+                  {{ docItem.title }}
+                </p>
+                <!-- 所属库小字（设计 §2.4.2：文件名 + 所属库） -->
+                <p class="truncate text-xs text-text-subtle">{{ kbNameOf(docItem.kbId) }}</p>
+              </td>
+              <td class="px-4">
+                <Badge variant="default">{{ docItem.fileType.toUpperCase() }}</Badge>
+              </td>
+              <td class="px-4">
+                <EtlStatusBadge
+                  :status="docItem.parseStatus"
+                  :error-message="docItem.errorMessage"
+                />
+              </td>
+              <td class="px-4 text-right tabular-nums text-text-muted">{{ docItem.chunkCount }}</td>
+              <!-- 上传时间：相对展示 + 绝对时间 tooltip（设计 §2.4.2） -->
+              <td
+                :data-testid="`doc-time-${docItem.id}`"
+                :title="formatDateTime(docItem.createdAt)"
+                class="px-4 tabular-nums text-text-muted"
+              >
+                {{ formatRelativeTime(docItem.createdAt) }}
+              </td>
+              <td
+                :title="formatDateTime(docItem.updatedAt)"
+                class="px-4 tabular-nums text-text-muted"
+              >
+                {{ formatRelativeTime(docItem.updatedAt) }}
+              </td>
+              <td class="relative px-4 text-right">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :data-testid="`doc-menu-${docItem.id}`"
+                  aria-label="文档操作"
+                  @click="toggleMenu(docItem.id)"
+                >
+                  <PhDotsThreeVertical class="h-4 w-4" />
+                </Button>
+                <!-- 操作菜单：查看分片/重新解析/下载/改标题/删除 -->
+                <div
+                  v-if="openMenuId === docItem.id"
+                  data-testid="doc-menu"
+                  class="absolute right-2 top-9 z-30 w-40 rounded-lg border border-border bg-surface p-1 shadow-md"
+                >
+                  <button
+                    type="button"
+                    data-testid="menu-view"
+                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                    @click="viewChunks(docItem)"
+                  >
+                    <PhMagnifyingGlass class="h-4 w-4 text-text-muted" />
+                    查看分片
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="menu-reparse"
+                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                    @click="handleReparse(docItem)"
+                  >
+                    <PhRepeat class="h-4 w-4 text-text-muted" />
+                    重新解析
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="menu-download"
+                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                    @click="handleDownload(docItem)"
+                  >
+                    <PhDownloadSimple class="h-4 w-4 text-text-muted" />
+                    下载
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="menu-rename"
+                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                    @click="openRename(docItem)"
+                  >
+                    <PhPencilSimple class="h-4 w-4 text-text-muted" />
+                    改标题
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="menu-delete"
+                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-danger transition-colors duration-150 hover:bg-red-50"
+                    @click="requestDelete(docItem)"
+                  >
+                    <PhTrash class="h-4 w-4" />
+                    删除
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
+      <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
+        <span>
+          共 <span class="tabular-nums text-text">{{ total }}</span> 条
+        </span>
+        <div class="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="prev-page"
+            :disabled="page <= 1"
+            @click="changePage(page - 1)"
+          >
+            上一页
+          </Button>
+          <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="next-page"
+            :disabled="page >= totalPages"
+            @click="changePage(page + 1)"
+          >
+            下一页
+          </Button>
+        </div>
+      </div>
+    </template>
+
+    <!-- 菜单点击外遮罩：点击任意处收起菜单 -->
+    <div v-if="openMenuId" class="fixed inset-0 z-20" @click="closeMenu" />
+
+    <!-- 上传 Dialog 520px：kbId 必选 + courseId 可选 + 拖拽区 + 进度条 -->
+    <div
+      v-if="uploadOpen"
+      data-testid="upload-dialog"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      @keydown.esc="closeUpload"
+      @click.self="closeUpload"
+    >
+      <div
+        class="w-full max-w-[520px] rounded-xl border border-border bg-surface p-6 shadow-md"
+        role="dialog"
+        aria-modal="true"
+        @click.stop
+      >
+        <h2 class="text-base font-semibold text-text">上传文档</h2>
+        <form
+          data-testid="upload-form"
+          class="mt-5 space-y-4"
+          novalidate
+          @submit.prevent="submitUpload"
+        >
+          <div>
+            <label for="upload-kb" class="mb-1.5 block text-sm font-medium text-text">
+              所属知识库 <span class="text-danger">*</span>
+            </label>
+            <select
+              id="upload-kb"
+              v-model="uploadKbId"
+              data-testid="upload-kb"
+              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+            >
+              <option value="">请选择知识库</option>
+              <option v-for="kbItem in kbs" :key="kbItem.id" :value="kbItem.id">
+                {{ kbItem.name }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label for="upload-title" class="mb-1.5 block text-sm font-medium text-text">
+              标题 <span class="text-danger">*</span>
+            </label>
+            <input
+              id="upload-title"
+              v-model="uploadTitle"
+              data-testid="upload-title"
+              type="text"
+              aria-label="文档标题"
+              placeholder="请输入文档标题"
+              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+          <div>
+            <label for="course-search" class="mb-1.5 block text-sm font-medium text-text">
+              关联课程（可选）
+            </label>
+            <div v-if="!uploadCourse" class="relative">
+              <input
+                id="course-search"
+                v-model="courseQuery"
+                data-testid="course-search"
+                type="text"
+                aria-label="搜索课程"
+                placeholder="输入课程名搜索（不选则归属通用资料）"
+                class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+                @input="searchCourses"
+              />
+              <ul
+                v-if="courseResults.length > 0"
+                data-testid="course-results"
+                class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-border bg-surface p-1 shadow-md"
+              >
+                <li v-for="c in courseResults" :key="c.id">
+                  <button
+                    type="button"
+                    :data-testid="`course-option-${c.id}`"
+                    class="w-full rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                    @click="pickCourse(c)"
+                  >
+                    {{ c.title }}
+                  </button>
+                </li>
+              </ul>
+            </div>
+            <div
+              v-else
+              data-testid="selected-course"
+              class="flex items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text"
+            >
+              <span>已选：{{ uploadCourse.title }}</span>
+              <button
+                type="button"
+                data-testid="clear-course"
+                aria-label="清除课程选择"
+                class="text-text-muted transition-colors duration-150 hover:text-danger"
+                @click="uploadCourse = null"
+              >
+                <PhTrash class="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div>
+            <!-- 拖拽区：dragover/drop 拦截浏览器默认行为，点击唤起文件选择 -->
+            <div
+              data-testid="drop-zone"
+              role="button"
+              tabindex="0"
+              aria-label="选择上传文件"
+              class="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-surface-2 px-4 py-8 text-center transition-colors duration-150 hover:border-brand/50"
+              @dragover.prevent
+              @drop.prevent="onDrop"
+              @click="openFilePicker"
+            >
+              <PhUploadSimple class="h-6 w-6 text-text-subtle" />
+              <p class="mt-2 text-sm text-text">
+                {{ uploadFile?.name ?? '拖拽文件到此处，或点击选择' }}
+              </p>
+              <p class="mt-1 text-xs text-text-subtle">支持 pdf/docx/pptx/md/txt，≤100MB</p>
+              <input
+                ref="fileInputRef"
+                type="file"
+                data-testid="file-input"
+                class="hidden"
+                :accept="UPLOAD_FILE_TYPES.map((t) => `.${t}`).join(',')"
+                @change="onFileChange"
+              />
+            </div>
+          </div>
+          <!-- XHR 上传进度条：onUploadProgress 回调驱动宽度（设计 §2.4.2） -->
+          <div v-if="uploading" data-testid="upload-progress-wrap">
+            <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+              <div
+                data-testid="upload-progress"
+                class="h-full rounded-full bg-brand transition-[width] duration-150"
+                :style="{ width: `${progress}%` }"
+              />
+            </div>
+            <p class="mt-1 text-xs tabular-nums text-text-muted">{{ progress }}%</p>
+          </div>
+          <p v-if="uploadError" data-testid="upload-error" class="text-xs text-danger">
+            {{ uploadError }}
+          </p>
+          <div class="flex justify-end gap-2 pt-2">
+            <Button variant="outline" :disabled="uploading" @click="closeUpload">取消</Button>
+            <Button type="submit" data-testid="submit-upload" :disabled="uploading">
+              <PhSpinnerGap v-if="uploading" class="h-4 w-4 animate-spin" />
+              {{ uploading ? `上传中 ${progress}%` : '上传' }}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 改标题 Dialog -->
+    <div
+      v-if="renameTarget"
+      data-testid="rename-dialog"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      @keydown.esc="closeRename"
+      @click.self="closeRename"
+    >
+      <div
+        class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+        role="dialog"
+        aria-modal="true"
+        @click.stop
+      >
+        <h2 class="text-base font-semibold text-text">改标题</h2>
+        <div class="mt-5">
+          <label for="rename-input" class="mb-1.5 block text-sm font-medium text-text">
+            标题 <span class="text-danger">*</span>
+          </label>
+          <input
+            id="rename-input"
+            v-model="renameTitle"
+            data-testid="rename-input"
+            type="text"
+            aria-label="新标题"
+            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+          <p v-if="renameError" class="mt-1 text-xs text-danger">{{ renameError }}</p>
+        </div>
+        <div class="mt-5 flex justify-end gap-2">
+          <Button variant="outline" @click="closeRename">取消</Button>
+          <Button data-testid="submit-rename" :disabled="renameSubmitting" @click="submitRename">
+            <PhSpinnerGap v-if="renameSubmitting" class="h-4 w-4 animate-spin" />
+            {{ renameSubmitting ? '保存中' : '保存' }}
+          </Button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 单条删除二次确认（danger 实底 + 不可恢复告警，设计 §2.6） -->
+    <div
+      v-if="deletingDoc"
+      data-testid="delete-dialog"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      @keydown.esc="cancelDelete"
+      @click.self="cancelDelete"
+    >
+      <div
+        class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+        role="alertdialog"
+        aria-modal="true"
+        @click.stop
+      >
+        <div class="flex items-start gap-3">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
+            <PhWarningCircle class="h-5 w-5 text-danger" />
+          </div>
+          <div>
+            <h2 class="text-base font-semibold text-text">删除文档</h2>
+            <p class="mt-2 text-sm leading-relaxed text-text-muted">
+              删除后该文档的全部分片将被一并移除，且不可恢复。确认删除「{{ deletingDoc.title }}」？
+            </p>
+          </div>
+        </div>
+        <div class="mt-5 flex justify-end gap-2">
+          <Button variant="outline" data-testid="cancel-delete" @click="cancelDelete">取消</Button>
+          <Button
+            variant="danger"
+            data-testid="confirm-delete"
+            :disabled="deletingLoading"
+            @click="confirmDelete"
+          >
+            <PhSpinnerGap v-if="deletingLoading" class="h-4 w-4 animate-spin" />
+            {{ deletingLoading ? '删除中' : '确认删除' }}
+          </Button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 批量删除二次确认（allSettled 循环单条，聚合 toast） -->
+    <div
+      v-if="batchConfirmOpen"
+      data-testid="batch-dialog"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      @keydown.esc="batchConfirmOpen = false"
+      @click.self="batchConfirmOpen = false"
+    >
+      <div
+        class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+        role="alertdialog"
+        aria-modal="true"
+        @click.stop
+      >
+        <div class="flex items-start gap-3">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
+            <PhWarningCircle class="h-5 w-5 text-danger" />
+          </div>
+          <div>
+            <h2 class="text-base font-semibold text-text">批量删除</h2>
+            <p class="mt-2 text-sm leading-relaxed text-text-muted">
+              将逐条删除已勾选的
+              {{ selected.size }} 个文档（含分片），失败项保留在列表内可单独重试。 确认删除？
+            </p>
+          </div>
+        </div>
+        <div class="mt-5 flex justify-end gap-2">
+          <Button variant="outline" data-testid="cancel-batch" @click="batchConfirmOpen = false">
+            取消
+          </Button>
+          <Button
+            variant="danger"
+            data-testid="confirm-batch"
+            :disabled="batchDeleting"
+            @click="confirmBatchDelete"
+          >
+            <PhSpinnerGap v-if="batchDeleting" class="h-4 w-4 animate-spin" />
+            {{ batchDeleting ? '删除中' : '确认删除' }}
+          </Button>
+        </div>
+      </div>
+    </div>
+  </main>
+</template>
