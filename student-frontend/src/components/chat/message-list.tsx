@@ -145,6 +145,17 @@ export function MessageList({
             {/* AI 徽标头像（复用 Task 8 组件，小尺寸变体） */}
             <AiBadge className="!size-8" />
             <div className="min-w-0 flex-1 space-y-3">
+              {/* 模型徽标：metadata 到达后展示（设计 M10：正常路径必渲染，降级回放无 metadata 时不渲染） */}
+              {message.model ? (
+                <div className="flex items-center gap-2">
+                  <span
+                    data-testid="model-badge"
+                    className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-medium text-brand-strong"
+                  >
+                    {message.model}
+                  </span>
+                </div>
+              ) : null}
               {message.thinking ? (
                 <ThinkingCard thinking={message.thinking} ended={message.thinkingEnded} />
               ) : null}

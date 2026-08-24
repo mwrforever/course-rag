@@ -9,7 +9,8 @@
  *
  * 职责：
  * - useChatStream 全量状态消费；新会话（initialSessionId=null）metadata 到达后
- *   router.replace('/chat/{sessionId}')（仅一次，ref 幂等）
+ *   **不替换 URL**（E2E 实证修订 2026-08-24：replace 会重挂载组件致流式状态丢失，
+ *   会话定位由 /sessions 与首页最近会话承担，见下文实现注释）
  * - 409/503/网络错误分级 toast（§3.2）；建议提问 chip 点击即发送
  * - 附件全链路：前置校验（超限即拒无网络请求）→ 选中即传（chips 进度环）→
  *   图片 blob URL 预览；blob 生命周期：移除即 revoke、发送后保留供消息内预览、
@@ -18,7 +19,7 @@
  */
 import { ArrowLeft, FileText, Paperclip, Plus } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AiBadge } from "@/components/ai-badge";
 import {
@@ -105,10 +106,9 @@ export function ChatSkeleton() {
  * @param props 见 ChatWorkspaceProps
  */
 export function ChatWorkspace({ initialSessionId, variant, title, history }: ChatWorkspaceProps) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const { state, send, cancel } = useChatStream(initialSessionId);
+  const { state, send, cancel, reconnect, reset } = useChatStream(initialSessionId);
 
   // ── 轻量 toast（页面级状态，定时自动消失；卸载清理定时器）──
   const [toast, setToast] = useState<string | null>(null);
@@ -133,14 +133,12 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
     blobUrlsRef.current = blobUrls;
   }, [blobUrls]);
 
-  // ── 新会话 metadata 到达 → replace URL（仅新会话且仅一次）──
-  const replacedRef = useRef(false);
-  useEffect(() => {
-    if (initialSessionId === null && state.sessionId && !replacedRef.current) {
-      replacedRef.current = true;
-      router.replace(`/chat/${state.sessionId}`);
-    }
-  }, [state.sessionId, initialSessionId, router]);
+  // ── 新会话 metadata 到达后的 URL 处理（E2E 实证修订 2026-08-24）──
+  // 原实现 router.replace('/chat/{sessionId}) 在真实导航下会重挂载本组件，
+  // useChatStream 状态（进行中的流/已渲染消息）整体丢失——E2E（route-mock 真实导航）
+  // 抓出后改为：新对话**不替换 URL**，sessionId 仅留存在组件状态中供后续能力消费。
+  // 会话定位能力由 /sessions 列表与首页最近会话承担，对话页 URL 无功能价值。
+  // （设计文档 §1.5.4 metadata 行随本决策修订）
 
   // ── blob 生命周期收尾：页面卸载统一 revoke（发送后保留供消息内预览的 blob）──
   useEffect(
@@ -359,6 +357,38 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
             onNotify={notify}
           />
         )}
+
+        {/* 消息尾错误横幅（设计 §1.5.4 error 事件）：分级操作——retryable=重试（手动重连）
+             replay_failed=重新提问（清空对话引导重问）；auth 由全局登出流承接，仅展示文案 */}
+        {state.error ? (
+          <div
+            role="alert"
+            data-testid="stream-error-banner"
+            className="mx-auto w-full max-w-[880px] px-6 pt-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3">
+              <p className="min-w-0 flex-1 text-sm text-danger">{state.error.message}</p>
+              {state.error.kind === "retryable" ? (
+                <button
+                  type="button"
+                  onClick={() => void reconnect()}
+                  className="shrink-0 rounded-lg border border-danger/30 bg-surface px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger"
+                >
+                  重试
+                </button>
+              ) : null}
+              {state.error.kind === "replay_failed" ? (
+                <button
+                  type="button"
+                  onClick={() => reset()}
+                  className="shrink-0 rounded-lg border border-danger/30 bg-surface px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger"
+                >
+                  重新提问
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* 吸底输入区：surface/95 + backdrop-blur + 顶部 1px 边框 */}

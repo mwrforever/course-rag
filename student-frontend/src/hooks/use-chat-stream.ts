@@ -518,13 +518,15 @@ function sleep(ms: number): Promise<void> {
  *
  * @param initialSessionId 初始会话 id（/chat 新会话为 null，/chat/[sessionId] 传入 URL 参数）；
  *                         metadata 到达后用其值覆盖（新会话 replace URL 的依据）
- * @returns state 全量对话状态；send/cancel/reconnect 三个生命周期操作
+ * @returns state 全量对话状态；send/cancel/reconnect/reset 四个生命周期操作（reset 供
+ *          REPLAY_FAILED 错误横幅「重新提问」入口清空对话，保留会话归属）
  */
 export function useChatStream(initialSessionId: string | null): {
   state: ChatStreamState;
   send: (query: string, attachments: AttachmentRecord[]) => Promise<void>;
   cancel: () => Promise<void>;
   reconnect: () => Promise<void>;
+  reset: () => void;
 } {
   const [state, dispatch] = useReducer(chatReducer, initialSessionId, createInitialState);
   // 最新状态镜像：供 send/cancel/reconnect 等异步回调读取（闭包捕获首渲染实例，经 ref 拿最新值）
@@ -618,8 +620,13 @@ export function useChatStream(initialSessionId: string | null): {
       // 流被服务端干净关闭（done）但本流未消费任何终态事件（end/error）：
       // 视为连接被服务端断开（与 30s 断流同一语义），走既有断流路径
       // （runReconnect 指数退避续流），不重复造第二套错误分级；
-      // 已终态/已错误为正常收尾，不再动作
+      // 已终态/已错误为正常收尾，不再动作。
+      // 注意：先让出宏任务再读 stateRef——dispatch 的 React 渲染提交晚于本同步链
+      // （瞬时流可在渲染提交前读完 EOF），立即判读会把 streaming 误判为未置位
+      // 而漏掉重连（E2E route-mock 实证）；50ms 足够提交且对真实持续流无感知影响
       if (genRef.current === gen && !finished) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        if (genRef.current !== gen) return;
         const current = stateRef.current;
         if (current.endedStatus === null && current.error === null && current.streaming) {
           void runReconnect();
@@ -771,5 +778,12 @@ export function useChatStream(initialSessionId: string | null): {
     };
   }, []);
 
-  return { state, send, cancel, reconnect };
+  return {
+    state,
+    send,
+    cancel,
+    reconnect,
+    // 重新提问入口：清空消息/流式/错误/终态/锚点（保留会话归属），由 REPLAY_FAILED 横幅调用
+    reset: () => dispatch({ type: "reset" }),
+  };
 }

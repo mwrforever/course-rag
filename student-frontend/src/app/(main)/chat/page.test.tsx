@@ -4,7 +4,7 @@
  * 覆盖（设计 §1.5.4 /chat 全链路）：
  * - 空态：AI 徽标 + 问候（displayName）+ 建议提问 chip（点击即发送）
  * - 输入发送 → useChatStream.send(query, attachments) + 用户气泡渲染
- * - metadata 到达（sessionId 落位）→ router.replace('/chat/{id}')（仅新会话）
+ * - metadata 到达（sessionId 落位）→ 不跳转（E2E 实证修订：replace 重挂载丢流）
  * - sources 前置渲染、end 后操作栏浮现、流式打字光标
  * - 409 并发冲突 toast「当前会话正在回答中」；建议 chip 失败同分级
  * - 附件：前置校验超限即拒（断言 uploadAttachments 未被调用）+ 成功上传 chips 完成
@@ -237,7 +237,10 @@ describe("新对话页：发送与流式状态流转", () => {
     expect(screen.getByTestId("user-message")).toHaveTextContent("什么是 RAG？");
   });
 
-  it("metadata 到达（sessionId 落位）：router.replace 新会话 URL（仅一次）", async () => {
+  it("metadata 到达（sessionId 落位）：不触发路由跳转（E2E 实证修订）", async () => {
+    // 修订背景（2026-08-24）：原 router.replace('/chat/{id}') 在真实导航下重挂载
+    // 组件致流式状态丢失（E2E route-mock 抓出）；产品决策：新对话不替换 URL，
+    // sessionId 留存在组件状态中。本用例锁定「不跳转 + 消息仍渲染」契约。
     const { rerender } = renderPage();
     chatMock.state = {
       ...chatMock.state,
@@ -252,10 +255,11 @@ describe("新对话页：发送与流式状态流转", () => {
       </QueryClientProvider>,
     );
     await waitFor(() => {
-      expect(routerMock.replace).toHaveBeenCalledWith("/chat/s-100");
+      expect(screen.getByText("你好")).toBeInTheDocument();
     });
-    // 幂等：state 不变不再重复 replace
-    expect(routerMock.replace).toHaveBeenCalledTimes(1);
+    // 不跳转：replace 与 push 均不得被调用
+    expect(routerMock.replace).not.toHaveBeenCalled();
+    expect(routerMock.push).not.toHaveBeenCalled();
   });
 
   it("流式渲染：sources 前置 + 打字光标 + end 后操作栏浮现", async () => {

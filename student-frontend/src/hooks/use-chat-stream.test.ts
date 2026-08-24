@@ -1330,6 +1330,9 @@ describe("useChatStream 集成", () => {
     // 服务端干净关闭连接（done=true），未发 end/error
     await act(async () => {
       ctrl.close();
+      // EOF 判定前 hook 让出 50ms 宏任务（渲染提交窗口，E2E route-mock 实证既有瞬时
+      // 流漏重连），fake timers 下同步推进时钟
+      await vi.advanceTimersByTimeAsync(50);
     });
     // 立即走重连路径（第 1 次立即尝试，无需等 30s），携带最后事件锚点
     const getCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === "GET")!;
