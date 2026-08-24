@@ -519,6 +519,34 @@ describe("chatReducer 纯函数", () => {
     expect(s.streaming).toBe(false);
   });
 
+  it("hook 层 reset 出口：清空对话状态并保留会话归属", async () => {
+    // 覆盖 useChatStream 返回对象的 reset 出口（reducer 层 reset 已另测）：
+    // REPLAY_FAILED 横幅「重新提问」入口（chat-workspace）调用的是本出口
+    const ctrl = controllableSse();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") return ctrl.response;
+      throw new Error(`未预期的请求: ${String(input)}`);
+    });
+    const { result } = renderHook(() => useChatStream("sess-keep"));
+    await act(async () => {
+      await result.current.send("你好", []);
+    });
+    await act(async () => {
+      ctrl.push(md());
+      ctrl.push(frame(2, "delta", J({ text: "回答" })));
+      ctrl.close();
+    });
+    expect(result.current.state.messages).toHaveLength(2);
+    expect(result.current.state.streaming).toBe(true);
+    await act(async () => {
+      result.current.reset();
+    });
+    expect(result.current.state.messages).toHaveLength(0);
+    expect(result.current.state.streaming).toBe(false);
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.sessionId).toBe("sess-1");
+  });
+
   it("reset：清消息/流式/错误/终结态/事件锚点，保留会话归属", () => {
     const s0: ChatStreamState = {
       ...streamingWithAi(),
