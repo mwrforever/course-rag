@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test'
  * B 端 E2E route-mock 基建（整合 spec §3.2：全 route-mock，不依赖真实后端）
  *
  * - mockApi(page, role)：统一 mock 认证与公共接口；登录响应带 Set-Cookie
- *   （commerce_token，与后端 AuthController 一致，供 middleware 存在性检查——
+ *   （commerce_token，与后端 AuthController 一致，供 middleware 存在性检查：：
  *   注：B 端为 SPA 无 middleware，cookie 无守卫角色，仅按真实登录流复现）
  * - login(page, role)：按角色走完整登录流程（mock），跳仪表盘
  * - apiOk / apiFail：ApiResponse 体构造
