@@ -18,7 +18,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "lcov"],
-      // 覆盖率圈定已实现文件（Task 7 三文件 + Task 8 首页与组件）。
+      // 覆盖率圈定已实现文件（Task 7 三文件 + Task 8 首页与组件 + Task 9 课程列表/工作台）。
       // 暂不计入的文件与原因：site-header/middleware（middleware 跑在 edge runtime，
       // 无法在 jsdom 单测环境加载 next/server；site-header 导航激活态随导航任务落地后补测）；
       // 后续任务交付各自测试后逐步放宽 include 至 src 全量。
@@ -30,9 +30,14 @@ export default defineConfig({
         "src/app/*/login/page.tsx",
         "src/app/*/page.tsx",
         "src/app/*/layout.tsx",
+        "src/app/*/courses/page.tsx",
+        "src/app/*/courses/*/page.tsx",
         "src/components/ai-badge.tsx",
         "src/components/course-card.tsx",
         "src/components/empty-state.tsx",
+        "src/components/section-error.tsx",
+        "src/components/chunk-item.tsx",
+        "src/components/chunk-context-drawer.tsx",
       ],
       // 全局行覆盖 80% 兜底；核心文件（api client 与认证，后续所有 C 端任务的地基）行覆盖 100%
       thresholds: {

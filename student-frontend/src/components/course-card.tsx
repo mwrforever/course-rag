@@ -54,10 +54,12 @@ const DEFAULT_FALLBACK: { icon: Icon; gradient: string } = {
 
 /**
  * 解析课程学科兜底（关键词包含匹配，防御后端分类枚举变化）
+ *
+ * 导出供课程工作台 Hero 封面复用（无封面时同款学科渐变兜底，避免重复映射表）。
  * @param category 课程分类（可空，null 走默认兜底）
  * @returns 兜底学科图标与渐变类名
  */
-function coverFallback(category: string | null): { icon: Icon; gradient: string } {
+export function coverFallback(category: string | null): { icon: Icon; gradient: string } {
   const cat = category ?? "";
   for (const entry of CATEGORY_FALLBACKS) {
     if (entry.keywords.some((keyword) => cat.includes(keyword))) {

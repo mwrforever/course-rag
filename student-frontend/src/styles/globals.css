@@ -20,6 +20,27 @@
   /* 字体变量由 layout.tsx 的 next/font 注入（--font-outfit/--font-noto/--font-geist-mono） */
   --font-display: var(--font-outfit), var(--font-noto), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), monospace;
+  /* 上下文抽屉滑入/遮罩淡入（设计 §1.5.3；仅动画 transform/opacity，motion-reduce 降级静态） */
+  --animate-drawer-in: drawer-in 240ms ease-out;
+  --animate-overlay-in: overlay-in 240ms ease-out;
+
+  @keyframes drawer-in {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes overlay-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }
 
 /* ===== 基础层：全站默认底色、文字色与字体栈（引用 @theme 语义 token） ===== */

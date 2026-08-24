@@ -168,10 +168,10 @@ export default function HomePage() {
             </h1>
             <p className="mt-4 text-[17px] leading-relaxed text-muted">继续探索你的课程</p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              {/* 主 CTA：开始提问 → 对话页 */}
+              {/* 主 CTA：开始提问 → 对话页（Task 9 顺手小修：过渡收窄为 transform/opacity，reduced-motion 无过渡） */}
               <Link
                 href="/chat"
-                className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-[15px] font-medium text-white transition-all hover:bg-brand-strong active:scale-[0.98] active:-translate-y-px focus-visible:ring-2 focus-visible:ring-brand"
+                className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-[15px] font-medium text-white transition-[transform,opacity] hover:bg-brand-strong active:scale-[0.98] active:-translate-y-px motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 开始提问
                 <ArrowRight size={16} aria-hidden />
