@@ -155,6 +155,24 @@ describe("课程工作台：未选课 403 专属引导页", () => {
     expect(screen.queryByText("课程资料")).toBeNull();
   });
 
+  it("carry1 时序修正：course 缺失但 materials 403 → 仍渲染「联系老师」引导（而非课程不存在）", async () => {
+    // 未加入的课程不在我的课程列表（course 判空命中），但资料接口 403 证明课程存在只是未选
+    apiMock.getMyCourses.mockResolvedValue([makeCourse({ id: "c-other" })]);
+    apiMock.getMaterials.mockRejectedValue(new ApiError(403, "未选此课程，无权查看资料"));
+    renderWorkbench();
+    expect(await screen.findByText("还没有加入这门课程，请联系老师开通")).toBeInTheDocument();
+    expect(screen.queryByText("课程不存在或已下架")).toBeNull();
+  });
+
+  it("carry1 时序修正：course 真不存在（materials 404）→ 课程不存在或已下架", async () => {
+    apiMock.getMyCourses.mockResolvedValue([makeCourse({ id: "c-other" })]);
+    apiMock.getMaterials.mockRejectedValue(new ApiError(404, "课程不存在"));
+    renderWorkbench();
+    expect(await screen.findByText("课程不存在或已下架")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "返回我的课程" })).toHaveAttribute("href", "/courses");
+    expect(screen.queryByText("还没有加入这门课程，请联系老师开通")).toBeNull();
+  });
+
   it("非 403 错误不落入引导页（走通用 Error 横幅）", async () => {
     apiMock.getMyCourses.mockResolvedValue([makeCourse()]);
     apiMock.getMaterials.mockRejectedValue(new ApiError(500, "内部错误"));
@@ -178,10 +196,10 @@ describe("课程工作台：Hero 与资料列表", () => {
     expect(screen.getByText("4.5")).toBeInTheDocument();
     expect(screen.getByText("256 人学习")).toBeInTheDocument();
     expect(screen.getByText("计算机")).toBeInTheDocument();
-    // 问 AI 助教：D7 上下文条面包屑，CTA 携带课程名（encodeURIComponent 编码空格等）
+    // 问 AI 助教：D7 上下文条面包屑，CTA 携带 courseId + 课程名（carry3）
     expect(screen.getByRole("link", { name: /问 AI 助教/ })).toHaveAttribute(
       "href",
-      "/chat?course=%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84%E4%B8%8E%E7%AE%97%E6%B3%95",
+      "/chat?courseId=c-1&course=%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84%E4%B8%8E%E7%AE%97%E6%B3%95",
     );
     expect(screen.getByRole("link", { name: /浏览资料/ })).toHaveAttribute("href", "#materials");
   });

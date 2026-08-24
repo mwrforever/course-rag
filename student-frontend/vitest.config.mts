@@ -29,6 +29,7 @@ export default defineConfig({
         "src/lib/query-provider.tsx",
         "src/lib/sse-parser.ts",
         "src/lib/time.ts",
+        "src/lib/history-adapter.ts",
         "src/hooks/use-chat-stream.ts",
         "src/app/*/login/page.tsx",
         "src/app/*/page.tsx",
@@ -38,6 +39,8 @@ export default defineConfig({
         "src/app/*/chat/page.tsx",
         "src/app/*/chat/*/page.tsx",
         "src/app/*/chat/chat-workspace.tsx",
+        "src/app/*/sessions/page.tsx",
+        "src/app/*/profile/page.tsx",
         "src/components/ai-badge.tsx",
         "src/components/course-card.tsx",
         "src/components/empty-state.tsx",
@@ -46,12 +49,14 @@ export default defineConfig({
         "src/components/chunk-context-drawer.tsx",
         "src/components/chat/*.tsx",
       ],
-      // 全局行覆盖 80% 兜底；核心文件（api client 与认证，后续所有 C 端任务的地基）行覆盖 100%
+      // 全局行覆盖 80% 兜底；核心文件（api client 与认证、SSE 解析、对话状态机、
+      // 历史回显适配器，后续所有 C 端任务的地基）行覆盖 100%
       thresholds: {
         lines: 80,
         "src/lib/api.ts": { lines: 100 },
         "src/lib/auth-context.tsx": { lines: 100 },
         "src/lib/sse-parser.ts": { lines: 100 },
+        "src/lib/history-adapter.ts": { lines: 100 },
         "src/hooks/use-chat-stream.ts": { lines: 100 },
         "src/app/*/login/page.tsx": { lines: 100 },
       },

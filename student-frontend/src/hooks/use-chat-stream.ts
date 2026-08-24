@@ -82,6 +82,11 @@ export interface StreamMessage {
   endStatus: EndStatus | null;
   /** end COMPLETED 的 messageId（反馈接口唯一来源；CANCELLED/ERROR 为 null） */
   messageId: string | null;
+  /**
+   * 意图透传（仅历史回显填充：StudentMessage.intentType 直通，可能为存量 unknown；
+   * 实时流消息无此字段，FeedbackBar 按 hasSources 推断）
+   */
+  intentType?: string | null;
 }
 
 /** 对话流整体状态（useChatStream 暴露给页面的全部状态面） */

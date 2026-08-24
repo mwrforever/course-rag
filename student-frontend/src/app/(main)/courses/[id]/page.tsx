@@ -50,6 +50,9 @@ function WorkbenchSkeleton() {
  *
  * 403 专属态（设计 §1.7）：materials 接口 403（未选课）时渲染专属引导页
  * 「联系老师加入这门课程」+ 返回按钮，替代全部页面内容。
+ * 时序修正（carry1）：未加入的课程不在我的课程列表（course 判空会命中），
+ * 故「是否 403」先于「course 缺失」判定，避免误报「课程不存在」；
+ * course 真不存在（materials 404）才落「课程不存在或已下架」。
  * 四态全覆盖：Loading 骨架 / Empty / Error 横幅+重试 / 正常态。
  */
 export default function CourseWorkbenchPage() {
@@ -68,6 +71,8 @@ export default function CourseWorkbenchPage() {
   });
   const materials = materialsQuery.data ?? [];
   const isForbidden = materialsQuery.error instanceof ApiError && materialsQuery.error.code === 403;
+  // 课程真不存在判据（carry1）：资料接口 404（或课程不在我的列表）→ 课程不存在/下架
+  const isNotFound = materialsQuery.error instanceof ApiError && materialsQuery.error.code === 404;
 
   // J4 上下文抽屉选中分片（null = 抽屉关闭）+ 分批渲染可见条数
   const [selectedChunk, setSelectedChunk] = useState<MaterialChunk | null>(null);
@@ -88,16 +93,10 @@ export default function CourseWorkbenchPage() {
       </div>
     );
   }
-  if (!course) {
-    // J1 无此课程（直接输入 URL 或课程下架）
-    return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-16">
-        <EmptyState title="课程不存在或已下架" actionLabel="返回我的课程" actionHref="/courses" />
-      </div>
-    );
-  }
   if (isForbidden) {
-    // 未选课 403 专属引导页（设计 §1.7：联系老师加入这门课程 + 返回按钮）
+    // 未选课 403 专属引导页（设计 §1.7：联系老师加入这门课程 + 返回按钮）。
+    // carry1 时序修正：本判定先于 !course。未加入的课程不在我的课程列表，
+    // 但 materials 403 证明课程存在只是未选，应引导联系老师而非报「课程不存在」
     return (
       <div className="mx-auto w-full max-w-6xl px-6 py-16">
         <EmptyState
@@ -105,6 +104,14 @@ export default function CourseWorkbenchPage() {
           actionLabel="返回我的课程"
           actionHref="/courses"
         />
+      </div>
+    );
+  }
+  if (!course || isNotFound) {
+    // J1 无此课程（直接输入 URL 或课程下架）；或资料接口 404（carry1：课程真不存在）
+    return (
+      <div className="mx-auto w-full max-w-6xl px-6 py-16">
+        <EmptyState title="课程不存在或已下架" actionLabel="返回我的课程" actionHref="/courses" />
       </div>
     );
   }
@@ -177,10 +184,11 @@ export default function CourseWorkbenchPage() {
               {course.learningCount} 人学习
             </span>
           </div>
-          {/* 双 CTA：问 AI 助教（纯前端入口 → /chat?course=课程名，D7 上下文条面包屑）+ 浏览资料（锚点滚动） */}
+          {/* 双 CTA：问 AI 助教（纯前端入口 → /chat?courseId={id}&course=课程名，D7
+              上下文条面包屑 + carry3 返回按钮直达本课程）+ 浏览资料（锚点滚动） */}
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
-              href={`/chat?course=${encodeURIComponent(course.title)}`}
+              href={`/chat?courseId=${course.id}&course=${encodeURIComponent(course.title)}`}
               className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-[15px] font-medium text-white transition-colors hover:bg-brand-strong active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-brand"
             >
               <Sparkle size={16} aria-hidden />问 AI 助教

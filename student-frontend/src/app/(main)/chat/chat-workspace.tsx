@@ -29,13 +29,24 @@ import {
 import { ChatInput, chatErrorText } from "@/components/chat/chat-input";
 import { ChatToast } from "@/components/chat/chat-toast";
 import { MessageList, shouldStickToBottom } from "@/components/chat/message-list";
-import { useChatStream } from "@/hooks/use-chat-stream";
+import { SectionError } from "@/components/section-error";
+import { useChatStream, type StreamMessage } from "@/hooks/use-chat-stream";
 import { uploadAttachments } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { AttachmentRecord } from "@/lib/types";
 
-/** 工作区形态：new=新对话（问候空态）/ continue=历史会话（继续提问占位） */
+/** 工作区形态：new=新对话（问候空态）/ continue=历史会话（R1 回显 + 继续提问） */
 export type ChatVariant = "new" | "continue";
+
+/** 历史回显数据（仅 continue 形态由页面传入；new 形态缺省不渲染） */
+export interface HistoryReplay {
+  /** 回显加载状态：pending=拉取中 / error=失败可重试 / success=已适配完成 */
+  status: "pending" | "error" | "success";
+  /** 历史消息（historyAdapter 转换成果；非 success 恒空数组） */
+  messages: StreamMessage[];
+  /** 重试回调（status=error 时页内横幅 [重试] 触发） */
+  retry: () => void;
+}
 
 /** 工作区组件 props */
 export interface ChatWorkspaceProps {
@@ -45,6 +56,8 @@ export interface ChatWorkspaceProps {
   variant: ChatVariant;
   /** 上下文条会话标题（缺省按形态取「新对话」/「历史会话」） */
   title?: string;
+  /** 历史回显（continue 形态）：与流式消息拼接展示（回显在前、新消息在后） */
+  history?: HistoryReplay;
 }
 
 /** 建议提问（新对话问候与续会话占位共用，点击即发送） */
@@ -91,7 +104,7 @@ export function ChatSkeleton() {
  *
  * @param props 见 ChatWorkspaceProps
  */
-export function ChatWorkspace({ initialSessionId, variant, title }: ChatWorkspaceProps) {
+export function ChatWorkspace({ initialSessionId, variant, title, history }: ChatWorkspaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
@@ -254,8 +267,11 @@ export function ChatWorkspace({ initialSessionId, variant, title }: ChatWorkspac
     void sendQuery(query, records).catch((error: unknown) => notify(chatErrorText(error)));
   }
 
-  // ── 渲染状态：上下文条标题 / 空态文案 ──
+  // ── 渲染状态：上下文条标题 / 空态文案 / 历史回显 ──
   const contextTitle = title ?? (variant === "new" ? "新对话" : "历史会话");
+  // carry3：课程入口携带 courseId（返回按钮直达课程工作台）；课程名仍由 course 参数承担面包屑
+  const courseId = searchParams.get("courseId");
+  const backHref = courseId ? `/courses/${courseId}` : "/courses";
   const courseName = searchParams.get("course");
   const greeting =
     variant === "new" ? `你好，${user?.displayName ?? "同学"}，想了解什么？` : "继续提问";
@@ -264,14 +280,17 @@ export function ChatWorkspace({ initialSessionId, variant, title }: ChatWorkspac
       ? "基于课程知识库回答，问题可带附件，来源随时可追溯"
       : "接着聊，AI 助教记得上一轮的回答";
 
-  const isEmpty = state.messages.length === 0;
+  // 历史回显（continue）：成功态消息与流式消息拼接（回显在前、新消息在后）
+  const historyMessages = history?.status === "success" ? history.messages : [];
+  const displayMessages = [...historyMessages, ...state.messages];
+  const isEmpty = displayMessages.length === 0;
 
   return (
     <div className="flex h-[calc(100dvh-4rem)] flex-col" data-testid="chat-workspace">
       {/* 上下文条 40px：← 返回课程 · 会话标题 · 新建对话（D7 课程名面包屑） */}
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-surface px-6 text-sm">
         <Link
-          href="/courses"
+          href={backHref}
           className="flex items-center gap-1 text-muted transition-colors hover:text-brand-strong"
         >
           <ArrowLeft size={14} aria-hidden />
@@ -301,7 +320,15 @@ export function ChatWorkspace({ initialSessionId, variant, title }: ChatWorkspac
 
       {/* 消息流滚动区（智能吸底滚动） */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto" data-testid="message-scroll">
-        {isEmpty ? (
+        {history && history.status === "pending" && displayMessages.length === 0 ? (
+          // 历史回显加载中：消息区骨架（与 Suspense fallback 同形）
+          <ChatSkeleton />
+        ) : history && history.status === "error" && displayMessages.length === 0 ? (
+          // 历史回显失败：页内横幅 + 重试（设计 §1.7 Error）
+          <div className="mx-auto w-full max-w-[880px] px-6 py-8">
+            <SectionError onRetry={history.retry} />
+          </div>
+        ) : isEmpty ? (
           // 空态：AI 徽标 + 问候/继续提问 + 建议提问 chip（设计 §1.7 Empty）
           <div className="flex h-full flex-col items-center justify-center gap-5 px-6 text-center">
             <AiBadge />
@@ -325,7 +352,7 @@ export function ChatWorkspace({ initialSessionId, variant, title }: ChatWorkspac
           </div>
         ) : (
           <MessageList
-            messages={state.messages}
+            messages={displayMessages}
             streaming={state.streaming}
             sessionId={state.sessionId ?? ""}
             attachmentBlobUrls={blobUrls}

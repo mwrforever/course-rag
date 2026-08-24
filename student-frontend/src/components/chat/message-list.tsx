@@ -8,7 +8,8 @@
  *   （形状锁唯一例外）；附件缩略 chips（图片 blob 缩略 / 文档图标），纯文本防 XSS
  * - AI 消息：无气泡整栏（阅读友好），AI 徽标头像 + 思考卡/来源卡/正文/工具卡/操作栏
  * - 流式打字光标（1s 循环，仅最后一条 AI 消息且 streaming 时挂载）
- * - 「已停止生成」后缀：hook 已在 text 追加，本组件剥离后按 endedStatus 渲染唯一一份
+ * - 「已停止生成」后缀：hook 已在 text 追加（Task 11 契约），本组件直接渲染唯一一份；
+ *   复制时由 FeedbackBar 剥离后缀（carry2）
  * - end 后操作栏 200ms fade-in（transform/opacity，reduced-motion 静态）
  */
 import { FileText } from "@phosphor-icons/react";
@@ -180,6 +181,7 @@ export function MessageList({
                     messageId={message.messageId}
                     hasSources={message.sources.length > 0}
                     text={bodyText}
+                    intentType={message.intentType}
                     onNotify={onNotify}
                   />
                 </div>

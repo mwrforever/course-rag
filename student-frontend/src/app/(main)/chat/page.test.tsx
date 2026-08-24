@@ -175,6 +175,14 @@ describe("新对话页：上下文条", () => {
     renderPage();
     expect(screen.getByText("高等数学（一）")).toBeInTheDocument();
   });
+
+  it("carry3：query 携带 courseId 时「返回课程」跳转对应课程（/courses/{id}）", () => {
+    searchParamsMock.current = new URLSearchParams({ courseId: "c-1", course: "高等数学（一）" });
+    renderPage();
+    expect(screen.getByRole("link", { name: /返回课程/ })).toHaveAttribute("href", "/courses/c-1");
+    // 面包屑仍由 course 参数提供（courseId 不影响展示）
+    expect(screen.getByText("高等数学（一）")).toBeInTheDocument();
+  });
 });
 
 describe("新对话页：空态与建议提问", () => {
