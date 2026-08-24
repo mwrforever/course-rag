@@ -332,6 +332,18 @@ export function cancelRun(runId: string): Promise<void> {
   return apiFetch<void>(`/student/chat/${runId}/cancel`, { method: "POST" });
 }
 
+/**
+ * 断流重连（设计 §1.5.4 传输层）：GET /student/chat/{runId}/reconnect
+ *
+ * lastEventId 为断流前最后消费事件的 SSE id 行（seq）；null 表示全量回放（不带查询参数）。
+ * 返回原始 Response 交由上层 ReadableStream 消费；401 时自动单飞刷新后重放；
+ * 降级路径（回放窗口过期）以 error 事件 code=REPLAY_FAILED 呈现，由上层错误分级。
+ */
+export function reconnectChat(runId: string, lastEventId: number | null): Promise<Response> {
+  const query = lastEventId === null ? "" : `?lastEventId=${lastEventId}`;
+  return authedFetch(`/student/chat/${runId}/reconnect${query}`, { method: "GET" });
+}
+
 /** 附件上传（multipart 字段名 files）：返回附件记录（url 为 objectKey，预览用本地 blob） */
 export function uploadAttachments(files: File[]): Promise<AttachmentRecord[]> {
   const form = new FormData();

@@ -347,6 +347,25 @@ describe("认证端点", () => {
   });
 });
 
+describe("SSE 重连端点", () => {
+  it("reconnectChat：GET 携带 lastEventId（断流重连锚点），返回原始 Response", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(res(200));
+    const response = await api.reconnectChat("run-1", 42);
+    expect(response.status).toBe(200);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("/api/v1/student/chat/run-1/reconnect?lastEventId=42");
+    expect((init as RequestInit).method).toBe("GET");
+  });
+
+  it("reconnectChat：无 lastEventId（全量回放锚点）不带查询参数", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(res(200));
+    await api.reconnectChat("run-2", null);
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/v1/student/chat/run-2/reconnect");
+  });
+});
+
 describe("业务端点契约", () => {
   it("课程资料/资料库/分片上下文/会话系列端点 URL 与方法正确", async () => {
     const api = await freshApi();
