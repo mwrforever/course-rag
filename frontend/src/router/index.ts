@@ -1,12 +1,11 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
+import AdminLayout from '@/layouts/AdminLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 
 import type { UserRole } from '@/lib/types'
 
-/**
- * 路由 meta 类型增强：title 页面标题 / requiresAuth 是否需要登录 / roles 允许访问的角色
- */
+/** 路由 meta 类型增强：title 页面标题 / requiresAuth 是否需登录 / roles 允许访问的角色白名单 */
 declare module 'vue-router' {
   interface RouteMeta {
     title?: string
@@ -15,12 +14,28 @@ declare module 'vue-router' {
   }
 }
 
+/** 两角色白名单（设计 §2.4：默认全部业务页两角色可进，教师限己建由后端约束） */
+const BOTH_ROLES: UserRole[] = ['TEACHER', 'SUPER_ADMIN']
+/** 超管专属白名单（设计 §2.4.7：会话审计 + 安全审计两页） */
+const SUPER_ONLY: UserRole[] = ['SUPER_ADMIN']
+
 /**
- * B 端路由表（骨架）
+ * 受保护页面 meta 工厂：requiresAuth 显式声明（子路由独立可读，与父路由合并语义一致）
  *
- * 公开路由仅 /login；其余路由标记 requiresAuth 与 roles，由 beforeEach 守卫统一鉴权
- * （设计 §2.1/§3.1：B 端路由守卫走 Pinia 登录态，替代 Next middleware）。
- * 知识库/文档/分片/课程/用户/反馈/会话/安全审计等业务路由随后续任务逐个补入本表。
+ * @param title 页面标题（布局壳页头 H1 使用）
+ * @param roles 允许访问的角色白名单
+ */
+function pageMeta(title: string, roles: UserRole[]) {
+  return { title, requiresAuth: true, roles }
+}
+
+/**
+ * B 端路由表（设计 §2.4 页面清单全量落地）
+ *
+ * - 公开路由仅 /login 与 /forbidden（403 页）
+ * - 全部业务页面挂载在 AdminLayout 布局壳父路由下（顶栏+侧导航+内容区）
+ * - 超管专属页（会话审计/登录记录/Token 黑名单）meta.roles 仅 SUPER_ADMIN
+ * - 未实现页面使用占位 view 组件，页面实现随后续任务逐个填充
  */
 export const routes: RouteRecordRaw[] = [
   {
@@ -30,17 +45,100 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '登录', requiresAuth: false },
   },
   {
+    path: '/forbidden',
+    name: 'forbidden',
+    component: () => import('@/views/ForbiddenView.vue'),
+    meta: { title: '无权访问', requiresAuth: false },
+  },
+  {
     path: '/',
-    redirect: '/dashboard',
+    name: 'admin-layout',
+    component: AdminLayout,
+    meta: { requiresAuth: true },
+    children: [
+      { path: '', redirect: '/dashboard' },
+      {
+        path: 'dashboard',
+        name: 'dashboard',
+        component: () => import('@/views/DashboardView.vue'),
+        meta: pageMeta('仪表盘', BOTH_ROLES),
+      },
+      {
+        path: 'knowledge-bases',
+        name: 'knowledge-bases',
+        component: () => import('@/views/KnowledgeBaseListView.vue'),
+        meta: pageMeta('知识库', BOTH_ROLES),
+      },
+      {
+        path: 'knowledge/documents',
+        name: 'knowledge-documents',
+        component: () => import('@/views/DocumentListView.vue'),
+        meta: pageMeta('文档管理', BOTH_ROLES),
+      },
+      {
+        path: 'knowledge/documents/:id',
+        name: 'knowledge-document-detail',
+        component: () => import('@/views/DocumentDetailView.vue'),
+        meta: pageMeta('文档详情', BOTH_ROLES),
+      },
+      {
+        path: 'knowledge/chunks',
+        name: 'knowledge-chunks',
+        component: () => import('@/views/ChunkWorkspaceView.vue'),
+        meta: pageMeta('分片修正', BOTH_ROLES),
+      },
+      {
+        path: 'courses',
+        name: 'courses',
+        component: () => import('@/views/CourseListView.vue'),
+        meta: pageMeta('课程管理', BOTH_ROLES),
+      },
+      {
+        path: 'courses/new',
+        name: 'course-new',
+        component: () => import('@/views/CourseEditView.vue'),
+        meta: pageMeta('新建课程', BOTH_ROLES),
+      },
+      {
+        path: 'courses/:id',
+        name: 'course-detail',
+        component: () => import('@/views/CourseEditView.vue'),
+        meta: pageMeta('编辑课程', BOTH_ROLES),
+      },
+      {
+        path: 'users',
+        name: 'users',
+        component: () => import('@/views/UserListView.vue'),
+        meta: pageMeta('用户管理', BOTH_ROLES),
+      },
+      {
+        path: 'feedback',
+        name: 'feedback',
+        component: () => import('@/views/FeedbackView.vue'),
+        meta: pageMeta('反馈报表', BOTH_ROLES),
+      },
+      {
+        path: 'sessions',
+        name: 'sessions',
+        component: () => import('@/views/SessionAuditView.vue'),
+        meta: pageMeta('会话审计', SUPER_ONLY),
+      },
+      {
+        path: 'security/login-records',
+        name: 'login-records',
+        component: () => import('@/views/LoginRecordView.vue'),
+        meta: pageMeta('登录记录', SUPER_ONLY),
+      },
+      {
+        path: 'security/token-blacklist',
+        name: 'token-blacklist',
+        component: () => import('@/views/TokenBlacklistView.vue'),
+        meta: pageMeta('Token 黑名单', SUPER_ONLY),
+      },
+    ],
   },
   {
-    path: '/dashboard',
-    name: 'dashboard',
-    component: () => import('@/views/DashboardView.vue'),
-    meta: { title: '仪表盘', requiresAuth: true, roles: ['TEACHER', 'SUPER_ADMIN'] },
-  },
-  {
-    // 未匹配路由兜底回仪表盘；独立 404 页随后续任务决定是否需要
+    // 未匹配路由兜底回仪表盘（独立 404 页不在此任务范围）
     path: '/:pathMatch(.*)*',
     redirect: '/dashboard',
   },
@@ -56,27 +154,43 @@ export function createAppRouter() {
   })
 
   /**
-   * 全局前置守卫（鉴权骨架）
+   * 全局前置守卫（设计 §3.1 B 端 beforeEach，三态）：
    *
-   * 1. 受保护路由未登录 → 跳登录页并携带 redirect 回跳参数
-   * 2. 已登录访问登录页 → 回仪表盘
-   * 3. meta.roles 角色校验随角色页面上线后在此补算法（当前仅 TEACHER/SUPER_ADMIN 两类角色）
+   * 1. 公开路由：登录页放行；已登录访问登录页送回仪表盘
+   * 2. 受保护路由：未登录 → 登录页并携带 redirect 回跳参数
+   * 3. 角色门禁：meta.roles 白名单不匹配 → ForbiddenView（403 页）
+   *
+   * 边界说明：刷新页面后 AT 丢失、role=null（RT 仍在）时角色门禁放行，
+   * 由 api 层静默刷新恢复角色或后端 403 兜底，避免刷新即被误挡。
    */
   router.beforeEach((to) => {
     const auth = useAuthStore()
-    if (to.meta.requiresAuth && !auth.isAuthenticated) {
+
+    // 公开路由：仅登录页/403 页；已登录访问登录页 → 仪表盘
+    if (!to.meta.requiresAuth) {
+      if (to.name === 'login' && auth.isAuthenticated) {
+        return { name: 'dashboard' }
+      }
+      return true
+    }
+
+    // 受保护路由：未登录 → 登录页并携带 redirect 回跳参数
+    if (!auth.isAuthenticated) {
       return { name: 'login', query: { redirect: to.fullPath } }
     }
-    if (to.name === 'login' && auth.isAuthenticated) {
-      return { name: 'dashboard' }
+
+    // 角色门禁：白名单不匹配 → ForbiddenView（role=null 为登录态未恢复，放行见类注释）
+    if (to.meta.roles && auth.role && !to.meta.roles.includes(auth.role)) {
+      return { name: 'forbidden' }
     }
+
     return true
   })
 
   return router
 }
 
-// 应用单例：main.ts 与组件内使用的默认实例
+// 应用单例：main.ts 与组件（api 层失败登出跳转）使用的默认实例
 const router = createAppRouter()
 
 export default router

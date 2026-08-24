@@ -155,6 +155,7 @@ export interface DocumentChunkVO {
   charOffsetEnd: number
   correctionStatus: CorrectionStatus
   createdAt: string
+  updatedAt: string
 }
 
 // ===== 课程 =====
@@ -169,7 +170,7 @@ export interface CourseContentDTO {
   sortOrder: number
 }
 
-/** 排期（后端 dto/ScheduleDTO）：capacity/enrolled 为 Integer 保持 number */
+/** 排期（后端 vo/CourseScheduleVO）：capacity/enrolled 为 Integer 保持 number；startDate/endDate 为 LocalDate（YYYY-MM-DD） */
 export interface CourseScheduleVO {
   id: string
   courseId: string
@@ -183,6 +184,7 @@ export interface CourseScheduleVO {
   status: string
   createdBy: string
   createdAt: string
+  updatedAt: string
 }
 
 /** 课程（后端 dto/CourseDTO）：price/rating 为 BigDecimal 按 number 接收；tags 可空数组 */
@@ -224,13 +226,13 @@ export interface UserDTO {
 
 // ===== 反馈 =====
 
-/** 反馈（后端 vo/UserFeedbackVO）：isLiked 布尔；userId/messageId 为 string */
+/** 反馈（后端 vo/UserFeedbackVO）：isLiked 三态（NULL=未评，TRUE=赞，FALSE=踩）；userId/messageId 为 string */
 export interface UserFeedbackVO {
   id: string
   sessionId: string
   messageId: string
   userId: string
-  isLiked: boolean
+  isLiked: boolean | null
   intentType: string | null
   createdAt: string
 }
@@ -287,6 +289,7 @@ export interface SysLoginRecordVO {
   expiresAt: string
   status: LoginRecordStatus
   createdAt: string
+  updatedAt: string
 }
 
 /** Token 黑名单项（后端 vo/SysTokenBlacklistVO，超管清理过期） */
@@ -318,4 +321,143 @@ export interface DashboardStats {
 export interface FeedbackTrendItem {
   date: string
   count: string
+}
+
+/** 反馈统计（后端 dashboard/feedback/stats：studentCount/feedbackCount 为 Long 字符串，likeRate 浮点） */
+export interface FeedbackStats {
+  studentCount: string
+  feedbackCount: string
+  likeRate: number
+}
+
+// ===== B 端请求 DTO（与后端 dto/ 一一对应，字段可空性照抄 Java record） =====
+
+/** 知识库创建/更新（后端 dto/KnowledgeBaseRequest）：name 必填 */
+export interface KnowledgeBaseRequest {
+  name: string
+  description?: string
+}
+
+/** 文档改标题（后端 dto/DocumentUpdateRequest） */
+export interface DocumentUpdateRequest {
+  title: string
+}
+
+/** 分片内容修正（后端 dto/ChunkContentUpdateRequest）：改 content 触发重新向量化 */
+export interface ChunkContentUpdateRequest {
+  content: string
+}
+
+/** 单片集合类型调整（后端 dto/ChunkCollectionTypeRequest）：不同步 Milvus（弱化入口） */
+export interface ChunkCollectionTypeRequest {
+  collectionType: CollectionType
+  courseId?: string | null
+}
+
+/** 批量修正（后端 dto/BatchChunkUpdateRequest，文档级 Milvus 同步可能慢） */
+export interface BatchChunkUpdateRequest {
+  ids: string[]
+  collectionType: CollectionType
+  courseId?: string | null
+}
+
+/** 批量标记已修正（后端 dto/BatchCorrectedRequest，不可撤销） */
+export interface BatchCorrectedRequest {
+  ids: string[]
+}
+
+/** 创建课程（后端 dto/CreateCourseRequest） */
+export interface CreateCourseRequest {
+  title: string
+  description?: string
+  coverImage?: string
+  category?: string
+  instructorName?: string
+  price?: number
+  duration?: string
+  tags?: string[] | null
+  enrollmentLink?: string
+}
+
+/** 更新课程（后端 dto/UpdateCourseRequest）：所有字段可选，null 表示不更新 */
+export interface UpdateCourseRequest {
+  title?: string
+  description?: string
+  coverImage?: string
+  category?: string
+  instructorName?: string
+  price?: number
+  duration?: string
+  tags?: string[] | null
+  enrollmentLink?: string
+  status?: CourseStatus
+}
+
+/** 创建排期（后端 dto/CreateScheduleRequest）：日期为 LocalDate 字符串 YYYY-MM-DD */
+export interface CreateScheduleRequest {
+  startDate: string
+  endDate: string
+  scheduleType: string
+  location?: string
+  instructorName?: string
+  capacity?: number
+}
+
+/** 更新排期（后端 dto/UpdateScheduleRequest）：所有字段可选，null 表示不更新 */
+export interface UpdateScheduleRequest {
+  startDate?: string
+  endDate?: string
+  scheduleType?: string
+  location?: string
+  instructorName?: string
+  capacity?: number
+  enrolled?: number
+  status?: string
+}
+
+/** 批量添加学生（后端 dto/EnrollmentRequest） */
+export interface EnrollmentRequest {
+  studentIds: string[]
+}
+
+/** 创建用户（后端 dto/CreateUserRequest）：role 白名单 TEACHER/STUDENT/SUPER_ADMIN */
+export interface CreateUserRequest {
+  username: string
+  password: string
+  displayName: string
+  role: UserRole
+}
+
+/** 更新用户（后端 dto/UpdateUserRequest） */
+export interface UpdateUserRequest {
+  displayName?: string
+}
+
+/** 重置密码（后端 dto/ResetPasswordRequest） */
+export interface ResetPasswordRequest {
+  newPassword: string
+}
+
+/** 启用/禁用用户（后端 dto/UpdateStatusRequest）：ACTIVE / DISABLED */
+export interface UpdateStatusRequest {
+  status: UserStatus
+}
+
+/** 课程学生（后端 dto/StudentDTO）：enrolledAt 时间 ISO 串 */
+export interface StudentDTO {
+  id: string
+  username: string
+  displayName: string
+  enrolledAt: string
+  status: string
+}
+
+/** 会话详情（后端 vo/ChatSessionDetailVO，回放 Drawer 只读消息流） */
+export interface ChatSessionDetailVO {
+  id: string
+  userId: string
+  title: string
+  status: SessionStatus
+  model: string
+  messages: ChatMessageVO[]
 }

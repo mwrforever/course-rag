@@ -22,6 +22,7 @@
     "@tanstack/vue-query": "^5.102.2",
     "@tanstack/vue-table": "^9.1.2",
     "@vue/devtools-api": "^8.1.5",
+    "axios": "^1.19.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "echarts": "^6.1.0",
