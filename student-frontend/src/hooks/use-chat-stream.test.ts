@@ -154,7 +154,7 @@ afterEach(() => {
 // ===== 1. chatReducer 纯函数：逐事件 + 边界 =====
 
 describe("chatReducer 纯函数", () => {
-  it("用例1 metadata：建 AI 槽并暴露 sessionId（新会话 null → 值，供 UI replace URL）；记录 runId/model", () => {
+  it("用例1 metadata：建 AI 槽并暴露 sessionId（新会话 null → 值，供状态留存（E2E 实证修订：不 replace URL））；记录 runId/model", () => {
     const s = chatReducer(createInitialState(null), {
       type: "metadata",
       runId: "run-1",

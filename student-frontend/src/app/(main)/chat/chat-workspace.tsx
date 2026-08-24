@@ -135,7 +135,7 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
 
   // ── 新会话 metadata 到达后的 URL 处理（E2E 实证修订 2026-08-24）──
   // 原实现 router.replace('/chat/{sessionId}) 在真实导航下会重挂载本组件，
-  // useChatStream 状态（进行中的流/已渲染消息）整体丢失——E2E（route-mock 真实导航）
+  // useChatStream 状态（进行中的流/已渲染消息）整体丢失：E2E（route-mock 真实导航）
   // 抓出后改为：新对话**不替换 URL**，sessionId 仅留存在组件状态中供后续能力消费。
   // 会话定位能力由 /sessions 列表与首页最近会话承担，对话页 URL 无功能价值。
   // （设计文档 §1.5.4 metadata 行随本决策修订）
@@ -358,7 +358,7 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
           />
         )}
 
-        {/* 消息尾错误横幅（设计 §1.5.4 error 事件）：分级操作——retryable=重试（手动重连）
+        {/* 消息尾错误横幅（设计 §1.5.4 error 事件）：分级操作：retryable=重试（手动重连）
              replay_failed=重新提问（清空对话引导重问）；auth 由全局登出流承接，仅展示文案 */}
         {state.error ? (
           <div

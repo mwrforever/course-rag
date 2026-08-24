@@ -99,7 +99,7 @@ export interface ChatStreamState {
   error: ChatError | null;
   /** 最后一条已消费事件的 SSE id 行（seq），断流重连锚点 */
   lastEventId: number | null;
-  /** 会话 id（null=新会话未落库；metadata 到达后暴露供 UI replace URL） */
+  /** 会话 id（null=新会话未落库；metadata 到达后落位。E2E 实证修订：不 replace URL，仅状态留存） */
   sessionId: string | null;
   /** 当前 run id（metadata 到达后落位；cancel/reconnect 的路径参数） */
   runId: string | null;
@@ -259,7 +259,7 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
       };
     }
     case "metadata": {
-      // metadata：建 AI 槽（同 runId 二推幂等仅补 model）；sessionId 暴露供 UI replace URL
+      // metadata：建 AI 槽（同 runId 二推幂等仅补 model）；sessionId 落位（不再 replace URL，E2E 实证修订）
       if (isTerminal(state)) return state;
       const next = applySeq(state, action.seq);
       const idx = findAssistantIndex(next.messages, action.runId);
@@ -517,7 +517,7 @@ function sleep(ms: number): Promise<void> {
  * 对话流 hook：SSE 10 事件状态机 + 停止/重连/409/错误分级四条生命周期路径
  *
  * @param initialSessionId 初始会话 id（/chat 新会话为 null，/chat/[sessionId] 传入 URL 参数）；
- *                         metadata 到达后用其值覆盖（新会话 replace URL 的依据）
+ *                         metadata 到达后用其值覆盖（E2E 实证修订：新会话不 replace URL）
  * @returns state 全量对话状态；send/cancel/reconnect/reset 四个生命周期操作（reset 供
  *          REPLAY_FAILED 错误横幅「重新提问」入口清空对话，保留会话归属）
  */
@@ -621,7 +621,7 @@ export function useChatStream(initialSessionId: string | null): {
       // 视为连接被服务端断开（与 30s 断流同一语义），走既有断流路径
       // （runReconnect 指数退避续流），不重复造第二套错误分级；
       // 已终态/已错误为正常收尾，不再动作。
-      // 注意：先让出宏任务再读 stateRef——dispatch 的 React 渲染提交晚于本同步链
+      // 注意：先让出宏任务再读 stateRef：dispatch 的 React 渲染提交晚于本同步链
       // （瞬时流可在渲染提交前读完 EOF），立即判读会把 streaming 误判为未置位
       // 而漏掉重连（E2E route-mock 实证）；50ms 足够提交且对真实持续流无感知影响
       if (genRef.current === gen && !finished) {

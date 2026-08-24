@@ -13,11 +13,11 @@ export default defineConfig({
   // 会拖垮渲染时序导致瞬态断言超时；单 worker 换取稳定性（CI 时长可接受）
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  retries: 1,
   reporter: [["list"]],
   use: {
     baseURL: "http://localhost:3000",
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {

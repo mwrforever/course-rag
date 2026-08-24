@@ -4,7 +4,7 @@ import { mockApi, login, mockChatStream, frame, heartbeat } from "./helpers/sse-
 /**
  * SSE 10 事件逐类断言（整合 spec §3.2 SSE-事件逐类 组，TASK.md §2 硬性要求）
  *
- * 原则：每类事件一个最小用例——先推目标事件帧，再以 end 收尾
+ * 原则：每类事件一个最小用例：先推目标事件帧，再以 end 收尾
  * （避免 EOF 未终态触发重连退避链，保证用例独立可并行）。
  */
 
@@ -25,6 +25,9 @@ test.describe("SSE 事件逐类", () => {
     await page.getByRole("button", { name: "发送" }).click();
     // 修订：replace 会重挂载丢流，产品决策不跳转（见 chat-workspace 注释）
     await expect(page).toHaveURL(/\/chat$/);
+    // 消息槽建立 + model 徽标渲染（metadata 元信息承载）
+    await expect(page.getByText("qwen3.8-max")).toBeVisible();
+    await expect(page.getByTestId("model-badge")).toBeVisible();
   });
 
   test("thinking：思考卡展开并流式追加文本", async ({ page }) => {

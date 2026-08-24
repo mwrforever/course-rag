@@ -11,7 +11,7 @@ import type { Page } from "@playwright/test";
  *   status=409 时按契约回 JSON 错误体
  */
 
-/** 构造一条命名事件帧（id 可选——reconnect 补发路径无 id 行） */
+/** 构造一条命名事件帧（id 可选：reconnect 补发路径无 id 行） */
 export function frame(event: string, data: unknown, id?: number): string {
   return (id != null ? `id:${id}\n` : "") + `event:${event}\ndata:${JSON.stringify(data)}\n\n`;
 }
@@ -125,7 +125,7 @@ export async function login(page: Page, redirectTo = "/") {
 /**
  * 拦截 POST /api/v1/student/chat：按帧串 fulfill SSE 流（单次响应，一次送达）。
  * status=409 时按契约回 JSON `{code:409,...}`（ConcurrentRunException 语义）。
- * delayMs：fulfill 前延迟（毫秒）——真实后端流持续数百 ms，前端 streaming 状态
+ * delayMs：fulfill 前延迟（毫秒）：真实后端流持续数百 ms，前端 streaming 状态
  * 提交后才读到 EOF；mock 瞬时 fulfillment 会让 EOF 早于状态提交致断流路径不触发，
  * 故 cancel/reconnect/REPLAY_FAILED 等依赖断流语义的用例必须传 delayMs。
  * cancel/reconnect/attachments 端点由各用例按需自行 mock（避免悬挂 handler）。

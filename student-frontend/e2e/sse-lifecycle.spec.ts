@@ -21,7 +21,7 @@ test.describe("SSE 生命周期", () => {
     // 时序说明：send 为非乐观确认（postChat resolve 后才置 streaming），mock 单次
     // 交付下「流进行中」的 morph 窗口不可达（实验坐实）。本用例利用断流语义制造
     // 确定性等待窗口：第一段流（delay 300ms 保证 streaming 状态提交）无终态 EOF
-    // → 触发 runReconnect → reconnect 挂起 3s 交付续帧——挂起期间 streaming=true
+    // → 触发 runReconnect → reconnect 挂起 3s 交付续帧：挂起期间 streaming=true
     // 稳定，停止按钮可点；点击后 cancel 请求独立发出（断言），随后续帧落位。
     await mockChatStream(
       page,

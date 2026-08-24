@@ -33,7 +33,7 @@ test.describe("认证流", () => {
     await page.fill("#username", "student");
     await page.fill("#password", "wrong-pass");
     await page.click('button[type="submit"]');
-    // 注：不可用 getByRole('alert')——Next 路由播报器（__next-route-announcer__）同为
+    // 注：不可用 getByRole('alert')：Next 路由播报器（__next-route-announcer__）同为
     // role=alert 会造成 strict mode 冲突，按文案精确断言
     await expect(page.getByText("用户名或密码错误")).toBeVisible();
     await expect(page).toHaveURL(/\/login$/);

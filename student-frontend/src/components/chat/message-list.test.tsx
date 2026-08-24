@@ -218,3 +218,15 @@ describe("MessageList 终态与操作栏", () => {
     expect(container.className).toContain("space-y-8");
   });
 });
+
+it("AI 消息渲染 model 徽标（metadata.model 透出，E2E 实证修订后的元信息承载）", () => {
+  const { container } = renderList([makeAssistant({ model: "qwen3.8-max" })]);
+  const badge = container.querySelector('[data-testid="model-badge"]');
+  expect(badge).not.toBeNull();
+  expect(badge?.textContent).toBe("qwen3.8-max");
+});
+
+it("model 为空时不渲染徽标（降级回放无 metadata 场景）", () => {
+  const { container } = renderList([makeAssistant({ model: null })]);
+  expect(container.querySelector('[data-testid="model-badge"]')).toBeNull();
+});
