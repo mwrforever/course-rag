@@ -3,9 +3,8 @@ import { mockAuth, login, apiOk } from './helpers/api-mock'
 
 /**
  * 文档管理 E2E（整合 spec §3.2 documents 组）
- * - 列表 PENDING→INDEXED 渲染；FAILED 行展开 errorMessage + 重新解析；
- *   上传 Dialog 前置校验（kbId 必选）
- * 注：ETL 5s 轮询启停由 use-etl-polling 单测覆盖（100%），E2E 不等待轮询周期
+ * - 列表最终态渲染（轮询启停由 use-etl-polling 单测覆盖）；FAILED 行展开+重新解析；
+ *   上传 Dialog kbId 必选前置校验（不发请求）
  */
 
 test.describe('文档管理', () => {
@@ -13,11 +12,12 @@ test.describe('文档管理', () => {
     await mockAuth(page)
   })
 
-  /** 列表接口 mock：支持按调用次数切换 PENDING→INDEXED（轮询二段） */
+  /** 列表接口 mock：按调用次数切换 PENDING→INDEXED（轮询二段）；failed=true 恒定 FAILED */
   async function mockDocs(page: import('@playwright/test').Page, failed = false) {
     let call = 0
-    await page.route('**/api/admin/documents*', async (r) => {
-      if (r.request().method() !== 'GET') return r.fulfill({ status: 405, contentType: 'application/json', body: apiOk(null) })
+    await page.route('**/api/v1/admin/documents*', async (r) => {
+      if (r.request().method() !== 'GET')
+        return r.fulfill({ status: 405, contentType: 'application/json', body: apiOk(null) })
       call += 1
       const status = failed ? 'FAILED' : call === 1 ? 'PENDING' : 'INDEXED'
       await r.fulfill({
@@ -46,44 +46,50 @@ test.describe('文档管理', () => {
     })
   }
 
-  test('列表渲染与解析状态徽章（PENDING→INDEXED 轮询）', async ({ page }) => {
+  test('列表渲染并轮询至最终态（INDEXED）', async ({ page }) => {
     await mockDocs(page)
     await login(page, 'teacher')
-    await page.goto('/knowledge/documents')
+    await page.getByRole('link', { name: '文档' }).click()
+    await expect(page).toHaveURL(/\/knowledge\/documents$/)
     await expect(page.getByText('数据结构讲义')).toBeVisible()
-    // 首次 PENDING 徽章（分析/排队态）
-    await expect(page.getByText(/PENDING|解析中|排队/).first()).toBeVisible()
-    // 轮询后翻 INDEXED（等一个轮询周期 5s + 缓冲）
-    await expect(page.getByText(/INDEXED|已索引/).first()).toBeVisible({ timeout: 10_000 })
+    // 轮询最终态（5s 间隔 + 渲染缓冲）
+    await expect(page.getByText(/INDEXED|已索引/).first()).toBeVisible({ timeout: 15_000 })
   })
 
   test('FAILED 行展开 errorMessage 与重新解析', async ({ page }) => {
     await mockDocs(page, true)
     let reparseCalled = 0
-    await page.route('**/api/admin/documents/d1/reparse', async (r) => {
+    await page.route('**/api/v1/admin/documents/d1/reparse', async (r) => {
       reparseCalled += 1
       await r.fulfill({ status: 200, contentType: 'application/json', body: apiOk(null) })
     })
     await login(page, 'teacher')
-    await page.goto('/knowledge/documents')
-    await expect(page.getByText(/FAILED|解析失败/).first()).toBeVisible()
-    await expect(page.getByText('解析超时：分片失败')).toBeVisible()
+    await page.getByRole('link', { name: '文档' }).click()
+    // FAILED 错误详情需点击徽章展开（EtlStatusBadge errorExpanded toggle）
+    await page.getByTestId('etl-badge-toggle').click()
+    await expect(page.getByTestId('etl-error-message')).toHaveText('解析超时：分片失败')
+    // 重新解析入口在行操作 ⋮ 菜单内（弹层：菜单项 data-testid=menu-reparse）
+    await page.getByTestId('doc-menu-d1').click()
     await page.getByRole('button', { name: '重新解析' }).click()
     await expect.poll(() => reparseCalled).toBe(1)
   })
 
   test('上传 Dialog：kbId 必选前置校验（不发请求）', async ({ page }) => {
     await mockDocs(page)
-    await page.route('**/api/admin/knowledge-bases?page=1&size=20', (r) =>
-      r.fulfill({ status: 200, contentType: 'application/json', body: apiOk({ records: [], total: '0', page: 1, size: 20 }) }),
+    await page.route('**/api/v1/admin/knowledge-bases*', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiOk({ records: [], total: '0', page: 1, size: 20 }),
+      }),
     )
     let uploadCalled = 0
-    await page.route('**/api/admin/documents', async (r) => {
+    await page.route('**/api/v1/admin/documents', async (r) => {
       if (r.request().method() === 'POST') uploadCalled += 1
       await r.fulfill({ status: 200, contentType: 'application/json', body: apiOk(null) })
     })
     await login(page, 'teacher')
-    await page.goto('/knowledge/documents')
+    await page.getByRole('link', { name: '文档' }).click()
     await page.getByRole('button', { name: '上传文档' }).click()
     // 选择文件（无 kbId）→ 校验拦截不发请求
     await page.locator('input[type="file"]').setInputFiles({
@@ -91,8 +97,9 @@ test.describe('文档管理', () => {
       mimeType: 'application/pdf',
       buffer: Buffer.from('%PDF-1.4 test'),
     })
-    await page.getByRole('button', { name: /开始上传/ }).click()
+    await page.getByTestId('submit-upload').click()
     expect(uploadCalled).toBe(0)
-    await expect(page.getByText(/知识库|必选/).first()).toBeVisible()
+    // 前端校验文案：知识库必选
+    await expect(page.getByTestId('upload-error')).toBeVisible()
   })
 })

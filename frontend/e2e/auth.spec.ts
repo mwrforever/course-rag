@@ -33,12 +33,16 @@ test.describe('B 端认证流', () => {
 
   test('错误凭据 401 显示 Alert 且停留登录页', async ({ page }) => {
     await mockAuth(page)
-    await page.route('**/api/auth/login', async (route) => {
-      await route.fulfill({ status: 401, contentType: 'application/json', body: apiFail(401, '用户名或密码错误') })
+    await page.route('**/api/v1/auth/login', async (route) => {
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: apiFail(401, '用户名或密码错误'),
+      })
     })
     await page.goto('/login')
     await page.fill('#username', 'teacher')
-    await page.fill('#password', 'wrong')
+    await page.fill('#password', 'wrong1')
     await page.click('button[type="submit"]')
     await expect(page.getByText('用户名或密码错误')).toBeVisible()
     await expect(page).toHaveURL(/\/login$/)
@@ -50,7 +54,7 @@ test.describe('B 端认证流', () => {
   })
 
   test('STUDENT 登录被拒：无权限提示且不跳转', async ({ page }) => {
-    await page.route('**/api/auth/login', async (route) => {
+    await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
         status: 403,
         contentType: 'application/json',

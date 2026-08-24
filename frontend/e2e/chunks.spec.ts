@@ -3,7 +3,8 @@ import { mockAuth, login, apiOk } from './helpers/api-mock'
 
 /**
  * 分片修正工作台 E2E（整合 spec §3.2 chunks 组）
- * - pending 列表渲染；批量修正提交体断言；标记已修正确认流；编辑 Drawer 保存 PUT
+ * - pending 列表渲染；批量修正（勾选→Dialog→「确认修正」）提交体断言；
+ *   标记已修正（可变列表：确认后行移出）；编辑 Drawer 保存 PUT
  */
 
 test.describe('分片修正工作台', () => {
@@ -28,62 +29,77 @@ test.describe('分片修正工作台', () => {
     },
   ]
 
-  async function mockPending(page: import('@playwright/test').Page, records = CHUNKS) {
-    await page.route('**/api/admin/chunks/pending*', (r) =>
-      r.fulfill({ status: 200, contentType: 'application/json', body: apiOk({ records, total: String(records.length), page: 1, size: 20 }) }),
+  async function enterChunks(page: import('@playwright/test').Page, records: unknown[]) {
+    await page.route('**/api/v1/admin/chunks/pending*', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiOk({ records, total: String(records.length), page: 1, size: 20 }),
+      }),
     )
+    await login(page, 'teacher')
+    await page.getByRole('link', { name: '分片' }).click()
+    await expect(page).toHaveURL(/\/knowledge\/chunks$/)
   }
 
-  test('批量修正：勾选→Dialog→提交体断言（含 DEFAULT 语义）', async ({ page }) => {
-    await mockPending(page)
+  test('批量修正：勾选→Dialog→确认修正提交体断言', async ({ page }) => {
+    await enterChunks(page, CHUNKS)
     let batchBody: unknown = null
-    await page.route('**/api/admin/chunks/batch-update', async (r) => {
+    await page.route('**/api/v1/admin/chunks/batch-update', async (r) => {
       batchBody = r.request().postDataJSON()
       await r.fulfill({ status: 200, contentType: 'application/json', body: apiOk(null) })
     })
-    await login(page, 'teacher')
-    await page.goto('/knowledge/chunks')
     await expect(page.getByText('数据结构是计算机科学的核心基础课程')).toBeVisible()
     await page.locator('input[type="checkbox"]').first().check()
     await page.getByRole('button', { name: /批量修正/ }).click()
-    // 通用(DEFAULT)选项显式提交 'DEFAULT'（审查修复语义）
-    await page.getByRole('button', { name: /确认|提交/ }).click()
-    await expect.poll(() => batchBody).toMatchObject({ ids: ['c1'], courseId: 'DEFAULT' })
+    // 必须选择 collectionType（全「不改」时表单校验禁用提交）
+    await page.getByTestId('batch-collection-type').selectOption('TECHNICAL_QA')
+    await page.getByTestId('submit-batch').click({ force: true })
+    await expect
+      .poll(() => batchBody)
+      .toMatchObject({ ids: ['c1'], collectionType: 'TECHNICAL_QA' })
   })
 
-  test('标记已修正：二次确认后行消失', async ({ page }) => {
-    await mockPending(page)
+  test('标记已修正：二次确认后行移出待修正视图', async ({ page }) => {
+    let records = [...CHUNKS]
+    await page.route('**/api/v1/admin/chunks/pending*', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiOk({ records, total: String(records.length), page: 1, size: 20 }),
+      }),
+    )
     let corrected = 0
-    await page.route('**/api/admin/chunks/batch-corrected', async (r) => {
+    await page.route('**/api/v1/admin/chunks/batch-corrected', async (r) => {
       corrected += 1
+      records = []
       await r.fulfill({ status: 200, contentType: 'application/json', body: apiOk(null) })
     })
     await login(page, 'teacher')
-    await page.goto('/knowledge/chunks')
+    await page.getByRole('link', { name: '分片' }).click()
     await page.locator('input[type="checkbox"]').first().check()
     await page.getByRole('button', { name: /标记已修正/ }).click()
     await expect(page.getByText(/不可撤销/)).toBeVisible()
-    await page.getByRole('button', { name: '确认' }).click()
+    await page.getByTestId('confirm-corrected').click()
     await expect.poll(() => corrected).toBe(1)
-    // 行移出待修正视图（二次 mock 返回空列表）
-    await expect(page.getByText('数据结构是计算机科学的核心基础课程')).toBeHidden({ timeout: 10_000 })
+    await expect(page.getByText('数据结构是计算机科学的核心基础课程')).toBeHidden({
+      timeout: 10_000,
+    })
   })
 
   test('编辑 Drawer：保存 PUT 内容触发重向量化提示', async ({ page }) => {
-    await mockPending(page)
+    await enterChunks(page, CHUNKS)
     let putBody: unknown = null
-    await page.route('**/api/admin/chunks/c1', async (r) => {
+    await page.route('**/api/v1/admin/chunks/c1', async (r) => {
       if (r.request().method() === 'PUT') {
         putBody = r.request().postDataJSON()
       }
       await r.fulfill({ status: 200, contentType: 'application/json', body: apiOk(null) })
     })
-    await login(page, 'teacher')
-    await page.goto('/knowledge/chunks')
-    await page.getByRole('button', { name: /编辑/ }).first().click()
+    await page.getByRole('button', { name: '编辑' }).first().click()
     const editor = page.locator('textarea')
     await editor.fill('修正后的分片内容')
-    await page.getByRole('button', { name: /保存/ }).click()
+    await page.getByRole('button', { name: /^保存$/ }).click()
     await expect.poll(() => putBody).toMatchObject({ content: '修正后的分片内容' })
     await expect(page.getByText(/重新向量化/)).toBeVisible()
   })

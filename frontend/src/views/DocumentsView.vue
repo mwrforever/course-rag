@@ -906,7 +906,7 @@ async function submitUpload() {
               <ul
                 v-if="courseResults.length > 0"
                 data-testid="course-results"
-                class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-border bg-surface p-1 shadow-md"
+                class="mt-1 max-h-48 w-full overflow-auto rounded-lg border border-border bg-surface p-1 shadow-md"
               >
                 <li v-for="c in courseResults" :key="c.id">
                   <button

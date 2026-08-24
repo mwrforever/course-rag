@@ -2,9 +2,9 @@ import { test, expect } from '@playwright/test'
 import { mockAuth, login, apiOk } from './helpers/api-mock'
 
 /**
- * 反馈报表 + 超管专属 E2E（整合 spec §3.2 feedback/admin-only 组）
- * - 反馈 KPI/图表/列表渲染；超管回放入口（教师不可见）；
- *   TEACHER 直访超管 URL 被守卫拦截；TEACHER 侧导航无超管分组
+ * 反馈报表 + 权限矩阵 E2E（整合 spec §3.2 feedback/admin-only 组）
+ * - 反馈 KPI/列表渲染；超管回放入口（教师不可见）；
+ *   TEACHER 直访超管 URL 经 redirect 流程被守卫拦截；侧导航无超管分组
  */
 
 test.describe('反馈与权限矩阵', () => {
@@ -13,7 +13,7 @@ test.describe('反馈与权限矩阵', () => {
   })
 
   async function mockFeedback(page: import('@playwright/test').Page) {
-    await page.route('**/api/admin/feedbacks/stats', (r) =>
+    await page.route('**/api/v1/admin/feedbacks/stats', (r) =>
       r.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -23,10 +23,14 @@ test.describe('反馈与权限矩阵', () => {
         ]),
       }),
     )
-    await page.route('**/api/admin/feedback/trend?days=7', (r) =>
-      r.fulfill({ status: 200, contentType: 'application/json', body: apiOk([{ date: '2026-08-18', count: '12' }]) }),
+    await page.route('**/api/v1/admin/feedback/trend*', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiOk([{ date: '2026-08-18', count: '12' }]),
+      }),
     )
-    await page.route('**/api/admin/feedbacks?page=1&size=20', (r) =>
+    await page.route('**/api/v1/admin/feedbacks*', (r) =>
       r.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -50,19 +54,19 @@ test.describe('反馈与权限矩阵', () => {
     )
   }
 
-  test('反馈报表：KPI 与低分列表渲染（教师无回放入口）', async ({ page }) => {
+  test('反馈报表：列表渲染（教师无回放入口）', async ({ page }) => {
     await mockFeedback(page)
     await login(page, 'teacher')
-    await page.goto('/feedback')
-    // KPI：点赞率 = liked/(liked+disliked) 口径渲染 + 意图统计
-    await expect(page.getByText('#s-1')).toBeVisible()
+    await page.getByRole('link', { name: '反馈' }).click()
+    // userId 短格式直接展示（shortId 对短 id 原样透出）
+    await expect(page.getByText('s-1')).toBeVisible()
     // 教师：无「查看会话回放」入口
     await expect(page.getByRole('button', { name: /查看会话回放/ })).toHaveCount(0)
   })
 
   test('超管：反馈回放入口可见并打开只读消息 Drawer', async ({ page }) => {
     await mockFeedback(page)
-    await page.route('**/api/admin/sessions/sess-9', (r) =>
+    await page.route('**/api/v1/admin/sessions/sess-9', (r) =>
       r.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -74,23 +78,44 @@ test.describe('反馈与权限矩阵', () => {
           lastMessageAt: '2026-08-24T09:00:00',
           createdAt: '2026-08-24T08:00:00',
           messages: [
-            { id: 'm8', role: 'USER', content: '这门课难吗', messageType: null, intentType: null, runId: 'r1', seq: 0, createdAt: '2026-08-24T09:00:00' },
-            { id: 'm9', role: 'ASSISTANT', content: '课程难度适中，建议先学基础。', messageType: null, intentType: 'knowledge_question', runId: 'r1', seq: 1, createdAt: '2026-08-24T09:00:01' },
+            {
+              id: 'm8',
+              role: 'USER',
+              content: '这门课难吗',
+              messageType: null,
+              intentType: null,
+              runId: 'r1',
+              seq: 0,
+              createdAt: '2026-08-24T09:00:00',
+            },
+            {
+              id: 'm9',
+              role: 'ASSISTANT',
+              content: '课程难度适中，建议先学基础。',
+              messageType: null,
+              intentType: 'knowledge_question',
+              runId: 'r1',
+              seq: 1,
+              createdAt: '2026-08-24T09:00:01',
+            },
           ],
         }),
       }),
     )
     await login(page, 'admin')
-    await page.goto('/feedback')
+    await page.getByRole('link', { name: '反馈' }).click()
     await page.getByRole('button', { name: /查看会话回放/ }).click()
     await expect(page.getByText('课程难度适中，建议先学基础。')).toBeVisible()
   })
 
-  test('TEACHER 直访超管路由被守卫拦截（ForbiddenView）', async ({ page }) => {
-    await login(page, 'teacher')
+  test('TEACHER 访问超管路由：redirect 流程后守卫拦截 ForbiddenView', async ({ page }) => {
+    // 未登录直访 → 重定向登录页（带 redirect）→ 登录（redirect 回跳）→ 守卫拦截
     await page.goto('/sessions')
-    await expect(page).toHaveURL('**/forbidden*')
-    await expect(page.getByText(/无权限|无权访问/)).toBeVisible()
+    await expect(page).toHaveURL(/\/login\?redirect=/)
+    await page.fill('#username', 'teacher')
+    await page.fill('#password', '123456')
+    await page.click('button[type="submit"]')
+    await expect(page.getByText(/无权限|无权访问/)).toBeVisible({ timeout: 10_000 })
   })
 
   test('TEACHER 侧导航无超管分组', async ({ page }) => {

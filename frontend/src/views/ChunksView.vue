@@ -708,6 +708,7 @@ function closeContext() {
         role="dialog"
         aria-modal="true"
         @click.stop
+        style="max-height: 85vh; overflow-y: auto"
       >
         <h2 class="text-base font-semibold text-text">批量修正分片</h2>
         <!-- 数量与耗时提示：文档级 Milvus 同步可能慢（设计 §2.4.3 工作流第 3 步） -->
@@ -749,7 +750,7 @@ function closeContext() {
               />
               <ul
                 data-testid="batch-course-results"
-                class="absolute z-10 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-border bg-surface p-1 shadow-md"
+                class="mt-1 max-h-52 w-full overflow-auto rounded-lg border border-border bg-surface p-1 shadow-md"
               >
                 <li>
                   <button

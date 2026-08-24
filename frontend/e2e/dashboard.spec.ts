@@ -12,13 +12,21 @@ test.describe('仪表盘', () => {
   })
 
   async function mockDashboard(page: import('@playwright/test').Page) {
-    await page.route('**/api/admin/dashboard/stats', (r) =>
-      r.fulfill({ status: 200, contentType: 'application/json', body: apiOk({ documentCount: '156', pendingChunkCount: '23', knowledgeBaseCount: '5' }) }),
+    await page.route('**/api/v1/admin/dashboard/stats', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiOk({ documentCount: '156', pendingChunkCount: '23', knowledgeBaseCount: '5' }),
+      }),
     )
-    await page.route('**/api/admin/feedback/stats?period=today', (r) =>
-      r.fulfill({ status: 200, contentType: 'application/json', body: apiOk({ studentCount: '89', feedbackCount: '120', likeRate: 0.86 }) }),
+    await page.route('**/api/v1/admin/feedback/stats*', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiOk({ studentCount: '89', feedbackCount: '120', likeRate: 0.86 }),
+      }),
     )
-    await page.route('**/api/admin/feedback/trend?days=7', (r) =>
+    await page.route('**/api/v1/admin/feedback/trend*', (r) =>
       r.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -29,13 +37,22 @@ test.describe('仪表盘', () => {
         ]),
       }),
     )
-    await page.route('**/api/admin/documents?sort=created&size=5', (r) =>
+    await page.route('**/api/v1/admin/documents*', (r) =>
       r.fulfill({
         status: 200,
         contentType: 'application/json',
         body: apiOk({
           records: [
-            { id: 'd1', kbId: 'k1', title: '数据结构讲义', fileType: 'pdf', parseStatus: 'INDEXED', chunkCount: 45, fileSize: '2048000', createdAt: '2026-08-24T10:00:00' },
+            {
+              id: 'd1',
+              kbId: 'k1',
+              title: '数据结构讲义',
+              fileType: 'pdf',
+              parseStatus: 'INDEXED',
+              chunkCount: 45,
+              fileSize: '2048000',
+              createdAt: '2026-08-24T10:00:00',
+            },
           ],
           total: '1',
           page: 1,
@@ -60,7 +77,7 @@ test.describe('仪表盘', () => {
     await mockDashboard(page)
     await login(page, 'teacher')
     await expect(page.getByText('数据结构讲义')).toBeVisible()
-    await page.getByText('上传文档').click()
-    await expect(page).toHaveURL('**/knowledge/documents')
+    await page.getByTestId('quick-upload').click()
+    await expect(page).toHaveURL(/\/knowledge\/documents$/)
   })
 })

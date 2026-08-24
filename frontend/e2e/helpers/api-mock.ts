@@ -57,14 +57,22 @@ export async function mockAuth(page: Page) {
     }
     if (req.method() === 'POST' && path.endsWith('/auth/refresh')) {
       const role = req.headers()['x-role'] ?? 'TEACHER'
-      await route.fulfill({ status: 200, contentType: 'application/json', body: authBody(role as keyof typeof USERS) })
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: authBody(role as keyof typeof USERS),
+      })
       return
     }
     if (req.method() === 'POST' && path.endsWith('/auth/logout')) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: apiOk(null) })
       return
     }
-    await route.fulfill({ status: 404, contentType: 'application/json', body: apiFail(404, '接口未 mock（用例未覆盖）') })
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: apiFail(404, '接口未 mock（用例未覆盖）'),
+    })
   })
 }
 
