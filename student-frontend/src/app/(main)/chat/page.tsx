@@ -3,8 +3,8 @@
 /**
  * 新对话页 /chat（设计 §1.5.4，全 CSR）
  *
- * sessionId=null 发起；metadata 事件到达后由 ChatWorkspace 内部
- * router.replace('/chat/{sessionId}) 落 URL（仅一次）。
+ * sessionId=null 发起；metadata 事件到达后不跳转 URL（E2E 实证修订：
+ * replace 会重挂载组件丢流，决策与出处见设计文档 §六.13）。
  * Suspense 包裹：useSearchParams 需要边界（Next 15 CSR 预渲染约束），
  * fallback 为消息流同形骨架（设计 §1.7 Loading）。
  */

@@ -5,7 +5,7 @@ import { mockApi, login, mockChatStream, frame } from "./helpers/sse-route";
  * SSE happy path E2E（整合 spec §3.2 SSE-happy 组）
  *
  * 完整链路：metadata→thinking→thinking_end→delta×2→tool_call→tool_result→sources→end
- * 断言：URL replace、思考卡展开与折叠、正文流式、工具卡配对成功、来源卡前置、操作栏浮现。
+ * 断言：URL 不跳转（E2E 实证修订，见设计文档 §六.13）、思考卡折叠、正文流式、工具卡配对成功、来源卡前置、操作栏浮现。
  * 注意：mock 一次性 fulfill 整条流，前端解析器跨 chunk 增量消费（单测已覆盖残包）。
  */
 
