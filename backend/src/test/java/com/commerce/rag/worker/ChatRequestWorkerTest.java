@@ -1,5 +1,6 @@
 package com.commerce.rag.worker;
 
+import static com.commerce.rag.bot.graph.OverAllState.KEY_QUERY_PLAN;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -10,8 +11,11 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
+import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.RetrieveNode;
 import com.commerce.rag.bot.hook.WarningHook;
+import com.commerce.rag.bot.rewrite.QueryPlan;
+import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
@@ -19,6 +23,7 @@ import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.record.DocumentLocalChunk;
 import com.commerce.rag.record.ImageCaptionResult;
+import com.commerce.rag.record.PersistOutcome;
 import com.commerce.rag.record.RetrievalSource;
 import com.commerce.rag.service.AttachmentOrchestrator;
 import com.commerce.rag.service.IChatMessageService;
@@ -218,8 +223,8 @@ class ChatRequestWorkerTest {
     }
 
     /** 通过反射调用 private persistMessages（P0-4a 游标去重用例：验证仅持久化游标后的新增消息）
-     * 返回落库结果（B2-4：true=已落库/幂等跳过；false=落库失败可由调用方重试） */
-    private boolean invokePersistMessages(
+     * 返回落库结果（R2 补口 B：persisted=已落库/幂等跳过；assistantMessageId=assistant 正文行落库回填 ID） */
+    private PersistOutcome invokePersistMessages(
             Long runId,
             Long sessionId,
             String userQuery,
@@ -238,7 +243,7 @@ class ChatRequestWorkerTest {
                 int.class,
                 NodeOutput.class);
         method.setAccessible(true);
-        return (Boolean) method.invoke(
+        return (PersistOutcome) method.invoke(
                 worker, runId, sessionId, userQuery, attachmentsJson, sourcesJson, historyCursor, lastOutput);
     }
 
@@ -865,10 +870,11 @@ class ChatRequestWorkerTest {
                 .when(chatMessageService)
                 .batchInsert(anyList());
 
-        // When: 幂等跳过、不外抛异常，返回 true（已落库，调用方不再重试）
-        boolean persisted = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
+        // When: 幂等跳过、不外抛异常，persisted=true（已落库，调用方不再重试）
+        PersistOutcome outcome = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
 
-        assertTrue(persisted, "唯一索引冲突应按已落库处理（幂等跳过）");
+        assertTrue(outcome.persisted(), "唯一索引冲突应按已落库处理（幂等跳过）");
+        assertNull(outcome.assistantMessageId(), "幂等跳过分支本批未新落库，无回填 ID（END 事件 messageId 降级 null）");
         verify(chatMessageService).batchInsert(anyList());
     }
 
@@ -879,11 +885,150 @@ class ChatRequestWorkerTest {
         when(lastOutput.state()).thenReturn(null);
         doThrow(new RuntimeException("连接池耗尽")).when(chatMessageService).batchInsert(anyList());
 
-        boolean persisted = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
+        PersistOutcome outcome = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
 
-        // 落库失败且非幂等冲突 → 返回 false，允许 catch 分支重试（消息未落库，重试无害）
-        assertFalse(persisted);
+        // 落库失败且非幂等冲突 → persisted=false，允许 catch 分支重试（消息未落库，重试无害）
+        assertFalse(outcome.persisted());
+        assertNull(outcome.assistantMessageId(), "落库失败无消息 ID");
         verify(chatMessageService).batchInsert(anyList());
+    }
+
+    // ==================== R2 补口 B：END 事件 messageId + intentType 落库修复 ====================
+
+    @Test
+    @DisplayName("R2 persistMessages → 反向扫描定位最后一条 assistant 正文行（跳过 thinking/TOOL_*），返回其落库回填雪花 ID")
+    void persistMessages_返回assistant正文消息ID() throws Exception {
+        // Given: 一条 assistant 消息展开为 thinking + 正文 + TOOL_CALL 三行；
+        // batchInsert 模拟 MP saveBatch 行为——插入后回填雪花 ID
+        AssistantMessage assistantMsg = mock(AssistantMessage.class);
+        when(assistantMsg.getMetadata()).thenReturn(Map.of("reasoningContent", "思考过程"));
+        when(assistantMsg.getText()).thenReturn("最终回答");
+        when(assistantMsg.hasToolCalls()).thenReturn(true);
+        when(assistantMsg.getToolCalls())
+                .thenReturn(List.of(
+                        new AssistantMessage.ToolCall("call-1", "function", "searchKnowledge", "{\"query\":\"课程\"}")));
+        OverAllState state = new OverAllState(Map.of("messages", List.of(assistantMsg)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+        doAnswer(inv -> {
+                    List<ChatMessage> inserted = inv.getArgument(0);
+                    long id = 9000L;
+                    for (ChatMessage m : inserted) {
+                        m.setId(id++);
+                    }
+                    return null;
+                })
+                .when(chatMessageService)
+                .batchInsert(anyList());
+
+        // When
+        PersistOutcome outcome = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
+
+        // Then: 落库行序 [USER, thinking, 正文, TOOL_CALL]，反向扫描应命中正文行（messageType==null）
+        assertTrue(outcome.persisted(), "正常落库应返回 persisted=true");
+        assertEquals(9002L, outcome.assistantMessageId(), "应返回最后一条 assistant 正文行的回填 ID");
+    }
+
+    @Test
+    @DisplayName("R2 persistMessages → 异常中断仅用户消息场景：assistantMessageId 为 null、persisted 仍 true")
+    void persistMessages_无assistant正文时返回null() throws Exception {
+        // Given: 流式异常中断无 chunk 输出（lastOutput=null）→ 仅落用户消息
+        // When
+        PersistOutcome outcome = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, null);
+
+        // Then: 用户消息落库成功仍视为 persisted；无 assistant 正文行 → ID 为 null（END 事件 messageId 显式 null）
+        assertTrue(outcome.persisted(), "用户消息落库成功仍视为 persisted");
+        assertNull(outcome.assistantMessageId(), "无 assistant 正文行时 ID 为 null");
+        verify(chatMessageService).batchInsert(anyList());
+    }
+
+    @Test
+    @DisplayName("R2 doOnComplete → END(COMPLETED) 事件 payload 携带落库回填的 assistant messageId（字符串）")
+    void doOnComplete的END事件携带messageId() throws Exception {
+        // Given: 最终 state 含本轮 assistant 回答；batchInsert 模拟 saveBatch 回填雪花 ID
+        AssistantMessage assistantMsg = new AssistantMessage("最终回答内容");
+        OverAllState state = new OverAllState(Map.of("messages", List.of(assistantMsg)));
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        when(mockChunk.state()).thenReturn(state);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+        doAnswer(inv -> {
+                    List<ChatMessage> inserted = inv.getArgument(0);
+                    long id = 7000L;
+                    for (ChatMessage m : inserted) {
+                        m.setId(id++);
+                    }
+                    return null;
+                })
+                .when(chatMessageService)
+                .batchInsert(anyList());
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // Then: END payload 含 messageId 字符串（先落库回填 ID、后推 END 的时序保证反馈目标可用）
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(2)).push(eq("100"), evtCaptor.capture());
+        SseEvent endEvent = evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.END)
+                .reduce((first, second) -> second)
+                .orElseThrow(() -> new AssertionError("正常完成应推送 END 事件"));
+        assertTrue(endEvent.payload().contains("\"status\":\"COMPLETED\""), "终态应为 COMPLETED");
+        assertTrue(
+                endEvent.payload().contains("\"messageId\":\"7001\""),
+                "END payload 应含 assistant 正文行落库 ID（字符串）: " + endEvent.payload());
+    }
+
+    @Test
+    @DisplayName("R2 取消路径 → END(CANCELLED) 事件不含 messageId 键（半截内容不作反馈目标）")
+    void 取消路径END事件不含messageId() throws Exception {
+        // Given: run 起步前设置取消标记，首个 chunk 触发 CancelledException
+        worker.cancel("100");
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // Then: CANCELLED 终态 payload 仅 runId/status，无 messageId 键
+        // （时序上先于落库 + 语义上半截回答不得作为反馈目标）
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        SseEvent endEvent = evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.END)
+                .reduce((first, second) -> second)
+                .orElseThrow(() -> new AssertionError("取消路径应推送 END 事件"));
+        assertTrue(endEvent.payload().contains("\"status\":\"CANCELLED\""), "终态应为 CANCELLED");
+        assertFalse(endEvent.payload().contains("messageId"), "CANCELLED 终态不得携带 messageId 键");
+    }
+
+    @Test
+    @DisplayName("R2 assistant 正文行 → intentType 从 KEY_QUERY_PLAN 取规范名小写落库（修复 intent_type 恒 NULL）")
+    void assistant正文行写入intentType() throws Exception {
+        // Given: 最终 state 含 messages + 查询计划（intent=knowledge_question）
+        QueryPlan plan =
+                new QueryPlan(IntentType.KNOWLEDGE_QUESTION, List.of("重写查询"), new QueryPlanFilters(List.of()), false);
+        AssistantMessage assistantMsg = new AssistantMessage("引用资料的回答");
+        OverAllState state = new OverAllState(Map.of("messages", List.of(assistantMsg), KEY_QUERY_PLAN, plan));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        // When
+        invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
+
+        // Then: assistant 正文行 intent_type 写入规范名小写；用户行不写（意图仅标注 AI 回答）
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        ChatMessage assistantRow = captor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应存在 assistant 正文行"));
+        assertEquals("knowledge_question", assistantRow.getIntentType(), "intent_type 应写入规范名小写");
+        ChatMessage userRow = captor.getValue().stream()
+                .filter(m -> "USER".equals(m.getRole()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应存在用户消息行"));
+        assertNull(userRow.getIntentType(), "用户行不写意图");
     }
 
     // ==================== 巡检覆盖滞留 QUEUED（B2-3） ====================
