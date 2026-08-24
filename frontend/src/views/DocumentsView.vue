@@ -849,8 +849,8 @@ async function submitUpload() {
         class="w-full max-w-[520px] rounded-xl border border-border bg-surface p-6 shadow-md"
         role="dialog"
         aria-modal="true"
-        @click.stop
         style="max-height: 85vh; overflow-y: auto"
+        @click.stop
       >
         <h2 class="text-base font-semibold text-text">上传文档</h2>
         <form

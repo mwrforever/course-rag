@@ -101,6 +101,7 @@ test.describe('分片修正工作台', () => {
     await editor.fill('修正后的分片内容')
     await page.getByRole('button', { name: /^保存$/ }).click()
     await expect.poll(() => putBody).toMatchObject({ content: '修正后的分片内容' })
-    await expect(page.getByText(/重新向量化/)).toBeVisible()
+    // CI 时序下保存 toast 与页面提示同现「重新向量化」文案（本地仅 1 处），取首个
+    await expect(page.getByText(/重新向量化/).first()).toBeVisible()
   })
 })
