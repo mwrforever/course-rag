@@ -293,6 +293,14 @@ auth:
   # 防止 refresh 旋转/互踢/禁用/登出写入的黑名单行无限增长
   blacklist:
     cleanup-interval-seconds: 3600
+  # 默认管理员账户种子（AdminSeedInitializer 启动时幂等写入系统唯一超管）
+  # username/display-name 可用 AUTH_ADMIN_SEED_USERNAME / AUTH_ADMIN_SEED_DISPLAY_NAME 覆盖；
+  # password 默认 admin123（与 V6 迁移出厂种子一致），生产必须用 AUTH_ADMIN_SEED_PASSWORD 覆盖真实值
+  # 或首次登录后立即改密——已管理员自行改密后，启动不再覆盖该密码
+  admin-seed:
+    username: admin
+    password: admin123
+    display-name: 系统管理员
 
 # ── Worker 线程池（对话执行，与 ETL 独立）──
 # L-12: core-size/max-size 为实际生效值（WorkerConfig 直接读取，原"动态计算+fallback"注释无逻辑）

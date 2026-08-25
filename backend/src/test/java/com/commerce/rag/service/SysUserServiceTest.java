@@ -414,4 +414,93 @@ class SysUserServiceTest {
 
         assertNull(sysUserService.findAuthViewByUsername("unknown"));
     }
+
+    // ==================== ensureSeedSuperAdmin() 测试（AdminSeedInitializer 启动种子） ====================
+
+    @Test
+    @DisplayName("ensureSeedSuperAdmin → 无超管时按配置创建种子账户（BCrypt 密文，createdBy=null）")
+    void ensureSeedSuperAdmin_noSuperAdmin_createsSeededAccount() {
+        when(userMapper.selectOne(any())).thenReturn(null);
+        when(userMapper.insert(any(SysUser.class))).thenReturn(1);
+
+        sysUserService.ensureSeedSuperAdmin("admin", "admin123", "系统管理员", "admin123");
+
+        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
+        verify(userMapper).insert(captor.capture());
+        SysUser seed = captor.getValue();
+        assertEquals("admin", seed.getUsername());
+        assertEquals("hashed-password", seed.getPasswordHash());
+        assertEquals("系统管理员", seed.getDisplayName());
+        assertEquals(UserRole.SUPER_ADMIN.name(), seed.getRole());
+        assertEquals("ACTIVE", seed.getStatus());
+        assertNull(seed.getCreatedBy());
+    }
+
+    @Test
+    @DisplayName("ensureSeedSuperAdmin → 超管密码仍为出厂默认且与配置不同 → 刷新为配置值（env 覆盖生效）")
+    void ensureSeedSuperAdmin_existingFactoryDefault_refreshesToConfiguredPassword() {
+        SysUser existing = new SysUser();
+        existing.setId(1L);
+        existing.setUsername("admin");
+        existing.setPasswordHash("factory-default-hash");
+        when(userMapper.selectOne(any())).thenReturn(existing);
+        when(passwordEncoder.matches("admin123", "factory-default-hash")).thenReturn(true);
+        when(passwordEncoder.matches("real-secret", "factory-default-hash")).thenReturn(false);
+        when(userMapper.update(isNull(), any())).thenReturn(1);
+
+        sysUserService.ensureSeedSuperAdmin("admin", "real-secret", "系统管理员", "admin123");
+
+        verify(userMapper).update(isNull(), any());
+        verify(userMapper, never()).insert(any(SysUser.class));
+        verify(passwordEncoder).encode("real-secret");
+    }
+
+    @Test
+    @DisplayName("ensureSeedSuperAdmin → 超管密码与配置一致 → 跳过（幂等，不写库）")
+    void ensureSeedSuperAdmin_existingSamePassword_skips() {
+        SysUser existing = new SysUser();
+        existing.setId(1L);
+        existing.setUsername("admin");
+        existing.setPasswordHash("factory-default-hash");
+        when(userMapper.selectOne(any())).thenReturn(existing);
+        when(passwordEncoder.matches("admin123", "factory-default-hash")).thenReturn(true);
+
+        sysUserService.ensureSeedSuperAdmin("admin", "admin123", "系统管理员", "admin123");
+
+        verify(userMapper, never()).insert(any(SysUser.class));
+        verify(userMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("ensureSeedSuperAdmin → 超管密码已由管理员改密（非出厂默认）→ 绝不覆盖")
+    void ensureSeedSuperAdmin_existingCustomizedPassword_skips() {
+        SysUser existing = new SysUser();
+        existing.setId(1L);
+        existing.setUsername("admin");
+        existing.setPasswordHash("customized-hash");
+        when(userMapper.selectOne(any())).thenReturn(existing);
+        when(passwordEncoder.matches("admin123", "customized-hash")).thenReturn(false);
+
+        sysUserService.ensureSeedSuperAdmin("admin", "real-secret", "系统管理员", "admin123");
+
+        verify(userMapper, never()).insert(any(SysUser.class));
+        verify(userMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("ensureSeedSuperAdmin → 配置用户名与既有超管不一致 → 不重命名仅告警（不写库）")
+    void ensureSeedSuperAdmin_usernameMismatch_keepsExistingUsername() {
+        SysUser existing = new SysUser();
+        existing.setId(1L);
+        existing.setUsername("root");
+        existing.setPasswordHash("customized-hash");
+        when(userMapper.selectOne(any())).thenReturn(existing);
+        when(passwordEncoder.matches("admin123", "customized-hash")).thenReturn(false);
+
+        sysUserService.ensureSeedSuperAdmin("admin", "real-secret", "系统管理员", "admin123");
+
+        verify(userMapper, never()).insert(any(SysUser.class));
+        verify(userMapper, never()).update(any(), any());
+        verify(userMapper, never()).updateById(any(SysUser.class));
+    }
 }

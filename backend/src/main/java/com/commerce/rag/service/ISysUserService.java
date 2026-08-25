@@ -63,4 +63,23 @@ public interface ISysUserService extends IService<SysUser> {
      * 删除用户（软删）
      */
     void delete(Long id, Long currentUserId);
+
+    /**
+     * 幂等初始化系统唯一超管账户（默认管理员种子，AdminSeedInitializer 启动调用）
+     *
+     * <p>语义（保障幂等收敛 + env 覆盖生效）：
+     * <ol>
+     *   <li>无任何未删除超管 → 按配置创建（BCrypt 密文，SUPER_ADMIN / ACTIVE，createdBy=null）</li>
+     *   <li>已存在超管且密码仍为出厂默认（明文等于 factoryDefaultPassword）→ 视为未改密的种子账户，
+     *       密码刷新为配置值——本例中 V6 迁移预置的 admin123 由此可被 {@code AUTH_ADMIN_SEED_PASSWORD} 覆盖</li>
+     *   <li>已存在超管但密码非出厂默认（管理员已自行改密）→ 跳过，绝不覆盖已改密账户</li>
+     * </ol>
+     * 配置 username 与既有超管不一致时不重命名，仅记录告警。
+     *
+     * @param username               超管登录名（配置值）
+     * @param password               超管明文密码（配置值，env 可覆盖）
+     * @param displayName            超管显示名（配置值）
+     * @param factoryDefaultPassword 出厂种子默认密码明文（V6 迁移预置，用于识别"仍未改密"的种子账户）
+     */
+    void ensureSeedSuperAdmin(String username, String password, String displayName, String factoryDefaultPassword);
 }

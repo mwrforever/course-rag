@@ -374,4 +374,71 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         SysUser operator = userMapper.selectById(operatorId);
         return operator != null ? operator.getRole() : null;
     }
+
+    /**
+     * 幂等初始化系统唯一超管账户（默认管理员种子）
+     *
+     * <p>由 {@link com.commerce.rag.config.AdminSeedInitializer}（ApplicationRunner）在启动时调用，
+     * 凭证来自配置（application.yml {@code auth.admin-seed}，env 可覆盖真实值）。
+     *
+     * <p>幂等语义：
+     * <ul>
+     *   <li>无未删除超管 → 按配置创建（BCrypt 密文，SUPER_ADMIN / ACTIVE，createdBy=null 种子口径）</li>
+     *   <li>已存在超管：密码仍为出厂默认（明文=factoryDefaultPassword，即 V6 预置 admin123）
+     *       且与配置不一致 → 刷新为配置值（env 覆盖在此生效）；密码非出厂默认（管理员已改密）→
+     *       跳过不覆盖；与配置一致 → 跳过</li>
+     *   <li>配置 username 与既有超管不一致时不重命名，仅告警</li>
+     * </ul>
+     * 重复执行收敛：刷新后哈希与配置一致，后续启动不再写库。
+     *
+     * @param username               超管登录名（配置值）
+     * @param password               超管明文密码（配置值）
+     * @param displayName            超管显示名（配置值）
+     * @param factoryDefaultPassword 出厂种子默认密码明文（识别"仍未改密"账户的标记）
+     */
+    @Override
+    public void ensureSeedSuperAdmin(
+            String username, String password, String displayName, String factoryDefaultPassword) {
+        // 1. 查询现有未删除超管（uniq_sys_user_super_admin 索引保证至多 1 条）
+        LambdaQueryWrapper<SysUser> queryWrapper =
+                Wrappers.<SysUser>lambdaQuery().eq(SysUser::getRole, UserRole.SUPER_ADMIN.name());
+        SysUser existing = userMapper.selectOne(queryWrapper);
+
+        // 2. 无超管 → 按配置创建（种子账户 createdBy=null，与 V6 注释口径一致）
+        if (existing == null) {
+            SysUser seed = new SysUser();
+            seed.setUsername(username);
+            seed.setPasswordHash(passwordEncoder.encode(password));
+            seed.setDisplayName(displayName);
+            seed.setRole(UserRole.SUPER_ADMIN.name());
+            seed.setStatus("ACTIVE");
+            userMapper.insert(seed);
+            log.info("初始化超管账户: username={}, userId={}", username, seed.getId());
+            return;
+        }
+
+        // 3. 配置用户名与既有超管不一致 → 不重命名（避免破坏既有登录引用），仅告警
+        if (!existing.getUsername().equals(username)) {
+            log.warn("配置超管用户名未生效: 既有超管 username={}（配置={}），保持既有用户名", existing.getUsername(), username);
+        }
+
+        // 4. 密码仍为出厂默认（未改密）且与配置不同 → 刷新为配置值（env 覆盖生效点）
+        boolean stillFactoryDefault = passwordEncoder.matches(factoryDefaultPassword, existing.getPasswordHash());
+        boolean sameAsConfigured = passwordEncoder.matches(password, existing.getPasswordHash());
+        if (stillFactoryDefault && !sameAsConfigured) {
+            LambdaUpdateWrapper<SysUser> updateWrapper = Wrappers.<SysUser>lambdaUpdate()
+                    .eq(SysUser::getId, existing.getId())
+                    .set(SysUser::getPasswordHash, passwordEncoder.encode(password));
+            userMapper.update(null, updateWrapper);
+            log.info("刷新超管密码为配置值: username={}", existing.getUsername());
+            return;
+        }
+
+        // 5. 其余情形（管理员已改密 / 密码与配置一致）→ 跳过，保持幂等
+        log.info(
+                "超管账户已就绪，跳过种子写入: username={}, 密码非出厂默认={}, 密码与配置一致={}",
+                existing.getUsername(),
+                !stillFactoryDefault,
+                sameAsConfigured);
+    }
 }
