@@ -5,7 +5,12 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import AdminLayout, { createNavGroups, isGroupActive, navGroups } from '@/layouts/AdminLayout.vue'
+import AdminLayout, {
+  createNavGroups,
+  isGroupActive,
+  navGroups,
+  resolvePageKey,
+} from '@/layouts/AdminLayout.vue'
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 
@@ -21,6 +26,12 @@ import type { UserRole } from '@/lib/types'
  * 3. 顶栏面包屑（分组/页面标题）与用户下拉（Esc/外点关闭 + 退出登录）
  * 4. 路由切换过渡容器与内容区统一限宽
  */
+
+/** 课程接口调用记录（vi.fn 供「壳不重挂载」回归用例断言取数次数） */
+const courseApiMock = vi.hoisted(() => ({
+  get: vi.fn(),
+  contents: vi.fn(),
+}))
 
 /** 仪表盘接口 mock：稳定数据（避免真实 axios 网络调用） */
 vi.mock('@/lib/api', () => ({
@@ -39,6 +50,7 @@ vi.mock('@/lib/api', () => ({
   documentApi: {
     list: () => Promise.resolve({ records: [], total: '0', page: 1, size: 5 }),
   },
+  courseApi: courseApiMock,
 }))
 
 /** 写入指定角色的登录态 */
@@ -118,6 +130,39 @@ describe('createNavGroups：双层角色过滤', () => {
     expect(isGroupActive('/knowledge/documents/d-1', '/knowledge/documents')).toBe(true)
     // 课程详情五子路由高亮「课程管理」
     expect(isGroupActive('/courses/c-1/content', '/courses')).toBe(true)
+  })
+})
+
+describe('resolvePageKey：页面级过渡身份键（评审修复 I1）', () => {
+  const courseRoute = {
+    matched: [{ path: '/' }, { path: 'courses/:id' }],
+    params: { id: '1' } as Record<string, string | string[]>,
+    path: '/courses/1',
+  }
+
+  it('同实体子路由切换：键不变（页面壳与 Transition 存活）', () => {
+    const sub = { ...courseRoute, path: '/courses/1/content' }
+    expect(resolvePageKey(sub)).toBe(resolvePageKey(courseRoute))
+  })
+
+  it('跨实体导航（路径参数变化）：键变化（重挂载重新取数，壳免 watch 参数）', () => {
+    const other = {
+      ...courseRoute,
+      params: { id: '2' } as Record<string, string | string[]>,
+      path: '/courses/2',
+    }
+    expect(resolvePageKey(other)).not.toBe(resolvePageKey(courseRoute))
+  })
+
+  it('跨页导航互异；matched 不足时回退完整 path 定义', () => {
+    const students = {
+      matched: [{ path: '/' }, { path: 'students' }],
+      params: {} as Record<string, string | string[]>,
+      path: '/students',
+    }
+    const orphan = { matched: [], params: {} as Record<string, string | string[]>, path: '/x' }
+    expect(resolvePageKey(students)).not.toBe(resolvePageKey(courseRoute))
+    expect(resolvePageKey(orphan)).toBe('/x|{}')
   })
 })
 
@@ -287,6 +332,42 @@ describe('AdminLayout 渲染（深色侧栏）', () => {
 
     const crumb = wrapper.find('[data-testid="breadcrumb"]')
     expect(crumb.text()).toContain('首页')
+    wrapper.unmount()
+  })
+
+  it('课程详情子路由切换：页面壳不重挂载（get 不重复拉取，评审 I1 回归锁）', async () => {
+    courseApiMock.get.mockResolvedValue({
+      id: '1',
+      title: '分布式系统',
+      description: '',
+      coverImage: '',
+      category: '计算机',
+      instructorName: '张老师',
+      price: 0,
+      duration: '',
+      tags: null,
+      rating: 0,
+      learningCount: 0,
+      enrollmentLink: '',
+      status: 'ACTIVE',
+      createdBy: '1001',
+      createdAt: '2026-08-25T00:00:00',
+      contents: null,
+      schedules: null,
+      teacherIds: null,
+    })
+    courseApiMock.contents.mockResolvedValue([])
+    const { wrapper, router } = await mountLayout('TEACHER', '/courses/1')
+
+    // 概览子页就绪：课程元数据共 2 次（详情壳存在性校验 1 + 概览表单回填 1）
+    await vi.waitFor(() => expect(wrapper.text()).toContain('基础信息'))
+    expect(courseApiMock.get).toHaveBeenCalledTimes(2)
+
+    // 切内容子页：键不变 → 壳存活，get 不再增加；内容由子视图经 contents 自行取数
+    // （修复前 :key 挂 RouterView：任何导航整树重挂载，壳会再拉一次元数据 + 骨架闪烁）
+    await router.push('/courses/1/content')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('课程内容'))
+    expect(courseApiMock.get).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 

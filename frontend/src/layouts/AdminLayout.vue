@@ -5,7 +5,8 @@
  * 侧导航：深色石墨蓝（ink 层）+ 图标 + 可展开分组（知识库/学员/审计，chevron 旋转），
  * 激活态左侧品牌光条 + 半透明白底；整栏可折叠（64px 图标态，localStorage 持久化）。
  * 顶栏：面包屑（分组/页面）+ 用户下拉（显示名/角色 + 退出登录，Esc/外点关闭）。
- * 内容区：统一容器（视图不再自带 main 包裹，修复双重 padding 缺陷）+ 路由切换淡入过渡。
+ * 内容区：统一容器（视图不再自带 main 包裹，修复双重 padding 缺陷）；页面 vnode 按
+ * resolvePageKey 身份键挂 key（子路由切换壳存活、跨实体重挂载重取数）。
  *
  * 导航分组静态结构定义与角色过滤纯函数放普通 script 块导出，供单元测试直接断言
  * 角色过滤逻辑（TEACHER 隐藏学员-教师管理/审计分组，SUPER_ADMIN 全量可见）。
@@ -112,6 +113,29 @@ export function createNavGroups(role: UserRole | null): NavGroup[] {
 export function isGroupActive(pathname: string, to: string): boolean {
   return pathname === to || (to !== '/dashboard' && pathname.startsWith(`${to}/`))
 }
+
+/** 页面身份键输入的最小路由投影（解耦 vue-router 类型，纯函数可直接单测） */
+export interface RouteKeySource {
+  matched: { path: string }[]
+  params: Record<string, string | string[]>
+  path: string
+}
+
+/**
+ * 页面级过渡身份键（评审修复 I1 2026-08-25：原 :key 挂 RouterView 致导航整树重挂载）
+ *
+ * 键 = 布局壳内第一层页面路由记录（matched[1]）的 path 定义 + 路径参数序列化：
+ * - 同一实体页内子路由切换（如课程详情概览↔内容↔排期）键不变 → 页面壳与 Transition
+ *   存活，仅壳内子出口换页（壳不重拉课程元数据，无骨架闪烁）
+ * - 跨实体导航（/courses/1 → /courses/2）或跨页导航参数/定义变化 → 键变化 → 重挂载
+ *   重新取数，详情壳无需自行 watch 参数（DocumentDetailView 等参数页同规则覆盖）
+ *
+ * @param route 当前路由（matched/params/path 最小投影）
+ * @returns 过渡 key 字符串
+ */
+export function resolvePageKey(route: RouteKeySource): string {
+  return `${route.matched[1]?.path ?? route.path}|${JSON.stringify(route.params)}`
+}
 </script>
 
 <script setup lang="ts">
@@ -183,6 +207,9 @@ function toggleGroup(group: NavGroup) {
     // 同上
   }
 }
+
+// ── 路由切换过渡键：页面级身份（见 resolvePageKey 注释，评审修复 I1）──
+const pageKey = computed(() => resolvePageKey(route))
 
 // ── 顶栏面包屑：由导航分组定位「分组名 / 页面标题」──
 const breadcrumbs = computed(() => {
@@ -409,44 +436,19 @@ function navLinkClass(active: boolean): string {
         </div>
       </header>
 
-      <!-- 内容区：统一容器（视图不再自带 main 包裹）+ 路由切换淡入 -->
+      <!-- 内容区：统一容器（视图不再自带 main 包裹）。
+           key 必须挂在页面 vnode 上（评审修复 I1：原挂 RouterView 致每次导航整树重挂载、
+           课程详情壳重复取数）。页面淡入过渡暂缺：<Transition> 包裹本插槽在当前
+           vue@3.5.41 + vue-router 组合下导航后新视图永不挂载（真实浏览器实证，无论
+           key 取 route.path 还是计算键、是否 mode=out-in 均复现），旧实现把 key 挂
+           RouterView 属绕开该缺陷的变通、过渡从未真正播放；待依赖升级后重评（TASK.md §6） -->
       <main class="min-w-0 flex-1">
         <div class="mx-auto w-full max-w-[1400px] px-6 py-6">
-          <RouterView v-slot="{ Component: PageComponent }" :key="route.path">
-            <Transition name="page-fade" mode="out-in">
-              <component :is="PageComponent" />
-            </Transition>
+          <RouterView v-slot="{ Component: PageComponent }">
+            <component :is="PageComponent" :key="pageKey" />
           </RouterView>
         </div>
       </main>
     </div>
   </div>
 </template>
-
-<style scoped>
-/* 路由切换过渡：淡入 + 8px 上移（仅 transform/opacity，prefers-reduced-motion 降级静态） */
-.page-fade-enter-active {
-  transition:
-    opacity 0.24s ease-out,
-    transform 0.24s ease-out;
-}
-.page-fade-leave-active {
-  transition:
-    opacity 0.14s ease-in,
-    transform 0.14s ease-in;
-}
-.page-fade-enter-from {
-  opacity: 0;
-  transform: translateY(8px);
-}
-.page-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .page-fade-enter-active,
-  .page-fade-leave-active {
-    transition: none;
-  }
-}
-</style>

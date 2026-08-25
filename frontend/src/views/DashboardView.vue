@@ -223,7 +223,7 @@ const quickEntries: QuickEntry[] = [
     to: '/knowledge/chunks',
   },
   { testid: 'quick-course', label: '新建课程', desc: '创建新的课程', to: '/courses/new' },
-  { testid: 'quick-users', label: '添加学生', desc: '开通学生账号', to: '/users' },
+  { testid: 'quick-students', label: '添加学生', desc: '开通学生账号', to: '/students' },
   { testid: 'quick-feedback', label: '反馈报表', desc: '查看赞踩统计', to: '/feedback' },
 ]
 </script>
@@ -315,7 +315,7 @@ const quickEntries: QuickEntry[] = [
           weight="duotone"
         />
         <PhBookOpen v-else-if="entry.testid === 'quick-course'" class="h-5 w-5 text-brand" />
-        <PhUserPlus v-else-if="entry.testid === 'quick-users'" class="h-5 w-5 text-brand" />
+        <PhUserPlus v-else-if="entry.testid === 'quick-students'" class="h-5 w-5 text-brand" />
         <PhChartBar v-else class="h-5 w-5 text-brand" />
         <p
           class="mt-2 text-sm font-medium text-text transition-colors duration-150 group-hover:text-brand-strong"

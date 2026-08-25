@@ -32,7 +32,7 @@ const createSchema = z.object({
   displayName: z.string().trim().min(1, '请输入显示名'),
 })
 
-const students = ref<UserDTO[]>([])
+const teachers = ref<UserDTO[]>([])
 const loading = ref(true)
 const error = ref('')
 const page = ref(1)
@@ -55,9 +55,9 @@ async function load() {
   error.value = ''
   try {
     const res = await userApi.list({ page: page.value, size: PAGE_SIZE, role: 'TEACHER' })
-    students.value = res.records ?? []
+    teachers.value = res.records ?? []
     total.value = res.total
-    if (students.value.length === 0 && page.value > 1) {
+    if (teachers.value.length === 0 && page.value > 1) {
       page.value -= 1
       await load()
     }
@@ -334,7 +334,7 @@ async function confirmDelete() {
 
     <!-- 空态：语义文案 + 添加入口 -->
     <div
-      v-else-if="students.length === 0"
+      v-else-if="teachers.length === 0"
       class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
     >
       <PhWarningCircle class="h-8 w-8 text-text-subtle" />
@@ -360,7 +360,7 @@ async function confirmDelete() {
           </thead>
           <tbody>
             <tr
-              v-for="u in students"
+              v-for="u in teachers"
               :key="u.id"
               :data-testid="`row-${u.id}`"
               class="h-11 border-b border-border transition-colors duration-150 last:border-b-0 hover:bg-surface-2"
