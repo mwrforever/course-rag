@@ -115,3 +115,53 @@ milvus-io/milvus-sdk-java#1402，仍 Open），服务端 INTERNAL 后 SDK 无限
 - [ ] 附件链路（计划 3/5）已定案**保持纯向量**（用户 2026-08-18 拍板），不受本项影响
 
 ---
+
+## 5. 宪法调研不可得项登记表（2026-08-25 constitution-generator 调研）
+
+**来源**：`docs/agmds-research/2026-08-25-{java-spring-boot|mybatis-plus-postgresql|redis-minio|milvus|spring-ai-alibaba-agent|frontend-dual|build-test-ci}.md`
+各报告的「检索不可得项」。回填后删除对应行。
+
+| 待回填项（{待调研项}） | 涉及段 | 原因 | 回填状态 |
+|---|---|---|---|
+| A-1 REST API 版本化的官方统一规范 | A.3.1 | Spring 官方无版本化策略条文，/api/v1 为团队约定 | 待回填 |
+| A-2 Java 17 preview 特性"禁生产"的官方一句话禁令 | A.1.2 | 官方仅标注 preview 语义，禁止系工程推论 | 待回填 |
+| A-3 Lombok × record 注解兼容性的官方完整矩阵 | A.1.3 | 官方 FAQ 页 404，仅 changelog 零散条目，以 1.18.42 实测为准 | 待回填 |
+| A-4 Spring Boot 官方对 MyBatis-Plus 的测试切片等价物 | A.6 | 第三方库官方无覆盖，用 @SpringBootTest + Testcontainers | 待回填 |
+| B-1 「本表 this.lambdaQuery() 链式、禁 new Wrapper」官方条文 | A.4.3 | 官方仅推荐 lambda 链式，使用边界为项目内部约束 | 待回填 |
+| B-2 「saveBatch 必须在事务内」官方条文 | A.4.6 | 官方仅写批量"事务默认关闭"，须由 Spring 事务语义推得 | 待回填 |
+| B-3 「禁手动 IdWorker」官方条文 | A.4.6 | 官方仅说明 ASSIGN_ID 自动分配 | 待回填 |
+| B-4 「查询必带分页」及 maxLimit=2000 出处 | A.4.7 | 官方仅定义 maxLimit 行为，阈值为项目配置决策 | 待回填 |
+| B-5 PG JSONB 与 MP String 绑定兼容性官方依据 | A.4.10 | 官方无 ORM 绑定说明，系项目历史实证 | 待回填 |
+| B-6 Flyway 在 PG 上非事务性 DDL 完整行为矩阵 | A.4.2 | 官方仅覆盖事务锁与 CREATE INDEX CONCURRENTLY | 待回填 |
+| B-7 Redis 缓存穿透/雪崩官方专页 | A.5 | 官方文档站无专页，散见博客 | 待回填 |
+| B-8 Lettuce commandTimeout 官方推荐值 | A.5 | SDR 文档未展开超时参数，待补查 | 待回填 |
+| B-9 MinIO 环境变量配置官方页（MINIO_ROOT_USER 等） | A.2.3 | AIStor 参考页本轮未核验 | 待回填 |
+| B-10 MinIO/S3 对象 key 命名限制官方专页 | A.5.7 | 本轮未抓取 AWS object-keys 页 | 待回填 |
+| B-11 Redis Streams 消费者组子页完整正文 | A.5.3 | 主文档抓取截断，命令页可逐个补查 | 待回填 |
+| B-12 Milvus 2.6 upsert 官方行为确认页 | D.5.9 | v2.6.x 文档无独立页，仅 v2.3 遗留页 | 待回填 |
+| B-13 Milvus v2.6.x partition key / add-fields 规范页 | D.5.7 | v2.6.x 版本页 404，仅当前版（v3.0） | 待回填 |
+| B-14 Milvus ConnectConfig 参数默认值（SDK 2.6.11 精确值） | D.5.10 | 官方两参考页默认值矛盾，以 SDK 源码为准 | 待回填 |
+| B-15 Milvus RRF k 值面向 RAG 的官方调参数据 | D.5.3 | 官方仅给区间 [10,100]，需项目评测集实测 | 待回填 |
+| B-16 Milvus SDK 端 Session 一致性写后立查时序细节 | D.5.8 | 官方未详述 batch 写入后立即 search 时序，需集成测试 | 待回填 |
+| C-1 同 thread_id 并发执行/防重复执行官方语义 | B.3.9 | SAA/LangGraph4j 官方无覆盖（Python 侧有 INVALID_CONCURRENT_GRAPH_UPDATE），项目侧自研 | 待回填 |
+| C-2 DashScope HTTP 超时（connect/read timeout）配置 | B.4 | 官方集成页仅重试参数，需实测或读 starter 源码 | 待回填 |
+| C-3 rerank 模型的 Java 官方集成用法 | B.4 | Java 侧官方文档缺失，按百炼原始 API 为准 | 待回填 |
+| C-4 SSE 事件协议（帧格式/心跳/重连）官方推荐 | B.3.7 | 官方仅保证 Flux 流式，封装属应用层自定义 | 待回填 |
+| C-5 langgraph4j 官方文档站点完整性 | B.3 | 原站点 404，以 langgraph4j.github.io/main/ 与仓库 mkdocs 为准 | 待回填 |
+| C-6 "checkpoint 状态不可变"官方字面陈述 | B.3.3 | 为源码 + 上游文档实证的设计事实 | 待回填 |
+| D-1 TanStack Query 官方 SSE 消费集成指南 | C.1.9 | v5 官方文档无 SSE 集成页，社区实现非官方 | 待回填 |
+| D-2 Next.js 官方独立 linting 引导页 | C.2.1 | 16.x 文档站对应页 404；项目 15.5 用 next lint | 待回填 |
+| D-3 Playwright 官方"单测/E2E 职责边界"权威划分 | C.2.2 | 官方仅原则性表述，边界属工程决策 | 待回填 |
+| D-4 Vercel 独立数据获取最佳实践页 | C.1 | 未定位可独立引用页面，Next.js 官方指南已覆盖 | 待回填 |
+| E-1 Maven 命令行侧注解处理器陈旧生成物的官方直述 | A.6 | 官方仅覆盖 IDE 增量场景，clean 纪律为工程化兜底 | 待回填 |
+| E-2 SpotBugs check 失败语义的官方成文描述 | A.6 | 官方 mojo 页 Description 为空，从参数推断 | 待回填 |
+| E-3 Testcontainers 跨 CI job 共享容器的官方规范 | A.6 | reuse 仅 Experimental，无正式最佳实践 | 待回填 |
+| E-4 GitHub Actions 步骤级自动重试 | D.7 | 官方无内置 retry 语义，重跑为人工操作 | 待回填 |
+| E-5 Testcontainers Milvus 模块版本线与 core 的耦合矩阵 | A.6 | 模块独立版本线，兼容矩阵官方未说明 | 待回填 |
+| E-6 记忆/偏好提取异步化参数细则（防抖/超时/失败丢弃） | B.5.5 | 官方无条文，系项目实证（详见 `docs/superpowers/specs/` 记忆设计） | 待回填 |
+
+**B 组待决策项**（延续既有待办，引用不重复正文）：
+- 多实例部署批准确认 → TASK.md §1
+- Milvus sparse 检索恢复方案三选一 → TASK.md §4
+
+---

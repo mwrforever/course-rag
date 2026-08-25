@@ -30,6 +30,7 @@ out/
 dist/
 .turbo/
 coverage/
+.eslintcache
 
 # ── 环境变量（含 Next.js） ──
 .env
