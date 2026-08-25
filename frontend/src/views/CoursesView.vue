@@ -140,231 +140,220 @@ async function confirmDelete() {
 </script>
 
 <template>
-  <main class="mx-auto max-w-[1400px] px-8 py-6">
-    <!-- 页头操作行：新建入口常驻（列表态/空态共用同一方法） -->
-    <div class="mb-4 flex items-center justify-between">
-      <p class="text-sm text-text-muted">
-        课程列表：编辑页涵盖内容 4 Tab、排期、教师分配与学生名单
-      </p>
-      <Button data-testid="create-course" @click="goCreate">
-        <PhPlus class="h-4 w-4" />
-        新建课程
-      </Button>
-    </div>
+  <!-- 页头操作行：新建入口常驻（列表态/空态共用同一方法） -->
+  <div class="mb-4 flex items-center justify-between">
+    <p class="text-sm text-text-muted">课程列表：编辑页涵盖内容 4 Tab、排期、教师分配与学生名单</p>
+    <Button data-testid="create-course" @click="goCreate">
+      <PhPlus class="h-4 w-4" />
+      新建课程
+    </Button>
+  </div>
 
-    <!-- 错误态：页内横幅 + 重试 -->
+  <!-- 错误态：页内横幅 + 重试 -->
+  <div
+    v-if="error"
+    role="alert"
+    class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
+  >
+    <span class="text-sm text-danger">{{ error }}</span>
+    <Button variant="outline" size="sm" data-testid="retry-courses" @click="load">重试</Button>
+  </div>
+
+  <!-- 加载态：表格骨架屏（与最终表格同形） -->
+  <div
+    v-else-if="loading"
+    data-testid="course-skeleton"
+    class="overflow-hidden rounded-xl border border-border bg-surface"
+    aria-label="课程列表加载中"
+  >
+    <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
+      <div v-for="i in 7" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-slate-200" />
+    </div>
     <div
-      v-if="error"
-      role="alert"
-      class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
-    >
-      <span class="text-sm text-danger">{{ error }}</span>
-      <Button variant="outline" size="sm" data-testid="retry-courses" @click="load">重试</Button>
-    </div>
+      v-for="i in 5"
+      :key="`row-${i}`"
+      class="h-11 animate-pulse border-b border-border bg-slate-50"
+    />
+  </div>
 
-    <!-- 加载态：表格骨架屏（与最终表格同形） -->
-    <div
-      v-else-if="loading"
-      data-testid="course-skeleton"
-      class="overflow-hidden rounded-xl border border-border bg-surface"
-      aria-label="课程列表加载中"
-    >
-      <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
-        <div
-          v-for="i in 7"
-          :key="`head-${i}`"
-          class="h-3 w-20 animate-pulse rounded bg-slate-200"
-        />
-      </div>
-      <div
-        v-for="i in 5"
-        :key="`row-${i}`"
-        class="h-11 animate-pulse border-b border-border bg-slate-50"
-      />
-    </div>
+  <!-- 空态：一句话 + 新建入口（禁裸「暂无数据」） -->
+  <div
+    v-else-if="courses.length === 0"
+    class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
+  >
+    <PhWarningCircle class="h-8 w-8 text-text-subtle" />
+    <p class="mt-3 text-sm font-medium text-text">还没有课程</p>
+    <p class="mt-1 text-xs text-text-muted">新建第一个课程后即可配置内容、排期与学员</p>
+    <Button class="mt-4" data-testid="create-course-empty" @click="goCreate">新建课程</Button>
+  </div>
 
-    <!-- 空态：一句话 + 新建入口（禁裸「暂无数据」） -->
-    <div
-      v-else-if="courses.length === 0"
-      class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
-    >
-      <PhWarningCircle class="h-8 w-8 text-text-subtle" />
-      <p class="mt-3 text-sm font-medium text-text">还没有课程</p>
-      <p class="mt-1 text-xs text-text-muted">新建第一个课程后即可配置内容、排期与学员</p>
-      <Button class="mt-4" data-testid="create-course-empty" @click="goCreate">新建课程</Button>
-    </div>
-
-    <!-- 正常态：分页表格（封面/名称/讲师/价格/课时/学生数/状态/操作） -->
-    <template v-else>
-      <div class="overflow-hidden rounded-xl border border-border bg-surface">
-        <table data-testid="course-table" class="w-full text-sm">
-          <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
-            <tr>
-              <th class="w-16 px-4 py-2.5 font-medium">封面</th>
-              <th class="px-4 py-2.5 font-medium">名称</th>
-              <th class="w-28 px-4 py-2.5 font-medium">讲师</th>
-              <th class="w-24 px-4 py-2.5 text-right font-medium">价格</th>
-              <th class="w-24 px-4 py-2.5 font-medium">课时</th>
-              <th class="w-24 px-4 py-2.5 text-right font-medium">学生数</th>
-              <th class="w-24 px-4 py-2.5 font-medium">状态</th>
-              <th class="w-40 px-4 py-2.5 text-right font-medium">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="c in courses"
-              :key="c.id"
-              :data-testid="`row-${c.id}`"
-              class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
-            >
-              <!-- 封面缩略 48px：URL 直出；无封面渲染占位（无上传接口 G11） -->
-              <td class="px-4">
-                <img
-                  v-if="c.coverImage"
-                  :data-testid="`cover-${c.id}`"
-                  :src="c.coverImage"
-                  :alt="`${c.title} 封面`"
-                  class="h-12 w-12 rounded-lg border border-border bg-surface-2 object-cover"
-                />
-                <div
-                  v-else
-                  :data-testid="`cover-fallback-${c.id}`"
-                  class="flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-surface-2"
-                >
-                  <PhImageSquare class="h-5 w-5 text-text-subtle" />
-                </div>
-              </td>
-              <td :data-testid="`course-title-${c.id}`" class="max-w-[240px] px-4">
-                <p class="truncate font-medium text-text">{{ c.title }}</p>
-              </td>
-              <td :data-testid="`course-instructor-${c.id}`" class="px-4 text-text-muted">
-                {{ c.instructorName || '未指定' }}
-              </td>
-              <td class="px-4 text-right">
-                <span :data-testid="`course-price-${c.id}`" class="tabular-nums text-text">
-                  ¥{{ c.price }}
-                </span>
-              </td>
-              <td
-                :data-testid="`course-duration-${c.id}`"
-                class="tabular-nums px-4 text-text-muted"
+  <!-- 正常态：分页表格（封面/名称/讲师/价格/课时/学生数/状态/操作） -->
+  <template v-else>
+    <div class="overflow-hidden rounded-xl border border-border bg-surface">
+      <table data-testid="course-table" class="w-full text-sm">
+        <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
+          <tr>
+            <th class="w-16 px-4 py-2.5 font-medium">封面</th>
+            <th class="px-4 py-2.5 font-medium">名称</th>
+            <th class="w-28 px-4 py-2.5 font-medium">讲师</th>
+            <th class="w-24 px-4 py-2.5 text-right font-medium">价格</th>
+            <th class="w-24 px-4 py-2.5 font-medium">课时</th>
+            <th class="w-24 px-4 py-2.5 text-right font-medium">学生数</th>
+            <th class="w-24 px-4 py-2.5 font-medium">状态</th>
+            <th class="w-40 px-4 py-2.5 text-right font-medium">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="c in courses"
+            :key="c.id"
+            :data-testid="`row-${c.id}`"
+            class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
+          >
+            <!-- 封面缩略 48px：URL 直出；无封面渲染占位（无上传接口 G11） -->
+            <td class="px-4">
+              <img
+                v-if="c.coverImage"
+                :data-testid="`cover-${c.id}`"
+                :src="c.coverImage"
+                :alt="`${c.title} 封面`"
+                class="h-12 w-12 rounded-lg border border-border bg-surface-2 object-cover"
+              />
+              <div
+                v-else
+                :data-testid="`cover-fallback-${c.id}`"
+                class="flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-surface-2"
               >
-                {{ c.duration || '未设置' }}
-              </td>
-              <td class="px-4 text-right">
-                <span :data-testid="`course-learners-${c.id}`" class="tabular-nums text-text">
-                  {{ c.learningCount }}
-                </span>
-              </td>
-              <td class="px-4">
-                <Badge :data-testid="`course-status-${c.id}`" :variant="statusVariant(c.status)">
-                  {{ c.status }}
-                </Badge>
-              </td>
-              <td class="px-4 text-right">
-                <div class="flex items-center justify-end gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    :data-testid="`op-edit-${c.id}`"
-                    @click="goEdit(c)"
-                  >
-                    编辑
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    :data-testid="`op-delete-${c.id}`"
-                    @click="requestDelete(c)"
-                  >
-                    删除
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+                <PhImageSquare class="h-5 w-5 text-text-subtle" />
+              </div>
+            </td>
+            <td :data-testid="`course-title-${c.id}`" class="max-w-[240px] px-4">
+              <p class="truncate font-medium text-text">{{ c.title }}</p>
+            </td>
+            <td :data-testid="`course-instructor-${c.id}`" class="px-4 text-text-muted">
+              {{ c.instructorName || '未指定' }}
+            </td>
+            <td class="px-4 text-right">
+              <span :data-testid="`course-price-${c.id}`" class="tabular-nums text-text">
+                ¥{{ c.price }}
+              </span>
+            </td>
+            <td :data-testid="`course-duration-${c.id}`" class="tabular-nums px-4 text-text-muted">
+              {{ c.duration || '未设置' }}
+            </td>
+            <td class="px-4 text-right">
+              <span :data-testid="`course-learners-${c.id}`" class="tabular-nums text-text">
+                {{ c.learningCount }}
+              </span>
+            </td>
+            <td class="px-4">
+              <Badge :data-testid="`course-status-${c.id}`" :variant="statusVariant(c.status)">
+                {{ c.status }}
+              </Badge>
+            </td>
+            <td class="px-4 text-right">
+              <div class="flex items-center justify-end gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :data-testid="`op-edit-${c.id}`"
+                  @click="goEdit(c)"
+                >
+                  编辑
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  :data-testid="`op-delete-${c.id}`"
+                  @click="requestDelete(c)"
+                >
+                  删除
+                </Button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-      <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
-      <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
-        <span>
-          共 <span class="tabular-nums text-text">{{ total }}</span> 条
-        </span>
-        <div class="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="prev-page"
-            :disabled="page <= 1"
-            @click="changePage(page - 1)"
-          >
-            上一页
-          </Button>
-          <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="next-page"
-            :disabled="page >= totalPages"
-            @click="changePage(page + 1)"
-          >
-            下一页
-          </Button>
-        </div>
+    <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
+    <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
+      <span>
+        共 <span class="tabular-nums text-text">{{ total }}</span> 条
+      </span>
+      <div class="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="prev-page"
+          :disabled="page <= 1"
+          @click="changePage(page - 1)"
+        >
+          上一页
+        </Button>
+        <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="next-page"
+          :disabled="page >= totalPages"
+          @click="changePage(page + 1)"
+        >
+          下一页
+        </Button>
       </div>
-    </template>
+    </div>
+  </template>
 
-    <!-- ================================================================
+  <!-- ================================================================
          删除课程二次确认（danger 实底 + 不可恢复告警，设计 §2.6）
          ================================================================ -->
+  <div
+    v-if="deleting"
+    data-testid="course-del-dialog"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+    @keydown.esc="cancelDelete"
+    @click.self="cancelDelete"
+  >
     <div
-      v-if="deleting"
-      data-testid="course-del-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-      @keydown.esc="cancelDelete"
-      @click.self="cancelDelete"
+      class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+      role="alertdialog"
+      aria-modal="true"
+      @click.stop
     >
-      <div
-        class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
-        role="alertdialog"
-        aria-modal="true"
-        @click.stop
-      >
-        <div class="flex items-start gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
-            <PhWarningCircle class="h-5 w-5 text-danger" />
-          </div>
-          <div>
-            <h2 class="text-base font-semibold text-text">删除课程</h2>
-            <p class="mt-2 text-sm leading-relaxed text-text-muted">
-              删除后课程及其内容、排期与报名关系一并移除，
-              <span class="font-medium text-danger">此操作不可恢复</span>。 确认删除「{{
-                deleting.title
-              }}」？
-            </p>
-          </div>
+      <div class="flex items-start gap-3">
+        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
+          <PhWarningCircle class="h-5 w-5 text-danger" />
         </div>
-        <div class="mt-5 flex justify-end gap-2">
-          <Button
-            variant="outline"
-            data-testid="cancel-course-del"
-            :disabled="deletingLoading"
-            @click="cancelDelete"
-          >
-            取消
-          </Button>
-          <Button
-            variant="danger"
-            data-testid="confirm-course-del"
-            :disabled="deletingLoading"
-            @click="confirmDelete"
-          >
-            <PhSpinnerGap v-if="deletingLoading" class="h-4 w-4 animate-spin" />
-            {{ deletingLoading ? '删除中' : '确认删除' }}
-          </Button>
+        <div>
+          <h2 class="text-base font-semibold text-text">删除课程</h2>
+          <p class="mt-2 text-sm leading-relaxed text-text-muted">
+            删除后课程及其内容、排期与报名关系一并移除，
+            <span class="font-medium text-danger">此操作不可恢复</span>。 确认删除「{{
+              deleting.title
+            }}」？
+          </p>
         </div>
       </div>
+      <div class="mt-5 flex justify-end gap-2">
+        <Button
+          variant="outline"
+          data-testid="cancel-course-del"
+          :disabled="deletingLoading"
+          @click="cancelDelete"
+        >
+          取消
+        </Button>
+        <Button
+          variant="danger"
+          data-testid="confirm-course-del"
+          :disabled="deletingLoading"
+          @click="confirmDelete"
+        >
+          <PhSpinnerGap v-if="deletingLoading" class="h-4 w-4 animate-spin" />
+          {{ deletingLoading ? '删除中' : '确认删除' }}
+        </Button>
+      </div>
     </div>
-  </main>
+  </div>
 </template>

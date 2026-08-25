@@ -165,3 +165,22 @@ milvus-io/milvus-sdk-java#1402，仍 Open），服务端 INTERNAL 后 SDK 无限
 - Milvus sparse 检索恢复方案三选一 → TASK.md §4
 
 ---
+
+---
+
+## 6. 双前端 UI 全面重构 — ✅ 已完成（2026-08-25 PR#7/PR#8）
+
+**背景**：用户判定 C 端/B 端界面样式结构奇丑、管理端侧栏层级不合理、C 端课堂/首页/课程助手几乎无法使用，责令全面重构；课程助手参照参考稿 `D:\code\project\assert\kimi\README.md` 按项目调整，配色必须高级，首页要求内容滚动动效。
+
+**交付**（两 PR 待合并 dev）：
+- C 端（PR#7）：kimi 蓝系设计令牌（暖米白 + #2F8BF5 蓝族 + 圆角/阴影/动效体系）；首页电商风（Hero 光晕 + 分类筛选条 + 推荐课程网格 + motion whileInView 滚动动效）；课程助手 kimi 式改造（/chat 迁出 (main) 组 → (chat) 组全局左侧栏：品牌/新建对话 Ctrl+K/会话历史/用户区，260↔64px 折叠持久化；消息气泡/思考卡/来源卡/20px 输入区参照稿逐项落地）；课堂/会话/个人中心/登录页品牌化
+- B 端（PR#8）：深色侧栏（ink 板 + 图标分组展开 + 激活光条 + 折叠持久化）+ 面包屑 + 路由过渡；职责拆分（/students 学生管理两角色 + /teachers 教师管理仅超管，/users 重定向；课程详情五子路由 概览/内容/排期/教师/学生；/404 页；知识库管理入侧栏）
+- 门禁：C 端 358 单测 + 29 E2E；B 端 278 单测 + 23 E2E；覆盖率核心文件 100% 行铁律保持；lint/typecheck/format 全绿
+
+**遗留（后续打磨候选，未列入本次）**：B 端 Feedback/Sessions 会话回放 Drawer 抽公共组件、DocumentsView 行菜单 overflow 裁切、Dashboard ECharts 色值令牌化、C 端意图体系相关 UI 微调、C 端学科兜底渐变是否令牌化（现保留 Tailwind 调色板工具类）。
+
+**评审修复轮（2026-08-25，superpowers 双评审 With fixes → 合入前修复）**：
+- C 端 PR#7 修复：scrollbar-none 死类补 @utility；工作区 sessionId 落位即失效侧栏会话缓存；Ctrl+K 流式守卫（新增 ChatStreamingProvider，(chat) 布局回归服务端组件）；HERO rgba 字面量/徽章/CTA 遮罩改 overlay 与 brand-light 语义令牌 + 孤儿令牌清零；筛选 chips tab 角色 → aria-pressed 按钮组；注释漂移修正；+1 侧栏 E2E（共 30）
+- B 端 PR#8 修复：路由过渡 :key 从 RouterView 归位至页面 vnode（新增 resolvePageKey 纯函数：同实体子路由切换壳存活不重取数，跨实体导航重挂载重取数免 watch）；页面淡入过渡移除——`<Transition>` 包裹 RouterView 插槽在 vue@3.5.41 + vue-router 组合下导航后新视图永不挂载（真实浏览器实证，与 key 取值/是否 out-in 无关；旧实现把 key 挂 RouterView 实为绕开缺陷的变通、过渡从未真正播放），待依赖升级后重评；仪表盘「添加学生」入口直指 /students（不再依赖重定向兜底）；TeachersView 列表变量名 students→teachers
+- **待拍板（登记）**：B 端远程状态技术栈统一——新拆分 StudentsView/TeachersView 沿用手动 load() 模式（与存量多数视图一致），宪法 C.1.4 方向为 vue-query 化（仓内 Chunks/Documents 已用）；存量视图整体迁移范围与排期需用户批准后另立任务，不在重构 PR 内扩大范围
+- 附带发现：TASK.md 本节路径曾含 BEL 控制字符（0x07，前会话转义事故），本轮修复

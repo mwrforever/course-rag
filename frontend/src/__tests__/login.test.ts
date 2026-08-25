@@ -61,7 +61,7 @@ describe('LoginView：结构与渲染', () => {
     const brand = wrapper.find('aside')
     expect(brand.classes()).toContain('w-[40%]')
     expect(brand.classes()).toContain('bg-slate-900')
-    expect(brand.text()).toContain('知识库管理后台')
+    expect(brand.text()).toContain('课程助手管理后台')
     expect(wrapper.text()).toContain('知识运维与管理，一处完成')
 
     // 表单区：用户名/密码/登录按钮，无记住我复选框

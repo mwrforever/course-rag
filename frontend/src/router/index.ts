@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 import AdminLayout from '@/layouts/AdminLayout.vue'
+import CourseDetailLayout from '@/views/course/CourseDetailLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 
 import type { UserRole } from '@/lib/types'
@@ -16,13 +17,13 @@ declare module 'vue-router' {
 
 /** 两角色白名单（设计 §2.4：默认全部业务页两角色可进，教师限己建由后端约束） */
 const BOTH_ROLES: UserRole[] = ['TEACHER', 'SUPER_ADMIN']
-/** 超管专属白名单（设计 §2.4.7：会话审计 + 安全审计两页） */
+/** 超管专属白名单（设计 §2.4.7：教师管理 + 会话审计 + 安全审计三页） */
 const SUPER_ONLY: UserRole[] = ['SUPER_ADMIN']
 
 /**
  * 受保护页面 meta 工厂：requiresAuth 显式声明（子路由独立可读，与父路由合并语义一致）
  *
- * @param title 页面标题（布局壳页头 H1 使用）
+ * @param title 页面标题（布局壳顶栏标题使用）
  * @param roles 允许访问的角色白名单
  */
 function pageMeta(title: string, roles: UserRole[]) {
@@ -30,12 +31,12 @@ function pageMeta(title: string, roles: UserRole[]) {
 }
 
 /**
- * B 端路由表（设计 §2.4 页面清单全量落地）
+ * B 端路由表（UI 重构 2026-08-25：职责拆分后的页面清单）
  *
- * - 公开路由仅 /login 与 /forbidden（403 页）
- * - 全部业务页面挂载在 AdminLayout 布局壳父路由下（顶栏+侧导航+内容区）
- * - 超管专属页（会话审计/登录记录/Token 黑名单）meta.roles 仅 SUPER_ADMIN
- * - 未实现页面使用占位 view 组件，页面实现随后续任务逐个填充
+ * - 公开路由仅 /login、/forbidden（403）、/404（未匹配兜底，替代静默重定向）
+ * - 全部业务页面挂载在 AdminLayout 布局壳父路由下（深色侧栏 + 顶栏 + 内容区）
+ * - 超管专属页（教师管理/会话审计/登录记录/Token 黑名单）meta.roles 仅 SUPER_ADMIN
+ * - 课程详情拆子路由：概览/内容/排期/教师/学生（CourseEditView 1635 行单页按域拆分）
  */
 export const routes: RouteRecordRaw[] = [
   {
@@ -49,6 +50,12 @@ export const routes: RouteRecordRaw[] = [
     name: 'forbidden',
     component: () => import('@/views/ForbiddenView.vue'),
     meta: { title: '无权访问', requiresAuth: false },
+  },
+  {
+    path: '/404',
+    name: 'not-found',
+    component: () => import('@/views/NotFoundView.vue'),
+    meta: { title: '页面不存在', requiresAuth: false },
   },
   {
     path: '/',
@@ -68,7 +75,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'knowledge-bases',
         name: 'knowledge-bases',
         component: () => import('@/views/KnowledgeBasesView.vue'),
-        meta: pageMeta('知识库', BOTH_ROLES),
+        meta: pageMeta('知识库管理', BOTH_ROLES),
       },
       {
         path: 'knowledge/documents',
@@ -97,20 +104,63 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'courses/new',
         name: 'course-new',
-        component: () => import('@/views/CourseEditView.vue'),
+        component: () => import('@/views/course/CourseOverviewView.vue'),
         meta: pageMeta('新建课程', BOTH_ROLES),
       },
+      // 课程详情：壳布局承载子导航，五个领域独立子路由（职责拆分，替代 1635 行单页）
       {
         path: 'courses/:id',
-        name: 'course-detail',
-        component: () => import('@/views/CourseEditView.vue'),
-        meta: pageMeta('编辑课程', BOTH_ROLES),
+        component: CourseDetailLayout,
+        meta: { title: '编辑课程', requiresAuth: true, roles: BOTH_ROLES },
+        children: [
+          {
+            path: '',
+            name: 'course-detail',
+            component: () => import('@/views/course/CourseOverviewView.vue'),
+            meta: pageMeta('课程概览', BOTH_ROLES),
+          },
+          {
+            path: 'content',
+            name: 'course-content',
+            component: () => import('@/views/course/CourseContentView.vue'),
+            meta: pageMeta('课程内容', BOTH_ROLES),
+          },
+          {
+            path: 'schedule',
+            name: 'course-schedule',
+            component: () => import('@/views/course/CourseScheduleView.vue'),
+            meta: pageMeta('排期管理', BOTH_ROLES),
+          },
+          {
+            path: 'teachers',
+            name: 'course-teachers',
+            component: () => import('@/views/course/CourseTeachersView.vue'),
+            meta: pageMeta('教师分配', BOTH_ROLES),
+          },
+          {
+            path: 'students',
+            name: 'course-students',
+            component: () => import('@/views/course/CourseStudentsView.vue'),
+            meta: pageMeta('学生名单', BOTH_ROLES),
+          },
+        ],
       },
       {
+        path: 'students',
+        name: 'students',
+        component: () => import('@/views/StudentsView.vue'),
+        meta: pageMeta('学生管理', BOTH_ROLES),
+      },
+      {
+        path: 'teachers',
+        name: 'teachers',
+        component: () => import('@/views/TeachersView.vue'),
+        meta: pageMeta('教师管理', SUPER_ONLY),
+      },
+      // 旧 /users 页职责已拆分为学生/教师管理，保留重定向兼容历史入口
+      {
         path: 'users',
-        name: 'users',
-        component: () => import('@/views/UsersView.vue'),
-        meta: pageMeta('用户管理', BOTH_ROLES),
+        redirect: { name: 'students' },
       },
       {
         path: 'feedback',
@@ -139,9 +189,9 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
-    // 未匹配路由兜底回仪表盘（独立 404 页不在此任务范围）
+    // 未匹配路由兜底 404 页（UI 重构：替代静默重定向仪表盘）
     path: '/:pathMatch(.*)*',
-    redirect: '/dashboard',
+    redirect: '/404',
   },
 ]
 
@@ -167,7 +217,7 @@ export function createAppRouter() {
   router.beforeEach((to) => {
     const auth = useAuthStore()
 
-    // 公开路由：仅登录页/403 页；已登录访问登录页 → 仪表盘
+    // 公开路由：仅登录页/403 页/404 页；已登录访问登录页 → 仪表盘
     if (!to.meta.requiresAuth) {
       if (to.name === 'login' && auth.isAuthenticated) {
         return { name: 'dashboard' }

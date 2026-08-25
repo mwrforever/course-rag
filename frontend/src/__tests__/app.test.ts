@@ -63,7 +63,7 @@ describe('App 冒烟', () => {
 
     // 守卫生效：路由落在登录页，页面渲染品牌区文案
     expect(router.currentRoute.value.name).toBe('login')
-    expect(wrapper.text()).toContain('知识库管理后台')
+    expect(wrapper.text()).toContain('课程助手管理后台')
     wrapper.unmount()
   })
 
@@ -81,7 +81,7 @@ describe('App 冒烟', () => {
     // 仪表盘页面渲染在 AdminLayout 壳内（顶栏品牌 + 侧导航 + KPI 卡）
     expect(router.currentRoute.value.name).toBe('dashboard')
     expect(wrapper.text()).toContain('仪表盘')
-    expect(wrapper.text()).toContain('知识库管理后台')
+    expect(wrapper.text()).toContain('课程助手管理后台')
     await vi.waitFor(() => expect(wrapper.text()).toContain('文档总数'))
     // KPI 数值（mock 文档总数 12）与快捷入口在壳内渲染
     await vi.waitFor(() => expect(wrapper.text()).toContain('12'))

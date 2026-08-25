@@ -1,28 +1,15 @@
 <script setup lang="ts">
 /**
- * 用户管理页（设计 §2.4.5）
+ * 学生管理（UI 重构 2026-08-25：从 UsersView 拆分，职责=学生账号域）
  *
- * 能力清单：
- * 1. 角色 Tab：全部 / 教师 / 学生（点击切换携带 role 参数，计数来自列表 total）
- * 2. 添加学生（两角色入口，教师端固定角色 STUDENT 无选择器）/
- *    添加教师（仅超管，角色选择器含 TEACHER）
- * 3. 表格：用户名 / 显示名 / 角色 Badge / 状态（ACTIVE emerald / DISABLED red）/
- *    创建时间 / 操作（编辑 displayName、重置密码、禁用/启用、删除）
- * 4. 权限矩阵：当前登录超管自身行禁用/启用按钮隐藏（useAuthStore.userId 比对，
- *    防自锁）；后端同时拒绝超管自身禁用（A7）
- * 5. 重置密码 Dialog：zod ≥6 前置校验 + 两次输入一致 → resetPassword({newPassword})
- * 6. 禁用/启用：二次确认（danger 实底 + submitting 拦截）
- * 7. 删除：二次确认（danger，不可恢复）
- * 8. 四态：loading 骨架 / empty 含添加入口 / error 横幅重试 / 正常
- *
- * 契约要点：id/total 为 Long 字符串铁律；时间 ISO-8601 短格式；
- * 教师限己建学生由后端过滤器约束（P2-2），前端不额外过滤。
- *
- * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
+ * 能力：学生账号分页列表（用户名/显示名/状态/创建时间）+ 添加学生 + 编辑显示名 +
+ * 重置密码（zod ≥6 + 两次一致）+ 禁用/启用（二次确认）+ 删除（二次确认）。
+ * 角色固定 STUDENT：本页只管理学生，不再承载教师/账号混域（用户拍板剥离）。
+ * 权限矩阵：自身行禁用/启用入口隐藏（防自锁，后端 A7 同时拒绝）。
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { z } from 'zod'
-import { PhPlus, PhSpinnerGap, PhUserPlus, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhSpinnerGap, PhUserPlus, PhWarningCircle } from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,70 +18,30 @@ import { showToast } from '@/lib/toast'
 import { formatDateTime } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth'
 
-import type { UserDTO, UserRole, UserStatus } from '@/lib/types'
+import type { UserDTO, UserStatus } from '@/lib/types'
 
-/** 每页条数（设计 §2.6 分页器） */
+/** 每页条数 */
 const PAGE_SIZE = 10
-
-/** 角色 Tab 定义：value 为接口 role 参数（ALL 不携带） */
-const TABS = [
-  { key: 'ALL', label: '全部' },
-  { key: 'TEACHER', label: '教师' },
-  { key: 'STUDENT', label: '学生' },
-] as const
-
-type RoleTab = (typeof TABS)[number]['key']
 
 const auth = useAuthStore()
 
-/** 超管判定：控制「添加教师」入口与角色选择器可见性（设计 §2.4.5） */
-const isSuperAdmin = computed(() => auth.role === 'SUPER_ADMIN')
+/** 创建学生账号表单校验 schema：username/displayName 非空、password ≥6 位 */
+const createSchema = z.object({
+  username: z.string().trim().min(1, '请输入用户名'),
+  password: z.string().min(1, '请输入密码').min(6, '密码至少 6 位'),
+  displayName: z.string().trim().min(1, '请输入显示名'),
+})
 
-// ====================================================================
-// 列表数据（角色 Tab + 分页，四态页面级收敛）
-// ====================================================================
-
-const users = ref<UserDTO[]>([])
+const students = ref<UserDTO[]>([])
 const loading = ref(true)
 const error = ref('')
-const activeTab = ref<RoleTab>('ALL')
 const page = ref(1)
 const total = ref('0')
 
 /** 总页数：total 为 Long 字符串，转 number 后按 PAGE_SIZE 上取整 */
 const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value) / PAGE_SIZE)))
 
-/**
- * 拉取当前 Tab 用户列表（分页 + role 参数）
- *
- * 边界：删除/筛选导致末页清空时回退一页重拉（防空页停留）。
- */
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    // 角色 Tab：ALL 不携带 role（后端全量），教师/学生携带对应枚举
-    const res = await userApi.list({
-      page: page.value,
-      size: PAGE_SIZE,
-      ...(activeTab.value === 'ALL' ? {} : { role: activeTab.value as UserRole }),
-    })
-    users.value = res.records ?? []
-    total.value = res.total
-    if (users.value.length === 0 && page.value > 1) {
-      page.value -= 1
-      await load()
-    }
-  } catch (err) {
-    error.value = messageOf(err, '用户列表加载失败，请稍后重试')
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(load)
-
-/** 接口错误分级文案（ApiError 透出 message，503 统一降级；非 ApiError 兜底） */
+/** 接口错误分级文案 */
 function messageOf(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
     return err.code === 503 ? '服务暂时不可用，请稍后重试' : err.message
@@ -102,86 +49,57 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-/** 切换角色 Tab：重置第 1 页并重新拉取（计数 chip 取该次列表 total） */
-function switchTab(key: RoleTab) {
-  if (activeTab.value === key) return
-  activeTab.value = key
-  page.value = 1
-  load()
+/** 拉取学生列表（分页 + role=STUDENT；末页清空回退一页） */
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    const res = await userApi.list({ page: page.value, size: PAGE_SIZE, role: 'STUDENT' })
+    students.value = res.records ?? []
+    total.value = res.total
+    if (students.value.length === 0 && page.value > 1) {
+      page.value -= 1
+      await load()
+    }
+  } catch (err) {
+    error.value = messageOf(err, '学生列表加载失败，请稍后重试')
+  } finally {
+    loading.value = false
+  }
 }
 
-/** 翻页：越界保护（禁用态按钮兜底） */
+onMounted(load)
+
+/** 翻页：越界保护 */
 function changePage(next: number) {
   if (next < 1 || next > totalPages.value) return
   page.value = next
   load()
 }
 
-// ====================================================================
-// 权限矩阵：自身禁用隐藏
-// ====================================================================
-
-/**
- * 自身行判定：当前登录用户（auth.userId）的行禁用/启用按钮隐藏
- *
- * 防超管/教师误禁自己导致账号锁死（后端 A7 同样拒绝，前端先行隐藏入口）。
- *
- * @param u 表格行用户
- * @returns 该行是否为当前登录用户自身
- */
+/** 自身行判定：当前登录用户（auth.userId）的行禁用/启用按钮隐藏（防自锁） */
 function isSelf(u: UserDTO): boolean {
   return auth.userId === u.id
 }
 
-/** 角色 Badge 变体：TEACHER brand / SUPER_ADMIN info / STUDENT 中性（设计 §2.4.5 角色区分） */
-function roleVariant(role: UserRole) {
-  switch (role) {
-    case 'TEACHER':
-      return 'brand' as const
-    case 'SUPER_ADMIN':
-      return 'info' as const
-    default:
-      return 'default' as const
-  }
-}
-
-/** 状态 Badge：ACTIVE emerald / DISABLED red（设计 §2.5 用户双色互斥） */
+/** 状态 Badge：ACTIVE success / DISABLED danger */
 function statusVariant(status: UserStatus) {
   return status === 'ACTIVE' ? ('success' as const) : ('danger' as const)
 }
 
-// ====================================================================
-// 添加用户 Dialog（教师固定 STUDENT 无选择器 / 超管含角色选择器）
-// ====================================================================
-
-/** 创建用户表单校验 schema：username/displayName 非空、password 非空且 ≥6 位 */
-const createSchema = z.object({
-  username: z.string().trim().min(1, '请输入用户名'),
-  // 两级校验：空值提示「请输入密码」，短于 6 位提示长度要求
-  password: z.string().min(1, '请输入密码').min(6, '密码至少 6 位'),
-  displayName: z.string().trim().min(1, '请输入显示名'),
-})
+// ============ 添加学生 Dialog（角色固定 STUDENT，无角色选择器） ============
 
 const addOpen = ref(false)
 const addSubmitting = ref(false)
-const addForm = reactive({
-  username: '',
-  password: '',
-  displayName: '',
-  role: 'STUDENT' as UserRole,
-})
+const addForm = reactive({ username: '', password: '', displayName: '' })
 const addErrors = reactive({ username: '', password: '', displayName: '' })
 
-function openAddStudent() {
-  addForm.role = 'STUDENT'
-  addOpen.value = true
+function openAdd() {
+  addForm.username = ''
+  addForm.password = ''
+  addForm.displayName = ''
   resetAddErrors()
-}
-
-function openAddTeacher() {
-  addForm.role = 'TEACHER'
   addOpen.value = true
-  resetAddErrors()
 }
 
 function resetAddErrors() {
@@ -195,15 +113,10 @@ function closeAdd() {
   addOpen.value = false
 }
 
-/**
- * 提交创建用户：zod 前置校验（失败就地报错不发请求）→ create → toast → 刷新
- *
- * 教师端 addForm.role 恒 STUDENT（角色选择器隐藏）；超管端由选择器写入。
- */
+/** 提交创建学生：zod 前置校验 → create（role 恒 STUDENT）→ toast → 刷新 */
 async function submitAdd() {
   const parsed = createSchema.safeParse(addForm)
   if (!parsed.success) {
-    // zod v4 issues.path 为字段路径数组：includes 判定字段归属，就地分列报错
     const issues = parsed.error.issues
     addErrors.username = issues.find((i) => i.path.includes('username'))?.message ?? ''
     addErrors.password = issues.find((i) => i.path.includes('password'))?.message ?? ''
@@ -219,21 +132,19 @@ async function submitAdd() {
       username: addForm.username.trim(),
       password: addForm.password,
       displayName: addForm.displayName.trim(),
-      role: addForm.role,
+      role: 'STUDENT',
     })
-    showToast(addForm.role === 'STUDENT' ? '学生账号已创建' : '教师账号已创建', 'success')
+    showToast('学生账号已创建', 'success')
     addOpen.value = false
     await load()
   } catch (err) {
-    showToast(messageOf(err, '创建用户失败，请稍后重试'), 'danger')
+    showToast(messageOf(err, '创建学生失败，请稍后重试'), 'danger')
   } finally {
     addSubmitting.value = false
   }
 }
 
-// ====================================================================
-// 编辑 displayName Dialog
-// ====================================================================
+// ============ 编辑 displayName Dialog ============
 
 const editing = ref<UserDTO | null>(null)
 const editName = ref('')
@@ -272,13 +183,9 @@ async function submitEdit() {
   }
 }
 
-// ====================================================================
-// 重置密码 Dialog（zod ≥6 + 两次输入一致）
-// ====================================================================
+// ============ 重置密码 Dialog（zod ≥6 + 两次输入一致） ============
 
-const resetSchema = z.object({
-  newPassword: z.string().min(6, '新密码至少 6 位'),
-})
+const resetSchema = z.object({ newPassword: z.string().min(6, '新密码至少 6 位') })
 
 const resetting = ref<UserDTO | null>(null)
 const newPassword = ref('')
@@ -298,11 +205,7 @@ function closeReset() {
   resetting.value = null
 }
 
-/**
- * 提交重置密码：zod ≥6 前置校验 → 两次输入一致校验 → resetPassword({newPassword})
- *
- * 校验失败就地报错不发请求；成功重置后学生需用新密码重新登录。
- */
+/** 提交重置密码：zod ≥6 前置校验 → 两次输入一致 → resetPassword({newPassword}) */
 async function submitReset() {
   if (!resetting.value) return
   const parsed = resetSchema.safeParse({ newPassword: newPassword.value })
@@ -326,9 +229,7 @@ async function submitReset() {
   }
 }
 
-// ====================================================================
-// 禁用/启用（二次确认，danger）
-// ====================================================================
+// ============ 禁用/启用（二次确认） ============
 
 const statusTarget = ref<UserDTO | null>(null)
 const statusNext = ref<UserStatus>('DISABLED')
@@ -344,13 +245,12 @@ function cancelStatusToggle() {
   statusTarget.value = null
 }
 
-/** 确认禁用/启用：updateStatus({status}) → toast → 刷新（danger 实底 + 不可恢复告警） */
 async function confirmStatusToggle() {
   if (!statusTarget.value) return
   statusSubmitting.value = true
   try {
     await userApi.updateStatus(statusTarget.value.id, { status: statusNext.value })
-    showToast(statusNext.value === 'DISABLED' ? '已禁用该用户' : '已启用该用户', 'success')
+    showToast(statusNext.value === 'DISABLED' ? '已禁用该学生' : '已启用该学生', 'success')
     statusTarget.value = null
     await load()
   } catch (err) {
@@ -360,9 +260,7 @@ async function confirmStatusToggle() {
   }
 }
 
-// ====================================================================
-// 删除（二次确认，不可恢复）
-// ====================================================================
+// ============ 删除（二次确认，不可恢复） ============
 
 const deleting = ref<UserDTO | null>(null)
 const deleteSubmitting = ref(false)
@@ -376,13 +274,12 @@ function cancelDelete() {
   deleting.value = null
 }
 
-/** 确认删除：remove → toast → 刷新（教师仅可删自己创建的学生，后端约束） */
 async function confirmDelete() {
   if (!deleting.value) return
   deleteSubmitting.value = true
   try {
     await userApi.remove(deleting.value.id)
-    showToast('用户已删除', 'success')
+    showToast('学生已删除', 'success')
     deleting.value = null
     await load()
   } catch (err) {
@@ -391,146 +288,85 @@ async function confirmDelete() {
     deleteSubmitting.value = false
   }
 }
-
-/** 当前 Tab 的空态文案与添加入口角色差异 */
-const emptyText = computed(() => {
-  switch (activeTab.value) {
-    case 'TEACHER':
-      return '还没有教师'
-    case 'STUDENT':
-      return '还没有学生'
-    default:
-      return '还没有用户'
-  }
-})
 </script>
 
 <template>
-  <main class="mx-auto max-w-[1400px] px-8 py-6">
-    <!-- 页头操作行：添加学生常驻；添加教师仅超管（设计 §2.4.5 权限矩阵） -->
+  <div>
+    <!-- 页头操作行：添加学生（本页职责=学生账号域，无教师入口） -->
     <div class="mb-4 flex items-center justify-between">
-      <p class="text-sm text-text-muted">管理账号角色、状态与密码，教师仅可操作自己创建的学生</p>
-      <div class="flex items-center gap-2">
-        <Button data-testid="add-student" @click="openAddStudent">
-          <PhUserPlus class="h-4 w-4" />
-          添加学生
-        </Button>
-        <Button
-          v-if="isSuperAdmin"
-          data-testid="add-teacher"
-          variant="outline"
-          @click="openAddTeacher"
-        >
-          <PhPlus class="h-4 w-4" />
-          添加教师
-        </Button>
-      </div>
+      <p class="text-sm text-text-muted">管理学生账号、状态与密码</p>
+      <Button data-testid="add-student" @click="openAdd">
+        <PhUserPlus class="h-4 w-4" />
+        添加学生
+      </Button>
     </div>
 
-    <!-- 角色 Tab：计数 chip 仅激活 Tab 展示（取自列表 total） -->
-    <div class="mb-4 inline-flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
-      <button
-        v-for="t in TABS"
-        :key="t.key"
-        type="button"
-        :data-testid="`tab-${t.key.toLowerCase()}`"
-        class="inline-flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-        :class="
-          activeTab === t.key
-            ? 'bg-brand-soft font-medium text-brand-strong'
-            : 'text-text-muted hover:bg-surface-2 hover:text-text'
-        "
-        @click="switchTab(t.key)"
-      >
-        {{ t.label }}
-        <span
-          v-if="activeTab === t.key"
-          :data-testid="`tab-count-${t.key.toLowerCase()}`"
-          class="rounded-full bg-surface px-1.5 text-xs tabular-nums text-text"
-        >
-          {{ total }}
-        </span>
-      </button>
-    </div>
-
-    <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
+    <!-- 错误态：页内横幅 + 重试 -->
     <div
       v-if="error"
       role="alert"
-      class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
+      class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
     >
       <span class="text-sm text-danger">{{ error }}</span>
-      <Button variant="outline" size="sm" data-testid="retry-users" @click="load">重试</Button>
+      <Button variant="outline" size="sm" data-testid="retry-students" @click="load">重试</Button>
     </div>
 
-    <!-- 加载态：表格骨架屏（表头 + 5 行灰条，与最终表格同形） -->
+    <!-- 加载态：表格骨架屏 -->
     <div
       v-else-if="loading"
-      data-testid="user-skeleton"
+      data-testid="student-skeleton"
       class="overflow-hidden rounded-xl border border-border bg-surface"
-      aria-label="用户列表加载中"
+      aria-label="学生列表加载中"
     >
       <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
         <div
-          v-for="i in 6"
+          v-for="i in 5"
           :key="`head-${i}`"
-          class="h-3 w-20 animate-pulse rounded bg-slate-200"
+          class="h-3 w-20 animate-pulse rounded bg-surface-2"
         />
       </div>
       <div
         v-for="i in 5"
         :key="`row-${i}`"
-        class="h-11 animate-pulse border-b border-border bg-slate-50"
+        class="h-11 animate-pulse border-b border-border bg-surface"
       />
     </div>
 
-    <!-- 空态：按 Tab 语义文案 + 添加入口（禁裸「暂无数据」） -->
+    <!-- 空态：语义文案 + 添加入口 -->
     <div
-      v-else-if="users.length === 0"
+      v-else-if="students.length === 0"
       class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
     >
       <PhWarningCircle class="h-8 w-8 text-text-subtle" />
-      <p class="mt-3 text-sm font-medium text-text">{{ emptyText }}</p>
-      <p class="mt-1 text-xs text-text-muted">创建账号后即可由学生登录使用课程助手</p>
-      <div class="mt-4 flex gap-2">
-        <Button data-testid="add-student-empty" @click="openAddStudent">添加学生</Button>
-        <Button
-          v-if="isSuperAdmin"
-          data-testid="add-teacher-empty"
-          variant="outline"
-          @click="openAddTeacher"
-        >
-          添加教师
-        </Button>
+      <p class="mt-3 text-sm font-medium text-text">还没有学生</p>
+      <p class="mt-1 text-xs text-text-muted">创建学生账号后即可由学生登录使用课程助手</p>
+      <div class="mt-4">
+        <Button data-testid="add-student-empty" @click="openAdd">添加学生</Button>
       </div>
     </div>
 
-    <!-- 正常态：分页表格（用户名/显示名/角色/状态/创建时间/操作） -->
+    <!-- 正常态：分页表格 -->
     <template v-else>
       <div class="overflow-hidden rounded-xl border border-border bg-surface">
-        <table data-testid="user-table" class="w-full text-sm">
+        <table data-testid="student-table" class="w-full text-sm">
           <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
             <tr>
               <th class="px-4 py-2.5 font-medium">用户名</th>
               <th class="px-4 py-2.5 font-medium">显示名</th>
-              <th class="w-28 px-4 py-2.5 font-medium">角色</th>
               <th class="w-28 px-4 py-2.5 font-medium">状态</th>
-              <th class="w-32 px-4 py-2.5 font-medium">创建时间</th>
-              <th class="w-72 px-4 py-2.5 text-right font-medium">操作</th>
+              <th class="w-40 px-4 py-2.5 font-medium">创建时间</th>
+              <th class="w-64 px-4 py-2.5 text-right font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="u in users"
+              v-for="u in students"
               :key="u.id"
               :data-testid="`row-${u.id}`"
-              class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
+              class="h-11 border-b border-border transition-colors duration-150 last:border-b-0 hover:bg-surface-2"
             >
               <td class="px-4 font-medium text-text">{{ u.username }}</td>
               <td class="px-4 text-text-muted">{{ u.displayName }}</td>
-              <td class="px-4">
-                <Badge :variant="roleVariant(u.role)">{{ u.role }}</Badge>
-              </td>
               <td class="px-4">
                 <Badge :data-testid="`user-status-${u.id}`" :variant="statusVariant(u.status)">
                   {{ u.status }}
@@ -555,7 +391,6 @@ const emptyText = computed(() => {
                   >
                     重置密码
                   </Button>
-                  <!-- 权限矩阵：自身行禁用/启用按钮隐藏（防自锁） -->
                   <Button
                     v-if="!isSelf(u) && u.status === 'ACTIVE'"
                     variant="danger"
@@ -589,7 +424,7 @@ const emptyText = computed(() => {
         </table>
       </div>
 
-      <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
+      <!-- 分页器 -->
       <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
         <span>
           共 <span class="tabular-nums text-text">{{ total }}</span> 条
@@ -618,41 +453,22 @@ const emptyText = computed(() => {
       </div>
     </template>
 
-    <!-- ================================================================
-         添加用户 Dialog（教师端无角色选择器，固定 STUDENT；超管含角色选择器）
-         ================================================================ -->
+    <!-- 添加学生 Dialog（角色固定 STUDENT，无角色选择器） -->
     <div
       v-if="addOpen"
       data-testid="add-user-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
       @keydown.esc="closeAdd"
       @click.self="closeAdd"
     >
       <div
-        class="w-full max-w-[480px] rounded-xl border border-border bg-surface p-6 shadow-md"
+        class="animate-menu-in w-full max-w-[480px] rounded-xl border border-border bg-surface p-6 shadow-lg"
         role="dialog"
         aria-modal="true"
         @click.stop
       >
-        <h2 class="text-base font-semibold text-text">
-          {{ addForm.role === 'STUDENT' ? '添加学生' : '添加教师' }}
-        </h2>
+        <h2 class="text-base font-semibold text-text">添加学生</h2>
         <form data-testid="add-form" class="mt-5 space-y-4" novalidate @submit.prevent="submitAdd">
-          <!-- 角色选择器：仅超管展示（设计 §2.4.5 权限矩阵），教师固定 STUDENT -->
-          <div v-if="isSuperAdmin">
-            <label for="add-role" class="mb-1.5 block text-sm font-medium text-text">
-              角色 <span class="text-danger">*</span>
-            </label>
-            <select
-              id="add-role"
-              v-model="addForm.role"
-              data-testid="add-role"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
-            >
-              <option value="STUDENT">STUDENT（学生）</option>
-              <option value="TEACHER">TEACHER（教师）</option>
-            </select>
-          </div>
           <div>
             <label for="add-username" class="mb-1.5 block text-sm font-medium text-text">
               用户名 <span class="text-danger">*</span>
@@ -729,12 +545,12 @@ const emptyText = computed(() => {
     <div
       v-if="editing"
       data-testid="edit-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
       @keydown.esc="closeEdit"
       @click.self="closeEdit"
     >
       <div
-        class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+        class="animate-menu-in w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-lg"
         role="dialog"
         aria-modal="true"
         @click.stop
@@ -770,16 +586,16 @@ const emptyText = computed(() => {
       </div>
     </div>
 
-    <!-- 重置密码 Dialog（zod ≥6 + 两次输入一致） -->
+    <!-- 重置密码 Dialog -->
     <div
       v-if="resetting"
       data-testid="reset-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
       @keydown.esc="closeReset"
       @click.self="closeReset"
     >
       <div
-        class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+        class="animate-menu-in w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-lg"
         role="dialog"
         aria-modal="true"
         @click.stop
@@ -837,27 +653,27 @@ const emptyText = computed(() => {
       </div>
     </div>
 
-    <!-- 禁用/启用二次确认（danger 实底 + submitting 拦截） -->
+    <!-- 禁用/启用二次确认 -->
     <div
       v-if="statusTarget"
       data-testid="status-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
       @keydown.esc="cancelStatusToggle"
       @click.self="cancelStatusToggle"
     >
       <div
-        class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+        class="animate-menu-in w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-lg"
         role="alertdialog"
         aria-modal="true"
         @click.stop
       >
         <div class="flex items-start gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger/10">
             <PhWarningCircle class="h-5 w-5 text-danger" />
           </div>
           <div>
             <h2 class="text-base font-semibold text-text">
-              {{ statusNext === 'DISABLED' ? '禁用用户' : '启用用户' }}
+              {{ statusNext === 'DISABLED' ? '禁用学生' : '启用学生' }}
             </h2>
             <p class="mt-2 text-sm leading-relaxed text-text-muted">
               <template v-if="statusNext === 'DISABLED'">
@@ -874,9 +690,8 @@ const emptyText = computed(() => {
             :disabled="statusSubmitting"
             data-testid="cancel-status"
             @click="cancelStatusToggle"
+            >取消</Button
           >
-            取消
-          </Button>
           <Button
             :variant="statusNext === 'DISABLED' ? 'danger' : 'default'"
             data-testid="submit-status"
@@ -890,26 +705,26 @@ const emptyText = computed(() => {
       </div>
     </div>
 
-    <!-- 删除用户二次确认（不可恢复告警，设计 §2.6） -->
+    <!-- 删除学生二次确认 -->
     <div
       v-if="deleting"
       data-testid="user-del-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
       @keydown.esc="cancelDelete"
       @click.self="cancelDelete"
     >
       <div
-        class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+        class="animate-menu-in w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-lg"
         role="alertdialog"
         aria-modal="true"
         @click.stop
       >
         <div class="flex items-start gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger/10">
             <PhWarningCircle class="h-5 w-5 text-danger" />
           </div>
           <div>
-            <h2 class="text-base font-semibold text-text">删除用户</h2>
+            <h2 class="text-base font-semibold text-text">删除学生</h2>
             <p class="mt-2 text-sm leading-relaxed text-text-muted">
               删除后「{{ deleting.displayName }}」的账号与登录权限一并移除，
               <span class="font-medium text-danger">此操作不可恢复</span>。确认删除？
@@ -936,5 +751,5 @@ const emptyText = computed(() => {
         </div>
       </div>
     </div>
-  </main>
+  </div>
 </template>

@@ -35,9 +35,10 @@ test.describe('用户管理', () => {
   test('教师端：列表渲染 + 添加学生 Dialog 无角色选择器', async ({ page }) => {
     await mockUsers(page)
     await login(page, 'teacher')
-    await page.getByRole('link', { name: '用户' }).click()
+    await page.getByRole('link', { name: '学生管理' }).click()
     await expect(page.getByText('李明')).toBeVisible()
-    // 教师端无「添加教师」入口
+    // 职责拆分：教师角色侧栏无「教师管理」入口（仅超管），页面亦无添加教师按钮
+    await expect(page.getByRole('link', { name: '教师管理' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /添加教师/ })).toHaveCount(0)
     await page.getByRole('button', { name: /添加学生/ }).click()
     // Dialog 内无角色选择器（教师固定 STUDENT；表头「角色」在表格中，需限定 Dialog 范围）
@@ -52,7 +53,7 @@ test.describe('用户管理', () => {
       await r.fulfill({ status: 200, contentType: 'application/json', body: apiOk(null) })
     })
     await login(page, 'teacher')
-    await page.getByRole('link', { name: '用户' }).click()
+    await page.getByRole('link', { name: '学生管理' }).click()
     await page.getByTestId('op-disable-s1').click()
     await page.getByTestId('submit-status').click()
     await expect.poll(() => patched).toEqual({ status: 'DISABLED' })
