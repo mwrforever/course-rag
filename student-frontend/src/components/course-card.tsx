@@ -106,7 +106,7 @@ export function CourseCard({ course, priority = false }: CourseCardProps) {
   return (
     <Link
       href={`/courses/${course.id}`}
-      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm transition-[transform,opacity] duration-200 motion-reduce:transition-none hover:border-brand/30 hover:shadow-md hover:shadow-teal-900/5 focus-visible:ring-2 focus-visible:ring-brand"
+      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-xs transition-[transform,opacity] duration-200 motion-reduce:transition-none hover:-translate-y-1 hover:border-brand/30 hover:shadow-lg hover:shadow-brand/10 focus-visible:ring-2 focus-visible:ring-brand"
     >
       {/* 封面区：16:9；hover 微缩放（reduced-motion 静态）+ 「进入课程」CTA 从底部滑入 */}
       <motion.div
@@ -129,9 +129,18 @@ export function CourseCard({ course, priority = false }: CourseCardProps) {
             data-testid="cover-fallback"
             className={`grid h-full w-full place-items-center bg-linear-to-br ${fallback.gradient}`}
           >
-            <FallbackIcon size={44} aria-hidden className="text-stone-400" />
+            <FallbackIcon size={44} aria-hidden className="text-subtle" />
           </div>
         )}
+        {/* 电商语义：封面左上角分类徽章（深色半透明 + 毛玻璃，任何封面均可读） */}
+        {course.category ? (
+          <span
+            aria-hidden
+            className="absolute top-2.5 left-2.5 rounded-full bg-black/40 px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm"
+          >
+            {course.category}
+          </span>
+        ) : null}
         {/* hover CTA 滑入（纯装饰提示，整卡即链接，aria-hidden 避免重复读屏）；
             只动画 transform/opacity；reduced-motion 下常显且无过渡（motion-reduce: 变体） */}
         <span

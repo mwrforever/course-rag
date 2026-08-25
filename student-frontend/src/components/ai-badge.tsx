@@ -10,13 +10,13 @@ export interface AiBadgeProps {
 }
 
 /**
- * AI 助教人格化徽标（设计 §1.5.1 首页 Hero 右栏 / 空态）
+ * AI 助教人格化徽标（UI 重构 2026-08-25：kimi 蓝系）
  *
- * 几何渐变徽章（teal 渐变底 + 右上旋转小方块 + 内圈圆环）+ Sparkle 图标；
- * 缓慢呼吸浮动（6s ease-in-out 循环、幅度 4px，设计 §1.6 品牌生命感）。
+ * 几何渐变徽章（品牌蓝紫渐变底 + 顶部高光点 + 内圈圆环）+ Sparkle 图标；
+ * 缓慢呼吸浮动（3.2s ease-in-out 循环、幅度 6px，kimi 首页 Doodle 语义）。
  *
  * 动效降级：prefers-reduced-motion 命中或检测不可用（useReducedMotion 返回 null）
- * 时完全静态，不挂任何动画 props（taste-skill 硬性要求，未知态按可访问性优先处理）。
+ * 时完全静态，不挂任何动画 props（可访问性优先，未知态按静态处理）。
  */
 export function AiBadge({ className = "" }: AiBadgeProps) {
   // 检测不可用（null）按静态处理：宁可无动效，不可违背 reduced-motion 偏好
@@ -26,17 +26,17 @@ export function AiBadge({ className = "" }: AiBadgeProps) {
     <motion.span
       aria-hidden
       data-testid="ai-badge"
-      className={`relative grid size-16 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-brand to-brand-strong text-white shadow-md shadow-teal-900/5 ${className}`}
-      animate={reduceMotion ? undefined : { y: [0, -4, 0] }}
-      transition={reduceMotion ? undefined : { duration: 6, ease: "easeInOut", repeat: Infinity }}
+      className={`bg-gradient-ai relative grid size-16 shrink-0 place-items-center rounded-2xl text-white shadow-lg shadow-brand/30 ${className}`}
+      animate={reduceMotion ? undefined : { y: [0, -6, 0] }}
+      transition={reduceMotion ? undefined : { duration: 3.2, ease: "easeInOut", repeat: Infinity }}
     >
-      {/* 几何装饰：右上角旋转小方块 + 内圈圆环，叠加 Sparkle 居中 */}
+      {/* 几何装饰：顶部高光点 + 内圈圆环，叠加 Sparkle 居中（kimi AI 徽标语义） */}
       <span
         aria-hidden
-        className="absolute -top-1 -right-1 size-3 rotate-12 rounded-[4px] bg-brand-light"
+        className="absolute -top-1 -right-1 size-3 rounded-full bg-white/80 blur-[1px]"
       />
-      <span aria-hidden className="absolute size-9 rounded-full border border-white/30" />
-      <Sparkle size={26} weight="fill" aria-hidden className="relative" />
+      <span aria-hidden className="absolute size-9 rounded-full border border-white/25" />
+      <Sparkle size={26} weight="fill" aria-hidden className="relative drop-shadow-sm" />
     </motion.span>
   );
 }
