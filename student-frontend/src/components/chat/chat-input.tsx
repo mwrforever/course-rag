@@ -99,7 +99,8 @@ export function ChatInput({
   const rows = Math.min(6, Math.max(1, value.split("\n").length));
 
   return (
-    <div className="flex items-end gap-2 rounded-xl border border-border bg-surface p-2 shadow-sm transition-colors focus-within:border-brand">
+    // kimi 输入区形态：20px 大圆角编辑器，聚焦边框加深 + 柔和投影（UI 重构 2026-08-25）
+    <div className="flex w-full items-end gap-2 rounded-[20px] border border-border bg-surface p-2 pl-4 shadow-xs transition-[border-color,box-shadow] focus-within:border-brand/50 focus-within:shadow-md">
       <textarea
         value={value}
         rows={rows}
@@ -107,19 +108,19 @@ export function ChatInput({
         onKeyDown={handleKeyDown}
         placeholder="输入你的问题，Enter 发送，Shift+Enter 换行"
         aria-label="问题输入框"
-        className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-[15px] leading-6 text-text outline-none placeholder:text-subtle"
+        className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-1 py-2 text-[15px] leading-6 text-text outline-none placeholder:text-subtle"
       />
       <button
         type="button"
         aria-label={streaming ? "停止生成" : "发送"}
         disabled={streaming ? false : !canSend}
         onClick={() => (streaming ? onCancel() : void submit())}
-        className={`grid size-10 shrink-0 place-items-center rounded-xl text-white transition-colors focus-visible:ring-2 focus-visible:ring-brand active:scale-[0.98] ${
+        className={`grid size-10 shrink-0 place-items-center rounded-full text-white transition-all focus-visible:ring-2 focus-visible:ring-brand active:scale-95 ${
           streaming
-            ? "bg-danger hover:bg-danger/90"
+            ? "bg-text hover:opacity-90"
             : canSend
               ? "bg-brand hover:bg-brand-strong"
-              : "cursor-not-allowed bg-brand/30"
+              : "cursor-not-allowed bg-surface-2 text-faint"
         }`}
       >
         <motion.span
@@ -131,7 +132,7 @@ export function ChatInput({
         >
           {/* 发送/停止图标交叉淡入（关键帧由 motion key 切换触发） */}
           {streaming ? (
-            <Square size={16} weight="fill" aria-hidden />
+            <Square size={15} weight="fill" aria-hidden />
           ) : (
             <PaperPlaneRight size={16} weight="fill" aria-hidden />
           )}

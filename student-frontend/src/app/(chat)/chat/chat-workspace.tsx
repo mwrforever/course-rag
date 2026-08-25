@@ -82,7 +82,7 @@ export function ChatSkeleton() {
   return (
     <div
       data-testid="chat-skeleton"
-      className="mx-auto w-full max-w-[880px] space-y-8 px-6 py-8"
+      className="mx-auto w-full max-w-[840px] space-y-8 px-6 py-8"
       aria-busy="true"
     >
       <div className="flex justify-end">
@@ -284,12 +284,12 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   const isEmpty = displayMessages.length === 0;
 
   return (
-    <div className="flex h-[calc(100dvh-4rem)] flex-col" data-testid="chat-workspace">
-      {/* 上下文条 40px：← 返回课程 · 会话标题 · 新建对话（D7 课程名面包屑） */}
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-surface px-6 text-sm">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-workspace">
+      {/* 上下文条：kimi 对话页页头（← 返回课程 · 课程名 chip · 会话标题 · 新建对话） */}
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/80 bg-bg/70 px-5 text-sm backdrop-blur">
         <Link
           href={backHref}
-          className="flex items-center gap-1 text-muted transition-colors hover:text-brand-strong"
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-muted transition-colors hover:bg-surface-2 hover:text-brand-strong"
         >
           <ArrowLeft size={14} aria-hidden />
           返回课程
@@ -304,12 +304,12 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
           </span>
         ) : null}
         <span aria-hidden className="h-4 w-px bg-border" />
-        <span className="min-w-0 truncate font-medium text-text" data-testid="context-title">
+        <span className="min-w-0 truncate text-muted" data-testid="context-title">
           {contextTitle}
         </span>
         <Link
           href="/chat"
-          className="ml-auto flex shrink-0 items-center gap-1 rounded-xl px-2.5 py-1 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-brand-strong"
+          className="ml-auto flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-brand-strong"
         >
           <Plus size={13} aria-hidden />
           新建对话
@@ -323,7 +323,7 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
           <ChatSkeleton />
         ) : history && history.status === "error" && displayMessages.length === 0 ? (
           // 历史回显失败：页内横幅 + 重试（设计 §1.7 Error）
-          <div className="mx-auto w-full max-w-[880px] px-6 py-8">
+          <div className="mx-auto w-full max-w-[840px] px-6 py-8">
             <SectionError onRetry={history.retry} />
           </div>
         ) : isEmpty ? (
@@ -341,7 +341,7 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
                   type="button"
                   data-testid="suggestion-chip"
                   onClick={() => handleSuggestion(suggestion)}
-                  className="rounded-full border border-border bg-surface px-4 py-2 text-sm text-muted transition-colors hover:border-brand/40 hover:bg-brand-light hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
+                  className="rounded-full border border-border bg-surface px-4 py-2 text-sm text-muted transition-all hover:-translate-y-0.5 hover:border-brand/40 hover:bg-brand-light hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   {suggestion}
                 </button>
@@ -364,7 +364,7 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
           <div
             role="alert"
             data-testid="stream-error-banner"
-            className="mx-auto w-full max-w-[880px] px-6 pt-4"
+            className="mx-auto w-full max-w-[840px] px-6 pt-4"
           >
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3">
               <p className="min-w-0 flex-1 text-sm text-danger">{state.error.message}</p>
@@ -391,9 +391,9 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
         ) : null}
       </div>
 
-      {/* 吸底输入区：surface/95 + backdrop-blur + 顶部 1px 边框 */}
-      <div className="shrink-0 border-t border-border bg-surface/95 backdrop-blur">
-        <div className="mx-auto w-full max-w-[880px] px-6 py-4">
+      {/* 吸底输入区：bg/80 + backdrop-blur + 顶部 1px 边框（kimi 对话页形态） */}
+      <div className="shrink-0 border-t border-border/80 bg-bg/80 backdrop-blur">
+        <div className="mx-auto w-full max-w-[840px] px-6 py-4">
           {pendings.length > 0 ? (
             <AttachmentChips items={pendings} onRemove={removeAttachment} />
           ) : null}
@@ -404,7 +404,7 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
                 htmlFor="attachment-image-input"
                 title="上传图片"
                 aria-label="上传图片"
-                className="grid size-10 cursor-pointer place-items-center rounded-xl border border-border bg-surface text-muted transition-colors hover:bg-surface-2 hover:text-brand-strong"
+                className="grid size-10 cursor-pointer place-items-center rounded-full border border-border bg-surface text-muted transition-colors hover:bg-surface-2 hover:text-brand-strong"
               >
                 <Paperclip size={17} aria-hidden />
               </label>
@@ -425,7 +425,7 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
                 htmlFor="attachment-doc-input"
                 title="上传文档"
                 aria-label="上传文档"
-                className="grid size-10 cursor-pointer place-items-center rounded-xl border border-border bg-surface text-muted transition-colors hover:bg-surface-2 hover:text-brand-strong"
+                className="grid size-10 cursor-pointer place-items-center rounded-full border border-border bg-surface text-muted transition-colors hover:bg-surface-2 hover:text-brand-strong"
               >
                 <FileText size={17} aria-hidden />
               </label>

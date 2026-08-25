@@ -110,15 +110,15 @@ export function MessageList({
   const showCursor = streaming && last?.role === "assistant";
 
   return (
-    <div data-testid="message-flow" className="mx-auto w-full max-w-[880px] space-y-8 px-6 py-8">
+    <div data-testid="message-flow" className="mx-auto w-full max-w-[840px] space-y-8 px-6 py-8">
       {messages.map((message) => {
         if (message.role === "user") {
           return (
             <div key={message.id} data-testid="user-message" className="flex justify-end">
               <div
                 data-testid="user-bubble"
-                // 用户气泡：brand-light 底 + 右下角 6px 圆角（形状锁唯一例外，设计 §1.4）
-                className="max-w-[70%] rounded-2xl rounded-br-md bg-brand-light px-4 py-2.5"
+                // 用户气泡：kimi 灰 #F2F3F5 底 + 右下角小圆角（site 形态唯一例外，UI 重构 2026-08-25）
+                className="max-w-[70%] rounded-[18px] rounded-br-[8px] bg-bubble px-4 py-2.5"
               >
                 {message.attachments.length > 0 ? (
                   <UserAttachmentChips
