@@ -1,0 +1,2 @@
+# Windows 批处理脚本强制 CRLF 行尾（cmd.exe 解析要求；仓库内仍按 autocrlf 规范存储 LF）
+*.bat text eol=crlf

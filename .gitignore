@@ -40,6 +40,9 @@ coverage/
 # ── 数据卷（Docker 挂载目录） ──
 appdata/
 
+# ── 过程文档（docs/ 不入库，仅本地保留；正式代码与项目宪法入版本控制） ──
+docs/
+
 # ── 系统文件 ──
 .DS_Store
 Thumbs.db

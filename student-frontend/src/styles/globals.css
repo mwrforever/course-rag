@@ -1,3 +1,14 @@
+/* ===== 字体自托管（替代 next/font/google 远程拉取，国内网络可用；与 B 端 @fontsource 方案一致） =====
+   Outfit 承担拉丁与数字显示、Noto Sans SC 承担中文、Geist Mono 等宽（设计文档 §1.3）；
+   各字重 CSS 引入 @font-face，浏览器按 unicode-range 分片按需加载 */
+@import "@fontsource/outfit/400.css";
+@import "@fontsource/outfit/500.css";
+@import "@fontsource/outfit/600.css";
+@import "@fontsource/outfit/700.css";
+@import "@fontsource/noto-sans-sc/400.css";
+@import "@fontsource/noto-sans-sc/500.css";
+@import "@fontsource/noto-sans-sc/700.css";
+@import "@fontsource/geist-mono/400.css";
 @import "tailwindcss";
 
 /* ===== 设计令牌（设计文档 §1.2，Tailwind v4 CSS-first 方案，无 tailwind.config.ts） =====
@@ -17,9 +28,9 @@
   --color-success: #16a34a;
   --color-danger: #dc2626;
   --color-warning: #d97706;
-  /* 字体变量由 layout.tsx 的 next/font 注入（--font-outfit/--font-noto/--font-geist-mono） */
-  --font-display: var(--font-outfit), var(--font-noto), system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), monospace;
+  /* 字体族由上方 @fontsource 自托管；display 优先 Outfit 拉丁、Noto Sans SC 兜底中文 */
+  --font-display: "Outfit", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "Geist Mono", monospace;
   /* 上下文抽屉滑入/遮罩淡入（设计 §1.5.3；仅动画 transform/opacity，motion-reduce 降级静态） */
   --animate-drawer-in: drawer-in 240ms ease-out;
   --animate-overlay-in: overlay-in 240ms ease-out;

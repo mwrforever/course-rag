@@ -105,7 +105,7 @@ mybatis-plus:
 
 # ── CORS 跨域配置（与 httpOnly cookie 协同需 allowCredentials=true）──
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5000,http://localhost:5001}
 
 # ── MinIO 业务文件存储 ──
 minio:

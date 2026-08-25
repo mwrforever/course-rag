@@ -5,7 +5,7 @@
 
 ## 常用命令
 
-- `pnpm dev`: 本地开发（3000 端口，`/api/v1` 经 next.config.ts rewrite 同源代理到 8080 后端）
+- `pnpm dev`: 本地开发（5000 端口，`/api/v1` 经 next.config.ts rewrite 同源代理到 8080 后端）
 - `pnpm lint`: ESLint + Prettier 检查
 - `pnpm typecheck`: TypeScript 类型检查（tsc --noEmit）
 - `pnpm test:cov`: Vitest 单测 + v8 覆盖率

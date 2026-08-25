@@ -16,14 +16,14 @@ export default defineConfig({
   retries: 1,
   reporter: [["list"]],
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: "http://localhost:5000",
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     // 本机 pnpm 仅可经 corepack 调用（CI 的 pnpm/action-setup 则直接可用）
     command: "corepack pnpm dev",
-    url: "http://localhost:3000",
+    url: "http://localhost:5000",
     reuseExistingServer: !process.env.CI,
     // 首次编译 + next/font 自托管字体分片拉取（NotoSansSC）可能较慢，放宽到 5 分钟
     timeout: 300_000,
