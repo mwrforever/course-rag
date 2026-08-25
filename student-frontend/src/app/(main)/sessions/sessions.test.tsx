@@ -160,8 +160,9 @@ describe("会话页：时间分组与列表渲染", () => {
       now.getDate() - ((now.getDay() + 6) % 7),
     );
     // 仅当今天与本周一相隔 ≥2 天时（周三及以后）才存在「本周但非今昨」的样例；
-    // 周一/周二时本周组为空组（昨天优先），跳过渲染断言（分组语义由 time.test 覆盖）
-    const dayDiff = Math.round((now.getTime() - monday.getTime()) / 86_400_000);
+    // 周一/周二时本周组为空组（昨天优先），跳过渲染断言（分组语义由 time.test 覆盖）。
+    // 整数天差用 floor（round 在周二下午会把 1.6 天误判为 2，导致用例误跑，2026-08-25 实证）
+    const dayDiff = Math.floor((now.getTime() - monday.getTime()) / 86_400_000);
     if (dayDiff < 2) {
       return;
     }
