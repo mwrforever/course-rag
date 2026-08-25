@@ -43,7 +43,7 @@ const HERO_BACKGROUND = [
   "radial-gradient(circle at 74% 28%, transparent 0, var(--color-brand-light) 60px, transparent 61px)",
   "radial-gradient(circle at 74% 28%, transparent 0, var(--color-brand-light) 120px, transparent 121px)",
   "radial-gradient(circle at 74% 28%, transparent 0, var(--color-brand-light) 180px, transparent 181px)",
-  "radial-gradient(600px 400px at 8% 90%, rgba(47,139,245,0.06) 0%, transparent 60%)",
+  "radial-gradient(600px 400px at 8% 90%, var(--color-brand-light) 0%, transparent 60%)",
   "linear-gradient(135deg, var(--color-brand-light) 0%, var(--color-surface) 50%, var(--color-bg) 100%)",
 ].join(",");
 
@@ -147,7 +147,7 @@ export default function HomePage() {
               {/* 主 CTA：开始提问 → 对话页（品牌渐变主按钮） */}
               <Link
                 href="/chat"
-                className="text-gradient-ai inline-flex items-center gap-2 rounded-full bg-gradient-ai px-6 py-3 text-[15px] font-medium text-white shadow-lg shadow-brand/30 transition-[transform,opacity] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand"
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-ai px-6 py-3 text-[15px] font-medium text-white shadow-lg shadow-brand/30 transition-[transform,opacity] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 开始提问
                 <ArrowRight size={16} aria-hidden />
@@ -193,9 +193,10 @@ export default function HomePage() {
           />
         ) : (
           <>
-            {/* 分类筛选条：横向可滚动 chip（全部 + 各分类计数），选中过滤 */}
+            {/* 分类筛选条：横向可滚动 chip（全部 + 各分类计数），选中过滤；
+                过滤器语义用按钮组 + aria-pressed（非页签，无 tabpanel 不滥用 tab 角色） */}
             <div
-              role="tablist"
+              role="group"
               aria-label="课程分类筛选"
               data-testid="category-filter"
               className="scrollbar-none -mx-1 mt-5 flex gap-2 overflow-x-auto px-1 pb-1"
@@ -206,8 +207,7 @@ export default function HomePage() {
                   <button
                     key={item.name}
                     type="button"
-                    role="tab"
-                    aria-selected={active}
+                    aria-pressed={active}
                     data-testid="category-chip"
                     onClick={() => setSelected(item.name)}
                     className={`shrink-0 rounded-full px-4 py-1.5 text-sm transition-all ${

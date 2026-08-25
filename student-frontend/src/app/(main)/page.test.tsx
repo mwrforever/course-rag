@@ -164,7 +164,7 @@ describe("首页四态：推荐课程", () => {
     expect(screen.getByAltText("高等数学（一）")).toBeInTheDocument();
 
     // 分类筛选条：全部(5) + 未分类(2) + 计算机(2) + 数学(1)（Map 按课程数据出现序聚合）
-    const chips = screen.getAllByRole("tab");
+    const chips = screen.getAllByTestId("category-chip");
     expect(chips.map((chip) => chip.textContent?.replace(/\s/g, ""))).toEqual([
       "全部5",
       "未分类2",
@@ -177,14 +177,15 @@ describe("首页四态：推荐课程", () => {
     expect(fallbacks.some((el) => el.classList.contains("from-violet-100"))).toBe(true);
     expect(fallbacks.some((el) => el.classList.contains("from-brand-light"))).toBe(true);
 
-    // 点计算机：过滤到 2 门，Python/Web 仍在、高等数学消失
-    fireEvent.click(screen.getByRole("tab", { name: /计算机/ }));
+    // 点计算机：过滤到 2 门，Python/Web 仍在、高等数学消失（aria-pressed 反映选中态）
+    fireEvent.click(screen.getByRole("button", { name: /计算机/ }));
     expect(await screen.findByText("Python 程序设计")).toBeInTheDocument();
     expect(screen.getByText("Web 前端开发")).toBeInTheDocument();
     expect(screen.queryByText("高等数学（一）")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /计算机/ })).toHaveAttribute("aria-pressed", "true");
 
     // 点全部：恢复全部
-    fireEvent.click(screen.getByRole("tab", { name: /全部/ }));
+    fireEvent.click(screen.getByRole("button", { name: /全部/ }));
     expect(await screen.findByText("高等数学（一）")).toBeInTheDocument();
 
     // 资料库入口横幅：跳转课程列表

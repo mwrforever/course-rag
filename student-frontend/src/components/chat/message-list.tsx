@@ -3,8 +3,8 @@
 /**
  * 对话消息流（设计 §1.5.4 消息流 + §1.6 动效）
  *
- * - 容器 max-w-[880px] 居中，消息间距 space-y-8（页面内滚动区）
- * - 用户消息：右对齐 teal-50（brand-light）气泡，rounded-2xl rounded-br-md
+ * - 容器 max-w-[840px] 居中，消息间距 space-y-8（页面内滚动区）
+ * - 用户消息：右对齐 bubble 气泡，rounded-[18px] rounded-br-[8px]
  *   （形状锁唯一例外）；附件缩略 chips（图片 blob 缩略 / 文档图标），纯文本防 XSS
  * - AI 消息：无气泡整栏（阅读友好），AI 徽标头像 + 思考卡/来源卡/正文/工具卡/操作栏
  * - 流式打字光标（1s 循环，仅最后一条 AI 消息且 streaming 时挂载）

@@ -46,7 +46,7 @@ const CATEGORY_FALLBACKS: ReadonlyArray<{
   { keywords: ["艺术", "音乐", "设计"], icon: Palette, gradient: "from-orange-100 to-yellow-100" },
 ];
 
-/** 默认兜底：未知/空 category（teal 低饱和渐变 + 书本图标，末端收 semantic 层 surface-2） */
+/** 默认兜底：未知/空 category（brand-light 低饱和渐变 + 书本图标，末端收 semantic 层 surface-2） */
 const DEFAULT_FALLBACK: { icon: Icon; gradient: string } = {
   icon: BookOpen,
   gradient: "from-brand-light to-surface-2",
@@ -132,11 +132,11 @@ export function CourseCard({ course, priority = false }: CourseCardProps) {
             <FallbackIcon size={44} aria-hidden className="text-subtle" />
           </div>
         )}
-        {/* 电商语义：封面左上角分类徽章（深色半透明 + 毛玻璃，任何封面均可读） */}
+        {/* 电商语义：封面左上角分类徽章（overlay 遮罩色 + 毛玻璃，任何封面均可读） */}
         {course.category ? (
           <span
             aria-hidden
-            className="absolute top-2.5 left-2.5 rounded-full bg-black/40 px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm"
+            className="absolute top-2.5 left-2.5 rounded-full bg-overlay px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm"
           >
             {course.category}
           </span>
@@ -145,7 +145,7 @@ export function CourseCard({ course, priority = false }: CourseCardProps) {
             只动画 transform/opacity；reduced-motion 下常显且无过渡（motion-reduce: 变体） */}
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-full items-center justify-center bg-linear-to-t from-stone-900/60 to-transparent px-3 py-2.5 text-sm font-medium text-white opacity-0 transition-[transform,opacity] duration-200 motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none group-hover:translate-y-0 group-hover:opacity-100"
+          className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-full items-center justify-center bg-linear-to-t from-overlay to-transparent px-3 py-2.5 text-sm font-medium text-white opacity-0 transition-[transform,opacity] duration-200 motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none group-hover:translate-y-0 group-hover:opacity-100"
         >
           进入课程
         </span>

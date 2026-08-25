@@ -20,23 +20,20 @@
   --color-bg: #fbfaf9;
   --color-surface: #ffffff;
   --color-surface-2: #f4f3f1;
-  --color-surface-3: #efeeec;
   --color-border: #e7e5e2;
   --color-border-strong: #d8d5d0;
   /* 用户消息气泡底（kimi 实测 #F2F3F5） */
   --color-bubble: #f2f3f5;
-  /* 弹窗/抽屉遮罩（暖中性半透明） */
+  /* 深色半透明遮罩（弹窗/抽屉遮罩、封面分类徽章底与 hover CTA 压暗渐变） */
   --color-overlay: rgba(24, 23, 21, 0.45);
   /* ── 文字层级（kimi 黑 90%/60%/45%/25%）── */
   --color-text: #191918;
   --color-muted: #5f5d59;
   --color-subtle: #8b8984;
   --color-faint: #b3b1ac;
-  /* ── 品牌蓝族（kimi #2F8BF5 / #1A73E8 / #6CB2FF，soft=12% 底 / light=6% 底）── */
+  /* ── 品牌蓝族（kimi #2F8BF5 / #1A73E8，soft=12% 底 / light=6% 底）── */
   --color-brand: #2f8bf5;
   --color-brand-strong: #1a73e8;
-  --color-brand-deep: #1557c4;
-  --color-brand-bright: #6cb2ff;
   --color-brand-soft: #2f8bf51f;
   --color-brand-light: #2f8bf50f;
   /* ── 状态语义色（kimi：success #21AE7D / warn #F5A623 / danger #F2705C，深一档保证文字可读）── */
@@ -62,16 +59,12 @@
   --shadow-xl: 0 16px 44px rgba(20, 18, 16, 0.16);
   /* ── 品牌渐变（仅 Logo / AI 头像 / 徽标 / 强调元素使用）── */
   --gradient-ai: linear-gradient(135deg, #63c6ff 0%, #2f8bf5 55%, #1a5dd9 100%);
-  --gradient-brand: linear-gradient(135deg, #ff5f9e 0%, #8b5cf6 50%, #2f8bf5 100%);
-  /* ── 动效（保留既有动画名，新增悬浮/渐入/骨架流光）── */
+  /* ── 动效（保留既有动画名，新增渐入/骨架流光）── */
   --animate-drawer-in: drawer-in 240ms ease-out;
   --animate-overlay-in: overlay-in 240ms ease-out;
   --animate-cursor-blink: cursor-blink 1s steps(2, start) infinite;
   --animate-source-in: source-in 280ms ease-out backwards;
   --animate-fade-in: fade-in 200ms ease-out;
-  --animate-fade-in-up: fade-in-up 420ms ease-out both;
-  --animate-float: float 3.2s ease-in-out infinite;
-  --animate-shimmer: shimmer 1.6s linear infinite;
 
   @keyframes drawer-in {
     from {
@@ -116,36 +109,6 @@
       opacity: 1;
     }
   }
-
-  @keyframes fade-in-up {
-    from {
-      opacity: 0;
-      transform: translateY(14px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
-
-  @keyframes float {
-    0%,
-    100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-6px);
-    }
-  }
-
-  @keyframes shimmer {
-    from {
-      background-position: -200% 0;
-    }
-    to {
-      background-position: 200% 0;
-    }
-  }
 }
 
 /* ===== 通用样式工具（渐变类供组件直接引用） ===== */
@@ -154,16 +117,21 @@
   .bg-gradient-ai {
     background-image: var(--gradient-ai);
   }
-  /* 品牌多彩渐变（Logo / 节日元素） */
-  .bg-gradient-brand {
-    background-image: var(--gradient-brand);
-  }
   /* 渐变文字（大标题强调） */
   .text-gradient-ai {
     background-image: var(--gradient-ai);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+  }
+}
+
+/* ===== 自定义工具类 ===== */
+/* 隐藏滚动条（横向 chip 条等自滚动容器；scrollbar-width 供 Firefox，::-webkit 供 Chromium/Safari） */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }
 

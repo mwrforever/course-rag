@@ -21,11 +21,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useChatStreaming } from "@/components/chat/chat-streaming-context";
 import { getSessions } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
 /** 侧栏折叠偏好 localStorage 键（布局状态持久化，kimi 语义） */
 const COLLAPSE_STORAGE_KEY = "cc.chat-sidebar.collapsed";
+/** 会话历史查询键（导出共享：工作区发送消息后按此失效，保证新会话即时进侧栏） */
+export const SIDEBAR_SESSIONS_QUERY_KEY = ["chat-sidebar-sessions"] as const;
 /** 会话历史侧栏拉取容量（一页即可覆盖常用会话；全量分页由 /sessions 页承担） */
 const SIDEBAR_SESSION_PAGE_SIZE = 20;
 
@@ -37,6 +40,8 @@ export function ChatSidebar() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, logout } = useAuth();
+  // 流式守卫：工作区正在生成时禁用新建对话跳转（导航重挂载会丢进行中的流视图）
+  const isStreaming = useChatStreaming();
   const [collapsed, setCollapsed] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -61,20 +66,22 @@ export function ChatSidebar() {
   };
 
   // Ctrl/Cmd+K 新建对话快捷键（kimi 语义；浏览器聚焦输入框时由应用层快捷键先行）
+  // 流式进行中忽略：跳转会重挂载工作区致流式状态整体丢失（chat-workspace 实证注释）
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        if (isStreaming) return;
         event.preventDefault();
         router.push("/chat");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router]);
+  }, [router, isStreaming]);
 
   // 会话历史（最近一页；loading 态骨架、空态提示）
   const sessionsQuery = useQuery({
-    queryKey: ["chat-sidebar-sessions"],
+    queryKey: SIDEBAR_SESSIONS_QUERY_KEY,
     queryFn: () => getSessions(1, SIDEBAR_SESSION_PAGE_SIZE),
   });
   const sessions = sessionsQuery.data?.records ?? [];
@@ -142,18 +149,22 @@ export function ChatSidebar() {
         )}
       </div>
 
-      {/* 新建对话按钮（折叠为纯图标） */}
+      {/* 新建对话按钮（折叠为纯图标）；流式中置灰提示（点击仍跳转，快捷键已守卫） */}
       {collapsed ? (
         <Link
           href="/chat"
           aria-label="新建对话"
-          className="mx-auto grid size-9 place-items-center rounded-xl border border-border bg-surface text-brand transition-colors hover:border-brand/40 hover:bg-brand-light"
+          title={isStreaming ? "正在生成回答，结束后再新建对话" : undefined}
+          className={`mx-auto grid size-9 place-items-center rounded-xl border border-border bg-surface text-brand transition-colors hover:border-brand/40 hover:bg-brand-light ${
+            isStreaming ? "cursor-not-allowed opacity-50" : ""
+          }`}
         >
           <Plus size={16} weight="bold" aria-hidden />
         </Link>
       ) : (
         <Link
           href="/chat"
+          title={isStreaming ? "正在生成回答，结束后再新建对话" : undefined}
           className="mx-2 flex h-10 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-sm text-text transition-colors hover:border-brand/40 hover:bg-brand-light hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
         >
           <Plus size={15} weight="bold" aria-hidden className="text-brand" />

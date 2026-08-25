@@ -3,11 +3,11 @@
 /**
  * AI 思考过程卡（设计 §1.5.4 ThinkingCard + §1.6 动效）
  *
- * - surface-2 底 + 左侧 2px teal-300 竖线；标题「正在思考…」→「已思考」可折叠
+ * - surface 底 + border 描边卡片；标题「正在思考…」→「已思考」可折叠
  * - 思考中：指示灯旋转 + 全文展开（流式追加由外部传入 thinking 全文）
  * - thinking_end 后自动折叠为一行摘要（末句截断），高度过渡 240ms
  *   （grid-template-rows 0fr→1fr 技术，仅动画高度与透明度；reduced-motion 静态）
- * - 内容 13px/1.6 stone-500，展开后 max-h-200px 内滚动
+ * - 内容 13px/leading-6 muted，展开后 max-h-200px 内滚动
  */
 import { CaretDown, CircleNotch } from "@phosphor-icons/react";
 import { useState } from "react";

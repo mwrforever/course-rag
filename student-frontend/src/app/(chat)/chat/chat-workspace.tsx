@@ -3,14 +3,16 @@
 /**
  * 对话页共享工作区（/chat 新对话 与 /chat/[sessionId] 历史会话共用，全 CSR）
  *
- * 结构（设计 §1.5.4）：上下文条 40px（返回课程/会话标题/新建对话 + D7 课程名面包屑）
- * → 消息流滚动区（max-w-880 居中、智能吸底滚动）→ 吸底输入区
- * （surface/95 + backdrop-blur + 附件 chips + 发送/停止 morph）。
+ * 结构（设计 §1.5.4）：上下文条 48px/h-12（返回课程/会话标题/新建对话 + D7 课程名面包屑）
+ * → 消息流滚动区（max-w-840 居中、智能吸底滚动）→ 吸底输入区
+ * （bg-bg/80 + backdrop-blur + 附件 chips + 发送/停止 morph）。
  *
  * 职责：
  * - useChatStream 全量状态消费；新会话（initialSessionId=null）metadata 到达后
  *   **不替换 URL**（E2E 实证修订 2026-08-24：replace 会重挂载组件致流式状态丢失，
  *   会话定位由 /sessions 与首页最近会话承担，见下文实现注释）
+ * - 流式状态上报 (chat) 布局 Context（侧栏 Ctrl+K 守卫）；会话归属落位即失效
+ *   侧栏历史缓存（布局常驻 QueryClient 长活，不失效则新会话不进侧栏）
  * - 409/503/网络错误分级 toast（§3.2）；建议提问 chip 点击即发送
  * - 附件全链路：前置校验（超限即拒无网络请求）→ 选中即传（chips 进度环）→
  *   图片 blob URL 预览；blob 生命周期：移除即 revoke、发送后保留供消息内预览、
@@ -18,6 +20,7 @@
  * - 空态：AI 徽标 + 问候（新对话）/「继续提问」（历史会话占位，Task 13 接回显）
  */
 import { ArrowLeft, FileText, Paperclip, Plus } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,6 +32,8 @@ import {
 } from "@/components/chat/attachment-chips";
 import { ChatInput, chatErrorText } from "@/components/chat/chat-input";
 import { ChatToast } from "@/components/chat/chat-toast";
+import { SIDEBAR_SESSIONS_QUERY_KEY } from "@/components/chat/chat-sidebar";
+import { useSetChatStreaming } from "@/components/chat/chat-streaming-context";
 import { MessageList, shouldStickToBottom } from "@/components/chat/message-list";
 import { SectionError } from "@/components/section-error";
 import { useChatStream, type StreamMessage } from "@/hooks/use-chat-stream";
@@ -108,7 +113,26 @@ export function ChatSkeleton() {
 export function ChatWorkspace({ initialSessionId, variant, title, history }: ChatWorkspaceProps) {
   const searchParams = useSearchParams();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const setStreaming = useSetChatStreaming();
   const { state, send, cancel, reconnect, reset } = useChatStream(initialSessionId);
+
+  // ── 流式状态上报 (chat) 布局 Context：侧栏据守卫 Ctrl+K/新建对话（防跳转丢流）──
+  useEffect(() => {
+    setStreaming(state.streaming);
+    // 卸载/导航离开时复位，避免侧栏残留流式守卫态
+    return () => setStreaming(false);
+  }, [state.streaming, setStreaming]);
+
+  // ── 会话归属落位即失效侧栏历史缓存 ──
+  // (chat) 组布局常驻 → QueryClient 长活，侧栏查询无 refetch 触发点；
+  // 新会话在 metadata 到达（sessionId 落位）后必须主动失效，才会出现在侧栏历史里。
+  // 续会话进入（initialSessionId 非空）同样触发一次，顺带刷新侧栏排序。
+  useEffect(() => {
+    if (state.sessionId) {
+      void queryClient.invalidateQueries({ queryKey: SIDEBAR_SESSIONS_QUERY_KEY });
+    }
+  }, [state.sessionId, queryClient]);
 
   // ── 轻量 toast（页面级状态，定时自动消失；卸载清理定时器）──
   const [toast, setToast] = useState<string | null>(null);

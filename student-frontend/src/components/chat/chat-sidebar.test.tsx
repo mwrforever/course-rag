@@ -8,9 +8,11 @@
  * motion 未在侧栏使用（纯 Tailwind 过渡），无需动画 mock。
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatSidebar } from "./chat-sidebar";
+import { ChatStreamingProvider, useSetChatStreaming } from "./chat-streaming-context";
 import type { SessionItem } from "@/lib/types";
 
 /** 数据层 mock：getSessions 会话列表（骨架/空/正常态） */
@@ -56,6 +58,15 @@ function renderSidebar(pathname = "/chat") {
       <ChatSidebar />
     </QueryClientProvider>,
   );
+}
+
+/** 流式状态探针：把 Provider 的 setStreaming 暴露给用例（模拟 ChatWorkspace 上报） */
+function StreamingProbe({ onReady }: { onReady: (set: (streaming: boolean) => void) => void }) {
+  const setStreaming = useSetChatStreaming();
+  useEffect(() => {
+    onReady(setStreaming);
+  }, [onReady, setStreaming]);
+  return null;
 }
 
 beforeEach(() => {
@@ -176,6 +187,35 @@ describe("ChatSidebar 折叠与快捷键", () => {
     await waitFor(() => {
       expect(navMock.push).toHaveBeenCalledWith("/chat");
     });
+  });
+
+  it("流式进行中：Ctrl+K 守卫不跳转、新建对话置灰提示，结束后恢复", async () => {
+    apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
+    // 探针：模拟工作区经 Context 上报流式状态
+    let setStreaming!: (streaming: boolean) => void;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ChatStreamingProvider>
+          <StreamingProbe onReady={(set) => (setStreaming = set)} />
+          <ChatSidebar />
+        </ChatStreamingProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("link", { name: /新建对话/ });
+
+    act(() => setStreaming(true));
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(navMock.push).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: /新建对话/ })).toHaveAttribute(
+      "title",
+      "正在生成回答，结束后再新建对话",
+    );
+
+    // 流结束（或工作区卸载复位）：快捷键恢复可用
+    act(() => setStreaming(false));
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(navMock.push).toHaveBeenCalledWith("/chat");
   });
 
   it("加载骨架：会话查询挂起时灰条骨架可见", async () => {
