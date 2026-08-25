@@ -1,12 +1,30 @@
 /**
- * (main) 主站布局测试（Task 8）：顶导壳 + QueryProvider 挂载
+ * (main) 主站布局测试：顶导壳（UI 重构 2026-08-25：SiteHeader 引入路由感知
+ * 的用户下拉，需 mock next/navigation）+ QueryProvider 挂载
  *
  * (auth) 路由组（登录页）无此壳；本布局负责全站顶导与 react-query 服务端状态上下文。
  */
 import { QueryClient, useQueryClient } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import MainLayout from "./layout";
+
+// SiteHeader 依赖 next/navigation（usePathname 激活态 + useRouter 登出跳转）与
+// auth-context（useAuth 用户态），jsdom 无 App Router/AuthProvider 上下文，mock 最小实现
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({ push: vi.fn() }),
+}));
+vi.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({
+    user: { userId: "u1", role: "STUDENT", displayName: "同学A" },
+    accessToken: null,
+    isAuthenticated: true,
+    isLoading: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+  }),
+}));
 
 /** 探针：验证 children 处于 QueryProvider 上下文内 */
 function Probe() {
@@ -21,7 +39,9 @@ describe("(main) 主站布局", () => {
         <Probe />
       </MainLayout>,
     );
-    expect(screen.getByRole("link", { name: "课程助手" })).toBeInTheDocument();
+    // 顶导品牌标识（渐变 Logo）与主导航（「课程助手」一词被 Logo 与导航项共用，按 testid 定位 Logo）
+    expect(screen.getByTestId("site-logo")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "首页" })).toBeInTheDocument();
     expect(screen.getByTestId("client")).toHaveTextContent("已挂载");
   });
 });

@@ -17,3 +17,40 @@ if (typeof globalThis.TextDecoder === "undefined") {
   Object.defineProperty(globalThis, "TextDecoder", { value: TextDecoder });
   Object.defineProperty(globalThis, "TextEncoder", { value: TextEncoder });
 }
+
+// IntersectionObserver 桩：motion whileInView 滚动动效在 jsdom 无真实观察器，
+// 注入最小可观察接口（构造不执行回调；组件静态渲染即断言目标，覆盖无碍）
+if (typeof globalThis.IntersectionObserver === "undefined") {
+  class IntersectionObserverStub {
+    readonly root = null;
+    readonly rootMargin = "";
+    readonly thresholds = [];
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+    takeRecords(): [] {
+      return [];
+    }
+  }
+  Object.defineProperty(globalThis, "IntersectionObserver", {
+    value: IntersectionObserverStub,
+    writable: true,
+  });
+}
+
+// matchMedia 桩：useReducedMotion 在 jsdom 缺失实现会抛错（matchMedia is not a function）
+if (typeof globalThis.matchMedia === "undefined") {
+  Object.defineProperty(globalThis, "matchMedia", {
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }),
+    writable: true,
+  });
+}

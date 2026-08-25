@@ -75,11 +75,11 @@ export default function ProfilePage() {
     <div className="mx-auto w-full max-w-6xl px-6 pb-20">
       {/* 用户卡：AI 徽标头像（displayName 首字母）+ 身份信息 + 退出登录 */}
       <section className="flex flex-wrap items-center gap-5 rounded-2xl border border-border bg-surface p-6">
-        {/* AI 徽标同款 teal 渐变圆角方块 + displayName 首字母（设计 §1.5.6 括号语义） */}
+        {/* AI 徽标同款品牌渐变圆角方块 + displayName 首字母（UI 重构 2026-08-25 kimi 蓝系） */}
         <span
           data-testid="profile-avatar"
           aria-hidden
-          className="grid size-16 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-brand to-brand-strong text-2xl font-bold text-white shadow-md shadow-teal-900/5"
+          className="bg-gradient-ai grid size-16 shrink-0 place-items-center rounded-2xl text-2xl font-bold text-white shadow-md shadow-brand/10"
         >
           {user.displayName.charAt(0) || "学"}
         </span>

@@ -104,13 +104,13 @@ describe("shouldStickToBottom 智能吸底滚动判定", () => {
 });
 
 describe("MessageList 用户消息", () => {
-  it("用户气泡：右对齐 + teal-50 底 + 右下角 6px 圆角（形状锁例外）", () => {
+  it("用户气泡：右对齐 + kimi 灰底 + 右下小圆角（形状锁例外）", () => {
     renderList([makeUser()]);
     const bubble = screen.getByTestId("user-message");
     expect(bubble.className).toContain("justify-end");
     const inner = screen.getByTestId("user-bubble");
-    expect(inner.className).toContain("bg-brand-light");
-    expect(inner.className).toContain("rounded-br-md");
+    expect(inner.className).toContain("bg-bubble");
+    expect(inner.className).toContain("rounded-br-[8px]");
   });
 
   it("用户消息带附件：图片 blob 缩略图 + 文档图标行", () => {
@@ -208,13 +208,13 @@ describe("MessageList 终态与操作栏", () => {
     expect(screen.queryByRole("button", { name: /复制/ })).not.toBeInTheDocument();
   });
 
-  it("消息流容器：max-w-[880px] 居中 + 消息间距 space-y-8", () => {
+  it("消息流容器：max-w-[840px] 居中 + 消息间距 space-y-8", () => {
     renderList([
       makeUser(),
       makeAssistant({ text: "回答", endStatus: "COMPLETED", messageId: "m" }),
     ]);
     const container = screen.getByTestId("message-flow");
-    expect(container.className).toContain("max-w-[880px]");
+    expect(container.className).toContain("max-w-[840px]");
     expect(container.className).toContain("space-y-8");
   });
 });

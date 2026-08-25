@@ -133,7 +133,7 @@ export default function CourseWorkbenchPage() {
     <div className="mx-auto w-full max-w-6xl px-6 pb-20">
       {/* ===== 课程 Hero：左封面（4:3 rounded-2xl）右信息 ===== */}
       <section className="grid items-start gap-8 py-10 md:grid-cols-[360px_1fr]">
-        <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-surface-2">
+        <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-surface-2 shadow-lg shadow-brand/10 ring-1 ring-border">
           {course.coverImage ? (
             <Image
               src={course.coverImage}
@@ -147,7 +147,7 @@ export default function CourseWorkbenchPage() {
               data-testid="hero-cover-fallback"
               className={`grid h-full w-full place-items-center bg-linear-to-br ${gradient}`}
             >
-              <FallbackIcon size={52} aria-hidden className="text-stone-400" />
+              <FallbackIcon size={52} aria-hidden className="text-subtle" />
             </div>
           )}
         </div>
@@ -189,13 +189,13 @@ export default function CourseWorkbenchPage() {
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
               href={`/chat?courseId=${course.id}&course=${encodeURIComponent(course.title)}`}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-[15px] font-medium text-white transition-colors hover:bg-brand-strong active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-brand"
+              className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2.5 text-[15px] font-medium text-white shadow-md shadow-brand/30 transition-[transform,opacity] hover:-translate-y-0.5 hover:bg-brand-strong active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand"
             >
               <Sparkle size={16} aria-hidden />问 AI 助教
             </Link>
             <Link
               href="#materials"
-              className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-5 py-2.5 text-[15px] font-medium text-muted transition-colors hover:border-brand/40 hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-5 py-2.5 text-[15px] font-medium text-muted transition-colors hover:border-brand/40 hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
             >
               浏览资料
               <ArrowDown size={15} aria-hidden />

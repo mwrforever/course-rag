@@ -11,9 +11,9 @@ test.describe("首页与课程", () => {
     await mockApi(page);
   });
 
-  test("首页渲染课程 Bento 网格与最近会话", async ({ page }) => {
+  test("首页渲染推荐课程网格与最近会话", async ({ page }) => {
     await login(page, "/");
-    // 两门课：首卡宽幅 2x1（n<=2 降级）+ 次卡 + 资料库入口条
+    // 电商卡片网格：课程卡 + 最近会话（UI 重构 2026-08-25）
     await expect(page.getByText("数据结构与算法精讲")).toBeVisible();
     await expect(page.getByText("Java 从入门到进阶")).toBeVisible();
     await expect(page.getByText("数据结构与算法咨询")).toBeVisible();

@@ -1,102 +1,68 @@
 "use client";
 
+/**
+ * 首页（UI 重构 2026-08-25：电商风 + kimi 蓝系，全 CSR）
+ *
+ * 结构（用户拍板：首页为电商网页形态，kimi 布局仅课程助手）：
+ * - Hero：问候 + 主 CTA + AI 徽标呼吸浮标，品牌径向光晕 + 同心环装饰
+ * - 分类筛选条：横向 chip（全部 + 各分类计数），选中过滤下方推荐课程
+ * - 推荐课程：电商卡片网格（封面分类徽章 + hover 上浮 + 滚动 stagger 进场）
+ * - 通用资料库入口横幅 → 最近会话（滚动逐条进场）→ Footer
+ *
+ * 滚动动效：motion whileInView（once 进入即定格、-40px 视口外触发），
+ * 仅动画 transform/opacity；prefers-reduced-motion / 检测不可用全降级静态。
+ * 四态全覆盖：Loading 骨架 / Empty 空态 / Error 横幅+重试 / 正常态。
+ */
 import { ArrowRight, Books, ChatCircleText } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion, type Variants } from "motion/react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { AiBadge } from "@/components/ai-badge";
 import { CourseCard } from "@/components/course-card";
 import { EmptyState } from "@/components/empty-state";
+import { SectionError } from "@/components/section-error";
 import { getMyCourses, getSessions } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatRelativeTime } from "@/lib/time";
 
-/** 资料库入口条跨度 → Tailwind 列类（类名必须字面量，禁止动态拼接） */
-const LIBRARY_SPAN_CLASS: Record<1 | 2 | 3 | 4, string> = {
-  1: "col-span-1",
-  2: "col-span-2",
-  3: "col-span-3",
-  4: "col-span-4",
+/** 课程卡滚动 stagger 步进（毫秒，逐卡错峰进场） */
+const CELL_STAGGER_MS = 70;
+/** 区块滚动进场动画（仅 transform/opacity，-40px 视差预触发） */
+const revealVariants: Variants = {
+  hidden: { opacity: 0, y: 18 },
+  visible: { opacity: 1, y: 0 },
 };
+/** 滚动进场 transition（含 stagger 容器编排） */
+const sectionTransition = { duration: 0.45, ease: "easeOut" } as const;
 
 /**
- * 计算资料库入口条应占列数（补齐当前行剩余列，cell 数=课程数+1 且不产生空 cell，设计 §1.5.1）
- *
- * 摆放规则（网格模式）：n≥3 时首卡 2x2 占行 1-2 的列 1-2，其余课程卡按行主序 1x1
- * 依次摆放；n=2 时首卡降级宽幅 2x1（零空洞方案，见下），推导结果与本算法一致
- * （首卡 r1c1-2 + 次卡 r1c3 + 入口条 r1c4 → span1）。入口条紧随其后，span 等于其
- * 落点行的剩余列数（1/2/3/4），保证网格无空洞。
- *
- * @param courseCount 课程数（仅在 ≥2 的网格模式调用）
- * @returns 入口条应占列数
+ * Hero 品牌径向光晕背景（brand 蓝系：右上光晕 + 同心圆环 + 暖白对角渐变）
  */
-export function librarySpan(courseCount: number): 1 | 2 | 3 | 4 {
-  let free = 2; // 行 1 剩余列（c3、c4）
-  let row = 1;
-  for (let i = 0; i < courseCount - 1; i += 1) {
-    free -= 1;
-    if (free === 0) {
-      row += 1;
-      // 行 2 仍被首卡占用列 1-2，故剩余 2 列；行 3 起整行 4 列
-      free = row === 2 ? 2 : 4;
-    }
-  }
-  // 循环内归零后立即重置为 ≥2，末次迭代后必 ≥1，落在 [1,4] 区间
-  return free as 1 | 2 | 3 | 4;
-}
-
-/** 课程卡入场动效参数（设计 §1.6：300ms、stagger 60ms、ease-out） */
-const CELL_TRANSITION = { duration: 0.3, ease: "easeOut" } as const;
-
-/** hero 背景：teal-50 → white → stone-50 对角渐变 + 细等高线纹理（低对比度装饰） */
 const HERO_BACKGROUND = [
-  "radial-gradient(circle at 72% 30%, transparent 0, var(--color-brand-light) 56px, transparent 57px)",
-  "radial-gradient(circle at 72% 30%, transparent 0, var(--color-brand-light) 112px, transparent 113px)",
-  "radial-gradient(circle at 72% 30%, transparent 0, var(--color-brand-light) 168px, transparent 169px)",
-  "linear-gradient(135deg, var(--color-brand-light) 0%, var(--color-surface) 55%, var(--color-bg) 100%)",
+  "radial-gradient(circle at 74% 28%, transparent 0, var(--color-brand-light) 60px, transparent 61px)",
+  "radial-gradient(circle at 74% 28%, transparent 0, var(--color-brand-light) 120px, transparent 121px)",
+  "radial-gradient(circle at 74% 28%, transparent 0, var(--color-brand-light) 180px, transparent 181px)",
+  "radial-gradient(600px 400px at 8% 90%, var(--color-brand-light) 0%, transparent 60%)",
+  "linear-gradient(135deg, var(--color-brand-light) 0%, var(--color-surface) 50%, var(--color-bg) 100%)",
 ].join(",");
 
-/**
- * 区块错误横幅（设计 §1.7 Error：danger-soft 底 + 文案 + 重试）
- * @param onRetry 重试回调（对应查询 refetch）
- */
-function SectionError({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div
-      role="alert"
-      className="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
-    >
-      <p className="text-sm text-danger">服务暂时不可用，请稍后重试</p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="shrink-0 rounded-xl border border-danger/30 bg-surface px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger"
-      >
-        重试
-      </button>
-    </div>
-  );
-}
-
-/** 课程网格骨架：与最终布局同形（首卡 2x2 + 4 个 1x1 + 资料库条），灰块脉冲（设计 §1.7 Loading） */
+/** 课程网格骨架：与最终布局同形（6 张 16:9 灰块，脉冲） */
 function CoursesSkeleton() {
   return (
     <div
       data-testid="courses-skeleton"
-      className="grid grid-cols-1 items-start gap-5 md:grid-cols-4"
+      className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
       aria-busy="true"
     >
-      <div className="col-span-1 aspect-[4/3] animate-pulse rounded-2xl bg-surface-2 md:col-span-2 md:row-span-2" />
-      <div className="aspect-video animate-pulse rounded-2xl bg-surface-2" />
-      <div className="aspect-video animate-pulse rounded-2xl bg-surface-2" />
-      <div className="aspect-video animate-pulse rounded-2xl bg-surface-2" />
-      <div className="aspect-video animate-pulse rounded-2xl bg-surface-2" />
-      <div className="h-16 animate-pulse rounded-2xl bg-surface-2" />
+      {Array.from({ length: 6 }, (_, index) => (
+        <div key={index} className="aspect-video animate-pulse rounded-2xl bg-surface-2" />
+      ))}
     </div>
   );
 }
 
-/** 会话列表骨架：5 行灰条脉冲（与正常列表行同形，设计 §1.7） */
+/** 会话列表骨架：5 行灰条脉冲（与最终列表同形） */
 function SessionsSkeleton() {
   return (
     <ul data-testid="sessions-skeleton" className="space-y-3" aria-busy="true">
@@ -107,38 +73,22 @@ function SessionsSkeleton() {
   );
 }
 
-/** 通用资料库入口条：补齐 Bento 行尾的资料入口（cell 数=课程数+1） */
-function LibraryEntry() {
+/** 区块标题：品牌渐变竖条 + 标题文字（电商 section 语义） */
+function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <Link
-      href="/courses"
-      className="flex h-full items-center gap-4 rounded-2xl border border-dashed border-border bg-surface-2/60 px-5 py-5 transition-colors hover:border-brand/40 hover:bg-brand-light focus-visible:ring-2 focus-visible:ring-brand"
-    >
-      <Books size={22} aria-hidden className="shrink-0 text-brand" />
-      <span className="min-w-0 flex-1">
-        <span className="block text-[15px] font-medium text-text">通用资料库</span>
-        <span className="block text-xs text-muted">公共学习资料，随时检索</span>
-      </span>
-      <ArrowRight size={18} aria-hidden className="shrink-0 text-muted" />
-    </Link>
+    <h2 className="flex items-center gap-2.5 font-display text-[22px] font-semibold leading-[1.3] text-text">
+      <span aria-hidden className="bg-gradient-ai h-5 w-1 rounded-full" />
+      {children}
+    </h2>
   );
 }
 
 /**
- * 首页（设计 §1.5.1，全 CSR）
- *
- * 结构：Hero 不对称分栏（问候 + 主 CTA + AI 徽标呼吸浮标）→ 我的课程 Bento 橱窗
- * （n≥3 首卡 2x2、n=2 首卡降级宽幅 2x1 零空洞规则 + 1x1 卡 + 资料库入口条，
- * 课程 ≤1 退化单卡居中）→ 最近会话（最多 5 条，
- * 相对时间 + 继续跳转）→ Footer。
- *
- * 四态全覆盖（设计 §1.7）：Loading 骨架 / Empty 空态 / Error 横幅+重试 / 正常态，
- * 课程与会话两区块各自独立状态机互不影响。
- * 数据来自 react-query：getMyCourses 全量 + getSessions(1,5) 最近会话。
+ * 首页（电商风 + 分类筛选 + 滚动动效）
  */
 export default function HomePage() {
   const { user } = useAuth();
-  // reduced-motion 命中或检测不可用 → 入场 stagger 直接渲染终态（不挂 initial）
+  // reduced-motion 或检测不可用 → 滚动动效全静态（可访问性优先）
   const reduceMotion = useReducedMotion() ?? true;
 
   const coursesQuery = useQuery({ queryKey: ["my-courses"], queryFn: getMyCourses });
@@ -148,146 +98,228 @@ export default function HomePage() {
     queryFn: () => getSessions(1, 5),
   });
 
-  const courses = coursesQuery.data ?? [];
+  // 空态兜底用 useMemo 稳定引用（避免空数组字面量每次渲染新建导致依赖变化）
+  const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
   const sessions = sessionsQuery.data?.records ?? [];
+
+  // 分类筛选项：由课程数据聚合（全部 + 各分类计数），电商「分类筛选」语义
+  const [selected, setSelected] = useState("全部");
+  const { categories, filtered } = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const course of courses) {
+      const key = course.category?.trim() || "未分类";
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const list = Array.from(counts.entries()).map(([name, count]) => ({ name, count }));
+    return {
+      categories: list,
+      filtered:
+        selected === "全部"
+          ? courses
+          : courses.filter((c) => (c.category?.trim() || "未分类") === selected),
+    };
+  }, [courses, selected]);
 
   return (
     <div>
-      {/* ===== Hero：问候 + 主 CTA + AI 助教徽标，不对称分栏（高约 420px） ===== */}
+      {/* ===== Hero：问候 + 主 CTA + AI 徽标，品牌光晕背景（电商首屏语义） ===== */}
       <section className="relative overflow-hidden">
-        {/* 背景：teal-50 → white → stone-50 对角渐变 + 细等高线纹理 */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{ backgroundImage: HERO_BACKGROUND }}
         />
-        <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 px-6 py-20 md:grid-cols-2 md:min-h-[420px] md:py-0">
+        <motion.div
+          className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 px-6 py-20 md:min-h-[380px] md:grid-cols-2 md:py-0"
+          initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={reduceMotion ? undefined : sectionTransition}
+        >
           <div>
-            <h1 className="font-display text-[44px] font-bold leading-[1.15] text-text">
-              你好，{user?.displayName || "同学"}
+            <h1 className="font-display text-[42px] font-bold leading-[1.15] text-text">
+              <span>你好，{user?.displayName || "同学"}</span>
+              <span className="text-gradient-ai">，继续探索</span>
             </h1>
-            <p className="mt-4 text-[17px] leading-relaxed text-muted">继续探索你的课程</p>
+            <p className="mt-4 text-[17px] leading-relaxed text-muted">
+              课堂资料、AI 助教、对话溯源，都在一个地方
+            </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              {/* 主 CTA：开始提问 → 对话页（Task 9 顺手小修：过渡收窄为 transform/opacity，reduced-motion 无过渡） */}
+              {/* 主 CTA：开始提问 → 对话页（品牌渐变主按钮） */}
               <Link
                 href="/chat"
-                className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-[15px] font-medium text-white transition-[transform,opacity] hover:bg-brand-strong active:scale-[0.98] active:-translate-y-px motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand"
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-ai px-6 py-3 text-[15px] font-medium text-white shadow-lg shadow-brand/30 transition-[transform,opacity] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 开始提问
                 <ArrowRight size={16} aria-hidden />
               </Link>
-              {/* 次级 CTA：浏览课程 → 课程列表页 */}
+              {/* 次级 CTA：浏览课堂 */}
               <Link
                 href="/courses"
-                className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-5 py-2.5 text-[15px] font-medium text-muted transition-colors hover:border-brand/40 hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-6 py-3 text-[15px] font-medium text-muted transition-colors hover:border-brand/40 hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
               >
-                浏览课程
+                浏览课堂
               </Link>
             </div>
           </div>
-          {/* 右栏：AI 助教人格化徽标（缓慢呼吸，reduced-motion 静态） */}
+          {/* 右栏：AI 助教人格化徽标（呼吸浮标，reduced-motion 静态） */}
           <div className="flex flex-col items-center justify-self-center gap-3 md:justify-self-end">
             <AiBadge />
-            <span className="text-sm text-muted">AI 助教</span>
+            <span className="text-sm text-muted">AI 助教，随时可问</span>
           </div>
-        </div>
+        </motion.div>
       </section>
 
-      {/* ===== 我的课程：Bento 橱窗（首卡 2x2 + 资料库入口条，cell 数=课程数+1） ===== */}
-      <section className="mx-auto w-full max-w-6xl px-6 pb-20">
-        <h2 className="mb-5 font-display text-[22px] font-semibold leading-[1.3] text-text">
-          我的课程
-        </h2>
+      {/* ===== 推荐课程：分类筛选 + 电商卡片网格 ===== */}
+      <section className="mx-auto w-full max-w-6xl px-6 pb-16">
+        <SectionTitle>推荐课程</SectionTitle>
 
         {coursesQuery.isPending ? (
-          <CoursesSkeleton />
+          <>
+            <div className="mt-5 h-9 animate-pulse rounded-full bg-surface-2" />
+            <div className="mt-5">
+              <CoursesSkeleton />
+            </div>
+          </>
         ) : coursesQuery.isError ? (
-          <SectionError onRetry={() => void coursesQuery.refetch()} />
+          <div className="mt-6">
+            <SectionError onRetry={() => void coursesQuery.refetch()} />
+          </div>
         ) : courses.length === 0 ? (
           <EmptyState
+            className="mt-8"
             title="还没有加入课程，请联系老师开通"
             actionLabel="先和 AI 助教聊聊"
             actionHref="/chat"
           />
-        ) : courses.length === 1 ? (
-          // 课程 ≤1 退化单卡居中：窄容器 + 居中网格，资料库入口条紧跟其下
-          <div className="mx-auto grid max-w-md grid-cols-1 gap-5">
-            <motion.div
-              initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={CELL_TRANSITION}
-            >
-              <CourseCard course={courses[0]} priority />
-            </motion.div>
-            <motion.div
-              initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ ...CELL_TRANSITION, delay: 0.06 }}
-            >
-              <LibraryEntry />
-            </motion.div>
-          </div>
         ) : (
-          // 网格模式：n≥3 首卡 2x2（视觉层级）；n=2 时首卡降级宽幅 2x1（零空洞规则：
-          // 首卡 r1c1-2 + 次卡 r1c3 + 入口条 r1c4，单行铺满，避免 2x2 占用行 2 后
-          // 行 2 c3-4 出现 2 个空 cell）
-          <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-4">
-            {courses.map((course, index) => (
-              <motion.div
-                key={course.id}
-                initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ ...CELL_TRANSITION, delay: index * 0.06 }}
-                className={
-                  index === 0
-                    ? courses.length === 2
-                      ? "col-span-1 md:col-span-2"
-                      : "col-span-1 md:col-span-2 md:row-span-2"
-                    : "col-span-1"
-                }
-              >
-                <CourseCard course={course} priority={index === 0} />
-              </motion.div>
-            ))}
-            <motion.div
-              key="library-entry"
-              initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ ...CELL_TRANSITION, delay: courses.length * 0.06 }}
-              className={LIBRARY_SPAN_CLASS[librarySpan(courses.length)]}
+          <>
+            {/* 分类筛选条：横向可滚动 chip（全部 + 各分类计数），选中过滤；
+                过滤器语义用按钮组 + aria-pressed（非页签，无 tabpanel 不滥用 tab 角色） */}
+            <div
+              role="group"
+              aria-label="课程分类筛选"
+              data-testid="category-filter"
+              className="scrollbar-none -mx-1 mt-5 flex gap-2 overflow-x-auto px-1 pb-1"
             >
-              <LibraryEntry />
+              {[{ name: "全部", count: courses.length }, ...categories].map((item) => {
+                const active = item.name === selected;
+                return (
+                  <button
+                    key={item.name}
+                    type="button"
+                    aria-pressed={active}
+                    data-testid="category-chip"
+                    onClick={() => setSelected(item.name)}
+                    className={`shrink-0 rounded-full px-4 py-1.5 text-sm transition-all ${
+                      active
+                        ? "bg-brand text-white shadow-md shadow-brand/30"
+                        : "border border-border bg-surface text-muted hover:border-brand/40 hover:text-brand-strong"
+                    }`}
+                  >
+                    {item.name}
+                    <span
+                      className={`ml-1.5 text-xs tabular-nums ${active ? "text-white/80" : "text-subtle"}`}
+                    >
+                      {item.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 课程网格：滚动 stagger 进场 + hover 上浮（CourseCard 自带） */}
+            <motion.div
+              key={selected}
+              variants={
+                reduceMotion
+                  ? undefined
+                  : {
+                      hidden: {},
+                      visible: { transition: { staggerChildren: CELL_STAGGER_MS / 1000 } },
+                    }
+              }
+              initial={reduceMotion ? false : "hidden"}
+              whileInView={reduceMotion ? undefined : "visible"}
+              viewport={{ once: true, margin: "-40px" }}
+              className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+            >
+              {filtered.map((course) => (
+                <motion.div
+                  key={course.id}
+                  variants={reduceMotion ? undefined : revealVariants}
+                  className="h-full"
+                >
+                  <CourseCard course={course} />
+                </motion.div>
+              ))}
             </motion.div>
-          </div>
+
+            {/* 通用资料库入口横幅：全宽功能卡（电商 banner 语义） */}
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+              whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-40px" }}
+              transition={reduceMotion ? undefined : sectionTransition}
+              className="mt-6"
+            >
+              <Link
+                href="/courses"
+                className="hover:border-brand/40 flex items-center gap-4 rounded-2xl border border-border bg-surface px-6 py-5 transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                <span className="bg-gradient-ai grid size-10 shrink-0 place-items-center rounded-xl text-white shadow-md shadow-brand/30">
+                  <Books size={20} weight="fill" aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-medium text-text">通用资料库</span>
+                  <span className="block text-xs text-muted">公共学习资料，随时检索</span>
+                </span>
+                <ArrowRight size={18} aria-hidden className="shrink-0 text-muted" />
+              </Link>
+            </motion.div>
+          </>
         )}
       </section>
 
       {/* ===== 最近会话：横向条目列表（最多 5 条，相对时间 + 继续跳转） ===== */}
       <section className="mx-auto w-full max-w-6xl px-6 pb-20">
-        <h2 className="mb-5 font-display text-[22px] font-semibold leading-[1.3] text-text">
-          最近会话
-        </h2>
+        <SectionTitle>最近会话</SectionTitle>
 
         {sessionsQuery.isPending ? (
-          <SessionsSkeleton />
+          <div className="mt-5">
+            <SessionsSkeleton />
+          </div>
         ) : sessionsQuery.isError ? (
-          <SectionError onRetry={() => void sessionsQuery.refetch()} />
+          <div className="mt-6">
+            <SectionError onRetry={() => void sessionsQuery.refetch()} />
+          </div>
         ) : sessions.length === 0 ? (
-          <p className="text-sm text-muted">
+          <p className="mt-5 text-sm text-muted">
             还没有会话记录，
-            <Link href="/chat" className="text-brand-strong">
+            <Link href="/chat" className="font-medium text-brand-strong">
               开始对话
             </Link>
           </p>
         ) : (
-          <ul className="space-y-3">
+          <motion.ul
+            variants={
+              reduceMotion
+                ? undefined
+                : { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } }
+            }
+            initial={reduceMotion ? false : "hidden"}
+            whileInView={reduceMotion ? undefined : "visible"}
+            viewport={{ once: true, margin: "-40px" }}
+            className="mt-5 space-y-3"
+          >
             {sessions.map((session) => (
-              <li key={session.id}>
+              <motion.li key={session.id} variants={reduceMotion ? undefined : revealVariants}>
                 <Link
                   href={`/chat/${session.id}`}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-sm transition-[transform,opacity] duration-200 motion-reduce:transition-none hover:border-brand/30 hover:shadow-md hover:shadow-teal-900/5 focus-visible:ring-2 focus-visible:ring-brand"
+                  className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-xs transition-[transform,opacity] duration-200 motion-reduce:transition-none hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-md focus-visible:ring-2 focus-visible:ring-brand"
                 >
-                  <ChatCircleText size={18} aria-hidden className="shrink-0 text-brand" />
+                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
+                    <ChatCircleText size={17} aria-hidden />
+                  </span>
                   <span className="min-w-0 flex-1 truncate text-[15px] text-text">
                     {session.title}
                   </span>
@@ -300,13 +332,13 @@ export default function HomePage() {
                     <ArrowRight size={14} aria-hidden />
                   </span>
                 </Link>
-              </li>
+              </motion.li>
             ))}
-          </ul>
+          </motion.ul>
         )}
       </section>
 
-      {/* ===== Footer：一行版权（stone-400 弱化） ===== */}
+      {/* ===== Footer：一行版权 ===== */}
       <footer className="border-t border-border">
         <div className="mx-auto w-full max-w-6xl px-6 py-6 text-xs text-subtle">
           © 2026 课程助手

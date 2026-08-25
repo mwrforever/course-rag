@@ -15,6 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NewChatPage from "./page";
+import { SIDEBAR_SESSIONS_QUERY_KEY } from "@/components/chat/chat-sidebar";
 import { ApiError } from "@/lib/api";
 import type { ChatStreamState, StreamMessage } from "@/hooks/use-chat-stream";
 import type { AttachmentRecord, RetrievalSource } from "@/lib/types";
@@ -260,6 +261,29 @@ describe("新对话页：发送与流式状态流转", () => {
     // 不跳转：replace 与 push 均不得被调用
     expect(routerMock.replace).not.toHaveBeenCalled();
     expect(routerMock.push).not.toHaveBeenCalled();
+  });
+
+  it("会话归属落位：失效侧栏会话缓存（新会话即时进侧栏历史）", async () => {
+    // (chat) 组布局常驻 → QueryClient 长活，侧栏查询无 refetch 触发点；
+    // sessionId 从 null 落位后必须按 SIDEBAR_SESSIONS_QUERY_KEY 失效一次
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <NewChatPage />
+      </QueryClientProvider>,
+    );
+    expect(invalidateSpy).not.toHaveBeenCalled();
+
+    chatMock.state = { ...chatMock.state, sessionId: "s-100", runId: "run-1" };
+    rerender(
+      <QueryClientProvider client={client}>
+        <NewChatPage />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: SIDEBAR_SESSIONS_QUERY_KEY });
+    });
   });
 
   it("流式渲染：sources 前置 + 打字光标 + end 后操作栏浮现", async () => {

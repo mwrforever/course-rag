@@ -3,8 +3,8 @@
 /**
  * 对话消息流（设计 §1.5.4 消息流 + §1.6 动效）
  *
- * - 容器 max-w-[880px] 居中，消息间距 space-y-8（页面内滚动区）
- * - 用户消息：右对齐 teal-50（brand-light）气泡，rounded-2xl rounded-br-md
+ * - 容器 max-w-[840px] 居中，消息间距 space-y-8（页面内滚动区）
+ * - 用户消息：右对齐 bubble 气泡，rounded-[18px] rounded-br-[8px]
  *   （形状锁唯一例外）；附件缩略 chips（图片 blob 缩略 / 文档图标），纯文本防 XSS
  * - AI 消息：无气泡整栏（阅读友好），AI 徽标头像 + 思考卡/来源卡/正文/工具卡/操作栏
  * - 流式打字光标（1s 循环，仅最后一条 AI 消息且 streaming 时挂载）
@@ -110,15 +110,15 @@ export function MessageList({
   const showCursor = streaming && last?.role === "assistant";
 
   return (
-    <div data-testid="message-flow" className="mx-auto w-full max-w-[880px] space-y-8 px-6 py-8">
+    <div data-testid="message-flow" className="mx-auto w-full max-w-[840px] space-y-8 px-6 py-8">
       {messages.map((message) => {
         if (message.role === "user") {
           return (
             <div key={message.id} data-testid="user-message" className="flex justify-end">
               <div
                 data-testid="user-bubble"
-                // 用户气泡：brand-light 底 + 右下角 6px 圆角（形状锁唯一例外，设计 §1.4）
-                className="max-w-[70%] rounded-2xl rounded-br-md bg-brand-light px-4 py-2.5"
+                // 用户气泡：kimi 灰 #F2F3F5 底 + 右下角小圆角（site 形态唯一例外，UI 重构 2026-08-25）
+                className="max-w-[70%] rounded-[18px] rounded-br-[8px] bg-bubble px-4 py-2.5"
               >
                 {message.attachments.length > 0 ? (
                   <UserAttachmentChips
