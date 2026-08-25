@@ -1,16 +1,15 @@
 /**
- * 首页测试（Task 8 TDD 先行用例）
+ * 首页测试（UI 重构 2026-08-25：电商风首页）
  *
  * 首页四态全覆盖（设计 §1.7）：Loading 骨架 / Empty 空态 / Error 横幅+重试 / 正常态。
- * 数据层以 vi.mock 注入（react-query 用 QueryClient 包裹并关闭 retry，避免测试噪音）；
- * 覆盖：Hero 问候与 CTA 跳转、Bento 课程网格（n≥3 首卡 2x2、n=2 首卡宽幅 2x1 零空洞、
- * 资料库入口条跨度、单卡退化）、无课程空态、错误横幅重试闭环、最近会话渲染
- * （相对时间 + 继续跳转）、会话空态。
+ * 新增电商语义覆盖：分类筛选条（全部 + 各分类计数，点击过滤）、课程网格、
+ * 资料库入口横幅；旧 Bento 零空洞布局（librarySpan）已随重构移除，对应用例删除。
+ * 数据层以 vi.mock 注入（react-query 用 QueryClient 包裹并关闭 retry）。
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import HomePage, { librarySpan } from "./page";
+import HomePage from "./page";
 import type { SessionItem, StudentCourse } from "@/lib/types";
 
 /** 数据层 mock：getMyCourses / getSessions 返回值按用例注入（成功/失败/挂起） */
@@ -91,9 +90,9 @@ describe("首页 Hero", () => {
     apiMock.getSessions.mockResolvedValue(EMPTY_SESSIONS);
     renderHome();
     expect(await screen.findByText("你好，同学A")).toBeInTheDocument();
-    expect(screen.getByText("继续探索你的课程")).toBeInTheDocument();
+    expect(screen.getByText("课堂资料、AI 助教、对话溯源，都在一个地方")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /开始提问/ })).toHaveAttribute("href", "/chat");
-    expect(screen.getByRole("link", { name: "浏览课程" })).toHaveAttribute("href", "/courses");
+    expect(screen.getByRole("link", { name: "浏览课堂" })).toHaveAttribute("href", "/courses");
     // AI 助教人格化徽标驻留 Hero 右栏
     expect(screen.getByTestId("ai-badge")).toBeInTheDocument();
   });
@@ -114,7 +113,7 @@ describe("首页 Hero", () => {
   });
 });
 
-describe("首页四态：我的课程", () => {
+describe("首页四态：推荐课程", () => {
   it("Loading：骨架与最终布局同形（课程 + 会话骨架就位）", async () => {
     // 挂起 promise：查询保持 pending，骨架持久可见
     apiMock.getMyCourses.mockReturnValue(new Promise(() => {}));
@@ -144,7 +143,7 @@ describe("首页四态：我的课程", () => {
     expect(await screen.findByText("恢复后的课程")).toBeInTheDocument();
   });
 
-  it("正常态：Bento 首卡 2x2（封面+标题）与资料库入口条补齐行尾", async () => {
+  it("正常态：电商卡片网格 + 分类筛选条（各分类计数、点击过滤、全部复位）", async () => {
     apiMock.getMyCourses.mockResolvedValue([
       makeCourse({
         id: "c1",
@@ -152,64 +151,55 @@ describe("首页四态：我的课程", () => {
         coverImage: "http://localhost:9000/b/c1.jpg",
       }),
       makeCourse({ id: "c2", title: "Python 程序设计", category: "计算机" }),
-      makeCourse({ id: "c3", title: "大学英语" }),
-      makeCourse({ id: "c4", title: "数据结构" }),
-      makeCourse({ id: "c5", title: "线性代数", category: "数学" }),
+      makeCourse({ id: "c3", title: "Web 前端开发", category: "计算机" }),
+      makeCourse({ id: "c4", title: "线性代数", category: "数学" }),
+      makeCourse({ id: "c5", title: "数据结构", category: null }),
     ]);
     apiMock.getSessions.mockResolvedValue(EMPTY_SESSIONS);
     renderHome();
+    // 首卡跳转课程工作台 + 封面
     await screen.findByText("高等数学（一）");
-
-    // 首卡 2x2：较大封面 + 跳转课程工作台
     const leadLink = screen.getByRole("link", { name: /高等数学（一）/ });
     expect(leadLink).toHaveAttribute("href", "/courses/c1");
-    expect(leadLink.parentElement).toHaveClass("md:col-span-2", "md:row-span-2");
     expect(screen.getByAltText("高等数学（一）")).toBeInTheDocument();
 
-    // 无封面课程：按 category 映射低饱和渐变兜底（计算机 → sky，空 → 默认，数学 → violet）
+    // 分类筛选条：全部(5) + 未分类(2) + 计算机(2) + 数学(1)（Map 按课程数据出现序聚合）
+    const chips = screen.getAllByTestId("category-chip");
+    expect(chips.map((chip) => chip.textContent?.replace(/\s/g, ""))).toEqual([
+      "全部5",
+      "未分类2",
+      "计算机2",
+      "数学1",
+    ]);
+    // 默认「全部」选中：5 门课程全部渲染（无封面课程按分类映射渐变兜底）
     const fallbacks = screen.getAllByTestId("cover-fallback");
     expect(fallbacks.some((el) => el.classList.contains("from-sky-100"))).toBe(true);
-    expect(fallbacks.some((el) => el.classList.contains("from-brand-light"))).toBe(true);
     expect(fallbacks.some((el) => el.classList.contains("from-violet-100"))).toBe(true);
+    expect(fallbacks.some((el) => el.classList.contains("from-brand-light"))).toBe(true);
 
-    // 资料库入口条：5 门课程恰好铺满两行 → 入口条整行 4 列（cell 数=课程数+1，不造空 cell）
+    // 点计算机：过滤到 2 门，Python/Web 仍在、高等数学消失（aria-pressed 反映选中态）
+    fireEvent.click(screen.getByRole("button", { name: /计算机/ }));
+    expect(await screen.findByText("Python 程序设计")).toBeInTheDocument();
+    expect(screen.getByText("Web 前端开发")).toBeInTheDocument();
+    expect(screen.queryByText("高等数学（一）")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /计算机/ })).toHaveAttribute("aria-pressed", "true");
+
+    // 点全部：恢复全部
+    fireEvent.click(screen.getByRole("button", { name: /全部/ }));
+    expect(await screen.findByText("高等数学（一）")).toBeInTheDocument();
+
+    // 资料库入口横幅：跳转课程列表
     const library = screen.getByRole("link", { name: /通用资料库/ });
     expect(library).toHaveAttribute("href", "/courses");
-    expect(library.parentElement).toHaveClass("col-span-4");
   });
 
-  it("课程 ≤1：退化单卡居中 + 资料库入口条", async () => {
+  it("课程 ≤1：单卡仍渲染 + 资料库入口横幅", async () => {
     apiMock.getMyCourses.mockResolvedValue([makeCourse({ title: "唯一课程" })]);
     apiMock.getSessions.mockResolvedValue(EMPTY_SESSIONS);
     renderHome();
     const card = await screen.findByRole("link", { name: /唯一课程/ });
     expect(card).toHaveAttribute("href", "/courses/c-1");
-    // 退化模式：不再出现 2x2 首卡网格布局
-    expect(card.parentElement).not.toHaveClass("md:col-span-2");
     expect(screen.getByRole("link", { name: /通用资料库/ })).toBeInTheDocument();
-  });
-
-  it("正常态：n=2 首卡降级宽幅 2x1，单行铺满零空洞（不产生 2 个空 cell）", async () => {
-    apiMock.getMyCourses.mockResolvedValue([
-      makeCourse({ id: "c1", title: "课程甲", coverImage: "http://localhost:9000/b/c1.jpg" }),
-      makeCourse({ id: "c2", title: "课程乙" }),
-    ]);
-    apiMock.getSessions.mockResolvedValue(EMPTY_SESSIONS);
-    renderHome();
-    await screen.findByText("课程甲");
-
-    // 首卡宽幅 2x1：占行 1 列 1-2，不再 row-span-2（否则 2x2 占满行 2 后行 2 c3-4 空洞）
-    const lead = screen.getByRole("link", { name: /课程甲/ });
-    expect(lead.parentElement).toHaveClass("col-span-1", "md:col-span-2");
-    expect(lead.parentElement).not.toHaveClass("md:row-span-2");
-    // 次卡 1x1 落 r1c3 + 入口条 span1 落 r1c4 → 单行铺满
-    expect(screen.getByRole("link", { name: /课程乙/ }).parentElement).toHaveClass("col-span-1");
-    const library = screen.getByRole("link", { name: /通用资料库/ });
-    expect(library.parentElement).toHaveClass("col-span-1");
-    // 零空洞验证：Bento 网格恰 3 个 cell（2 课程卡 + 1 入口条），无多余空格占位
-    const grid = library.parentElement!.parentElement!;
-    expect(grid.className).toContain("md:grid-cols-4");
-    expect(grid.children).toHaveLength(3);
   });
 });
 
@@ -261,23 +251,5 @@ describe("首页：最近会话", () => {
     expect(banner).toHaveTextContent("服务暂时不可用，请稍后重试");
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(await screen.findByRole("link", { name: /恢复的会话/ })).toBeInTheDocument();
-  });
-});
-
-describe("librarySpan 资料库入口条跨度（不产生空 cell）", () => {
-  it("2 门：第 1 行余 1 列（宽幅 2x1 首卡 + 次卡 + 入口条铺满单行）", () => {
-    expect(librarySpan(2)).toBe(1);
-  });
-  it("3 门：第 2 行余 2 列", () => {
-    expect(librarySpan(3)).toBe(2);
-  });
-  it("4 门：第 2 行余 1 列", () => {
-    expect(librarySpan(4)).toBe(1);
-  });
-  it("5 门：恰铺满两行 → 整行 4 列", () => {
-    expect(librarySpan(5)).toBe(4);
-  });
-  it("6 门：第 3 行余 3 列", () => {
-    expect(librarySpan(6)).toBe(3);
   });
 });

@@ -16,8 +16,8 @@ test.describe("认证流", () => {
   test("登录成功跳转首页", async ({ page }) => {
     await login(page, "/");
     await expect(page.getByRole("heading", { name: "欢迎回来" })).toBeHidden();
-    // 首页已加载（顶导存在 + Hero 问候）
-    await expect(page.getByText("继续探索你的课程")).toBeVisible();
+    // 首页已加载（顶导存在 + Hero 问候，UI 重构后文案）
+    await expect(page.getByText("课堂资料、AI 助教、对话溯源，都在一个地方")).toBeVisible();
   });
 
   test("错误凭据 401 显示 Alert 且停留登录页", async ({ page }) => {

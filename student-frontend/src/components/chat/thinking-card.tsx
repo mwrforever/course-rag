@@ -3,11 +3,11 @@
 /**
  * AI 思考过程卡（设计 §1.5.4 ThinkingCard + §1.6 动效）
  *
- * - surface-2 底 + 左侧 2px teal-300 竖线；标题「正在思考…」→「已思考」可折叠
+ * - surface 底 + border 描边卡片；标题「正在思考…」→「已思考」可折叠
  * - 思考中：指示灯旋转 + 全文展开（流式追加由外部传入 thinking 全文）
  * - thinking_end 后自动折叠为一行摘要（末句截断），高度过渡 240ms
  *   （grid-template-rows 0fr→1fr 技术，仅动画高度与透明度；reduced-motion 静态）
- * - 内容 13px/1.6 stone-500，展开后 max-h-200px 内滚动
+ * - 内容 13px/leading-6 muted，展开后 max-h-200px 内滚动
  */
 import { CaretDown, CircleNotch } from "@phosphor-icons/react";
 import { useState } from "react";
@@ -60,17 +60,16 @@ export function ThinkingCard({ thinking, ended }: ThinkingCardProps) {
 
   return (
     <div
-      className="flex gap-3 rounded-2xl border border-border bg-surface-2 px-4 py-3"
       data-testid="thinking-card"
+      // kimi 思考卡形态：白底 1px 边框 + 12px 圆角，hover 边框转深（UI 重构 2026-08-25）
+      className="rounded-xl border border-border bg-surface px-4 py-3 transition-colors hover:border-border-strong"
     >
-      {/* 左侧 2px teal-300 竖线（思考中指示 + 视觉分隔） */}
-      <span aria-hidden className="w-0.5 shrink-0 rounded-full bg-teal-300" />
       <div className="min-w-0 flex-1">
         <button
           type="button"
           aria-expanded={open}
           onClick={() => setManualOpen(!open)}
-          className="flex w-full items-center gap-2 text-left focus-visible:ring-2 focus-visible:ring-brand"
+          className="flex w-full items-center gap-2 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-brand"
         >
           {/* 思考中指示灯旋转（设计 §1.6 工作指示）；结束后静态占位保证标题行高一致 */}
           {!ended ? (
@@ -91,10 +90,10 @@ export function ThinkingCard({ thinking, ended }: ThinkingCardProps) {
             className={`ml-auto shrink-0 text-subtle transition-transform ${open ? "" : "-rotate-90"}`}
           />
         </button>
-        {/* 折叠容器：grid-rows 0fr/1fr 实现高度过渡（240ms）+ 内容透明度过渡，仅动画 grid 高度与 opacity */}
+        {/* 折叠容器：grid-rows 0fr/1fr 实现高度过渡（300ms）+ 内容透明度过渡，仅动画 grid 高度与 opacity */}
         <div
           data-testid="thinking-content"
-          className={`grid transition-[grid-template-rows] duration-240 ease-in-out motion-reduce:transition-none ${
+          className={`grid transition-[grid-template-rows] duration-300 ease-in-out motion-reduce:transition-none ${
             open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
           }`}
         >
@@ -103,7 +102,7 @@ export function ThinkingCard({ thinking, ended }: ThinkingCardProps) {
               // 折叠态：一行摘要（末句截断）；阅读器仅播报摘要，全文被容器隐藏
               <p
                 data-testid="thinking-summary"
-                className="truncate pt-2 text-[13px] leading-6 text-stone-500"
+                className="truncate pt-2 text-[13px] leading-6 text-muted"
               >
                 {summary}
               </p>
@@ -111,7 +110,7 @@ export function ThinkingCard({ thinking, ended }: ThinkingCardProps) {
               // 展开态：全文，max-h-200px 内滚动；折叠期间 aria-hidden 避免读屏播报隐藏内容
               <p
                 aria-hidden={!open}
-                className="max-h-50 overflow-y-auto pt-2 text-[13px] leading-6 text-stone-500 whitespace-pre-wrap"
+                className="max-h-50 overflow-y-auto pt-2 text-[13px] leading-6 text-muted whitespace-pre-wrap"
               >
                 {thinking}
               </p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { Eye, EyeSlash, Sparkle } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
@@ -86,14 +86,14 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-12">
-      <div className="w-full max-w-[420px] rounded-2xl border border-border bg-surface p-10 shadow-sm">
-        {/* 品牌区：几何渐变徽标占位 + 品牌名 */}
+      <div className="w-full max-w-[420px] rounded-2xl border border-border bg-surface p-10 shadow-lg shadow-brand/5">
+        {/* 品牌区：kimi 渐变徽标 + 品牌名 */}
         <div className="mb-8 flex flex-col items-center gap-3">
           <span
             aria-hidden
-            className="flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br from-brand to-brand-strong text-lg font-bold text-white"
+            className="bg-gradient-ai flex h-12 w-12 items-center justify-center rounded-xl text-white shadow-lg shadow-brand/30"
           >
-            课
+            <Sparkle size={24} weight="fill" />
           </span>
           <span className="font-display text-lg font-bold tracking-tight text-text">课程助手</span>
           <h2 className="font-display text-[22px] font-semibold leading-[1.3] text-text">
@@ -124,7 +124,7 @@ export default function LoginPage() {
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               aria-invalid={fieldErrors.username ? true : undefined}
-              className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-[15px] text-text outline-none transition-colors placeholder:text-subtle focus-visible:ring-2 focus-visible:ring-brand"
+              className="w-full rounded-full border border-border bg-surface px-4 py-2.5 text-[15px] text-text outline-none transition-colors placeholder:text-subtle focus-visible:ring-2 focus-visible:ring-brand"
               placeholder="请输入用户名"
             />
             {fieldErrors.username ? (
@@ -145,7 +145,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 aria-invalid={fieldErrors.password ? true : undefined}
-                className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 pr-11 text-[15px] text-text outline-none transition-colors placeholder:text-subtle focus-visible:ring-2 focus-visible:ring-brand"
+                className="w-full rounded-full border border-border bg-surface px-4 py-2.5 pr-11 text-[15px] text-text outline-none transition-colors placeholder:text-subtle focus-visible:ring-2 focus-visible:ring-brand"
                 placeholder="请输入密码（至少 6 位）"
               />
               <button
@@ -169,7 +169,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-[15px] font-medium text-white transition-all hover:bg-brand-strong active:scale-[0.98] active:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-brand"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-brand px-4 py-2.5 text-[15px] font-medium text-white transition-all hover:bg-brand-strong active:scale-[0.98] active:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-brand"
           >
             {submitting ? (
               // 工作指示：登录中的旋转反馈（常驻循环动画仅限工作指示，设计 §0.2）

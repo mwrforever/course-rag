@@ -53,10 +53,10 @@ describe("ThinkingCard 状态与折叠", () => {
     expect(screen.getByTestId("thinking-summary")).toHaveTextContent("再给出答案。");
   });
 
-  it("折叠动效：高度过渡 240ms + reduced-motion 降级类存在", () => {
+  it("折叠动效：高度过渡 300ms + reduced-motion 降级类存在", () => {
     render(<ThinkingCard thinking="文本。" ended={true} />);
     const content = screen.getByTestId("thinking-content");
     expect(content.className).toContain("transition-[grid-template-rows]");
-    expect(content.className).toContain("duration-240");
+    expect(content.className).toContain("duration-300");
   });
 });

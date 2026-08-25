@@ -82,7 +82,7 @@ function ChunkContextPanel({ chunk, onClose }: { chunk: MaterialChunk; onClose: 
         data-testid="drawer-overlay"
         aria-hidden
         onClick={onClose}
-        className="absolute inset-0 animate-overlay-in bg-stone-900/40 motion-reduce:animate-none"
+        className="absolute inset-0 animate-overlay-in bg-overlay motion-reduce:animate-none"
       />
       {/* 抽屉面板：480px 右侧滑入（transform/opacity，reduced-motion 静态） */}
       <aside

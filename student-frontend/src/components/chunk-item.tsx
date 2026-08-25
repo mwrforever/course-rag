@@ -87,7 +87,7 @@ function pageBadgeText(chunk: MaterialChunk): string | null {
 export function ChunkItem({ chunk, onViewContext }: ChunkItemProps) {
   const badge = pageBadgeText(chunk);
   return (
-    <article className="rounded-2xl border border-border bg-surface p-4 shadow-sm transition-[transform,opacity] duration-200 motion-reduce:transition-none hover:shadow-md hover:shadow-teal-900/5">
+    <article className="rounded-2xl border border-border bg-surface p-4 shadow-sm transition-[transform,opacity] duration-200 motion-reduce:transition-none hover:shadow-md hover:shadow-brand/10">
       <div className="flex items-start justify-between gap-3">
         <ChunkBreadcrumb path={chunk.headingPath} className="mt-0.5" />
         {badge ? (

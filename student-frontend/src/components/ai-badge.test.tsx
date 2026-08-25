@@ -57,12 +57,12 @@ describe("AiBadge AI 助教人格化徽标", () => {
     expect(badge.querySelector("svg")).not.toBeNull();
   });
 
-  it("正常态（无 reduced-motion）：挂载 6s 缓慢呼吸动画", () => {
+  it("正常态（无 reduced-motion）：挂载 3.2s 呼吸浮标动画（kimi 首页 Doodle 语义）", () => {
     motionMock.reduce = false;
     render(<AiBadge />);
     const props = motionMock.received.at(-1) as Record<string, unknown>;
-    expect(props.animate).toEqual({ y: [0, -4, 0] });
-    expect(props.transition).toMatchObject({ duration: 6, repeat: Infinity });
+    expect(props.animate).toEqual({ y: [0, -6, 0] });
+    expect(props.transition).toMatchObject({ duration: 3.2, repeat: Infinity });
   });
 
   it("reduced-motion 命中：完全静态，不挂动画", () => {

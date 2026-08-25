@@ -168,7 +168,7 @@ function CoursesContent() {
             onChange={(event) => handleKeyword(event.target.value)}
             aria-label="搜索课程"
             placeholder="搜索课程名称或讲师"
-            className="w-full rounded-xl border border-border bg-surface py-2.5 pr-4 pl-10 text-sm text-text transition-[transform,opacity] outline-none placeholder:text-subtle focus:border-brand/50 focus-visible:ring-2 focus-visible:ring-brand"
+            className="w-full rounded-full border border-border bg-surface py-2.5 pr-4 pl-10 text-sm text-text shadow-xs transition-[transform,opacity] outline-none placeholder:text-subtle focus:border-brand/50 focus-visible:ring-2 focus-visible:ring-brand"
           />
         </label>
       </div>
@@ -225,12 +225,8 @@ function CoursesContent() {
             <FilterEmpty onClear={clearFilters} />
           ) : (
             <>
-              {/* 网格 3 列（>4 门时），卡片 hover 动效由 CourseCard 承载 */}
-              <div
-                className={`mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 ${
-                  sorted.length > 4 ? "lg:grid-cols-3" : ""
-                }`}
-              >
+              {/* 网格 3 列（电商风格），卡片 hover 动效由 CourseCard 承载 */}
+              <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {visible.map((course) => (
                   <CourseCard key={course.id} course={course} />
                 ))}

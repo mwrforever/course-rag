@@ -263,7 +263,7 @@ export default function SessionsPage() {
             data-testid="confirm-overlay"
             aria-hidden
             onClick={() => setPendingDelete(null)}
-            className="absolute inset-0 animate-overlay-in bg-stone-900/40 motion-reduce:animate-none"
+            className="absolute inset-0 animate-overlay-in bg-overlay motion-reduce:animate-none"
           />
           <div
             role="dialog"
