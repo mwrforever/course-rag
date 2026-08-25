@@ -103,7 +103,7 @@ async function handleSubmit() {
         >
           <PhDatabase class="h-5 w-5 text-white" weight="bold" />
         </div>
-        <span class="text-lg font-semibold tracking-wide">知识库管理后台</span>
+        <span class="text-lg font-semibold tracking-wide">课程助手管理后台</span>
       </div>
       <div>
         <h2 class="text-3xl font-bold leading-snug">知识运维与管理，一处完成</h2>
@@ -111,7 +111,7 @@ async function handleSubmit() {
           文档入库、分片修正、课程排期与安全审计，全部管理操作聚合在同一个 cockpit。
         </p>
       </div>
-      <p class="text-xs text-slate-500">2026 课程助手 · B 端管理后台</p>
+      <p class="text-xs text-slate-400">{{ new Date().getFullYear() }} 课程助手 · B 端管理后台</p>
     </aside>
 
     <!-- 右表单区：surface 卡片（无记住我、无注册入口，设计 §2 登录页） -->

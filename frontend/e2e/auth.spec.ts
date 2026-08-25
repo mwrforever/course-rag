@@ -18,7 +18,7 @@ test.describe('B 端认证流', () => {
     await page.click('button[type="submit"]')
     await page.waitForURL('**/dashboard')
     // 布局壳顶栏品牌与侧导航出现
-    await expect(page.getByText('知识库管理后台')).toBeVisible()
+    await expect(page.getByText('课程助手管理后台')).toBeVisible()
   })
 
   test('超管登录成功跳仪表盘（侧导航含超管分组）', async ({ page }) => {
@@ -27,8 +27,10 @@ test.describe('B 端认证流', () => {
     await page.fill('#password', '123456')
     await page.click('button[type="submit"]')
     await page.waitForURL('**/dashboard')
+    // 审计分组默认折叠：先展开再断言子项（深色侧栏分组交互）
+    await page.getByRole('button', { name: /审计/ }).click()
     await expect(page.getByText('会话审计')).toBeVisible()
-    await expect(page.getByText('安全审计')).toBeVisible()
+    await expect(page.getByText('Token 黑名单')).toBeVisible()
   })
 
   test('错误凭据 401 显示 Alert 且停留登录页', async ({ page }) => {

@@ -316,7 +316,7 @@ describe('DashboardView：快捷入口 5 项与待修正卡跳转', () => {
     const cases: Array<[string, string]> = [
       ['quick-upload', '/knowledge/documents'],
       ['quick-course', '/courses/new'],
-      ['quick-users', '/users'],
+      ['quick-users', '/students'],
       ['quick-feedback', '/feedback'],
     ]
     for (const [testid, path] of cases) {

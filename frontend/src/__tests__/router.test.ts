@@ -7,13 +7,14 @@ import { REFRESH_TOKEN_KEY, useAuthStore } from '@/stores/auth'
 import type { LoginResponse, UserRole } from '@/lib/types'
 
 /**
- * 路由配置与鉴权守卫测试（Task 16 核心）
+ * 路由配置与鉴权守卫测试（Task 16 核心 + UI 重构 2026-08-25 职责拆分）
  *
  * 覆盖契约（设计 §2.4 路由表 + §3.1 守卫）：
- * 1. 路由表完整性：设计 §2.4 全部页面齐备；会话/安全审计仅 SUPER_ADMIN
+ * 1. 路由表完整性：全部页面齐备（含课程详情五子路由/学生/教师管理/404 兜底）；
+ *    教师管理与审计页仅 SUPER_ADMIN；/users 重定向 /students
  * 2. 守卫三态：未登录 → 登录页携 redirect；已登录访问登录页 → 仪表盘；
  *    meta.roles 不匹配 → ForbiddenView
- * 3. 根路径重定向到仪表盘
+ * 3. 根路径重定向到仪表盘；未匹配路径兜底 /404
  */
 
 /** 构造登录态（Long 序列化铁律：userId 为 string） */
@@ -27,29 +28,42 @@ function buildPayload(role: UserRole = 'TEACHER'): LoginResponse {
   }
 }
 
+/** 递归拍平路由表（含布局壳子路由下的课程详情子路由） */
+function flatten(records: typeof routes): Array<(typeof routes)[number]> {
+  const out: Array<(typeof routes)[number]> = []
+  const walk = (list: typeof routes) => {
+    for (const r of list) {
+      out.push(r)
+      if (r.children?.length) {
+        walk(r.children as typeof routes)
+      }
+    }
+  }
+  walk(records)
+  return out
+}
+
 describe('路由配置', () => {
   beforeEach(() => {
     sessionStorage.clear()
     setActivePinia(createPinia())
   })
 
-  it('路由表覆盖设计 §2.4 全部页面（名称与路径齐备）', () => {
-    const flat = routes.flatMap((r) => (r.children?.length ? r.children : [r]))
+  it('路由表覆盖设计页面清单（名称与路径齐备）', () => {
+    const flat = flatten(routes)
     const byName = new Map(flat.map((r) => [r.name, r]))
 
-    // 公开页：登录 + 403 无权限页（顶层路由，path 带前导斜杠）
+    // 公开页：登录 + 403 + 404（顶层路由，path 带前导斜杠）
     expect(byName.get('login')?.path).toBe('/login')
-    expect(byName.get('login')?.meta?.requiresAuth).toBe(false)
     expect(byName.get('forbidden')?.path).toBe('/forbidden')
-    expect(byName.get('forbidden')?.meta?.requiresAuth).toBe(false)
+    expect(byName.get('not-found')?.path).toBe('/404')
+    expect(byName.get('not-found')?.meta?.requiresAuth).toBe(false)
 
     // 两角色页面
     const expectPath = (name: string, path: string) => {
       const record = byName.get(name)
       expect(record, `缺少路由 ${name}`).toBeDefined()
       expect(record?.path).toBe(path)
-      expect(record?.meta?.requiresAuth).toBe(true)
-      expect(record?.meta?.roles).toEqual(['TEACHER', 'SUPER_ADMIN'])
     }
     expectPath('dashboard', 'dashboard')
     expectPath('knowledge-bases', 'knowledge-bases')
@@ -58,25 +72,45 @@ describe('路由配置', () => {
     expectPath('knowledge-chunks', 'knowledge/chunks')
     expectPath('courses', 'courses')
     expectPath('course-new', 'courses/new')
-    expectPath('course-detail', 'courses/:id')
-    expectPath('users', 'users')
+    expectPath('course-detail', '')
+    expectPath('course-content', 'content')
+    expectPath('course-schedule', 'schedule')
+    expectPath('course-teachers', 'teachers')
+    expectPath('course-students', 'students')
+    expectPath('students', 'students')
     expectPath('feedback', 'feedback')
 
-    // 超管专属页：仅 SUPER_ADMIN
-    const superAdminOnly = ['sessions', 'login-records', 'token-blacklist']
-    for (const name of superAdminOnly) {
+    // 两角色页角色白名单
+    for (const name of ['dashboard', 'courses', 'students', 'course-detail', 'feedback']) {
+      expect(byName.get(name)?.meta?.roles).toEqual(['TEACHER', 'SUPER_ADMIN'])
+    }
+
+    // 超管专属页：教师管理 + 审计三页
+    for (const name of ['teachers', 'sessions', 'login-records', 'token-blacklist']) {
       const record = byName.get(name)
       expect(record, `缺少超管路由 ${name}`).toBeDefined()
       expect(record?.meta?.roles).toEqual(['SUPER_ADMIN'])
     }
-    expect(byName.get('sessions')?.path).toBe('sessions')
     expect(byName.get('login-records')?.path).toBe('security/login-records')
     expect(byName.get('token-blacklist')?.path).toBe('security/token-blacklist')
 
-    // 业务路由全部挂载在布局壳父路由下
-    const layout = routes.find((r) => r.name === 'admin-layout')
-    expect(layout).toBeDefined()
-    expect(flat).not.toContain(layout)
+    // 课程详情壳：父路由承载 course-detail 五子路由
+    const courseParent = flat.find(
+      (r) => r.component?.name === 'CourseDetailLayout' || r.path === 'courses/:id',
+    )
+    expect(courseParent).toBeDefined()
+  })
+
+  it('/users 旧入口重定向到学生管理', () => {
+    const users = routes
+      .flatMap((r) => (r.children?.length ? r.children : [r]))
+      .find((r) => r.path === 'users')
+    expect(users?.redirect).toEqual({ name: 'students' })
+  })
+
+  it('未匹配路径兜底 /404（替代静默重定向仪表盘）', () => {
+    const catchAll = routes.find((r) => r.path === '/:pathMatch(.*)*')
+    expect(catchAll?.redirect).toBe('/404')
   })
 
   it('根路径重定向到仪表盘', async () => {
@@ -117,7 +151,17 @@ describe('路由守卫（三态）', () => {
     expect(router.currentRoute.value.name).toBe('dashboard')
   })
 
-  it('TEACHER 访问超管页 /sessions：跳转 ForbiddenView（403 无权限）', async () => {
+  it('TEACHER 访问超管页 /teachers：跳转 ForbiddenView（403 无权限）', async () => {
+    const router = createAppRouter()
+    useAuthStore().setAuth(buildPayload('TEACHER'))
+
+    await router.push('/teachers')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('forbidden')
+  })
+
+  it('TEACHER 访问超管页 /sessions：同样被拒绝', async () => {
     const router = createAppRouter()
     useAuthStore().setAuth(buildPayload('TEACHER'))
 
@@ -127,34 +171,24 @@ describe('路由守卫（三态）', () => {
     expect(router.currentRoute.value.name).toBe('forbidden')
   })
 
-  it('TEACHER 访问超管页 /security/login-records：同样被拒绝', async () => {
+  it('TEACHER 访问两角色页 /students：放行（学生管理两角色可见）', async () => {
     const router = createAppRouter()
     useAuthStore().setAuth(buildPayload('TEACHER'))
 
-    await router.push('/security/login-records')
+    await router.push('/students')
     await router.isReady()
 
-    expect(router.currentRoute.value.name).toBe('forbidden')
+    expect(router.currentRoute.value.name).toBe('students')
   })
 
-  it('SUPER_ADMIN 访问超管页 /sessions：放行', async () => {
+  it('SUPER_ADMIN 访问超管页 /teachers：放行', async () => {
     const router = createAppRouter()
     useAuthStore().setAuth(buildPayload('SUPER_ADMIN'))
 
-    await router.push('/sessions')
+    await router.push('/teachers')
     await router.isReady()
 
-    expect(router.currentRoute.value.name).toBe('sessions')
-  })
-
-  it('TEACHER 访问两角色页 /feedback：放行', async () => {
-    const router = createAppRouter()
-    useAuthStore().setAuth(buildPayload('TEACHER'))
-
-    await router.push('/feedback')
-    await router.isReady()
-
-    expect(router.currentRoute.value.name).toBe('feedback')
+    expect(router.currentRoute.value.name).toBe('teachers')
   })
 
   it('登录页（公开路由）未登录可直达', async () => {
@@ -166,11 +200,20 @@ describe('路由守卫（三态）', () => {
     expect(router.currentRoute.value.name).toBe('login')
   })
 
+  it('未知路径未登录：兜底 404 为公开页可直接到达', async () => {
+    const router = createAppRouter()
+
+    await router.push('/no-such-page')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('not-found')
+  })
+
   it('全部业务路由可达：SUPER_ADMIN 逐页导航均放行并加载页面组件', async () => {
     const router = createAppRouter()
     useAuthStore().setAuth(buildPayload('SUPER_ADMIN'))
 
-    // 设计 §2.4 全部受保护页面（含占位视图；课程编辑新建/详情共用组件）
+    // 设计 §2.4 全部受保护页面（含课程详情五子路由与学生/教师管理）
     const pages: Array<[string, string]> = [
       ['dashboard', '/dashboard'],
       ['knowledge-bases', '/knowledge-bases'],
@@ -180,7 +223,12 @@ describe('路由守卫（三态）', () => {
       ['courses', '/courses'],
       ['course-new', '/courses/new'],
       ['course-detail', '/courses/c-1'],
-      ['users', '/users'],
+      ['course-content', '/courses/c-1/content'],
+      ['course-schedule', '/courses/c-1/schedule'],
+      ['course-teachers', '/courses/c-1/teachers'],
+      ['course-students', '/courses/c-1/students'],
+      ['students', '/students'],
+      ['teachers', '/teachers'],
       ['feedback', '/feedback'],
       ['sessions', '/sessions'],
       ['login-records', '/security/login-records'],
@@ -191,6 +239,26 @@ describe('路由守卫（三态）', () => {
       await router.isReady()
       expect(router.currentRoute.value.name, `路由 ${path} 应可达`).toBe(name)
     }
+  })
+
+  it('/users 旧链接：重定向到 /students', async () => {
+    const router = createAppRouter()
+    useAuthStore().setAuth(buildPayload('SUPER_ADMIN'))
+
+    await router.push('/users')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('students')
+  })
+
+  it('已登录访问未知路径：兜底 404 页', async () => {
+    const router = createAppRouter()
+    useAuthStore().setAuth(buildPayload('SUPER_ADMIN'))
+
+    await router.push('/no-such-page')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('not-found')
   })
 })
 

@@ -1,28 +1,28 @@
+import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import AdminLayout, { createNavGroups, navGroups } from '@/layouts/AdminLayout.vue'
+import AdminLayout, { createNavGroups, isGroupActive, navGroups } from '@/layouts/AdminLayout.vue'
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 
 import type { UserRole } from '@/lib/types'
 
 /**
- * 布局壳测试（Task 16 核心：角色过滤逻辑）
+ * 布局壳测试（Task 16 核心 + UI 重构 2026-08-25 深色侧栏）
  *
- * 覆盖契约（设计 §2.3 布局骨架）：
- * 1. createNavGroups 角色过滤：TEACHER 隐藏会话审计/安全审计，SUPER_ADMIN 全量可见
- * 2. 顶栏 56px slate-900 + 品牌名；侧栏 220px 分组；内容区 max-w-[1400px]
- * 3. 头像下拉：显示名/角色展示 + 退出登录（调登出接口并跳登录页）
- * 4. 页头标题来自当前路由 meta.title
- *
- * 仪表盘子页于 Task 17 落地（KPI 卡）：此处 mock api 层返回稳定数据，
- * 断言仪表盘 KPI 与快捷入口在布局壳内正常渲染（避免真实 axios 网络调用）。
+ * 覆盖契约：
+ * 1. createNavGroups 双层角色过滤：组级（审计仅超管）+ 项级（教师管理仅超管），空组剔除
+ * 2. 深色侧栏：图标分组渲染（单子项直链/多子项可展开默认态）、折叠切换持久化、
+ *    分组展开持久化、localStorage 异常降级
+ * 3. 顶栏面包屑（分组/页面标题）与用户下拉（Esc/外点关闭 + 退出登录）
+ * 4. 路由切换过渡容器与内容区统一限宽
  */
 
-/** 仪表盘接口 mock：稳定 KPI 数据（计数全 string，likeRate 浮点） */
+/** 仪表盘接口 mock：稳定数据（避免真实 axios 网络调用） */
 vi.mock('@/lib/api', () => ({
   ApiError: class ApiError extends Error {},
   dashboardApi: {
@@ -52,59 +52,86 @@ function setLoginRole(role: UserRole) {
   })
 }
 
-describe('createNavGroups：按角色过滤超管分组', () => {
-  it('TEACHER：仅基础分组，隐藏会话审计与安全审计', () => {
+describe('createNavGroups：双层角色过滤', () => {
+  it('TEACHER：隐藏审计分组与学员分组中的教师管理项', () => {
     const groups = createNavGroups('TEACHER')
     const labels = groups.flatMap((g) => [g.label, ...g.items.map((i) => i.label)])
 
     expect(labels).toContain('仪表盘')
+    expect(labels).toContain('知识库')
+    expect(labels).toContain('知识库管理')
     expect(labels).toContain('文档')
     expect(labels).toContain('分片')
     expect(labels).toContain('课程')
-    expect(labels).toContain('用户')
+    expect(labels).toContain('学员')
+    expect(labels).toContain('学生管理')
     expect(labels).toContain('反馈')
+    // 项级过滤：教师管理仅超管；组级过滤：审计分组整体隐藏
+    expect(labels).not.toContain('教师管理')
+    expect(labels).not.toContain('审计')
     expect(labels).not.toContain('会话审计')
-    expect(labels).not.toContain('安全审计')
   })
 
-  it('SUPER_ADMIN：全部 7 个分组可见', () => {
+  it('SUPER_ADMIN：全部 6 个分组可见（含教师管理与审计四项）', () => {
     const groups = createNavGroups('SUPER_ADMIN')
     const labels = groups.flatMap((g) => [g.label, ...g.items.map((i) => i.label)])
 
+    expect(labels).toContain('教师管理')
+    expect(labels).toContain('审计')
     expect(labels).toContain('会话审计')
-    expect(labels).toContain('安全审计')
-    expect(groups).toHaveLength(7)
+    expect(labels).toContain('登录记录')
+    expect(labels).toContain('Token 黑名单')
+    expect(groups).toHaveLength(6)
   })
 
-  it('登录态未恢复（role 为 null）：按最低权限渲染，超管分组不可见', () => {
+  it('登录态未恢复（role 为 null）：按最低权限渲染，超管分组/教师管理不可见', () => {
     const groups = createNavGroups(null)
-    const labels = groups.flatMap((g) => g.label)
+    const labels = groups.flatMap((g) => [g.label, ...g.items.map((i) => i.label)])
 
-    expect(labels).not.toContain('会话审计')
+    expect(labels).not.toContain('审计')
+    expect(labels).not.toContain('教师管理')
     expect(createNavGroups(null)).toEqual(createNavGroups('TEACHER'))
   })
 
   it('导航静态结构与路由路径对应（供路由表与布局一致性校验）', () => {
-    expect(navGroups).toHaveLength(7)
+    expect(navGroups).toHaveLength(6)
     const allTos = navGroups.flatMap((g) => g.items.map((i) => i.to))
     expect(allTos).toEqual([
       '/dashboard',
+      '/knowledge-bases',
       '/knowledge/documents',
       '/knowledge/chunks',
       '/courses',
-      '/users',
+      '/students',
+      '/teachers',
       '/feedback',
       '/sessions',
       '/security/login-records',
+      '/security/token-blacklist',
     ])
+  })
+
+  it('isGroupActive：精确匹配与子路径前缀匹配，仪表盘不做前缀匹配', () => {
+    expect(isGroupActive('/dashboard', '/dashboard')).toBe(true)
+    expect(isGroupActive('/courses', '/dashboard')).toBe(false)
+    // 子路径前缀：文档详情高亮「文档」
+    expect(isGroupActive('/knowledge/documents/d-1', '/knowledge/documents')).toBe(true)
+    // 课程详情五子路由高亮「课程管理」
+    expect(isGroupActive('/courses/c-1/content', '/courses')).toBe(true)
   })
 })
 
-describe('AdminLayout 渲染', () => {
+describe('AdminLayout 渲染（深色侧栏）', () => {
   beforeEach(() => {
     sessionStorage.clear()
+    window.localStorage.clear()
     vi.restoreAllMocks()
   })
+
+  // RouterView 壳：模拟真实 App 挂载（深度 0 → 布局 → 深度 1 → 页面）。
+  // 直接 mount AdminLayout 时 RouterView 深度为 0 会再渲染 matched[0]（布局自身），
+  // 造成测试环境双层布局（2026-08-25 实证），真实应用经 App.vue 无此问题。
+  const Shell = defineComponent(() => () => h(RouterView))
 
   async function mountLayout(role: UserRole, initialPath = '/dashboard') {
     const pinia = createPinia()
@@ -113,87 +140,180 @@ describe('AdminLayout 渲染', () => {
     const router = createAppRouter()
     await router.push(initialPath)
     await router.isReady()
-    // 内容区经 RouterView 渲染当前子路由页面（文档页等使用 vue-query 的页面需要 QueryClient）
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const wrapper = mount(AdminLayout, {
+    const wrapper = mount(Shell, {
       global: { plugins: [pinia, router, [VueQueryPlugin, { queryClient }]] },
     })
     return { wrapper, router, pinia }
   }
 
-  it('TEACHER：顶栏 56px slate-900 品牌区与侧栏渲染，无超管导航', async () => {
+  it('TEACHER：深色侧栏渲染基础分组，无超管导航；内容区统一限宽', async () => {
     const { wrapper } = await mountLayout('TEACHER')
 
-    // 顶栏：56px + slate-900 + 品牌名
-    const header = wrapper.find('header')
-    expect(header.classes()).toContain('h-14')
-    expect(header.classes()).toContain('bg-slate-900')
-    expect(wrapper.text()).toContain('知识库管理后台')
-
-    // 侧栏：220px + 基础导航项
-    const aside = wrapper.find('aside')
-    expect(aside.classes()).toContain('w-[220px]')
+    // 侧栏：深色 ink 底 + 60 宽（w-60 展开态）
+    const aside = wrapper.find('[data-testid="admin-sidebar"]')
+    expect(aside.classes()).toContain('w-60')
+    expect(aside.classes()).toContain('from-ink-950')
+    // 品牌名与基础导航
+    expect(wrapper.text()).toContain('课程助手管理后台')
     expect(wrapper.text()).toContain('仪表盘')
-    expect(wrapper.text()).toContain('文档')
-    expect(wrapper.text()).toContain('分片')
-    expect(wrapper.text()).toContain('课程')
-    expect(wrapper.text()).toContain('用户')
+    expect(wrapper.text()).toContain('知识库')
+    expect(wrapper.text()).toContain('学生管理')
     expect(wrapper.text()).toContain('反馈')
-
-    // 超管分组不可见
-    expect(wrapper.text()).not.toContain('会话审计')
-    expect(wrapper.text()).not.toContain('安全审计')
-
-    // 内容区限宽，子路由页面经 RouterView 渲染（仪表盘 KPI 卡在场）
+    // 超管可见项不可见
+    expect(wrapper.text()).not.toContain('教师管理')
+    expect(wrapper.text()).not.toContain('审计')
+    // 全局 1400px 内容容器（非视图层重复包裹）
     expect(wrapper.find('.max-w-\\[1400px\\]').exists()).toBe(true)
     await vi.waitFor(() => expect(wrapper.text()).toContain('文档总数'))
     wrapper.unmount()
   })
 
-  it('SUPER_ADMIN：会话审计与安全审计导航可见', async () => {
-    const { wrapper } = await mountLayout('SUPER_ADMIN')
+  it('多子项分组：默认展开渲染子项；折叠态仅标题按钮', async () => {
+    const { wrapper } = await mountLayout('SUPER_ADMIN', '/knowledge/documents')
 
+    // 知识库分组默认展开：三个子项在场
+    expect(wrapper.text()).toContain('知识库管理')
+    expect(wrapper.text()).toContain('文档')
+    expect(wrapper.text()).toContain('分片')
+    // 审计分组 defaultOpen=false：初始折叠，点击展开出现子项
+    const toggles = wrapper.findAll('[data-testid="nav-group-toggle"]')
+    const auditToggle = toggles.find((t) => t.text().includes('审计'))
+    expect(auditToggle?.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).not.toContain('会话审计')
+    await auditToggle?.trigger('click')
     expect(wrapper.text()).toContain('会话审计')
-    expect(wrapper.text()).toContain('安全审计')
+    expect(auditToggle?.attributes('aria-expanded')).toBe('true')
     wrapper.unmount()
   })
 
-  it('页头标题来自当前路由 meta.title', async () => {
+  it('折叠侧栏：切 w-16 图标态并持久化 localStroage；展开恢复', async () => {
+    const { wrapper } = await mountLayout('TEACHER')
+
+    await wrapper.find('button[aria-label="收起侧栏"]').trigger('click')
+    expect(wrapper.find('[data-testid="admin-sidebar"]').classes()).toContain('w-16')
+    expect(window.localStorage.getItem('cc.admin-sidebar.collapsed')).toBe('1')
+    // 折叠态：品牌名与分组标题隐藏，展开按钮在场
+    expect(wrapper.text()).not.toContain('课程助手管理后台')
+    await wrapper.find('button[aria-label="展开侧栏"]').trigger('click')
+    expect(wrapper.find('[data-testid="admin-sidebar"]').classes()).toContain('w-60')
+    expect(window.localStorage.getItem('cc.admin-sidebar.collapsed')).toBe('0')
+    wrapper.unmount()
+  })
+
+  it('折叠偏好持久化：localStorage=1 时初始即折叠', async () => {
+    window.localStorage.setItem('cc.admin-sidebar.collapsed', '1')
+    const { wrapper } = await mountLayout('TEACHER')
+
+    expect(wrapper.find('[data-testid="admin-sidebar"]').classes()).toContain('w-16')
+    wrapper.unmount()
+  })
+
+  it('localStorage 读写异常：折叠与分组展开降级为默认态，不抛错', async () => {
+    const getSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key: string) => {
+      if (key.startsWith('cc.admin-sidebar.')) {
+        throw new Error('denied')
+      }
+      return null
+    })
+    const setSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string) => {
+      if (key.startsWith('cc.admin-sidebar.')) {
+        throw new Error('denied')
+      }
+    })
+    const { wrapper } = await mountLayout('SUPER_ADMIN', '/knowledge/documents')
+
+    // onMounted 读取异常 → 展开默认态正常渲染
+    expect(wrapper.find('[data-testid="admin-sidebar"]').classes()).toContain('w-60')
+    // toggle 写回异常不影响状态切换
+    await wrapper.find('button[aria-label="收起侧栏"]').trigger('click')
+    expect(wrapper.find('[data-testid="admin-sidebar"]').classes()).toContain('w-16')
+    await wrapper.find('button[aria-label="展开侧栏"]').trigger('click')
+    // 分组展开写回异常不影响交互
+    const toggles = wrapper.findAll('[data-testid="nav-group-toggle"]')
+    const auditToggle = toggles.find((t) => t.text().includes('审计'))
+    await auditToggle?.trigger('click')
+    expect(wrapper.text()).toContain('会话审计')
+    getSpy.mockRestore()
+    setSpy.mockRestore()
+    wrapper.unmount()
+  })
+
+  it('分组展开偏好持久化：折叠过的分组重启后保持折叠', async () => {
+    window.localStorage.setItem('cc.admin-sidebar.groups', JSON.stringify({ 知识库: false }))
+    const { wrapper } = await mountLayout('SUPER_ADMIN', '/dashboard')
+
+    // 知识库分组已折叠：子项不渲染
+    expect(wrapper.text()).not.toContain('知识库管理')
+    const toggles = wrapper.findAll('[data-testid="nav-group-toggle"]')
+    const kbToggle = toggles.find((t) => t.text().includes('知识库'))
+    expect(kbToggle?.attributes('aria-expanded')).toBe('false')
+    wrapper.unmount()
+  })
+
+  it('面包屑：分组名 + 页面标题（文档详情 → 知识库 / 文档管理）', async () => {
     const { wrapper } = await mountLayout('TEACHER', '/knowledge/documents')
 
-    expect(wrapper.find('main h1').text()).toContain('文档管理')
+    const crumb = wrapper.find('[data-testid="breadcrumb"]')
+    expect(crumb.text()).toContain('首页')
+    expect(crumb.text()).toContain('知识库')
+    expect(crumb.text()).toContain('文档管理')
     wrapper.unmount()
   })
 
-  it('导航激活态：当前路由对应项高亮（激活类与指示条）', async () => {
-    const { wrapper } = await mountLayout('TEACHER', '/knowledge/chunks')
+  it('面包屑兜底：路由不在导航分组时仅展示页面标题', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    setLoginRole('TEACHER')
+    // 定制路由器：布局壳挂一个不在导航分组中的子路由（无 meta.title 兜底空串）
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/',
+          component: AdminLayout,
+          meta: { requiresAuth: true },
+          children: [{ path: 'custom', component: { template: '<div>自定义页</div>' } }],
+        },
+      ],
+    })
+    await router.push('/custom')
+    await router.isReady()
+    const Shell = defineComponent(() => () => h(RouterView))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = mount(Shell, {
+      global: { plugins: [pinia, router, [VueQueryPlugin, { queryClient }]] },
+    })
 
-    const links = wrapper.findAll('a')
-    const active = links.find((l) => l.classes().includes('bg-brand-soft'))
-    // 分片项激活：当前路由 /knowledge/chunks
-    expect(active?.text()).toContain('分片')
+    const crumb = wrapper.find('[data-testid="breadcrumb"]')
+    expect(crumb.text()).toContain('首页')
     wrapper.unmount()
   })
 
-  it('头像下拉：显示名与角色展示，退出登录清凭据并跳登录页', async () => {
+  it('头像下拉：显示名与角色展示，外点/Esc 关闭，退出登录清凭据并跳登录页', async () => {
     const { wrapper, router } = await mountLayout('SUPER_ADMIN')
 
-    // 默认收起；点击头像展开菜单
     expect(wrapper.text()).not.toContain('退出登录')
     await wrapper.find('button[aria-label="用户菜单"]').trigger('click')
     expect(wrapper.text()).toContain('李超管')
-    expect(wrapper.text()).toContain('SUPER_ADMIN')
+    expect(wrapper.text()).toContain('超级管理员')
     expect(wrapper.text()).toContain('退出登录')
 
-    // 再次点击收起
+    // Esc 关闭
     await wrapper.find('button[aria-label="用户菜单"]').trigger('click')
-    expect(wrapper.text()).not.toContain('退出登录')
+    await wrapper.find('button[aria-label="用户菜单"]').trigger('click')
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await vi.waitFor(() => expect(wrapper.text()).not.toContain('退出登录'))
+
+    // 外点关闭：展开后 pointerdown 落在布局根（菜单外）
+    await wrapper.find('button[aria-label="用户菜单"]').trigger('click')
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
+    await vi.waitFor(() => expect(wrapper.text()).not.toContain('退出登录'))
 
     // 展开后执行退出：登出接口被调 + 清凭据 + 跳转登录页
     await wrapper.find('button[aria-label="用户菜单"]').trigger('click')
     const store = useAuthStore()
     const logoutSpy = vi.spyOn(store, 'logout').mockImplementation(async () => {
-      // 模拟真实登出流程的本地清理（守卫依赖 isAuthenticated 放行登录页）
       store.clearAuth()
     })
     await wrapper.find('button[aria-label="退出登录"]').trigger('click')

@@ -108,7 +108,9 @@ test.describe('课程管理', () => {
     await expect(page).toHaveURL(/\/courses\/co1$/)
     // 基础信息回显
     await expect(page.locator('#course-title')).toHaveValue('数据结构与算法精讲')
-    // 4 Tab 内容回显（intro 默认）
+    // 内容子页（职责拆分）：点击子导航进入 4 Tab 回显（intro 默认）
+    await page.getByRole('link', { name: '内容', exact: true }).click()
+    await expect(page).toHaveURL(/\/courses\/co1\/content$/)
     await expect(page.getByRole('button', { name: '课程介绍' })).toBeVisible()
     await expect(page.getByText('# 课程介绍', { exact: true })).toBeVisible()
     // 切 Tab 回显另一内容

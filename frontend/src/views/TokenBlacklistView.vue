@@ -219,315 +219,309 @@ async function cleanupExpired() {
 </script>
 
 <template>
-  <main class="mx-auto max-w-[1400px] px-8 py-6">
-    <!-- 页头操作行：手动加入 + 清理过期（两入口常驻页头） -->
-    <div class="mb-4 flex items-center justify-between">
-      <p class="text-sm text-text-muted">
-        被禁用的 Token 记录（Access/Refresh），踢出设备与手动加入汇聚于此
-      </p>
+  <!-- 页头操作行：手动加入 + 清理过期（两入口常驻页头） -->
+  <div class="mb-4 flex items-center justify-between">
+    <p class="text-sm text-text-muted">
+      被禁用的 Token 记录（Access/Refresh），踢出设备与手动加入汇聚于此
+    </p>
+    <div class="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="cleanup"
+        :disabled="cleaning"
+        @click="cleanupExpired"
+      >
+        <PhSpinnerGap v-if="cleaning" class="h-4 w-4 animate-spin" />
+        清理过期
+      </Button>
+      <Button data-testid="open-add" @click="openAdd">
+        <PhPlus class="h-4 w-4" />
+        手动加入
+      </Button>
+    </div>
+  </div>
+
+  <!-- 筛选条：userId/jti/tokenType（查询按钮统一提交） -->
+  <div class="mb-4 flex flex-wrap items-center gap-2">
+    <input
+      v-model="pendingFilters.userId"
+      data-testid="filter-user"
+      type="text"
+      aria-label="按用户 ID 筛选"
+      placeholder="用户 ID"
+      class="h-9 w-44 rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+    />
+    <input
+      v-model="pendingFilters.jti"
+      data-testid="filter-jti"
+      type="text"
+      aria-label="按 JTI 筛选"
+      placeholder="JTI"
+      class="h-9 w-52 rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+    />
+    <select
+      v-model="pendingFilters.tokenType"
+      data-testid="filter-type"
+      aria-label="按令牌类型筛选"
+      class="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+    >
+      <option value="">全部类型</option>
+      <option value="ACCESS">ACCESS</option>
+      <option value="REFRESH">REFRESH</option>
+    </select>
+    <Button variant="outline" size="sm" data-testid="apply-filters" @click="applyFilters">
+      查询
+    </Button>
+  </div>
+
+  <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
+  <div
+    v-if="error"
+    role="alert"
+    class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
+  >
+    <span class="text-sm text-danger">{{ error }}</span>
+    <Button variant="outline" size="sm" data-testid="retry-blacklist" @click="load">重试</Button>
+  </div>
+
+  <!-- 加载态：表格骨架屏（表头 + 5 行灰条，与最终表格同形） -->
+  <div
+    v-else-if="loading"
+    data-testid="tb-skeleton"
+    class="overflow-hidden rounded-xl border border-border bg-surface"
+    aria-label="黑名单加载中"
+  >
+    <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
+      <div v-for="i in 7" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-slate-200" />
+    </div>
+    <div
+      v-for="i in 5"
+      :key="`row-${i}`"
+      class="h-11 animate-pulse border-b border-border bg-slate-50"
+    />
+  </div>
+
+  <!-- 空态：无黑名单项文案（禁裸「暂无数据」） -->
+  <div
+    v-else-if="items.length === 0"
+    class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
+  >
+    <PhWarningCircle class="h-8 w-8 text-text-subtle" />
+    <p class="mt-3 text-sm font-medium text-text">黑名单为空</p>
+    <p class="mt-1 text-xs text-text-muted">被吊销的 Token 会在此保留至过期，也可手动加入</p>
+  </div>
+
+  <!-- 正常态：分页表格（#id/jti/tokenType/userId/reason/到期/创建/操作） -->
+  <template v-else>
+    <div class="overflow-hidden rounded-xl border border-border bg-surface">
+      <table data-testid="tb-table" class="w-full text-sm">
+        <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
+          <tr>
+            <th class="w-20 px-4 py-2.5 font-medium">#id</th>
+            <th class="px-4 py-2.5 font-medium">jti</th>
+            <th class="w-28 px-4 py-2.5 font-medium">tokenType</th>
+            <th class="w-28 px-4 py-2.5 font-medium">用户</th>
+            <th class="w-32 px-4 py-2.5 font-medium">reason</th>
+            <th class="w-32 px-4 py-2.5 font-medium">到期时间</th>
+            <th class="w-32 px-4 py-2.5 font-medium">创建时间</th>
+            <th class="w-24 px-4 py-2.5 text-right font-medium">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="t in items"
+            :key="t.id"
+            :data-testid="`row-${t.id}`"
+            class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
+          >
+            <td class="px-4 tabular-nums text-text-muted">#{{ t.id }}</td>
+            <td class="max-w-[200px] truncate px-4 font-mono text-xs text-text" :title="t.jti">
+              {{ t.jti }}
+            </td>
+            <td class="px-4">
+              <Badge :data-testid="`tb-type-${t.id}`" :variant="typeVariant(t.tokenType)">
+                {{ t.tokenType }}
+              </Badge>
+            </td>
+            <td class="px-4 tabular-nums text-text-muted">{{ t.userId }}</td>
+            <td class="px-4 text-text-muted">{{ t.reason }}</td>
+            <td class="px-4 tabular-nums text-text-muted">{{ formatDateTime(t.expiresAt) }}</td>
+            <td class="px-4 tabular-nums text-text-muted">{{ formatDateTime(t.createdAt) }}</td>
+            <td class="px-4 text-right">
+              <Button
+                variant="danger"
+                size="sm"
+                :data-testid="`op-remove-${t.id}`"
+                @click="requestRemove(t)"
+              >
+                移除
+              </Button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
+    <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
+      <span>
+        共 <span class="tabular-nums text-text">{{ total }}</span> 条
+      </span>
       <div class="flex items-center gap-2">
         <Button
           variant="outline"
           size="sm"
-          data-testid="cleanup"
-          :disabled="cleaning"
-          @click="cleanupExpired"
+          data-testid="prev-page"
+          :disabled="page <= 1"
+          @click="changePage(page - 1)"
         >
-          <PhSpinnerGap v-if="cleaning" class="h-4 w-4 animate-spin" />
-          清理过期
+          上一页
         </Button>
-        <Button data-testid="open-add" @click="openAdd">
-          <PhPlus class="h-4 w-4" />
-          手动加入
-        </Button>
-      </div>
-    </div>
-
-    <!-- 筛选条：userId/jti/tokenType（查询按钮统一提交） -->
-    <div class="mb-4 flex flex-wrap items-center gap-2">
-      <input
-        v-model="pendingFilters.userId"
-        data-testid="filter-user"
-        type="text"
-        aria-label="按用户 ID 筛选"
-        placeholder="用户 ID"
-        class="h-9 w-44 rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-      />
-      <input
-        v-model="pendingFilters.jti"
-        data-testid="filter-jti"
-        type="text"
-        aria-label="按 JTI 筛选"
-        placeholder="JTI"
-        class="h-9 w-52 rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-      />
-      <select
-        v-model="pendingFilters.tokenType"
-        data-testid="filter-type"
-        aria-label="按令牌类型筛选"
-        class="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
-      >
-        <option value="">全部类型</option>
-        <option value="ACCESS">ACCESS</option>
-        <option value="REFRESH">REFRESH</option>
-      </select>
-      <Button variant="outline" size="sm" data-testid="apply-filters" @click="applyFilters">
-        查询
-      </Button>
-    </div>
-
-    <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
-    <div
-      v-if="error"
-      role="alert"
-      class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
-    >
-      <span class="text-sm text-danger">{{ error }}</span>
-      <Button variant="outline" size="sm" data-testid="retry-blacklist" @click="load">重试</Button>
-    </div>
-
-    <!-- 加载态：表格骨架屏（表头 + 5 行灰条，与最终表格同形） -->
-    <div
-      v-else-if="loading"
-      data-testid="tb-skeleton"
-      class="overflow-hidden rounded-xl border border-border bg-surface"
-      aria-label="黑名单加载中"
-    >
-      <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
-        <div
-          v-for="i in 7"
-          :key="`head-${i}`"
-          class="h-3 w-20 animate-pulse rounded bg-slate-200"
-        />
-      </div>
-      <div
-        v-for="i in 5"
-        :key="`row-${i}`"
-        class="h-11 animate-pulse border-b border-border bg-slate-50"
-      />
-    </div>
-
-    <!-- 空态：无黑名单项文案（禁裸「暂无数据」） -->
-    <div
-      v-else-if="items.length === 0"
-      class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
-    >
-      <PhWarningCircle class="h-8 w-8 text-text-subtle" />
-      <p class="mt-3 text-sm font-medium text-text">黑名单为空</p>
-      <p class="mt-1 text-xs text-text-muted">被吊销的 Token 会在此保留至过期，也可手动加入</p>
-    </div>
-
-    <!-- 正常态：分页表格（#id/jti/tokenType/userId/reason/到期/创建/操作） -->
-    <template v-else>
-      <div class="overflow-hidden rounded-xl border border-border bg-surface">
-        <table data-testid="tb-table" class="w-full text-sm">
-          <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
-            <tr>
-              <th class="w-20 px-4 py-2.5 font-medium">#id</th>
-              <th class="px-4 py-2.5 font-medium">jti</th>
-              <th class="w-28 px-4 py-2.5 font-medium">tokenType</th>
-              <th class="w-28 px-4 py-2.5 font-medium">用户</th>
-              <th class="w-32 px-4 py-2.5 font-medium">reason</th>
-              <th class="w-32 px-4 py-2.5 font-medium">到期时间</th>
-              <th class="w-32 px-4 py-2.5 font-medium">创建时间</th>
-              <th class="w-24 px-4 py-2.5 text-right font-medium">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="t in items"
-              :key="t.id"
-              :data-testid="`row-${t.id}`"
-              class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
-            >
-              <td class="px-4 tabular-nums text-text-muted">#{{ t.id }}</td>
-              <td class="max-w-[200px] truncate px-4 font-mono text-xs text-text" :title="t.jti">
-                {{ t.jti }}
-              </td>
-              <td class="px-4">
-                <Badge :data-testid="`tb-type-${t.id}`" :variant="typeVariant(t.tokenType)">
-                  {{ t.tokenType }}
-                </Badge>
-              </td>
-              <td class="px-4 tabular-nums text-text-muted">{{ t.userId }}</td>
-              <td class="px-4 text-text-muted">{{ t.reason }}</td>
-              <td class="px-4 tabular-nums text-text-muted">{{ formatDateTime(t.expiresAt) }}</td>
-              <td class="px-4 tabular-nums text-text-muted">{{ formatDateTime(t.createdAt) }}</td>
-              <td class="px-4 text-right">
-                <Button
-                  variant="danger"
-                  size="sm"
-                  :data-testid="`op-remove-${t.id}`"
-                  @click="requestRemove(t)"
-                >
-                  移除
-                </Button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
-      <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
-        <span>
-          共 <span class="tabular-nums text-text">{{ total }}</span> 条
-        </span>
-        <div class="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="prev-page"
-            :disabled="page <= 1"
-            @click="changePage(page - 1)"
-          >
-            上一页
-          </Button>
-          <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="next-page"
-            :disabled="page >= totalPages"
-            @click="changePage(page + 1)"
-          >
-            下一页
-          </Button>
-        </div>
-      </div>
-    </template>
-
-    <!-- 手动加入 Dialog（查询参数传参表单：jti/tokenType/userId 必填，expiresAt 可选） -->
-    <div
-      v-if="addOpen"
-      data-testid="blacklist-add-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-      @keydown.esc="closeAdd"
-      @click.self="closeAdd"
-    >
-      <div
-        class="w-full max-w-[480px] rounded-xl border border-border bg-surface p-6 shadow-md"
-        role="dialog"
-        aria-modal="true"
-        @click.stop
-      >
-        <h2 class="text-base font-semibold text-text">手动加入黑名单</h2>
-        <p class="mt-1 text-xs text-text-muted">
-          手动吊销指定 jti 的令牌（reason 固定 MANUAL_REVOKE），缺省 7 天后过期
-        </p>
-        <form
-          data-testid="blacklist-add-form"
-          class="mt-5 space-y-4"
-          novalidate
-          @submit.prevent="submitAdd"
+        <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="next-page"
+          :disabled="page >= totalPages"
+          @click="changePage(page + 1)"
         >
-          <div>
-            <label for="add-jti" class="mb-1.5 block text-sm font-medium text-text">
-              JTI <span class="text-danger">*</span>
-            </label>
-            <input
-              id="add-jti"
-              v-model="addForm.jti"
-              data-testid="add-jti"
-              type="text"
-              aria-label="令牌 JTI"
-              placeholder="被吊销令牌的 JWT ID"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 font-mono text-sm text-text outline-none transition-colors duration-150 placeholder:font-sans placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-            <p v-if="addErrors.jti" class="mt-1 text-xs text-danger">{{ addErrors.jti }}</p>
-          </div>
-          <div>
-            <label for="add-type" class="mb-1.5 block text-sm font-medium text-text">
-              tokenType <span class="text-danger">*</span>
-            </label>
-            <select
-              id="add-type"
-              v-model="addForm.tokenType"
-              data-testid="add-type"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
-            >
-              <option value="ACCESS">ACCESS</option>
-              <option value="REFRESH">REFRESH</option>
-            </select>
-          </div>
-          <div>
-            <label for="add-user" class="mb-1.5 block text-sm font-medium text-text">
-              用户 ID <span class="text-danger">*</span>
-            </label>
-            <input
-              id="add-user"
-              v-model="addForm.userId"
-              data-testid="add-user"
-              type="text"
-              aria-label="用户 ID"
-              placeholder="令牌所属用户"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-            <p v-if="addErrors.userId" class="mt-1 text-xs text-danger">{{ addErrors.userId }}</p>
-          </div>
-          <div>
-            <label for="add-expires" class="mb-1.5 block text-sm font-medium text-text">
-              过期时间（可选）
-            </label>
-            <input
-              id="add-expires"
-              v-model="addForm.expiresAt"
-              data-testid="add-expires"
-              type="datetime-local"
-              aria-label="过期时间"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </div>
-          <div class="flex justify-end gap-2 pt-2">
-            <Button variant="outline" :disabled="addSubmitting" @click="closeAdd">取消</Button>
-            <Button type="submit" data-testid="submit-add" :disabled="addSubmitting">
-              <PhSpinnerGap v-if="addSubmitting" class="h-4 w-4 animate-spin" />
-              {{ addSubmitting ? '加入中' : '加入黑名单' }}
-            </Button>
-          </div>
-        </form>
+          下一页
+        </Button>
       </div>
     </div>
+  </template>
 
-    <!-- 移除黑名单二次确认（安全保护记录，防误删） -->
+  <!-- 手动加入 Dialog（查询参数传参表单：jti/tokenType/userId 必填，expiresAt 可选） -->
+  <div
+    v-if="addOpen"
+    data-testid="blacklist-add-dialog"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+    @keydown.esc="closeAdd"
+    @click.self="closeAdd"
+  >
     <div
-      v-if="removing"
-      data-testid="blacklist-del-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-      @keydown.esc="cancelRemove"
-      @click.self="cancelRemove"
+      class="w-full max-w-[480px] rounded-xl border border-border bg-surface p-6 shadow-md"
+      role="dialog"
+      aria-modal="true"
+      @click.stop
     >
-      <div
-        class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
-        role="alertdialog"
-        aria-modal="true"
-        @click.stop
+      <h2 class="text-base font-semibold text-text">手动加入黑名单</h2>
+      <p class="mt-1 text-xs text-text-muted">
+        手动吊销指定 jti 的令牌（reason 固定 MANUAL_REVOKE），缺省 7 天后过期
+      </p>
+      <form
+        data-testid="blacklist-add-form"
+        class="mt-5 space-y-4"
+        novalidate
+        @submit.prevent="submitAdd"
       >
-        <div class="flex items-start gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
-            <PhWarningCircle class="h-5 w-5 text-danger" />
-          </div>
-          <div>
-            <h2 class="text-base font-semibold text-text">移除黑名单记录</h2>
-            <p class="mt-2 text-sm leading-relaxed text-text-muted">
-              移除后该 jti 的令牌将不再被拦截（Token 过期后清理记录属正常运维）。 确认移除
-              {{ removing.jti }}？
-            </p>
-          </div>
+        <div>
+          <label for="add-jti" class="mb-1.5 block text-sm font-medium text-text">
+            JTI <span class="text-danger">*</span>
+          </label>
+          <input
+            id="add-jti"
+            v-model="addForm.jti"
+            data-testid="add-jti"
+            type="text"
+            aria-label="令牌 JTI"
+            placeholder="被吊销令牌的 JWT ID"
+            class="h-10 w-full rounded-lg border border-border bg-surface px-3 font-mono text-sm text-text outline-none transition-colors duration-150 placeholder:font-sans placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+          <p v-if="addErrors.jti" class="mt-1 text-xs text-danger">{{ addErrors.jti }}</p>
         </div>
-        <div class="mt-5 flex justify-end gap-2">
-          <Button variant="outline" :disabled="removeSubmitting" @click="cancelRemove">取消</Button>
-          <Button
-            variant="danger"
-            data-testid="confirm-blacklist-del"
-            :disabled="removeSubmitting"
-            @click="confirmRemove"
+        <div>
+          <label for="add-type" class="mb-1.5 block text-sm font-medium text-text">
+            tokenType <span class="text-danger">*</span>
+          </label>
+          <select
+            id="add-type"
+            v-model="addForm.tokenType"
+            data-testid="add-type"
+            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
           >
-            <PhSpinnerGap v-if="removeSubmitting" class="h-4 w-4 animate-spin" />
-            {{ removeSubmitting ? '移除中' : '确认移除' }}
+            <option value="ACCESS">ACCESS</option>
+            <option value="REFRESH">REFRESH</option>
+          </select>
+        </div>
+        <div>
+          <label for="add-user" class="mb-1.5 block text-sm font-medium text-text">
+            用户 ID <span class="text-danger">*</span>
+          </label>
+          <input
+            id="add-user"
+            v-model="addForm.userId"
+            data-testid="add-user"
+            type="text"
+            aria-label="用户 ID"
+            placeholder="令牌所属用户"
+            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+          <p v-if="addErrors.userId" class="mt-1 text-xs text-danger">{{ addErrors.userId }}</p>
+        </div>
+        <div>
+          <label for="add-expires" class="mb-1.5 block text-sm font-medium text-text">
+            过期时间（可选）
+          </label>
+          <input
+            id="add-expires"
+            v-model="addForm.expiresAt"
+            data-testid="add-expires"
+            type="datetime-local"
+            aria-label="过期时间"
+            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <Button variant="outline" :disabled="addSubmitting" @click="closeAdd">取消</Button>
+          <Button type="submit" data-testid="submit-add" :disabled="addSubmitting">
+            <PhSpinnerGap v-if="addSubmitting" class="h-4 w-4 animate-spin" />
+            {{ addSubmitting ? '加入中' : '加入黑名单' }}
           </Button>
         </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 移除黑名单二次确认（安全保护记录，防误删） -->
+  <div
+    v-if="removing"
+    data-testid="blacklist-del-dialog"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+    @keydown.esc="cancelRemove"
+    @click.self="cancelRemove"
+  >
+    <div
+      class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+      role="alertdialog"
+      aria-modal="true"
+      @click.stop
+    >
+      <div class="flex items-start gap-3">
+        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
+          <PhWarningCircle class="h-5 w-5 text-danger" />
+        </div>
+        <div>
+          <h2 class="text-base font-semibold text-text">移除黑名单记录</h2>
+          <p class="mt-2 text-sm leading-relaxed text-text-muted">
+            移除后该 jti 的令牌将不再被拦截（Token 过期后清理记录属正常运维）。 确认移除
+            {{ removing.jti }}？
+          </p>
+        </div>
+      </div>
+      <div class="mt-5 flex justify-end gap-2">
+        <Button variant="outline" :disabled="removeSubmitting" @click="cancelRemove">取消</Button>
+        <Button
+          variant="danger"
+          data-testid="confirm-blacklist-del"
+          :disabled="removeSubmitting"
+          @click="confirmRemove"
+        >
+          <PhSpinnerGap v-if="removeSubmitting" class="h-4 w-4 animate-spin" />
+          {{ removeSubmitting ? '移除中' : '确认移除' }}
+        </Button>
       </div>
     </div>
-  </main>
+  </div>
 </template>
