@@ -165,3 +165,16 @@ milvus-io/milvus-sdk-java#1402，仍 Open），服务端 INTERNAL 后 SDK 无限
 - Milvus sparse 检索恢复方案三选一 → TASK.md §4
 
 ---
+
+---
+
+## 6. 双前端 UI 全面重构 — ✅ 已完成（2026-08-25 PR#7/PR#8）
+
+**背景**：用户判定 C 端/B 端界面样式结构奇丑、管理端侧栏层级不合理、C 端课堂/首页/课程助手几乎无法使用，责令全面重构；课程助手参照参考稿 `D:\code\projectssert\kimi\README.md` 按项目调整，配色必须高级，首页要求内容滚动动效。
+
+**交付**（两 PR 待合并 dev）：
+- C 端（PR#7）：kimi 蓝系设计令牌（暖米白 + #2F8BF5 蓝族 + 圆角/阴影/动效体系）；首页电商风（Hero 光晕 + 分类筛选条 + 推荐课程网格 + motion whileInView 滚动动效）；课程助手 kimi 式改造（/chat 迁出 (main) 组 → (chat) 组全局左侧栏：品牌/新建对话 Ctrl+K/会话历史/用户区，260↔64px 折叠持久化；消息气泡/思考卡/来源卡/20px 输入区参照稿逐项落地）；课堂/会话/个人中心/登录页品牌化
+- B 端（PR#8）：深色侧栏（ink 板 + 图标分组展开 + 激活光条 + 折叠持久化）+ 面包屑 + 路由过渡；职责拆分（/students 学生管理两角色 + /teachers 教师管理仅超管，/users 重定向；课程详情五子路由 概览/内容/排期/教师/学生；/404 页；知识库管理入侧栏）
+- 门禁：C 端 358 单测 + 29 E2E；B 端 278 单测 + 23 E2E；覆盖率核心文件 100% 行铁律保持；lint/typecheck/format 全绿
+
+**遗留（后续打磨候选，未列入本次）**：B 端 Feedback/Sessions 会话回放 Drawer 抽公共组件、DocumentsView 行菜单 overflow 裁切、Dashboard ECharts 色值令牌化、C 端意图体系相关 UI 微调。
