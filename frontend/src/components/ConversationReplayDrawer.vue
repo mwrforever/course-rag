@@ -36,11 +36,11 @@ const emit = defineEmits<{ close: [] }>()
 const detail = ref<ChatSessionDetailVO | null>(null)
 const loading = ref(false)
 
-/** 展示状态：详情加载后以明细为准（列表行可能滞后，如刚被外部关闭） */
-const status = computed<SessionStatus>(() => detail.value?.status ?? props.initialStatus)
+/** 展示状态：详情加载后以明细为准（列表行可能滞后，如刚被外部关闭）；initialStatus 允许 '' 占位 */
+const status = computed<SessionStatus | ''>(() => detail.value?.status ?? props.initialStatus)
 
-/** 会话状态 → Badge 语义变体（ACTIVE 绿 / CLOSED 中性） */
-function statusVariant(s: SessionStatus) {
+/** 会话状态 → Badge 语义变体（ACTIVE 绿 / CLOSED 中性；'' 占位归中性） */
+function statusVariant(s: SessionStatus | '') {
   return s === 'ACTIVE' ? ('success' as const) : ('default' as const)
 }
 

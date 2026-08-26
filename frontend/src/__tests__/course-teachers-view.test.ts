@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppRouter } from '@/router'
@@ -81,7 +82,18 @@ async function mountAt(path = '/courses/c-1/teachers') {
   const router = createAppRouter()
   await router.push(path)
   await router.isReady()
-  const wrapper = mount(CourseTeachersView, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(CourseTeachersView, {
+    global: {
+      plugins: [
+        [
+          VueQueryPlugin,
+          { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+        ],
+        pinia,
+        router,
+      ],
+    },
+  })
   return { wrapper, router }
 }
 

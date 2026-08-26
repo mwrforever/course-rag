@@ -5,7 +5,8 @@
  * 职责：intro/syllabus/instructor/faq 四个 md-editor-v3 Tab，按后端 sortOrder 排序，
  * 逐 Tab 独立保存（PUT /contents/{contentType} 裸 JSON 字符串 body）。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useMutation, useQuery } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
@@ -14,11 +15,10 @@ import { PhSpinnerGap } from '@phosphor-icons/vue'
 import { Button } from '@/components/ui/button'
 import { ApiError, courseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
-import type { CourseContentDTO } from '@/lib/types'
 
 const route = useRoute()
 /** 课程 id（Long 字符串铁律） */
-const courseId = (): string => String(route.params.id ?? '')
+const courseId = computed(() => String(route.params.id ?? ''))
 
 /** 四 Tab 常量表：type 与后端 contentType 一致，label 为界面文案 */
 const CANONICAL_TABS: { type: string; label: string; sort: number }[] = [
@@ -38,13 +38,45 @@ const CONTENT_SAVED_TOAST: Record<string, string> = {
 
 /** Tab 渲染顺序：按后端 sortOrder；后端缺失时回退常量表 */
 const tabOrder = ref<{ type: string; label: string }[]>([])
-/** 正文缓存：contentType → markdown 正文（Tab 切换互不串写） */
+/** 正文缓存：contentType → markdown 正文（Tab 切换互不串写；编辑器本地状态不进查询缓存） */
 const contentMap = ref<Record<string, string>>({})
 /** 当前激活 Tab */
 const activeTab = ref('intro')
-const contentsLoading = ref(true)
-const contentsError = ref('')
-const contentSaving = ref(false)
+
+/** 内容加载（查询键含路由 id；加载结果回写编辑器本地状态） */
+const {
+  data: contentsData,
+  isLoading: contentsLoading,
+  isError: contentsIsError,
+  error: contentsQueryError,
+  refetch,
+} = useQuery({
+  queryKey: computed(() => ['course-contents', courseId.value]),
+  queryFn: () => courseApi.contents(courseId.value),
+})
+
+/** 内容加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const contentsError = computed(() =>
+  contentsIsError.value ? messageOf(contentsQueryError.value, '内容加载失败，请稍后重试') : '',
+)
+
+/** 加载完成回写编辑器本地状态：按 sortOrder 排序建索引（缺失 body 兜底空串） */
+watch(contentsData, (list) => {
+  if (!list) return
+  const map: Record<string, string> = {}
+  for (const item of list) {
+    map[item.contentType] = item.content ?? ''
+  }
+  contentMap.value = map
+  tabOrder.value =
+    list.length > 0
+      ? list
+          .slice()
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((item) => ({ type: item.contentType, label: labelOf(item.contentType) }))
+      : CANONICAL_TABS.map((t) => ({ type: t.type, label: t.label }))
+  activeTab.value = tabOrder.value[0]?.type ?? 'intro'
+})
 
 /** 当前激活 Tab 的正文（编辑器 modelValue 输入源） */
 const activeContent = computed(() => contentMap.value[activeTab.value] ?? '')
@@ -61,58 +93,31 @@ function labelOf(type: string): string {
   return CANONICAL_TABS.find((t) => t.type === type)?.label ?? type
 }
 
-/** 内容加载：按 sortOrder 排序建索引（缺失 body 兜底空串） */
-async function loadContents() {
-  contentsLoading.value = true
-  contentsError.value = ''
-  try {
-    const list: CourseContentDTO[] = (await courseApi.contents(courseId())) ?? []
-    const map: Record<string, string> = {}
-    for (const item of list) {
-      map[item.contentType] = item.content ?? ''
-    }
-    contentMap.value = map
-    tabOrder.value =
-      list.length > 0
-        ? list
-            .slice()
-            .sort((a, b) => a.sortOrder - b.sortOrder)
-            .map((item) => ({ type: item.contentType, label: labelOf(item.contentType) }))
-        : CANONICAL_TABS.map((t) => ({ type: t.type, label: t.label }))
-    activeTab.value = tabOrder.value[0]?.type ?? 'intro'
-  } catch (err) {
-    contentsError.value = messageOf(err, '内容加载失败，请稍后重试')
-  } finally {
-    contentsLoading.value = false
-  }
-}
-
 /** 编辑器输入回写当前 Tab（正文缓存按 contentType 分键，切 Tab 不丢未保存内容） */
 function handleContentEdit(value: string) {
   contentMap.value[activeTab.value] = value
 }
 
 /**
- * 逐 Tab 独立保存：PUT /{id}/contents/{contentType}，body 为裸 JSON 字符串
- * （api 层显式 Content-Type: application/json，axios 字符串 data 原样透传）
+ * 逐 Tab 独立保存提交（PUT /{id}/contents/{contentType}，body 为裸 JSON 字符串；
+ * api 层显式 Content-Type: application/json，axios 字符串 data 原样透传）
  */
-async function saveContent() {
-  if (contentsError.value) return
-  const type = activeTab.value
-  contentSaving.value = true
-  try {
-    await courseApi.updateContent(courseId(), type, contentMap.value[type] ?? '')
+const { isPending: contentSaving, mutate: saveContentMutation } = useMutation({
+  mutationFn: (type: string) =>
+    courseApi.updateContent(courseId.value, type, contentMap.value[type] ?? ''),
+  onSuccess: (_res, type) => {
     showToast(CONTENT_SAVED_TOAST[type] ?? '内容已保存', 'success')
-  } catch (err) {
+  },
+  onError: (err) => {
     showToast(messageOf(err, '内容保存失败，请稍后重试'), 'danger')
-  } finally {
-    contentSaving.value = false
-  }
-}
-
-onMounted(() => {
-  void loadContents()
+  },
 })
+
+/** 逐 Tab 独立保存：加载失败态拦截 → 走 mutation */
+function saveContent() {
+  if (contentsError.value) return
+  saveContentMutation(activeTab.value)
+}
 </script>
 
 <template>
@@ -134,7 +139,7 @@ onMounted(() => {
         class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
       >
         <span class="text-sm text-danger">{{ contentsError }}</span>
-        <Button variant="outline" size="sm" data-testid="retry-contents" @click="loadContents">
+        <Button variant="outline" size="sm" data-testid="retry-contents" @click="refetch">
           重试
         </Button>
       </div>

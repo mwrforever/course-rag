@@ -6,7 +6,8 @@
  * 课时 / 标签 chips / 报名链接 / 状态。新建模式（/courses/new 独立路由）create 后
  * 跳转详情；编辑模式（/courses/:id 概览子路由）update 保存。
  */
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
+import { useMutation, useQuery } from '@tanstack/vue-query'
 import { useRoute, useRouter } from 'vue-router'
 import { z } from 'zod'
 import { PhImageSquare, PhSpinnerGap, PhX } from '@phosphor-icons/vue'
@@ -37,13 +38,8 @@ const tags = ref<string[]>([])
 const tagInput = ref('')
 /** 标题就地错误（zod 校验失败展示，校验通过清空） */
 const fieldError = ref('')
-/** 基础信息保存中（提交期按钮禁用 + 文案切换） */
-const saving = ref(false)
 /** 封面图加载失败标记：onError 兜底切占位（无上传接口 G11），URL 变更自动复位 */
 const coverBroken = ref(false)
-/** 编辑模式页面级四态 */
-const loading = ref(false)
-const error = ref('')
 
 const route = useRoute()
 const router = useRouter()
@@ -51,7 +47,30 @@ const router = useRouter()
 /** 新建模式：路由名 course-new；编辑模式 course-detail（带 :id） */
 const isNew = route.name === 'course-new'
 /** 课程 id：编辑模式取自路由参数（Long 字符串铁律） */
-const courseId = (): string => String(route.params.id ?? '')
+const courseId = computed(() => String(route.params.id ?? ''))
+
+/** 编辑模式课程加载（新建模式 enabled=false 不拉取，表单直开；查询键含路由 id 派生态） */
+const {
+  data: courseData,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey: computed(() => ['course-form', courseId.value]),
+  queryFn: () => courseApi.get(courseId.value),
+  enabled: !isNew,
+})
+
+/** 加载完成回填表单（本查询无自动刷新，表单编辑不受缓存覆盖；重进页面命中 30s 缓存即回填） */
+watch(courseData, (c) => {
+  if (c) applyCourseToForm(c)
+})
+
+/** 编辑模式加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '课程加载失败，请稍后重试') : '',
+)
 
 function messageOf(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
@@ -89,19 +108,6 @@ function applyCourseToForm(c: CourseDTO) {
   coverBroken.value = false
 }
 
-/** 编辑模式加载课程回填表单 */
-async function loadCourse() {
-  loading.value = true
-  error.value = ''
-  try {
-    applyCourseToForm(await courseApi.get(courseId()))
-  } catch (err) {
-    error.value = messageOf(err, '课程加载失败，请稍后重试')
-  } finally {
-    loading.value = false
-  }
-}
-
 /** 封面 URL 变更：错误预览态复位 */
 watch(
   () => form.coverImage,
@@ -110,27 +116,14 @@ watch(
   },
 )
 
-onMounted(() => {
-  if (!isNew) {
-    void loadCourse()
-  }
-})
-
 /**
- * 基础信息保存：zod 前置校验（失败就地报错不发请求）→ 新建/编辑分派
+ * 基础信息保存（新建/编辑分派；isPending 驱动按钮禁用与文案）
  *
  * 新建：create（CreateCourseRequest 不含 status，新建默认 ACTIVE）→ toast →
  * 跳转 /courses/{id} 继续编辑；编辑：update（UpdateCourseRequest 全字段含 status）。
  */
-async function saveBasic() {
-  const parsed = titleSchema.safeParse({ title: form.title })
-  if (!parsed.success) {
-    fieldError.value = parsed.error.issues[0]?.message ?? '请输入课程标题'
-    return
-  }
-  fieldError.value = ''
-  saving.value = true
-  try {
+const { isPending: saving, mutate: saveBasicMutation } = useMutation({
+  mutationFn: async (): Promise<CourseDTO | undefined> => {
     const common = {
       title: form.title,
       description: form.description,
@@ -143,26 +136,41 @@ async function saveBasic() {
       enrollmentLink: form.enrollmentLink,
     }
     if (isNew) {
-      const created = await courseApi.create(common)
+      return courseApi.create(common)
+    }
+    const payload: UpdateCourseRequest = { ...common, status: form.status }
+    await courseApi.update(courseId.value, payload)
+    return undefined
+  },
+  onSuccess: async (created) => {
+    if (isNew) {
       showToast('课程创建成功', 'success')
-      await router.push({ name: 'course-detail', params: { id: created.id } })
+      await router.push({ name: 'course-detail', params: { id: (created as CourseDTO).id } })
     } else {
-      const payload: UpdateCourseRequest = { ...common, status: form.status }
-      await courseApi.update(courseId(), payload)
       showToast('课程信息已保存', 'success')
     }
-  } catch (err) {
+  },
+  onError: (err) => {
     showToast(messageOf(err, '保存失败，请稍后重试'), 'danger')
-  } finally {
-    saving.value = false
+  },
+})
+
+/** 基础信息保存：zod 前置校验（失败就地报错不发请求）→ 走 mutation */
+function saveBasic() {
+  const parsed = titleSchema.safeParse({ title: form.title })
+  if (!parsed.success) {
+    fieldError.value = parsed.error.issues[0]?.message ?? '请输入课程标题'
+    return
   }
+  fieldError.value = ''
+  saveBasicMutation()
 }
 </script>
 
 <template>
   <div>
     <!-- 编辑模式加载骨架 -->
-    <div v-if="loading" data-testid="edit-skeleton" class="space-y-6" aria-label="课程加载中">
+    <div v-if="isLoading" data-testid="edit-skeleton" class="space-y-6" aria-label="课程加载中">
       <div class="rounded-xl border border-border bg-surface">
         <div class="h-14 animate-pulse border-b border-border bg-surface-2" />
         <div class="grid grid-cols-2 gap-6 p-6">
@@ -173,12 +181,12 @@ async function saveBasic() {
 
     <!-- 加载错误：横幅 + 重试 -->
     <div
-      v-else-if="error"
+      v-else-if="listError"
       role="alert"
       class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
     >
-      <span class="text-sm text-danger">{{ error }}</span>
-      <Button variant="outline" size="sm" @click="loadCourse">重试</Button>
+      <span class="text-sm text-danger">{{ listError }}</span>
+      <Button variant="outline" size="sm" @click="refetch">重试</Button>
     </div>
 
     <!-- 基础信息表单 -->

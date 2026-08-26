@@ -22,8 +22,12 @@ import type { ChatSessionDetailVO, SessionStatus } from '@/lib/types'
 function detailOf(over: Partial<ChatSessionDetailVO> = {}): ChatSessionDetailVO {
   return {
     id: 's-1',
+    userId: 'u-1',
     title: '会话-s-1',
     status: 'ACTIVE',
+    lastMessageAt: '2026-08-24T10:00:01',
+    model: 'qwen-max',
+    createdAt: '2026-08-24T10:00:00',
     messages: [
       {
         id: 'm1',
@@ -31,14 +35,32 @@ function detailOf(over: Partial<ChatSessionDetailVO> = {}): ChatSessionDetailVO 
         seq: 1,
         intentType: 'knowledge_question',
         content: '课程资料在哪？',
+        messageType: 'text',
+        runId: 'run-1',
+        createdAt: '2026-08-24T10:00:00',
       },
-      { id: 'm2', role: 'assistant', seq: 2, intentType: null, content: '在课程工作台中可以查看' },
+      {
+        id: 'm2',
+        role: 'assistant',
+        seq: 2,
+        intentType: null,
+        content: '在课程工作台中可以查看',
+        messageType: 'text',
+        runId: 'run-1',
+        createdAt: '2026-08-24T10:00:01',
+      },
     ],
     ...over,
   }
 }
 
-function mountDrawer(props: Record<string, unknown>) {
+/** 挂载 Drawer：props 与组件声明对齐（open/sessionId 必填，title/initialStatus 可选） */
+function mountDrawer(props: {
+  open: boolean
+  sessionId: string
+  title?: string
+  initialStatus?: SessionStatus | ''
+}) {
   return mount(ConversationReplayDrawer, { props })
 }
 

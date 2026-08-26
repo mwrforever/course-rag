@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppRouter } from '@/router'
@@ -59,12 +60,24 @@ async function mountAt(path = '/courses/c-1') {
   const router = createAppRouter()
   await router.push(path)
   await router.isReady()
-  const wrapper = mount(CourseDetailLayout, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(CourseDetailLayout, {
+    global: {
+      plugins: [
+        [
+          VueQueryPlugin,
+          { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+        ],
+        pinia,
+        router,
+      ],
+    },
+  })
   return { wrapper, router }
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  // resetAllMocks：清实现 + 调用记录，杜绝「上一用例持久 mock 实现（如 404 reject）」跨用例污染
+  vi.resetAllMocks()
 })
 
 describe('课程详情壳（子导航 + 元数据）', () => {
@@ -102,6 +115,10 @@ describe('课程详情壳（子导航 + 元数据）', () => {
 
     await wrapper.find('[data-testid="retry-course"]').trigger('click')
     await flushPromises()
+    // refetch 为异步链：exists 断言先轮询收敛（.text() 在空 wrapper 上抛普通 Error，waitFor 不重试）
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="course-detail-title"]').exists()).toBe(true)
+    })
     expect(wrapper.find('[data-testid="course-detail-title"]').text()).toBe('RAG 实战营')
     wrapper.unmount()
   })
