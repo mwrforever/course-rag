@@ -459,7 +459,10 @@ const uploadError = ref('')
 const progress = ref(0)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-/** 课程搜索：输入即查（size 10）；queryKey 收敛竞态（快速输入时旧请求不覆盖新结果），空关键字不查询 */
+/**
+ * 课程搜索：输入即查（size 10）；queryKey 收敛竞态（快速输入时旧请求不覆盖新结果），空关键字不查询。
+ * 语义变化说明：失败后重试须改词或重开 Dialog——同词不重复发请求（queryKey 收敛设计使然）。
+ */
 const courseQuery = ref('')
 const courseResultsQuery = useQuery({
   queryKey: computed(() => ['admin-course-search', courseQuery.value.trim()]),

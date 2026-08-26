@@ -208,7 +208,10 @@ const batchCollectionType = ref<'' | CollectionType>('')
 /** 课程选择三态（默认「不改」）；远程搜索 query 化与上传 Dialog 同构 */
 const batchCourseChoice = ref<CourseChoice>({ kind: 'keep' })
 const batchCourseQuery = ref('')
-/** 课程搜索：输入即查（size 10）；queryKey 收敛竞态（快速输入时旧请求不覆盖新结果），空关键字不查询 */
+/**
+ * 课程搜索：输入即查（size 10）；queryKey 收敛竞态（快速输入时旧请求不覆盖新结果），空关键字不查询。
+ * 语义变化说明：失败后重试须改词或重开 Dialog——同词不重复发请求（queryKey 收敛设计使然）。
+ */
 const batchCourseResultsQuery = useQuery({
   queryKey: computed(() => ['admin-course-search', batchCourseQuery.value.trim()]),
   queryFn: () => courseApi.list({ keyword: batchCourseQuery.value.trim(), size: 10 }),
