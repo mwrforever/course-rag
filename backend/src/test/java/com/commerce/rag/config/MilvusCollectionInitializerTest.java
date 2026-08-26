@@ -18,6 +18,7 @@ import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.collection.request.LoadCollectionReq;
 import io.milvus.v2.service.collection.response.DescribeCollectionResp;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,10 +58,55 @@ class MilvusCollectionInitializerTest {
     }
 
     @Test
-    @DisplayName("schema 匹配 — 不 drop 不重建")
+    @DisplayName("schema 匹配（字段集 + knowledge 版本标记）— 不 drop 不重建")
     void schemaMatches_skipsRebuild() {
         when(milvusClientV2.hasCollection(any(HasCollectionReq.class))).thenReturn(true);
         // 按集合返回各自完整的期望字段集 → 两集合 schema 均匹配，均不 drop 不重建
+        when(milvusClientV2.describeCollection(any(DescribeCollectionReq.class)))
+                .thenAnswer(inv -> {
+                    DescribeCollectionReq req = inv.getArgument(0);
+                    if (MilvusCollectionInitializer.COLLECTION_MEMORY.equals(req.getCollectionName())) {
+                        return DescribeCollectionResp.builder()
+                                .fieldNames(List.of(
+                                        MilvusCollectionInitializer.FIELD_MEMORY_ID,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_USER_ID,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_TYPE,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_VALIDITY,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_EMBEDDING,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_UPDATED_AT))
+                                .build();
+                    }
+                    return DescribeCollectionResp.builder()
+                            // 版本标记与实现常量 SCHEMA_VERSION_MARKER 同步（sparse 整改引入）
+                            .description("schema-version:2")
+                            .fieldNames(List.of(
+                                    "chunk_id",
+                                    "doc_id",
+                                    "kb_id",
+                                    "content",
+                                    "heading_path",
+                                    "dense_vector",
+                                    "sparse_vector",
+                                    "chunk_index",
+                                    "token_count",
+                                    "course_id",
+                                    "content_type",
+                                    "image_url",
+                                    "sha256",
+                                    "updated_at"))
+                            .build();
+                });
+
+        initializer().run(null);
+
+        verify(milvusClientV2, never()).dropCollection(any(DropCollectionReq.class));
+    }
+
+    @Test
+    @DisplayName("字段集匹配但版本标记缺失（旧 collection）— knowledge drop 重建，memory 跳过")
+    void schemaVersionMismatch_dropsKnowledgeOnly() {
+        when(milvusClientV2.hasCollection(any(HasCollectionReq.class))).thenReturn(true);
+        // 两集合字段集均完整，但 knowledge 的 description 为空（旧版本无标记）→ 版本比对失败
         when(milvusClientV2.describeCollection(any(DescribeCollectionReq.class)))
                 .thenAnswer(inv -> {
                     DescribeCollectionReq req = inv.getArgument(0);
@@ -96,7 +142,9 @@ class MilvusCollectionInitializerTest {
 
         initializer().run(null);
 
-        verify(milvusClientV2, never()).dropCollection(any(DropCollectionReq.class));
+        // 仅 knowledge_chunks 因版本标记缺失重建；memory 字段匹配跳过
+        verify(milvusClientV2, times(1)).dropCollection(any(DropCollectionReq.class));
+        verify(milvusClientV2, times(1)).createCollection(any(CreateCollectionReq.class));
     }
 
     @Test
@@ -159,6 +207,15 @@ class MilvusCollectionInitializerTest {
         assertTrue(fields.contains("content_type") && fields.contains("image_url") && fields.contains("sha256"));
         assertTrue(!fields.contains("collection_type"), "新 schema 不应含 collection_type");
         assertEquals(14, fields.size());
+        // sparse 整改：description 写入 schema 版本标记（版本不符时启动比对触发重建）
+        assertTrue(knowledgeReq.getDescription().contains("schema-version:2"), "knowledge_chunks 创建须携带 schema 版本标记");
+        // sparse 整改：content 字段启用 jieba 中文分词（chinese analyzer，issue #1402 中文崩溃根因）
+        FieldSchema contentField = knowledgeReq.getCollectionSchema().getFieldSchemaList().stream()
+                .filter(f -> "content".equals(f.getName()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("knowledge schema 缺少 content 字段"));
+        assertEquals(Boolean.TRUE, contentField.getEnableAnalyzer());
+        assertEquals(Map.of("type", "chinese"), contentField.getAnalyzerParams());
     }
 
     @Test

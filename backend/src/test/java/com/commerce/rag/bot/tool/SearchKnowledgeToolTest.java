@@ -397,7 +397,7 @@ class SearchKnowledgeToolTest {
     }
 
     @Test
-    @DisplayName("searchSingle 混合检索请求 — sparse 开关关闭时仅 dense 单路（EmbeddedText SDK bug 降级）")
+    @DisplayName("searchSingle 混合检索请求 — sparse 开关关闭时仅 dense 单路（整改失败回退预案）")
     void searchSingle_hybridRequest_sparseDisabled() {
         TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "如何配置Redis", null);
         when(embeddingModel.embed("如何配置Redis")).thenReturn(new float[] {0.1f, 0.2f});
