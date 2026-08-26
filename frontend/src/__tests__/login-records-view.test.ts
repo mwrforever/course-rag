@@ -190,7 +190,11 @@ describe('LoginRecordsView：踢出设备（二次确认）', () => {
 
     expect(revokeSpy).toHaveBeenCalledWith('lr-1')
     expect(document.body.textContent).toContain('已将该设备踢出')
-    expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    // 失效重拉为异步链：状态更新与重拉次数以 waitFor 收敛
+    await vi.waitFor(() => {
+      expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+      expect(wrapper.find('[data-testid="row-lr-1"]').text()).toContain('REVOKED')
+    })
     wrapper.unmount()
   })
 })

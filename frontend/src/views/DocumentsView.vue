@@ -51,7 +51,7 @@ export function validateUploadFile(name: string, size: number): string {
  */
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   PhArrowDown,
   PhDotsThreeVertical,
@@ -73,7 +73,7 @@ import { ApiError, courseApi, documentApi, knowledgeBaseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime, formatRelativeTime } from '@/lib/utils'
 
-import type { CourseDTO, DocumentParseStatus, DocumentVO, KnowledgeBaseVO } from '@/lib/types'
+import type { CourseDTO, DocumentParseStatus, DocumentVO } from '@/lib/types'
 
 /** 每页条数（设计 §2.6 分页器） */
 const PAGE_SIZE = 10
@@ -164,20 +164,18 @@ const listError = computed(() =>
   isError.value ? messageOf(queryError.value, '文档列表加载失败，请稍后重试') : '',
 )
 
-/** 知识库选项（筛选下拉 + 所属库小字映射 + 上传下拉），加载失败不阻塞列表 */
-const kbs = ref<KnowledgeBaseVO[]>([])
+/** 知识库选项（筛选下拉 + 所属库小字映射 + 上传下拉），加载失败不阻塞列表（查询错误仅空数组） */
+const { data: kbsData } = useQuery({
+  queryKey: ['admin-kbs-options'],
+  queryFn: () => knowledgeBaseApi.list({ page: 1, size: 100 }),
+})
+const kbs = computed(() => kbsData.value?.records ?? [])
 const kbNameOf = computed(() => {
   const map = new Map(kbs.value.map((k) => [k.id, k.name]))
   return (id: string) => map.get(id) ?? id
 })
 
-onMounted(async () => {
-  try {
-    const res = await knowledgeBaseApi.list({ page: 1, size: 100 })
-    kbs.value = res.records ?? []
-  } catch {
-    // 知识库选项加载失败：筛选仅剩「全部知识库」，上传前用户仍可重进页面恢复
-  }
+onMounted(() => {
   // 滚动收起行菜单（fixed 菜单不随滚动，滚动后收起避免悬空）
   window.addEventListener('scroll', onWindowScroll, { capture: true, passive: true })
 })
@@ -247,26 +245,47 @@ const allSelected = computed(
 )
 
 const batchConfirmOpen = ref(false)
-const batchDeleting = ref(false)
+
+const queryClient = useQueryClient()
 
 /**
- * 批量删除：循环单条 remove + Promise.allSettled 聚合
+ * 批量删除提交（mutationFn 内循环单条 remove + Promise.allSettled 聚合）
  *
  * 聚合文案「成功 n / 失败 m」（全部成功 success 色，存在失败 danger 色）；
- * 完成后清空勾选并刷新列表（失败行保留在列表内，用户可单独重试）。
+ * 完成后清空勾选并失效列表键（失败行保留在列表内，用户可单独重试）。
+ * 勾选覆盖当前页全部行且全部成功时，删除会留下空页——回退一页防空页（与单条删除同语义）。
  */
-async function confirmBatchDelete() {
+const { isPending: batchDeleting, mutate: batchDeleteMutation } = useMutation({
+  mutationFn: async (ids: string[]) => {
+    const results = await Promise.allSettled(ids.map((id) => documentApi.remove(id)))
+    const failed = results.filter((r) => r.status === 'rejected').length
+    return { succeeded: ids.length - failed, failed }
+  },
+  onSuccess: (outcome, ids) => {
+    showToast(
+      `成功 ${outcome.succeeded} / 失败 ${outcome.failed}`,
+      outcome.failed > 0 ? 'danger' : 'success',
+    )
+    batchConfirmOpen.value = false
+    selected.value = new Set()
+    if (
+      outcome.failed === 0 &&
+      docs.value.length > 0 &&
+      docs.value.every((d) => ids.includes(d.id)) &&
+      page.value > 1
+    ) {
+      page.value -= 1
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['admin-documents'] })
+    }
+  },
+})
+
+/** 批量删除：勾选非空校验 → 走 mutation（完成/失败由 onSuccess/onError 处理） */
+function confirmBatchDelete() {
   const ids = [...selected.value]
   if (ids.length === 0) return
-  batchDeleting.value = true
-  const results = await Promise.allSettled(ids.map((id) => documentApi.remove(id)))
-  const failed = results.filter((r) => r.status === 'rejected').length
-  const succeeded = ids.length - failed
-  showToast(`成功 ${succeeded} / 失败 ${failed}`, failed > 0 ? 'danger' : 'success')
-  batchConfirmOpen.value = false
-  selected.value = new Set()
-  batchDeleting.value = false
-  await refetch()
+  batchDeleteMutation(ids)
 }
 
 // ====================================================================
@@ -307,16 +326,22 @@ function viewChunks(doc: DocumentVO) {
   router.push({ name: 'knowledge-document-detail', params: { id: doc.id } })
 }
 
-/** 重新解析：重置 ETL 管道（FAILED 恢复入口，其余状态同样支持） */
-async function handleReparse(doc: DocumentVO) {
-  closeMenu()
-  try {
-    await documentApi.reparse(doc.id)
+/** 重新解析：重置 ETL 管道（FAILED 恢复入口，其余状态同样支持）；成功后失效列表键触发轮询 */
+const { mutate: reparseMutation } = useMutation({
+  mutationFn: (id: string) => documentApi.reparse(id),
+  onSuccess: () => {
     showToast('已重新解析，稍后查看最新状态', 'success')
-    await refetch()
-  } catch (err) {
+    queryClient.invalidateQueries({ queryKey: ['admin-documents'] })
+  },
+  onError: (err) => {
     showToast(messageOf(err, '重新解析失败，请稍后重试'), 'danger')
-  }
+  },
+})
+
+/** 重新解析入口：收起行菜单后提交 */
+function handleReparse(doc: DocumentVO) {
+  closeMenu()
+  reparseMutation(doc.id)
 }
 
 /** 下载原始文件：blob → 本地锚点落盘（文件名取原始标题） */
@@ -341,7 +366,6 @@ async function handleDownload(doc: DocumentVO) {
 const renameTarget = ref<DocumentVO | null>(null)
 const renameTitle = ref('')
 const renameError = ref('')
-const renameSubmitting = ref(false)
 
 function openRename(doc: DocumentVO) {
   closeMenu()
@@ -351,33 +375,37 @@ function openRename(doc: DocumentVO) {
 }
 
 function closeRename() {
+  if (renameSubmitting.value) return
   renameTarget.value = null
 }
 
-/** 保存标题：必填校验 → update → toast → 关闭并刷新列表 */
-async function submitRename() {
+/** 保存标题：必填校验 → mutation → toast → 关闭并失效列表键 */
+const { isPending: renameSubmitting, mutate: submitRenameMutation } = useMutation({
+  mutationFn: (payload: { id: string; title: string }) =>
+    documentApi.update(payload.id, { title: payload.title }),
+  onSuccess: () => {
+    showToast('标题已更新', 'success')
+    // 直接置空关闭（不经 closeRename：其提交中拦截会挡住 isPending 期间的 onSuccess）
+    renameTarget.value = null
+    queryClient.invalidateQueries({ queryKey: ['admin-documents'] })
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '保存失败，请稍后重试'), 'danger')
+  },
+})
+
+function submitRename() {
   if (!renameTarget.value) return
   if (!renameTitle.value.trim()) {
     renameError.value = '请输入标题'
     return
   }
-  renameSubmitting.value = true
-  try {
-    await documentApi.update(renameTarget.value.id, { title: renameTitle.value.trim() })
-    showToast('标题已更新', 'success')
-    closeRename()
-    await refetch()
-  } catch (err) {
-    showToast(messageOf(err, '保存失败，请稍后重试'), 'danger')
-  } finally {
-    renameSubmitting.value = false
-  }
+  submitRenameMutation({ id: renameTarget.value.id, title: renameTitle.value.trim() })
 }
 
 // ---- 单条删除二次确认 ----
 
 const deletingDoc = ref<DocumentVO | null>(null)
-const deletingLoading = ref(false)
 
 function requestDelete(doc: DocumentVO) {
   closeMenu()
@@ -385,24 +413,36 @@ function requestDelete(doc: DocumentVO) {
 }
 
 function cancelDelete() {
+  if (deletingLoading.value) return
   deletingDoc.value = null
 }
 
-/** 确认删除：remove → toast → 关闭确认框 → 刷新列表 */
-async function confirmDelete() {
-  if (!deletingDoc.value) return
-  deletingLoading.value = true
-  try {
-    await documentApi.remove(deletingDoc.value.id)
+/**
+ * 确认删除：remove → toast → 关闭确认框 → 勾选集同步移除该行 → 失效列表键
+ *
+ * 删除末页最后一条会留下空页：回退一页（页码变化自动重拉）；否则失效当前列表键。
+ */
+const { isPending: deletingLoading, mutate: confirmDeleteMutation } = useMutation({
+  mutationFn: (id: string) => documentApi.remove(id),
+  onSuccess: (_data, id) => {
     showToast('文档已删除', 'success')
     deletingDoc.value = null
-    selected.value = new Set([...selected.value].filter((id) => id !== deletingDoc.value?.id))
-    await refetch()
-  } catch (err) {
+    // 勾选集同步移除已删行（单条删除不残留勾选，批量按钮计数即时归零）
+    selected.value = new Set([...selected.value].filter((s) => s !== id))
+    if (docs.value.length === 1 && page.value > 1) {
+      page.value -= 1
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['admin-documents'] })
+    }
+  },
+  onError: (err) => {
     showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
-  } finally {
-    deletingLoading.value = false
-  }
+  },
+})
+
+function confirmDelete() {
+  if (!deletingDoc.value) return
+  confirmDeleteMutation(deletingDoc.value.id)
 }
 
 // ====================================================================
@@ -415,7 +455,7 @@ const uploadTitle = ref('')
 const uploadFile = ref<File | null>(null)
 const uploadCourse = ref<CourseDTO | null>(null)
 const uploadError = ref('')
-const uploading = ref(false)
+/** 上传进度百分比（XHR onUploadProgress 回调驱动；本地瞬时 UI 状态，不进 query 缓存） */
 const progress = ref(0)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
@@ -501,18 +541,35 @@ function validateUpload(): string {
 }
 
 /**
- * 提交上传：校验 → FormData（kbId/title/file 必传，courseId 选中才携带）→
- * documentApi.upload 携带进度回调（XHR onUploadProgress → 进度条百分比）。
- * 成功后 toast、关闭 Dialog、重置表单并刷新列表（新文档 PENDING 进入轮询）。
+ * 上传提交：校验 → FormData（kbId/title/file 必传，courseId 选中才携带）→ mutation
+ *
+ * mutationFn 内 documentApi.upload 携带进度回调（XHR onUploadProgress → 本地 progress ref，
+ * 驱动进度条宽度）；isPending 顶层解构为 uploading（F1 实证：嵌套访问 ref 不自动解包）。
+ * 成功后 toast、关闭 Dialog、重置表单并失效列表键（新文档 PENDING 进入轮询）。
  */
-async function submitUpload() {
+const { isPending: uploading, mutate: submitUploadMutation } = useMutation({
+  mutationFn: (form: FormData) =>
+    documentApi.upload(form, (p) => {
+      progress.value = p
+    }),
+  onSuccess: () => {
+    showToast('上传成功，正在解析', 'success')
+    uploadOpen.value = false
+    resetUpload()
+    queryClient.invalidateQueries({ queryKey: ['admin-documents'] })
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '上传失败，请稍后重试'), 'danger')
+  },
+})
+
+function submitUpload() {
   const invalid = validateUpload()
   if (invalid) {
     uploadError.value = invalid
     return
   }
   uploadError.value = ''
-  uploading.value = true
   progress.value = 0
   const form = new FormData()
   form.set('kbId', uploadKbId.value)
@@ -521,19 +578,7 @@ async function submitUpload() {
     form.set('courseId', uploadCourse.value.id)
   }
   form.set('file', uploadFile.value as File)
-  try {
-    await documentApi.upload(form, (p) => {
-      progress.value = p
-    })
-    showToast('上传成功，正在解析', 'success')
-    uploadOpen.value = false
-    resetUpload()
-    await refetch()
-  } catch (err) {
-    showToast(messageOf(err, '上传失败，请稍后重试'), 'danger')
-  } finally {
-    uploading.value = false
-  }
+  submitUploadMutation(form)
 }
 </script>
 

@@ -348,7 +348,8 @@ describe('DocumentsView：列表渲染', () => {
     expect(updateSpy).toHaveBeenCalledWith('d-1', { title: '新标题.md' })
     expect(document.body.textContent).toContain('标题已更新')
     expect(wrapper.find('[data-testid="rename-dialog"]').exists()).toBe(false)
-    expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    // 失效重拉为异步链：列表重拉次数以 waitFor 收敛
+    await vi.waitFor(() => expect(listSpy.mock.calls.length).toBeGreaterThan(1))
     wrapper.unmount()
   })
 
@@ -377,7 +378,38 @@ describe('DocumentsView：列表渲染', () => {
     expect(removeSpy).toHaveBeenCalledWith('d-1')
     expect(document.body.textContent).toContain('文档已删除')
     expect(wrapper.find('[data-testid="delete-dialog"]').exists()).toBe(false)
-    expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    // 失效重拉为异步链：列表重拉次数以 waitFor 收敛
+    await vi.waitFor(() => expect(listSpy.mock.calls.length).toBeGreaterThan(1))
+    wrapper.unmount()
+  })
+
+  it('删除末页最后一条：回退上一页防空页（页码变化自动重拉）', async () => {
+    vi.spyOn(knowledgeBaseApi, 'list').mockResolvedValue(pageOf([kb('kb-1', '前端知识库')], '1'))
+    // 第 1 页 1 条共 11（2 页）→ 翻第 2 页 1 条 → 删除后回退第 1 页
+    vi.spyOn(documentApi, 'list')
+      .mockResolvedValueOnce(pageOf([doc('d-1', 'INDEXED')], '11'))
+      .mockResolvedValueOnce(pageOf([doc('d-9', 'INDEXED')], '11'))
+      .mockResolvedValueOnce(pageOf([doc('d-1', 'INDEXED')], '10'))
+    const removeSpy = vi.spyOn(documentApi, 'remove').mockResolvedValue()
+    const { wrapper } = await mountDocuments()
+
+    // 翻到第 2 页（末页仅剩 1 条）
+    await wrapper.find('[data-testid="next-page"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('第 2 / 2 页')
+    expect(wrapper.find('[data-testid="row-d-9"]').exists()).toBe(true)
+
+    await wrapper.find('[data-testid="doc-menu-d-9"]').trigger('click')
+    await wrapper.find('[data-testid="menu-delete"]').trigger('click')
+    await wrapper.find('[data-testid="confirm-delete"]').trigger('click')
+    await flushPromises()
+
+    expect(removeSpy).toHaveBeenCalledWith('d-9')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('第 1 / 1 页')
+      expect(wrapper.find('[data-testid="row-d-1"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="row-d-9"]').exists()).toBe(false)
+    })
     wrapper.unmount()
   })
 })
@@ -445,6 +477,38 @@ describe('DocumentsView：批量删除（allSettled 聚合）', () => {
 
     expect(removeSpy).toHaveBeenCalledTimes(3)
     expect(document.body.textContent).toContain('成功 3 / 失败 0')
+    wrapper.unmount()
+  })
+
+  it('批量删除当前页全部行且全部成功：回退上一页防空页', async () => {
+    vi.spyOn(knowledgeBaseApi, 'list').mockResolvedValue(pageOf([kb('kb-1', '前端知识库')], '1'))
+    // 第 1 页 1 条共 11（2 页）→ 翻第 2 页 1 条 → 全选批量删除 → 回退第 1 页
+    const listSpy = vi
+      .spyOn(documentApi, 'list')
+      .mockResolvedValueOnce(pageOf([doc('d-1', 'INDEXED')], '11'))
+      .mockResolvedValueOnce(pageOf([doc('d-9', 'INDEXED')], '11'))
+      .mockResolvedValueOnce(pageOf([doc('d-1', 'INDEXED')], '10'))
+    const removeSpy = vi.spyOn(documentApi, 'remove').mockResolvedValue()
+    const { wrapper } = await mountDocuments()
+
+    // 翻到第 2 页（末页仅剩 1 条）
+    await wrapper.find('[data-testid="next-page"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('第 2 / 2 页')
+
+    // 全选当前页 → 批量删除全部成功 → 不展示空页，回退第 1 页
+    await wrapper.find('[data-testid="select-all"]').setValue(true)
+    await wrapper.find('[data-testid="batch-delete"]').trigger('click')
+    await wrapper.find('[data-testid="confirm-batch"]').trigger('click')
+    await flushPromises()
+
+    expect(removeSpy).toHaveBeenCalledWith('d-9')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('第 1 / 1 页')
+      expect(wrapper.find('[data-testid="row-d-1"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="row-d-9"]').exists()).toBe(false)
+      expect(listSpy.mock.calls.length).toBeGreaterThan(2)
+    })
     wrapper.unmount()
   })
 })
@@ -558,7 +622,8 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
     await flushPromises()
     expect(document.body.textContent).toContain('上传成功')
     expect(wrapper.find('[data-testid="upload-dialog"]').exists()).toBe(false)
-    expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    // 失效重拉为异步链：列表重拉次数以 waitFor 收敛
+    await vi.waitFor(() => expect(listSpy.mock.calls.length).toBeGreaterThan(1))
     wrapper.unmount()
   })
 

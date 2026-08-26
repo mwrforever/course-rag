@@ -124,9 +124,9 @@ describe('课程排期（/courses/:id/schedule）', () => {
       expect.objectContaining({ startDate: '2026-10-01', capacity: undefined }),
     )
     expect(showToast).toHaveBeenCalledWith('排期已保存', 'success')
-    // 关闭 Dialog 并刷新列表
+    // 关闭 Dialog 并刷新列表（失效重拉为异步链，重拉次数以 waitFor 收敛）
     expect(wrapper.find('[data-testid="schedule-dialog"]').exists()).toBe(false)
-    expect(apiMock.scheduleApi.listByCourse).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => expect(apiMock.scheduleApi.listByCourse).toHaveBeenCalledTimes(2))
     wrapper.unmount()
   })
 

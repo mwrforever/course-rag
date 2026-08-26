@@ -145,9 +145,33 @@ describe('课程教师分配（/courses/:id/teachers）', () => {
     await flushPromises()
     expect(apiMock.courseApi.addTeachers).toHaveBeenCalledWith('c-1', ['t-1'])
     expect(showToast).toHaveBeenCalledWith('教师分配成功', 'success')
-    expect(apiMock.courseApi.get).toHaveBeenCalledTimes(2)
+    // 失效重拉为异步链：重拉次数与双栏更新以 waitFor 收敛
+    await vi.waitFor(() => expect(apiMock.courseApi.get).toHaveBeenCalledTimes(2))
     // 分配后已分配栏出现该教师
-    expect(wrapper.find('[data-testid="teacher-assigned-t-1"]').exists()).toBe(true)
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="teacher-assigned-t-1"]').exists()).toBe(true)
+    })
+    wrapper.unmount()
+  })
+
+  it('分配成功后重拉失败：toast「课程刷新失败」提示（不静默）', async () => {
+    apiMock.courseApi.get
+      .mockResolvedValueOnce(course({ teacherIds: [] }))
+      .mockRejectedValueOnce(new apiMock.ApiError(500, '课程接口异常'))
+    apiMock.userApi.list.mockResolvedValue(pageOf([teacher('t-1', '老王')]))
+    apiMock.courseApi.addTeachers.mockResolvedValue(undefined)
+    const { wrapper } = await mountAt()
+    await flushPromises()
+
+    await wrapper.find('[data-testid="teacher-check-t-1"]').setValue(true)
+    await wrapper.find('[data-testid="teacher-assign"]').trigger('click')
+    await flushPromises()
+
+    expect(showToast).toHaveBeenCalledWith('教师分配成功', 'success')
+    // 重拉失败 → 恢复原 refreshCourse 的失败提示交互
+    await vi.waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith('课程刷新失败，请重试或刷新页面', 'danger'),
+    )
     wrapper.unmount()
   })
 

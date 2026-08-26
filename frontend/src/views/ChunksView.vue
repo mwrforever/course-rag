@@ -24,8 +24,8 @@
  *
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
+import { computed, reactive, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   PhCheckCircle,
   PhListDashes,
@@ -41,7 +41,7 @@ import { Button } from '@/components/ui/button'
 import { ApiError, chunkApi, courseApi, knowledgeBaseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 
-import type { CollectionType, CourseDTO, DocumentChunkVO, KnowledgeBaseVO } from '@/lib/types'
+import type { CollectionType, CourseDTO, DocumentChunkVO } from '@/lib/types'
 
 /** 每页条数（设计 §2.6 分页器） */
 const PAGE_SIZE = 10
@@ -145,17 +145,12 @@ const listError = computed(() =>
   isError.value ? messageOf(queryError.value, '分片列表加载失败，请稍后重试') : '',
 )
 
-/** 知识库选项（筛选下拉），加载失败不阻塞列表 */
-const kbs = ref<KnowledgeBaseVO[]>([])
-
-onMounted(async () => {
-  try {
-    const res = await knowledgeBaseApi.list({ page: 1, size: 100 })
-    kbs.value = res.records ?? []
-  } catch {
-    // 知识库选项加载失败：筛选仅剩「全部知识库」，重进页面可恢复
-  }
+/** 知识库选项（筛选下拉），加载失败不阻塞列表（查询错误仅空数组） */
+const { data: kbsData } = useQuery({
+  queryKey: ['admin-kbs-options'],
+  queryFn: () => knowledgeBaseApi.list({ page: 1, size: 100 }),
 })
+const kbs = computed(() => kbsData.value?.records ?? [])
 
 /** kbId 筛选变更：重置页码第 1 页（查询键变化自动触发拉取） */
 function onFilterKbChange(e: Event) {
@@ -209,7 +204,6 @@ const allSelected = computed(
 
 const batchDialogOpen = ref(false)
 const batchCollectionType = ref<'' | CollectionType>('')
-const batchSubmitting = ref(false)
 
 /** 课程选择三态（默认「不改」）；远程搜索 state 与上传 Dialog 同构 */
 const batchCourseChoice = ref<CourseChoice>({ kind: 'keep' })
@@ -283,26 +277,31 @@ function buildBatchBody() {
   return body
 }
 
+const queryClient = useQueryClient()
+
 /**
- * 提交批量修正：POST batch-update（loading 态，文档级 Milvus 同步可能慢）
+ * 批量修正提交（POST batch-update，loading 态由 isPending 驱动，文档级 Milvus 同步可能慢）
  *
- * 成功后 toast、关闭 Dialog、清空勾选并刷新列表（工作流继续进入「标记已修正」）；
+ * 成功后 toast、关闭 Dialog、清空勾选并失效待修正列表键（工作流继续进入「标记已修正」）；
  * 失败 toast danger 且 Dialog 保留可重试。
  */
-async function submitBatchUpdate() {
-  if (batchSubmitDisabled.value) return
-  batchSubmitting.value = true
-  try {
-    await chunkApi.batchUpdate(buildBatchBody())
+const { isPending: batchSubmitting, mutate: batchUpdateMutation } = useMutation({
+  mutationFn: (body: { ids: string[]; collectionType?: CollectionType; courseId?: string }) =>
+    chunkApi.batchUpdate(body),
+  onSuccess: () => {
     showToast('批量修正完成', 'success')
     batchDialogOpen.value = false
     selected.value = new Set()
-    await refetch()
-  } catch (err) {
+    queryClient.invalidateQueries({ queryKey: ['admin-chunks-pending'] })
+  },
+  onError: (err) => {
     showToast(messageOf(err, '批量修正失败，请稍后重试'), 'danger')
-  } finally {
-    batchSubmitting.value = false
-  }
+  },
+})
+
+function submitBatchUpdate() {
+  if (batchSubmitDisabled.value) return
+  batchUpdateMutation(buildBatchBody())
 }
 
 // ====================================================================
@@ -310,7 +309,6 @@ async function submitBatchUpdate() {
 // ====================================================================
 
 const correctedConfirmOpen = ref(false)
-const correctedSubmitting = ref(false)
 
 /** 关闭确认 Dialog：提交期间拦截取消/Esc/遮罩（与批量 Dialog submitting 一致，防误关丢状态） */
 function closeCorrectedConfirm() {
@@ -319,26 +317,28 @@ function closeCorrectedConfirm() {
 }
 
 /**
- * 确认标记已修正：POST batch-corrected {ids}
+ * 确认标记已修正（POST batch-corrected {ids}，不可撤销）
  *
  * 后端将 correction_status 置为 CORRECTED（不可撤销，PENDING → CORRECTED 单向）：
- * 成功后清空勾选并刷新列表，已标记行移出待修正视图。
+ * 成功后清空勾选并失效待修正列表键，已标记行移出待修正视图。
  */
-async function confirmBatchCorrected() {
-  const ids = [...selected.value]
-  if (ids.length === 0) return
-  correctedSubmitting.value = true
-  try {
-    await chunkApi.batchCorrected({ ids })
+const { isPending: correctedSubmitting, mutate: batchCorrectedMutation } = useMutation({
+  mutationFn: (ids: string[]) => chunkApi.batchCorrected({ ids }),
+  onSuccess: (_data, ids) => {
     showToast(`已标记 ${ids.length} 个分片为已修正`, 'success')
     correctedConfirmOpen.value = false
     selected.value = new Set()
-    await refetch()
-  } catch (err) {
+    queryClient.invalidateQueries({ queryKey: ['admin-chunks-pending'] })
+  },
+  onError: (err) => {
     showToast(messageOf(err, '标记失败，请稍后重试'), 'danger')
-  } finally {
-    correctedSubmitting.value = false
-  }
+  },
+})
+
+function confirmBatchCorrected() {
+  const ids = [...selected.value]
+  if (ids.length === 0) return
+  batchCorrectedMutation(ids)
 }
 
 // ====================================================================
@@ -348,7 +348,6 @@ async function confirmBatchCorrected() {
 const editTarget = ref<DocumentChunkVO | null>(null)
 const editContent = ref('')
 const editError = ref('')
-const editSaving = ref(false)
 
 /** 打开编辑：行数据直供（列表已含全部元数据字段，无需二次请求） */
 function openEdit(c: DocumentChunkVO) {
@@ -363,29 +362,32 @@ function closeEdit() {
 }
 
 /**
- * 保存编辑：PUT admin/chunks/{id} {content}
+ * 保存编辑（PUT admin/chunks/{id} {content}，触发重新向量化）
  *
- * 改 content 触发重新向量化：成功后 toast「内容已更新，正在重新向量化…」，
- * 关闭 Drawer 并刷新列表（更新后的内容回流列表预览）。
+ * 成功后 toast「内容已更新，正在重新向量化…」、关闭 Drawer 并失效待修正列表键
+ * （更新后的内容回流列表预览）。
  */
-async function submitEdit() {
+const { isPending: editSaving, mutate: saveEditMutation } = useMutation({
+  mutationFn: (payload: { id: string; content: string }) =>
+    chunkApi.updateContent(payload.id, { content: payload.content }),
+  onSuccess: () => {
+    showToast('内容已更新，正在重新向量化…', 'success')
+    editTarget.value = null
+    queryClient.invalidateQueries({ queryKey: ['admin-chunks-pending'] })
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '保存失败，请稍后重试'), 'danger')
+  },
+})
+
+function submitEdit() {
   if (!editTarget.value) return
   const content = editContent.value.trim()
   if (!content) {
     editError.value = '请输入分片内容'
     return
   }
-  editSaving.value = true
-  try {
-    await chunkApi.updateContent(editTarget.value.id, { content })
-    showToast('内容已更新，正在重新向量化…', 'success')
-    editTarget.value = null
-    await refetch()
-  } catch (err) {
-    showToast(messageOf(err, '保存失败，请稍后重试'), 'danger')
-  } finally {
-    editSaving.value = false
-  }
+  saveEditMutation({ id: editTarget.value.id, content })
 }
 
 // ====================================================================
@@ -393,57 +395,52 @@ async function submitEdit() {
 // ====================================================================
 
 const contextOpen = ref(false)
-const contextLoading = ref(false)
-const contextError = ref('')
-/** 当前上下文主分片 id（错误重试复用） */
+/** 当前上下文主分片 id（查询键组成之一，切换分片即触发新查询） */
 const contextChunkId = ref('')
-/** 时间线节点（按 CONTEXT_NODES 顺序过滤 null 后填充） */
-const contextNodes = ref<Array<{ key: string; label: string; chunk: DocumentChunkVO }>>([])
-/** 加载请求序号：快速开关竞态守卫——响应仅在序号仍为最新时写入，过期响应丢弃 */
-const contextLoadSeq = ref(0)
 
 /** 上下文接口返回四键 Map（value 为 DocumentChunkVO 或 null） */
 type ContextMap = Record<string, DocumentChunkVO | null>
 
-async function openContext(c: DocumentChunkVO) {
-  contextOpen.value = true
-  contextChunkId.value = c.id
-  await loadContext(c.id)
-}
-
 /**
- * 拉取上下文：四键过滤 null → 时间线节点（key 顺序固定 parent→prev→current→next）
+ * 上下文查询（enabled 按需：仅 Drawer 打开时拉取）
  *
- * 竞态守卫：每次调用自增请求序号，响应/异常/收尾仅当序号仍为最新时才写入状态；
- * closeContext 自增序号使在途请求作废——开 A→关→开 B 时 A 的迟到响应不得回填覆盖 B。
+ * 竞态由查询键天然收敛：开 A→关→开 B 时 A 的迟响应写入它自己的缓存槽
+ * （['chunk-context','A']），当前渲染只读 B 的缓存槽，无需自增 seq 守卫。
  */
-async function loadContext(id: string) {
-  const seq = ++contextLoadSeq.value
-  contextLoading.value = true
-  contextError.value = ''
-  try {
-    const map = (await chunkApi.context(id)) as ContextMap
-    if (seq !== contextLoadSeq.value) return
-    contextNodes.value = CONTEXT_NODES.flatMap((n) =>
-      map[n.key] ? [{ ...n, chunk: map[n.key] as DocumentChunkVO }] : [],
-    )
-  } catch (err) {
-    if (seq !== contextLoadSeq.value) return
-    contextError.value = messageOf(err, '上下文加载失败，请稍后重试')
-  } finally {
-    if (seq === contextLoadSeq.value) {
-      contextLoading.value = false
-    }
-  }
+const {
+  data: contextData,
+  isFetching: contextLoading,
+  isError: contextIsError,
+  error: contextQueryError,
+  refetch: refetchContext,
+} = useQuery({
+  queryKey: computed(() => ['chunk-context', contextChunkId.value]),
+  queryFn: () => chunkApi.context(contextChunkId.value) as Promise<ContextMap>,
+  enabled: computed(() => contextOpen.value && contextChunkId.value !== ''),
+})
+
+/** 时间线节点（key 顺序固定 parent→prev→current→next，null 节点过滤不渲染） */
+const contextNodes = computed(() => {
+  const map = contextData.value
+  if (!map) return []
+  return CONTEXT_NODES.flatMap((n) =>
+    map[n.key] ? [{ ...n, chunk: map[n.key] as DocumentChunkVO }] : [],
+  )
+})
+
+/** 上下文加载失败文案（错误重试按钮走 refetchContext） */
+const contextError = computed(() =>
+  contextIsError.value ? messageOf(contextQueryError.value, '上下文加载失败，请稍后重试') : '',
+)
+
+function openContext(c: DocumentChunkVO) {
+  contextChunkId.value = c.id
+  contextOpen.value = true
 }
 
 function closeContext() {
-  // 使在途请求序号过期：迟到响应不得回填状态（含 loading/error 清理）
-  contextLoadSeq.value++
+  // 关闭即停用查询：在途响应仅进缓存槽，不参与渲染（重开同分片命中缓存即回显）
   contextOpen.value = false
-  contextNodes.value = []
-  contextLoading.value = false
-  contextError.value = ''
 }
 </script>
 
@@ -1028,7 +1025,7 @@ function closeContext() {
             size="sm"
             data-testid="retry-ctx"
             class="mt-3"
-            @click="loadContext(contextChunkId)"
+            @click="refetchContext"
           >
             重试
           </Button>

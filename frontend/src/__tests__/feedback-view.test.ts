@@ -358,8 +358,11 @@ describe('FeedbackView：删除（二次确认）', () => {
     expect(removeSpy).toHaveBeenCalledWith('1')
     expect(document.body.textContent).toContain('反馈已删除')
     expect(wrapper.find('[data-testid="fb-del-dialog"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="row-1"]').exists()).toBe(false)
-    expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    // 失效重拉为异步链：行消失与重拉次数以 waitFor 收敛
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="row-1"]').exists()).toBe(false)
+      expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    })
     wrapper.unmount()
   })
 })

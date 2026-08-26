@@ -131,7 +131,8 @@ describe('课程学生名单（/courses/:id/students）', () => {
     })
     expect(showToast).toHaveBeenCalledWith('成功添加 1 名', 'success')
     expect(wrapper.find('[data-testid="student-dialog"]').exists()).toBe(false)
-    expect(apiMock.enrollmentApi.students).toHaveBeenCalledTimes(2)
+    // 失效重拉为异步链，重拉次数以 waitFor 收敛
+    await vi.waitFor(() => expect(apiMock.enrollmentApi.students).toHaveBeenCalledTimes(2))
     wrapper.unmount()
   })
 
