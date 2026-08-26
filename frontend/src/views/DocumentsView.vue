@@ -51,7 +51,7 @@ export function validateUploadFile(name: string, size: number): string {
  */
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   PhArrowDown,
   PhDotsThreeVertical,
@@ -462,12 +462,17 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 /**
  * 课程搜索：输入即查（size 10）；queryKey 收敛竞态（快速输入时旧请求不覆盖新结果），空关键字不查询。
  * 语义变化说明：失败后重试须改词或重开 Dialog——同词不重复发请求（queryKey 收敛设计使然）。
+ * 批 4 打磨（reviewer L1/L2）：placeholderData 保留上一关键词结果（打字过程结果区不闪空）；
+ * refetchOnWindowFocus=false——搜索词驱动的快照结果，窗口焦点回切不重拉（消除「搜索中…」闪现与
+ * 后台刷新失败清空已展示结果）。
  */
 const courseQuery = ref('')
 const courseResultsQuery = useQuery({
   queryKey: computed(() => ['admin-course-search', courseQuery.value.trim()]),
   queryFn: () => courseApi.list({ keyword: courseQuery.value.trim(), size: 10 }),
   enabled: computed(() => courseQuery.value.trim().length > 0),
+  placeholderData: keepPreviousData,
+  refetchOnWindowFocus: false,
 })
 /** 搜索结果展示：空关键字 / 查询失败不展示（对齐原手动实现静默清空语义） */
 const courseResults = computed(() =>
