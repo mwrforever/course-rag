@@ -142,6 +142,7 @@ jieba 中文分词 + schema 版本标记 + sparse-enabled=true，dev 实证通�
       插入中文语料 3 条 + 中文 `EmbeddedText("向量数据库")` 混合检索命中 3 条（BM25 稀疏路有效），
       **服务端容器无崩溃**（rag-milvus 持续存活，覆盖 issue #1402 中文崩溃场景）；全量门禁
       `mvn -B verify` 全绿（含 JaCoCo）；验证数据已清理、临时验证类已删除；
+      **jieba 已实证平台：x86_64（2026-08-26）——arm64 部署前需复核 gojieba（cgo）可用性**；
       遗留：pymilvus 对照验证未做（SDK 实证已充分），留作后续可选复核
 - [ ] 应用侧 BM25 向量方案：ETL 自行计算 sparse 向量（需中文分词器）+ Milvus collection 重建去掉 BM25
       Function（sparse 字段改存向量 + IP 检索），检索用 SparseFloatVec——改动大（schema/ETL/检索三处），

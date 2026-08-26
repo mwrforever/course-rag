@@ -1,6 +1,7 @@
 package com.commerce.rag.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -77,8 +78,8 @@ class MilvusCollectionInitializerTest {
                                 .build();
                     }
                     return DescribeCollectionResp.builder()
-                            // 版本标记与实现常量 SCHEMA_VERSION_MARKER 同步（sparse 整改引入）
-                            .description("schema-version:2")
+                            // 版本标记引用实现常量（单一事实源，避免字面量漂移）
+                            .description(MilvusCollectionInitializer.SCHEMA_VERSION_MARKER)
                             .fieldNames(List.of(
                                     "chunk_id",
                                     "doc_id",
@@ -106,7 +107,7 @@ class MilvusCollectionInitializerTest {
     @DisplayName("字段集匹配但版本标记缺失（旧 collection）— knowledge drop 重建，memory 跳过")
     void schemaVersionMismatch_dropsKnowledgeOnly() {
         when(milvusClientV2.hasCollection(any(HasCollectionReq.class))).thenReturn(true);
-        // 两集合字段集均完整，但 knowledge 的 description 为空（旧版本无标记）→ 版本比对失败
+        // 两集合字段集均完整，但 knowledge 的 description 为旧版本标记（版本落后）→ 版本比对失败
         when(milvusClientV2.describeCollection(any(DescribeCollectionReq.class)))
                 .thenAnswer(inv -> {
                     DescribeCollectionReq req = inv.getArgument(0);
@@ -122,6 +123,8 @@ class MilvusCollectionInitializerTest {
                                 .build();
                     }
                     return DescribeCollectionResp.builder()
+                            // 旧版本标记（schema-version:1）→ equals 精确比对失败触发重建
+                            .description("schema-version:1")
                             .fieldNames(List.of(
                                     "chunk_id",
                                     "doc_id",
@@ -143,8 +146,17 @@ class MilvusCollectionInitializerTest {
         initializer().run(null);
 
         // 仅 knowledge_chunks 因版本标记缺失重建；memory 字段匹配跳过
-        verify(milvusClientV2, times(1)).dropCollection(any(DropCollectionReq.class));
-        verify(milvusClientV2, times(1)).createCollection(any(CreateCollectionReq.class));
+        // ArgumentCaptor 锚定重建对象为 knowledge_chunks（防名字分支写反的假绿）
+        ArgumentCaptor<DropCollectionReq> dropCaptor = ArgumentCaptor.forClass(DropCollectionReq.class);
+        verify(milvusClientV2, times(1)).dropCollection(dropCaptor.capture());
+        assertEquals(
+                MilvusCollectionInitializer.COLLECTION_NAME,
+                dropCaptor.getValue().getCollectionName());
+        ArgumentCaptor<CreateCollectionReq> createCaptor = ArgumentCaptor.forClass(CreateCollectionReq.class);
+        verify(milvusClientV2, times(1)).createCollection(createCaptor.capture());
+        assertEquals(
+                MilvusCollectionInitializer.COLLECTION_NAME,
+                createCaptor.getValue().getCollectionName());
     }
 
     @Test
@@ -207,8 +219,12 @@ class MilvusCollectionInitializerTest {
         assertTrue(fields.contains("content_type") && fields.contains("image_url") && fields.contains("sha256"));
         assertTrue(!fields.contains("collection_type"), "新 schema 不应含 collection_type");
         assertEquals(14, fields.size());
-        // sparse 整改：description 写入 schema 版本标记（版本不符时启动比对触发重建）
-        assertTrue(knowledgeReq.getDescription().contains("schema-version:2"), "knowledge_chunks 创建须携带 schema 版本标记");
+        // sparse 整改：knowledge 创建须携带 schema 版本标记（版本不符时启动比对触发重建），
+        // memory 创建不写标记（不参与版本比对，避免版本号语义串用）
+        assertEquals(MilvusCollectionInitializer.SCHEMA_VERSION_MARKER, knowledgeReq.getDescription());
+        CreateCollectionReq memoryReq = captor.getAllValues().get(1);
+        assertEquals(MilvusCollectionInitializer.COLLECTION_MEMORY, memoryReq.getCollectionName());
+        assertNull(memoryReq.getDescription(), "memory_chunks 不应携带 knowledge 的版本标记");
         // sparse 整改：content 字段启用 jieba 中文分词（chinese analyzer，issue #1402 中文崩溃根因）
         FieldSchema contentField = knowledgeReq.getCollectionSchema().getFieldSchemaList().stream()
                 .filter(f -> "content".equals(f.getName()))

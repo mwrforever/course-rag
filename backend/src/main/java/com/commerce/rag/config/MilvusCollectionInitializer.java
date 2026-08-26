@@ -84,11 +84,12 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
     /**
      * schema 版本标记（2026-08-26 sparse 整改引入）：写入 knowledge_chunks 的 collection description，
      * 启动比对时校验。递增时机 = 字段属性级变更（analyzer 配置、索引参数等字段名比对感知不到的变化）：
-     * 1 → 2 = content 字段启用 jieba 中文分词器（chinese analyzer，sparse 整改）
+     * 1 → 2 = content 字段启用 jieba 中文分词器（chinese analyzer，sparse 整改）。
+     * 包级可见（去 private）：测试引用同一事实源，避免字面量漂移。
      */
-    private static final int SCHEMA_VERSION = 2;
+    static final int SCHEMA_VERSION = 2;
 
-    private static final String SCHEMA_VERSION_MARKER = "schema-version:" + SCHEMA_VERSION;
+    static final String SCHEMA_VERSION_MARKER = "schema-version:" + SCHEMA_VERSION;
 
     /** content 字段 analyzer 配置：chinese = jieba 分词器 + cnalphanumonly 过滤（Milvus 2.6 内置，官方 v2.6 文档） */
     private static final Map<String, Object> ANALYZER_PARAMS_CHINESE = Map.of("type", "chinese");
@@ -252,11 +253,12 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
                     DropCollectionReq.builder().collectionName(name).build());
         }
 
-        // 2. 创建 Collection（Schema + 索引一步创建；description 写入 schema 版本标记）
+        // 2. 创建 Collection（Schema + 索引一步创建；仅 knowledge_chunks 写入 schema 版本标记——
+        //    memory_chunks 不参与版本比对，写 knowledge 的标记会造成版本号语义串用，故传 null）
         log.info("开始创建 Milvus Collection: name={}", name);
         CreateCollectionReq createReq = CreateCollectionReq.builder()
                 .collectionName(name)
-                .description(SCHEMA_VERSION_MARKER)
+                .description(COLLECTION_NAME.equals(name) ? SCHEMA_VERSION_MARKER : null)
                 .collectionSchema(schema)
                 .indexParams(indexes)
                 .build();
@@ -301,10 +303,12 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
                 return false;
             }
             // knowledge_chunks 版本标记校验：字段属性级变更（analyzer 配置等）字段名感知不到，
-            // 版本标记不符（旧 collection description 为空或版本落后）→ 不匹配触发重建
-            if (COLLECTION_NAME.equals(name)) {
+            // 版本标记不符（旧 collection description 为空或版本落后）→ 不匹配触发重建。
+            // 用注入的 collectionName 而非静态常量——配置覆盖为非默认值时校验键保持一致；
+            // equals 精确匹配（防 contains 前缀误判：版本 2 不会误匹配未来的 schema-version:2x）
+            if (collectionName.equals(name)) {
                 String desc = resp.getDescription();
-                return desc != null && desc.contains(SCHEMA_VERSION_MARKER);
+                return SCHEMA_VERSION_MARKER.equals(desc);
             }
             return true;
         } catch (Exception e) {
