@@ -636,10 +636,12 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
     const uploadSpy = vi.spyOn(documentApi, 'upload').mockResolvedValue(doc('d-new', 'PENDING'))
 
     await dialog.find('[data-testid="course-search"]').setValue('RAG')
-    // query 化后搜索为异步调度：以 waitFor 收敛（批 2 实证：flushPromises 立即断言不稳）
+    // query 化后搜索为异步调度：收敛目标 = 结果 option 渲染（比 list 被调用更靠后的时序点，
+    // 消除「list-called 先于渲染」的窗口；批 4② reviewer L4）
     await vi.waitFor(() =>
-      expect(courseSpy).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'RAG' })),
+      expect(wrapper.find('[data-testid="course-option-c-9"]').exists()).toBe(true),
     )
+    expect(courseSpy).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'RAG' }))
     await wrapper.find('[data-testid="course-option-c-9"]').trigger('click')
     expect(dialog.find('[data-testid="selected-course"]').text()).toContain('RAG 实战营')
 
@@ -654,17 +656,30 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
     wrapper.unmount()
   })
 
-  it('课程搜索选择器：搜索失败静默清空结果（异常场景，queried 后不展示结果列表）', async () => {
+  it('课程搜索选择器：搜索失败静默清空结果，换词后可恢复（异常场景 + 终态收敛）', async () => {
     const { wrapper, dialog } = await openUpload()
-    vi.spyOn(courseApi, 'list').mockRejectedValue(new Error('搜索接口异常'))
+    // 第一次调用失败（rejectedOnce 被 'RAG' 搜索消费），第二次成功（resolvedOnce 被换词搜索消费）
+    const courseSpy = vi
+      .spyOn(courseApi, 'list')
+      .mockRejectedValueOnce(new Error('搜索接口异常'))
+      .mockResolvedValueOnce(
+        pageOf([{ id: 'c-9', title: 'RAG 实战营' }] as unknown as CourseDTO[], '1'),
+      )
 
     await dialog.find('[data-testid="course-search"]').setValue('RAG')
-    // retry:false 下一次失败即终态：等待搜索结束（isError 收敛）后结果列表不展示
+    // retry:false 下一次失败即终态：等待搜索结束（list 调用收敛）后结果列表不展示（isError 静默清空）
     await vi.waitFor(() =>
       expect(courseApi.list).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'RAG' })),
     )
     await flushPromises()
     expect(dialog.find('[data-testid="course-results"]').exists()).toBe(false)
+
+    // 失败终态非悬挂：换词触发新查询（queryKey 变化）→ 成功 → 结果渲染（isError 已收敛恢复）
+    await dialog.find('[data-testid="course-search"]').setValue('实战')
+    await vi.waitFor(() =>
+      expect(wrapper.find('[data-testid="course-option-c-9"]').exists()).toBe(true),
+    )
+    expect(courseSpy).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: '实战' }))
     wrapper.unmount()
   })
 })
