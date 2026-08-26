@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.CourseConverter;
+import com.commerce.rag.convert.PublicCourseConverter;
 import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.CreateCourseRequest;
 import com.commerce.rag.dto.UpdateCourseRequest;
@@ -29,6 +30,7 @@ import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.service.ICourseQueryService;
 import com.commerce.rag.service.ICourseService;
 import com.commerce.rag.service.ICourseTeacherService;
+import com.commerce.rag.vo.PublicCourseVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -79,6 +81,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
     private final CourseTeacherMapper courseTeacherMapper;
     /** 课程-教师关联服务 —— addTeachers 批量插入（saveBatch）载体（P1-9） */
     private final ICourseTeacherService courseTeacherService;
+    /** 公开课程转换器 —— C 端公开接口视图对象 */
+    private final PublicCourseConverter publicCourseConverter;
 
     private final CourseEnrollmentMapper courseEnrollmentMapper;
     private final DocumentChunkMapper documentChunkMapper;
@@ -168,6 +172,35 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
                 .eq(CourseInfo::getStatus, "ACTIVE")
                 .orderByDesc(CourseInfo::getCreatedAt);
         return courseInfoMapper.selectList(wrapper);
+    }
+
+    /**
+     * 查询公开课程列表（C 端公开接口，未登录可访问）
+     *
+     * <p>仅返回 ACTIVE 状态课程（@TableLogic 自动过滤已删除），按评分降序；
+     * 课程数据量小且低频，不做缓存——避免引入写路径失效链路
+     * （课程增删改后前端重新拉取即得最新值）。
+     *
+     * @return 公开课程视图对象列表（仅对外信息字段）
+     */
+    public List<PublicCourseVO> findPublicCourses() {
+        log.info("查询公开课程列表");
+        // 本 service 主表操作：内置链式查询 + 精确投影（A.4.3 / A.4.4）
+        List<CourseInfo> courses = this.lambdaQuery()
+                .select(
+                        CourseInfo::getId,
+                        CourseInfo::getTitle,
+                        CourseInfo::getDescription,
+                        CourseInfo::getCoverImage,
+                        CourseInfo::getCategory,
+                        CourseInfo::getInstructorName,
+                        CourseInfo::getDuration,
+                        CourseInfo::getRating,
+                        CourseInfo::getLearningCount)
+                .eq(CourseInfo::getStatus, "ACTIVE")
+                .orderByDesc(CourseInfo::getRating)
+                .list();
+        return courses.stream().map(publicCourseConverter::toVO).toList();
     }
 
     /**

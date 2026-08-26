@@ -46,6 +46,19 @@ export interface StudentCourse {
   learningCount: number;
 }
 
+/** 公开课程（PublicCourseVO；未登录可浏览，比 StudentCourse 多 description 供详情页展示） */
+export interface PublicCourse {
+  id: string;
+  title: string;
+  description: string | null;
+  coverImage: string | null;
+  category: string | null;
+  instructorName: string | null;
+  duration: string | null;
+  rating: number | null;
+  learningCount: number;
+}
+
 /** J2 课程资料分片（ChunkVO；含页码区间 badge 所需 startPage/endPage） */
 export interface MaterialChunk {
   id: string;

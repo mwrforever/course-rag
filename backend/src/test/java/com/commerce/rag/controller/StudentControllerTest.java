@@ -8,7 +8,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.dto.ApiResponse;
 import com.commerce.rag.dto.ChatRequest;
+import com.commerce.rag.dto.CreateSessionRequest;
 import com.commerce.rag.dto.PageResponse;
+import com.commerce.rag.dto.SessionRenameRequest;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.record.RetrievalSource;
@@ -26,12 +28,15 @@ import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.vo.StudentCourseVO;
 import com.commerce.rag.vo.StudentMessageVO;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -262,20 +267,33 @@ class StudentControllerTest {
     // ==================== J6: 我的会话 ====================
 
     @Test
-    @DisplayName("J6 mySessions → 分页返回会话列表（VO）")
+    @DisplayName("J6 mySessions → 分页返回会话列表（VO，keyword 缺省全量）")
     void mySessions_returnsPagedSessions() {
         Page<SessionVO> paged = new Page<>(1, 20);
         paged.setRecords(List.of(sessionVO(1L, "会话一")));
         paged.setTotal(1);
-        when(sessionService.findSessionsByUser(5L, 1, 20)).thenReturn(paged);
+        when(sessionService.findSessionsByUser(5L, 1, 20, null)).thenReturn(paged);
 
-        ApiResponse<PageResponse<SessionVO>> result = controller.mySessions(studentRequest(5L), 1, 20);
+        ApiResponse<PageResponse<SessionVO>> result = controller.mySessions(studentRequest(5L), 1, 20, null);
 
         SessionVO record = result.data().records().get(0);
         assertEquals("会话一", record.title());
         assertEquals("ACTIVE", record.status());
         assertNotNull(record.lastMessageAt());
         assertNotNull(record.createdAt());
+    }
+
+    @Test
+    @DisplayName("J6 mySessions → 带 keyword 时透传模糊搜索条件")
+    void mySessions_withKeyword_passesThrough() {
+        Page<SessionVO> paged = new Page<>(1, 20);
+        paged.setRecords(List.of(sessionVO(1L, "RAG 讲义问答")));
+        paged.setTotal(1);
+        when(sessionService.findSessionsByUser(5L, 1, 20, "RAG")).thenReturn(paged);
+
+        controller.mySessions(studentRequest(5L), 1, 20, "RAG");
+
+        verify(sessionService).findSessionsByUser(5L, 1, 20, "RAG");
     }
 
     // ==================== J7: 创建会话 ====================
@@ -285,20 +303,92 @@ class StudentControllerTest {
     void createSession_noTitle_usesDefault() {
         when(sessionService.createSession(5L, "新对话")).thenReturn(sessionVO(1L, "新对话"));
 
-        ApiResponse<SessionVO> result = controller.createSession(studentRequest(5L), Map.of());
+        ApiResponse<SessionVO> result = controller.createSession(studentRequest(5L), new CreateSessionRequest(null));
 
         assertEquals("新对话", result.data().title());
         verify(sessionService).createSession(5L, "新对话");
     }
 
     @Test
-    @DisplayName("J7 createSession → 传入标题时透传创建")
+    @DisplayName("J7 createSession → 全空白标题按缺省处理（trim 兜底）")
+    void createSession_blankTitle_usesDefault() {
+        when(sessionService.createSession(5L, "新对话")).thenReturn(sessionVO(1L, "新对话"));
+
+        ApiResponse<SessionVO> result = controller.createSession(studentRequest(5L), new CreateSessionRequest("   "));
+
+        assertEquals("新对话", result.data().title());
+        verify(sessionService).createSession(5L, "新对话");
+    }
+
+    @Test
+    @DisplayName("J7 createSession → 传入标题时透传创建（trim 去首尾空白）")
     void createSession_withTitle_usesProvidedTitle() {
         when(sessionService.createSession(5L, "自定义标题")).thenReturn(sessionVO(2L, "自定义标题"));
 
-        ApiResponse<SessionVO> result = controller.createSession(studentRequest(5L), Map.of("title", "自定义标题"));
+        ApiResponse<SessionVO> result =
+                controller.createSession(studentRequest(5L), new CreateSessionRequest("  自定义标题  "));
 
         assertEquals("自定义标题", result.data().title());
+        verify(sessionService).createSession(5L, "自定义标题");
+    }
+
+    // ==================== 重命名会话（会话管理：改） ====================
+
+    @Test
+    @DisplayName("重命名会话 → 归属本人时更新标题并返回最新 VO")
+    void renameSession_owner_renames() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 5L));
+        when(sessionService.renameSession(1L, "新标题")).thenReturn(sessionVO(1L, "新标题"));
+
+        ApiResponse<SessionVO> result =
+                controller.renameSession(studentRequest(5L), 1L, new SessionRenameRequest("新标题"));
+
+        assertEquals(0, result.code());
+        assertEquals("新标题", result.data().title());
+        verify(sessionService).renameSession(1L, "新标题");
+    }
+
+    @Test
+    @DisplayName("重命名会话 → 会话不存在抛 404，不触发更新")
+    void renameSession_sessionNotFound_throws404() {
+        when(sessionService.findById(99L)).thenReturn(null);
+
+        BizException ex = assertThrows(
+                BizException.class,
+                () -> controller.renameSession(studentRequest(5L), 99L, new SessionRenameRequest("新标题")));
+
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
+        assertEquals("会话不存在", ex.getMessage());
+        verify(sessionService, never()).renameSession(anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("重命名会话 → 非本人会话抛 403")
+    void renameSession_notOwner_throws403() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 9L));
+
+        BizException ex = assertThrows(
+                BizException.class,
+                () -> controller.renameSession(studentRequest(5L), 1L, new SessionRenameRequest("新标题")));
+
+        assertEquals(HttpStatus.FORBIDDEN.value(), ex.getCode());
+        assertEquals("无权重命名此会话", ex.getMessage());
+        verify(sessionService, never()).renameSession(anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("重命名会话 → 请求体校验契约：title @NotBlank + @Size(max=300)（MVC 层拦截非法输入）")
+    void renameSession_dtoValidationAnnotationsPresent() throws Exception {
+        Method method = StudentController.class.getMethod(
+                "renameSession", HttpServletRequest.class, Long.class, SessionRenameRequest.class);
+        Parameter[] params = method.getParameters();
+        assertNotNull(params[2].getAnnotation(Valid.class), "请求体应 @Valid 校验");
+
+        Field titleField = SessionRenameRequest.class.getDeclaredField("title");
+        assertNotNull(titleField.getAnnotation(NotBlank.class));
+        Size size = titleField.getAnnotation(Size.class);
+        assertNotNull(size);
+        assertEquals(300, size.max());
     }
 
     // ==================== 历史消息（R1 补口 A） ====================

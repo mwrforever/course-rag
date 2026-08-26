@@ -8,6 +8,7 @@ import com.commerce.rag.dto.UpdateCourseRequest;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;
+import com.commerce.rag.vo.PublicCourseVO;
 import java.util.List;
 
 /**
@@ -44,6 +45,13 @@ public interface ICourseService extends IService<CourseInfo> {
      * 批量查询课程（按 ID 列表）
      */
     List<CourseInfo> findByIds(List<Long> courseIds);
+
+    /**
+     * 查询公开课程列表（C 端公开接口：仅 ACTIVE 状态，评分降序）
+     *
+     * @return 公开课程视图对象列表（不含价格/标签等内部字段）
+     */
+    List<PublicCourseVO> findPublicCourses();
 
     /**
      * 分页查询课程（支持分类/关键词/创建者过滤）

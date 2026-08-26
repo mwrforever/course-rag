@@ -456,3 +456,48 @@ describe("业务端点契约", () => {
     });
   });
 });
+
+describe("公开课程与会话管理端点（公开化 + 会话管理 2026-08-26）", () => {
+  it("getPublicCourses → GET /public/courses 并解包列表", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(
+      res(200, {
+        code: 0,
+        message: "ok",
+        data: [{ id: "c1", title: "Java 入门", description: "简介", rating: 4.5 }],
+      }),
+    );
+
+    const data = await api.getPublicCourses();
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/v1/public/courses");
+    expect(data).toHaveLength(1);
+  });
+
+  it("updateSessionTitle → PATCH /student/sessions/{id}，body 含 title", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(
+      res(200, { code: 0, message: "ok", data: { id: "s1", title: "新标题" } }),
+    );
+
+    await api.updateSessionTitle("s1", "新标题");
+
+    const call = fetchMock.mock.calls[0];
+    expect(String(call[0])).toBe("/api/v1/student/sessions/s1");
+    expect((call[1] as RequestInit).method).toBe("PATCH");
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ title: "新标题" });
+  });
+
+  it("getSessions 带 keyword → URL 查询串携带 keyword", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(
+      res(200, { code: 0, message: "ok", data: { records: [], total: "0", page: 1, size: 20 } }),
+    );
+
+    await api.getSessions(1, 20, "RAG");
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "/api/v1/student/sessions?page=1&size=20&keyword=RAG",
+    );
+  });
+});

@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowDown, Clock, Sparkle, Star, User, Users } from "@phosphor-icons/react";
+import { ArrowDown, Clock, Lock, Sparkle, Star, User, Users } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { ChunkContextDrawer } from "@/components/chunk-context-drawer";
@@ -11,7 +11,8 @@ import { ChunkItem } from "@/components/chunk-item";
 import { coverFallback } from "@/components/course-card";
 import { EmptyState } from "@/components/empty-state";
 import { SectionError } from "@/components/section-error";
-import { ApiError, getMaterials, getMyCourses } from "@/lib/api";
+import { ApiError, getMaterials, getPublicCourses } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import type { MaterialChunk } from "@/lib/types";
 
 /** 分批渲染批次大小：首屏 50 条 + 「加载更多」逐批揭示（设计补记 G10） */
@@ -42,37 +43,65 @@ function WorkbenchSkeleton() {
   );
 }
 
+/** 登录墙卡片：资料区未登录引导（点「去登录」打开全局登录弹窗） */
+function LoginGate({ onLogin }: { onLogin: () => void }) {
+  return (
+    <div
+      data-testid="login-gate"
+      className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border bg-surface-2/60 px-6 py-14 text-center"
+    >
+      <span className="bg-brand-soft grid size-12 place-items-center rounded-2xl text-brand">
+        <Lock size={22} aria-hidden />
+      </span>
+      <div>
+        <p className="text-[15px] font-medium text-text">登录后查看课程资料</p>
+        <p className="mt-1 text-[13px] text-muted">学习资料仅对登录用户开放，登录后可继续提问</p>
+      </div>
+      <button
+        type="button"
+        onClick={onLogin}
+        className="inline-flex items-center gap-2 rounded-full bg-brand px-6 py-2.5 text-sm font-medium text-white shadow-md shadow-brand/30 transition-[transform,opacity] hover:-translate-y-0.5 hover:bg-brand-strong active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand"
+      >
+        去登录
+      </button>
+    </div>
+  );
+}
+
 /**
- * 课程工作台（设计 §1.5.3 路由 /courses/[id]，全 CSR）
+ * 课程工作台（设计 §1.5.3 路由 /courses/[id]，全 CSR；公开化 2026-08-26 修订）
  *
- * 结构：课程 Hero（左封面 4:3 + 右信息 + 问 AI 助教 CTA + 浏览资料锚点）→
- * 课程资料（J2 分片列表，分批渲染首屏 50 + 加载更多）→ 上下文抽屉（J4）。
+ * 结构：课程 Hero（左封面 4:3 + 右公开信息/简介 + 问 AI 助教 CTA + 浏览资料锚点）→
+ * 课程资料（J2 分片列表，登录后可见）→ 上下文抽屉（J4）。
  *
- * 403 专属态（设计 §1.7）：materials 接口 403（未选课）时渲染专属引导页
- * 「联系老师加入这门课程」+ 返回按钮，替代全部页面内容。
- * 时序修正（carry1）：未加入的课程不在我的课程列表（course 判空会命中），
- * 故「是否 403」先于「course 缺失」判定，避免误报「课程不存在」；
- * course 真不存在（materials 404）才落「课程不存在或已下架」。
- * 四态全覆盖：Loading 骨架 / Empty / Error 横幅+重试 / 正常态。
+ * 登录门槛（用户拍板：点进详情页才需要登录）：
+ * - 课程公开信息经公开接口（public-courses）渲染，未登录可浏览
+ * - 未登录进入页面自动弹出登录窗（可关闭）；资料区渲染登录墙卡片
+ * - 资料接口 J2 仅登录后请求（enabled）；未选课 403 → 专属引导「联系老师」
+ * - 「问 AI 助教」未登录先登录（登录成功后继续跳转 /chat?courseId=）
+ *
+ * 时序修正（carry1）：公开数据源为权威课程全集，!course 即课程不存在/下架，
+ * 不再依赖 materials 404 判空。四态全覆盖：Loading 骨架 / Empty / Error 横幅+重试 / 正常态。
  */
 export default function CourseWorkbenchPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const courseId = params.id;
-  // J1 全量课程中定位当前课程（复用首页同名缓存键，react-query 同 key 共享缓存）
-  const coursesQuery = useQuery({ queryKey: ["my-courses"], queryFn: getMyCourses });
+  const { isAuthenticated, isLoading, openLoginDialog } = useAuth();
+  // 公开课程全集定位当前课程（与首页/课堂页同键共享缓存，未登录可访问）
+  const coursesQuery = useQuery({ queryKey: ["public-courses"], queryFn: getPublicCourses });
   const course = coursesQuery.data?.find((item) => item.id === courseId) ?? null;
 
-  // J2 课程专属资料：未选课后端 403（code=403）→ 渲染专属引导态；
+  // J2 课程专属资料：仅登录后请求；未选课后端 403（code=403）→ 专属引导态；
   // 不自动重试（403 重试无意义，瞬态错误由 Error 横幅的 [重试] 手动恢复，行为确定）
   const materialsQuery = useQuery({
     queryKey: ["course-materials", courseId],
     queryFn: () => getMaterials(courseId),
+    enabled: isAuthenticated,
     retry: false,
   });
   const materials = materialsQuery.data ?? [];
   const isForbidden = materialsQuery.error instanceof ApiError && materialsQuery.error.code === 403;
-  // 课程真不存在判据（carry1）：资料接口 404（或课程不在我的列表）→ 课程不存在/下架
-  const isNotFound = materialsQuery.error instanceof ApiError && materialsQuery.error.code === 404;
 
   // J4 上下文抽屉选中分片（null = 抽屉关闭）+ 分批渲染可见条数
   const [selectedChunk, setSelectedChunk] = useState<MaterialChunk | null>(null);
@@ -82,8 +111,22 @@ export default function CourseWorkbenchPage() {
     setVisibleCount(BATCH_SIZE);
   }, [courseId]);
 
-  // 课程与资料任一加载中 → 整页骨架（资料接口通常更慢，统一到资料就绪再出内容）
-  if (coursesQuery.isPending || materialsQuery.isPending) {
+  // 登录门槛：未登录进入详情页自动弹出登录窗（可关闭继续浏览公开信息）。
+  // once 语义 + 静默续期窗口（isLoading）内不弹——修复实证缺陷：登录用户 refresh
+  // 完成前 isAuthenticated=false 会误弹窗挡住资料加载（E2E 工作台用例抓出）
+  const loginGateShownRef = useRef(false);
+  useEffect(() => {
+    if (loginGateShownRef.current) {
+      return;
+    }
+    if (!isAuthenticated && !isLoading) {
+      loginGateShownRef.current = true;
+      openLoginDialog();
+    }
+  }, [isAuthenticated, isLoading, openLoginDialog]);
+
+  // 课程公开信息加载中 → 整页骨架（资料区等待时长已与控制解耦，见下）
+  if (coursesQuery.isPending) {
     return <WorkbenchSkeleton />;
   }
   if (coursesQuery.isError) {
@@ -93,25 +136,23 @@ export default function CourseWorkbenchPage() {
       </div>
     );
   }
+  if (!course) {
+    // 公开数据源为权威（ACTIVE 课程全集）：不在列表即不存在/已下架
+    return (
+      <div className="mx-auto w-full max-w-6xl px-6 py-16">
+        <EmptyState title="课程不存在或已下架" actionLabel="返回课程中心" actionHref="/courses" />
+      </div>
+    );
+  }
   if (isForbidden) {
-    // 未选课 403 专属引导页（设计 §1.7：联系老师加入这门课程 + 返回按钮）。
-    // carry1 时序修正：本判定先于 !course。未加入的课程不在我的课程列表，
-    // 但 materials 403 证明课程存在只是未选，应引导联系老师而非报「课程不存在」
+    // 未选课 403 专属引导页（设计 §1.7：联系老师加入这门课程 + 返回按钮）
     return (
       <div className="mx-auto w-full max-w-6xl px-6 py-16">
         <EmptyState
           title="还没有加入这门课程，请联系老师开通"
-          actionLabel="返回我的课程"
+          actionLabel="返回课程中心"
           actionHref="/courses"
         />
-      </div>
-    );
-  }
-  if (!course || isNotFound) {
-    // J1 无此课程（直接输入 URL 或课程下架）；或资料接口 404（carry1：课程真不存在）
-    return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-16">
-        <EmptyState title="课程不存在或已下架" actionLabel="返回我的课程" actionHref="/courses" />
       </div>
     );
   }
@@ -128,6 +169,21 @@ export default function CourseWorkbenchPage() {
 
   // Hero 无封面兜底：与 CourseCard 同款学科渐变（分类关键词映射）
   const { icon: FallbackIcon, gradient } = coverFallback(course.category);
+  // 闭包安全取值：askAi 为组件内函数，TS 不保留外层 course 的 null 收窄，解构出非空值
+  const courseIdNow = course.id;
+  const courseTitleNow = course.title;
+
+  /** 问 AI 助教入口：未登录先弹登录窗（成功后续跳），已登录直达对话页 */
+  function askAi() {
+    if (isAuthenticated) {
+      router.push(`/chat?courseId=${courseIdNow}&course=${encodeURIComponent(courseTitleNow)}`);
+    } else {
+      openLoginDialog({
+        afterLogin: () =>
+          router.push(`/chat?courseId=${courseIdNow}&course=${encodeURIComponent(courseTitleNow)}`),
+      });
+    }
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl px-6 pb-20">
@@ -139,6 +195,7 @@ export default function CourseWorkbenchPage() {
               src={course.coverImage}
               alt={course.title}
               fill
+              priority
               sizes="(max-width: 768px) 100vw, 360px"
               className="object-cover"
             />
@@ -160,6 +217,12 @@ export default function CourseWorkbenchPage() {
           <h1 className="mt-3 font-display text-[30px] leading-[1.25] font-bold text-text">
             {course.title}
           </h1>
+          {/* 课程简介：公开字段（description），未登录亦可浏览 */}
+          {course.description ? (
+            <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-muted">
+              {course.description}
+            </p>
+          ) : null}
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted tabular-nums">
             {course.instructorName ? (
               <span className="inline-flex items-center gap-1.5">
@@ -184,15 +247,16 @@ export default function CourseWorkbenchPage() {
               {course.learningCount} 人学习
             </span>
           </div>
-          {/* 双 CTA：问 AI 助教（纯前端入口 → /chat?courseId={id}&course=课程名，D7
-              上下文条面包屑 + carry3 返回按钮直达本课程）+ 浏览资料（锚点滚动） */}
+          {/* 双 CTA：问 AI 助教（未登录先弹登录窗，D7 上下文条面包屑 + carry3 返回按钮直达本课程）
+              + 浏览资料（锚点滚动） */}
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href={`/chat?courseId=${course.id}&course=${encodeURIComponent(course.title)}`}
+            <button
+              type="button"
+              onClick={askAi}
               className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2.5 text-[15px] font-medium text-white shadow-md shadow-brand/30 transition-[transform,opacity] hover:-translate-y-0.5 hover:bg-brand-strong active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand"
             >
               <Sparkle size={16} aria-hidden />问 AI 助教
-            </Link>
+            </button>
             <Link
               href="#materials"
               className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-5 py-2.5 text-[15px] font-medium text-muted transition-colors hover:border-brand/40 hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
@@ -204,16 +268,26 @@ export default function CourseWorkbenchPage() {
         </div>
       </section>
 
-      {/* ===== 课程资料：J2 分片列表（分批渲染首屏 50 + 加载更多，G10） ===== */}
+      {/* ===== 课程资料：J2 分片列表（登录后可见；未登录渲染登录墙） ===== */}
       <section id="materials" className="scroll-mt-24">
         <div className="mb-5 flex items-baseline justify-between gap-4 border-b border-border pb-4">
           <h2 className="font-display text-[22px] leading-[1.3] font-semibold text-text">
             课程资料
           </h2>
-          <span className="text-xs text-subtle tabular-nums">共 {materials.length} 条</span>
+          {isAuthenticated ? (
+            <span className="text-xs text-subtle tabular-nums">共 {materials.length} 条</span>
+          ) : null}
         </div>
 
-        {materials.length === 0 ? (
+        {!isAuthenticated ? (
+          <LoginGate onLogin={() => openLoginDialog()} />
+        ) : materialsQuery.isPending ? (
+          <div data-testid="materials-skeleton" className="space-y-3" aria-busy="true">
+            {Array.from({ length: 5 }, (_, index) => (
+              <div key={index} className="h-20 animate-pulse rounded-2xl bg-surface-2" />
+            ))}
+          </div>
+        ) : materials.length === 0 ? (
           <EmptyState title="这门课程还没有资料，稍后再来看看" />
         ) : (
           <>

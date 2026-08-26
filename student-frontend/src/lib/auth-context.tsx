@@ -1,19 +1,28 @@
 "use client";
 
 /**
- * 认证上下文（AuthProvider + useAuth，任务 7 核心）
+ * 认证上下文（AuthProvider + useAuth，任务 7 核心；登录弹窗化 2026-08-26 修订）
  *
  * 职责（设计文档 §3.1/§1.5.6）：
  * - 挂载静默续期：AT 内存变量随页面刷新丢失，凭 localStorage 的 RT 调 refresh 恢复登录态
  *   （无 RT 时立即就绪；失败静默保持未登录，不打断首屏）
  * - login/logout 状态流转：经 api client 完成凭据落存，本层维护用户信息（登录响应缓存）
- * - 注册 401 刷新失败全局登出回调：api 层清完凭据后置空用户态，并跳转 `/login?redirect=<当前路径>`
- *   （登录后回跳原页，形成认证过期闭环）+ 展示轻量自制 toast「登录已失效，请重新登录」
+ * - 注册 401 刷新失败全局登出回调：api 层清完凭据后置空用户态，打开登录弹窗（不再整页跳
+ *   /login，登录弹窗全路由可触发）+ 展示轻量自制 toast「登录已失效，请重新登录」
+ * - 登录弹窗全局状态：openLoginDialog({ afterLogin }) 供任意组件登记登录成功后的后续动作
+ *   （如继续提问/进入详情页），submitLogin 成功后自动关闭弹窗并执行登记动作
  *
  * 线程安全说明：React 单向数据流内使用，无共享可变状态并发问题。
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   getRefreshToken,
   login as apiLogin,
@@ -30,6 +39,11 @@ export interface AuthUser {
   displayName: string;
 }
 
+/** 登录弹窗打开选项：登录成功后的后续动作（可选） */
+export interface LoginDialogOptions {
+  afterLogin?: () => void | Promise<void>;
+}
+
 /** 认证上下文值：isLoading 仅覆盖挂载静默续期窗口 */
 export interface AuthContextValue {
   user: AuthUser | null;
@@ -38,6 +52,14 @@ export interface AuthContextValue {
   isLoading: boolean;
   login(username: string, password: string): Promise<void>;
   logout(): Promise<void>;
+  /** 登录弹窗展开态（LoginDialog 渲染依据） */
+  loginDialogOpen: boolean;
+  /** 打开登录弹窗并登记登录成功后的后续动作 */
+  openLoginDialog(options?: LoginDialogOptions): void;
+  /** 关闭登录弹窗（丢弃未执行的 afterLogin） */
+  closeLoginDialog(): void;
+  /** 登录并自动关闭弹窗 + 执行 afterLogin（失败向上抛由弹窗分级展示） */
+  submitLogin(username: string, password: string): Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -53,13 +75,14 @@ function toUser(response: LoginResponse): AuthUser {
  * @param children 子路由内容
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   // 登录失效轻提示开关：认证过期（401 刷新失败）时置真，toast 展示 4 秒后自动消失
   const [sessionExpired, setSessionExpired] = useState(false);
+  // 登录弹窗展开态 + 登录成功后的后续动作（ref 持有避免触发重渲染）
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  const afterLoginRef = useRef<(() => void | Promise<void>) | null>(null);
 
   // 挂载静默续期：有 RT 才尝试恢复（无 RT 直接就绪，不发无效请求）
   useEffect(() => {
@@ -89,20 +112,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // 注册 401 刷新失败登出回调：api 层清完凭据后置空用户态 + 提示登录失效并跳登录页回跳原路径；
-  // 已在登录页则不重复跳转；卸载时注销防悬空
+  // 注册 401 刷新失败登出回调：api 层清完凭据后置空用户态 + 打开登录弹窗（登录弹窗化：
+  // 不再跳转 /login，弹窗在任意页面原位展开，登录后回跳能力由调用方经 afterLogin 登记）；
+  // 卸载时注销防悬空
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setUser(null);
       setToken(null);
-      // 登录失效闭环：toast 提示 + 跳 /login?redirect=<当前路径>（登录成功后回跳）
+      // 登录失效闭环：toast 提示 + 打开登录弹窗
       setSessionExpired(true);
-      if (pathname !== "/login") {
-        router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
-      }
+      setLoginDialogOpen(true);
     });
     return () => setUnauthorizedHandler(null);
-  }, [router, pathname]);
+  }, []);
 
   // 登录失效 toast 自动消失（4 秒），卸载时清除定时器
   useEffect(() => {
@@ -113,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [sessionExpired]);
 
-  /** 登录：经 api client 落存凭据后置登录态（失败向上抛由登录页分级展示） */
+  /** 登录：经 api client 落存凭据后置登录态（失败向上抛由登录弹窗分级展示） */
   const login = useCallback(async (username: string, password: string) => {
     const response = await apiLogin(username, password);
     setUser(toUser(response));
@@ -127,6 +149,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
   }, []);
 
+  /** 打开登录弹窗并登记后续动作（被 401 回调与其他调用方共用） */
+  const openLoginDialog = useCallback((options?: LoginDialogOptions) => {
+    afterLoginRef.current = options?.afterLogin ?? null;
+    setLoginDialogOpen(true);
+  }, []);
+
+  /** 关闭登录弹窗：丢弃未执行的 afterLogin（用户主动取消场景不执行后续动作） */
+  const closeLoginDialog = useCallback(() => {
+    afterLoginRef.current = null;
+    setLoginDialogOpen(false);
+  }, []);
+
+  /** 弹窗提交登录：成功后关闭弹窗并执行登记动作；动作失败不阻断登录态（由登记方自管） */
+  const submitLogin = useCallback(
+    async (username: string, password: string) => {
+      await login(username, password);
+      setLoginDialogOpen(false);
+      const afterLogin = afterLoginRef.current;
+      afterLoginRef.current = null;
+      if (afterLogin) {
+        try {
+          await afterLogin();
+        } catch {
+          // afterLogin 为调用方登记的附带动作（跳转/刷新等），失败不撤销登录态
+        }
+      }
+    },
+    [login],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -135,8 +187,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       login,
       logout,
+      loginDialogOpen,
+      openLoginDialog,
+      closeLoginDialog,
+      submitLogin,
     }),
-    [user, accessToken, isLoading, login, logout],
+    [
+      user,
+      accessToken,
+      isLoading,
+      login,
+      logout,
+      loginDialogOpen,
+      openLoginDialog,
+      closeLoginDialog,
+      submitLogin,
+    ],
   );
 
   return (

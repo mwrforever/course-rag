@@ -2,13 +2,15 @@
 
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AiBadge } from "@/components/ai-badge";
 import { CourseCard } from "@/components/course-card";
 import { EmptyState } from "@/components/empty-state";
 import { SectionError } from "@/components/section-error";
-import { getMyCourses } from "@/lib/api";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { getMyCourses, getPublicCourses } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 /** 本地分页每页课程数（设计 §1.5.2） */
 const PAGE_SIZE = 12;
@@ -51,25 +53,42 @@ function FilterEmpty({ onClear }: { onClear: () => void }) {
 }
 
 /**
- * 课程列表页内容组件（设计 §1.5.2，全 CSR）
+ * 课程列表页内容组件（设计 §1.5.2，全 CSR；公开化 2026-08-26）
  *
- * J1 无分页接口：全量拉取后内存筛选（category Chip 从数据聚合 + 关键词即时过滤）
- * + 排序（默认评分降序，可切换按名称）+ 本地分页（每页 12）。
- * category 与 q 以 URL query 驱动浅路由同步（入口直接读 URL，交互写回 URL）。
+ * 课程数据源为公开接口（未登录可浏览，全部 ACTIVE 课程）；登录用户额外交叉
+ * 「我的课程」标记已加入徽章。公开接口无分页：全量拉取后内存筛选
+ * （category Chip 从数据聚合 + 关键词即时过滤）+ 排序（默认评分降序，可切换按名称）
+ * + 本地分页（每页 12）。
+ * category 与 q 以 URL query 驱动浅路由同步（入口直接读 URL，交互写回 URL）；
+ * 关键词写 URL 收敛到 300ms 防抖（消除每键 replace 的交互卡顿）。
  * 四态全覆盖（设计 §1.7）：Loading 骨架 / Empty 空态 / Error 横幅+重试 / 正常态。
  */
 function CoursesContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const coursesQuery = useQuery({ queryKey: ["my-courses"], queryFn: getMyCourses });
+  const { isAuthenticated } = useAuth();
+  const coursesQuery = useQuery({ queryKey: ["public-courses"], queryFn: getPublicCourses });
+  // 已加入集合：仅登录时查询我的课程交叉标记（已加入徽章）
+  const joinedQuery = useQuery({
+    queryKey: ["my-courses"],
+    queryFn: getMyCourses,
+    enabled: isAuthenticated,
+  });
   // 筛选状态初始来自 URL query（?category=&q=），交互更新本地状态并浅路由同步
   const [category, setCategory] = useState(searchParams.get("category") ?? "");
   const [keyword, setKeyword] = useState(searchParams.get("q") ?? "");
+  // 关键词防抖值：过滤用即时值（本地内存过滤快），URL 同步收敛到防抖后
+  const debouncedKeyword = useDebouncedValue(keyword, 300);
   const [sortMode, setSortMode] = useState<SortMode>("rating");
   const [page, setPage] = useState(1);
 
   // 课程列表：空态兜底用 useMemo 稳定引用，避免空数组字面量每次渲染新建导致依赖变化
   const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
+  // 已加入课程 ID 集合（登录用户；未登录恒空集）
+  const joinedIds = useMemo(
+    () => new Set((joinedQuery.data ?? []).map((course) => course.id)),
+    [joinedQuery.data],
+  );
 
   // category Chip 集：从 J1 数据聚合去重（null 分类折叠进「全部」）
   const categories = useMemo(
@@ -113,33 +132,35 @@ function CoursesContent() {
     setPage(1);
   }, [category, keyword, sortMode]);
 
-  /** 浅路由同步：category 与 q 写入 URL（无参时回落纯 /courses） */
-  function syncUrl(cat: string, query: string) {
+  /** 浅路由同步：category 与 q 写入 URL（无参时回落纯 /courses）；关键词经防抖值驱动 */
+  const syncUrl = useCallback(() => {
     const params = new URLSearchParams();
-    if (cat) {
-      params.set("category", cat);
+    if (category) {
+      params.set("category", category);
     }
-    if (query) {
-      params.set("q", query);
+    if (debouncedKeyword) {
+      params.set("q", debouncedKeyword);
     }
     const qs = params.toString();
     router.replace(qs ? `/courses?${qs}` : "/courses");
-  }
+  }, [category, debouncedKeyword, router]);
+
+  // 关键词写 URL 防抖后同步；分类切换即时同步（低频率操作）
+  useEffect(() => {
+    syncUrl();
+  }, [syncUrl]);
 
   function handleCategory(cat: string) {
     setCategory(cat);
-    syncUrl(cat, keyword);
   }
 
   function handleKeyword(value: string) {
     setKeyword(value);
-    syncUrl(category, value);
   }
 
   function clearFilters() {
     setCategory("");
     setKeyword("");
-    syncUrl("", "");
   }
 
   /** Chip 激活样式：选中态 teal-soft（设计 §1.5.2） */
@@ -155,7 +176,7 @@ function CoursesContent() {
     <div className="mx-auto w-full max-w-6xl px-6 pb-20">
       {/* 页头：H1 + 搜索框（本地即时过滤） */}
       <div className="flex flex-wrap items-end justify-between gap-4 py-10">
-        <h1 className="font-display text-[30px] leading-[1.25] font-bold text-text">我的课程</h1>
+        <h1 className="font-display text-[30px] leading-[1.25] font-bold text-text">课程中心</h1>
         <label className="relative block w-full max-w-sm">
           <MagnifyingGlass
             size={18}
@@ -180,7 +201,7 @@ function CoursesContent() {
         <SectionError onRetry={() => void coursesQuery.refetch()} />
       ) : courses.length === 0 ? (
         <EmptyState
-          title="还没有加入课程，请联系老师开通"
+          title="暂无上架课程，请稍后再来"
           actionLabel="先和 AI 助教聊聊"
           actionHref="/chat"
         />
@@ -228,7 +249,11 @@ function CoursesContent() {
               {/* 网格 3 列（电商风格），卡片 hover 动效由 CourseCard 承载 */}
               <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {visible.map((course) => (
-                  <CourseCard key={course.id} course={course} />
+                  <CourseCard
+                    key={course.id}
+                    course={course}
+                    joined={isAuthenticated ? joinedIds.has(course.id) : undefined}
+                  />
                 ))}
               </div>
 

@@ -22,6 +22,7 @@ import type {
   LoginResponse,
   MaterialChunk,
   PageResponse,
+  PublicCourse,
   SessionItem,
   StudentCourse,
   StudentMessage,
@@ -273,6 +274,11 @@ export function getMyCourses(): Promise<StudentCourse[]> {
   return apiFetch<StudentCourse[]>("/student/courses");
 }
 
+/** 公开课程列表（未登录可访问：首页/课堂页数据源，仅对外信息字段） */
+export function getPublicCourses(): Promise<PublicCourse[]> {
+  return apiFetch<PublicCourse[]>("/public/courses");
+}
+
 /** J2: 课程专属资料分片列表（未选课 403 → 课程页专属引导态） */
 export function getMaterials(courseId: string): Promise<MaterialChunk[]> {
   return apiFetch<MaterialChunk[]>(`/student/courses/${courseId}/materials`);
@@ -288,15 +294,31 @@ export function getChunkContext(chunkId: string): Promise<ChunkContext> {
   return apiFetch<ChunkContext>(`/student/chunks/${chunkId}/context`);
 }
 
-/** J6: 我的会话分页 */
-export function getSessions(page: number, size: number): Promise<PageResponse<SessionItem>> {
-  return apiFetch<PageResponse<SessionItem>>(`/student/sessions?page=${page}&size=${size}`);
+/** J6: 我的会话分页（keyword 可选：标题模糊搜索，空/缺省 = 全量列表） */
+export function getSessions(
+  page: number,
+  size: number,
+  keyword?: string,
+): Promise<PageResponse<SessionItem>> {
+  const query = new URLSearchParams({ page: String(page), size: String(size) });
+  if (keyword) {
+    query.set("keyword", keyword);
+  }
+  return apiFetch<PageResponse<SessionItem>>(`/student/sessions?${query.toString()}`);
 }
 
 /** J7: 创建会话（title 缺省后端补「新对话」） */
 export function createSession(title?: string): Promise<SessionItem> {
   return apiFetch<SessionItem>("/student/sessions", {
     method: "POST",
+    body: JSON.stringify({ title }),
+  });
+}
+
+/** 重命名会话（PATCH /student/sessions/{id}；404/403 守卫与删除端点一致） */
+export function updateSessionTitle(sessionId: string, title: string): Promise<SessionItem> {
+  return apiFetch<SessionItem>(`/student/sessions/${sessionId}`, {
+    method: "PATCH",
     body: JSON.stringify({ title }),
   });
 }

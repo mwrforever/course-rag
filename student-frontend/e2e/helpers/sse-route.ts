@@ -52,7 +52,39 @@ export async function mockApi(page: Page) {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON_OK(null) });
     }
 
-    // 我的课程（J1，首页/课程列表/工作台共用）
+    // 公开课程列表（未登录可浏览：首页/课堂页数据源，2026-08-26 公开化）
+    if (method === "GET" && path.endsWith("/public/courses")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON_OK([
+          {
+            id: "1",
+            title: "数据结构与算法精讲",
+            description: "从线性表到图论的系统课程",
+            coverImage: null,
+            category: "编程",
+            instructorName: "张老师",
+            duration: 12,
+            rating: 4.8,
+            learningCount: 236,
+          },
+          {
+            id: "2",
+            title: "Java 从入门到进阶",
+            description: "面向对象的 Java 系统课程",
+            coverImage: null,
+            category: "编程",
+            instructorName: "李老师",
+            duration: 20,
+            rating: 4.5,
+            learningCount: 89,
+          },
+        ]),
+      });
+    }
+
+    // 我的课程（J1，个人中心/已加入徽章交叉用）
     if (method === "GET" && path.endsWith("/student/courses")) {
       return route.fulfill({
         status: 200,
@@ -82,7 +114,7 @@ export async function mockApi(page: Page) {
       });
     }
 
-    // 会话列表（J6）：首页最近会话与 /sessions 共用
+    // 会话列表（J6）：侧栏与首页共用（keyword 搜索参数由用例覆盖增强）
     if (method === "GET" && path.endsWith("/student/sessions")) {
       return route.fulfill({
         status: 200,
@@ -108,18 +140,48 @@ export async function mockApi(page: Page) {
       });
     }
 
+    // 会话重命名（PATCH）：回新标题 VO（侧栏重命名用例）
+    if (method === "PATCH" && /\/student\/sessions\/\d+$/.test(path)) {
+      const title = JSON.parse(req.postData() ?? '{"title":"新对话"}').title;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: 0,
+          message: "success",
+          data: {
+            id: path.split("/").pop(),
+            title,
+            status: "ACTIVE",
+            lastMessageAt: null,
+            createdAt: "2026-08-24T09:20:00",
+          },
+        }),
+      });
+    }
+
+    // 会话删除（DELETE）：级联软删成功空体（侧栏删除用例；409 场景由用例覆盖）
+    if (method === "DELETE" && /\/student\/sessions\/\d+$/.test(path)) {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON_OK(null) });
+    }
+
     // 其余请求：统一 200 空数据兜底（若用例需覆盖的接口缺失，会由具体断言暴露）
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON_OK(null) });
   });
 }
 
-/** 走一遍完整登录流程（mock 已就绪），跳转目标页后返回 */
+/**
+ * 快速登录：注入 RT 到 localStorage 后刷新页面，经 AuthProvider 静默续期建立登录态
+ *
+ * 与后端真实行为一致：refresh 端点 mock 返回新 AT/RT 并带 Set-Cookie（middleware
+ * 存在性检查放行）；无独立 /login 页（登录弹窗化），非受测 spec 走此直登路径提速。
+ * 登录 UI 完整性（弹窗/错误分级）由 auth.spec 单独覆盖。
+ */
 export async function login(page: Page, redirectTo = "/") {
-  await page.goto("/login");
-  await page.fill("#username", "student");
-  await page.fill("#password", "123456");
-  await page.click('button[type="submit"]');
-  await page.waitForURL(redirectTo);
+  // 先落到任意公开页注入 RT（模拟已登录用户），再导航目标触发静默续期
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => localStorage.setItem("c_rt", "rt-e2e"));
+  await page.goto(redirectTo, { waitUntil: "domcontentloaded" });
 }
 
 /**

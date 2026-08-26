@@ -2,14 +2,14 @@ import { test, expect } from "@playwright/test";
 import { mockApi, login, mockChatStream, frame } from "./helpers/sse-route";
 
 /**
- * SSE 生命周期 E2E（整合 spec §3.2：cancel / 409 / reconnect / REPLAY_FAILED / 删除 409）
+ * SSE 生命周期 E2E（整合 spec §3.2：cancel / 409 / reconnect / REPLAY_FAILED）
  *
  * - cancel：发送后按钮 morph「停止生成」→ 点击 → POST {runId}/cancel 请求到达
  * - 409：二次发送冲突 → toast「当前会话正在回答中」
  * - reconnect：EOF 未终态触发断流路径（Task11 修复：EOF 即断流，无需等 30s）→
  *   GET reconnect?lastEventId= 携带锚点 → 续流渲染
  * - REPLAY_FAILED：重连返回 error 帧 → 「重新提问」引导
- * - 删除 409：会话页删除 → toast「会话正在对话中」
+ * （删除 409 语义随 /sessions 页下线迁移至侧边栏删除路径，由 chat-sidebar E2E/单测覆盖）
  */
 
 test.describe("SSE 生命周期", () => {
@@ -158,25 +158,5 @@ test.describe("SSE 生命周期", () => {
     // CANCELLED 无 messageId：无反馈按钮（仅复制）
     await expect(page.getByRole("button", { name: "有用" })).toBeHidden();
     await expect(page.getByRole("button", { name: "复制回答" })).toBeVisible();
-  });
-
-  test("会话删除 409：toast「会话正在对话中」", async ({ page }) => {
-    await page.route("**/api/v1/student/sessions/10", async (route) => {
-      if (route.request().method() === "DELETE") {
-        await route.fulfill({
-          status: 409,
-          contentType: "application/json",
-          body: JSON.stringify({ code: 409, message: "会话正在对话中，请稍后删除" }),
-        });
-      } else {
-        await route.fallback();
-      }
-    });
-    await login(page, "/");
-    await page.goto("/sessions");
-    await page.getByRole("button", { name: "删除会话" }).click();
-    // 二次确认 Dialog 确认按钮
-    await page.getByRole("button", { name: "确认删除" }).click();
-    await expect(page.getByText("会话正在对话中")).toBeVisible();
   });
 });
