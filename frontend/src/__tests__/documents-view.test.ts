@@ -636,8 +636,10 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
     const uploadSpy = vi.spyOn(documentApi, 'upload').mockResolvedValue(doc('d-new', 'PENDING'))
 
     await dialog.find('[data-testid="course-search"]').setValue('RAG')
-    await flushPromises()
-    expect(courseSpy).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'RAG' }))
+    // query 化后搜索为异步调度：以 waitFor 收敛（批 2 实证：flushPromises 立即断言不稳）
+    await vi.waitFor(() =>
+      expect(courseSpy).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'RAG' })),
+    )
     await wrapper.find('[data-testid="course-option-c-9"]').trigger('click')
     expect(dialog.find('[data-testid="selected-course"]').text()).toContain('RAG 实战营')
 
@@ -649,6 +651,20 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
 
     const form = uploadSpy.mock.calls[0][0] as FormData
     expect(form.get('courseId')).toBe('c-9')
+    wrapper.unmount()
+  })
+
+  it('课程搜索选择器：搜索失败静默清空结果（异常场景，queried 后不展示结果列表）', async () => {
+    const { wrapper, dialog } = await openUpload()
+    vi.spyOn(courseApi, 'list').mockRejectedValue(new Error('搜索接口异常'))
+
+    await dialog.find('[data-testid="course-search"]').setValue('RAG')
+    // retry:false 下一次失败即终态：等待搜索结束（isError 收敛）后结果列表不展示
+    await vi.waitFor(() =>
+      expect(courseApi.list).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'RAG' })),
+    )
+    await flushPromises()
+    expect(dialog.find('[data-testid="course-results"]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

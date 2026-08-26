@@ -205,11 +205,25 @@ const allSelected = computed(
 const batchDialogOpen = ref(false)
 const batchCollectionType = ref<'' | CollectionType>('')
 
-/** 课程选择三态（默认「不改」）；远程搜索 state 与上传 Dialog 同构 */
+/** 课程选择三态（默认「不改」）；远程搜索 query 化与上传 Dialog 同构 */
 const batchCourseChoice = ref<CourseChoice>({ kind: 'keep' })
 const batchCourseQuery = ref('')
-const batchCourseResults = ref<CourseDTO[]>([])
-const batchCourseSearching = ref(false)
+/**
+ * 课程搜索：输入即查（size 10）；queryKey 收敛竞态（快速输入时旧请求不覆盖新结果），空关键字不查询。
+ * 语义变化说明：失败后重试须改词或重开 Dialog——同词不重复发请求（queryKey 收敛设计使然）。
+ */
+const batchCourseResultsQuery = useQuery({
+  queryKey: computed(() => ['admin-course-search', batchCourseQuery.value.trim()]),
+  queryFn: () => courseApi.list({ keyword: batchCourseQuery.value.trim(), size: 10 }),
+  enabled: computed(() => batchCourseQuery.value.trim().length > 0),
+})
+/** 搜索结果展示：空关键字 / 查询失败不展示（对齐原手动实现静默清空语义） */
+const batchCourseResults = computed(() =>
+  batchCourseQuery.value.trim() && !batchCourseResultsQuery.isError.value
+    ? (batchCourseResultsQuery.data.value?.records ?? [])
+    : [],
+)
+const batchCourseSearching = computed(() => batchCourseResultsQuery.isFetching.value)
 
 /** 表单校验：collectionType 与 courseId 均为「不改」时无实际改动，禁用提交 */
 const batchSubmitDisabled = computed(
@@ -221,7 +235,6 @@ function openBatchDialog() {
   batchCollectionType.value = ''
   batchCourseChoice.value = { kind: 'keep' }
   batchCourseQuery.value = ''
-  batchCourseResults.value = []
 }
 
 function closeBatchDialog() {
@@ -229,28 +242,10 @@ function closeBatchDialog() {
   batchDialogOpen.value = false
 }
 
-/** 课程远程搜索：输入即查（size 10），搜索失败静默清空结果 */
-async function searchBatchCourses() {
-  const keyword = batchCourseQuery.value.trim()
-  if (!keyword) {
-    batchCourseResults.value = []
-    return
-  }
-  batchCourseSearching.value = true
-  try {
-    const res = await courseApi.list({ keyword, size: 10 })
-    batchCourseResults.value = res.records ?? []
-  } catch {
-    batchCourseResults.value = []
-  } finally {
-    batchCourseSearching.value = false
-  }
-}
-
-/** 选中课程（三态之一）：收起结果列表，输入框切换为 chip 展示 */
+/** 选中课程（三态之一）：chip 展示或「不改」，清空搜索词（结果随 enabled 关闭收起） */
 function pickBatchCourse(choice: CourseChoice) {
   batchCourseChoice.value = choice
-  batchCourseResults.value = []
+  batchCourseQuery.value = ''
 }
 
 /**
@@ -738,7 +733,6 @@ function closeContext() {
               aria-label="搜索课程"
               placeholder="输入课程名搜索，或不改保持现状"
               class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-              @input="searchBatchCourses"
             />
             <ul
               data-testid="batch-course-results"
