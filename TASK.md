@@ -120,18 +120,23 @@ INTERNAL 后 SDK 无限重试至超时（实测 75 次/210s）静默失败；pym
   **中文检索必须用 jieba 分词器**（服务端 analyzer 配置），并提示 bulk import 存在
   tokenizer leakage 已知问题（施测时避开批量导入路径）
 
-**当前状态**：**已降级不阻塞**（dense-only 检索可用），用户 2026-08-18 指示暂缓、后置处理。
+**当前状态**：**已降级不阻塞**（dense-only 检索可用）；**2026-08-26 用户拍板 = 按维护者官方用法整改**（方案二批准，见下），整改实施为下一批次任务。
 
-**恢复方案候选**（2026-08-25 用户拍板 = 方案一，见下）：
-- [x] **维持降级（已拍板）**：2026-08-25 核实 milvus-sdk-java#1402 仍 Open、无指派无修复版本；
-      用户裁决继续 dense-only 降级运行，**每季度复查 issue 状态**（下次复查 2026-11 前后），
-      修复发布后 `retrieval.sparse-enabled=true` 一行还原并全量回归（检索链路集成测试 + SSE 对话带来源手动验证）
-- [ ] **按维护者官方用法整改（2026-08-26 标记的新候选，待用户批准）**：不升级/不等待 SDK——
-      服务端 collection 重建时 text 字段配置 **jieba 中文分词器**（enableAnalyzer + analyzer_params）+
-      BM25 Function（D.5.1 drop 重建流程），检索 sparse 路改传 `EmbeddedText(查询文本)` 让服务端分词；
+**恢复方案候选**（2026-08-25 用户拍板 = 方案一；2026-08-26 用户改判 = 方案二整改）：
+- [ ] ~~维持降级（已拍板）~~ → **已被方案二替代**：2026-08-25 用户裁决 dense-only 降级 + 每季度复查 issue 状态（下次复查 2026-11 前后）；2026-08-26 拍板按官方用法整改后，维持降级仅作为整改失败的回退预案（`retrieval.sparse-enabled=false` 一行即可还原）
+- [x] **按维护者官方用法整改（2026-08-26 用户拍板批准）**：不升级/不等待 SDK——服务端 collection 重建时
+      text 字段配置 **jieba 中文分词器**（enableAnalyzer + analyzer_params）+ BM25 Function
+      （D.5.1 drop 重建流程），检索 sparse 路改传 `EmbeddedText(查询文本)` 让服务端分词；
       相较「应用侧 BM25 向量」方案**无需 ETL 计算 sparse 向量与引入第三方分词器**（中文分词交给服务端 jieba），
       改动集中在 schema 重建 + 检索节点（application.yml sparse-enabled 还原 + 全量回归）；
-      验收必须含**中文语料真实检索**（覆盖 issue 实证的中文崩溃场景）与 pymilvus 对照
+      验收必须含**中文语料真实检索**（覆盖 issue 实证的中文崩溃场景）与 pymilvus 对照。
+      **实施步骤（下一批次执行）**：①dev 环境 Milvus collection drop 重建（D.5.1）——text 字段
+      enableAnalyzer(true) + analyzer_params 配 jieba、FunctionType.BM25（input=text → output=sparse_vector）、
+      sparse 字段禁手动写入；重建后 load + 索引就绪校验；②检索节点 sparse 路改 `EmbeddedText(查询文本)`
+      （不再手动构造 sparse 向量）；③application.yml `retrieval.sparse-enabled=true` 还原；
+      ④数据重灌走**在线分批 insert**（避开 bulk import——tokenizer leakage 已知问题）；⑤全量回归：
+      `mvn -B verify`（含检索链路集成测试）+ dev 中文语料手动验证（真实检索返回稀疏来源、无服务端容器崩溃）
+      + pymilvus 对照；风险：服务端中文崩溃根因（jieba 配置）需 dev 重建后实证，失败回退维持降级
 - [ ] 应用侧 BM25 向量方案：ETL 自行计算 sparse 向量（需中文分词器）+ Milvus collection 重建去掉 BM25
       Function（sparse 字段改存向量 + IP 检索），检索用 SparseFloatVec——改动大（schema/ETL/检索三处），
       未获批准，候选保持
