@@ -30,6 +30,9 @@ const { data: schedulesData } = useQuery({
       throw err
     }
   },
+  // toast 语义在 queryFn 内：关闭重试与窗口聚焦重拉，避免失败提示叠加
+  retry: false,
+  refetchOnWindowFocus: false,
 })
 
 /** 排期表格行数据（加载完成前为空数组兜底） */

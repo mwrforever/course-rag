@@ -88,13 +88,9 @@ function messageOf(err: unknown, fallback: string): string {
 
 const queryClient = useQueryClient()
 
-/** 写操作成功后的列表刷新：删除末页最后一条会留空页——回退一页（页码变化自动重拉），否则按查询键失效重拉 */
+/** 写操作成功后的列表刷新：不减少行数的操作直接按查询键失效重拉（删除类见删除 mutation 内联回退） */
 function refreshItems() {
-  if (items.value.length === 1 && page.value > 1) {
-    page.value -= 1
-  } else {
-    queryClient.invalidateQueries({ queryKey: ['admin-token-blacklist'] })
-  }
+  queryClient.invalidateQueries({ queryKey: ['admin-token-blacklist'] })
 }
 
 /** 查询按钮：三筛选草稿提交并回第 1 页（查询键变化自动重查） */
@@ -201,7 +197,11 @@ const { isPending: removeSubmitting, mutate: confirmRemoveMutation } = useMutati
   onSuccess: () => {
     showToast('已从黑名单移除', 'success')
     removing.value = null
-    refreshItems()
+    if (items.value.length === 1 && page.value > 1) {
+      page.value -= 1
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['admin-token-blacklist'] })
+    }
   },
   onError: (err) => {
     showToast(messageOf(err, '移除失败，请稍后重试'), 'danger')

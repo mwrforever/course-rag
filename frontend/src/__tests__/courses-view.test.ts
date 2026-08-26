@@ -216,6 +216,34 @@ describe('CoursesView：删除（二次确认）', () => {
     vi.restoreAllMocks()
   })
 
+  it('删除末页最后一条：回退上一页防空页（页码变化自动重拉）', async () => {
+    // 第 1 页 1 条共 11（2 页）→ 翻第 2 页 1 条 → 删除后回退第 1 页刷新
+    vi.spyOn(courseApi, 'list')
+      .mockResolvedValueOnce(pageOf([course('c-1')], '11'))
+      .mockResolvedValueOnce(pageOf([course('c-9')], '11'))
+      .mockResolvedValueOnce(pageOf([course('c-1')], '10'))
+    const removeSpy = vi.spyOn(courseApi, 'remove').mockResolvedValue()
+    const { wrapper } = await mountCourses()
+
+    // 翻到第 2 页（末页仅剩 1 条）
+    await wrapper.find('[data-testid="next-page"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('第 2 / 2 页')
+    expect(wrapper.find('[data-testid="row-c-9"]').exists()).toBe(true)
+
+    // 删除唯一行：回退到第 1 页（不展示空页）
+    await wrapper.find('[data-testid="op-delete-c-9"]').trigger('click')
+    await wrapper.find('[data-testid="confirm-course-del"]').trigger('click')
+    await flushPromises()
+    expect(removeSpy).toHaveBeenCalledWith('c-9')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('第 1 / 1 页')
+      expect(wrapper.find('[data-testid="row-c-1"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="row-c-9"]').exists()).toBe(false)
+    })
+    wrapper.unmount()
+  })
+
   it('取消：不调接口，Dialog 关闭', async () => {
     vi.spyOn(courseApi, 'list').mockResolvedValue(pageOf([course('c-1')], '1'))
     const removeSpy = vi.spyOn(courseApi, 'remove').mockResolvedValue()

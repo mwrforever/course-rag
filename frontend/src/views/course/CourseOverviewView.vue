@@ -60,6 +60,8 @@ const {
   queryKey: computed(() => ['course-form', courseId.value]),
   queryFn: () => courseApi.get(courseId.value),
   enabled: !isNew,
+  // 表单回填后不随后台 refetch 覆盖未保存编辑：禁用窗口聚焦重拉
+  refetchOnWindowFocus: false,
 })
 
 /** 加载完成回填表单（本查询无自动刷新，表单编辑不受缓存覆盖；重进页面命中 30s 缓存即回填） */
@@ -145,7 +147,7 @@ const { isPending: saving, mutate: saveBasicMutation } = useMutation({
   onSuccess: async (created) => {
     if (isNew) {
       showToast('课程创建成功', 'success')
-      await router.push({ name: 'course-detail', params: { id: (created as CourseDTO).id } })
+      if (created) await router.push({ name: 'course-detail', params: { id: created.id } })
     } else {
       showToast('课程信息已保存', 'success')
     }

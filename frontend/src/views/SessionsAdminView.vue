@@ -75,13 +75,9 @@ function messageOf(err: unknown, fallback: string): string {
 
 const queryClient = useQueryClient()
 
-/** 写操作成功后的列表刷新：删除末页最后一条会留空页——回退一页（页码变化自动重拉），否则按查询键失效重拉 */
+/** 写操作成功后的列表刷新：不减少行数的操作直接按查询键失效重拉（删除类见删除 mutation 内联回退） */
 function refreshSessions() {
-  if (sessions.value.length === 1 && page.value > 1) {
-    page.value -= 1
-  } else {
-    queryClient.invalidateQueries({ queryKey: ['admin-sessions'] })
-  }
+  queryClient.invalidateQueries({ queryKey: ['admin-sessions'] })
 }
 
 /** 翻页：越界保护，页码变化自动重拉 */
@@ -119,7 +115,6 @@ function closeDetail() {
 
 const closing = ref<ChatSessionVO | null>(null)
 
-/** 关闭会话提交（行状态随之变 CLOSED；成功后失效列表键） */
 /** 关闭会话提交（行状态随之变 CLOSED；行内 spinner 由 closing ref 驱动，成功后失效列表键） */
 const { mutate: closeSessionMutation } = useMutation({
   mutationFn: (id: string) => sessionApi.close(id),
@@ -152,7 +147,11 @@ const { isPending: deleteSubmitting, mutate: confirmDeleteMutation } = useMutati
   onSuccess: () => {
     showToast('会话已删除', 'success')
     deleting.value = null
-    refreshSessions()
+    if (sessions.value.length === 1 && page.value > 1) {
+      page.value -= 1
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['admin-sessions'] })
+    }
   },
   onError: (err) => {
     showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')

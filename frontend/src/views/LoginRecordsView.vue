@@ -94,13 +94,9 @@ function messageOf(err: unknown, fallback: string): string {
 
 const queryClient = useQueryClient()
 
-/** 写操作成功后的列表刷新：删除末页最后一条会留空页——回退一页（页码变化自动重拉），否则按查询键失效重拉 */
+/** 写操作成功后的列表刷新：不减少行数的操作直接按查询键失效重拉（删除类见删除 mutation 内联回退） */
 function refreshRecords() {
-  if (records.value.length === 1 && page.value > 1) {
-    page.value -= 1
-  } else {
-    queryClient.invalidateQueries({ queryKey: ['admin-login-records'] })
-  }
+  queryClient.invalidateQueries({ queryKey: ['admin-login-records'] })
 }
 
 /** status 下拉即时生效：写入筛选并回第 1 页（查询键变化自动重查） */

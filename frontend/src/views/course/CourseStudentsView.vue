@@ -38,6 +38,9 @@ const {
       throw err
     }
   },
+  // toast 语义在 queryFn 内：关闭重试与窗口聚焦重拉，避免失败提示叠加
+  retry: false,
+  refetchOnWindowFocus: false,
 })
 
 /** 学生名单行数据 */
@@ -60,11 +63,7 @@ function refreshStudents() {
 
 const studentDialogOpen = ref(false)
 /** 学生候选池（Dialog 打开时按需拉取；失败仅 toast 不阻塞交互） */
-const {
-  data: studentCandidatesData,
-  isLoading: studentCandidatesLoading,
-  refetch: refetchCandidates,
-} = useQuery({
+const { data: studentCandidatesData, isLoading: studentCandidatesLoading } = useQuery({
   queryKey: ['student-candidates'],
   queryFn: async (): Promise<UserDTO[]> => {
     try {
@@ -76,6 +75,8 @@ const {
     }
   },
   enabled: studentDialogOpen,
+  retry: false,
+  refetchOnWindowFocus: false,
 })
 const studentCandidates = computed(() => studentCandidatesData.value ?? [])
 const studentSearch = ref('')
@@ -90,12 +91,11 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-/** 打开添加学生 Dialog：清空勾选与搜索，重新拉取 STUDENT 角色候选 */
+/** 打开添加学生 Dialog：清空勾选与搜索（候选池由 enabled 翻转自动拉取） */
 function openStudentDialog() {
   studentDialogOpen.value = true
   studentSearch.value = ''
   studentSelected.value = []
-  void refetchCandidates()
 }
 
 /** 学生候选过滤：角色 STUDENT 兜底 ＋ 剔除已报名 ＋ 搜索关键词（displayName/username） */

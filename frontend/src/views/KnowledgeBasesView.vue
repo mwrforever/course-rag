@@ -76,13 +76,9 @@ function messageOf(err: unknown, fallback: string): string {
 
 const queryClient = useQueryClient()
 
-/** 写操作成功后的列表刷新：删除末页最后一条会留空页——回退一页（页码变化自动重拉），否则按查询键失效重拉 */
+/** 写操作成功后的列表刷新：不减少行数的操作直接按查询键失效重拉（删除类见删除 mutation 内联回退） */
 function refreshKbs() {
-  if (kbs.value.length === 1 && page.value > 1) {
-    page.value -= 1
-  } else {
-    queryClient.invalidateQueries({ queryKey: ['admin-knowledge-bases'] })
-  }
+  queryClient.invalidateQueries({ queryKey: ['admin-knowledge-bases'] })
 }
 
 /** 翻页：越界保护（首页/末页禁用态由 disabled 兜底，方法内再防一次），页码变化自动重拉 */
@@ -167,13 +163,17 @@ function handleSubmit() {
 /** 待删除行：非 null 时展示确认 Dialog（danger 实底按钮需二次确认，设计 §2.6） */
 const deleting = ref<KnowledgeBaseVO | null>(null)
 
-/** 删除知识库提交（成功后失效列表键，末页空页回退见 refreshKbs） */
+/** 删除知识库提交（成功后失效列表键；删除末页最后一条会留空页——回退一页防空页） */
 const { isPending: deletingLoading, mutate: confirmDeleteMutation } = useMutation({
   mutationFn: (id: string) => knowledgeBaseApi.remove(id),
   onSuccess: () => {
     showToast('知识库已删除', 'success')
     deleting.value = null
-    refreshKbs()
+    if (kbs.value.length === 1 && page.value > 1) {
+      page.value -= 1
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['admin-knowledge-bases'] })
+    }
   },
   onError: (err) => {
     showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')

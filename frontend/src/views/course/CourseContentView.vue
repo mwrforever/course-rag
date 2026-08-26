@@ -53,6 +53,8 @@ const {
 } = useQuery({
   queryKey: computed(() => ['course-contents', courseId.value]),
   queryFn: () => courseApi.contents(courseId.value),
+  // 编辑器本地状态（contentMap）不随后台 refetch 覆盖：禁用窗口聚焦重拉
+  refetchOnWindowFocus: false,
 })
 
 /** 内容加载失败横幅文案（queryError 非空时透出；503 统一降级） */

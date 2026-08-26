@@ -78,13 +78,9 @@ function changePage(next: number) {
 
 const queryClient = useQueryClient()
 
-/** 写操作成功后的列表刷新：删除末页最后一条会留空页——回退一页（页码变化自动重拉），否则按查询键失效重拉 */
+/** 写操作成功后的列表刷新：不减少行数的操作直接按查询键失效重拉（删除类见删除 mutation 内联回退） */
 function refreshTeachers() {
-  if (teachers.value.length === 1 && page.value > 1) {
-    page.value -= 1
-  } else {
-    queryClient.invalidateQueries({ queryKey: ['admin-teachers'] })
-  }
+  queryClient.invalidateQueries({ queryKey: ['admin-teachers'] })
 }
 
 /** 自身行判定：当前登录用户（auth.userId）的行禁用/启用按钮隐藏（防自锁） */
@@ -285,13 +281,17 @@ function confirmStatusToggle() {
 
 const deleting = ref<UserDTO | null>(null)
 
-/** 删除教师提交（成功后失效列表键，末页空页回退见 refreshTeachers） */
+/** 删除教师提交（成功后失效列表键；删除末页最后一条会留空页——回退一页防空页） */
 const { isPending: deleteSubmitting, mutate: deleteMutation } = useMutation({
   mutationFn: (id: string) => userApi.remove(id),
   onSuccess: () => {
     showToast('教师已删除', 'success')
     deleting.value = null
-    refreshTeachers()
+    if (teachers.value.length === 1 && page.value > 1) {
+      page.value -= 1
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['admin-teachers'] })
+    }
   },
   onError: (err) => {
     showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
