@@ -38,6 +38,9 @@ import org.springframework.stereotype.Component;
  *   <li>通过配置开关 {@code milvus.auto-create-collection} 控制是否启用（默认 true）</li>
  *   <li>{@code memory_chunks} 第二集合（spec §8.5 召回索引，PG 为事实源、Milvus 仅索引，6 字段独立比对）</li>
  *   <li><b>异常降级</b>：Milvus 不可达或创建失败时 log warn 并跳过，不阻断应用启动</li>
+ *   <li><b>schema 版本标记</b>（2026-08-26 sparse 整改引入）：knowledge_chunks 创建时把
+ *       {@code schema-version:N} 写入 collection description，比对时额外校验版本标记——
+ *       字段名比对无法感知字段属性变化（如 content 字段 analyzer 配置），版本递增即触发重建</li>
  * </ul>
  *
  * <p>Collection Schema（14 字段，必须与 SearchKnowledgeTool / EtlPipeline 精确匹配）：
@@ -46,7 +49,7 @@ import org.springframework.stereotype.Component;
  * | chunk_id         | VARCHAR(64)          | Primary Key, autoID=false       |
  * | doc_id           | VARCHAR(64)          | 文档 ID                          |
  * | kb_id            | VARCHAR(64)          | 知识库 ID                        |
- * | content          | VARCHAR(65535)       | enableAnalyzer=true ← BM25 输入  |
+ * | content          | VARCHAR(65535)       | enableAnalyzer=true + jieba（chinese）← BM25 输入 |
  * | heading_path     | VARCHAR(500)         | 标题导航路径                     |
  * | dense_vector     | FLOAT_VECTOR(1024)   | text-embedding-v4 dense 向量     |
  * | sparse_vector    | SPARSE_FLOAT_VECTOR  | 服务端 BM25 Function 自动生成    |
@@ -77,6 +80,18 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
 
     // ── Collection 名称（公开常量，供 SearchKnowledgeTool / EtlPipeline 引用）──
     public static final String COLLECTION_NAME = "knowledge_chunks";
+
+    /**
+     * schema 版本标记（2026-08-26 sparse 整改引入）：写入 knowledge_chunks 的 collection description，
+     * 启动比对时校验。递增时机 = 字段属性级变更（analyzer 配置、索引参数等字段名比对感知不到的变化）：
+     * 1 → 2 = content 字段启用 jieba 中文分词器（chinese analyzer，sparse 整改）
+     */
+    private static final int SCHEMA_VERSION = 2;
+
+    private static final String SCHEMA_VERSION_MARKER = "schema-version:" + SCHEMA_VERSION;
+
+    /** content 字段 analyzer 配置：chinese = jieba 分词器 + cnalphanumonly 过滤（Milvus 2.6 内置，官方 v2.6 文档） */
+    private static final Map<String, Object> ANALYZER_PARAMS_CHINESE = Map.of("type", "chinese");
 
     // ── 字段名常量（公开，供 SearchKnowledgeTool / EtlPipeline 引用，确保三方一致）──
     public static final String FIELD_CHUNK_ID = "chunk_id";
@@ -237,10 +252,11 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
                     DropCollectionReq.builder().collectionName(name).build());
         }
 
-        // 2. 创建 Collection（Schema + 索引一步创建）
+        // 2. 创建 Collection（Schema + 索引一步创建；description 写入 schema 版本标记）
         log.info("开始创建 Milvus Collection: name={}", name);
         CreateCollectionReq createReq = CreateCollectionReq.builder()
                 .collectionName(name)
+                .description(SCHEMA_VERSION_MARKER)
                 .collectionSchema(schema)
                 .indexParams(indexes)
                 .build();
@@ -255,7 +271,11 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
     }
 
     /**
-     * describe 比对实际字段集与期望字段集（双向包含，多余/缺失都视为不匹配）
+     * describe 比对实际 schema 与期望 schema（字段集双向包含 + knowledge_chunks 额外校验版本标记）
+     *
+     * <p>字段名比对感知不到字段属性变化（如 content 的 analyzer 配置），故 knowledge_chunks
+     * 额外要求 collection description 含 {@link #SCHEMA_VERSION_MARKER}——旧版本（无标记）视为不匹配 drop 重建。
+     * memory_chunks 不参与版本比对（schema 无属性级变更，字段名比对足够，避免误重建生产数据）。
      *
      * <p>describe 异常或返回空字段信息时保守返回 true（视为匹配）——不因 Milvus 瞬时故障误删有数据 Collection。
      *
@@ -276,7 +296,17 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
             // 按集合选择期望字段集：knowledge 14 字段；memory 6 字段（spec §8.5）
             List<String> expectedFieldNames =
                     COLLECTION_MEMORY.equals(name) ? EXPECTED_MEMORY_FIELD_NAMES : EXPECTED_FIELD_NAMES;
-            return actual.containsAll(expectedFieldNames) && expectedFieldNames.containsAll(actual);
+            boolean fieldMatch = actual.containsAll(expectedFieldNames) && expectedFieldNames.containsAll(actual);
+            if (!fieldMatch) {
+                return false;
+            }
+            // knowledge_chunks 版本标记校验：字段属性级变更（analyzer 配置等）字段名感知不到，
+            // 版本标记不符（旧 collection description 为空或版本落后）→ 不匹配触发重建
+            if (COLLECTION_NAME.equals(name)) {
+                String desc = resp.getDescription();
+                return desc != null && desc.contains(SCHEMA_VERSION_MARKER);
+            }
+            return true;
         } catch (Exception e) {
             log.warn("Milvus describe 失败，保守视为 schema 匹配（跳过重建）: collection={}, error={}", name, e.getMessage());
             return true;
@@ -317,12 +347,14 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
                 .maxLength(MAX_LEN_KB_ID)
                 .build());
 
-        // 4. content — 分片文本内容（enableAnalyzer=true，BM25 Function 输入）
+        // 4. content — 分片文本内容（enableAnalyzer=true + jieba 中文分词，BM25 Function 输入；
+        //    sparse 整改 2026-08-26：不加 jieba 中文会致服务端分词崩溃，issue #1402 实证）
         schema.addField(AddFieldReq.builder()
                 .fieldName(FIELD_CONTENT)
                 .dataType(DataType.VarChar)
                 .maxLength(MAX_LEN_CONTENT)
                 .enableAnalyzer(true)
+                .analyzerParams(ANALYZER_PARAMS_CHINESE)
                 .build());
 
         // 5. heading_path — 标题导航路径
