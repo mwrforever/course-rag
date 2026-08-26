@@ -100,13 +100,25 @@ GraphConfig.postgresSaver 与 MilvusConfig 已豁免（构造器真实建连，�
 
 ---
 
-## 4. Milvus sparse/BM25 检索恢复（milvus-sdk-java EmbeddedText bug）— 暂缓，用户 2026-08-18 拍板搁置
+## 4. Milvus sparse/BM25 检索恢复（milvus-sdk-java EmbeddedText 中文崩溃）— 暂缓，用户 2026-08-18 拍板搁置
 
-**背景**（2026-08-18 S1 计划 2/5 手动验证发现）：milvus-sdk-java（2.6.11 及 2.6.21）的
-`EmbeddedText` 在 sparse/混合检索与服务端 BM25 Function 不兼容（GitHub issue
-milvus-io/milvus-sdk-java#1402，仍 Open），服务端 INTERNAL 后 SDK 无限重试至超时（实测 75 次/210s）
-静默失败；pymilvus 同请求正常。已加 `retrieval.sparse-enabled=false` 降级开关（dense-only 检索，
-实测 1.6s 正常），全文检索能力暂时关闭。
+**背景**（2026-08-18 S1 计划 2/5 手动验证发现；issue #1402 系 2025-05-12 社区提报，非本项目）：milvus-sdk-java
+（2.6.11 及 2.6.21）的 `EmbeddedText` 在 sparse/混合检索与服务端 BM25 Function 组合下失败——服务端
+INTERNAL 后 SDK 无限重试至超时（实测 75 次/210s）静默失败；pymilvus 同请求正常。已加
+`retrieval.sparse-enabled=false` 降级开关（dense-only 检索，实测 1.6s 正常），全文检索能力暂时关闭。
+
+**issue #1402 评论区解决方案标记（2026-08-26 核查，13 条评论全量已阅）**：
+- **维护者 yhmo（milvus-io 核心）2025-05-13 官方正确用法**（本 issue 核心答复）：
+  full-text-match 应由**服务端 BM25 Function 自动生成 sparse 向量**——text 字段
+  `enableAnalyzer(true)`（必开）+ `FunctionType.BM25`（input=text → output=sparse_vector）；
+  用户**只插入文本、检索也只传文本**（`EmbeddedText` 包装），不提供也不传手动 sparse 向量；
+  参考示例 `milvus-sdk-java/examples/.../FullTextSearchExample.java`（GitHub master）
+- **SDK 版本线**：提报者 qidafang0413 实证 SDK 2.5.2→2.5.9 修复（Milvus 2.5.11）；yhmo 确认
+  HybridSearch 全文检索自 **SDK v2.5.4** 起支持——本项目 SDK 2.6.11 已远超修复线
+- **中文崩溃实锤**：提报者 2025-05-16 实测——EmbeddedText 输入**中文**导致服务端容器崩溃
+  （goroutine/grpc panic 日志），英文输入正常；核心开发者 xiaofan-luan 2025-05-21 指出
+  **中文检索必须用 jieba 分词器**（服务端 analyzer 配置），并提示 bulk import 存在
+  tokenizer leakage 已知问题（施测时避开批量导入路径）
 
 **当前状态**：**已降级不阻塞**（dense-only 检索可用），用户 2026-08-18 指示暂缓、后置处理。
 
@@ -114,6 +126,12 @@ milvus-io/milvus-sdk-java#1402，仍 Open），服务端 INTERNAL 后 SDK 无限
 - [x] **维持降级（已拍板）**：2026-08-25 核实 milvus-sdk-java#1402 仍 Open、无指派无修复版本；
       用户裁决继续 dense-only 降级运行，**每季度复查 issue 状态**（下次复查 2026-11 前后），
       修复发布后 `retrieval.sparse-enabled=true` 一行还原并全量回归（检索链路集成测试 + SSE 对话带来源手动验证）
+- [ ] **按维护者官方用法整改（2026-08-26 标记的新候选，待用户批准）**：不升级/不等待 SDK——
+      服务端 collection 重建时 text 字段配置 **jieba 中文分词器**（enableAnalyzer + analyzer_params）+
+      BM25 Function（D.5.1 drop 重建流程），检索 sparse 路改传 `EmbeddedText(查询文本)` 让服务端分词；
+      相较「应用侧 BM25 向量」方案**无需 ETL 计算 sparse 向量与引入第三方分词器**（中文分词交给服务端 jieba），
+      改动集中在 schema 重建 + 检索节点（application.yml sparse-enabled 还原 + 全量回归）；
+      验收必须含**中文语料真实检索**（覆盖 issue 实证的中文崩溃场景）与 pymilvus 对照
 - [ ] 应用侧 BM25 向量方案：ETL 自行计算 sparse 向量（需中文分词器）+ Milvus collection 重建去掉 BM25
       Function（sparse 字段改存向量 + IP 检索），检索用 SparseFloatVec——改动大（schema/ETL/检索三处），
       未获批准，候选保持
