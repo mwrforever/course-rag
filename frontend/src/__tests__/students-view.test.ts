@@ -75,7 +75,8 @@ async function mountAt(path = '/students') {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  // 与其他视图测试对齐：restoreAllMocks 同时清 mock 实现（clearAllMocks 遗留实现跨用例泄漏实证）
+  vi.restoreAllMocks()
 })
 
 describe('学生管理（/students，两角色可见）', () => {

@@ -93,6 +93,9 @@ describe('KnowledgeBasesView：列表渲染', () => {
     expect(table.text()).toContain('前端知识库')
     expect(table.text()).toContain('前端框架与组件资料')
     expect(table.text()).toContain('后端知识库')
+    // 行定位 testid（与其他列表视图 row-{id} 口径一致）
+    expect(wrapper.find('[data-testid="row-kb-1"]').text()).toContain('前端知识库')
+    expect(wrapper.find('[data-testid="row-kb-2"]').text()).toContain('后端知识库')
     // 状态 Badge：ACTIVE → emerald（设计 §2.5 课程 ACTIVE）
     const badge = table.findAll('span').find((b) => b.text() === 'ACTIVE')
     expect(badge?.classes()).toContain('bg-emerald-50')

@@ -75,7 +75,8 @@ async function mountAt(path = '/teachers') {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  // 与其他视图测试对齐：restoreAllMocks 同时清 mock 实现（clearAllMocks 遗留实现跨用例泄漏实证）
+  vi.restoreAllMocks()
 })
 
 describe('教师管理（/teachers，仅超管）', () => {
