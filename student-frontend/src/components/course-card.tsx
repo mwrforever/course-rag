@@ -18,7 +18,7 @@ import { motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import type { StudentCourse } from "@/lib/types";
+import type { PublicCourse, StudentCourse } from "@/lib/types";
 
 /** 学科兜底映射表：category 关键词 → 学科图标 + 低饱和渐变（设计 §1.5.1 无封面兜底） */
 const CATEGORY_FALLBACKS: ReadonlyArray<{
@@ -83,10 +83,12 @@ export function coverFallback(category: string | null): { icon: Icon; gradient: 
 
 /** 课程卡 props */
 export interface CourseCardProps {
-  /** 学生课程数据（J1） */
-  course: StudentCourse;
+  /** 课程数据：公开课程（首页/课堂页）/ 我的课程（个人中心），字段子集兼容 */
+  course: PublicCourse | StudentCourse;
   /** 首屏 LCP 优化：首卡封面高优先级加载 */
   priority?: boolean;
+  /** 已加入标记（登录用户经我的课程交叉判定；未登录不传） */
+  joined?: boolean;
 }
 
 /**
@@ -105,7 +107,7 @@ export interface CourseCardProps {
  * 封面错误兜底实现：next/image 不支持 onError，error 事件不冒泡但走捕获阶段，
  * 由封面容器 onErrorCapture 接住底层 img 的 error 后切换兜底渐变。
  */
-export function CourseCard({ course, priority = false }: CourseCardProps) {
+export function CourseCard({ course, priority = false, joined = false }: CourseCardProps) {
   // 检测不可用（null）按静态处理，与 AiBadge 一致的可访问性优先策略
   const reduceMotion = useReducedMotion() ?? true;
   // 封面加载失败标记：置真后渲染学科渐变兜底
@@ -151,6 +153,15 @@ export function CourseCard({ course, priority = false }: CourseCardProps) {
             className="absolute top-2.5 left-2.5 rounded-full bg-overlay px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm"
           >
             {course.category}
+          </span>
+        ) : null}
+        {/* 已加入徽章：登录用户已选课标记（与分类徽章对角呼应，避免遮挡封面信息） */}
+        {joined ? (
+          <span
+            aria-hidden
+            className="absolute top-2.5 right-2.5 rounded-full bg-brand/90 px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm"
+          >
+            已加入
           </span>
         ) : null}
         {/* hover CTA 滑入（纯装饰提示，整卡即链接，aria-hidden 避免重复读屏）；

@@ -29,6 +29,8 @@ export interface ChatInputProps {
   onCancel(): void;
   /** 提示回调（409/503/网络/复制等 toast 文案，页面统一呈现） */
   onNotify(message: string): void;
+  /** 输入初值（/chat?q= 快速提问预填；仅首次挂载生效，后续以内部状态为准） */
+  initialValue?: string;
 }
 
 /** 发送/停止图标切换的弹簧参数（设计 §1.6：180ms spring） */
@@ -64,8 +66,9 @@ export function ChatInput({
   onSend,
   onCancel,
   onNotify,
+  initialValue,
 }: ChatInputProps) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialValue ?? "");
   // reduced-motion 命中或检测不可用：morph 不挂动画（可访问性优先）
   const reduceMotion = useReducedMotion() ?? true;
   const canSend = value.trim().length > 0 && !sendDisabled;

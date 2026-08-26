@@ -32,12 +32,21 @@ public interface IChatSessionService extends IService<ChatSession> {
     IPage<ChatSession> findActiveSessions(Long userId, int page);
 
     /**
-     * 更新会话标题
+     * 更新会话标题（并刷新 updated_at）
      *
      * @param sessionId 会话 ID
      * @param title     新标题
      */
     void updateTitle(Long sessionId, String title);
+
+    /**
+     * 重命名会话并返回最新视图（C 端 PATCH 端点使用）
+     *
+     * @param sessionId 会话 ID
+     * @param title     新标题（调用方已过 @NotBlank @Size(max=300) 校验）
+     * @return 重命名后的会话视图对象
+     */
+    SessionVO renameSession(Long sessionId, String title);
 
     /**
      * 更新会话最后消息时间为当前时刻
@@ -71,14 +80,15 @@ public interface IChatSessionService extends IService<ChatSession> {
     IPage<ChatSessionVO> findAllSessions(int page, int size);
 
     /**
-     * 分页查询用户会话（不限状态，管理端用）
+     * 分页查询用户会话（不限状态），支持标题模糊搜索
      *
-     * @param userId 用户 ID
-     * @param page   页码（1-based）
-     * @param size   每页条数
+     * @param userId  用户 ID
+     * @param page    页码（1-based）
+     * @param size    每页条数
+     * @param keyword 标题搜索关键词（可选，空/null = 全量列表）
      * @return 分页结果（records 为会话视图对象，不含 userId 等内部字段）
      */
-    IPage<SessionVO> findSessionsByUser(Long userId, int page, int size);
+    IPage<SessionVO> findSessionsByUser(Long userId, int page, int size, String keyword);
 
     /**
      * 删除会话（级联软删消息 + Run）

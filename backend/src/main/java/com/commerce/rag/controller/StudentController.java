@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.dto.ApiResponse;
 import com.commerce.rag.dto.ChatRequest;
+import com.commerce.rag.dto.CreateSessionRequest;
 import com.commerce.rag.dto.PageResponse;
+import com.commerce.rag.dto.SessionRenameRequest;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.service.IChatMessageService;
@@ -21,13 +23,14 @@ import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.vo.StudentCourseVO;
 import com.commerce.rag.vo.StudentMessageVO;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.util.List;
-import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -155,16 +158,19 @@ public class StudentController {
     // ==================== J6: 我的会话 ====================
 
     /**
-     * J6: 我的会话列表
+     * J6: 我的会话列表（标题可选模糊搜索）
+     *
+     * @param keyword 标题搜索关键词（可选，缺省全量列表）
      */
     @GetMapping("/sessions")
     public ApiResponse<PageResponse<SessionVO>> mySessions(
             HttpServletRequest request,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String keyword) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         // service 返回的即 SessionVO 分页（records 不含 userId 等内部字段）
-        IPage<SessionVO> result = sessionService.findSessionsByUser(userId, page, size);
+        IPage<SessionVO> result = sessionService.findSessionsByUser(userId, page, size, keyword);
         return ApiResponse.ok(new PageResponse<>(
                 result.getRecords(), result.getTotal(), (int) result.getCurrent(), (int) result.getSize()));
     }
@@ -176,9 +182,12 @@ public class StudentController {
      */
     @PostMapping("/sessions")
     public ApiResponse<SessionVO> createSession(
-            HttpServletRequest request, @RequestBody Map<String, String> sessionRequest) {
+            HttpServletRequest request, @Valid @RequestBody CreateSessionRequest createRequest) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
-        String title = sessionRequest.getOrDefault("title", "新对话");
+        // 标题缺省/空白补「新对话」（J7 契约），trim 防全空白标题
+        String title = createRequest.title() == null || createRequest.title().isBlank()
+                ? "新对话"
+                : createRequest.title().trim();
         return ApiResponse.ok(sessionService.createSession(userId, title));
     }
 
@@ -276,5 +285,41 @@ public class StudentController {
         sessionService.deleteSession(sessionId, userId);
         log.info("学生会话已删除: sessionId={}, operatorId={}", sessionId, userId);
         return ApiResponse.ok();
+    }
+
+    // ==================== 重命名会话（会话管理：改） ====================
+
+    /**
+     * 重命名学生会话标题
+     *
+     * <p>执行流程：取当前用户 → 会话归属校验（404 不存在 / 403 非本人，与 R3 删除先例一致）
+     * → service 更新标题并回读最新视图。
+     * 重命名不改排序字段（last_message_at），允许任意时刻执行，不影响进行中的对话。
+     *
+     * @param request       请求（AuthInterceptor 注入的用户属性）
+     * @param sessionId     会话 ID（路径参数）
+     * @param renameRequest 重命名请求（title 必填 1~300 字符，@Valid 校验失败由全局异常处理返回 400）
+     * @return 重命名后的会话视图对象
+     * @throws BizException 404 会话不存在（含已删除）；403 非本人会话
+     */
+    @PatchMapping("/sessions/{sessionId}")
+    public ApiResponse<SessionVO> renameSession(
+            HttpServletRequest request,
+            @PathVariable Long sessionId,
+            @Valid @RequestBody SessionRenameRequest renameRequest) {
+        Long userId = AuthInterceptor.getCurrentUserId(request);
+        // 归属校验：selectById 自动过 @TableLogic 软删，已删除会话按不存在处理（幂等 404）
+        ChatSessionVO session = sessionService.findById(sessionId);
+        if (session == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "会话不存在");
+        }
+        // 会话语义 403：非本人会话拒绝重命名（与删除「无权删除此会话」先例一致）
+        if (!session.userId().equals(userId)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权重命名此会话");
+        }
+        SessionVO updated =
+                sessionService.renameSession(sessionId, renameRequest.title().trim());
+        log.info("学生会话已重命名: sessionId={}, userId={}", sessionId, userId);
+        return ApiResponse.ok(updated);
     }
 }

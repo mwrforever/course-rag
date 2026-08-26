@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LoginDialog } from "@/components/auth/login-dialog";
 import { AuthProvider } from "@/lib/auth-context";
 import "../styles/globals.css";
 
@@ -14,10 +15,11 @@ export const metadata: Metadata = {
 };
 
 /**
- * 根布局：挂载 AuthProvider（登录态全局可用）
+ * 根布局：挂载 AuthProvider（登录态全局可用）+ 全局登录弹窗
  *
  * 根布局保持中性壳（不带顶导）：顶导 64px 归属 (main) 路由组布局，
- * (auth) 路由组（登录页）独立无顶导壳（设计文档 §1.5.7）。
+ * 课程助手对话页为独立 kimi 侧栏壳（(chat) 路由组）。
+ * 登录弹窗挂根级：全部路由组（含公开页登录墙场景）均可触发。
  * 字体族由 globals.css 的 @fontsource 自托管，@theme 声明 --font-display/--font-mono 工具类。
  */
 export default function RootLayout({
@@ -30,6 +32,7 @@ export default function RootLayout({
       <body className="font-display antialiased">
         <AuthProvider>
           <div className="flex min-h-screen flex-col bg-bg text-text">{children}</div>
+          <LoginDialog />
         </AuthProvider>
       </body>
     </html>

@@ -2,8 +2,11 @@ import { test, expect } from "@playwright/test";
 import { mockApi, login } from "./helpers/sse-route";
 
 /**
- * 首页与课程页 E2E（整合 spec §3.2 首页/课程组）
- * - J1 mock 渲染课程卡网格 + 空态引导 + 本地筛选行为
+ * 首页与课程页 E2E（公开化 2026-08-26 修订）
+ * - 首页/课堂页公开可浏览（public/courses 数据源，未登录不拦截）
+ * - 首页无最近会话区块（会话管理归课程助手侧边栏）；快问框入口
+ * - 课程详情页为登录门槛：未登录自动弹登录窗 + 资料区登录墙
+ * - 登录用户：已加入徽章 + 资料分片/403 引导态（原契约保留）
  */
 
 test.describe("首页与课程", () => {
@@ -11,37 +14,55 @@ test.describe("首页与课程", () => {
     await mockApi(page);
   });
 
-  test("首页渲染推荐课程网格与最近会话", async ({ page }) => {
-    await login(page, "/");
-    // 电商卡片网格：课程卡 + 最近会话（UI 重构 2026-08-25）
+  test("首页公开渲染：推荐课程 + 快问框，无最近会话区块", async ({ page }) => {
+    // 不登录直接浏览（公开化核心契约）
+    await page.goto("/");
     await expect(page.getByText("数据结构与算法精讲")).toBeVisible();
     await expect(page.getByText("Java 从入门到进阶")).toBeVisible();
-    await expect(page.getByText("数据结构与算法咨询")).toBeVisible();
+    // 快问框（核心入口）
+    await expect(page.getByLabel("快速提问")).toBeVisible();
+    // 最近会话区块已移除（首页不再出现会话条目）
+    await expect(page.getByText("数据结构与算法咨询")).toHaveCount(0);
+    await expect(page.getByText("最近会话")).toHaveCount(0);
   });
 
-  test("空课程列表显示引导空态", async ({ page }) => {
-    await page.route("**/api/v1/student/courses", async (route) => {
+  test("空课程列表显示引导空态（公开源）", async ({ page }) => {
+    await page.route("**/api/v1/public/courses", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ code: 0, message: "success", data: [] }),
       });
     });
-    await login(page, "/");
-    await expect(page.getByText("还没有加入课程，请联系老师开通")).toBeVisible();
+    await page.goto("/");
+    await expect(page.getByText("暂无上架课程，请稍后再来")).toBeVisible();
   });
 
-  test("课程列表本地筛选与关键词过滤", async ({ page }) => {
+  test("课程列表本地筛选与关键词过滤（已加入徽章）", async ({ page }) => {
     await login(page, "/");
     await page.goto("/courses");
     await expect(page.getByText("数据结构与算法精讲")).toBeVisible();
+    // 登录用户经我的课程交叉：两门课均「已加入」
+    await expect(page.getByText("已加入")).toHaveCount(2);
     // 关键词过滤（即时，无 debounce）
     await page.getByRole("searchbox", { name: "搜索课程" }).fill("Java");
     await expect(page.getByText("数据结构与算法精讲")).toBeHidden();
     await expect(page.getByText("Java 从入门到进阶")).toBeVisible();
   });
 
-  test("课程工作台渲染资料分片与上下文抽屉", async ({ page }) => {
+  test("未登录课程详情页：公开信息可浏览 + 自动弹登录窗 + 资料登录墙", async ({ page }) => {
+    await page.goto("/courses/1");
+    // 公开课程信息即时可见（Hero 标题 + 简介）
+    await expect(page.getByRole("heading", { name: "数据结构与算法精讲" })).toBeVisible();
+    await expect(page.getByText("从线性表到图论的系统课程")).toBeVisible();
+    // 登录门槛：自动弹窗（可关闭）+ 资料区登录墙
+    await expect(page.getByRole("dialog", { name: "登录课程助手" })).toBeVisible();
+    await expect(page.getByTestId("login-gate")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "登录课程助手" })).toBeHidden();
+  });
+
+  test("课程工作台渲染资料分片与上下文抽屉（已登录）", async ({ page }) => {
     // 材料与上下文 mock
     await page.route("**/api/v1/student/courses/1/materials", async (route) => {
       await route.fulfill({

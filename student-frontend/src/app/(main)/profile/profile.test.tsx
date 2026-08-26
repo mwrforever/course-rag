@@ -172,16 +172,31 @@ describe("个人中心：我的课程", () => {
 });
 
 describe("个人中心：退出登录", () => {
-  it("点击退出登录：logout 后清缓存并跳转 /login", async () => {
+  it("二次确认：点击退出 → 确认框出现 → 确认后 logout、清缓存并跳转 /", async () => {
     apiMock.getMyCourses.mockResolvedValue([]);
     renderPage();
+    // 未确认前不登出
     fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    expect(await screen.findByRole("dialog", { name: "退出登录" })).toBeInTheDocument();
+    expect(authMock.useAuth().logout).not.toHaveBeenCalled();
+    // 确认退出
+    fireEvent.click(screen.getByRole("button", { name: "退出" }));
     await waitFor(() => {
       expect(authMock.useAuth().logout).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
-      expect(routerMock.push).toHaveBeenCalledWith("/login");
+      expect(routerMock.push).toHaveBeenCalledWith("/");
     });
+  });
+
+  it("取消确认：关闭确认框且不登出", async () => {
+    apiMock.getMyCourses.mockResolvedValue([]);
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    await screen.findByRole("dialog", { name: "退出登录" });
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(authMock.useAuth().logout).not.toHaveBeenCalled();
   });
 
   it("退出登录按钮为 danger 文字样式（danger 类名存在）", async () => {

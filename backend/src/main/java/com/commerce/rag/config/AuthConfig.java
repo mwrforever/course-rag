@@ -26,6 +26,9 @@ public class AuthConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(authInterceptor).addPathPatterns("/api/v1/**").excludePathPatterns("/api/v1/auth/**");
+        // 公开前缀（/api/v1/public/**）与认证端点一并免拦截：无 token 可访问的 C 端浏览接口
+        registry.addInterceptor(authInterceptor)
+                .addPathPatterns("/api/v1/**")
+                .excludePathPatterns("/api/v1/auth/**", "/api/v1/public/**");
     }
 }

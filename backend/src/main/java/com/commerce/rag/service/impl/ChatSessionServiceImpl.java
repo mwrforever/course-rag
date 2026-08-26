@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 /**
  * 会话服务 —— 封装 chat_session 表的 CRUD 操作
@@ -85,17 +86,36 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
     }
 
     /**
-     * 更新会话标题
+     * 更新会话标题（同时刷新 updated_at）
      *
      * @param sessionId 会话 ID
      * @param title     新标题
      */
     public void updateTitle(Long sessionId, String title) {
         log.info("更新会话标题: sessionId={}, title={}", sessionId, title);
-        LambdaUpdateWrapper<ChatSession> wrapper = Wrappers.<ChatSession>lambdaUpdate()
+        // 本 service 主表操作：内置链式更新（A.4.3），同步刷新 updated_at 供审计留痕
+        this.lambdaUpdate()
                 .eq(ChatSession::getId, sessionId)
-                .set(ChatSession::getTitle, title);
-        sessionMapper.update(null, wrapper);
+                .set(ChatSession::getTitle, title)
+                .set(ChatSession::getUpdatedAt, LocalDateTime.now())
+                .update();
+    }
+
+    /**
+     * 重命名会话并返回最新视图（C 端 PATCH 端点使用）
+     *
+     * <p>存在性/归属校验在 controller 层完成（与删除端点先例一致），
+     * 本方法只执行更新与回读，保证返回数据为持久化后状态。
+     *
+     * @param sessionId 会话 ID
+     * @param title     新标题（调用方已过 @NotBlank @Size(max=300) 校验）
+     * @return 重命名后的会话视图对象
+     */
+    public SessionVO renameSession(Long sessionId, String title) {
+        updateTitle(sessionId, title);
+        // 更新后重新查询回读（转换器与列表同源，保证契约一致）
+        ChatSession session = sessionMapper.selectById(sessionId);
+        return studentConverter.toSessionVO(session);
     }
 
     /**
@@ -157,19 +177,22 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
     }
 
     /**
-     * 分页查询用户会话（不限状态，管理端用）
+     * 分页查询用户会话（不限状态），支持标题模糊搜索
      *
-     * @param userId 用户 ID
-     * @param page   页码（1-based）
-     * @param size   每页条数
+     * @param userId  用户 ID
+     * @param page    页码（1-based）
+     * @param size    每页条数
+     * @param keyword 标题搜索关键词（可选，空/null = 全量列表）
      * @return 分页结果（records 为会话视图对象，不含 userId 等内部字段）
      */
-    public IPage<SessionVO> findSessionsByUser(Long userId, int page, int size) {
+    public IPage<SessionVO> findSessionsByUser(Long userId, int page, int size, String keyword) {
         Page<ChatSession> pageObj = new Page<>(page, size);
-        LambdaQueryWrapper<ChatSession> wrapper = Wrappers.<ChatSession>lambdaQuery()
+        // 本 service 主表操作：内置链式查询；PDF 语义下 like 仅当关键词有效时追加（MP 参数化无注入风险）
+        IPage<ChatSession> entityPage = this.lambdaQuery()
                 .eq(ChatSession::getUserId, userId)
-                .orderByDesc(ChatSession::getLastMessageAt);
-        IPage<ChatSession> entityPage = sessionMapper.selectPage(pageObj, wrapper);
+                .like(StringUtils.hasText(keyword), ChatSession::getTitle, keyword)
+                .orderByDesc(ChatSession::getLastMessageAt)
+                .page(pageObj);
         // 实体分页 → VO 分页：records 逐条转换，total/current/size 分页语义保持
         Page<SessionVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
         voPage.setRecords(entityPage.getRecords().stream()

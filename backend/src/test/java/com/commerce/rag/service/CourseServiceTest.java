@@ -5,8 +5,11 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.repository.AbstractRepository;
+import com.baomidou.mybatisplus.extension.repository.CrudRepository;
 import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.CourseConverterImpl;
+import com.commerce.rag.convert.PublicCourseConverterImpl;
 import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.CreateCourseRequest;
 import com.commerce.rag.dto.UpdateCourseRequest;
@@ -24,6 +27,8 @@ import com.commerce.rag.mapper.CourseTeacherMapper;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.service.impl.CourseServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.PublicCourseVO;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.util.List;
@@ -104,6 +109,7 @@ class CourseServiceTest {
                 courseScheduleMapper,
                 courseTeacherMapper,
                 courseTeacherService,
+                new PublicCourseConverterImpl(),
                 courseEnrollmentMapper,
                 documentChunkMapper,
                 etlPipeline,
@@ -237,6 +243,55 @@ class CourseServiceTest {
         List<CourseInfo> result = courseService.findByIds(List.of(1L, 2L));
 
         assertEquals(1, result.size());
+    }
+
+    // ==================== 公开课程列表（C 端公开接口） ====================
+
+    /**
+     * 注入链式查询依赖的继承字段（baseMapper/entityClass）
+     *
+     * <p>纯 Mockito 下 {@code this.lambdaQuery()} 构建链时会经 getEntityClass →
+     * getMapperClass → MybatisUtils.getMapperProxy 内窥真实 Mapper 代理（mock 非代理对象直接失败）；
+     * 预置 entityClass 与 baseMapper 两个字段即可绕开内窥（与 ChatRunServiceTest 同款方案）。
+     */
+    private void injectChainFields() throws Exception {
+        Field baseMapper = CrudRepository.class.getDeclaredField("baseMapper");
+        baseMapper.setAccessible(true);
+        baseMapper.set(courseService, courseInfoMapper);
+        Field entityClass = AbstractRepository.class.getDeclaredField("entityClass");
+        entityClass.setAccessible(true);
+        entityClass.set(courseService, CourseInfo.class);
+    }
+
+    @Test
+    @DisplayName("findPublicCourses → 查询 ACTIVE 课程并转换为公开 VO（字段映射完整）")
+    void findPublicCourses_returnsPublicVO() throws Exception {
+        injectChainFields();
+        CourseInfo course = new CourseInfo();
+        course.setId(1L);
+        course.setTitle("Java 入门");
+        course.setDescription("面向初学者的 Java 课程");
+        course.setCoverImage("cover.png");
+        course.setCategory("编程");
+        course.setInstructorName("张老师");
+        course.setDuration("10h");
+        course.setRating(new BigDecimal("4.5"));
+        course.setLearningCount(120);
+        when(courseInfoMapper.selectList(any())).thenReturn(List.of(course));
+
+        List<PublicCourseVO> result = courseService.findPublicCourses();
+
+        assertEquals(1, result.size());
+        PublicCourseVO vo = result.get(0);
+        assertEquals(1L, vo.id());
+        assertEquals("Java 入门", vo.title());
+        assertEquals("面向初学者的 Java 课程", vo.description());
+        assertEquals("cover.png", vo.coverImage());
+        assertEquals("编程", vo.category());
+        assertEquals("张老师", vo.instructorName());
+        assertEquals("10h", vo.duration());
+        assertEquals(new BigDecimal("4.5"), vo.rating());
+        assertEquals(120, vo.learningCount());
     }
 
     @Test

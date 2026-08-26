@@ -6,7 +6,6 @@
 @import "@fontsource/outfit/600.css";
 @import "@fontsource/outfit/700.css";
 @import "@fontsource/noto-sans-sc/400.css";
-@import "@fontsource/noto-sans-sc/500.css";
 @import "@fontsource/noto-sans-sc/700.css";
 @import "@fontsource/geist-mono/400.css";
 @import "tailwindcss";
@@ -41,6 +40,8 @@
   --color-danger: #e25545;
   --color-warning: #e09116;
   /* ── 字体族：Outfit 拉丁数字 + Noto Sans SC 中文；display 优先 Outfit ── */
+  /* 注意：Noto Sans SC 仅保留 400/700（500 由浏览器合成）——中文每字重约 1.1MB，
+     减字重首屏省约 1.2MB（卡顿治理 2026-08-26）；标题 700 单独引入保证清晰 */
   --font-display: "Outfit", "Noto Sans SC", system-ui, sans-serif;
   --font-sans: "Outfit", "Noto Sans SC", system-ui, sans-serif;
   --font-mono: "Geist Mono", "SF Mono", ui-monospace, monospace;
@@ -72,12 +73,24 @@
   --color-subject-business-end: #fce7f3; /* pink-100 止 */
   --color-subject-art-start: #ffedd5; /* 艺术/音乐/设计：orange-100 起 */
   --color-subject-art-end: #fef9c3; /* yellow-100 止 */
-  /* ── 动效（保留既有动画名，新增渐入/骨架流光）── */
+  /* ── 动效（保留既有动画名，新增页面入场）── */
   --animate-drawer-in: drawer-in 240ms ease-out;
   --animate-overlay-in: overlay-in 240ms ease-out;
   --animate-cursor-blink: cursor-blink 1s steps(2, start) infinite;
   --animate-source-in: source-in 280ms ease-out backwards;
   --animate-fade-in: fade-in 200ms ease-out;
+  --animate-page-in: page-in 280ms ease-out both;
+
+  @keyframes page-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 
   @keyframes drawer-in {
     from {

@@ -1,22 +1,13 @@
 /**
- * AuthProvider 认证上下文测试（任务 7 TDD 先行用例）
+ * AuthProvider 认证上下文测试（任务 7 TDD 先行用例；登录弹窗化 2026-08-26 修订）
  *
  * 覆盖：挂载静默续期（有 RT 成功/认证失败/网络失败/无 RT）、login/logout 状态流转、
- * 401 刷新失败全局登出回调联动、Provider 外使用 useAuth 的防护、卸载清理。
+ * 401 刷新失败全局登出回调联动（登录弹窗化：回调打开弹窗而非跳转 /login）、
+ * 登录弹窗 API（openLoginDialog 登记动作 / submitLogin 成功后关闭并执行 / 失败保持打开）、
+ * Provider 外使用 useAuth 的防护、卸载清理。
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-/** 路由与路径 mock：认证过期闭环断言跳转目标与携带的 redirect 参数 */
-const { mockPush, mockPathname } = vi.hoisted(() => ({
-  mockPush: vi.fn(),
-  mockPathname: vi.fn(() => "/courses"),
-}));
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush, replace: vi.fn(), back: vi.fn() }),
-  usePathname: () => mockPathname(),
-}));
 
 /** 构造 fetch 假响应（与 api.test 同手法，仅实现消费的形状） */
 function res(status: number, body?: unknown): Response {
@@ -49,12 +40,15 @@ async function fresh() {
   const mod = await import("./auth-context");
   const api = await import("./api");
   const loginOutcome: { error?: unknown } = {};
+  /** 弹窗探针状态：afterLogin 执行记录（submitLogin 成功路径断言） */
+  const dialogOutcome: { afterLoginRuns: number } = { afterLoginRuns: 0 };
   function Probe() {
     const auth = mod.useAuth();
     return (
       <div>
         <span data-testid="state">{auth.isAuthenticated ? "已登录" : "未登录"}</span>
         <span data-testid="loading">{auth.isLoading ? "加载中" : "就绪"}</span>
+        <span data-testid="dialog">{auth.loginDialogOpen ? "开启" : "关闭"}</span>
         {auth.user ? <span data-testid="displayName">{auth.user.displayName}</span> : null}
         <button
           type="button"
@@ -70,17 +64,41 @@ async function fresh() {
         <button type="button" onClick={() => void auth.logout()}>
           触发登出
         </button>
+        <button
+          type="button"
+          onClick={() =>
+            auth.openLoginDialog({
+              afterLogin: () => {
+                dialogOutcome.afterLoginRuns += 1;
+              },
+            })
+          }
+        >
+          打开弹窗
+        </button>
+        <button type="button" onClick={() => auth.closeLoginDialog()}>
+          关闭弹窗
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            auth.submitLogin("stu01", "pass123").catch((error: unknown) => {
+              loginOutcome.error = error;
+            });
+          }}
+        >
+          弹窗提交登录
+        </button>
       </div>
     );
   }
-  return { mod, api, Probe, loginOutcome };
+  return { mod, api, Probe, loginOutcome, dialogOutcome };
 }
 
 beforeEach(() => {
   vi.resetModules();
   vi.stubGlobal("fetch", fetchMock);
   localStorage.clear();
-  mockPush.mockClear();
 });
 
 afterEach(() => {
@@ -222,7 +240,7 @@ describe("login / logout 状态流转", () => {
   });
 });
 
-describe("401 刷新失败全局登出联动", () => {
+describe("401 刷新失败全局登出联动（登录弹窗化）", () => {
   it("api 层 401 且 refresh 失败：Provider 注册的登出回调清空用户态", async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -246,7 +264,7 @@ describe("401 刷新失败全局登出联动", () => {
     await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("未登录"));
   });
 
-  it("认证过期闭环：跳转 /login?redirect=当前路径 并展示登录失效 toast", async () => {
+  it("认证过期闭环：打开登录弹窗（不跳转 /login）并展示登录失效 toast", async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/auth/login")) return res(200, loginBody("at-1", "rt-1"));
@@ -262,14 +280,75 @@ describe("401 刷新失败全局登出联动", () => {
     fireEvent.click(await screen.findByText("触发登录"));
     await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("已登录"));
 
-    // 认证过期：回调应跳转 /login?redirect=<当前路径>（编码后）并出现 toast 提示
+    // 认证过期：回调应打开登录弹窗并出现 toast 提示（登录弹窗化：不再整页跳 /login）
     await act(async () => {
       await expect(api.getMyCourses()).rejects.toThrow();
     });
-    expect(mockPush).toHaveBeenCalledWith("/login?redirect=%2Fcourses");
+    await waitFor(() => expect(screen.getByTestId("dialog")).toHaveTextContent("开启"));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("登录已失效，请重新登录");
     await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("未登录"));
+  });
+});
+
+describe("登录弹窗 API（openLoginDialog / closeLoginDialog / submitLogin）", () => {
+  it("openLoginDialog：弹窗开启（登记 afterLogin）；closeLoginDialog：关闭并丢弃动作", async () => {
+    // 无 RT 快速就绪
+    const { mod, Probe, dialogOutcome } = await fresh();
+    render(
+      <mod.AuthProvider>
+        <Probe />
+      </mod.AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("就绪"));
+    fireEvent.click(screen.getByText("打开弹窗"));
+    expect(screen.getByTestId("dialog")).toHaveTextContent("开启");
+    // afterLogin 未登录成功前不执行
+    expect(dialogOutcome.afterLoginRuns).toBe(0);
+    // closeLoginDialog：弹窗关闭且丢弃 afterLogin（登录后不再执行）
+    fireEvent.click(screen.getByText("关闭弹窗"));
+    expect(screen.getByTestId("dialog")).toHaveTextContent("关闭");
+    fireEvent.click(screen.getByText("打开弹窗"));
+    expect(screen.getByTestId("dialog")).toHaveTextContent("开启");
+    fireEvent.click(screen.getByText("关闭弹窗"));
+    expect(dialogOutcome.afterLoginRuns).toBe(0);
+  });
+
+  it("submitLogin 成功后：关闭弹窗并执行 afterLogin", async () => {
+    fetchMock.mockResolvedValue(res(200, loginBody("at-1", "rt-1")));
+    const { mod, Probe, dialogOutcome } = await fresh();
+    render(
+      <mod.AuthProvider>
+        <Probe />
+      </mod.AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("就绪"));
+    // 先打开弹窗并登记 afterLogin
+    fireEvent.click(screen.getByText("打开弹窗"));
+    expect(screen.getByTestId("dialog")).toHaveTextContent("开启");
+    // 弹窗提交登录成功：登录态建立、弹窗关闭、afterLogin 执行
+    fireEvent.click(screen.getByText("弹窗提交登录"));
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("已登录"));
+    expect(screen.getByTestId("dialog")).toHaveTextContent("关闭");
+    expect(dialogOutcome.afterLoginRuns).toBe(1);
+    expect(localStorage.getItem("c_rt")).toBe("rt-1");
+  });
+
+  it("submitLogin 失败：错误上抛且弹窗保持打开（用户可修正重试）", async () => {
+    fetchMock.mockResolvedValue(res(401, { code: 401, message: "用户名或密码错误" }));
+    const { mod, Probe, loginOutcome } = await fresh();
+    render(
+      <mod.AuthProvider>
+        <Probe />
+      </mod.AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("就绪"));
+    // 先打开弹窗（登录失败不改动弹窗开闭状态）
+    fireEvent.click(screen.getByText("打开弹窗"));
+    expect(screen.getByTestId("dialog")).toHaveTextContent("开启");
+    fireEvent.click(screen.getByText("弹窗提交登录"));
+    await waitFor(() => expect(loginOutcome.error).toBeInstanceOf(Error));
+    expect(screen.getByTestId("dialog")).toHaveTextContent("开启");
   });
 });
 

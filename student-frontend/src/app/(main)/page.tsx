@@ -1,30 +1,34 @@
 "use client";
 
 /**
- * 首页（UI 重构 2026-08-25：电商风 + kimi 蓝系，全 CSR）
+ * 首页（UI 重构 2026-08-25：电商风 + kimi 蓝系，全 CSR；公开化 2026-08-26 修订）
  *
- * 结构（用户拍板：首页为电商网页形态，kimi 布局仅课程助手）：
- * - Hero：问候 + 主 CTA + AI 徽标呼吸浮标，品牌径向光晕 + 同心环装饰
- * - 分类筛选条：横向 chip（全部 + 各分类计数），选中过滤下方推荐课程
- * - 推荐课程：电商卡片网格（封面分类徽章 + hover 上浮 + 滚动 stagger 进场）
- * - 通用资料库入口横幅 → 最近会话（滚动逐条进场）→ Footer
+ * 结构（用户拍板：首页公开可浏览，登录门槛在课程详情页；会话管理归课程助手侧边栏）：
+ * - Hero：问候 + 品牌光晕 + 快速提问输入框（提交 → /chat?q= 预填；未登录先弹登录窗，
+ *   登录成功后继续跳转）+ 次级 CTA + AI 徽标呼吸浮标
+ * - 推荐课程：公开课程列表（未登录可浏览），分类筛选 chip + 电商卡片网格
+ *   （登录用户经「我的课程」交叉标记「已加入」徽章）
+ * - 通用资料库入口横幅 → Footer
+ *
+ * 登录弹窗入口：middleware 将未登录访问受保护路由带回 /?login=1，
+ * 本页读取参数自动打开登录弹窗并清参（防重触发）。
  *
  * 滚动动效：motion whileInView（once 进入即定格、-40px 视口外触发），
  * 仅动画 transform/opacity；prefers-reduced-motion / 检测不可用全降级静态。
  * 四态全覆盖：Loading 骨架 / Empty 空态 / Error 横幅+重试 / 正常态。
  */
-import { ArrowRight, Books, ChatCircleText } from "@phosphor-icons/react";
+import { ArrowRight, Books, MagnifyingGlass } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion, type Variants } from "motion/react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { AiBadge } from "@/components/ai-badge";
 import { CourseCard } from "@/components/course-card";
 import { EmptyState } from "@/components/empty-state";
 import { SectionError } from "@/components/section-error";
-import { getMyCourses, getSessions } from "@/lib/api";
+import { getMyCourses, getPublicCourses } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { formatRelativeTime } from "@/lib/time";
 
 /** 课程卡滚动 stagger 步进（毫秒，逐卡错峰进场） */
 const CELL_STAGGER_MS = 70;
@@ -62,17 +66,6 @@ function CoursesSkeleton() {
   );
 }
 
-/** 会话列表骨架：5 行灰条脉冲（与最终列表同形） */
-function SessionsSkeleton() {
-  return (
-    <ul data-testid="sessions-skeleton" className="space-y-3" aria-busy="true">
-      {Array.from({ length: 5 }, (_, index) => (
-        <li key={index} className="h-12 animate-pulse rounded-xl bg-surface-2" />
-      ))}
-    </ul>
-  );
-}
-
 /** 区块标题：品牌渐变竖条 + 标题文字（电商 section 语义） */
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -84,23 +77,55 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * 首页（电商风 + 分类筛选 + 滚动动效）
+ * 首页（电商风 + 公开课程 + 快速提问 + 滚动动效）
  */
 export default function HomePage() {
-  const { user } = useAuth();
+  const { user, isAuthenticated, openLoginDialog } = useAuth();
+  const router = useRouter();
   // reduced-motion 或检测不可用 → 滚动动效全静态（可访问性优先）
   const reduceMotion = useReducedMotion() ?? true;
 
-  const coursesQuery = useQuery({ queryKey: ["my-courses"], queryFn: getMyCourses });
-  // 最近会话：J6 首页取第一页前 5 条
-  const sessionsQuery = useQuery({
-    queryKey: ["recent-sessions"],
-    queryFn: () => getSessions(1, 5),
+  const coursesQuery = useQuery({ queryKey: ["public-courses"], queryFn: getPublicCourses });
+  // 已加入集合：仅登录时查询我的课程交叉标记（已加入徽章）
+  const joinedQuery = useQuery({
+    queryKey: ["my-courses"],
+    queryFn: getMyCourses,
+    enabled: isAuthenticated,
   });
 
   // 空态兜底用 useMemo 稳定引用（避免空数组字面量每次渲染新建导致依赖变化）
   const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
-  const sessions = sessionsQuery.data?.records ?? [];
+  const joinedIds = useMemo(
+    () => new Set((joinedQuery.data ?? []).map((course) => course.id)),
+    [joinedQuery.data],
+  );
+
+  // 未登录访问受保护路由被 middleware 带回 /?login=1：自动打开登录弹窗并清参（防重触发）
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("login") === "1") {
+      openLoginDialog();
+      router.replace("/", { scroll: false });
+    }
+  }, [openLoginDialog, router]);
+
+  // 快速提问输入（本地态；提交时登录检查，未登录先登录后继续跳转）
+  const [question, setQuestion] = useState("");
+
+  /** 快速提问提交：已登录直达 /chat 预填问题；未登录先弹登录窗，登录成功后继续跳转 */
+  function submitQuickAsk(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const query = question.trim();
+    if (!query) {
+      return;
+    }
+    const continueChat = () => router.push(`/chat?q=${encodeURIComponent(query)}`);
+    if (isAuthenticated) {
+      continueChat();
+    } else {
+      openLoginDialog({ afterLogin: continueChat });
+    }
+  }
 
   // 分类筛选项：由课程数据聚合（全部 + 各分类计数），电商「分类筛选」语义
   const [selected, setSelected] = useState("全部");
@@ -122,7 +147,7 @@ export default function HomePage() {
 
   return (
     <div>
-      {/* ===== Hero：问候 + 主 CTA + AI 徽标，品牌光晕背景（电商首屏语义） ===== */}
+      {/* ===== Hero：问候 + 快速提问 + 次级 CTA + AI 徽标，品牌光晕背景（电商首屏语义） ===== */}
       <section className="relative overflow-hidden">
         <div
           aria-hidden
@@ -143,16 +168,38 @@ export default function HomePage() {
             <p className="mt-4 text-[17px] leading-relaxed text-muted">
               课堂资料、AI 助教、对话溯源，都在一个地方
             </p>
-            <div className="mt-9 flex flex-wrap items-center gap-3">
-              {/* 主 CTA：开始提问 → 对话页（品牌渐变主按钮） */}
+            {/* 快速提问框：大输入框 + 提交按钮（核心入口，课程助手 C 端卖点） */}
+            <form
+              onSubmit={submitQuickAsk}
+              className="mt-8 flex max-w-xl items-center gap-2 rounded-full border border-border bg-surface p-1.5 shadow-lg shadow-brand/5 transition-[transform,opacity] focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-brand/30"
+            >
+              <label htmlFor="quick-question" className="sr-only">
+                快速提问
+              </label>
+              <MagnifyingGlass size={20} aria-hidden className="ml-3 shrink-0 text-subtle" />
+              <input
+                id="quick-question"
+                type="text"
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                placeholder="有什么课程问题？直接问 AI 助教…"
+                className="min-w-0 flex-1 bg-transparent py-2.5 text-[15px] text-text outline-none placeholder:text-subtle"
+              />
+              <button
+                type="submit"
+                className="shrink-0 rounded-full bg-gradient-ai px-6 py-2.5 text-sm font-medium text-white shadow-md shadow-brand/30 transition-[transform,opacity] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                提问
+              </button>
+            </form>
+            <div className="mt-6 flex flex-wrap items-center gap-3">
               <Link
                 href="/chat"
-                className="inline-flex items-center gap-2 rounded-full bg-gradient-ai px-6 py-3 text-[15px] font-medium text-white shadow-lg shadow-brand/30 transition-[transform,opacity] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand"
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-6 py-3 text-[15px] font-medium text-muted transition-colors hover:border-brand/40 hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
               >
                 开始提问
                 <ArrowRight size={16} aria-hidden />
               </Link>
-              {/* 次级 CTA：浏览课堂 */}
               <Link
                 href="/courses"
                 className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-6 py-3 text-[15px] font-medium text-muted transition-colors hover:border-brand/40 hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
@@ -187,7 +234,7 @@ export default function HomePage() {
         ) : courses.length === 0 ? (
           <EmptyState
             className="mt-8"
-            title="还没有加入课程，请联系老师开通"
+            title="暂无上架课程，请稍后再来"
             actionLabel="先和 AI 助教聊聊"
             actionHref="/chat"
           />
@@ -227,7 +274,7 @@ export default function HomePage() {
               })}
             </div>
 
-            {/* 课程网格：滚动 stagger 进场 + hover 上浮（CourseCard 自带） */}
+            {/* 课程网格：滚动 stagger 进场 + hover 上浮（CourseCard 自带）；首卡封面高优先级 */}
             <motion.div
               key={selected}
               variants={
@@ -243,13 +290,17 @@ export default function HomePage() {
               viewport={{ once: true, margin: "-40px" }}
               className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
             >
-              {filtered.map((course) => (
+              {filtered.map((course, index) => (
                 <motion.div
                   key={course.id}
                   variants={reduceMotion ? undefined : revealVariants}
                   className="h-full"
                 >
-                  <CourseCard course={course} />
+                  <CourseCard
+                    course={course}
+                    priority={index === 0}
+                    joined={isAuthenticated ? joinedIds.has(course.id) : undefined}
+                  />
                 </motion.div>
               ))}
             </motion.div>
@@ -277,64 +328,6 @@ export default function HomePage() {
               </Link>
             </motion.div>
           </>
-        )}
-      </section>
-
-      {/* ===== 最近会话：横向条目列表（最多 5 条，相对时间 + 继续跳转） ===== */}
-      <section className="mx-auto w-full max-w-6xl px-6 pb-20">
-        <SectionTitle>最近会话</SectionTitle>
-
-        {sessionsQuery.isPending ? (
-          <div className="mt-5">
-            <SessionsSkeleton />
-          </div>
-        ) : sessionsQuery.isError ? (
-          <div className="mt-6">
-            <SectionError onRetry={() => void sessionsQuery.refetch()} />
-          </div>
-        ) : sessions.length === 0 ? (
-          <p className="mt-5 text-sm text-muted">
-            还没有会话记录，
-            <Link href="/chat" className="font-medium text-brand-strong">
-              开始对话
-            </Link>
-          </p>
-        ) : (
-          <motion.ul
-            variants={
-              reduceMotion
-                ? undefined
-                : { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } }
-            }
-            initial={reduceMotion ? false : "hidden"}
-            whileInView={reduceMotion ? undefined : "visible"}
-            viewport={{ once: true, margin: "-40px" }}
-            className="mt-5 space-y-3"
-          >
-            {sessions.map((session) => (
-              <motion.li key={session.id} variants={reduceMotion ? undefined : revealVariants}>
-                <Link
-                  href={`/chat/${session.id}`}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-xs transition-[transform,opacity] duration-200 motion-reduce:transition-none hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-md focus-visible:ring-2 focus-visible:ring-brand"
-                >
-                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
-                    <ChatCircleText size={17} aria-hidden />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[15px] text-text">
-                    {session.title}
-                  </span>
-                  {/* 相对时间：无 lastMessageAt 时回退 createdAt */}
-                  <time className="shrink-0 text-xs text-subtle tabular-nums">
-                    {formatRelativeTime(session.lastMessageAt ?? session.createdAt)}
-                  </time>
-                  <span className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-brand-strong">
-                    继续
-                    <ArrowRight size={14} aria-hidden />
-                  </span>
-                </Link>
-              </motion.li>
-            ))}
-          </motion.ul>
         )}
       </section>
 

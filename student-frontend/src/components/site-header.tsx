@@ -1,29 +1,32 @@
 "use client";
 
 /**
- * 全站顶部导航壳（UI 重构 2026-08-25：kimi 蓝系高级感）
+ * 全站顶部导航壳（UI 重构 2026-08-25：kimi 蓝系高级感；会话项下线 2026-08-26）
  *
  * 64px 固定高度、bg/80 + backdrop-blur 玻璃底 + 底部 1px 边框，滚动时 sticky 置顶。
  * 结构：渐变 Logo + 品牌名 ｜ 主导航（激活态品牌蓝字 + 下划线指示）｜ 用户区
  * （桌面渐变头像 + 移动端汉堡按钮，统一弹出下拉：身份信息 + 导航 + 个人中心 + 退出登录）。
  *
+ * 会话管理已收敛至课程助手侧边栏（用户拍板）：顶导无「会话」项，登出经 ConfirmDialog 二次确认
+ * （用户拍板：登出必须确认）。
+ *
  * 下拉关闭语义（修复历史缺陷）：Esc 键盘 + 点击外部（mousedown/touchstart）+ 路由变化三重关闭；
- * 退出登录与个人中心同契约：登出清凭据 → 清 react-query 缓存 → 跳登录页。
- * 本组件仅用于 (main) 路由组（首页/课堂/会话/个人中心）；课程助手对话页使用独立 kimi 侧栏壳。
+ * 退出登录与个人中心同契约：登出清凭据 → 清 react-query 缓存 → 跳首页（登录经全局弹窗）。
+ * 本组件仅用于 (main) 路由组（首页/课堂/个人中心）；课程助手对话页使用独立 kimi 侧栏壳。
  */
 import { List, SignOut, Sparkle } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useAuth } from "@/lib/auth-context";
 
-/** 主导航模型（课程助手对话页不在其中，见类注释） */
+/** 主导航模型（课程助手对话页不在其中，见类注释；会话管理归侧边栏不设导航项） */
 const NAV_ITEMS = [
   { href: "/", label: "首页" },
   { href: "/chat", label: "课程助手" },
   { href: "/courses", label: "课堂" },
-  { href: "/sessions", label: "会话" },
 ] as const;
 
 /**
@@ -48,6 +51,8 @@ export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  // 登出二次确认（用户拍板：登出必须确认）
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   // 下拉关闭：Esc 键盘 + 点击外部（修复历史「无外部点击关闭」缺陷）
   useEffect(() => {
@@ -77,16 +82,17 @@ export function SiteHeader() {
   // 路由变化自动收起下拉（keydown 监听随 useEffect 卸载，保证不悬挂）
   useEffect(() => setMenuOpen(false), [pathname]);
 
-  /** 退出登录：登出清凭据 → 清查询缓存（防账号间串数据）→ 跳登录页 */
+  /** 退出登录：二次确认后登出清凭据 → 清查询缓存（防账号间串数据）→ 跳首页（登录经全局弹窗） */
   async function handleLogout() {
     if (loggingOut) {
       return;
     }
+    setLogoutConfirmOpen(false);
     setLoggingOut(true);
     try {
       await logout();
       queryClient.clear();
-      router.push("/login");
+      router.push("/");
     } finally {
       setLoggingOut(false);
     }
@@ -201,7 +207,7 @@ export function SiteHeader() {
                 <button
                   type="button"
                   aria-label="退出登录"
-                  onClick={() => void handleLogout()}
+                  onClick={() => setLogoutConfirmOpen(true)}
                   disabled={loggingOut}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -213,6 +219,17 @@ export function SiteHeader() {
           ) : null}
         </div>
       </div>
+
+      {/* 登出二次确认（用户拍板：登出必须确认） */}
+      <ConfirmDialog
+        open={logoutConfirmOpen}
+        title="退出登录"
+        description="确定退出登录吗？退出后需要重新登录才能继续使用。"
+        confirmText="退出"
+        loading={loggingOut}
+        onConfirm={() => void handleLogout()}
+        onCancel={() => setLogoutConfirmOpen(false)}
+      />
     </header>
   );
 }

@@ -113,6 +113,8 @@ export function ChatSkeleton() {
 export function ChatWorkspace({ initialSessionId, variant, title, history }: ChatWorkspaceProps) {
   const searchParams = useSearchParams();
   const { user } = useAuth();
+  // 快速提问预填：首页快问框提交带 ?q=，仅新对话页生效（预填不自动发送，避免误发）
+  const quickQuery = searchParams.get("q");
   const queryClient = useQueryClient();
   const setStreaming = useSetChatStreaming();
   const { state, send, cancel, reconnect, reset } = useChatStream(initialSessionId);
@@ -183,10 +185,11 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    // jsdom 等测试环境无 scrollTo，退化直接赋 scrollTop（真实浏览器 smooth 跟随）
+    // jsdom 等测试环境无 scrollTo，退化直接赋 scrollTop（真实浏览器瞬时吸底——
+    // 高频流式 delta 下 smooth 动画与渲染叠加掉帧，卡顿治理 2026-08-26 改 auto）
     if (shouldStickToBottom(el.scrollTop, el.scrollHeight, el.clientHeight)) {
       if (typeof el.scrollTo === "function") {
-        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+        el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
       } else {
         el.scrollTop = el.scrollHeight;
       }
@@ -472,6 +475,7 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
               onSend={handleSend}
               onCancel={() => void cancel()}
               onNotify={notify}
+              initialValue={variant === "new" ? (quickQuery ?? undefined) : undefined}
             />
           </div>
           {/* 底部免责（设计 §1.5.4 输入区 Caption） */}

@@ -15,21 +15,41 @@ import { ChatSidebar } from "./chat-sidebar";
 import { ChatStreamingProvider, useSetChatStreaming } from "./chat-streaming-context";
 import type { SessionItem } from "@/lib/types";
 
-/** 数据层 mock：getSessions 会话列表（骨架/空/正常态） */
-const apiMock = vi.hoisted(() => ({ getSessions: vi.fn() }));
+/** 数据层 mock：getSessions 会话列表（骨架/空/正常态）+ 重命名/删除（会话管理用例） */
+const apiMock = vi.hoisted(() => ({
+  getSessions: vi.fn(),
+  updateSessionTitle: vi.fn(),
+  deleteSession: vi.fn(),
+}));
 /** 认证 mock：displayName / logout 可切 */
 const authMock = vi.hoisted(() => ({ useAuth: vi.fn() }));
-/** 导航 mock：pathname 驱动激活态；push 记录跳转（新建对话快捷键/登出） */
-const navMock = vi.hoisted(() => ({ pathname: "/chat", push: vi.fn(), clear: vi.fn() }));
+/** 导航 mock：pathname 驱动激活态；push 记录跳转（新建对话快捷键/登出/删除激活会话） */
+const navMock = vi.hoisted(() => ({
+  pathname: "/chat",
+  push: vi.fn(),
+  clear: vi.fn(),
+  invalidateQueries: vi.fn(),
+}));
 
-vi.mock("@/lib/api", () => ({ getSessions: apiMock.getSessions }));
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api")>();
+  return {
+    ...actual,
+    getSessions: apiMock.getSessions,
+    updateSessionTitle: apiMock.updateSessionTitle,
+    deleteSession: apiMock.deleteSession,
+  };
+});
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => authMock.useAuth() }));
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
   return {
     ...actual,
-    // 清缓存断言：QueryClient.clear 调用记录
-    useQueryClient: () => ({ clear: navMock.clear }),
+    // 缓存操作断言：clear（登出清缓存）/ invalidateQueries（保存/删除后失效列表）
+    useQueryClient: () => ({
+      clear: navMock.clear,
+      invalidateQueries: navMock.invalidateQueries,
+    }),
   };
 });
 vi.mock("next/navigation", () => ({
@@ -71,9 +91,12 @@ function StreamingProbe({ onReady }: { onReady: (set: (streaming: boolean) => vo
 
 beforeEach(() => {
   apiMock.getSessions.mockReset();
+  apiMock.updateSessionTitle.mockReset();
+  apiMock.deleteSession.mockReset();
   authMock.useAuth.mockReset();
   navMock.push.mockReset();
   navMock.clear.mockReset();
+  navMock.invalidateQueries.mockReset();
   navMock.pathname = "/chat";
   window.localStorage.clear();
   authMock.useAuth.mockReturnValue({
@@ -118,8 +141,11 @@ describe("ChatSidebar 结构", () => {
     expect(first).toHaveAttribute("href", "/chat/s1");
     const second = screen.getByRole("link", { name: /会话二/ });
     expect(second).toHaveAttribute("href", "/chat/s2");
-    expect(second).toHaveClass("bg-brand-soft");
-    expect(first).not.toHaveClass("bg-brand-soft");
+    // 激活态高亮位于行容器（data-testid 行级），非内部链接
+    const secondRow = second.closest('[data-testid="sidebar-session-item"]') as HTMLElement;
+    const firstRow = first.closest('[data-testid="sidebar-session-item"]') as HTMLElement;
+    expect(secondRow).toHaveClass("bg-brand-soft");
+    expect(firstRow).not.toHaveClass("bg-brand-soft");
   });
 
   it("会话空态：引导文案", async () => {
@@ -135,15 +161,152 @@ describe("ChatSidebar 结构", () => {
     expect(screen.getByTestId("sidebar-avatar")).toHaveTextContent("同");
   });
 
-  it("退出登录：登出清凭据 → 清查询缓存 → 跳登录页", async () => {
+  it("退出登录：二次确认后登出清凭据 → 清查询缓存 → 跳首页", async () => {
     apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
     renderSidebar();
+    // 第一步：点击退出 → 弹确认框（未确认不登出）
     fireEvent.click(await screen.findByRole("button", { name: "退出登录" }));
+    expect(await screen.findByRole("dialog", { name: "退出登录" })).toBeInTheDocument();
+    expect(authMock.useAuth().logout).not.toHaveBeenCalled();
+    // 第二步：确认退出
+    fireEvent.click(screen.getByRole("button", { name: "退出" }));
     await waitFor(() => {
       expect(authMock.useAuth().logout).toHaveBeenCalled();
       expect(navMock.clear).toHaveBeenCalled();
-      expect(navMock.push).toHaveBeenCalledWith("/login");
+      expect(navMock.push).toHaveBeenCalledWith("/");
     });
+  });
+
+  it("登出确认框：取消不登出", async () => {
+    apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
+    renderSidebar();
+    fireEvent.click(await screen.findByRole("button", { name: "退出登录" }));
+    await screen.findByRole("dialog", { name: "退出登录" });
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(authMock.useAuth().logout).not.toHaveBeenCalled();
+  });
+});
+
+describe("ChatSidebar 会话管理（增删改查）", () => {
+  /** 分页响应构造（total 为 Long→string） */
+  function pageOf(records: SessionItem[], total: number) {
+    return { records, total: String(total), page: 1, size: 20 };
+  }
+
+  it("查：输入关键词防抖后按 keyword 请求（空时恢复全量）", async () => {
+    apiMock.getSessions.mockResolvedValue(
+      pageOf([makeSession({ id: "s1", title: "RAG 是什么" })], 1),
+    );
+    renderSidebar();
+    await screen.findByText("RAG 是什么");
+    const input = screen.getByTestId("sidebar-session-search");
+    fireEvent.change(input, { target: { value: "索引" } });
+    // 防抖 300ms 后才发起关键词查询
+    await waitFor(() => {
+      expect(apiMock.getSessions).toHaveBeenCalledWith(1, 20, "索引");
+    });
+    // 清除按钮恢复全量列表（keyword 空）
+    fireEvent.click(screen.getByRole("button", { name: "清除搜索" }));
+    await waitFor(() => {
+      expect(apiMock.getSessions).toHaveBeenCalledWith(1, 20, undefined);
+    });
+  });
+
+  it("查：搜索无结果 → 提示文案", async () => {
+    apiMock.getSessions.mockResolvedValue(pageOf([], 0));
+    renderSidebar();
+    const input = screen.getByTestId("sidebar-session-search");
+    fireEvent.change(input, { target: { value: "不存在的" } });
+    expect(await screen.findByText(/没有找到「不存在的」相关会话/)).toBeInTheDocument();
+  });
+
+  it("改：hover 编辑按钮 → 行内输入 → 保存 → PATCH + 失效列表", async () => {
+    apiMock.updateSessionTitle.mockResolvedValue(makeSession({ id: "s1", title: "新标题" }));
+    apiMock.getSessions.mockResolvedValue(pageOf([makeSession({ id: "s1", title: "旧标题" })], 1));
+    renderSidebar();
+    await screen.findByText("旧标题");
+    // 打开行内编辑
+    fireEvent.click(screen.getByRole("button", { name: /编辑会话标题/ }));
+    const input = screen.getByTestId("sidebar-session-edit-input");
+    fireEvent.change(input, { target: { value: "新标题" } });
+    fireEvent.click(screen.getByRole("button", { name: /保存/ }));
+    await waitFor(() => {
+      expect(apiMock.updateSessionTitle).toHaveBeenCalledWith("s1", "新标题");
+      expect(navMock.invalidateQueries).toHaveBeenCalled();
+    });
+    // 保存后编辑态关闭
+    expect(screen.queryByTestId("sidebar-session-edit-input")).toBeNull();
+  });
+
+  it("改：空标题保存直接退出编辑（不发请求）", async () => {
+    apiMock.getSessions.mockResolvedValue(pageOf([makeSession({ id: "s1", title: "旧标题" })], 1));
+    renderSidebar();
+    await screen.findByText("旧标题");
+    fireEvent.click(screen.getByRole("button", { name: /编辑会话标题/ }));
+    fireEvent.change(screen.getByTestId("sidebar-session-edit-input"), {
+      target: { value: "   " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /保存/ }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("sidebar-session-edit-input")).toBeNull();
+    });
+    expect(apiMock.updateSessionTitle).not.toHaveBeenCalled();
+  });
+
+  it("删：二次确认 → DELETE + 失效列表；删除当前激活会话后跳 /chat 新对话", async () => {
+    apiMock.deleteSession.mockResolvedValue(undefined);
+    apiMock.getSessions.mockResolvedValue(pageOf([makeSession({ id: "s1", title: "会话一" })], 1));
+    renderSidebar("/chat/s1");
+    await screen.findByText("会话一");
+    // 第一步：删除按钮 → 确认框（未确认不删）
+    fireEvent.click(screen.getByRole("button", { name: /删除会话/ }));
+    expect(await screen.findByRole("dialog", { name: "删除会话" })).toBeInTheDocument();
+    expect(apiMock.deleteSession).not.toHaveBeenCalled();
+    // 第二步：确认删除（danger 语义）
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    await waitFor(() => {
+      expect(apiMock.deleteSession).toHaveBeenCalledWith("s1");
+      expect(navMock.push).toHaveBeenCalledWith("/chat");
+    });
+  });
+
+  it("删：409（会话正在对话中）→ 提示文案且列表不再刷新", async () => {
+    apiMock.deleteSession.mockRejectedValue(new Error("会话正在对话中"));
+    apiMock.getSessions.mockResolvedValue(pageOf([makeSession({ id: "s1", title: "会话一" })], 1));
+    renderSidebar("/chat/s1");
+    await screen.findByText("会话一");
+    fireEvent.click(screen.getByRole("button", { name: /删除会话/ }));
+    await screen.findByRole("dialog", { name: "删除会话" });
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    // 失败 toast（对话正在对话中语气按后端 409 文案分级）
+    await waitFor(() => {
+      expect(screen.getByText("删除失败，请稍后重试")).toBeInTheDocument();
+    });
+    expect(navMock.push).not.toHaveBeenCalled();
+  });
+
+  it("分页：hasNextPage 时渲染「加载更多」，点击追加下一页", async () => {
+    // 第一页满 20 条 + total 21 → 有下一页
+    const firstPage = Array.from({ length: 20 }, (_, index) =>
+      makeSession({ id: `s${index + 1}`, title: `会话 ${index + 1}` }),
+    );
+    apiMock.getSessions
+      .mockResolvedValueOnce({ records: firstPage, total: "21", page: 1, size: 20 })
+      .mockResolvedValueOnce({
+        records: [makeSession({ id: "s21", title: "会话 21" })],
+        total: "21",
+        page: 2,
+        size: 20,
+      });
+    renderSidebar();
+    await screen.findByText("会话 1");
+    const more = screen.getByTestId("sidebar-load-more");
+    fireEvent.click(more);
+    await waitFor(() => {
+      expect(apiMock.getSessions).toHaveBeenCalledWith(2, 20, undefined);
+    });
+    expect(await screen.findByText("会话 21")).toBeInTheDocument();
   });
 });
 
@@ -174,9 +337,10 @@ describe("ChatSidebar 折叠与快捷键", () => {
     await waitFor(() => {
       expect(screen.getByTestId("chat-sidebar")).toHaveClass("w-16");
     });
-    // 折叠态条目：仅图标链接（标题文字隐藏）
+    // 折叠态条目：仅图标链接（标题文字隐藏；data-testid 位于行容器，链接经 querySelector 取）
     const item = await screen.findByTestId("sidebar-session-item");
-    expect(item).toHaveAttribute("href", "/chat/s1");
+    const link = item.querySelector("a");
+    expect(link).toHaveAttribute("href", "/chat/s1");
     expect(screen.queryByText("会话一")).not.toBeInTheDocument();
   });
 

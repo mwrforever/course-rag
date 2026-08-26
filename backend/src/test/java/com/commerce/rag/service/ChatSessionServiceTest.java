@@ -4,8 +4,12 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.repository.AbstractRepository;
+import com.baomidou.mybatisplus.extension.repository.CrudRepository;
 import com.commerce.rag.convert.ChatSessionConverter;
 import com.commerce.rag.convert.ChatSessionConverterImpl;
 import com.commerce.rag.convert.StudentConverter;
@@ -18,6 +22,7 @@ import com.commerce.rag.service.impl.ChatSessionServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.ChatSessionVO;
 import com.commerce.rag.vo.SessionVO;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -109,12 +114,54 @@ class ChatSessionServiceTest {
         verify(sessionMapper).selectPage(any(Page.class), any());
     }
 
+    /**
+     * 注入链式查询依赖的继承字段（baseMapper/entityClass）
+     *
+     * <p>纯 Mockito 下 {@code this.lambdaQuery()/this.lambdaUpdate()} 构建链时会经
+     * getEntityClass → getMapperClass → MybatisUtils.getMapperProxy 内窥真实 Mapper 代理
+     * （mock 非代理对象直接失败）；预置 entityClass 与 baseMapper 两个字段即可绕开内窥，
+     * 使 selectPage/update 可被 mock 驱动（与 ChatRunServiceTest 同款方案）。
+     */
+    private void injectChainFields() throws Exception {
+        Field baseMapper = CrudRepository.class.getDeclaredField("baseMapper");
+        baseMapper.setAccessible(true);
+        baseMapper.set(sessionService, sessionMapper);
+        Field entityClass = AbstractRepository.class.getDeclaredField("entityClass");
+        entityClass.setAccessible(true);
+        entityClass.set(sessionService, ChatSession.class);
+    }
+
     @Test
-    @DisplayName("updateTitle → 更新会话标题")
-    void updateTitle_updatesTitle() {
+    @DisplayName("updateTitle → 更新会话标题并刷新 updated_at")
+    void updateTitle_updatesTitle() throws Exception {
+        injectChainFields();
+
         sessionService.updateTitle(1L, "新标题");
 
+        // 链式更新以 null 实体 + 更新 wrapper 执行（title 与 updated_at 均入 set 段）
+        ArgumentCaptor<LambdaUpdateWrapper<ChatSession>> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), captor.capture());
+        // getSqlSet 才包含 set 段（getSqlSegment 仅 WHERE 段）
+        String sqlSet = captor.getValue().getSqlSet();
+        assertTrue(sqlSet.contains("title"), "应更新标题列: " + sqlSet);
+        assertTrue(sqlSet.contains("updated_at"), "应刷新 updated_at: " + sqlSet);
+    }
+
+    @Test
+    @DisplayName("renameSession → 更新标题后回读最新视图（VO 契约与列表同源）")
+    void renameSession_updatesAndReturnsView() throws Exception {
+        injectChainFields();
+        // 更新成功后回读：返回带新标题的实体（selectById 自动过 @TableLogic）
+        ChatSession renamed = session(1L);
+        renamed.setTitle("新标题");
+        when(sessionMapper.selectById(1L)).thenReturn(renamed);
+
+        SessionVO result = sessionService.renameSession(1L, "新标题");
+
         verify(sessionMapper).update(isNull(), any());
+        assertEquals(1L, result.id());
+        assertEquals("新标题", result.title());
+        assertEquals("ACTIVE", result.status());
     }
 
     @Test
@@ -171,13 +218,14 @@ class ChatSessionServiceTest {
 
     @Test
     @DisplayName("findSessionsByUser → 按用户分页查询（records 转 SessionVO）")
-    void findSessionsByUser_returnsPage() {
+    void findSessionsByUser_returnsPage() throws Exception {
+        injectChainFields();
         Page<ChatSession> page = new Page<>(1, 20);
         page.setRecords(List.of(session(1L)));
         page.setTotal(1);
         when(sessionMapper.selectPage(any(Page.class), any())).thenReturn(page);
 
-        IPage<SessionVO> result = sessionService.findSessionsByUser(5L, 1, 20);
+        IPage<SessionVO> result = sessionService.findSessionsByUser(5L, 1, 20, null);
 
         assertEquals(1, result.getRecords().size());
         SessionVO vo = result.getRecords().get(0);
@@ -186,6 +234,23 @@ class ChatSessionServiceTest {
         assertEquals("ACTIVE", vo.status());
         assertEquals(1, result.getTotal());
         verify(sessionMapper).selectPage(any(Page.class), any());
+    }
+
+    @Test
+    @DisplayName("findSessionsByUser → 带 keyword 时按标题模糊搜索（like 条件入 SQL 段）")
+    void findSessionsByUser_withKeyword_appliesLike() throws Exception {
+        injectChainFields();
+        when(sessionMapper.selectPage(any(Page.class), any())).thenReturn(new Page<>(1, 20));
+
+        sessionService.findSessionsByUser(5L, 1, 20, "RAG");
+
+        ArgumentCaptor<LambdaQueryWrapper<ChatSession>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sessionMapper).selectPage(any(Page.class), captor.capture());
+        String sqlSegment = captor.getValue().getSqlSegment();
+        assertTrue(sqlSegment.contains("title"), "keyword 应限定 title 列: " + sqlSegment);
+        assertTrue(sqlSegment.toUpperCase().contains("LIKE"), "应为 LIKE 模糊条件: " + sqlSegment);
+        // 参数化绑定（无注入风险）：keyword 由 MP 转为 %RAG% 经参数对传入而非拼进 SQL
+        assertTrue(captor.getValue().getParamNameValuePairs().values().contains("%RAG%"));
     }
 
     @Test

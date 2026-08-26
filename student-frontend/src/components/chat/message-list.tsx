@@ -12,8 +12,7 @@
  *   复制时由 FeedbackBar 剥离后缀（carry2）
  * - end 后操作栏 200ms fade-in（transform/opacity，reduced-motion 静态）
  */
-import { FileText } from "@phosphor-icons/react";
-import { AiBadge } from "@/components/ai-badge";
+import { FileText, Sparkle } from "@phosphor-icons/react";
 import { FeedbackBar } from "./feedback-bar";
 import { MarkdownView } from "./markdown-view";
 import { SourcesList } from "./sources-list";
@@ -142,8 +141,15 @@ export function MessageList({
 
         return (
           <div key={message.id} data-testid="assistant-message" className="flex gap-3">
-            {/* AI 徽标头像（复用 Task 8 组件，小尺寸变体） */}
-            <AiBadge className="!size-8" />
+            {/* AI 徽标头像：静态渐变徽章（对话流式期间每条消息一个头像，
+                无限呼吸动画实例会叠加重绘成本，卡顿治理 2026-08-26 改静态；
+                品牌呼吸浮标仅保留首页 Hero / 空态等装饰场景） */}
+            <span
+              aria-hidden
+              className="bg-gradient-ai grid size-8 shrink-0 place-items-center rounded-full text-white shadow-sm shadow-brand/30"
+            >
+              <Sparkle size={15} weight="fill" />
+            </span>
             <div className="min-w-0 flex-1 space-y-3">
               {/* 模型徽标：metadata 到达后展示（设计 M10：正常路径必渲染，降级回放无 metadata 时不渲染） */}
               {message.model ? (

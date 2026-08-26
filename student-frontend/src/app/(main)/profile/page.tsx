@@ -1,19 +1,20 @@
 "use client";
 
 /**
- * 个人中心 /profile（设计 §1.5.6，全 CSR）
+ * 个人中心 /profile（设计 §1.5.6，全 CSR；登出确认 2026-08-26）
  *
  * 结构：用户卡（AI 徽标头像 [displayName 首字母] + displayName + 账号 [登录响应缓存
  * 的 userId，登录响应无 username 字段] + role 徽章）→ 我的课程（复用 CourseCard，
- * J1 getMyCourses，四态全覆盖）→ 退出登录（danger 文字按钮）。
+ * J1 getMyCourses，四态全覆盖）→ 退出登录（danger 文字按钮，ConfirmDialog 二次确认）。
  *
- * 退出登录契约：POST /auth/logout（尽力而为）→ 清本地凭据（AuthProvider.logout）
- * → 清 react-query 缓存（防下一账号读到上一账号缓存）→ 跳 /login。
+ * 退出登录契约：确认 → POST /auth/logout（尽力而为）→ 清本地凭据（AuthProvider.logout）
+ * → 清 react-query 缓存（防下一账号读到上一账号缓存）→ 跳首页（登录经全局弹窗）。
  */
 import { SignOut } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CourseCard } from "@/components/course-card";
 import { EmptyState } from "@/components/empty-state";
 import { SectionError } from "@/components/section-error";
@@ -46,15 +47,18 @@ export default function ProfilePage() {
   // 空态兜底用 useMemo 稳定引用（与课程列表页同款防御）
   const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
   const [loggingOut, setLoggingOut] = useState(false);
+  // 登出二次确认（用户拍板：登出必须确认）
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
-  /** 退出登录：登出清凭据 → 清查询缓存（防账号间串数据）→ 跳登录页 */
+  /** 退出登录：二次确认后登出清凭据 → 清查询缓存（防账号间串数据）→ 跳首页（登录经全局弹窗） */
   async function handleLogout() {
     if (loggingOut) return;
+    setLogoutConfirmOpen(false);
     setLoggingOut(true);
     try {
       await logout();
       queryClient.clear();
-      router.push("/login");
+      router.push("/");
     } finally {
       setLoggingOut(false);
     }
@@ -98,7 +102,7 @@ export default function ProfilePage() {
         </div>
         <button
           type="button"
-          onClick={() => void handleLogout()}
+          onClick={() => setLogoutConfirmOpen(true)}
           disabled={loggingOut}
           className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-danger"
         >
@@ -106,6 +110,17 @@ export default function ProfilePage() {
           {loggingOut ? "退出中…" : "退出登录"}
         </button>
       </section>
+
+      {/* 登出二次确认（用户拍板：登出必须确认） */}
+      <ConfirmDialog
+        open={logoutConfirmOpen}
+        title="退出登录"
+        description="确定退出登录吗？退出后需要重新登录才能继续使用。"
+        confirmText="退出"
+        loading={loggingOut}
+        onConfirm={() => void handleLogout()}
+        onCancel={() => setLogoutConfirmOpen(false)}
+      />
 
       {/* 我的课程：复用 CourseCard（J1），四态全覆盖 */}
       <section className="mt-10">
