@@ -49,7 +49,7 @@ export function validateUploadFile(name: string, size: number): string {
 /**
  * 文档管理页主逻辑（vue-query 数据源 + ETL 轮询 + 批量 allSettled + 上传进度）
  */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import {
@@ -178,6 +178,12 @@ onMounted(async () => {
   } catch {
     // 知识库选项加载失败：筛选仅剩「全部知识库」，上传前用户仍可重进页面恢复
   }
+  // 滚动收起行菜单（fixed 菜单不随滚动，滚动后收起避免悬空）
+  window.addEventListener('scroll', onWindowScroll, { capture: true, passive: true })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', onWindowScroll, { capture: true } as EventListenerOptions)
 })
 
 // ---- 筛选与分页 ----
@@ -267,15 +273,32 @@ async function confirmBatchDelete() {
 // 行操作 ⋮ 菜单（查看分片 / 重新解析 / 下载 / 改标题 / 删除）
 // ====================================================================
 
-/** 当前展开菜单的行 id：空串表示全部收起（点击遮罩关闭） */
-const openMenuId = ref('')
+/**
+ * 当前展开菜单（行 id + 触发按钮右下角坐标）
+ *
+ * 菜单 Teleport 到 body 并 fixed 定位：表格容器 overflow-hidden 会裁切行内
+ * absolute 菜单（末行展开最明显），移出裁切上下文后任何行均完整可见。
+ */
+const openMenu = ref<{ id: string; x: number; y: number } | null>(null)
 
-function toggleMenu(id: string) {
-  openMenuId.value = openMenuId.value === id ? '' : id
+function toggleMenu(id: string, event: MouseEvent) {
+  // 再次点击同一行 = 收起
+  if (openMenu.value && openMenu.value.id === id) {
+    openMenu.value = null
+    return
+  }
+  // 记录按钮视口坐标（右下角）：菜单以此为 fixed 定位锚点，菜单右缘贴合按钮右缘
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  openMenu.value = { id, x: rect.right, y: rect.bottom }
 }
 
 function closeMenu() {
-  openMenuId.value = ''
+  openMenu.value = null
+}
+
+/** 页面滚动时收起菜单：fixed 菜单不随滚动迁移，避免悬空漂移 */
+function onWindowScroll() {
+  if (openMenu.value) openMenu.value = null
 }
 
 /** 查看分片：跳转文档详情页（分片列表在详情页） */
@@ -631,7 +654,10 @@ async function submitUpload() {
 
   <!-- 正常态：分页表格（列：☐/文件名/类型/状态/分片数/上传时间/更新时间/操作） -->
   <template v-else>
-    <div class="overflow-hidden rounded-xl border border-border bg-surface">
+    <div
+      data-testid="doc-table-container"
+      class="overflow-hidden rounded-xl border border-border bg-surface"
+    >
       <table data-testid="doc-table" class="w-full text-sm">
         <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
           <tr>
@@ -735,62 +761,65 @@ async function submitUpload() {
                 size="sm"
                 :data-testid="`doc-menu-${docItem.id}`"
                 aria-label="文档操作"
-                @click="toggleMenu(docItem.id)"
+                @click="toggleMenu(docItem.id, $event)"
               >
                 <PhDotsThreeVertical class="h-4 w-4" />
               </Button>
-              <!-- 操作菜单：查看分片/重新解析/下载/改标题/删除 -->
-              <div
-                v-if="openMenuId === docItem.id"
-                data-testid="doc-menu"
-                class="absolute right-2 top-9 z-30 w-40 rounded-lg border border-border bg-surface p-1 shadow-md"
-              >
-                <button
-                  type="button"
-                  data-testid="menu-view"
-                  class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
-                  @click="viewChunks(docItem)"
+              <!-- 操作菜单：查看分片/重新解析/下载/改标题/删除（Teleport 到 body 避开表格容器裁切） -->
+              <Teleport to="body">
+                <div
+                  v-if="openMenu && openMenu.id === docItem.id"
+                  data-testid="doc-menu"
+                  class="fixed z-30 w-40 rounded-lg border border-border bg-surface p-1 shadow-md"
+                  :style="{ left: `${openMenu.x - 160}px`, top: `${openMenu.y + 4}px` }"
                 >
-                  <PhMagnifyingGlass class="h-4 w-4 text-text-muted" />
-                  查看分片
-                </button>
-                <button
-                  type="button"
-                  data-testid="menu-reparse"
-                  class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
-                  @click="handleReparse(docItem)"
-                >
-                  <PhRepeat class="h-4 w-4 text-text-muted" />
-                  重新解析
-                </button>
-                <button
-                  type="button"
-                  data-testid="menu-download"
-                  class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
-                  @click="handleDownload(docItem)"
-                >
-                  <PhDownloadSimple class="h-4 w-4 text-text-muted" />
-                  下载
-                </button>
-                <button
-                  type="button"
-                  data-testid="menu-rename"
-                  class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
-                  @click="openRename(docItem)"
-                >
-                  <PhPencilSimple class="h-4 w-4 text-text-muted" />
-                  改标题
-                </button>
-                <button
-                  type="button"
-                  data-testid="menu-delete"
-                  class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-danger transition-colors duration-150 hover:bg-red-50"
-                  @click="requestDelete(docItem)"
-                >
-                  <PhTrash class="h-4 w-4" />
-                  删除
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    data-testid="menu-view"
+                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                    @click="viewChunks(docItem)"
+                  >
+                    <PhMagnifyingGlass class="h-4 w-4 text-text-muted" />
+                    查看分片
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="menu-reparse"
+                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                    @click="handleReparse(docItem)"
+                  >
+                    <PhRepeat class="h-4 w-4 text-text-muted" />
+                    重新解析
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="menu-download"
+                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                    @click="handleDownload(docItem)"
+                  >
+                    <PhDownloadSimple class="h-4 w-4 text-text-muted" />
+                    下载
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="menu-rename"
+                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                    @click="openRename(docItem)"
+                  >
+                    <PhPencilSimple class="h-4 w-4 text-text-muted" />
+                    改标题
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="menu-delete"
+                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-danger transition-colors duration-150 hover:bg-red-50"
+                    @click="requestDelete(docItem)"
+                  >
+                    <PhTrash class="h-4 w-4" />
+                    删除
+                  </button>
+                </div>
+              </Teleport>
             </td>
           </tr>
         </tbody>
@@ -827,7 +856,7 @@ async function submitUpload() {
   </template>
 
   <!-- 菜单点击外遮罩：点击任意处收起菜单 -->
-  <div v-if="openMenuId" class="fixed inset-0 z-20" @click="closeMenu" />
+  <div v-if="openMenu" class="fixed inset-0 z-20" @click="closeMenu" />
 
   <!-- 上传 Dialog 520px：kbId 必选 + courseId 可选 + 拖拽区 + 进度条 -->
   <div

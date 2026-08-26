@@ -24,8 +24,9 @@ import { Button } from '@/components/ui/button'
 import { ApiError, sessionApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime } from '@/lib/utils'
+import ConversationReplayDrawer from '@/components/ConversationReplayDrawer.vue'
 
-import type { ChatSessionDetailVO, ChatSessionVO, SessionStatus } from '@/lib/types'
+import type { ChatSessionVO, SessionStatus } from '@/lib/types'
 
 /** 每页条数（设计 §2.6 分页器） */
 const PAGE_SIZE = 10
@@ -85,33 +86,21 @@ function statusVariant(status: SessionStatus) {
 }
 
 // ====================================================================
-// 详情回放 Drawer（700px，messages 只读流）
+// 详情回放 Drawer（公共组件 ConversationReplayDrawer；仅超管入口）
 // ====================================================================
 
-const detailTarget = ref<ChatSessionVO | null>(null)
-const replayDetail = ref<ChatSessionDetailVO | null>(null)
-const replayLoading = ref(false)
+const detailOpen = ref(false)
+const detailSession = ref<ChatSessionVO | null>(null)
 
-/** 打开详情 Drawer：sessionApi.detail 拉取会话完整消息（只读回放） */
-async function openDetail(s: ChatSessionVO) {
-  detailTarget.value = s
-  replayDetail.value = null
-  replayLoading.value = true
-  try {
-    replayDetail.value = await sessionApi.detail(s.id)
-  } catch (err) {
-    showToast(messageOf(err, '会话详情加载失败，请稍后重试'), 'danger')
-    detailTarget.value = null
-  } finally {
-    replayLoading.value = false
-  }
+/** 打开详情 Drawer：记录会话并展开（detail 拉取与 loading 由组件内部承担） */
+function openDetail(s: ChatSessionVO) {
+  detailSession.value = s
+  detailOpen.value = true
 }
 
-/** 关闭 Drawer：加载中拦截（防丢加载态） */
+/** 关闭 Drawer（加载中拦截在组件内部） */
 function closeDetail() {
-  if (replayLoading.value) return
-  detailTarget.value = null
-  replayDetail.value = null
+  detailOpen.value = false
 }
 
 // ====================================================================
@@ -312,81 +301,14 @@ async function confirmDelete() {
     </div>
   </template>
 
-  <!-- ================================================================
-         会话详情回放 Drawer（700px）：messages 只读流（role/content/intentType/seq）
-         ================================================================ -->
-  <div
-    v-if="detailTarget"
-    data-testid="replay-overlay"
-    class="fixed inset-0 z-50 bg-slate-900/40"
-    @click.self="closeDetail"
-    @keydown.esc="closeDetail"
-  >
-    <aside
-      data-testid="session-drawer"
-      class="absolute right-0 top-0 flex h-full w-[700px] flex-col border-l border-border bg-surface shadow-md"
-      role="dialog"
-      aria-modal="true"
-    >
-      <header class="flex items-center justify-between border-b border-border px-6 py-4">
-        <div>
-          <h2 class="text-base font-semibold text-text">{{ detailTarget.title }}</h2>
-          <p class="mt-0.5 flex items-center gap-2 text-xs text-text-muted">
-            会话 #{{ detailTarget.id }}
-            <!-- 状态徽章：详情加载后以明细为准（列表行可能滞后，如刚被外部关闭） -->
-            <Badge :variant="statusVariant(replayDetail?.status ?? detailTarget.status)">
-              {{ replayDetail?.status ?? detailTarget.status }}
-            </Badge>
-          </p>
-        </div>
-        <button
-          type="button"
-          data-testid="close-replay"
-          aria-label="关闭回放"
-          class="rounded-lg px-2 py-1 text-sm text-text-muted transition-colors duration-150 hover:bg-surface-2"
-          @click="closeDetail"
-        >
-          关闭
-        </button>
-      </header>
-      <div class="flex-1 overflow-y-auto px-6 py-4">
-        <!-- 加载中：spinner + 文案 -->
-        <div
-          v-if="replayLoading"
-          class="flex items-center justify-center gap-2 py-10 text-sm text-text-muted"
-        >
-          <PhSpinnerGap class="h-4 w-4 animate-spin" />
-          加载会话消息
-        </div>
-        <!-- 空消息兜底 -->
-        <div
-          v-else-if="!replayDetail || replayDetail.messages.length === 0"
-          class="py-10 text-center"
-        >
-          <p class="text-sm text-text-muted">该会话暂无消息记录</p>
-        </div>
-        <!-- 消息流：role 徽章 + seq 序号 + intentType + content 只读 -->
-        <ol v-else class="space-y-3">
-          <li
-            v-for="msg in replayDetail.messages"
-            :key="msg.id"
-            class="rounded-lg border border-border bg-surface-2 p-3"
-          >
-            <div class="flex items-center gap-2 text-xs">
-              <Badge :variant="msg.role === 'assistant' ? 'brand' : 'default'">
-                {{ msg.role }}
-              </Badge>
-              <span class="tabular-nums text-text-subtle">seq {{ msg.seq }}</span>
-              <span v-if="msg.intentType" class="text-text-subtle">{{ msg.intentType }}</span>
-            </div>
-            <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-text">
-              {{ msg.content }}
-            </p>
-          </li>
-        </ol>
-      </div>
-    </aside>
-  </div>
+  <!-- 会话详情回放 Drawer（公共组件：detail 拉取 + messages 只读流；仅超管入口展示） -->
+  <ConversationReplayDrawer
+    :open="detailOpen"
+    :session-id="detailSession?.id ?? ''"
+    :title="detailSession?.title ?? '会话回放'"
+    :initial-status="detailSession?.status"
+    @close="closeDetail"
+  />
 
   <!-- 删除会话二次确认（级联软删消息 + Run，不可恢复） -->
   <div

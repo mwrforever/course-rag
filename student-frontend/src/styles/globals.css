@@ -59,6 +59,19 @@
   --shadow-xl: 0 16px 44px rgba(20, 18, 16, 0.16);
   /* ── 品牌渐变（仅 Logo / AI 头像 / 徽标 / 强调元素使用）── */
   --gradient-ai: linear-gradient(135deg, #63c6ff 0%, #2f8bf5 55%, #1a5dd9 100%);
+  /* ── 学科兜底渐变对（course-card 无封面兜底，设计 §1.5.1：from-* / to-* 经 Tailwind 生成渐变）── */
+  --color-subject-code-start: #e0f2fe; /* 计算机/编程：sky-100 起 */
+  --color-subject-code-end: #e0e7ff; /* indigo-100 止 */
+  --color-subject-math-start: #ede9fe; /* 数学/统计：violet-100 起 */
+  --color-subject-math-end: #fae8ff; /* fuchsia-100 止 */
+  --color-subject-lang-start: #ccfbf1; /* 英语/外语：teal-100 起 */
+  --color-subject-lang-end: #d1fae5; /* emerald-100 止 */
+  --color-subject-science-start: #fef3c7; /* 物理/化学/生物：amber-100 起 */
+  --color-subject-science-end: #ffedd5; /* orange-100 止 */
+  --color-subject-business-start: #ffe4e6; /* 经济/管理：rose-100 起 */
+  --color-subject-business-end: #fce7f3; /* pink-100 止 */
+  --color-subject-art-start: #ffedd5; /* 艺术/音乐/设计：orange-100 起 */
+  --color-subject-art-end: #fef9c3; /* yellow-100 止 */
   /* ── 动效（保留既有动画名，新增渐入/骨架流光）── */
   --animate-drawer-in: drawer-in 240ms ease-out;
   --animate-overlay-in: overlay-in 240ms ease-out;

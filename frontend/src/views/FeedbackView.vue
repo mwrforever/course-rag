@@ -30,18 +30,14 @@ import { PhSpinnerGap, PhThumbsDown, PhThumbsUp, PhWarningCircle } from '@phosph
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ApiError, dashboardApi, feedbackApi, sessionApi } from '@/lib/api'
+import { ApiError, dashboardApi, feedbackApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth'
+import ConversationReplayDrawer from '@/components/ConversationReplayDrawer.vue'
 
 import type { EChartsCoreOption } from 'echarts/core'
-import type {
-  ChatSessionDetailVO,
-  FeedbackIntentStat,
-  FeedbackTrendItem,
-  UserFeedbackVO,
-} from '@/lib/types'
+import type { FeedbackIntentStat, FeedbackTrendItem, UserFeedbackVO } from '@/lib/types'
 
 // ---- ECharts 按需注册（Line + Bar + Grid/Tooltip/Legend + canvas 渲染，任务 brief 定案） ----
 use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
@@ -166,6 +162,12 @@ const areaColor = tokenColor('--color-brand-soft', '#DBEAFE')
 /** 堆叠柱语义色：点赞 success / 点踩 danger（状态语义色，非装饰） */
 const likedColor = tokenColor('--color-success', '#16A34A')
 const dislikedColor = tokenColor('--color-danger', '#DC2626')
+/** 轴刻度线/网格/标签文字色（--color-chart-* 语义令牌，@theme 定义） */
+const axisColor = tokenColor('--color-chart-axis', '#E2E8F0')
+const gridColor = tokenColor('--color-chart-grid', '#F1F5F9')
+const labelColor = tokenColor('--color-chart-label', '#64748B')
+/** 数据点描边色（与卡片底同色） */
+const pointBorder = tokenColor('--color-chart-point-border', '#FFFFFF')
 
 /** 单折线 option：x 轴 MM-DD，序列数据 count 字符串转 number（无赞踩分列 G7） */
 const trendOption = computed<EChartsCoreOption>(() => ({
@@ -175,15 +177,15 @@ const trendOption = computed<EChartsCoreOption>(() => ({
     type: 'category',
     boundaryGap: false,
     data: trend.value.map((t) => t.date.slice(5)),
-    axisLine: { lineStyle: { color: '#E2E8F0' } },
+    axisLine: { lineStyle: { color: axisColor } },
     axisTick: { show: false },
-    axisLabel: { color: '#64748B', fontSize: 12 },
+    axisLabel: { color: labelColor, fontSize: 12 },
   },
   yAxis: {
     type: 'value',
     minInterval: 1,
-    splitLine: { lineStyle: { color: '#F1F5F9' } },
-    axisLabel: { color: '#64748B', fontSize: 12 },
+    splitLine: { lineStyle: { color: gridColor } },
+    axisLabel: { color: labelColor, fontSize: 12 },
   },
   series: [
     {
@@ -194,7 +196,7 @@ const trendOption = computed<EChartsCoreOption>(() => ({
       symbol: 'circle',
       symbolSize: 6,
       lineStyle: { color: lineColor, width: 2 },
-      itemStyle: { color: lineColor, borderColor: '#FFFFFF', borderWidth: 1 },
+      itemStyle: { color: lineColor, borderColor: pointBorder, borderWidth: 1 },
       areaStyle: { color: areaColor, opacity: 0.5 },
     },
   ],
@@ -203,20 +205,20 @@ const trendOption = computed<EChartsCoreOption>(() => ({
 /** 意图×赞踩堆叠柱状图 option：x 轴意图枚举，点赞/点踩两序列 stack 同名 */
 const statsOption = computed<EChartsCoreOption>(() => ({
   tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-  legend: { bottom: 0, textStyle: { color: '#64748B', fontSize: 12 } },
+  legend: { bottom: 0, textStyle: { color: labelColor, fontSize: 12 } },
   grid: { left: 8, right: 16, top: 24, bottom: 36, containLabel: true },
   xAxis: {
     type: 'category',
     data: stats.value.map((s) => s.intentType),
-    axisLine: { lineStyle: { color: '#E2E8F0' } },
+    axisLine: { lineStyle: { color: axisColor } },
     axisTick: { show: false },
-    axisLabel: { color: '#64748B', fontSize: 12 },
+    axisLabel: { color: labelColor, fontSize: 12 },
   },
   yAxis: {
     type: 'value',
     minInterval: 1,
-    splitLine: { lineStyle: { color: '#F1F5F9' } },
-    axisLabel: { color: '#64748B', fontSize: 12 },
+    splitLine: { lineStyle: { color: gridColor } },
+    axisLabel: { color: labelColor, fontSize: 12 },
   },
   series: [
     {
@@ -264,33 +266,21 @@ function intentVariant(intent: string | null) {
 }
 
 // ====================================================================
-// 会话回放 Drawer（仅超管入口；详细消息只读流 700px）
+// 会话回放 Drawer（公共组件 ConversationReplayDrawer；仅超管入口）
 // ====================================================================
 
-const replayTarget = ref<UserFeedbackVO | null>(null)
-const replayDetail = ref<ChatSessionDetailVO | null>(null)
-const replayLoading = ref(false)
+const replayOpen = ref(false)
+const replaySessionId = ref('')
 
-/** 打开回放 Drawer：调 sessionApi.detail 拉取会话完整消息（只读回放） */
-async function openReplay(fb: UserFeedbackVO) {
-  replayTarget.value = fb
-  replayDetail.value = null
-  replayLoading.value = true
-  try {
-    replayDetail.value = await sessionApi.detail(fb.sessionId)
-  } catch (err) {
-    showToast(messageOf(err, '会话详情加载失败，请稍后重试'), 'danger')
-    replayTarget.value = null
-  } finally {
-    replayLoading.value = false
-  }
+/** 打开回放 Drawer：记录会话 id 并展开（detail 拉取与 loading 由组件内部承担） */
+function openReplay(fb: UserFeedbackVO) {
+  replaySessionId.value = fb.sessionId
+  replayOpen.value = true
 }
 
-/** 关闭回放 Drawer：加载中拦截（防丢加载态） */
+/** 关闭回放 Drawer（加载中拦截在组件内部） */
 function closeReplay() {
-  if (replayLoading.value) return
-  replayTarget.value = null
-  replayDetail.value = null
+  replayOpen.value = false
 }
 
 // ====================================================================
@@ -531,75 +521,8 @@ async function confirmDelete() {
     </template>
   </template>
 
-  <!-- ================================================================
-         会话回放 Drawer（700px）：sessionApi.detail 渲染 messages 只读流
-         ================================================================ -->
-  <div
-    v-if="replayTarget"
-    data-testid="replay-overlay"
-    class="fixed inset-0 z-50 bg-slate-900/40"
-    @click.self="closeReplay"
-    @keydown.esc="closeReplay"
-  >
-    <aside
-      data-testid="session-drawer"
-      class="absolute right-0 top-0 flex h-full w-[700px] flex-col border-l border-border bg-surface shadow-md"
-      role="dialog"
-      aria-modal="true"
-    >
-      <header class="flex items-center justify-between border-b border-border px-6 py-4">
-        <div>
-          <h2 class="text-base font-semibold text-text">会话回放</h2>
-          <p class="mt-0.5 text-xs text-text-muted">会话 #{{ replayTarget.sessionId }}</p>
-        </div>
-        <button
-          type="button"
-          data-testid="close-replay"
-          aria-label="关闭回放"
-          class="rounded-lg px-2 py-1 text-sm text-text-muted transition-colors duration-150 hover:bg-surface-2"
-          @click="closeReplay"
-        >
-          关闭
-        </button>
-      </header>
-      <div class="flex-1 overflow-y-auto px-6 py-4">
-        <!-- 加载中：spinner + 文案 -->
-        <div
-          v-if="replayLoading"
-          class="flex items-center justify-center gap-2 py-10 text-sm text-text-muted"
-        >
-          <PhSpinnerGap class="h-4 w-4 animate-spin" />
-          加载会话消息
-        </div>
-        <!-- 空消息兜底 -->
-        <div
-          v-else-if="!replayDetail || replayDetail.messages.length === 0"
-          class="py-10 text-center"
-        >
-          <p class="text-sm text-text-muted">该会话暂无消息记录</p>
-        </div>
-        <!-- 消息流：role 徽章 + seq 序号 + intentType + content 只读 -->
-        <ol v-else class="space-y-3">
-          <li
-            v-for="msg in replayDetail.messages"
-            :key="msg.id"
-            class="rounded-lg border border-border bg-surface-2 p-3"
-          >
-            <div class="flex items-center gap-2 text-xs">
-              <Badge :variant="msg.role === 'assistant' ? 'brand' : 'default'">
-                {{ msg.role }}
-              </Badge>
-              <span class="tabular-nums text-text-subtle">seq {{ msg.seq }}</span>
-              <span v-if="msg.intentType" class="text-text-subtle">{{ msg.intentType }}</span>
-            </div>
-            <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-text">
-              {{ msg.content }}
-            </p>
-          </li>
-        </ol>
-      </div>
-    </aside>
-  </div>
+  <!-- 会话回放 Drawer（公共组件：detail 拉取 + messages 只读流；仅超管入口展示） -->
+  <ConversationReplayDrawer :open="replayOpen" :session-id="replaySessionId" @close="closeReplay" />
 
   <!-- 删除反馈二次确认（危险操作不可恢复，设计 §2.6） -->
   <div

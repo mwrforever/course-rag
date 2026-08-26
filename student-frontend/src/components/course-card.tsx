@@ -29,21 +29,33 @@ const CATEGORY_FALLBACKS: ReadonlyArray<{
   {
     keywords: ["计算机", "编程", "软件", "开发"],
     icon: Code,
-    gradient: "from-sky-100 to-indigo-100",
+    gradient: "from-subject-code-start to-subject-code-end",
   },
-  { keywords: ["数学", "统计"], icon: MathOperations, gradient: "from-violet-100 to-fuchsia-100" },
+  {
+    keywords: ["数学", "统计"],
+    icon: MathOperations,
+    gradient: "from-subject-math-start to-subject-math-end",
+  },
   {
     keywords: ["英语", "外语", "语言"],
     icon: GlobeHemisphereWest,
-    gradient: "from-teal-100 to-emerald-100",
+    gradient: "from-subject-lang-start to-subject-lang-end",
   },
   {
     keywords: ["物理", "化学", "生物", "科学"],
     icon: Flask,
-    gradient: "from-amber-100 to-orange-100",
+    gradient: "from-subject-science-start to-subject-science-end",
   },
-  { keywords: ["经济", "管理", "商"], icon: Briefcase, gradient: "from-rose-100 to-pink-100" },
-  { keywords: ["艺术", "音乐", "设计"], icon: Palette, gradient: "from-orange-100 to-yellow-100" },
+  {
+    keywords: ["经济", "管理", "商"],
+    icon: Briefcase,
+    gradient: "from-subject-business-start to-subject-business-end",
+  },
+  {
+    keywords: ["艺术", "音乐", "设计"],
+    icon: Palette,
+    gradient: "from-subject-art-start to-subject-art-end",
+  },
 ];
 
 /** 默认兜底：未知/空 category（brand-light 低饱和渐变 + 书本图标，末端收 semantic 层 surface-2） */

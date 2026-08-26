@@ -105,7 +105,11 @@ async function mountDocuments() {
   })
   const router = createAppRouter()
   const wrapper = mount(DocumentsView, {
-    global: { plugins: [[VueQueryPlugin, { queryClient }], pinia, router] },
+    // teleport stub：行菜单 Teleport 到 body，stub 后菜单项仍在组件子树内可 find 断言
+    global: {
+      plugins: [[VueQueryPlugin, { queryClient }], pinia, router],
+      stubs: { teleport: true },
+    },
   })
   await router.isReady()
   await flushPromises()

@@ -129,6 +129,14 @@ function tokenColor(varName: string, fallback: string): string {
 const lineColor = tokenColor('--color-brand', '#2563EB')
 /** 面积填充色：brand-soft 蓝 100（--color-brand-soft） */
 const areaColor = tokenColor('--color-brand-soft', '#DBEAFE')
+/** 轴刻度线色（--color-chart-axis，@theme 语义令牌） */
+const axisColor = tokenColor('--color-chart-axis', '#E2E8F0')
+/** 网格分隔线色（--color-chart-grid） */
+const gridColor = tokenColor('--color-chart-grid', '#F1F5F9')
+/** 轴标签/图例文字色（--color-chart-label） */
+const labelColor = tokenColor('--color-chart-label', '#64748B')
+/** 数据点描边色（--color-chart-point-border，与卡片底同色） */
+const pointBorder = tokenColor('--color-chart-point-border', '#FFFFFF')
 
 /**
  * 单折线 option：近 7 日每日反馈数（无赞踩分列，设计 G7）
@@ -142,17 +150,16 @@ const chartOption = computed<EChartsCoreOption>(() => ({
     type: 'category',
     boundaryGap: false,
     data: trend.value.map((t) => t.date.slice(5)),
-    // 轴色取 slate 令牌（与 @theme 一致）：轴线 200 / 标签 500
-    axisLine: { lineStyle: { color: '#E2E8F0' } },
+    axisLine: { lineStyle: { color: axisColor } },
     axisTick: { show: false },
-    axisLabel: { color: '#64748B', fontSize: 12 },
+    axisLabel: { color: labelColor, fontSize: 12 },
   },
   yAxis: {
     type: 'value',
     // 反馈数为整数，最小间隔 1 防小数刻度
     minInterval: 1,
-    splitLine: { lineStyle: { color: '#F1F5F9' } },
-    axisLabel: { color: '#64748B', fontSize: 12 },
+    splitLine: { lineStyle: { color: gridColor } },
+    axisLabel: { color: labelColor, fontSize: 12 },
   },
   series: [
     {
@@ -163,7 +170,7 @@ const chartOption = computed<EChartsCoreOption>(() => ({
       symbol: 'circle',
       symbolSize: 6,
       lineStyle: { color: lineColor, width: 2 },
-      itemStyle: { color: lineColor, borderColor: '#FFFFFF', borderWidth: 1 },
+      itemStyle: { color: lineColor, borderColor: pointBorder, borderWidth: 1 },
       areaStyle: { color: areaColor, opacity: 0.5 },
     },
   ],

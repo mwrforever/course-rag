@@ -53,6 +53,12 @@
   --color-warning: #d97706;
   --color-info: #0ea5e9;
 
+  /* ---- 图表语义令牌（ECharts 不认 Tailwind 类，JS 侧经 tokenColor 读取注入 option） ---- */
+  --color-chart-axis: var(--color-slate-200); /* 轴刻度线 */
+  --color-chart-grid: var(--color-slate-100); /* 网格分隔线 */
+  --color-chart-label: var(--color-slate-500); /* 轴标签/图例文字 */
+  --color-chart-point-border: #ffffff; /* 数据点描边（与卡片底同色，浅底可见性） */
+
   /* ---- 字体族：Geist（拉丁/数字）+ Noto Sans SC（中文）+ Geist Mono（等宽：时间戳/分数/代码） ---- */
   --font-sans:
     'Geist Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system,

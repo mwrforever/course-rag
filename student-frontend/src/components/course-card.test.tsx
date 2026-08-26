@@ -41,9 +41,9 @@ describe("CourseCard 课程卡", () => {
     expect(screen.getByAltText("数据结构与算法")).toBeInTheDocument();
   });
 
-  it("无封面：category 映射低饱和渐变学科兜底", () => {
+  it("无封面：category 映射低饱和渐变学科兜底（@theme 学科渐变令牌）", () => {
     const { rerender } = render(<CourseCard course={makeCourse({ category: "计算机科学" })} />);
-    expect(screen.getByTestId("cover-fallback")).toHaveClass("from-sky-100");
+    expect(screen.getByTestId("cover-fallback")).toHaveClass("from-subject-code-start");
     // 切换为未知 category：走默认渐变（语义 token surface-2 收尾，不直写 stone 色值）
     rerender(<CourseCard course={makeCourse({ category: null })} />);
     expect(screen.getByTestId("cover-fallback")).toHaveClass("from-brand-light", "to-surface-2");

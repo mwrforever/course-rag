@@ -173,8 +173,8 @@ describe("首页四态：推荐课程", () => {
     ]);
     // 默认「全部」选中：5 门课程全部渲染（无封面课程按分类映射渐变兜底）
     const fallbacks = screen.getAllByTestId("cover-fallback");
-    expect(fallbacks.some((el) => el.classList.contains("from-sky-100"))).toBe(true);
-    expect(fallbacks.some((el) => el.classList.contains("from-violet-100"))).toBe(true);
+    expect(fallbacks.some((el) => el.classList.contains("from-subject-code-start"))).toBe(true);
+    expect(fallbacks.some((el) => el.classList.contains("from-subject-math-start"))).toBe(true);
     expect(fallbacks.some((el) => el.classList.contains("from-brand-light"))).toBe(true);
 
     // 点计算机：过滤到 2 门，Python/Web 仍在、高等数学消失（aria-pressed 反映选中态）

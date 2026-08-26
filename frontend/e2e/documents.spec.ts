@@ -102,4 +102,59 @@ test.describe('文档管理', () => {
     // 前端校验文案：知识库必选
     await expect(page.getByTestId('upload-error')).toBeVisible()
   })
+
+  test('末行 ⋮ 菜单完整可见（不被表格容器裁切）', async ({ page }) => {
+    // 三条记录：d3 为末行（末行菜单向下展开会越过表格容器下缘，回归覆盖裁切修复）
+    await page.route('**/api/v1/admin/documents*', async (r) => {
+      if (r.request().method() !== 'GET')
+        return r.fulfill({ status: 405, contentType: 'application/json', body: apiOk(null) })
+      const record = (id: string, title: string) => ({
+        id,
+        kbId: 'k1',
+        title,
+        fileType: 'pdf',
+        parseStatus: 'INDEXED',
+        chunkCount: 5,
+        fileSize: '1000',
+        errorMessage: null,
+        createdAt: '2026-08-24T10:00:00',
+        updatedAt: '2026-08-24T10:00:00',
+      })
+      await r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiOk({
+          records: [record('d1', '文档一'), record('d2', '文档二'), record('d3', '文档三')],
+          total: '3',
+          page: 1,
+          size: 20,
+        }),
+      })
+    })
+    await login(page, 'teacher')
+    await page.getByRole('link', { name: '文档' }).click()
+    await page.getByTestId('doc-menu-d3').click()
+    const menu = page.getByTestId('doc-menu')
+    await expect(menu).toBeVisible()
+    // 修复断言（裁切前失败）：菜单整体位于视口内
+    const menuBox = (await menu.boundingBox())!
+    const viewport = page.viewportSize()!
+    expect(menuBox.x).toBeGreaterThanOrEqual(0)
+    expect(menuBox.y).toBeGreaterThanOrEqual(0)
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(viewport.width)
+    expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(viewport.height)
+    // 不被裁切实证：菜单底边中心点必须落到菜单自身
+    // （底边中心避开圆角弧外的透明角；若被表格容器 overflow 裁切，
+    //   该坐标命中的是容器下方元素而非菜单）
+    const hitMenu = await page.evaluate(
+      ([x, y]) => {
+        const el = document.elementFromPoint(x, y)
+        return el?.closest('[data-testid="doc-menu"]') !== null
+      },
+      [menuBox.x + menuBox.width / 2, menuBox.y + menuBox.height - 2],
+    )
+    expect(hitMenu).toBe(true)
+    // 末行菜单全部项可达（含最底部「删除」）
+    await expect(page.getByRole('button', { name: '删除' })).toBeVisible()
+  })
 })
