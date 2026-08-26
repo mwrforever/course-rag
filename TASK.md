@@ -4,18 +4,20 @@
 
 ---
 
-## 1. 多实例部署（雪花 ID worker-id / 本地缓存一致性）— 待用户批准立项
+## 1. 多实例部署（雪花 ID worker-id / 本地缓存一致性）— ✅ 已批准立项（2026-08-25 拍板）
 
 **背景**（2026-08-16 24h 审查 BUG-8 + 性能 L-14）：application.yml 雪花 ID `worker-id: 1`、
 `datacenter-id: 1` 硬编码——多实例部署时主键跨实例冲突（写失败/数据覆盖）；
 CourseQueryService 等 Caffeine 本地缓存多实例间写失效不互通（脏读至 TTL 上界）。
 
-**当前状态**：单实例无影响，**未实现**。用户 2026-08-16 指示：后续扩展，吸纳为待办，
-**批准后才能动**。
+**当前状态**：用户 2026-08-25 拍板方案 = **worker-id/datacenter-id 改 env 配置化静态指定
+（每实例配不同值，运维保证唯一）+ 课程查询缓存（courseQueryCache）Caffeine→Redis 分布式
+（其余三处缓存接受 TTL 上界并文档声明）**；实施提交见 git 历史（2026-08-25）。
 
-**接入清单**（批准后执行）：
-- [ ] 雪花 ID worker-id/datacenter-id 从 Redis/DB 分配或配置化（多实例唯一，注释自认未实现）
-- [ ] 多实例缓存一致性评估（Redis 分布式缓存替代 Caffeine，或接受 TTL 上界）
+**接入清单**（2026-08-25 已批准，实施状态）：
+- [x] 雪花 ID worker-id/datacenter-id 配置化指定（env 注入，多实例唯一，注释自认未实现 → 已实现）
+- [x] 多实例缓存一致性评估并落地：课程查询缓存 Redis 分布式化（TTL/失效语义与 Caffeine 一致），
+      dashboard/附件/偏好三处接受 TTL 上界（评估结论落 `docs/progress/2026-08-25-TASK遗留项清理交接.md` 第 2.8 节与实施提交）
 
 ---
 
@@ -108,11 +110,14 @@ milvus-io/milvus-sdk-java#1402，仍 Open），服务端 INTERNAL 后 SDK 无限
 
 **当前状态**：**已降级不阻塞**（dense-only 检索可用），用户 2026-08-18 指示暂缓、后置处理。
 
-**恢复方案候选**（执行时选择其一，均需回归验证）：
-- [ ] 等 milvus-sdk-java 修复 EmbeddedText（关注 issue #1402，修复后 `retrieval.sparse-enabled=true` 一行还原）
+**恢复方案候选**（2026-08-25 用户拍板 = 方案一，见下）：
+- [x] **维持降级（已拍板）**：2026-08-25 核实 milvus-sdk-java#1402 仍 Open、无指派无修复版本；
+      用户裁决继续 dense-only 降级运行，**每季度复查 issue 状态**（下次复查 2026-11 前后），
+      修复发布后 `retrieval.sparse-enabled=true` 一行还原并全量回归（检索链路集成测试 + SSE 对话带来源手动验证）
 - [ ] 应用侧 BM25 向量方案：ETL 自行计算 sparse 向量（需中文分词器）+ Milvus collection 重建去掉 BM25
-      Function（sparse 字段改存向量 + IP 检索），检索用 SparseFloatVec——改动大（schema/ETL/检索三处）
-- [ ] 附件链路（计划 3/5）已定案**保持纯向量**（用户 2026-08-18 拍板），不受本项影响
+      Function（sparse 字段改存向量 + IP 检索），检索用 SparseFloatVec——改动大（schema/ETL/检索三处），
+      未获批准，候选保持
+- [x] 附件链路（计划 3/5）已定案**保持纯向量**（用户 2026-08-18 拍板），不受本项影响
 
 ---
 
@@ -121,48 +126,20 @@ milvus-io/milvus-sdk-java#1402，仍 Open），服务端 INTERNAL 后 SDK 无限
 **来源**：`docs/agmds-research/2026-08-25-{java-spring-boot|mybatis-plus-postgresql|redis-minio|milvus|spring-ai-alibaba-agent|frontend-dual|build-test-ci}.md`
 各报告的「检索不可得项」。回填后删除对应行。
 
-| 待回填项（{待调研项}） | 涉及段 | 原因 | 回填状态 |
-|---|---|---|---|
-| A-1 REST API 版本化的官方统一规范 | A.3.1 | Spring 官方无版本化策略条文，/api/v1 为团队约定 | 待回填 |
-| A-2 Java 17 preview 特性"禁生产"的官方一句话禁令 | A.1.2 | 官方仅标注 preview 语义，禁止系工程推论 | 待回填 |
-| A-3 Lombok × record 注解兼容性的官方完整矩阵 | A.1.3 | 官方 FAQ 页 404，仅 changelog 零散条目，以 1.18.42 实测为准 | 待回填 |
-| A-4 Spring Boot 官方对 MyBatis-Plus 的测试切片等价物 | A.6 | 第三方库官方无覆盖，用 @SpringBootTest + Testcontainers | 待回填 |
-| B-1 「本表 this.lambdaQuery() 链式、禁 new Wrapper」官方条文 | A.4.3 | 官方仅推荐 lambda 链式，使用边界为项目内部约束 | 待回填 |
-| B-2 「saveBatch 必须在事务内」官方条文 | A.4.6 | 官方仅写批量"事务默认关闭"，须由 Spring 事务语义推得 | 待回填 |
-| B-3 「禁手动 IdWorker」官方条文 | A.4.6 | 官方仅说明 ASSIGN_ID 自动分配 | 待回填 |
-| B-4 「查询必带分页」及 maxLimit=2000 出处 | A.4.7 | 官方仅定义 maxLimit 行为，阈值为项目配置决策 | 待回填 |
-| B-5 PG JSONB 与 MP String 绑定兼容性官方依据 | A.4.10 | 官方无 ORM 绑定说明，系项目历史实证 | 待回填 |
-| B-6 Flyway 在 PG 上非事务性 DDL 完整行为矩阵 | A.4.2 | 官方仅覆盖事务锁与 CREATE INDEX CONCURRENTLY | 待回填 |
-| B-7 Redis 缓存穿透/雪崩官方专页 | A.5 | 官方文档站无专页，散见博客 | 待回填 |
-| B-8 Lettuce commandTimeout 官方推荐值 | A.5 | SDR 文档未展开超时参数，待补查 | 待回填 |
-| B-9 MinIO 环境变量配置官方页（MINIO_ROOT_USER 等） | A.2.3 | AIStor 参考页本轮未核验 | 待回填 |
-| B-10 MinIO/S3 对象 key 命名限制官方专页 | A.5.7 | 本轮未抓取 AWS object-keys 页 | 待回填 |
-| B-11 Redis Streams 消费者组子页完整正文 | A.5.3 | 主文档抓取截断，命令页可逐个补查 | 待回填 |
-| B-12 Milvus 2.6 upsert 官方行为确认页 | D.5.9 | v2.6.x 文档无独立页，仅 v2.3 遗留页 | 待回填 |
-| B-13 Milvus v2.6.x partition key / add-fields 规范页 | D.5.7 | v2.6.x 版本页 404，仅当前版（v3.0） | 待回填 |
-| B-14 Milvus ConnectConfig 参数默认值（SDK 2.6.11 精确值） | D.5.10 | 官方两参考页默认值矛盾，以 SDK 源码为准 | 待回填 |
-| B-15 Milvus RRF k 值面向 RAG 的官方调参数据 | D.5.3 | 官方仅给区间 [10,100]，需项目评测集实测 | 待回填 |
-| B-16 Milvus SDK 端 Session 一致性写后立查时序细节 | D.5.8 | 官方未详述 batch 写入后立即 search 时序，需集成测试 | 待回填 |
-| C-1 同 thread_id 并发执行/防重复执行官方语义 | B.3.9 | SAA/LangGraph4j 官方无覆盖（Python 侧有 INVALID_CONCURRENT_GRAPH_UPDATE），项目侧自研 | 待回填 |
-| C-2 DashScope HTTP 超时（connect/read timeout）配置 | B.4 | 官方集成页仅重试参数，需实测或读 starter 源码 | 待回填 |
-| C-3 rerank 模型的 Java 官方集成用法 | B.4 | Java 侧官方文档缺失，按百炼原始 API 为准 | 待回填 |
-| C-4 SSE 事件协议（帧格式/心跳/重连）官方推荐 | B.3.7 | 官方仅保证 Flux 流式，封装属应用层自定义 | 待回填 |
-| C-5 langgraph4j 官方文档站点完整性 | B.3 | 原站点 404，以 langgraph4j.github.io/main/ 与仓库 mkdocs 为准 | 待回填 |
-| C-6 "checkpoint 状态不可变"官方字面陈述 | B.3.3 | 为源码 + 上游文档实证的设计事实 | 待回填 |
-| D-1 TanStack Query 官方 SSE 消费集成指南 | C.1.9 | v5 官方文档无 SSE 集成页，社区实现非官方 | 待回填 |
-| D-2 Next.js 官方独立 linting 引导页 | C.2.1 | 16.x 文档站对应页 404；项目 15.5 用 next lint | 待回填 |
-| D-3 Playwright 官方"单测/E2E 职责边界"权威划分 | C.2.2 | 官方仅原则性表述，边界属工程决策 | 待回填 |
-| D-4 Vercel 独立数据获取最佳实践页 | C.1 | 未定位可独立引用页面，Next.js 官方指南已覆盖 | 待回填 |
-| E-1 Maven 命令行侧注解处理器陈旧生成物的官方直述 | A.6 | 官方仅覆盖 IDE 增量场景，clean 纪律为工程化兜底 | 待回填 |
-| E-2 SpotBugs check 失败语义的官方成文描述 | A.6 | 官方 mojo 页 Description 为空，从参数推断 | 待回填 |
-| E-3 Testcontainers 跨 CI job 共享容器的官方规范 | A.6 | reuse 仅 Experimental，无正式最佳实践 | 待回填 |
-| E-4 GitHub Actions 步骤级自动重试 | D.7 | 官方无内置 retry 语义，重跑为人工操作 | 待回填 |
-| E-5 Testcontainers Milvus 模块版本线与 core 的耦合矩阵 | A.6 | 模块独立版本线，兼容矩阵官方未说明 | 待回填 |
-| E-6 记忆/偏好提取异步化参数细则（防抖/超时/失败丢弃） | B.5.5 | 官方无条文，系项目实证（详见 `docs/superpowers/specs/` 记忆设计） | 待回填 |
+| 待回填项（{待调研项}） | 涉及段 | 回填状态（2026-08-25 二轮双源取证） |
+|---|---|---|
+| A-3 Lombok × record 注解兼容性的官方完整矩阵 | A.1.3 | 不可得保留：官方无兼容矩阵文档；FAQ 页 404 已实锤，权威说明 = @NonNull features 页（record 组件支持原文）+ changelog 零散条目（1.18.20/24/28/30/32 record 适配）；以 1.18.42 为准，逐注解兼容仍须编译实测 |
+| B-6 Flyway 在 PG 上非事务性 DDL 完整行为矩阵 | A.4.2 | 不可得保留：官方 PG 页仅覆盖默认事务锁 / CREATE INDEX CONCURRENTLY 冲突 / 事务锁切会话级锁 / clean 不删扩展对象 / pg_dump 兼容；无 ALTER TYPE/VACUUM 等完整非事务 DDL 清单，仅可查 Release Notes |
+| B-7 Redis 缓存穿透/雪崩官方专页 | A.5 | 不可得保留：官方文档站无专页；仅官方博客 thundering herd 主题（非文档级），缓存穿透等术语散见社区实践 |
+| B-16 Milvus SDK 端 Session 一致性写后立查时序细节 | D.5.8 | 不可得保留：官方 v2.6 一致性权威页实锤四种级别定义与 GuaranteeTs 机制（Session=客户端插入最新时间点作 GuaranteeTs），但无 SDK 层 batch 写入后立即 search 时序细节，确认需集成测试实证 |
+| E-1 Maven 命令行侧注解处理器陈旧生成物的官方直述 | A.6 | 不可得保留：无"命令行必须 clean"字面直述；补到机制级官方依据 maven-compiler-plugin `useIncrementalCompilation`（3.1.0+ 默认 true，false 模式导致引用失效方法的类不重编译），clean 纪律为工程化兜底 |
+| E-2 SpotBugs check 失败语义的官方成文描述 | A.6 | 不可得保留：官方 check-mojo 页 Description 为空，失败语义只能从参数默认值推断（failOnError=true、maxAllowedViolations=0） |
+| E-5 Testcontainers Milvus 模块版本线与 core 的耦合矩阵 | A.6 | 不可得保留：模块页确认独立版本线（org.testcontainers:testcontainers-milvus:2.0.5，与 core 1.21.x 分离），兼容矩阵官方未说明 |
 
-**B 组待决策项**（延续既有待办，引用不重复正文）：
-- 多实例部署批准确认 → TASK.md §1
-- Milvus sparse 检索恢复方案三选一 → TASK.md §4
+**二轮回填纪要（2026-08-25）**：A/B/C/D/E 五组 36 条全量双源取证（官方文档 + GitHub/源码版本文档）。**29 条定论删行**，已按实锤修订宪法 5 处（A.3.1 / A.4.10 / A.6 / B.4 / D.5.9），修订记录见 CHANGELOG。三处重要修正：
+- Milvus v2.6.x 版本文档实存于 milvus-docs 仓库 `v2.6.x` 分支（upsert/partition-key/add-fields 页均在线，原"仅 v3.0"系查 v2.3 下划线命名所致）；
+- MP 官方存在 `@MybatisPlusTest` 切片与 JSONB TypeHandler 专页（原登记"第三方官方无覆盖"不成立）；
+- SAA 1.1.2 Java 侧 rerank 官方集成存在（DashScopeRerankModel + `spring.ai.dashscope.rerank.*`），默认 gte-rerank 随百炼 2026-05-30 下线，项目已显式配 qwen3-rerank；`spring.ai.dashscope.read-timeout` 属性已绑定但不生效（超时实为 SDK 硬编码 60s/180s）。
 
 ---
 
@@ -177,10 +154,10 @@ milvus-io/milvus-sdk-java#1402，仍 Open），服务端 INTERNAL 后 SDK 无限
 - B 端（PR#8）：深色侧栏（ink 板 + 图标分组展开 + 激活光条 + 折叠持久化）+ 面包屑 + 路由过渡；职责拆分（/students 学生管理两角色 + /teachers 教师管理仅超管，/users 重定向；课程详情五子路由 概览/内容/排期/教师/学生；/404 页；知识库管理入侧栏）
 - 门禁：C 端 358 单测 + 29 E2E；B 端 278 单测 + 23 E2E；覆盖率核心文件 100% 行铁律保持；lint/typecheck/format 全绿
 
-**遗留（后续打磨候选，未列入本次）**：B 端 Feedback/Sessions 会话回放 Drawer 抽公共组件、DocumentsView 行菜单 overflow 裁切、Dashboard ECharts 色值令牌化、C 端意图体系相关 UI 微调、C 端学科兜底渐变是否令牌化（现保留 Tailwind 调色板工具类）。
+**遗留（后续打磨候选）**：~~B 端 Feedback/Sessions 会话回放 Drawer 抽公共组件、DocumentsView 行菜单 overflow 裁切、Dashboard ECharts 色值令牌化、C 端学科兜底渐变令牌化~~（**2026-08-25 全部完成**，见 git 历史）、C 端意图体系相关 UI 微调（无具体项，等用户提出）。
 
 **评审修复轮（2026-08-25，superpowers 双评审 With fixes → 合入前修复）**：
 - C 端 PR#7 修复：scrollbar-none 死类补 @utility；工作区 sessionId 落位即失效侧栏会话缓存；Ctrl+K 流式守卫（新增 ChatStreamingProvider，(chat) 布局回归服务端组件）；HERO rgba 字面量/徽章/CTA 遮罩改 overlay 与 brand-light 语义令牌 + 孤儿令牌清零；筛选 chips tab 角色 → aria-pressed 按钮组；注释漂移修正；+1 侧栏 E2E（共 30）
 - B 端 PR#8 修复：路由过渡 :key 从 RouterView 归位至页面 vnode（新增 resolvePageKey 纯函数：同实体子路由切换壳存活不重取数，跨实体导航重挂载重取数免 watch）；页面淡入过渡移除——`<Transition>` 包裹 RouterView 插槽在 vue@3.5.41 + vue-router 组合下导航后新视图永不挂载（真实浏览器实证，与 key 取值/是否 out-in 无关；旧实现把 key 挂 RouterView 实为绕开缺陷的变通、过渡从未真正播放），待依赖升级后重评；仪表盘「添加学生」入口直指 /students（不再依赖重定向兜底）；TeachersView 列表变量名 students→teachers
-- **待拍板（登记）**：B 端远程状态技术栈统一——新拆分 StudentsView/TeachersView 沿用手动 load() 模式（与存量多数视图一致），宪法 C.1.4 方向为 vue-query 化（仓内 Chunks/Documents 已用）；存量视图整体迁移范围与排期需用户批准后另立任务，不在重构 PR 内扩大范围
+- **拍板落地（2026-08-25）**：B 端远程状态 vue-query 化——用户批准**分两批迁移**：批 1 = 17 个手动 load() 视图（合计 6,879 行，模板统一机械迁移，估 1-2 PR）；批 2 = Chunks/Documents 两混合视图补强（2,197 行，上传/删除改 useMutation + 竞态守卫收敛）；迁移保持接口契约与交互不变、mutation 后按 queryKey 失效、测试同步改造且门禁全绿；**批 1 实施见 git 历史（2026-08-25 起）**；B 端路由淡入过渡重评：前置 = Vue/vue-router 依赖升级（vue@3.5.41 Transition 包 RouterView 插槽缺陷实证），升级后以 Playwright 真浏览器验证恢复点（AdminLayout.vue 注释标明）
 - 附带发现：TASK.md 本节路径曾含 BEL 控制字符（0x07，前会话转义事故），本轮修复

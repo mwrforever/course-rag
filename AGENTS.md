@@ -37,7 +37,7 @@
 
 ## A.3 API 设计
 
-1. 版本化前缀 `/api/v1`（团队约定，官方无统一条文，见 TASK.md §5 登记）。
+1. 版本化前缀 `/api/v1`（团队约定；FW 6.2 基线官方无版本化条文，FW 7.0 起官方提供 API Versioning 通用构建块（ApiVersionStrategy，Header/Query/MediaType/URL Path 四位置），升级评估时再议）。
 2. 请求/响应一律契约对象：controller 入参走 DTO、出参走 VO；Entity 禁止出 service 边界（见 D.4）。
 3. 入参校验走 Bean Validation（DTO 字段约束 + `@Valid`），禁止手写 if 校验散落 controller。
 4. 统一错误处理：业务错误一律抛 `BizException(ErrorCode, 消息)`，ErrorCode 与 HTTP 状态码同值（保持 ApiResponse.code = HTTP 状态码契约）；`GlobalExceptionHandler` 统一处理，禁止 controller 局部 `@ExceptionHandler`；控制流异常独立定义放 `exception/`。
@@ -55,7 +55,7 @@
 7. 查询必带分页（PaginationInnerInterceptor maxLimit=2000）；分页/取前 N 必须带 ORDER BY 约束唯一顺序；大 OFFSET 深翻页改 Keyset（游标）方案。
 8. 逻辑删除统一 `@TableLogic` + 全局配置（logic-delete-value=1 / logic-not-delete-value=0）；并发敏感实体用 `@Version` 乐观锁 + OptimisticLockerInnerInterceptor。
 9. 注册 BlockAttackInnerInterceptor，拦截无 WHERE 条件的全表 UPDATE/DELETE（命中抛异常拒绝执行）。
-10. JSON 数据列：仅原文存取/透传展示用 TEXT 列（项目历史实证：PG JSONB 与 MP String 绑定不兼容）；出现结构化 JSON 检索需求才评估 jsonb + GIN 专用列（须先验证类型处理器兼容）。
+10. JSON 数据列：仅原文存取/透传展示用 TEXT 列（项目历史实证：PG JSONB 与 MP String 绑定不兼容）；出现结构化 JSON 检索需求才评估 jsonb + GIN 专用列（官方提供 JSONB TypeHandler 方案——type-handler 文档 + mybatis-plus-sample-jsonb 示例工程，评估时优先参考，须先验证类型处理器兼容）。
 11. 索引克制且可验证：新索引走 Flyway 迁移，用 EXPLAIN ANALYZE 校验执行计划，pg_stat_user_indexes 核对使用率。
 12. 事务边界：`@Transactional` 放在 service 实现层方法级最小边界，禁止 controller 开事务、禁止业务手动 commit/rollback；批量写连接开启 `reWriteBatchedInserts`（pgJDBC 参数名，注意并非 MySQL 的 rewriteBatchedStatements）。
 
@@ -65,6 +65,10 @@
 2. Spring Data Redis 的 RedisConnection 非线程安全，业务线程一律经线程安全的 RedisTemplate，禁止跨线程共享连接；阻塞命令（XREAD BLOCK 等）独占一条连接。
 3. 任务队列（Redis Stream 消费组）：**读-执行分离**——阻塞读线程只取消息不执行业务，业务经独立线程池执行；读到即 ACK，业务失败不依赖 PEL 重投，走独立补偿（PG 状态巡检）；禁止 long-polling 无限期占住消费线程。
 4. 缓存必须显式 TTL，禁止永久缓存；**一致性铁律：先写 DB（事务内）→ 后失效缓存**，禁止先改缓存后写库；读取不续期。
+   **缓存实现分层（2026-08-25 用户架构定稿）**：
+   - 简单场景（非热 key、TTL 按模块配置、失效可表达为单键/全量）：走 Spring Cache 注解（`@Cacheable` / `@CacheEvict`）+ `RedisCacheManager`，缓存区 TTL 经 `cache.ttl.*` 配置化注册（cacheConfigurations），禁止把 TTL 硬编码散落注解方法；
+   - 复杂场景（热 key 保护 / 键前缀批量失效 / Lua 原子操作）：领域缓存类放 `cache/` 目录、命名 `{业务领域}CacheService`（如 CourseQueryCacheService），内部 RedisTemplate 实现，业务层注入该类（B.1）；
+   - **Caffeine 仅限本地缓存**（进程内 / 会话级用途），禁止「Caffeine 缓存套 Redis 适配盒」的混合形态。
 5. 键命名统一「业务:实体:id」三段式（业务前缀 + 主键）；生产代码禁止 KEYS/SMEMBERS 全量遍历，一律 SCAN 游标迭代。
 6. 原子操作（设备互踢 / 黑名单 / RT 旋转等）用 Lua 脚本，禁止应用层读-改-写竞态；脚本只经 KEYS[]/ARGV[] 取参、保持短小（原子执行阻塞全部客户端）、DefaultRedisScript 单例复用（EVALSHA）。
 7. MinIO 对象 key 一律「业务前缀 + uuid 预生成」，先占资源再落库；上传失败/未落库的孤儿对象需应用层补偿清理（MinIO 不支持 AbortIncompleteMultipartUpload 生命周期动作，删除非即时，不得依赖生命周期做即时语义）。
@@ -78,6 +82,7 @@
 
 项目落地补充：
 - 集成测试用 Testcontainers（PG + Redis 单例容器模式），容器生命周期须与 Spring TestContext 缓存对齐（容器 Bean 化 / @ServiceConnection）；**单元测试不得依赖外部容器**。
+- 纯 mapper 层切片可走官方 `@MybatisPlusTest`（baomidou `mybatis-plus-spring-boot3-starter-test`，嵌入式 DB 不依赖容器）；跨层集成仍 `@SpringBootTest` + Testcontainers。
 - JaCoCo 覆盖率门禁绑定 `mvn verify`（BUNDLE 全局 + CLASS 单类双规则），豁免清单见 `backend/pom.xml`。
 - 修改 MapStruct 转换接口或相关 DTO 后必须 `clean` 再编译（增量编译不重新生成实现类，不改干净会跑旧实现）。
 
@@ -96,6 +101,7 @@
 | `exception/` | BizException / ErrorCode / 控制流异常 |
 | `record/` | 杂项对象（不隶属任何层/模块） |
 | `properties/` `constants/` | 属性绑定类 / 业务常量（A.2.1） |
+| `cache/` | 领域缓存：复杂场景（热 key / 键前缀批量失效 / Lua 原子操作）的业务缓存实现（`{业务领域}CacheService`，RedisTemplate 实现）；简单场景禁用——走 Spring Cache 注解 + RedisCacheManager（A.5.4） |
 | `config/` | @Configuration / @Bean 注册，全部集中（A.2.1） |
 | `mapper/` `entity/` | 数据层：MP 数据访问 / 表映射对象，均不出数据层 |
 | `bot/` | Agent 图编排：graph（图/节点）/ tool（@Tool 工具）/ rewrite / prompt / hook |
@@ -143,6 +149,8 @@ worker -> service                       （禁止直接操作 mapper/DB）
 4. 重试与限流分层：DashScope 重试参数（默认 max-attempts=10 指数退避）改为配置项，避免长链路叠加放大延迟；429 限流走平滑退避/备选模型切换，禁止无限重试（on-client-errors 语义下 4xx 不重试）。
 5. 限流预算：限流按主账号汇总、充值不改变阈值；高频调用（意图理解/embedding）选高额度模型，重活（批量 caption）走 Batch API 或低峰窗口。
 6. 上下文管理预算化：对话历史窗口受控（保留最近 N 条 + 系统消息），所有阈值配置化归 `properties/`；摘要压缩待长会话场景论证后引入。
+7. 超时实证（1.1.2.x 源码）：`spring.ai.dashscope.read-timeout` 属性已绑定但不生效（无消费方）；实际超时为 SDK 硬编码（阻塞栈 connect 60s/read 180s、响应式栈 responseTimeout 60s）；需调整时自定义 `RestClient.Builder`/`WebClient.Builder` Bean 覆盖（autoconfigure 经 ObjectProvider 注入）。
+8. rerank 集成实证（1.1.2.x 源码）：Java 侧官方集成存在（`DashScopeRerankModel` + `spring.ai.dashscope.rerank.*` 自动装配）；默认模型 gte-rerank 随百炼下线（2026-05-30），**项目必须显式配置 rerank 模型**（当前 application.yml 已配 qwen3-rerank，禁止回退默认）。
 
 ## B.5 横切关注点
 
@@ -263,7 +271,7 @@ commerce-customer/
 6. 元数据过滤在 ANN 前执行收窄检索范围，过滤表达式保持简单；项目的 course_id 是相关性收窄而非权限（权限语义见 `docs/contracts/`）。
 7. 多租户隔离：user_id 硬隔离独立 collection（物理隔离）；租户规模上百万或 collection 数逼近上限再评估 partition key（启用后搜索/删除必须带 partition key 过滤，隔离特性仅支持 HNSW）。
 8. 一致性级别按场景选：常规对话检索默认 Bounded；写后立查（记忆写入后立即召回）用 Session/Strong。
-9. 写入：在线批量分批 insert；全量重建走 bulk import；upsert 本质 delete+insert（性能折损、主键不可更新、autoID 不可用），按需使用不滥用。
+9. 写入：在线批量分批 insert；全量重建走 bulk import；upsert 本质 delete+insert（性能折损、主键不可更新、autoID 不可用，v2.6.2+ 另有 partial_update merge 模式：内部 strong 一致性查询→改字段→插入→删除旧实体），按需使用不滥用。
 10. SDK 连接单例（Spring Bean + destroyMethod close）；显式配置 rpcDeadlineMs（默认 0 = 无截止，防挂死）；读路径可依赖默认重试，**写路径收紧重试上限与总时限**（默认 75 次无总时限）；SDK 2.6.x 与服务端 2.6.x 版本匹配（升级前对照兼容表）。
 11. sparse/BM25 检索当前降级（milvus-sdk-java EmbeddedText 兼容 bug，dense-only 可用），恢复候选方案见 TASK.md §4。
 
