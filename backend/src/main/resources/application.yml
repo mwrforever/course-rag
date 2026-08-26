@@ -94,9 +94,10 @@ mybatis-plus:
       logic-delete-field: deleted
       logic-not-delete-value: "0"
       logic-delete-value: "1"
-    # 雪花算法 worker-id（多实例需唯一，生产环境从 Redis/DB 获取）
-    worker-id: 1
-    datacenter-id: 1
+    # 雪花算法 worker-id/datacenter-id（2026-08-25 §1 拍板：env 配置化静态指定，
+    # 多实例部署时每实例注入不同值保证跨实例主键唯一，运维侧负责配分）
+    worker-id: ${RAG_SNOWFLAKE_WORKER_ID:1}
+    datacenter-id: ${RAG_SNOWFLAKE_DATACENTER_ID:1}
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
@@ -215,6 +216,14 @@ stream:
   heartbeat-interval: 15
   # 内存 ring buffer 大小
   ring-buffer-size: 256
+
+# ── 缓存 TTL 配置（宪法 A.5.4：Spring Cache 缓存区与领域缓存 TTL 同源配置化）──
+cache:
+  ttl:
+    # 课程查询领域缓存（CourseQueryCacheService，perf P2-2 决策窗口：写方失效钩子与此联动）
+    course-query: 5m
+    # dashboard 统计三缓存区（@Cacheable 注解化，perf P2-3 决策窗口 60 秒兜底）
+    dashboard-stats: 60s
 
 # ── Agent 配置（F#1 + F#3）──
 rag:

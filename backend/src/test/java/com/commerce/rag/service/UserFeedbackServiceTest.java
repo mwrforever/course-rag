@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.incrementer.IdentifierGenerator;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.UserFeedbackConverter;
 import com.commerce.rag.convert.UserFeedbackConverterImpl;
 import com.commerce.rag.entity.UserFeedback;
@@ -15,7 +16,6 @@ import com.commerce.rag.mapper.UserFeedbackMapper;
 import com.commerce.rag.service.impl.UserFeedbackServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.UserFeedbackVO;
-import com.github.benmanes.caffeine.cache.Cache;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,7 +57,7 @@ class UserFeedbackServiceTest {
 
     /** Dashboard 统计缓存（mock 即可，create/delete 的 invalidateAll 失效钩子验证用） */
     @Mock
-    private Cache<String, Object> dashboardStatsCache;
+    private DashboardCacheEvictor dashboardCacheEvictor;
 
     /** findPage 入参分页对象捕获器（验证 size 回退默认页大小） */
     @Captor
@@ -155,9 +155,9 @@ class UserFeedbackServiceTest {
 
         feedbackService.create(200L, 1L, 100L, true, "TECHNICAL_QA");
 
-        InOrder inOrder = inOrder(feedbackMapper, dashboardStatsCache);
+        InOrder inOrder = inOrder(feedbackMapper, dashboardCacheEvictor);
         inOrder.verify(feedbackMapper).upsertFeedback(any());
-        inOrder.verify(dashboardStatsCache).invalidateAll();
+        inOrder.verify(dashboardCacheEvictor).evictAll();
     }
 
     @Test

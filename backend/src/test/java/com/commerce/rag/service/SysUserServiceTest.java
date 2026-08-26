@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.DeviceKickService;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.SysUserConverter;
 import com.commerce.rag.convert.SysUserConverterImpl;
 import com.commerce.rag.dto.CreateUserRequest;
@@ -19,7 +20,6 @@ import com.commerce.rag.mapper.SysUserMapper;
 import com.commerce.rag.record.AuthUserView;
 import com.commerce.rag.service.impl.SysUserServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
-import com.github.benmanes.caffeine.cache.Cache;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -58,7 +58,7 @@ class SysUserServiceTest {
 
     /** Dashboard 统计缓存（Mock——用户增删路径的失效钩子仅需不抛异常） */
     @Mock
-    private Cache<String, Object> dashboardStatsCache;
+    private DashboardCacheEvictor dashboardCacheEvictor;
 
     /** 真实转换器实现（MapStruct 生成），保证 toDTO 走真实字段映射而非 mock */
     @Spy

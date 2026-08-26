@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.CourseConverterImpl;
 import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.CreateCourseRequest;
@@ -23,7 +24,6 @@ import com.commerce.rag.mapper.CourseTeacherMapper;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.service.impl.CourseServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
-import com.github.benmanes.caffeine.cache.Cache;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.util.List;
@@ -81,7 +81,7 @@ class CourseServiceTest {
 
     /** Dashboard 统计缓存（Mock——级联软删路径的失效钩子仅需不抛异常） */
     @Mock
-    private Cache<String, Object> dashboardStatsCache;
+    private DashboardCacheEvictor dashboardCacheEvictor;
 
     /** saveBatch 批插参数捕获器（P1-9：批插内容等价断言） */
     @Captor
@@ -109,7 +109,7 @@ class CourseServiceTest {
                 etlPipeline,
                 new CourseConverterImpl(),
                 courseQueryService,
-                dashboardStatsCache);
+                dashboardCacheEvictor);
     }
 
     @Test

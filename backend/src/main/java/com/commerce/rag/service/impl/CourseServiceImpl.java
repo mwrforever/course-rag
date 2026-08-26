@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.CourseConverter;
 import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.CreateCourseRequest;
@@ -29,7 +30,6 @@ import com.commerce.rag.service.ICourseQueryService;
 import com.commerce.rag.service.ICourseService;
 import com.commerce.rag.service.ICourseTeacherService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.benmanes.caffeine.cache.Cache;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -38,7 +38,6 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -88,9 +87,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
     /** 课程查询服务（写后失效查询缓存，一致性铁律：先写 DB 后失效） */
     private final ICourseQueryService courseQueryService;
 
-    /** Dashboard 统计缓存（TTL 60 秒；课程级联软删影响 pendingChunkCount，DB 写入后失效——M-2 新增项） */
-    @Qualifier("dashboardStatsCache")
-    private final Cache<String, Object> dashboardStatsCache;
+    /** Dashboard 统计缓存失效（Spring Cache 注解化的写方统一出口，先写 DB 后失效——一致性铁律） */
+    private final DashboardCacheEvictor dashboardCacheEvictor;
 
     // ==================== 课程基本信息 CRUD ====================
 
@@ -302,7 +300,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
         // 级联软删后课程详情/内容/排期均不可见，失效该课程相关缓存键（先写 DB 后失效）
         courseQueryService.evictCourse(courseId);
         // 统计失效：课程专属 PENDING 分片已软删，影响 pendingChunkCount（先写 DB 后失效——M-2 新增项）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
         log.info("级联软删课程: courseId={}, operator={}", courseId, currentUserId);
     }
 

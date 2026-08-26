@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.DocumentChunkConverter;
 import com.commerce.rag.convert.DocumentChunkConverterImpl;
 import com.commerce.rag.convert.StudentConverter;
@@ -25,7 +26,6 @@ import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
 import com.commerce.rag.vo.DocumentChunkVO;
-import com.github.benmanes.caffeine.cache.Cache;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -69,7 +69,7 @@ class DocumentChunkServiceTest {
 
     /** Dashboard 统计缓存（Mock——删除/修正路径的失效钩子仅需不抛异常） */
     @Mock
-    private Cache<String, Object> dashboardStatsCache;
+    private DashboardCacheEvictor dashboardCacheEvictor;
 
     /** 转换器用真实实现（MapStruct 生成类），转换行为由 DocumentChunkConverterTest 单独覆盖 */
     @Spy

@@ -2,6 +2,7 @@ package com.commerce.rag.etl;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.config.MilvusCollectionInitializer;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
@@ -12,7 +13,6 @@ import com.commerce.rag.record.ChunkLinkPair;
 import com.commerce.rag.record.ChunkVectorUpdate;
 import com.commerce.rag.record.ContentHash;
 import com.commerce.rag.storage.MinioStorageService;
-import com.github.benmanes.caffeine.cache.Cache;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -108,9 +108,8 @@ public class EtlPipeline {
     @Qualifier("etlImagePool")
     private final ThreadPoolExecutor etlImagePool;
 
-    /** Dashboard 统计缓存（TTL 60 秒；ETL 状态写入后失效，覆盖分片数/终态变更，先写 DB 后失效——一致性铁律） */
-    @Qualifier("dashboardStatsCache")
-    private final Cache<String, Object> dashboardStatsCache;
+    /** Dashboard 统计缓存失效（Spring Cache 注解化的写方统一出口，先写 DB 后失效——一致性铁律） */
+    private final DashboardCacheEvictor dashboardCacheEvictor;
 
     /** XHTML 结构解析器（纯函数，Tika 解析 → 结构化分区） */
     private final XhtmlDocumentParser xhtmlDocumentParser;
@@ -1015,7 +1014,7 @@ public class EtlPipeline {
         }
         documentMapper.update(null, wrapper);
         if (STATS_AFFECTING_STATUSES.contains(status)) {
-            dashboardStatsCache.invalidateAll();
+            dashboardCacheEvictor.evictAll();
         }
     }
 

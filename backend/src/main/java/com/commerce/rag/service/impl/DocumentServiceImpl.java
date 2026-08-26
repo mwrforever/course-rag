@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.DocumentConverter;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
@@ -19,7 +20,6 @@ import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.service.IDocumentService;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.vo.DocumentVO;
-import com.github.benmanes.caffeine.cache.Cache;
 import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -65,9 +65,8 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
     /** 文档转换器 —— Entity 出 service 边界前转 VO（sourcePath 不泄露） */
     private final DocumentConverter documentConverter;
 
-    /** Dashboard 统计缓存（TTL 60 秒；文档增删改/重解析后失效，先写 DB 后失效——一致性铁律） */
-    @Qualifier("dashboardStatsCache")
-    private final Cache<String, Object> dashboardStatsCache;
+    /** Dashboard 统计缓存失效（Spring Cache 注解化的写方统一出口，先写 DB 后失效——一致性铁律） */
+    private final DashboardCacheEvictor dashboardCacheEvictor;
 
     /**
      * 上传文档
@@ -131,7 +130,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
         }
 
         // 统计失效：文档数已变更（先写 DB 后失效，一致性铁律；ETL 终态由 EtlPipeline 失效）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
 
         log.info("文档已上传: docId={}, kbId={}, title={}, fileType={}", doc.getId(), kbId, title, fileType);
 
@@ -257,7 +256,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                 .set(Document::getUpdatedAt, LocalDateTime.now());
         documentMapper.update(null, wrapper);
         // 统计失效：文档已变更（先写 DB 后失效，一致性铁律）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
         log.info("更新文档: docId={}, title={}", id, title);
     }
 
@@ -309,7 +308,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
         documentMapper.update(null, docWrapper);
 
         // 统计失效：文档/分片数已变更（先写 DB 后失效，一致性铁律）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
 
         log.info("删除文档（级联）: docId={}, operatorId={}", id, operatorId);
     }
@@ -369,7 +368,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
         submitEtlOrFail(id);
 
         // 统计失效：文档状态已重置为 PENDING（先写 DB 后失效，一致性铁律；ETL 终态由 EtlPipeline 失效）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
 
         log.info("重新解析文档: docId={}, operatorId={}", id, operatorId);
     }
@@ -393,7 +392,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                             .set(Document::getErrorMessage, "ETL 队列已满，请稍后重试")
                             .set(Document::getUpdatedAt, LocalDateTime.now()));
             // 状态已变更（先写 DB 后失效，一致性铁律）
-            dashboardStatsCache.invalidateAll();
+            dashboardCacheEvictor.evictAll();
             throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "文档解析队列繁忙，请稍后重试");
         }
     }

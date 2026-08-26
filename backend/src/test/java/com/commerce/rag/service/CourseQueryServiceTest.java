@@ -2,7 +2,10 @@ package com.commerce.rag.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -10,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.cache.CourseQueryCacheService;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;
@@ -18,10 +22,10 @@ import com.commerce.rag.mapper.CourseInfoMapper;
 import com.commerce.rag.mapper.CourseScheduleMapper;
 import com.commerce.rag.service.impl.CourseQueryServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,15 +35,22 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** ICourseQueryService 测试 —— 缓存行为 + DB 查询路径（mapper 注入后可直接单测） */
+/**
+ * ICourseQueryService 测试 —— 缓存调用路径 + DB 查询（缓存内部语义由 CourseQueryCacheServiceTest 覆盖）
+ *
+ * <p>缓存 mock 以内存 store 模拟 get(key, loader) 语义（computeIfAbsent：命中不执行 loader、
+ * loader 返回 null 不入缓存），聚焦 service 与领域缓存类的交互契约；
+ * evictCourse 行为验证委托给领域缓存类自身测试（P1-2 前缀清理语义在其单测覆盖）。
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ICourseQueryService 缓存与查询测试")
 class CourseQueryServiceTest {
 
-    private final Cache<String, Object> courseQueryCache = Caffeine.newBuilder()
-            .maximumSize(512)
-            .expireAfterWrite(Duration.ofMinutes(5))
-            .build();
+    /** 缓存内存替身 store（mock 支撑：命中不执行 loader、null 不缓存） */
+    private final Map<String, Object> store = new HashMap<>();
+
+    @Mock
+    private CourseQueryCacheService courseQueryCache;
 
     @Mock
     private CourseInfoMapper courseInfoMapper;
@@ -60,8 +71,32 @@ class CourseQueryServiceTest {
 
     @BeforeEach
     void setUp() {
+        // get(key, loader)：命中返回 store 值；未命中执行 loader 写入（null 不缓存，与领域缓存语义一致）；
+        // lenient：evictCourse 专用用例不触达 get stub（通用契约，各用例选择性使用）
+        lenient().when(courseQueryCache.get(any(), any())).thenAnswer(inv -> {
+            String key = inv.getArgument(0);
+            Function<String, Object> loader = inv.getArgument(1);
+            if (store.containsKey(key)) {
+                return store.get(key);
+            }
+            Object value = loader.apply(key);
+            if (value != null) {
+                store.put(key, value);
+            }
+            return value;
+        });
         service = new CourseQueryServiceImpl(
                 courseQueryCache, courseInfoMapper, courseContentMapper, courseScheduleMapper);
+    }
+
+    /** evictCourse 语义 stub：清空 store（真实实现为 Redis 单键 + 前缀 SCAN，行为由领域缓存单测覆盖） */
+    private void stubEvictClearsStore() {
+        doAnswer(inv -> {
+                    store.clear();
+                    return null;
+                })
+                .when(courseQueryCache)
+                .evictCourse(anyLong());
     }
 
     @Test
@@ -70,9 +105,10 @@ class CourseQueryServiceTest {
         CourseInfo info = new CourseInfo();
         info.setId(1L);
         info.setTitle("缓存课程");
-        courseQueryCache.put("course:1", info);
+        store.put("course:1", info);
 
         CourseInfo result = service.findCourseById("1");
+
         assertThat(result).isSameAs(info);
         verify(courseInfoMapper, never()).selectById(any());
     }
@@ -177,60 +213,32 @@ class CourseQueryServiceTest {
     }
 
     @Test
-    @DisplayName("evictCourse 精确失效详情键并清理 search 列表键")
-    void evictCourse_removesDetailAndSearchKeys() {
-        courseQueryCache.put("course:1", new CourseInfo());
-        courseQueryCache.put("contents:1", List.of());
-        courseQueryCache.put("schedule:1", new CourseSchedule());
-        courseQueryCache.put("search:java:1", new Object());
-        courseQueryCache.put("course:2", new CourseInfo());
-
+    @DisplayName("evictCourse 委托领域缓存类（单键 + search/byTitle 前缀清理在 CourseQueryCacheService 自身测试）")
+    void evictCourse_delegatesToDomainCache() {
+        stubEvictClearsStore();
         service.evictCourse(1L);
-
-        assertThat(courseQueryCache.getIfPresent("course:1")).isNull();
-        assertThat(courseQueryCache.getIfPresent("contents:1")).isNull();
-        assertThat(courseQueryCache.getIfPresent("schedule:1")).isNull();
-        assertThat(courseQueryCache.getIfPresent("search:java:1")).isNull();
-        assertThat(courseQueryCache.getIfPresent("course:2")).isNotNull();
+        verify(courseQueryCache).evictCourse(1L);
     }
 
     @Test
-    @DisplayName("P1-2 evictCourse 同步清理 byTitle 课程名映射键——课程增删改名后 QU 映射不再脏读")
-    void evictCourse_removesByTitleKeys() {
-        // 预置：课程名映射键（QU 节点课程名→course_id 底座）与无关键
-        courseQueryCache.put("byTitle:高等数学", List.of(new CourseInfo()));
-        courseQueryCache.put("byTitle:线性代数", List.of());
-        courseQueryCache.put("course:1", new CourseInfo());
-        courseQueryCache.put("course:2", new CourseInfo());
-
-        service.evictCourse(1L);
-
-        // byTitle:* 全族失效（课程增删改名都可能改变课程名→course_id 映射）
-        assertThat(courseQueryCache.getIfPresent("byTitle:高等数学")).isNull();
-        assertThat(courseQueryCache.getIfPresent("byTitle:线性代数")).isNull();
-        // 无关课程的详情键不受影响
-        assertThat(courseQueryCache.getIfPresent("course:2")).isNotNull();
-    }
-
-    @Test
-    @DisplayName("P1-2 byTitle 失效后再次查询回源 DB（缓存不再命中，拿到最新映射）")
-    void evictCourse_byTitleReloadedFromDbAfterEviction() {
+    @DisplayName("P1-2 evictCourse 失效后再次查询回源 DB（缓存不再命中，拿到最新映射）")
+    void evictCourse_reloadedFromDbAfterEviction() {
+        stubEvictClearsStore();
         CourseInfo stale = new CourseInfo();
         stale.setId(1L);
         when(courseInfoMapper.selectList(any())).thenReturn(List.of(stale));
 
         // 第一次查询写入缓存
         service.findByTitle("高等数学");
-        // 课程删除/改名 → evictCourse 失效 byTitle:*
+        // 课程删除/改名 → evictCourse 失效（store 清空，等价 Redis 前缀清理）
         service.evictCourse(1L);
-        // 再次查询必须回源（若 byTitle 未失效则第二次命中缓存、mapper 只调用 1 次）
+        // 再次查询必须回源（若失效未生效则第二次命中缓存、mapper 只调用 1 次）
         CourseInfo fresh = new CourseInfo();
         fresh.setId(9L);
         when(courseInfoMapper.selectList(any())).thenReturn(List.of(fresh));
+        List<CourseInfo> after = service.findByTitle("高等数学");
 
-        List<CourseInfo> result = service.findByTitle("高等数学");
-
-        assertThat(result.get(0).getId()).isEqualTo(9L);
+        assertThat(after.get(0).getId()).isEqualTo(9L);
         verify(courseInfoMapper, times(2)).selectList(any());
     }
 }

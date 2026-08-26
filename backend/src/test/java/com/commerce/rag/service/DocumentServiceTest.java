@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.DocumentConverterImpl;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.KnowledgeBase;
@@ -19,8 +20,6 @@ import com.commerce.rag.service.impl.DocumentServiceImpl;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.DocumentVO;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.lang.reflect.Method;
@@ -65,8 +64,7 @@ class DocumentServiceTest {
     private ThreadPoolExecutor etlPool;
 
     /** Dashboard 统计缓存（真实 Caffeine 实例，失效钩子验证用） */
-    private final Cache<String, Object> dashboardStatsCache =
-            Caffeine.newBuilder().build();
+    private final DashboardCacheEvictor dashboardCacheEvictor = mock(DashboardCacheEvictor.class);
 
     private IDocumentService documentService;
 
@@ -87,7 +85,7 @@ class DocumentServiceTest {
                 etlPipeline,
                 etlPool,
                 new DocumentConverterImpl(),
-                dashboardStatsCache);
+                dashboardCacheEvictor);
     }
 
     private Document mockDoc(Long id, Long createdBy) {
@@ -365,7 +363,7 @@ class DocumentServiceTest {
         // 重新触发 ETL（etlPool mock 直接执行任务）
         verify(etlPipeline).process(1L);
         // 统计缓存失效（先写 DB 后失效）
-        assertNull(dashboardStatsCache.getIfPresent("whatever"));
+        verify(dashboardCacheEvictor).evictAll();
     }
 
     @Test

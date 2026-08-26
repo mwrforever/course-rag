@@ -14,6 +14,7 @@ import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
 import com.commerce.rag.mapper.DocumentChunkMapper;
@@ -23,8 +24,6 @@ import com.commerce.rag.record.ChunkLinkPair;
 import com.commerce.rag.record.ContentHash;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.test.MybatisPlusTestHelper;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.gson.JsonObject;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.DeleteReq;
@@ -92,8 +91,7 @@ class EtlPipelineTest {
     private PlatformTransactionManager transactionManager;
 
     /** Dashboard 统计缓存（真实 Caffeine 实例，状态写入失效钩子验证用） */
-    private final Cache<String, Object> dashboardStatsCache =
-            Caffeine.newBuilder().build();
+    private final DashboardCacheEvictor dashboardCacheEvictor = mock(DashboardCacheEvictor.class);
 
     private EtlPipeline etlPipeline;
 
@@ -137,7 +135,7 @@ class EtlPipelineTest {
                 milvusClientV2,
                 props,
                 etlImagePool,
-                dashboardStatsCache,
+                dashboardCacheEvictor,
                 new XhtmlDocumentParser(),
                 new TableChunker(props),
                 imageCaptionService,
@@ -540,7 +538,7 @@ class EtlPipelineTest {
                 milvusClientV2,
                 smallBatchProps,
                 etlImagePool,
-                dashboardStatsCache,
+                dashboardCacheEvictor,
                 new XhtmlDocumentParser(),
                 new TableChunker(smallBatchProps),
                 imageCaptionService,

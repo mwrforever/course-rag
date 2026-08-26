@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.KnowledgeBaseConverter;
 import com.commerce.rag.entity.Document;
 import com.commerce.rag.entity.DocumentChunk;
@@ -18,7 +19,6 @@ import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.service.IKnowledgeBaseService;
 import com.commerce.rag.storage.MinioStorageService;
 import com.commerce.rag.vo.KnowledgeBaseVO;
-import com.github.benmanes.caffeine.cache.Cache;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
@@ -26,7 +26,6 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,9 +56,8 @@ public class KnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, K
     /** 知识库转换器 —— Entity 出 service 边界前转 VO */
     private final KnowledgeBaseConverter knowledgeBaseConverter;
 
-    /** Dashboard 统计缓存（TTL 60 秒；知识库增删影响 knowledgeBaseCount/documentCount/pendingChunkCount，DB 写入后失效——BUG-2 修复） */
-    @Qualifier("dashboardStatsCache")
-    private final Cache<String, Object> dashboardStatsCache;
+    /** Dashboard 统计缓存失效（Spring Cache 注解化的写方统一出口，先写 DB 后失效——一致性铁律） */
+    private final DashboardCacheEvictor dashboardCacheEvictor;
 
     /**
      * 创建知识库
@@ -84,7 +82,7 @@ public class KnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, K
             throw new BizException(ErrorCode.CONFLICT, "知识库名称已存在，请更换名称后重试", e);
         }
         // 统计失效：知识库数已变更（先写 DB 后失效——BUG-2 修复）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
         log.info("创建知识库: kbId={}, name={}, createdBy={}", kb.getId(), name, createdBy);
         return knowledgeBaseConverter.toVO(kb);
     }
@@ -225,7 +223,7 @@ public class KnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, K
         knowledgeBaseMapper.update(null, kbWrapper);
 
         // 统计失效：知识库/文档/分片数均变更（先写 DB 后失效——BUG-2 修复）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
 
         log.info("删除知识库（级联）: kbId={}, operatorId={}", id, operatorId);
     }

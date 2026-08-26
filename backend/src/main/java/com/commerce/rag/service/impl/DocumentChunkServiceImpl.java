@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.DocumentChunkConverter;
 import com.commerce.rag.convert.StudentConverter;
 import com.commerce.rag.entity.Document;
@@ -22,7 +23,6 @@ import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
 import com.commerce.rag.vo.DocumentChunkVO;
-import com.github.benmanes.caffeine.cache.Cache;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -35,7 +35,6 @@ import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -71,9 +70,8 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
     /** 学生端转换器 —— C 端分片视图对象转换（toChunkVO/toChunkBriefVO/toChunkContextVO），转换器跨层共用合法 */
     private final StudentConverter studentConverter;
 
-    /** Dashboard 统计缓存（TTL 60 秒；分片删除/修正影响 pendingChunkCount，DB 写入后失效——BUG-2 修复） */
-    @Qualifier("dashboardStatsCache")
-    private final Cache<String, Object> dashboardStatsCache;
+    /** Dashboard 统计缓存失效（Spring Cache 注解化的写方统一出口，先写 DB 后失效——一致性铁律） */
+    private final DashboardCacheEvictor dashboardCacheEvictor;
 
     /**
      * B 端分片视图投影 wrapper（P1-3）：只取 DocumentChunkVO 全部 22 组件对应列。
@@ -218,7 +216,7 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
         chunkMapper.update(null, wrapper);
 
         // 统计失效：删除 PENDING 分片影响 pendingChunkCount（先写 DB 后失效——BUG-2 修复）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
 
         log.info("删除分片: chunkId={}", id);
     }
@@ -473,7 +471,7 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
                 .set(DocumentChunk::getUpdatedAt, LocalDateTime.now());
         chunkMapper.update(null, wrapper);
         // 统计失效：PENDING→CORRECTED 影响 pendingChunkCount（先写 DB 后失效——BUG-2 修复）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
         log.info("批量标记已修正: count={}", ids.size());
     }
 

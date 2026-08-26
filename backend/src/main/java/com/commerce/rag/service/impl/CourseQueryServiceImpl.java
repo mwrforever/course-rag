@@ -3,6 +3,7 @@ package com.commerce.rag.service.impl;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.commerce.rag.cache.CourseQueryCacheService;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;
@@ -10,13 +11,11 @@ import com.commerce.rag.mapper.CourseContentMapper;
 import com.commerce.rag.mapper.CourseInfoMapper;
 import com.commerce.rag.mapper.CourseScheduleMapper;
 import com.commerce.rag.service.ICourseQueryService;
-import com.github.benmanes.caffeine.cache.Cache;
 import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -26,7 +25,8 @@ import org.springframework.util.StringUtils;
  * <p>查询经 mapper 注入（Wrappers lambda 链式），不绕数据层直调 Db 静态工具
  * （工程宪法：mapper 调用传值不传 wrapper，条件查询 wrapper 在 service 内构建）。
  *
- * <p>查询结果使用 Caffeine 本地缓存（courseQueryCache，TTL 5 分钟，容量 512），
+ * <p>查询结果经领域缓存类缓存（CourseQueryCacheService，Redis 分布式，TTL 5 分钟配置化，
+ * 2026-08-25 §1 拍板多实例写失效互通；键前缀 course:query:），
  * 键格式 search:{keyword}:{page} / course:{id} / contents:{id} / schedule:{id}；
  * 课程/排期写方法通过 {@link #evictCourse(Long)} 失效对应键（一致性铁律：先写 DB 后失效）。
  *
@@ -43,19 +43,19 @@ public class CourseQueryServiceImpl implements ICourseQueryService {
     /** 默认每页条数 */
     private static final int PAGE_SIZE = 10;
 
-    /** 课程查询缓存（TTL 5 分钟，见 CacheConfig.courseQueryCache bean） */
-    @Qualifier("courseQueryCache")
-    private final Cache<String, Object> courseQueryCache;
+    /** 课程查询领域缓存（Redis 分布式，TTL 配置文件化 cache.ttl.course-query，见 cache/CourseQueryCacheService） */
+    private final CourseQueryCacheService courseQueryCache;
 
     private final CourseInfoMapper courseInfoMapper;
     private final CourseContentMapper courseContentMapper;
     private final CourseScheduleMapper courseScheduleMapper;
 
     /**
-     * 分页搜索课程 —— 按标题模糊匹配，仅返回 ACTIVE 状态课程（结果缓存 5 分钟）
+     * 分页搜索课程 —— 按标题模糊匹配，仅返回 ACTIVE 状态课程（结果缓存 5 分钟，Redis 分布式）
      *
-     * <p>L-9：缓存重建原子化（cache.get(key, fn)——并发 miss 仅一个线程查库重建，
-     * 替代原 getIfPresent + 查库 + put 两段式）。
+     * <p>L-9：cache.get(key, fn) 一击式重建——Redis 版不保证同 key 并发 miss 只算一次
+     * （跨实例无法原子执行加载函数，加载函数为幂等 DB 查询，重复计算可接受）；
+     * 加载函数返回 null 不入缓存（与 Caffeine 语义一致）。
      *
      * @param keyword 搜索关键词（可为空，空时返回全部）
      * @param page    页码（1-based）
@@ -86,10 +86,10 @@ public class CourseQueryServiceImpl implements ICourseQueryService {
     }
 
     /**
-     * 根据 ID 查询课程信息（结果缓存 5 分钟；课程不存在不缓存，避免缓存 null 值）
+     * 根据 ID 查询课程信息（结果缓存 5 分钟，Redis 分布式；课程不存在不缓存，避免缓存 null 值）
      *
-     * <p>L-9：cache.get(key, fn) 原子重建——加载函数返回 null 时不记录映射（Caffeine 语义），
-     * 保持「不存在返回 null」契约。
+     * <p>L-9：cache.get(key, fn) 一击式重建——加载函数返回 null 时不记录映射，
+     * 保持「不存在返回 null」契约（Redis 版同 Caffeine：null 不入缓存）。
      *
      * @param courseId 课程 ID（字符串形式）
      * @return 课程信息实体，不存在则返回 null
@@ -177,7 +177,7 @@ public class CourseQueryServiceImpl implements ICourseQueryService {
      * 失效课程相关缓存（一致性铁律：写方先写 DB 后调用）
      *
      * <p>精确失效详情/内容/排期键（course/contents/schedule:{courseId}），
-     * 并清理 search:* / byTitle:* 前缀键：
+     * 并清理 search:* / byTitle:* 前缀键（实现在领域缓存类 CourseQueryCacheService.evictCourse）：
      * <ul>
      *   <li>search:* —— 课程数据变更影响列表可见性与排序</li>
      *   <li>byTitle:* —— 课程增删/改名改变课程名→course_id 映射（P1-2：QU 节点过滤底座，
@@ -187,10 +187,6 @@ public class CourseQueryServiceImpl implements ICourseQueryService {
      * @param courseId 发生变更的课程 ID
      */
     public void evictCourse(Long courseId) {
-        String id = String.valueOf(courseId);
-        courseQueryCache.invalidate("course:" + id);
-        courseQueryCache.invalidate("contents:" + id);
-        courseQueryCache.invalidate("schedule:" + id);
-        courseQueryCache.asMap().keySet().removeIf(k -> k.startsWith("search:") || k.startsWith("byTitle:"));
+        courseQueryCache.evictCourse(courseId);
     }
 }

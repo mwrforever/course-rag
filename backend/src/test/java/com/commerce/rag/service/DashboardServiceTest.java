@@ -10,8 +10,6 @@ import com.commerce.rag.mapper.KnowledgeBaseMapper;
 import com.commerce.rag.mapper.SysUserMapper;
 import com.commerce.rag.mapper.UserFeedbackMapper;
 import com.commerce.rag.service.impl.DashboardServiceImpl;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -48,15 +46,11 @@ class DashboardServiceTest {
 
     private IDashboardService service;
 
-    /** Dashboard 统计缓存（真实 Caffeine 实例；JUnit 每测试方法新实例，缓存互不串扰） */
-    private final Cache<String, Object> dashboardStatsCache =
-            Caffeine.newBuilder().build();
-
     @BeforeEach
     void setUp() {
-        // @RequiredArgsConstructor 生成全参构造器，直接构造注入 mock + 真实缓存
+        // @RequiredArgsConstructor 生成全参构造器，直接构造注入 mock（缓存走 @Cacheable 注解，单测不生效）
         service = new DashboardServiceImpl(
-                documentMapper, chunkMapper, knowledgeBaseMapper, feedbackMapper, sysUserMapper, dashboardStatsCache);
+                documentMapper, chunkMapper, knowledgeBaseMapper, feedbackMapper, sysUserMapper);
     }
 
     @Test
@@ -132,48 +126,7 @@ class DashboardServiceTest {
     }
 
     // ==================== perf P2-3 统计缓存 ====================
-
-    @Test
-    @DisplayName("dashboardStats — 同参数二次调用命中缓存（mapper 只查一次）")
-    void dashboardStats_secondCall_hitsCache() {
-        when(documentMapper.selectCount(any())).thenReturn(10L);
-        when(chunkMapper.selectCount(any())).thenReturn(3L);
-        when(knowledgeBaseMapper.selectCount(any())).thenReturn(2L);
-
-        Map<String, Object> first = service.dashboardStats();
-        Map<String, Object> second = service.dashboardStats();
-
-        assertEquals(first, second, "同参数两次调用返回一致");
-        // 二次调用同参数命中缓存：三个统计各自只查一次 DB
-        verify(documentMapper, times(1)).selectCount(any());
-        verify(chunkMapper, times(1)).selectCount(any());
-        verify(knowledgeBaseMapper, times(1)).selectCount(any());
-    }
-
-    @Test
-    @DisplayName("统计缓存 — 三个端点键互不串扰（dashboardStats / feedbackStats / feedbackTrend 各自独立）")
-    void statsCache_keysIsolatedAcrossEndpoints() {
-        when(documentMapper.selectCount(any())).thenReturn(10L);
-        when(chunkMapper.selectCount(any())).thenReturn(3L);
-        when(knowledgeBaseMapper.selectCount(any())).thenReturn(2L);
-        when(sysUserMapper.selectCount(any())).thenReturn(1L);
-        when(feedbackMapper.selectFeedbackStatsByPeriod(any()))
-                .thenReturn(Map.of("total_count", 1L, "liked_count", 1L));
-        when(feedbackMapper.selectDailyFeedbackCount(any())).thenReturn(List.of());
-
-        // 三端点各调一次 + dashboardStats 再调一次（命中自身缓存，不触发其他端点失效）
-        service.dashboardStats();
-        service.feedbackStats("today");
-        service.feedbackTrend(7);
-        service.dashboardStats();
-
-        // dashboardStats 二次调用命中缓存：三个 count 各只查一次
-        verify(documentMapper, times(1)).selectCount(any());
-        verify(chunkMapper, times(1)).selectCount(any());
-        verify(knowledgeBaseMapper, times(1)).selectCount(any());
-        // 其他端点各自只查一次（键隔离，互不命中）
-        verify(sysUserMapper, times(1)).selectCount(any());
-        verify(feedbackMapper, times(1)).selectFeedbackStatsByPeriod(any());
-        verify(feedbackMapper, times(1)).selectDailyFeedbackCount(any());
-    }
+    // 缓存命中/键隔离语义已随 @Cacheable 注解化迁移至集成测试
+    // （CacheIntegrationTest.dashboardStats_annotationCacheAndEvict：真实 Redis 验证注解写入/失效与 TTL），
+    // 单测（无 Spring 代理）不再覆盖缓存行为——平铺调用每次都直查 DB。
 }

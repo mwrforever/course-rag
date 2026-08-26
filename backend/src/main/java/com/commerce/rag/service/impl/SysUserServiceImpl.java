@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.commerce.rag.auth.DeviceKickService;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.SysUserConverter;
 import com.commerce.rag.dto.CreateUserRequest;
 import com.commerce.rag.dto.UpdateUserRequest;
@@ -20,11 +21,9 @@ import com.commerce.rag.mapper.CourseTeacherMapper;
 import com.commerce.rag.mapper.SysUserMapper;
 import com.commerce.rag.record.AuthUserView;
 import com.commerce.rag.service.ISysUserService;
-import com.github.benmanes.caffeine.cache.Cache;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -53,9 +52,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     private final CourseTeacherMapper courseTeacherMapper;
     private final SysUserConverter sysUserConverter;
 
-    /** Dashboard 统计缓存（TTL 60 秒；用户增删影响 feedbackStats.studentCount，DB 写入后失效——BUG-2 修复） */
-    @Qualifier("dashboardStatsCache")
-    private final Cache<String, Object> dashboardStatsCache;
+    /** Dashboard 统计缓存失效（Spring Cache 注解化的写方统一出口，先写 DB 后失效——一致性铁律） */
+    private final DashboardCacheEvictor dashboardCacheEvictor;
 
     /**
      * 创建用户
@@ -109,7 +107,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         }
 
         // 统计失效：学生数可能已变更（先写 DB 后失效——BUG-2 修复）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
 
         log.info(
                 "创建用户: userId={}, username={}, role={}, createdBy={}",
@@ -326,7 +324,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         deviceKickService.disableUser(id, currentUserId);
 
         // 统计失效：学生数可能已变更（软删后 role=STUDENT 计数减少——先写 DB 后失效，BUG-2 修复）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
 
         log.info("删除用户: userId={}, operator={}", id, currentUserId);
     }

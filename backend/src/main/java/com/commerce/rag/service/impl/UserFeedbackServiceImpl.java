@@ -7,12 +7,12 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.convert.UserFeedbackConverter;
 import com.commerce.rag.entity.UserFeedback;
 import com.commerce.rag.mapper.UserFeedbackMapper;
 import com.commerce.rag.service.IUserFeedbackService;
 import com.commerce.rag.vo.UserFeedbackVO;
-import com.github.benmanes.caffeine.cache.Cache;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,7 +20,6 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -55,9 +54,8 @@ public class UserFeedbackServiceImpl extends ServiceImpl<UserFeedbackMapper, Use
     /** 用户反馈转换器 —— Entity 出 service 边界前转 VO */
     private final UserFeedbackConverter feedbackConverter;
 
-    /** Dashboard 统计缓存（TTL 60 秒；反馈增删改后失效，先写 DB 后失效——一致性铁律） */
-    @Qualifier("dashboardStatsCache")
-    private final Cache<String, Object> dashboardStatsCache;
+    /** Dashboard 统计缓存失效（Spring Cache 注解化的写方统一出口，先写 DB 后失效——一致性铁律） */
+    private final DashboardCacheEvictor dashboardCacheEvictor;
 
     /**
      * 创建反馈（或更新已有反馈）
@@ -87,7 +85,7 @@ public class UserFeedbackServiceImpl extends ServiceImpl<UserFeedbackMapper, Use
         // 单条 upsert：不存在→插入新行；存在（deleted=0）→幂等更新赞踩与意图；软删行→插新行
         UserFeedback saved = feedbackMapper.upsertFeedback(feedback);
         // 统计失效：反馈已写入（先写 DB 后失效，一致性铁律——时机与原实现一致）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
         log.info(
                 "写入反馈（upsert）: feedbackId={}, userId={}, messageId={}, isLiked={}",
                 saved.getId(),
@@ -155,7 +153,7 @@ public class UserFeedbackServiceImpl extends ServiceImpl<UserFeedbackMapper, Use
                 .set(UserFeedback::getDeleted, System.currentTimeMillis());
         feedbackMapper.update(null, wrapper);
         // 统计失效：反馈已删除（先写 DB 后失效，一致性铁律）
-        dashboardStatsCache.invalidateAll();
+        dashboardCacheEvictor.evictAll();
         log.info("删除反馈: feedbackId={}, operatorId={}", id, operatorId);
     }
 }
