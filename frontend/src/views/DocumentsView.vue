@@ -459,10 +459,19 @@ const uploadError = ref('')
 const progress = ref(0)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-/** 课程搜索选择器状态（courseId 可选，缺省不携带） */
+/** 课程搜索：输入即查（size 10）；queryKey 收敛竞态（快速输入时旧请求不覆盖新结果），空关键字不查询 */
 const courseQuery = ref('')
-const courseResults = ref<CourseDTO[]>([])
-const courseSearching = ref(false)
+const courseResultsQuery = useQuery({
+  queryKey: computed(() => ['admin-course-search', courseQuery.value.trim()]),
+  queryFn: () => courseApi.list({ keyword: courseQuery.value.trim(), size: 10 }),
+  enabled: computed(() => courseQuery.value.trim().length > 0),
+})
+/** 搜索结果展示：空关键字 / 查询失败不展示（对齐原手动实现静默清空语义） */
+const courseResults = computed(() =>
+  courseQuery.value.trim() && !courseResultsQuery.isError.value
+    ? (courseResultsQuery.data.value?.records ?? [])
+    : [],
+)
 
 function openUpload() {
   uploadOpen.value = true
@@ -482,33 +491,14 @@ function resetUpload() {
   uploadFile.value = null
   uploadCourse.value = null
   courseQuery.value = ''
-  courseResults.value = []
   uploadError.value = ''
   progress.value = 0
 }
 
-/** 课程搜索：输入即查（size 10，可选字段搜索失败静默清空结果） */
-async function searchCourses() {
-  const keyword = courseQuery.value.trim()
-  if (!keyword) {
-    courseResults.value = []
-    return
-  }
-  courseSearching.value = true
-  try {
-    const res = await courseApi.list({ keyword, size: 10 })
-    courseResults.value = res.records ?? []
-  } catch {
-    courseResults.value = []
-  } finally {
-    courseSearching.value = false
-  }
-}
-
-/** 选中课程：填入 chip（可清除）并收起结果列表 */
+/** 选中课程：填入 chip（可清除）并清空搜索词（结果随 enabled 关闭收起） */
 function pickCourse(c: CourseDTO) {
   uploadCourse.value = c
-  courseResults.value = []
+  courseQuery.value = ''
 }
 
 /** 拖拽区点击 → 唤起文件选择 */
@@ -968,7 +958,6 @@ function submitUpload() {
               aria-label="搜索课程"
               placeholder="输入课程名搜索（不选则归属通用资料）"
               class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-              @input="searchCourses"
             />
             <ul
               v-if="courseResults.length > 0"

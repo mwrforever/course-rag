@@ -265,6 +265,7 @@ function statusVariant(status: string) {
           <tr
             v-for="kb in kbs"
             :key="kb.id"
+            :data-testid="`row-${kb.id}`"
             class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
           >
             <td class="max-w-[220px] truncate px-4 font-medium text-text" :title="kb.name">
