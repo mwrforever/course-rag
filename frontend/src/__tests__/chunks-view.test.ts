@@ -624,13 +624,16 @@ describe('ChunksView：上下文 Drawer（四节点时间线，null 不渲染）
     await wrapper.find('[data-testid="op-context-c-1"]').trigger('click')
     const drawer = wrapper.find('[data-testid="context-drawer"]')
     expect(drawer.exists()).toBe(true)
-    expect(contextSpy).toHaveBeenCalledWith('c-1')
+    // 查询为异步调度（enabled 翻转触发），接口调用与节点渲染以 waitFor 收敛
+    await vi.waitFor(() => expect(contextSpy).toHaveBeenCalledWith('c-1'))
 
     // 四节点时间线（含对应中文标签与内容）
-    expect(drawer.text()).toContain('父分片')
-    expect(drawer.text()).toContain('前一分片')
-    expect(drawer.text()).toContain('当前分片')
-    expect(drawer.text()).toContain('下一分片')
+    await vi.waitFor(() => {
+      expect(drawer.text()).toContain('父分片')
+      expect(drawer.text()).toContain('前一分片')
+      expect(drawer.text()).toContain('当前分片')
+      expect(drawer.text()).toContain('下一分片')
+    })
     expect(drawer.find('[data-testid="ctx-parent"]').text()).toContain('父分片内容')
     expect(drawer.find('[data-testid="ctx-current"]').text()).toContain('当前分片内容')
     // 节点卡元数据：分片序号 + id 短格式 + 页码区间
@@ -652,10 +655,12 @@ describe('ChunksView：上下文 Drawer（四节点时间线，null 不渲染）
 
     await wrapper.find('[data-testid="op-context-c-1"]').trigger('click')
     const drawer = wrapper.find('[data-testid="context-drawer"]')
-    expect(drawer.find('[data-testid="ctx-parent"]').exists()).toBe(false)
-    expect(drawer.find('[data-testid="ctx-prev"]').exists()).toBe(false)
-    expect(drawer.find('[data-testid="ctx-current"]').exists()).toBe(true)
-    expect(drawer.find('[data-testid="ctx-next"]').exists()).toBe(true)
+    await vi.waitFor(() => {
+      expect(drawer.find('[data-testid="ctx-parent"]').exists()).toBe(false)
+      expect(drawer.find('[data-testid="ctx-prev"]').exists()).toBe(false)
+      expect(drawer.find('[data-testid="ctx-current"]').exists()).toBe(true)
+      expect(drawer.find('[data-testid="ctx-next"]').exists()).toBe(true)
+    })
     wrapper.unmount()
   })
 
@@ -670,12 +675,15 @@ describe('ChunksView：上下文 Drawer（四节点时间线，null 不渲染）
 
     await wrapper.find('[data-testid="op-context-c-1"]').trigger('click')
     const drawer = wrapper.find('[data-testid="context-drawer"]')
-    expect(drawer.find('[data-testid="ctx-error"]').text()).toContain('上下文加载失败')
+    await vi.waitFor(() => {
+      expect(drawer.find('[data-testid="ctx-error"]').text()).toContain('上下文加载失败')
+    })
 
     await drawer.find('[data-testid="retry-ctx"]').trigger('click')
-    await flushPromises()
-    expect(contextSpy).toHaveBeenCalledTimes(2)
-    expect(drawer.find('[data-testid="ctx-current"]').exists()).toBe(true)
+    await vi.waitFor(() => {
+      expect(contextSpy).toHaveBeenCalledTimes(2)
+      expect(drawer.find('[data-testid="ctx-current"]').exists()).toBe(true)
+    })
     wrapper.unmount()
   })
 

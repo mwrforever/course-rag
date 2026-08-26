@@ -179,6 +179,36 @@ describe('教师管理（/teachers，仅超管）', () => {
     wrapper.unmount()
   })
 
+  it('删除末页最后一条：回退上一页防空页（页码变化自动重拉）', async () => {
+    // 第 1 页 1 条共 11（2 页）→ 翻第 2 页 1 条 → 删除后回退第 1 页
+    apiMock.userApi.list
+      .mockResolvedValueOnce(pageOf([student('s-1')], '11'))
+      .mockResolvedValueOnce(pageOf([student('s-9')], '11'))
+      .mockResolvedValueOnce(pageOf([student('s-1')], '10'))
+    apiMock.userApi.remove.mockResolvedValue(undefined)
+    const { wrapper } = await mountAt()
+    await flushPromises()
+
+    // 翻到第 2 页（末页仅剩 1 条）
+    await wrapper.find('[data-testid="next-page"]').trigger('click')
+    await flushPromises()
+    expect(apiMock.userApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }))
+    expect(wrapper.text()).toContain('第 2 / 2 页')
+    expect(wrapper.find('[data-testid="row-s-9"]').exists()).toBe(true)
+
+    // 删除唯一行：回退到第 1 页（不展示空页）
+    await wrapper.find('[data-testid="op-delete-s-9"]').trigger('click')
+    await wrapper.find('[data-testid="confirm-user-del"]').trigger('click')
+    await flushPromises()
+    expect(apiMock.userApi.remove).toHaveBeenCalledWith('s-9')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('第 1 / 1 页')
+      expect(wrapper.find('[data-testid="row-s-1"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="row-s-9"]').exists()).toBe(false)
+    })
+    wrapper.unmount()
+  })
+
   it('加载失败：横幅 + 重试恢复', async () => {
     apiMock.userApi.list
       .mockRejectedValueOnce(new apiMock.ApiError(500, '列表接口异常'))

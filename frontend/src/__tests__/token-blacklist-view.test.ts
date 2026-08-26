@@ -223,8 +223,41 @@ describe('TokenBlacklistView：移除与清理过期', () => {
 
     expect(removeSpy).toHaveBeenCalledWith('tb-1')
     expect(document.body.textContent).toContain('已从黑名单移除')
-    expect(wrapper.find('[data-testid="row-tb-1"]').exists()).toBe(false)
-    expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    // 失效重拉为异步链：行消失与重拉次数以 waitFor 收敛
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="row-tb-1"]').exists()).toBe(false)
+      expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    })
+    wrapper.unmount()
+  })
+
+  it('移除末页最后一条：回退上一页防空页（页码变化自动重拉）', async () => {
+    // 第 1 页 1 条共 11（2 页）→ 翻第 2 页 1 条 → 移除后回退第 1 页
+    const listSpy = vi
+      .spyOn(securityApi, 'blacklist')
+      .mockResolvedValueOnce(pageOf([item('tb-1')], '11'))
+      .mockResolvedValueOnce(pageOf([item('tb-9')], '11'))
+      .mockResolvedValueOnce(pageOf([item('tb-1')], '10'))
+    const removeSpy = vi.spyOn(securityApi, 'removeBlacklist').mockResolvedValue()
+    const { wrapper } = await mountBlacklist()
+
+    // 翻到第 2 页（末页仅剩 1 条）
+    await wrapper.find('[data-testid="next-page"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('第 2 / 2 页')
+    expect(wrapper.find('[data-testid="row-tb-9"]').exists()).toBe(true)
+
+    // 移除唯一行：回退到第 1 页（不展示空页）
+    await wrapper.find('[data-testid="op-remove-tb-9"]').trigger('click')
+    await wrapper.find('[data-testid="confirm-blacklist-del"]').trigger('click')
+    await flushPromises()
+    expect(removeSpy).toHaveBeenCalledWith('tb-9')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('第 1 / 1 页')
+      expect(wrapper.find('[data-testid="row-tb-1"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="row-tb-9"]').exists()).toBe(false)
+      expect(listSpy.mock.calls.length).toBeGreaterThan(2)
+    })
     wrapper.unmount()
   })
 
@@ -240,7 +273,8 @@ describe('TokenBlacklistView：移除与清理过期', () => {
 
     expect(cleanupSpy).toHaveBeenCalledTimes(1)
     expect(document.body.textContent).toContain('已清理 5 条过期记录')
-    expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    // 失效重拉为异步链：列表重拉次数以 waitFor 收敛
+    await vi.waitFor(() => expect(listSpy.mock.calls.length).toBeGreaterThan(1))
     wrapper.unmount()
   })
 })

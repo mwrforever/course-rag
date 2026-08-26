@@ -277,10 +277,12 @@ describe('CoursesView：删除（二次确认）', () => {
     expect(removeSpy).toHaveBeenCalledWith('c-1')
     expect(document.body.textContent).toContain('课程已删除')
     expect(wrapper.find('[data-testid="course-del-dialog"]').exists()).toBe(false)
-    // 刷新后行消失
-    expect(wrapper.find('[data-testid="row-c-1"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="row-c-2"]').exists()).toBe(true)
-    expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    // 失效重拉为异步链：行消失与重拉次数以 waitFor 收敛
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="row-c-1"]').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="row-c-2"]').exists()).toBe(true)
+      expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    })
     wrapper.unmount()
   })
 

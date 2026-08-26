@@ -148,9 +148,9 @@ describe('KnowledgeBasesView：新建 Dialog 校验与提交', () => {
 
     expect(createSpy).toHaveBeenCalledWith({ name: '新品知识库', description: '二期课程资料' })
     expect(document.body.textContent).toContain('知识库创建成功')
-    // Dialog 关闭 + 列表刷新（重新拉取）
+    // Dialog 关闭 + 列表刷新（失效重拉为异步链，以 waitFor 收敛）
     expect(wrapper.find('[data-testid="kb-dialog"]').exists()).toBe(false)
-    expect(listSpy.mock.calls.length).toBeGreaterThan(listCallsBefore)
+    await vi.waitFor(() => expect(listSpy.mock.calls.length).toBeGreaterThan(listCallsBefore))
     wrapper.unmount()
   })
 
@@ -252,7 +252,38 @@ describe('KnowledgeBasesView：删除二次确认', () => {
     expect(removeSpy).toHaveBeenCalledWith('kb-1')
     expect(document.body.textContent).toContain('知识库已删除')
     expect(wrapper.find('[data-testid="delete-dialog"]').exists()).toBe(false)
-    expect(listSpy.mock.calls.length).toBeGreaterThan(listCallsBefore)
+    // 失效重拉为异步链：列表重拉次数以 waitFor 收敛
+    await vi.waitFor(() => expect(listSpy.mock.calls.length).toBeGreaterThan(listCallsBefore))
+    wrapper.unmount()
+  })
+
+  it('删除末页最后一条：回退上一页防空页（页码变化自动重拉）', async () => {
+    // 第 1 页 1 条共 11（2 页）→ 翻第 2 页 1 条 → 删除后回退第 1 页
+    const listSpy = vi
+      .spyOn(knowledgeBaseApi, 'list')
+      .mockResolvedValueOnce(pageOf([kb('kb-1', '前端知识库')], '11'))
+      .mockResolvedValueOnce(pageOf([kb('kb-9', '后端知识库')], '11'))
+      .mockResolvedValueOnce(pageOf([kb('kb-1', '前端知识库')], '10'))
+    const removeSpy = vi.spyOn(knowledgeBaseApi, 'remove').mockResolvedValue()
+    const { wrapper } = await mountKb()
+
+    // 翻到第 2 页（末页仅剩 1 条）
+    await wrapper.find('[data-testid="next-page"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('第 2 / 2 页')
+    expect(wrapper.find('[data-testid="delete-kb-9"]').exists()).toBe(true)
+
+    // 删除唯一行：回退到第 1 页（不展示空页）
+    await wrapper.find('[data-testid="delete-kb-9"]').trigger('click')
+    await wrapper.find('[data-testid="confirm-delete"]').trigger('click')
+    await flushPromises()
+    expect(removeSpy).toHaveBeenCalledWith('kb-9')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('第 1 / 1 页')
+      expect(wrapper.find('[data-testid="delete-kb-1"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="delete-kb-9"]').exists()).toBe(false)
+      expect(listSpy.mock.calls.length).toBeGreaterThan(2)
+    })
     wrapper.unmount()
   })
 })

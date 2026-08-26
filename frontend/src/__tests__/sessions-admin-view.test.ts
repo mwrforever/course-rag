@@ -226,9 +226,12 @@ describe('SessionsAdminView：关闭与删除', () => {
 
     expect(closeSpy).toHaveBeenCalledWith('s-1')
     expect(document.body.textContent).toContain('会话已关闭')
-    expect(listSpy.mock.calls.length).toBeGreaterThan(1)
-    // 刷新后行变 CLOSED：关闭入口消失
-    expect(wrapper.find('[data-testid="op-close-s-1"]').exists()).toBe(false)
+    // 失效重拉为异步链：关闭入口消失与重拉次数以 waitFor 收敛
+    await vi.waitFor(() => {
+      expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+      // 刷新后行变 CLOSED：关闭入口消失
+      expect(wrapper.find('[data-testid="op-close-s-1"]').exists()).toBe(false)
+    })
     wrapper.unmount()
   })
 
@@ -249,8 +252,41 @@ describe('SessionsAdminView：关闭与删除', () => {
 
     expect(removeSpy).toHaveBeenCalledWith('s-1')
     expect(document.body.textContent).toContain('会话已删除')
-    expect(wrapper.find('[data-testid="row-s-1"]').exists()).toBe(false)
-    expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    // 失效重拉为异步链：行消失与重拉次数以 waitFor 收敛
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="row-s-1"]').exists()).toBe(false)
+      expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    })
+    wrapper.unmount()
+  })
+
+  it('删除末页最后一条：回退上一页防空页（页码变化自动重拉）', async () => {
+    // 第 1 页 1 条共 11（2 页）→ 翻第 2 页 1 条 → 删除后回退第 1 页
+    const listSpy = vi
+      .spyOn(sessionApi, 'list')
+      .mockResolvedValueOnce(pageOf([session('s-1')], '11'))
+      .mockResolvedValueOnce(pageOf([session('s-9')], '11'))
+      .mockResolvedValueOnce(pageOf([session('s-1')], '10'))
+    const removeSpy = vi.spyOn(sessionApi, 'remove').mockResolvedValue()
+    const { wrapper } = await mountSessions()
+
+    // 翻到第 2 页（末页仅剩 1 条）
+    await wrapper.find('[data-testid="next-page"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('第 2 / 2 页')
+    expect(wrapper.find('[data-testid="row-s-9"]').exists()).toBe(true)
+
+    // 删除唯一行：回退到第 1 页（不展示空页）
+    await wrapper.find('[data-testid="op-delete-s-9"]').trigger('click')
+    await wrapper.find('[data-testid="confirm-session-del"]').trigger('click')
+    await flushPromises()
+    expect(removeSpy).toHaveBeenCalledWith('s-9')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('第 1 / 1 页')
+      expect(wrapper.find('[data-testid="row-s-1"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="row-s-9"]').exists()).toBe(false)
+      expect(listSpy.mock.calls.length).toBeGreaterThan(2)
+    })
     wrapper.unmount()
   })
 })
