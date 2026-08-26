@@ -25,6 +25,7 @@ import {
   MagnifyingGlass,
   PencilSimple,
   Plus,
+  SignIn,
   SignOut,
   Sparkle,
   Trash,
@@ -62,7 +63,7 @@ export function ChatSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { user, logout } = useAuth();
+  const { user, logout, openLoginDialog } = useAuth();
   // 流式守卫：工作区正在生成时禁用新建对话跳转（导航重挂载会丢进行中的流视图）
   const isStreaming = useChatStreaming();
   const [collapsed, setCollapsed] = useState(false);
@@ -475,35 +476,51 @@ export function ChatSidebar() {
         )}
       </nav>
 
-      {/* 底部用户区：渐变头像 + 显示名 + 退出（二次确认） */}
-      <div
-        className={`flex shrink-0 items-center border-t border-border py-2.5 ${
-          collapsed ? "flex-col gap-2" : "gap-2.5 px-3"
-        }`}
-      >
-        <span
-          data-testid="sidebar-avatar"
-          className="bg-gradient-ai grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold text-white shadow-sm shadow-brand/30"
+      {/* 底部用户区：已登录 = 渐变头像 + 显示名 + 退出（二次确认）；未登录 = 登录入口（2026-08-26） */}
+      {user ? (
+        <div
+          className={`flex shrink-0 items-center border-t border-border py-2.5 ${
+            collapsed ? "flex-col gap-2" : "gap-2.5 px-3"
+          }`}
         >
-          {initial}
-        </span>
-        {!collapsed ? (
-          <>
-            <span className="min-w-0 flex-1 truncate text-sm text-text">
-              {user?.displayName ?? "同学"}
-            </span>
-            <button
-              type="button"
-              aria-label="退出登录"
-              onClick={() => setLogoutConfirmOpen(true)}
-              disabled={loggingOut}
-              className="grid size-8 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-danger disabled:opacity-60"
-            >
-              <SignOut size={16} aria-hidden />
-            </button>
-          </>
-        ) : null}
-      </div>
+          <span
+            data-testid="sidebar-avatar"
+            className="bg-gradient-ai grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold text-white shadow-sm shadow-brand/30"
+          >
+            {initial}
+          </span>
+          {!collapsed ? (
+            <>
+              <span className="min-w-0 flex-1 truncate text-sm text-text">
+                {user.displayName ?? "同学"}
+              </span>
+              <button
+                type="button"
+                aria-label="退出登录"
+                onClick={() => setLogoutConfirmOpen(true)}
+                disabled={loggingOut}
+                className="grid size-8 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-danger disabled:opacity-60"
+              >
+                <SignOut size={16} aria-hidden />
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : (
+        <div className="shrink-0 border-t border-border py-2.5 px-3">
+          <button
+            type="button"
+            onClick={() => openLoginDialog()}
+            data-testid="sidebar-login"
+            className={`flex items-center justify-center gap-2 rounded-lg bg-gradient-ai text-sm font-medium text-white shadow-md shadow-brand/30 transition-[transform,opacity] hover:-translate-y-0.5 active:translate-y-0 focus-visible:ring-2 focus-visible:ring-brand ${
+              collapsed ? "size-8" : "w-full py-2"
+            }`}
+          >
+            <SignIn size={16} aria-hidden />
+            {!collapsed ? "登录" : null}
+          </button>
+        </div>
+      )}
 
       {/* 删除二次确认（danger） */}
       <ConfirmDialog

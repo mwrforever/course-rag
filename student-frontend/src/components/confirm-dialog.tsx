@@ -9,9 +9,15 @@
  * - 打开时焦点初始落在确认按钮（键盘可达；不实现全量 focus trap，
  *   与既有 Dialog（/sessions 页）交互语义保持一致）
  *
+ * 渲染：createPortal 挂 document.body——调用方常处 sticky/backdrop-blur/transform
+ * 容器（顶导 backdrop-blur 会把 fixed 子元素包含块收窄到 64px 导航栏，弹窗飘在顶部；
+ * 修复 2026-08-26），portal 到 body 保证 fixed inset-0 恒相对视口；
+ * mounted 挂载态兜底 SSR 无 document（hydration 首帧不渲染，调用方均交互触发打开）。
+ *
  * 动效：overlay-in / drawer-in（reduced-motion 全静态，与全站一致）。
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /** 确认弹窗属性 */
 export interface ConfirmDialogProps {
@@ -51,6 +57,9 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   // 确认按钮聚焦入口（打开时聚焦；加载中禁用时转移焦点由浏览器处理）
   const confirmRef = useRef<HTMLButtonElement | null>(null);
+  // 客户端挂载标记：SSR/hydration 首帧不渲染（portal 依赖 document.body），挂载后统一渲染
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Esc 关闭 + 打开时聚焦确认按钮（可访问性：键盘直达操作出口）
   useEffect(() => {
@@ -67,11 +76,11 @@ export function ConfirmDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onCancel]);
 
-  if (!open) {
+  if (!open || !mounted) {
     return null;
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50">
       <div
         data-testid="confirm-overlay"
@@ -111,6 +120,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

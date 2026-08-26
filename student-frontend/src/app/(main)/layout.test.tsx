@@ -39,9 +39,20 @@ describe("(main) 主站布局", () => {
         <Probe />
       </MainLayout>,
     );
-    // 顶导品牌标识（渐变 Logo）与主导航（「课程助手」一词被 Logo 与导航项共用，按 testid 定位 Logo）
+    // 顶导品牌标识（渐变 Logo）与主导航（「课程助手」一词被 Logo 与导航项共用，按 testid 定位 Logo；
+    // 「首页」同时存在于顶导与底栏，按出现断言）
     expect(screen.getByTestId("site-logo")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "首页" })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "首页" }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByTestId("client")).toHaveTextContent("已挂载");
+  });
+
+  it("渲染全站底栏（品牌区 + 版权行）", () => {
+    render(
+      <MainLayout>
+        <Probe />
+      </MainLayout>,
+    );
+    expect(screen.getByTestId("site-footer")).toBeInTheDocument();
+    expect(screen.getByText("© 2026 课程助手 · 保留所有权利")).toBeInTheDocument();
   });
 });

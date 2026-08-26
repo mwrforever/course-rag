@@ -10,6 +10,10 @@
  * 会话管理已收敛至课程助手侧边栏（用户拍板）：顶导无「会话」项，登出经 ConfirmDialog 二次确认
  * （用户拍板：登出必须确认）。
  *
+ * 登录态切换（修复 2026-08-26）：已登录 = 头像/汉堡共用下拉（身份信息 + 导航 + 个人中心 + 退出登录）；
+ * 未登录 = 桌面常显渐变「登录」按钮（点击开全局登录弹窗）+ 移动端汉堡（公开导航 + 登录入口），
+ * 不再以「学」头像占位冒充登录样式；挂载静默续期窗口（isLoading）显示骨架占位防闪变。
+ *
  * 下拉关闭语义（修复历史缺陷）：Esc 键盘 + 点击外部（mousedown/touchstart）+ 路由变化三重关闭；
  * 退出登录与个人中心同契约：登出清凭据 → 清 react-query 缓存 → 跳首页（登录经全局弹窗）。
  * 本组件仅用于 (main) 路由组（首页/课堂/个人中心）；课程助手对话页使用独立 kimi 侧栏壳。
@@ -46,7 +50,7 @@ export function SiteHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { user, logout } = useAuth();
+  const { user, logout, openLoginDialog, isLoading } = useAuth();
   // 用户下拉展开态（Esc / 点击外部 / 路由变化关闭）
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -145,79 +149,145 @@ export function SiteHeader() {
           })}
         </nav>
 
-        {/* 用户区：桌面渐变头像 / 移动端汉堡按钮，共用下拉面板 */}
-        <div ref={menuRef} className="relative ml-auto shrink-0 md:ml-0">
-          <button
-            type="button"
-            aria-label="用户菜单"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((open) => !open)}
-            className="flex items-center gap-2 rounded-xl p-1 transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand"
-          >
-            <span
-              data-testid="header-avatar"
-              className="bg-gradient-ai hidden size-8 place-items-center rounded-full text-xs font-bold text-white shadow-sm shadow-brand/30 md:grid"
+        {/* 用户区：已登录 = 桌面头像 / 移动端汉堡共用下拉；未登录 = 桌面登录按钮 + 移动端游客菜单 */}
+        {user ? (
+          <div ref={menuRef} className="relative ml-auto shrink-0 md:ml-0">
+            <button
+              type="button"
+              aria-label="用户菜单"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((open) => !open)}
+              className="flex items-center gap-2 rounded-xl p-1 transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand"
             >
-              {initial}
-            </span>
-            <span className="grid size-8 place-items-center rounded-lg border border-border bg-surface text-muted md:hidden">
-              <List size={18} aria-hidden />
-            </span>
-          </button>
+              <span
+                data-testid="header-avatar"
+                className="bg-gradient-ai hidden size-8 place-items-center rounded-full text-xs font-bold text-white shadow-sm shadow-brand/30 md:grid"
+              >
+                {initial}
+              </span>
+              <span className="grid size-8 place-items-center rounded-lg border border-border bg-surface text-muted md:hidden">
+                <List size={18} aria-hidden />
+              </span>
+            </button>
 
-          {menuOpen ? (
-            <div
-              data-testid="user-menu"
-              className="absolute right-0 top-12 z-50 w-60 overflow-hidden rounded-xl border border-border bg-surface p-1.5 shadow-lg"
-            >
-              {/* 身份信息 */}
-              <div className="border-b border-border px-3 py-2.5">
-                <p className="text-sm font-medium text-text">{user?.displayName ?? "未登录"}</p>
-                <p className="mt-0.5 text-xs text-muted">
-                  账号 {user?.userId ?? "—"} ·{" "}
-                  {user?.role === "STUDENT" ? "学生" : (user?.role ?? "—")}
-                </p>
-              </div>
-              {/* 移动端导航（桌面导航已常显，此处无需重复） */}
-              <div className="py-1 md:hidden">
-                {[...NAV_ITEMS, { href: "/profile", label: "个人中心" }].map((item) => (
+            {menuOpen ? (
+              <div
+                data-testid="user-menu"
+                className="absolute right-0 top-12 z-50 w-60 overflow-hidden rounded-xl border border-border bg-surface p-1.5 shadow-lg"
+              >
+                {/* 身份信息 */}
+                <div className="border-b border-border px-3 py-2.5">
+                  <p className="text-sm font-medium text-text">{user?.displayName ?? "未登录"}</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    账号 {user?.userId ?? "—"} ·{" "}
+                    {user?.role === "STUDENT" ? "学生" : (user?.role ?? "—")}
+                  </p>
+                </div>
+                {/* 移动端导航（桌面导航已常显，此处无需重复） */}
+                <div className="py-1 md:hidden">
+                  {[...NAV_ITEMS, { href: "/profile", label: "个人中心" }].map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMenuOpen(false)}
+                      className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
+                        isNavActive(pathname, item.href)
+                          ? "font-medium text-brand-strong"
+                          : "text-muted hover:bg-surface-2 hover:text-text"
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+                {/* 个人中心（桌面常驻入口）+ 退出登录 */}
+                <div className="border-t border-border pt-1">
                   <Link
-                    key={item.href}
-                    href={item.href}
+                    href="/profile"
                     onClick={() => setMenuOpen(false)}
-                    className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
-                      isNavActive(pathname, item.href)
-                        ? "font-medium text-brand-strong"
-                        : "text-muted hover:bg-surface-2 hover:text-text"
-                    }`}
+                    className="hidden rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text md:block"
                   >
-                    {item.label}
+                    个人中心
                   </Link>
-                ))}
+                  <button
+                    type="button"
+                    aria-label="退出登录"
+                    onClick={() => setLogoutConfirmOpen(true)}
+                    disabled={loggingOut}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <SignOut size={15} aria-hidden />
+                    {loggingOut ? "退出中…" : "退出登录"}
+                  </button>
+                </div>
               </div>
-              {/* 个人中心（桌面常驻入口）+ 退出登录 */}
-              <div className="border-t border-border pt-1">
-                <Link
-                  href="/profile"
-                  onClick={() => setMenuOpen(false)}
-                  className="hidden rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text md:block"
-                >
-                  个人中心
-                </Link>
+            ) : null}
+          </div>
+        ) : (
+          <div className="relative ml-auto shrink-0">
+            {isLoading ? (
+              /* 挂载静默续期窗口：骨架占位，防「登录按钮→头像」闪变 */
+              <span aria-hidden className="block size-8 animate-pulse rounded-full bg-surface-2" />
+            ) : (
+              <>
+                {/* 桌面：常显渐变登录按钮（点击开全局登录弹窗） */}
                 <button
                   type="button"
-                  aria-label="退出登录"
-                  onClick={() => setLogoutConfirmOpen(true)}
-                  disabled={loggingOut}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => openLoginDialog()}
+                  className="hidden rounded-full bg-gradient-ai px-5 py-2 text-sm font-medium text-white shadow-md shadow-brand/30 transition-[transform,opacity] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand md:block"
                 >
-                  <SignOut size={15} aria-hidden />
-                  {loggingOut ? "退出中…" : "退出登录"}
+                  登录
                 </button>
-              </div>
-            </div>
-          ) : null}
-        </div>
+                {/* 移动端：汉堡 + 游客菜单（公开导航 + 登录入口，公开浏览契约） */}
+                <div ref={menuRef} className="md:hidden">
+                  <button
+                    type="button"
+                    aria-label="用户菜单"
+                    aria-expanded={menuOpen}
+                    onClick={() => setMenuOpen((open) => !open)}
+                    className="grid size-8 place-items-center rounded-lg border border-border bg-surface text-muted"
+                  >
+                    <List size={18} aria-hidden />
+                  </button>
+                  {menuOpen ? (
+                    <div
+                      data-testid="guest-menu"
+                      className="absolute right-0 top-12 z-50 w-60 overflow-hidden rounded-xl border border-border bg-surface p-1.5 shadow-lg"
+                    >
+                      <button
+                        type="button"
+                        data-testid="guest-login-button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          openLoginDialog();
+                        }}
+                        className="flex w-full items-center justify-center rounded-lg bg-gradient-ai px-3 py-2 text-sm font-medium text-white"
+                      >
+                        登录
+                      </button>
+                      <div className="mt-1 border-t border-border pt-1">
+                        {NAV_ITEMS.map((item) => (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => setMenuOpen(false)}
+                            className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
+                              isNavActive(pathname, item.href)
+                                ? "font-medium text-brand-strong"
+                                : "text-muted hover:bg-surface-2 hover:text-text"
+                            }`}
+                          >
+                            {item.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 登出二次确认（用户拍板：登出必须确认） */}

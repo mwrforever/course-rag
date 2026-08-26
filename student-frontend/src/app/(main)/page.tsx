@@ -8,7 +8,7 @@
  *   登录成功后继续跳转）+ 次级 CTA + AI 徽标呼吸浮标
  * - 推荐课程：公开课程列表（未登录可浏览），分类筛选 chip + 电商卡片网格
  *   （登录用户经「我的课程」交叉标记「已加入」徽章）
- * - 通用资料库入口横幅 → Footer
+ * - 通用资料库入口横幅（底栏由 (main) 布局统一提供 SiteFooter，2026-08-26 上移）
  *
  * 登录弹窗入口：middleware 将未登录访问受保护路由带回 /?login=1，
  * 本页读取参数自动打开登录弹窗并清参（防重触发）。
@@ -328,13 +328,6 @@ export default function HomePage() {
           </>
         )}
       </section>
-
-      {/* ===== Footer：一行版权 ===== */}
-      <footer className="border-t border-border">
-        <div className="mx-auto w-full max-w-6xl px-6 py-6 text-xs text-subtle">
-          © 2026 课程助手
-        </div>
-      </footer>
     </div>
   );
 }

@@ -26,7 +26,10 @@ test.describe("认证流（登录弹窗）", () => {
     await openLoginDialog(page);
     await page.fill("#login-username", "student");
     await page.fill("#login-password", "123456");
-    await page.click("button:has-text('登录')");
+    await page
+      .getByRole("dialog", { name: "登录课程助手" })
+      .getByRole("button", { name: "登录", exact: true })
+      .click();
     // afterLogin 生效：继续快速提问跳转（预填问题）
     await expect(page).toHaveURL(/\/chat\?q=/);
     await expect(page.getByRole("dialog", { name: "登录课程助手" })).toBeHidden();
@@ -48,7 +51,10 @@ test.describe("认证流（登录弹窗）", () => {
     await openLoginDialog(page);
     await page.fill("#login-username", "student");
     await page.fill("#login-password", "wrong-pass");
-    await page.click("button:has-text('登录')");
+    await page
+      .getByRole("dialog", { name: "登录课程助手" })
+      .getByRole("button", { name: "登录", exact: true })
+      .click();
     // 注：不可用 getByRole('alert')：Next 路由播报器（__next-route-announcer__）同为
     // role=alert 会造成 strict mode 冲突，按文案精确断言
     await expect(page.getByText("用户名或密码错误")).toBeVisible();
