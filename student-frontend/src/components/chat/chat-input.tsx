@@ -14,7 +14,7 @@
  */
 import { PaperPlaneRight, Square } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiError, NetworkError } from "@/lib/api";
 
 /** 输入区组件 props */
@@ -69,6 +69,13 @@ export function ChatInput({
   initialValue,
 }: ChatInputProps) {
   const [value, setValue] = useState(initialValue ?? "");
+  // 挂载门控（hydration 修复 2026-08-26）：useReducedMotion 服务端 null/客户端首帧 false，
+  // 挂载即动画的 initial 首帧不一致会触发 hydration mismatch；首帧渲染最终态保持一致，
+  // 交互切换（key 变化重挂载）时动画照常生效
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   // reduced-motion 命中或检测不可用：morph 不挂动画（可访问性优先）
   const reduceMotion = useReducedMotion() ?? true;
   const canSend = value.trim().length > 0 && !sendDisabled;
@@ -128,7 +135,7 @@ export function ChatInput({
       >
         <motion.span
           key={streaming ? "stop" : "send"}
-          initial={reduceMotion ? false : { opacity: 0, scale: 0.7 }}
+          initial={!mounted || reduceMotion ? false : { opacity: 0, scale: 0.7 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={reduceMotion ? undefined : MORPH_TRANSITION}
           className="grid place-items-center"

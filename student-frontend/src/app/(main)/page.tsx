@@ -154,12 +154,10 @@ export default function HomePage() {
           className="pointer-events-none absolute inset-0"
           style={{ backgroundImage: HERO_BACKGROUND }}
         />
-        <motion.div
-          className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 px-6 py-20 md:min-h-[380px] md:grid-cols-2 md:py-0"
-          initial={reduceMotion ? false : { opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={reduceMotion ? undefined : sectionTransition}
-        >
+        {/* Hero 内容区：静态渲染（hydration 修复 2026-08-26——原 motion 挂载即动画在
+            useReducedMotion 服务端 null/客户端 false 时首帧样式不一致触发 hydration mismatch；
+            页面入场由 (main)/template.tsx page-in 纯 CSS 动画承担，且不依赖 JS 有兜底） */}
+        <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 px-6 py-20 md:min-h-[380px] md:grid-cols-2 md:py-0">
           <div>
             <h1 className="font-display text-[42px] font-bold leading-[1.15] text-text">
               <span>你好，{user?.displayName || "同学"}</span>
@@ -213,7 +211,7 @@ export default function HomePage() {
             <AiBadge />
             <span className="text-sm text-muted">AI 助教，随时可问</span>
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* ===== 推荐课程：分类筛选 + 电商卡片网格 ===== */}
