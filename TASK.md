@@ -120,23 +120,30 @@ INTERNAL 后 SDK 无限重试至超时（实测 75 次/210s）静默失败；pym
   **中文检索必须用 jieba 分词器**（服务端 analyzer 配置），并提示 bulk import 存在
   tokenizer leakage 已知问题（施测时避开批量导入路径）
 
-**当前状态**：**已降级不阻塞**（dense-only 检索可用）；**2026-08-26 用户拍板 = 按维护者官方用法整改**（方案二批准，见下），整改实施为下一批次任务。
+**当前状态**：**已实施完成（2026-08-26，PR#12 = fix/2026-08-26-sparse-recovery）**——content 字段
+jieba 中文分词 + schema 版本标记 + sparse-enabled=true，dev 实证通过（详见下）。
 
 **恢复方案候选**（2026-08-25 用户拍板 = 方案一；2026-08-26 用户改判 = 方案二整改）：
 - [ ] ~~维持降级（已拍板）~~ → **已被方案二替代**：2026-08-25 用户裁决 dense-only 降级 + 每季度复查 issue 状态（下次复查 2026-11 前后）；2026-08-26 拍板按官方用法整改后，维持降级仅作为整改失败的回退预案（`retrieval.sparse-enabled=false` 一行即可还原）
-- [x] **按维护者官方用法整改（2026-08-26 用户拍板批准）**：不升级/不等待 SDK——服务端 collection 重建时
-      text 字段配置 **jieba 中文分词器**（enableAnalyzer + analyzer_params）+ BM25 Function
-      （D.5.1 drop 重建流程），检索 sparse 路改传 `EmbeddedText(查询文本)` 让服务端分词；
+- [x] **按维护者官方用法整改（2026-08-26 用户拍板批准 → 已实施完成）**：不升级/不等待 SDK——
+      服务端 collection 重建时 text 字段配置 **jieba 中文分词器**（enableAnalyzer + analyzer_params）+
+      BM25 Function（D.5.1 drop 重建流程），检索 sparse 路改传 `EmbeddedText(查询文本)` 让服务端分词；
       相较「应用侧 BM25 向量」方案**无需 ETL 计算 sparse 向量与引入第三方分词器**（中文分词交给服务端 jieba），
       改动集中在 schema 重建 + 检索节点（application.yml sparse-enabled 还原 + 全量回归）；
       验收必须含**中文语料真实检索**（覆盖 issue 实证的中文崩溃场景）与 pymilvus 对照。
-      **实施步骤（下一批次执行）**：①dev 环境 Milvus collection drop 重建（D.5.1）——text 字段
-      enableAnalyzer(true) + analyzer_params 配 jieba、FunctionType.BM25（input=text → output=sparse_vector）、
-      sparse 字段禁手动写入；重建后 load + 索引就绪校验；②检索节点 sparse 路改 `EmbeddedText(查询文本)`
-      （不再手动构造 sparse 向量）；③application.yml `retrieval.sparse-enabled=true` 还原；
-      ④数据重灌走**在线分批 insert**（避开 bulk import——tokenizer leakage 已知问题）；⑤全量回归：
-      `mvn -B verify`（含检索链路集成测试）+ dev 中文语料手动验证（真实检索返回稀疏来源、无服务端容器崩溃）
-      + pymilvus 对照；风险：服务端中文崩溃根因（jieba 配置）需 dev 重建后实证，失败回退维持降级
+      **实施明细（2026-08-26 已完成）**：①`MilvusCollectionInitializer` content 字段加
+      `analyzerParams(type=chinese)`（Milvus 2.6 内置 jieba 分词器，SDK 2.6.11 AddFieldReq 原生支持）；
+      ②**schema 版本标记机制**——knowledge_chunks 创建时 description 写 `schema-version:2`，启动比对
+      额外校验版本（字段名比对感知不到 analyzer 等字段属性变化），旧 collection 无标记自动 drop 重建；
+      memory_chunks 不参与版本比对（避免误重建生产数据）；③`retrieval.sparse-enabled=true` 还原
+      （回退 = 置 false）；④检索 sparse 路本就是官方用法（EmbeddedText 文本 + BM25），零改动；
+      **dev 实证（2026-08-26）**：后端启动自动 drop 重建 knowledge_chunks（jieba schema）且
+      memory_chunks 正确跳过；`runAnalyzer` 中文分词输出与官方示例一致（向量/数据/据库/数据库…）；
+      插入中文语料 3 条 + 中文 `EmbeddedText("向量数据库")` 混合检索命中 3 条（BM25 稀疏路有效），
+      **服务端容器无崩溃**（rag-milvus 持续存活，覆盖 issue #1402 中文崩溃场景）；全量门禁
+      `mvn -B verify` 全绿（含 JaCoCo）；验证数据已清理、临时验证类已删除；
+      **jieba 已实证平台：x86_64（2026-08-26）——arm64 部署前需复核 gojieba（cgo）可用性**；
+      遗留：pymilvus 对照验证未做（SDK 实证已充分），留作后续可选复核
 - [ ] 应用侧 BM25 向量方案：ETL 自行计算 sparse 向量（需中文分词器）+ Milvus collection 重建去掉 BM25
       Function（sparse 字段改存向量 + IP 检索），检索用 SparseFloatVec——改动大（schema/ETL/检索三处），
       未获批准，候选保持

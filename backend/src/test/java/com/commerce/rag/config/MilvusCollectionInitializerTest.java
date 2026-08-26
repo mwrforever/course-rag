@@ -1,6 +1,7 @@
 package com.commerce.rag.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -18,6 +19,7 @@ import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.collection.request.LoadCollectionReq;
 import io.milvus.v2.service.collection.response.DescribeCollectionResp;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,7 +59,7 @@ class MilvusCollectionInitializerTest {
     }
 
     @Test
-    @DisplayName("schema 匹配 — 不 drop 不重建")
+    @DisplayName("schema 匹配（字段集 + knowledge 版本标记）— 不 drop 不重建")
     void schemaMatches_skipsRebuild() {
         when(milvusClientV2.hasCollection(any(HasCollectionReq.class))).thenReturn(true);
         // 按集合返回各自完整的期望字段集 → 两集合 schema 均匹配，均不 drop 不重建
@@ -76,6 +78,8 @@ class MilvusCollectionInitializerTest {
                                 .build();
                     }
                     return DescribeCollectionResp.builder()
+                            // 版本标记引用实现常量（单一事实源，避免字面量漂移）
+                            .description(MilvusCollectionInitializer.SCHEMA_VERSION_MARKER)
                             .fieldNames(List.of(
                                     "chunk_id",
                                     "doc_id",
@@ -97,6 +101,62 @@ class MilvusCollectionInitializerTest {
         initializer().run(null);
 
         verify(milvusClientV2, never()).dropCollection(any(DropCollectionReq.class));
+    }
+
+    @Test
+    @DisplayName("字段集匹配但版本标记缺失（旧 collection）— knowledge drop 重建，memory 跳过")
+    void schemaVersionMismatch_dropsKnowledgeOnly() {
+        when(milvusClientV2.hasCollection(any(HasCollectionReq.class))).thenReturn(true);
+        // 两集合字段集均完整，但 knowledge 的 description 为旧版本标记（版本落后）→ 版本比对失败
+        when(milvusClientV2.describeCollection(any(DescribeCollectionReq.class)))
+                .thenAnswer(inv -> {
+                    DescribeCollectionReq req = inv.getArgument(0);
+                    if (MilvusCollectionInitializer.COLLECTION_MEMORY.equals(req.getCollectionName())) {
+                        return DescribeCollectionResp.builder()
+                                .fieldNames(List.of(
+                                        MilvusCollectionInitializer.FIELD_MEMORY_ID,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_USER_ID,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_TYPE,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_VALIDITY,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_EMBEDDING,
+                                        MilvusCollectionInitializer.FIELD_MEMORY_UPDATED_AT))
+                                .build();
+                    }
+                    return DescribeCollectionResp.builder()
+                            // 旧版本标记（schema-version:1）→ equals 精确比对失败触发重建
+                            .description("schema-version:1")
+                            .fieldNames(List.of(
+                                    "chunk_id",
+                                    "doc_id",
+                                    "kb_id",
+                                    "content",
+                                    "heading_path",
+                                    "dense_vector",
+                                    "sparse_vector",
+                                    "chunk_index",
+                                    "token_count",
+                                    "course_id",
+                                    "content_type",
+                                    "image_url",
+                                    "sha256",
+                                    "updated_at"))
+                            .build();
+                });
+
+        initializer().run(null);
+
+        // 仅 knowledge_chunks 因版本标记缺失重建；memory 字段匹配跳过
+        // ArgumentCaptor 锚定重建对象为 knowledge_chunks（防名字分支写反的假绿）
+        ArgumentCaptor<DropCollectionReq> dropCaptor = ArgumentCaptor.forClass(DropCollectionReq.class);
+        verify(milvusClientV2, times(1)).dropCollection(dropCaptor.capture());
+        assertEquals(
+                MilvusCollectionInitializer.COLLECTION_NAME,
+                dropCaptor.getValue().getCollectionName());
+        ArgumentCaptor<CreateCollectionReq> createCaptor = ArgumentCaptor.forClass(CreateCollectionReq.class);
+        verify(milvusClientV2, times(1)).createCollection(createCaptor.capture());
+        assertEquals(
+                MilvusCollectionInitializer.COLLECTION_NAME,
+                createCaptor.getValue().getCollectionName());
     }
 
     @Test
@@ -159,6 +219,19 @@ class MilvusCollectionInitializerTest {
         assertTrue(fields.contains("content_type") && fields.contains("image_url") && fields.contains("sha256"));
         assertTrue(!fields.contains("collection_type"), "新 schema 不应含 collection_type");
         assertEquals(14, fields.size());
+        // sparse 整改：knowledge 创建须携带 schema 版本标记（版本不符时启动比对触发重建），
+        // memory 创建不写标记（不参与版本比对，避免版本号语义串用）
+        assertEquals(MilvusCollectionInitializer.SCHEMA_VERSION_MARKER, knowledgeReq.getDescription());
+        CreateCollectionReq memoryReq = captor.getAllValues().get(1);
+        assertEquals(MilvusCollectionInitializer.COLLECTION_MEMORY, memoryReq.getCollectionName());
+        assertNull(memoryReq.getDescription(), "memory_chunks 不应携带 knowledge 的版本标记");
+        // sparse 整改：content 字段启用 jieba 中文分词（chinese analyzer，issue #1402 中文崩溃根因）
+        FieldSchema contentField = knowledgeReq.getCollectionSchema().getFieldSchemaList().stream()
+                .filter(f -> "content".equals(f.getName()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("knowledge schema 缺少 content 字段"));
+        assertEquals(Boolean.TRUE, contentField.getEnableAnalyzer());
+        assertEquals(Map.of("type", "chinese"), contentField.getAnalyzerParams());
     }
 
     @Test

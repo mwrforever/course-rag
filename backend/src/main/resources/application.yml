@@ -151,6 +151,9 @@ retrieval:
   prefetch-top-k: 20
   # 性能优化报告 2-3：RetrieveNode 三段远程 IO 并行执行器线程数（P2-3：2→3，三任务各有线程，最重的知识检索不再排队）
   retrieve-node-parallelism: 3
+  # sparse（BM25 全文检索）开关：2026-08-26 按维护者官方用法整改后恢复（content 字段 jieba 中文分词 +
+  # 服务端 BM25 Function，检索 sparse 路 EmbeddedText 文本）；整改失败回退 = 置 false 还原 dense-only 降级
+  sparse-enabled: true
 
 # ── ETL 分块参数 ──
 etl:

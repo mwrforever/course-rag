@@ -99,9 +99,9 @@ public class SearchKnowledgeTool {
     /** Milvus 混合检索返回的 Top-K 数量（每条重写查询的预取量，spec §3.1 配置化） */
     private final int prefetchTopK;
     /**
-     * sparse（BM25 全文检索）开关：milvus-sdk-java 的 EmbeddedText 在 sparse/混合检索存在
-     * 未修复 bug（issue #1402，服务端 INTERNAL 后 SDK 无限重试至超时），默认关闭降级为
-     * dense-only 混合检索；SDK 修复后置 true 恢复全文检索能力
+     * sparse（BM25 全文检索）开关：2026-08-26 按维护者官方用法整改后恢复启用——content 字段
+     * 服务端 jieba 中文分词 + BM25 Function 自动生成 sparse 向量，检索 sparse 路传 EmbeddedText 文本；
+     * 整改失败回退预案 = 置 false 还原 dense-only 降级（见 TASK.md §4）
      */
     private final boolean sparseEnabled;
 
@@ -274,8 +274,8 @@ public class SearchKnowledgeTool {
                     .filter(filterExpr)
                     .build();
 
-            // 4. 构建 sparse AnnSearchReq（EmbeddedText + BM25，全文检索）
-            //    sparseEnabled=false 时省略（milvus-sdk-java EmbeddedText bug，见字段注释）
+            // 4. 构建 sparse AnnSearchReq（EmbeddedText 文本 + BM25 全文检索；服务端 jieba 分词）
+            //    sparseEnabled=false（回退预案）时省略，等价单路 dense 检索
             List<AnnSearchReq> searchRequests = new ArrayList<>(2);
             searchRequests.add(denseReq);
             if (sparseEnabled) {
