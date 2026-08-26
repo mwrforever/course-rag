@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, dashboardApi, documentApi } from '@/lib/api'
@@ -151,7 +152,18 @@ async function mountDashboard() {
     displayName: '测试教师',
   })
   const router = createAppRouter()
-  const wrapper = mount(DashboardView, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(DashboardView, {
+    global: {
+      plugins: [
+        [
+          VueQueryPlugin,
+          { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+        ],
+        pinia,
+        router,
+      ],
+    },
+  })
   await router.isReady()
   await flushPromises()
   return { wrapper, router, pinia }

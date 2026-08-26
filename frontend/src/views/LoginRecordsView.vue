@@ -16,7 +16,8 @@
  *
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { PhSpinnerGap, PhWarningCircle } from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
@@ -44,14 +45,44 @@ const STATUS_OPTIONS: Array<{ value: LoginRecordStatus; label: string }> = [
 /** 筛选条件：status 即时生效；userId/deviceType 经查询按钮提交 */
 const filters = reactive({ userId: '', deviceType: '', status: '' })
 const pendingFilters = reactive({ userId: '', deviceType: '' })
-const records = ref<SysLoginRecordVO[]>([])
-const loading = ref(true)
-const error = ref('')
 const page = ref(1)
-const total = ref('0')
+
+/** 查询键：筛选或页码任一变化即重查（vue-query 数据源，C.1.4） */
+const queryKey = computed(() => [
+  'admin-login-records',
+  { userId: filters.userId, deviceType: filters.deviceType, status: filters.status },
+  page.value,
+])
+
+const {
+  data,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey,
+  queryFn: () =>
+    securityApi.loginRecords({
+      page: page.value,
+      size: PAGE_SIZE,
+      ...(filters.userId ? { userId: filters.userId } : {}),
+      ...(filters.deviceType ? { deviceType: filters.deviceType } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+    }),
+})
+
+/** 列表行数据：total 为 Long 字符串铁律 */
+const records = computed(() => data.value?.records ?? [])
+const total = computed(() => data.value?.total ?? '0')
 
 /** 总页数：total 为 Long 字符串，转 number 后按 PAGE_SIZE 上取整 */
 const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value) / PAGE_SIZE)))
+
+/** 列表加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '登录记录加载失败，请稍后重试') : '',
+)
 
 /** 接口错误分级文案（ApiError 透出 message，503 统一降级；非 ApiError 兜底） */
 function messageOf(err: unknown, fallback: string): string {
@@ -61,53 +92,30 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-/** 拉取登录记录列表（userId/deviceType/status 筛选 + 分页，空值不携带） */
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const res = await securityApi.loginRecords({
-      page: page.value,
-      size: PAGE_SIZE,
-      ...(filters.userId ? { userId: filters.userId } : {}),
-      ...(filters.deviceType ? { deviceType: filters.deviceType } : {}),
-      ...(filters.status ? { status: filters.status } : {}),
-    })
-    records.value = res.records ?? []
-    total.value = res.total
-    if (records.value.length === 0 && page.value > 1) {
-      page.value -= 1
-      await load()
-    }
-  } catch (err) {
-    error.value = messageOf(err, '登录记录加载失败，请稍后重试')
-  } finally {
-    loading.value = false
-  }
+const queryClient = useQueryClient()
+
+/** 写操作成功后的列表刷新：不减少行数的操作直接按查询键失效重拉（删除类见删除 mutation 内联回退） */
+function refreshRecords() {
+  queryClient.invalidateQueries({ queryKey: ['admin-login-records'] })
 }
 
-onMounted(load)
-
-/** status 下拉即时生效：写入筛选并回第 1 页重查 */
+/** status 下拉即时生效：写入筛选并回第 1 页（查询键变化自动重查） */
 function onStatusChange(e: Event) {
   filters.status = (e.target as HTMLSelectElement).value
   page.value = 1
-  load()
 }
 
-/** 查询按钮：userId/deviceType 草稿提交到筛选条件并回第 1 页重查 */
+/** 查询按钮：userId/deviceType 草稿提交到筛选条件并回第 1 页（查询键变化自动重查） */
 function applyFilters() {
   filters.userId = pendingFilters.userId.trim()
   filters.deviceType = pendingFilters.deviceType.trim()
   page.value = 1
-  load()
 }
 
-/** 翻页：越界保护 */
+/** 翻页：越界保护，页码变化自动重拉 */
 function changePage(next: number) {
   if (next < 1 || next > totalPages.value) return
   page.value = next
-  load()
 }
 
 /** 状态 Badge：ACTIVE emerald / REVOKED amber / EXPIRED 中性（设计 §2.4.7 三态） */
@@ -127,7 +135,19 @@ function statusVariant(status: LoginRecordStatus) {
 // ====================================================================
 
 const kicking = ref<SysLoginRecordVO | null>(null)
-const kickSubmitting = ref(false)
+
+/** 踢出设备提交（后端 K3：标记 REVOKED + jti 入黑名单，该设备全部刷新令牌即刻失效） */
+const { isPending: kickSubmitting, mutate: confirmKickMutation } = useMutation({
+  mutationFn: (id: string) => securityApi.revokeLoginRecord(id),
+  onSuccess: () => {
+    showToast('已将该设备踢出', 'success')
+    kicking.value = null
+    refreshRecords()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '踢出设备失败，请稍后重试'), 'danger')
+  },
+})
 
 function requestKick(r: SysLoginRecordVO) {
   kicking.value = r
@@ -138,24 +158,10 @@ function cancelKick() {
   kicking.value = null
 }
 
-/**
- * 确认踢出设备：revokeLoginRecord → toast → 刷新
- *
- * 后端 K3：标记 REVOKED + jti 入黑名单，该设备全部刷新令牌即刻失效。
- */
-async function confirmKick() {
+/** 确认踢出设备：提交中禁用按钮，完成/失败由 mutation 回调处理 */
+function confirmKick() {
   if (!kicking.value) return
-  kickSubmitting.value = true
-  try {
-    await securityApi.revokeLoginRecord(kicking.value.id)
-    showToast('已将该设备踢出', 'success')
-    kicking.value = null
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '踢出设备失败，请稍后重试'), 'danger')
-  } finally {
-    kickSubmitting.value = false
-  }
+  confirmKickMutation(kicking.value.id)
 }
 </script>
 
@@ -197,17 +203,17 @@ async function confirmKick() {
 
   <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
   <div
-    v-if="error"
+    v-if="listError"
     role="alert"
     class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
   >
-    <span class="text-sm text-danger">{{ error }}</span>
-    <Button variant="outline" size="sm" data-testid="retry-records" @click="load">重试</Button>
+    <span class="text-sm text-danger">{{ listError }}</span>
+    <Button variant="outline" size="sm" data-testid="retry-records" @click="refetch">重试</Button>
   </div>
 
   <!-- 加载态：表格骨架屏（表头 + 5 行灰条，与最终表格同形） -->
   <div
-    v-else-if="loading"
+    v-else-if="isLoading"
     data-testid="lr-skeleton"
     class="overflow-hidden rounded-xl border border-border bg-surface"
     aria-label="登录记录加载中"

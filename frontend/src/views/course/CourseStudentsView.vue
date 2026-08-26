@@ -6,7 +6,8 @@
  * （搜索多选 → POST 返回成功数 → 「成功添加 N 名」提示）+ 行移除二次确认。
  * 学生候选走 userApi role=STUDENT 一次拉取，搜索客户端过滤（R18）。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
 import { PhCheck, PhSpinnerGap, PhTrash, PhUserPlus, PhWarningCircle } from '@phosphor-icons/vue'
 
@@ -18,25 +19,70 @@ import type { StudentDTO, UserDTO } from '@/lib/types'
 
 const route = useRoute()
 /** 课程 id（Long 字符串铁律） */
-const courseId = (): string => String(route.params.id ?? '')
+const courseId = computed(() => String(route.params.id ?? ''))
 
-/** 学生名单（已报名学生行） */
-const students = ref<StudentDTO[]>([])
-const loading = ref(true)
-const error = ref('')
+/** 学生名单（查询键含路由 id，换课程自动重拉） */
+const {
+  data: studentsData,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey: computed(() => ['course-students', courseId.value]),
+  queryFn: async () => {
+    try {
+      return (await enrollmentApi.students(courseId.value)) ?? []
+    } catch (err) {
+      showToast(messageOf(err, '学生名单加载失败，请稍后重试'), 'danger')
+      throw err
+    }
+  },
+  // toast 语义在 queryFn 内：关闭重试与窗口聚焦重拉，避免失败提示叠加
+  retry: false,
+  refetchOnWindowFocus: false,
+})
+
+/** 学生名单行数据 */
+const students = computed(() => studentsData.value ?? [])
+
+/** 学生名单加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '学生名单加载失败，请稍后重试') : '',
+)
 
 /** 已报名学生 id 集合（候选过滤剔除已报名） */
 const enrolledIds = computed(() => new Set(students.value.map((s) => s.id)))
 
+const queryClient = useQueryClient()
+
+/** 写操作成功后的名单刷新：按查询键失效重拉 */
+function refreshStudents() {
+  queryClient.invalidateQueries({ queryKey: ['course-students'] })
+}
+
 const studentDialogOpen = ref(false)
-const studentCandidates = ref<UserDTO[]>([])
+/** 学生候选池（Dialog 打开时按需拉取；失败仅 toast 不阻塞交互） */
+const { data: studentCandidatesData, isLoading: studentCandidatesLoading } = useQuery({
+  queryKey: ['student-candidates'],
+  queryFn: async (): Promise<UserDTO[]> => {
+    try {
+      const res = await userApi.list({ role: 'STUDENT', size: 100 })
+      return (res.records ?? []).filter((u) => u.role === 'STUDENT')
+    } catch (err) {
+      showToast(messageOf(err, '学生列表加载失败，请稍后重试'), 'danger')
+      return []
+    }
+  },
+  enabled: studentDialogOpen,
+  retry: false,
+  refetchOnWindowFocus: false,
+})
+const studentCandidates = computed(() => studentCandidatesData.value ?? [])
 const studentSearch = ref('')
 const studentSelected = ref<string[]>([])
-const studentSubmitting = ref(false)
-const studentCandidatesLoading = ref(false)
 /** 待移除学生：非 null 时展示二次确认 Dialog */
 const studentDeleting = ref<StudentDTO | null>(null)
-const studentDeletingLoading = ref(false)
 
 function messageOf(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
@@ -45,43 +91,11 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-/** 刷新学生名单（添加/移除后共用） */
-async function loadStudents() {
-  try {
-    students.value = (await enrollmentApi.students(courseId())) ?? []
-  } catch (err) {
-    showToast(messageOf(err, '学生名单加载失败，请稍后重试'), 'danger')
-  }
-}
-
-async function loadPage() {
-  loading.value = true
-  error.value = ''
-  try {
-    students.value = (await enrollmentApi.students(courseId())) ?? []
-  } catch (err) {
-    error.value = messageOf(err, '学生名单加载失败，请稍后重试')
-  } finally {
-    loading.value = false
-  }
-}
-
-/**
- * 打开添加学生 Dialog：清空勾选与搜索，拉取 STUDENT 角色候选
- */
-async function openStudentDialog() {
+/** 打开添加学生 Dialog：清空勾选与搜索（候选池由 enabled 翻转自动拉取） */
+function openStudentDialog() {
   studentDialogOpen.value = true
   studentSearch.value = ''
   studentSelected.value = []
-  studentCandidatesLoading.value = true
-  try {
-    const res = await userApi.list({ role: 'STUDENT', size: 100 })
-    studentCandidates.value = (res.records ?? []).filter((u) => u.role === 'STUDENT')
-  } catch (err) {
-    showToast(messageOf(err, '学生列表加载失败，请稍后重试'), 'danger')
-  } finally {
-    studentCandidatesLoading.value = false
-  }
 }
 
 /** 学生候选过滤：角色 STUDENT 兜底 ＋ 剔除已报名 ＋ 搜索关键词（displayName/username） */
@@ -109,22 +123,23 @@ function closeStudentDialog() {
   studentDialogOpen.value = false
 }
 
-/** 提交批量添加：POST /{id}/students {studentIds} → 以返回成功数提示 */
-async function submitStudents() {
-  if (studentSelected.value.length === 0) return
-  studentSubmitting.value = true
-  try {
-    const added = await enrollmentApi.addStudents(courseId(), {
-      studentIds: studentSelected.value,
-    })
+/** 提交批量添加（POST /{id}/students {studentIds} → 以返回成功数提示） */
+const { isPending: studentSubmitting, mutate: submitStudentsMutation } = useMutation({
+  mutationFn: (ids: string[]) => enrollmentApi.addStudents(courseId.value, { studentIds: ids }),
+  onSuccess: async (added) => {
     showToast(`成功添加 ${added} 名`, 'success')
     studentDialogOpen.value = false
-    await loadStudents()
-  } catch (err) {
+    refreshStudents()
+  },
+  onError: (err) => {
     showToast(messageOf(err, '添加学生失败，请稍后重试'), 'danger')
-  } finally {
-    studentSubmitting.value = false
-  }
+  },
+})
+
+/** 提交批量添加：勾选非空校验 → 走 mutation */
+function submitStudents() {
+  if (studentSelected.value.length === 0) return
+  submitStudentsMutation(studentSelected.value)
 }
 
 /** 打开移除学生二次确认 */
@@ -138,25 +153,24 @@ function cancelDeleteStudent() {
   studentDeleting.value = null
 }
 
-/** 确认移除学生：removeStudent → toast → 关闭确认框 → 刷新名单 */
-async function confirmDeleteStudent() {
-  if (!studentDeleting.value) return
-  studentDeletingLoading.value = true
-  try {
-    await enrollmentApi.removeStudent(courseId(), studentDeleting.value.id)
+/** 移除学生提交（成功后失效名单键） */
+const { isPending: studentDeletingLoading, mutate: confirmDeleteStudentMutation } = useMutation({
+  mutationFn: (id: string) => enrollmentApi.removeStudent(courseId.value, id),
+  onSuccess: () => {
     showToast('已移除学生', 'success')
     studentDeleting.value = null
-    await loadStudents()
-  } catch (err) {
+    refreshStudents()
+  },
+  onError: (err) => {
     showToast(messageOf(err, '移除学生失败，请稍后重试'), 'danger')
-  } finally {
-    studentDeletingLoading.value = false
-  }
-}
-
-onMounted(() => {
-  void loadPage()
+  },
 })
+
+/** 确认移除学生：提交中禁用按钮，完成/失败由 mutation 回调处理 */
+function confirmDeleteStudent() {
+  if (!studentDeleting.value) return
+  confirmDeleteStudentMutation(studentDeleting.value.id)
+}
 </script>
 
 <template>
@@ -173,14 +187,18 @@ onMounted(() => {
     </div>
 
     <!-- 加载骨架 -->
-    <div v-if="loading" data-testid="students-skeleton" class="animate-pulse space-y-2 p-6">
+    <div v-if="isLoading" data-testid="students-skeleton" class="animate-pulse space-y-2 p-6">
       <div v-for="i in 4" :key="i" class="h-11 rounded-lg bg-surface-2" />
     </div>
 
     <!-- 加载错误：横幅 + 重试 -->
-    <div v-else-if="error" role="alert" class="flex items-center justify-between gap-4 px-6 py-4">
-      <span class="text-sm text-danger">{{ error }}</span>
-      <Button variant="outline" size="sm" @click="loadPage">重试</Button>
+    <div
+      v-else-if="listError"
+      role="alert"
+      class="flex items-center justify-between gap-4 px-6 py-4"
+    >
+      <span class="text-sm text-danger">{{ listError }}</span>
+      <Button variant="outline" size="sm" @click="refetch">重试</Button>
     </div>
 
     <!-- 学生空态 -->

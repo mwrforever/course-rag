@@ -16,8 +16,9 @@
  *
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { PhImageSquare, PhPlus, PhSpinnerGap, PhWarningCircle } from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
@@ -30,15 +31,34 @@ import type { CourseDTO } from '@/lib/types'
 /** 每页条数（设计 §2.6 分页器） */
 const PAGE_SIZE = 10
 
-/** 列表状态：分页 + 四态 */
-const courses = ref<CourseDTO[]>([])
-const loading = ref(true)
-const error = ref('')
+/** 页码：查询键组成之一，变化自动触发新查询 */
 const page = ref(1)
-const total = ref('0')
+
+/** 查询键：页码变化即重拉当前页（vue-query 数据源，C.1.4） */
+const queryKey = computed(() => ['admin-courses', page.value])
+
+const {
+  data,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey,
+  queryFn: () => courseApi.list({ page: page.value, size: PAGE_SIZE }),
+})
+
+/** 列表行数据：total 为 Long 字符串铁律（契约 §D.4 同步口径） */
+const courses = computed(() => data.value?.records ?? [])
+const total = computed(() => data.value?.total ?? '0')
 
 /** 总页数：total 为 Long 字符串，转 number 后按 PAGE_SIZE 上取整（至少 1 页） */
 const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value) / PAGE_SIZE)))
+
+/** 列表加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '课程列表加载失败，请稍后重试') : '',
+)
 
 /**
  * 接口错误分级文案（与知识库/分片页 messageOf 同构）
@@ -54,37 +74,10 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-/**
- * 拉取当前页课程列表（分页参数 page/size）
- *
- * 边界：删除末页最后一条后列表为空且非第一页时回退一页重拉（防空页停留）。
- */
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const res = await courseApi.list({ page: page.value, size: PAGE_SIZE })
-    courses.value = res.records ?? []
-    total.value = res.total
-    // 删除导致末页清空：回退一页（total 仍大于 0 时递归一次收敛）
-    if (courses.value.length === 0 && page.value > 1) {
-      page.value -= 1
-      await load()
-    }
-  } catch (err) {
-    error.value = messageOf(err, '课程列表加载失败，请稍后重试')
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(load)
-
-/** 翻页：越界保护（首页/末页禁用态由 disabled 兜底，方法内再防一次） */
+/** 翻页：越界保护（首页/末页禁用态由 disabled 兜底，方法内再防一次），页码变化自动重拉 */
 function changePage(next: number) {
   if (next < 1 || next > totalPages.value) return
   page.value = next
-  load()
 }
 
 const router = useRouter()
@@ -110,7 +103,31 @@ function statusVariant(status: string) {
 
 /** 待删除课程：非 null 时展示确认 Dialog */
 const deleting = ref<CourseDTO | null>(null)
-const deletingLoading = ref(false)
+
+const queryClient = useQueryClient()
+
+/**
+ * 删除课程提交（进行中由 isPending 驱动按钮禁用与文案；完成后按查询键失效重拉）
+ *
+ * 注意：isPending/mutate 顶层解构——useMutation 返回普通对象，模板中嵌套访问
+ * 不会自动解包 ref（Ref 对象 truthy 会误触 disabled），解构后才是响应式顶层 ref。
+ */
+const { isPending: deletingSubmitting, mutate: submitDelete } = useMutation({
+  mutationFn: (id: string) => courseApi.remove(id),
+  onSuccess: () => {
+    showToast('课程已删除', 'success')
+    deleting.value = null
+    // 删除末页最后一条会留下空页：回退一页（页码变化自动重拉）；否则失效当前列表键
+    if (courses.value.length === 1 && page.value > 1) {
+      page.value -= 1
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['admin-courses'] })
+    }
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
+  },
+})
 
 function requestDelete(c: CourseDTO) {
   deleting.value = c
@@ -118,24 +135,14 @@ function requestDelete(c: CourseDTO) {
 
 /** 关闭确认 Dialog：提交期间拦截取消/Esc/遮罩（防误关丢状态） */
 function cancelDelete() {
-  if (deletingLoading.value) return
+  if (deletingSubmitting.value) return
   deleting.value = null
 }
 
-/** 确认删除：remove → toast → 关闭确认框 → 刷新列表（末页回退见 load 边界） */
-async function confirmDelete() {
+/** 确认删除：提交中禁用按钮，完成/失败由 mutation 回调处理 */
+function confirmDelete() {
   if (!deleting.value) return
-  deletingLoading.value = true
-  try {
-    await courseApi.remove(deleting.value.id)
-    showToast('课程已删除', 'success')
-    deleting.value = null
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
-  } finally {
-    deletingLoading.value = false
-  }
+  submitDelete(deleting.value.id)
 }
 </script>
 
@@ -151,17 +158,17 @@ async function confirmDelete() {
 
   <!-- 错误态：页内横幅 + 重试 -->
   <div
-    v-if="error"
+    v-if="listError"
     role="alert"
     class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
   >
-    <span class="text-sm text-danger">{{ error }}</span>
-    <Button variant="outline" size="sm" data-testid="retry-courses" @click="load">重试</Button>
+    <span class="text-sm text-danger">{{ listError }}</span>
+    <Button variant="outline" size="sm" data-testid="retry-courses" @click="refetch">重试</Button>
   </div>
 
   <!-- 加载态：表格骨架屏（与最终表格同形） -->
   <div
-    v-else-if="loading"
+    v-else-if="isLoading"
     data-testid="course-skeleton"
     class="overflow-hidden rounded-xl border border-border bg-surface"
     aria-label="课程列表加载中"
@@ -339,7 +346,7 @@ async function confirmDelete() {
         <Button
           variant="outline"
           data-testid="cancel-course-del"
-          :disabled="deletingLoading"
+          :disabled="deletingSubmitting"
           @click="cancelDelete"
         >
           取消
@@ -347,11 +354,11 @@ async function confirmDelete() {
         <Button
           variant="danger"
           data-testid="confirm-course-del"
-          :disabled="deletingLoading"
+          :disabled="deletingSubmitting"
           @click="confirmDelete"
         >
-          <PhSpinnerGap v-if="deletingLoading" class="h-4 w-4 animate-spin" />
-          {{ deletingLoading ? '删除中' : '确认删除' }}
+          <PhSpinnerGap v-if="deletingSubmitting" class="h-4 w-4 animate-spin" />
+          {{ deletingSubmitting ? '删除中' : '确认删除' }}
         </Button>
       </div>
     </div>

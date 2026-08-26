@@ -5,7 +5,8 @@
  * 职责：排期表格（起止/类型/地点/讲师/容量/已报）+ 新增 Dialog + 行内编辑 Dialog +
  * 删除二次确认（全部提交期 Esc/遮罩/取消拦截）。
  */
-import { onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
 import { PhPencilSimple, PhPlus, PhSpinnerGap, PhTrash, PhWarningCircle } from '@phosphor-icons/vue'
 
@@ -16,10 +17,34 @@ import type { CourseScheduleVO } from '@/lib/types'
 
 const route = useRoute()
 /** 课程 id（Long 字符串铁律） */
-const courseId = (): string => String(route.params.id ?? '')
+const courseId = computed(() => String(route.params.id ?? ''))
 
-/** 排期列表（表格行） */
-const schedules = ref<CourseScheduleVO[]>([])
+/** 排期列表（查询键含路由 id，换课程自动重拉；失败 toast 保持原行为） */
+const { data: schedulesData } = useQuery({
+  queryKey: computed(() => ['course-schedules', courseId.value]),
+  queryFn: async () => {
+    try {
+      return (await scheduleApi.listByCourse(courseId.value)) ?? []
+    } catch (err) {
+      showToast(messageOf(err, '排期加载失败，请稍后重试'), 'danger')
+      throw err
+    }
+  },
+  // toast 语义在 queryFn 内：关闭重试与窗口聚焦重拉，避免失败提示叠加
+  retry: false,
+  refetchOnWindowFocus: false,
+})
+
+/** 排期表格行数据（加载完成前为空数组兜底） */
+const schedules = computed(() => schedulesData.value ?? [])
+
+const queryClient = useQueryClient()
+
+/** 写操作成功后的排期刷新：按查询键失效重拉 */
+function refreshSchedules() {
+  queryClient.invalidateQueries({ queryKey: ['course-schedules'] })
+}
+
 /** 排期表单承载：capacity 字符串承载，提交时数值化（可为空） */
 const scheduleForm = reactive({
   startDate: '',
@@ -33,25 +58,14 @@ const scheduleForm = reactive({
 const scheduleDialogOpen = ref(false)
 const scheduleEditing = ref<CourseScheduleVO | null>(null)
 const scheduleError = ref('')
-const scheduleSubmitting = ref(false)
 /** 删除确认：非 null 展示二次确认 Dialog */
 const scheduleDeleting = ref<CourseScheduleVO | null>(null)
-const scheduleDeletingLoading = ref(false)
 
 function messageOf(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
     return err.code === 503 ? '服务暂时不可用，请稍后重试' : err.message
   }
   return fallback
-}
-
-/** 刷新排期表格（新增/编辑/删除后共用） */
-async function loadSchedules() {
-  try {
-    schedules.value = (await scheduleApi.listByCourse(courseId())) ?? []
-  } catch (err) {
-    showToast(messageOf(err, '排期加载失败，请稍后重试'), 'danger')
-  }
 }
 
 /** 打开新增排期 Dialog：清空表单与错误，编辑态置 null */
@@ -100,11 +114,9 @@ function validateSchedule(): boolean {
   return true
 }
 
-/** 排期保存：新增 create / 编辑 update（全字段）→ toast → 关闭 Dialog → 刷新表格 */
-async function submitSchedule() {
-  if (!validateSchedule()) return
-  scheduleSubmitting.value = true
-  try {
+/** 排期保存提交（新增 create / 编辑 update 全字段；成功后失效列表键） */
+const { isPending: scheduleSubmitting, mutate: submitScheduleMutation } = useMutation({
+  mutationFn: async (): Promise<void> => {
     const capacity = scheduleForm.capacity === '' ? undefined : Number(scheduleForm.capacity)
     if (scheduleEditing.value) {
       await scheduleApi.update(scheduleEditing.value.id, {
@@ -116,7 +128,7 @@ async function submitSchedule() {
         capacity,
       })
     } else {
-      await scheduleApi.create(courseId(), {
+      await scheduleApi.create(courseId.value, {
         startDate: scheduleForm.startDate,
         endDate: scheduleForm.endDate,
         scheduleType: scheduleForm.scheduleType,
@@ -125,15 +137,35 @@ async function submitSchedule() {
         capacity,
       })
     }
+  },
+  onSuccess: () => {
     showToast('排期已保存', 'success')
     scheduleDialogOpen.value = false
-    await loadSchedules()
-  } catch (err) {
+    refreshSchedules()
+  },
+  onError: (err) => {
     showToast(messageOf(err, '排期保存失败，请稍后重试'), 'danger')
-  } finally {
-    scheduleSubmitting.value = false
-  }
+  },
+})
+
+/** 排期保存：表单校验（就地报错不发请求）→ 走 mutation */
+function submitSchedule() {
+  if (!validateSchedule()) return
+  submitScheduleMutation()
 }
+
+/** 删除排期提交（成功后失效列表键） */
+const { isPending: scheduleDeletingLoading, mutate: confirmDeleteScheduleMutation } = useMutation({
+  mutationFn: (id: string) => scheduleApi.remove(id),
+  onSuccess: () => {
+    showToast('排期已删除', 'success')
+    scheduleDeleting.value = null
+    refreshSchedules()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '排期删除失败，请稍后重试'), 'danger')
+  },
+})
 
 /** 打开删除确认 Dialog */
 function requestDeleteSchedule(s: CourseScheduleVO) {
@@ -146,25 +178,11 @@ function cancelDeleteSchedule() {
   scheduleDeleting.value = null
 }
 
-/** 确认删除排期：remove → toast → 关闭确认框 → 刷新表格 */
-async function confirmDeleteSchedule() {
+/** 确认删除排期：提交中禁用按钮，完成/失败由 mutation 回调处理 */
+function confirmDeleteSchedule() {
   if (!scheduleDeleting.value) return
-  scheduleDeletingLoading.value = true
-  try {
-    await scheduleApi.remove(scheduleDeleting.value.id)
-    showToast('排期已删除', 'success')
-    scheduleDeleting.value = null
-    await loadSchedules()
-  } catch (err) {
-    showToast(messageOf(err, '排期删除失败，请稍后重试'), 'danger')
-  } finally {
-    scheduleDeletingLoading.value = false
-  }
+  confirmDeleteScheduleMutation(scheduleDeleting.value.id)
 }
-
-onMounted(() => {
-  void loadSchedules()
-})
 </script>
 
 <template>

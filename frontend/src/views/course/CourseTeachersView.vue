@@ -7,30 +7,65 @@
  * 教师用户池经 GET /users?role=TEACHER 一次拉取（后端无 keyword 参数，搜索客户端过滤，
  * 选择器只列 TEACHER 角色兜底 R18）。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
 import { PhSpinnerGap } from '@phosphor-icons/vue'
 
 import { Button } from '@/components/ui/button'
 import { ApiError, courseApi, userApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
-import type { CourseDTO, UserDTO } from '@/lib/types'
+import type { UserDTO } from '@/lib/types'
 
 const route = useRoute()
 /** 课程 id（Long 字符串铁律） */
-const courseId = (): string => String(route.params.id ?? '')
+const courseId = computed(() => String(route.params.id ?? ''))
 
-/** 课程主数据（teacherIds 驱动双栏） */
-const course = ref<CourseDTO | null>(null)
-/** 教师候选池：GET /users?role=TEACHER 一次拉取，后续客户端过滤（无 keyword 参数） */
-const teacherPool = ref<UserDTO[]>([])
 /** 待分配勾选的教师 id（复选框 v-model 数组） */
 const teacherSelected = ref<string[]>([])
 const teacherSearch = ref('')
-const teacherAssigning = ref(false)
+/** 行内移除进行中的教师 id（原实现语义：仅该行 spinner） */
 const teacherRemovingId = ref('')
-const loading = ref(true)
-const error = ref('')
+
+/** 页面级加载：课程（teacherIds）+ 教师候选池 并发拉取（整体错误态横幅重试；vue-query 合并单查询） */
+const {
+  data,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey: computed(() => ['course-teachers', courseId.value]),
+  queryFn: async () => {
+    const [c, teacherPage] = await Promise.all([
+      courseApi.get(courseId.value),
+      userApi.list({ role: 'TEACHER', size: 100 }),
+    ])
+    return {
+      course: c,
+      // 教师池按角色客户端兜底过滤（设计 R18：后端不校验，选择器只列 TEACHER）
+      teacherPool: (teacherPage.records ?? []).filter((u) => u.role === 'TEACHER'),
+    }
+  },
+})
+
+const course = computed(() => data.value?.course ?? null)
+const teacherPool = computed(() => data.value?.teacherPool ?? [])
+
+/** 页面级加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '页面加载失败，请稍后重试') : '',
+)
+
+/** 已分配教师 id（课程 teacherIds，Long 字符串铁律） */
+const assignedTeacherIds = computed(() => course.value?.teacherIds ?? [])
+
+const queryClient = useQueryClient()
+
+/** 分配/移除成功后的刷新：按查询键失效重拉（course + 候选池一并重拉，低频操作可接受） */
+function refreshTeachers() {
+  queryClient.invalidateQueries({ queryKey: ['course-teachers'] })
+}
 
 function messageOf(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
@@ -38,39 +73,6 @@ function messageOf(err: unknown, fallback: string): string {
   }
   return fallback
 }
-
-/**
- * 页面级加载：课程（teacherIds）+ 教师候选池 并发拉取（整体错误态横幅重试）
- */
-async function loadPage() {
-  loading.value = true
-  error.value = ''
-  try {
-    const [c, teacherPage] = await Promise.all([
-      courseApi.get(courseId()),
-      userApi.list({ role: 'TEACHER', size: 100 }),
-    ])
-    course.value = c
-    // 教师池按角色客户端兜底过滤（设计 R18：后端不校验，选择器只列 TEACHER）
-    teacherPool.value = (teacherPage.records ?? []).filter((u) => u.role === 'TEACHER')
-  } catch (err) {
-    error.value = messageOf(err, '页面加载失败，请稍后重试')
-  } finally {
-    loading.value = false
-  }
-}
-
-/** 教师分配变更后轻刷新：仅重拉课程（teacherIds 驱动双栏重排） */
-async function refreshCourse() {
-  try {
-    course.value = await courseApi.get(courseId())
-  } catch (err) {
-    showToast(messageOf(err, '课程刷新失败，请稍后重试'), 'danger')
-  }
-}
-
-/** 已分配教师 id（课程 teacherIds，Long 字符串铁律） */
-const assignedTeacherIds = computed(() => course.value?.teacherIds ?? [])
 
 /**
  * 可选教师过滤：角色 TEACHER 兜底（R18）＋ 剔除已分配 ＋ 搜索关键词
@@ -94,39 +96,44 @@ const assignedTeachers = computed(() =>
     .filter((t): t is UserDTO => Boolean(t)),
 )
 
-/** 分配所选教师：POST /{id}/teachers 数组 body → toast → 清空勾选 → 重拉课程刷新双栏 */
-async function assignTeachers() {
-  if (teacherSelected.value.length === 0) return
-  teacherAssigning.value = true
-  try {
-    await courseApi.addTeachers(courseId(), teacherSelected.value)
+/** 分配所选教师提交（POST /{id}/teachers 数组 body；成功后失效键重拉双栏） */
+const { isPending: teacherAssigning, mutate: assignTeachersMutation } = useMutation({
+  mutationFn: (ids: string[]) => courseApi.addTeachers(courseId.value, ids),
+  onSuccess: () => {
     showToast('教师分配成功', 'success')
     teacherSelected.value = []
-    await refreshCourse()
-  } catch (err) {
+    refreshTeachers()
+  },
+  onError: (err) => {
     showToast(messageOf(err, '教师分配失败，请稍后重试'), 'danger')
-  } finally {
-    teacherAssigning.value = false
-  }
-}
-
-/** 移除教师：DELETE /{id}/teachers 带 body [id]（axios data 写法）→ toast → 重拉课程 */
-async function removeTeacher(t: UserDTO) {
-  teacherRemovingId.value = t.id
-  try {
-    await courseApi.removeTeachers(courseId(), [t.id])
-    showToast('已移除教师', 'success')
-    await refreshCourse()
-  } catch (err) {
-    showToast(messageOf(err, '移除教师失败，请稍后重试'), 'danger')
-  } finally {
-    teacherRemovingId.value = ''
-  }
-}
-
-onMounted(() => {
-  void loadPage()
+  },
 })
+
+/** 分配所选教师：勾选非空校验 → 走 mutation */
+function assignTeachers() {
+  if (teacherSelected.value.length === 0) return
+  assignTeachersMutation(teacherSelected.value)
+}
+
+/** 移除教师提交（DELETE /{id}/teachers 带 body [id]；行内 spinner 由 teacherRemovingId 控制） */
+const { mutate: removeTeacherMutation } = useMutation({
+  mutationFn: (id: string) => courseApi.removeTeachers(courseId.value, [id]),
+  onSuccess: () => {
+    showToast('已移除教师', 'success')
+    teacherRemovingId.value = ''
+    refreshTeachers()
+  },
+  onError: (err) => {
+    teacherRemovingId.value = ''
+    showToast(messageOf(err, '移除教师失败，请稍后重试'), 'danger')
+  },
+})
+
+/** 移除教师：仅该行 spinner，完成/失败由 mutation 回调处理 */
+function removeTeacher(t: UserDTO) {
+  teacherRemovingId.value = t.id
+  removeTeacherMutation(t.id)
+}
 </script>
 
 <template>
@@ -136,15 +143,19 @@ onMounted(() => {
     </div>
 
     <!-- 加载骨架 -->
-    <div v-if="loading" data-testid="teachers-skeleton" class="animate-pulse space-y-4 p-6">
+    <div v-if="isLoading" data-testid="teachers-skeleton" class="animate-pulse space-y-4 p-6">
       <div class="h-9 rounded-lg bg-surface-2" />
       <div class="h-40 rounded-lg bg-surface-2" />
     </div>
 
     <!-- 加载错误：横幅 + 重试 -->
-    <div v-else-if="error" role="alert" class="flex items-center justify-between gap-4 px-6 py-4">
-      <span class="text-sm text-danger">{{ error }}</span>
-      <Button variant="outline" size="sm" @click="loadPage">重试</Button>
+    <div
+      v-else-if="listError"
+      role="alert"
+      class="flex items-center justify-between gap-4 px-6 py-4"
+    >
+      <span class="text-sm text-danger">{{ listError }}</span>
+      <Button variant="outline" size="sm" @click="refetch">重试</Button>
     </div>
 
     <div v-else class="flex flex-1 flex-col gap-4 p-6">

@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, dashboardApi, feedbackApi, sessionApi } from '@/lib/api'
@@ -140,7 +141,18 @@ async function mountFeedback(role: UserRole = 'SUPER_ADMIN') {
   const router = createAppRouter()
   await router.push('/feedback')
   await router.isReady()
-  const wrapper = mount(FeedbackView, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(FeedbackView, {
+    global: {
+      plugins: [
+        [
+          VueQueryPlugin,
+          { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+        ],
+        pinia,
+        router,
+      ],
+    },
+  })
   await flushPromises()
   return { wrapper, router }
 }

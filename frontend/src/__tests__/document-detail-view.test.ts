@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, chunkApi, documentApi } from '@/lib/api'
@@ -93,7 +94,18 @@ async function mountDetail(docId = 'd-1') {
   const router = createAppRouter()
   await router.push(`/knowledge/documents/${docId}`)
   await router.isReady()
-  const wrapper = mount(DocumentDetailView, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(DocumentDetailView, {
+    global: {
+      plugins: [
+        [
+          VueQueryPlugin,
+          { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+        ],
+        pinia,
+        router,
+      ],
+    },
+  })
   await flushPromises()
   return { wrapper, router }
 }
@@ -268,12 +280,14 @@ describe('DocumentDetailView：状态时间线（G14 静态状态机示意）', 
     expect(failed.text()).toContain('解析失败：文件损坏')
     expect(failed.find('[data-testid="detail-reparse"]').exists()).toBe(true)
 
-    // 点击重新解析：接口 + toast + 详情/分片重新加载
+    // 点击重新解析：接口 + toast + 详情/分片重新加载（invalidate 失效重拉为异步链，waitFor 轮询收敛）
     await failed.find('[data-testid="detail-reparse"]').trigger('click')
     await flushPromises()
     expect(reparseSpy).toHaveBeenCalledWith('d-1')
     expect(document.body.textContent).toContain('重新解析')
-    expect(getSpy.mock.calls.length).toBeGreaterThan(1)
+    await vi.waitFor(() => {
+      expect(getSpy.mock.calls.length).toBeGreaterThan(1)
+    })
     wrapper.unmount()
   })
 })

@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, securityApi } from '@/lib/api'
@@ -58,7 +59,18 @@ async function mountRecords() {
   const router = createAppRouter()
   await router.push('/security/login-records')
   await router.isReady()
-  const wrapper = mount(LoginRecordsView, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(LoginRecordsView, {
+    global: {
+      plugins: [
+        [
+          VueQueryPlugin,
+          { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+        ],
+        pinia,
+        router,
+      ],
+    },
+  })
   await flushPromises()
   return { wrapper, router }
 }

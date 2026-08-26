@@ -16,7 +16,8 @@
  *
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { PhSpinnerGap, PhWarningCircle } from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
@@ -35,14 +36,34 @@ const PAGE_SIZE = 10
 // 列表数据（分页 + 四态页面级收敛）
 // ====================================================================
 
-const sessions = ref<ChatSessionVO[]>([])
-const loading = ref(true)
-const error = ref('')
+/** 页码：查询键组成之一，变化自动触发新查询 */
 const page = ref(1)
-const total = ref('0')
+
+/** 查询键：页码变化即重拉当前页（vue-query 数据源，C.1.4） */
+const queryKey = computed(() => ['admin-sessions', page.value])
+
+const {
+  data,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey,
+  queryFn: () => sessionApi.list({ page: page.value, size: PAGE_SIZE }),
+})
+
+/** 列表行数据：total 为 Long 字符串铁律 */
+const sessions = computed(() => data.value?.records ?? [])
+const total = computed(() => data.value?.total ?? '0')
 
 /** 总页数：total 为 Long 字符串，转 number 后按 PAGE_SIZE 上取整 */
 const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value) / PAGE_SIZE)))
+
+/** 列表加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '会话列表加载失败，请稍后重试') : '',
+)
 
 /** 接口错误分级文案（ApiError 透出 message，503 统一降级；非 ApiError 兜底） */
 function messageOf(err: unknown, fallback: string): string {
@@ -52,32 +73,17 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-/** 拉取当前页会话列表（分页参数 page/size） */
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const res = await sessionApi.list({ page: page.value, size: PAGE_SIZE })
-    sessions.value = res.records ?? []
-    total.value = res.total
-    if (sessions.value.length === 0 && page.value > 1) {
-      page.value -= 1
-      await load()
-    }
-  } catch (err) {
-    error.value = messageOf(err, '会话列表加载失败，请稍后重试')
-  } finally {
-    loading.value = false
-  }
+const queryClient = useQueryClient()
+
+/** 写操作成功后的列表刷新：不减少行数的操作直接按查询键失效重拉（删除类见删除 mutation 内联回退） */
+function refreshSessions() {
+  queryClient.invalidateQueries({ queryKey: ['admin-sessions'] })
 }
 
-onMounted(load)
-
-/** 翻页：越界保护 */
+/** 翻页：越界保护，页码变化自动重拉 */
 function changePage(next: number) {
   if (next < 1 || next > totalPages.value) return
   page.value = next
-  load()
 }
 
 /** 状态 Badge：ACTIVE emerald / CLOSED slate（设计 §2.5） */
@@ -108,22 +114,25 @@ function closeDetail() {
 // ====================================================================
 
 const closing = ref<ChatSessionVO | null>(null)
-const closingLoading = ref(false)
 
-/** 关闭会话：close → toast → 刷新（行状态随之变 CLOSED） */
-async function closeSession(s: ChatSessionVO) {
-  closing.value = s
-  closingLoading.value = true
-  try {
-    await sessionApi.close(s.id)
+/** 关闭会话提交（行状态随之变 CLOSED；行内 spinner 由 closing ref 驱动，成功后失效列表键） */
+const { mutate: closeSessionMutation } = useMutation({
+  mutationFn: (id: string) => sessionApi.close(id),
+  onSuccess: () => {
     showToast('会话已关闭', 'success')
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '关闭失败，请稍后重试'), 'danger')
-  } finally {
     closing.value = null
-    closingLoading.value = false
-  }
+    refreshSessions()
+  },
+  onError: (err) => {
+    closing.value = null
+    showToast(messageOf(err, '关闭失败，请稍后重试'), 'danger')
+  },
+})
+
+/** 关闭会话：进入提交态（行内 spinner），完成/失败由 mutation 回调处理 */
+function closeSession(s: ChatSessionVO) {
+  closing.value = s
+  closeSessionMutation(s.id)
 }
 
 // ====================================================================
@@ -131,7 +140,23 @@ async function closeSession(s: ChatSessionVO) {
 // ====================================================================
 
 const deleting = ref<ChatSessionVO | null>(null)
-const deleteSubmitting = ref(false)
+
+/** 删除会话提交（级联软删消息 + Run；成功后失效列表键，末页空页回退见 refreshSessions） */
+const { isPending: deleteSubmitting, mutate: confirmDeleteMutation } = useMutation({
+  mutationFn: (id: string) => sessionApi.remove(id),
+  onSuccess: () => {
+    showToast('会话已删除', 'success')
+    deleting.value = null
+    if (sessions.value.length === 1 && page.value > 1) {
+      page.value -= 1
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['admin-sessions'] })
+    }
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
+  },
+})
 
 function requestDelete(s: ChatSessionVO) {
   deleting.value = s
@@ -142,37 +167,27 @@ function cancelDelete() {
   deleting.value = null
 }
 
-/** 确认删除：remove → toast → 关闭确认框 → 刷新 */
-async function confirmDelete() {
+/** 确认删除：提交中禁用按钮，完成/失败由 mutation 回调处理 */
+function confirmDelete() {
   if (!deleting.value) return
-  deleteSubmitting.value = true
-  try {
-    await sessionApi.remove(deleting.value.id)
-    showToast('会话已删除', 'success')
-    deleting.value = null
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
-  } finally {
-    deleteSubmitting.value = false
-  }
+  confirmDeleteMutation(deleting.value.id)
 }
 </script>
 
 <template>
   <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
   <div
-    v-if="error"
+    v-if="listError"
     role="alert"
     class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
   >
-    <span class="text-sm text-danger">{{ error }}</span>
-    <Button variant="outline" size="sm" data-testid="retry-sessions" @click="load">重试</Button>
+    <span class="text-sm text-danger">{{ listError }}</span>
+    <Button variant="outline" size="sm" data-testid="retry-sessions" @click="refetch">重试</Button>
   </div>
 
   <!-- 加载态：表格骨架屏（表头 + 5 行灰条，与最终表格同形） -->
   <div
-    v-else-if="loading"
+    v-else-if="isLoading"
     data-testid="session-skeleton"
     class="overflow-hidden rounded-xl border border-border bg-surface"
     aria-label="会话列表加载中"

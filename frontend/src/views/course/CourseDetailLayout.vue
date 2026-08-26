@@ -6,7 +6,8 @@
  * 子导航（概览/内容/排期/教师/学生，RouterLink 激活态）+ 子路由出口。
  * 各子视图（Overview/Content/Schedule/Teachers/Students）自行加载领域数据，互不耦合。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed } from 'vue'
+import { useQuery } from '@tanstack/vue-query'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { PhArrowLeft, PhSpinnerGap } from '@phosphor-icons/vue'
 
@@ -20,11 +21,39 @@ const router = useRouter()
 /** 课程 id（Long 字符串铁律） */
 const courseId = computed(() => String(route.params.id ?? ''))
 
-/** 课程元数据（标题 + 存在性） */
-const course = ref<CourseDTO | null>(null)
-const loading = ref(true)
-const error = ref('')
-const notFound = ref(false)
+/**
+ * 课程元数据（标题 + 存在性校验；查询键含路由 id，换课程自动重拉）
+ *
+ * 404 语义用「返回 null」表达（与错误状态区分）：error 态走横幅重试，null 态走不存在页。
+ */
+const {
+  data: courseData,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey: computed(() => ['course-detail-meta', courseId.value]),
+  queryFn: async (): Promise<CourseDTO | null> => {
+    try {
+      return await courseApi.get(courseId.value)
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 404) return null
+      throw err
+    }
+  },
+})
+
+/** 课程元数据（标题展示） */
+const course = computed(() => courseData.value ?? null)
+
+/** 404 判定：加载完成且无错误但数据为 null（404 显式返回空标记） */
+const notFound = computed(() => !isLoading.value && !isError.value && courseData.value === null)
+
+/** 其余错误 → 横幅重试文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '课程加载失败，请稍后重试') : '',
+)
 
 function messageOf(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
@@ -32,28 +61,6 @@ function messageOf(err: unknown, fallback: string): string {
   }
   return fallback
 }
-
-/** 加载课程元数据：404 → 课程不存在态；其余错误 → 横幅重试 */
-async function loadCourse() {
-  loading.value = true
-  error.value = ''
-  notFound.value = false
-  try {
-    course.value = await courseApi.get(courseId.value)
-  } catch (err) {
-    if (err instanceof ApiError && err.code === 404) {
-      notFound.value = true
-    } else {
-      error.value = messageOf(err, '课程加载失败，请稍后重试')
-    }
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(() => {
-  void loadCourse()
-})
 
 function goBackToList() {
   router.push({ name: 'courses' })
@@ -87,7 +94,7 @@ const SECTION_NAV: { name: string; label: string }[] = [
     </div>
 
     <!-- 加载骨架：与子导航同形的灰块 -->
-    <div v-if="loading" data-testid="course-detail-skeleton" class="animate-pulse space-y-4">
+    <div v-if="isLoading" data-testid="course-detail-skeleton" class="animate-pulse space-y-4">
       <div class="h-12 rounded-xl bg-surface-2" />
       <div class="h-64 rounded-xl bg-surface-2" />
     </div>
@@ -103,13 +110,13 @@ const SECTION_NAV: { name: string; label: string }[] = [
 
     <!-- 加载错误：横幅 + 重试 -->
     <div
-      v-else-if="error"
+      v-else-if="listError"
       role="alert"
       class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
     >
-      <span class="text-sm text-danger">{{ error }}</span>
-      <Button variant="outline" size="sm" data-testid="retry-course" @click="loadCourse">
-        <PhSpinnerGap v-if="loading" class="h-4 w-4 animate-spin" />
+      <span class="text-sm text-danger">{{ listError }}</span>
+      <Button variant="outline" size="sm" data-testid="retry-course" @click="refetch">
+        <PhSpinnerGap v-if="isLoading" class="h-4 w-4 animate-spin" />
         重试
       </Button>
     </div>

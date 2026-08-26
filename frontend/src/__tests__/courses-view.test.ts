@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -51,8 +52,9 @@ function course(id: string, over: Partial<CourseDTO> = {}): CourseDTO {
   }
 }
 
-/** 挂载课程列表：pinia + 路由（准备就绪至 /courses） */
+/** 挂载课程列表：独立 QueryClient（retry:false）+ pinia + 路由（TEACHER 登录态） */
 async function mountCourses() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuth({
@@ -65,9 +67,11 @@ async function mountCourses() {
   const router = createAppRouter()
   await router.push('/courses')
   await router.isReady()
-  const wrapper = mount(CoursesView, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(CoursesView, {
+    global: { plugins: [[VueQueryPlugin, { queryClient }], pinia, router] },
+  })
   await flushPromises()
-  return { wrapper, router }
+  return { wrapper, router, queryClient }
 }
 
 describe('CoursesView：列表渲染', () => {
@@ -147,7 +151,18 @@ describe('CoursesView：列表渲染', () => {
     const router2 = createAppRouter()
     await router2.push('/courses')
     await router2.isReady()
-    const wrapper2 = mount(CoursesView, { global: { plugins: [createPinia(), router2] } })
+    const wrapper2 = mount(CoursesView, {
+      global: {
+        plugins: [
+          [
+            VueQueryPlugin,
+            { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+          ],
+          createPinia(),
+          router2,
+        ],
+      },
+    })
     await flushPromises()
     await wrapper2.find('[data-testid="create-course"]').trigger('click')
     await vi.waitFor(() => {
@@ -199,6 +214,34 @@ describe('CoursesView：删除（二次确认）', () => {
   beforeEach(() => {
     sessionStorage.clear()
     vi.restoreAllMocks()
+  })
+
+  it('删除末页最后一条：回退上一页防空页（页码变化自动重拉）', async () => {
+    // 第 1 页 1 条共 11（2 页）→ 翻第 2 页 1 条 → 删除后回退第 1 页刷新
+    vi.spyOn(courseApi, 'list')
+      .mockResolvedValueOnce(pageOf([course('c-1')], '11'))
+      .mockResolvedValueOnce(pageOf([course('c-9')], '11'))
+      .mockResolvedValueOnce(pageOf([course('c-1')], '10'))
+    const removeSpy = vi.spyOn(courseApi, 'remove').mockResolvedValue()
+    const { wrapper } = await mountCourses()
+
+    // 翻到第 2 页（末页仅剩 1 条）
+    await wrapper.find('[data-testid="next-page"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('第 2 / 2 页')
+    expect(wrapper.find('[data-testid="row-c-9"]').exists()).toBe(true)
+
+    // 删除唯一行：回退到第 1 页（不展示空页）
+    await wrapper.find('[data-testid="op-delete-c-9"]').trigger('click')
+    await wrapper.find('[data-testid="confirm-course-del"]').trigger('click')
+    await flushPromises()
+    expect(removeSpy).toHaveBeenCalledWith('c-9')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('第 1 / 1 页')
+      expect(wrapper.find('[data-testid="row-c-1"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="row-c-9"]').exists()).toBe(false)
+    })
+    wrapper.unmount()
   })
 
   it('取消：不调接口，Dialog 关闭', async () => {

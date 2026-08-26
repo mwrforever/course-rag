@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, knowledgeBaseApi } from '@/lib/api'
@@ -48,7 +49,17 @@ function kb(
 async function mountKb() {
   const pinia = createPinia()
   setActivePinia(pinia)
-  const wrapper = mount(KnowledgeBasesView, { global: { plugins: [pinia] } })
+  const wrapper = mount(KnowledgeBasesView, {
+    global: {
+      plugins: [
+        [
+          VueQueryPlugin,
+          { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+        ],
+        pinia,
+      ],
+    },
+  })
   await flushPromises()
   return { wrapper, pinia }
 }

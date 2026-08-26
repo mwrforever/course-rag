@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '@/App.vue'
@@ -56,7 +57,18 @@ describe('App 冒烟', () => {
   it('未登录访问受保护路由：重定向到登录页并渲染品牌区', async () => {
     const pinia = createPinia()
     const router = createAppRouter()
-    const wrapper = mount(App, { global: { plugins: [pinia, router] } })
+    const wrapper = mount(App, {
+      global: {
+        plugins: [
+          pinia,
+          router,
+          [
+            VueQueryPlugin,
+            { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+          ],
+        ],
+      },
+    })
 
     await router.push('/dashboard')
     await router.isReady()
@@ -70,7 +82,18 @@ describe('App 冒烟', () => {
   it('登录后访问仪表盘：渲染布局壳与仪表盘基础组件', async () => {
     const pinia = createPinia()
     const router = createAppRouter()
-    const wrapper = mount(App, { global: { plugins: [pinia, router] } })
+    const wrapper = mount(App, {
+      global: {
+        plugins: [
+          pinia,
+          router,
+          [
+            VueQueryPlugin,
+            { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+          ],
+        ],
+      },
+    })
 
     // 写入登录态后导航到受保护路由
     const auth = useAuthStore()
@@ -92,7 +115,18 @@ describe('App 冒烟', () => {
   it('已登录访问登录页：守卫送回仪表盘', async () => {
     const pinia = createPinia()
     const router = createAppRouter()
-    const wrapper = mount(App, { global: { plugins: [pinia, router] } })
+    const wrapper = mount(App, {
+      global: {
+        plugins: [
+          pinia,
+          router,
+          [
+            VueQueryPlugin,
+            { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+          ],
+        ],
+      },
+    })
 
     const auth = useAuthStore()
     auth.setAuth(buildLoginPayload())

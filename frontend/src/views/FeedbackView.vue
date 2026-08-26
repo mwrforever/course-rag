@@ -20,7 +20,8 @@
  *
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { use } from 'echarts/core'
 import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
@@ -37,7 +38,7 @@ import { useAuthStore } from '@/stores/auth'
 import ConversationReplayDrawer from '@/components/ConversationReplayDrawer.vue'
 
 import type { EChartsCoreOption } from 'echarts/core'
-import type { FeedbackIntentStat, FeedbackTrendItem, UserFeedbackVO } from '@/lib/types'
+import type { UserFeedbackVO } from '@/lib/types'
 
 // ---- ECharts 按需注册（Line + Bar + Grid/Tooltip/Legend + canvas 渲染，任务 brief 定案） ----
 use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
@@ -58,34 +59,25 @@ const auth = useAuthStore()
 const isAdmin = computed(() => auth.role === 'SUPER_ADMIN')
 
 // ====================================================================
-// 数据加载（列表 + 统计 + 趋势并行，四态页面级收敛）
+// 数据加载（列表 + 统计 + 趋势并行，四态页面级收敛；vue-query 合并单查询）
 // ====================================================================
 
-const loading = ref(true)
-const error = ref('')
-const list = ref<UserFeedbackVO[]>([])
-const stats = ref<FeedbackIntentStat[]>([])
-const trend = ref<FeedbackTrendItem[]>([])
-const total = ref('0')
 const page = ref(1)
 const intentType = ref('')
 
-/** 总页数：total 为 Long 字符串，转 number 后按 PAGE_SIZE 上取整 */
-const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value) / PAGE_SIZE)))
+/** 查询键：意图筛选/页码任一变化即重查（KPI/图表基于全局 stats 不受影响，与原重拉行为一致） */
+const queryKey = computed(() => ['admin-feedback', { intentType: intentType.value }, page.value])
 
-/** 接口错误分级文案（ApiError 透出 message，503 统一降级；非 ApiError 兜底） */
-function messageOf(err: unknown, fallback: string): string {
-  if (err instanceof ApiError) {
-    return err.code === 503 ? '服务暂时不可用，请稍后重试' : err.message
-  }
-  return fallback
-}
-
-/** 拉取反馈报表全量数据：列表 + 统计 + 趋势三接口并行，失败整页 error 横幅 */
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
+const {
+  data,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey,
+  queryFn: async () => {
+    // 三接口并行（与原 Promise.all 语义一致）：任一失败整页 error 横幅
     const [res, s, t] = await Promise.all([
       feedbackApi.list({
         page: page.value,
@@ -95,31 +87,53 @@ async function load() {
       feedbackApi.stats(),
       dashboardApi.feedbackTrend(7),
     ])
-    list.value = res.records ?? []
-    total.value = res.total
-    stats.value = s ?? []
-    trend.value = t ?? []
-  } catch (err) {
-    error.value = messageOf(err, '反馈报表加载失败，请稍后重试')
-  } finally {
-    loading.value = false
+    return { list: res.records ?? [], total: res.total, stats: s ?? [], trend: t ?? [] }
+  },
+})
+
+/** 列表行数据：total 为 Long 字符串铁律 */
+const list = computed(() => data.value?.list ?? [])
+const stats = computed(() => data.value?.stats ?? [])
+const trend = computed(() => data.value?.trend ?? [])
+const total = computed(() => data.value?.total ?? '0')
+
+/** 总页数：total 为 Long 字符串，转 number 后按 PAGE_SIZE 上取整 */
+const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value) / PAGE_SIZE)))
+
+/** 整页加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '反馈报表加载失败，请稍后重试') : '',
+)
+
+/** 接口错误分级文案（ApiError 透出 message，503 统一降级；非 ApiError 兜底） */
+function messageOf(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    return err.code === 503 ? '服务暂时不可用，请稍后重试' : err.message
+  }
+  return fallback
+}
+
+const queryClient = useQueryClient()
+
+/** 删除成功后的刷新：末页最后一条被删会留空页——回退一页（页码变化自动重拉），否则失效列表键 */
+function refreshFeedback() {
+  if (list.value.length === 1 && page.value > 1) {
+    page.value -= 1
+  } else {
+    queryClient.invalidateQueries({ queryKey: ['admin-feedback'] })
   }
 }
 
-onMounted(load)
-
-/** 意图筛选变更：重置第 1 页并重新拉取（KPI/图表基于全局 stats 不受影响） */
+/** 意图筛选变更：重置第 1 页（查询键变化自动重查） */
 function onFilterChange(e: Event) {
   intentType.value = (e.target as HTMLSelectElement).value
   page.value = 1
-  load()
 }
 
-/** 翻页：越界保护 */
+/** 翻页：越界保护，页码变化自动重拉 */
 function changePage(next: number) {
   if (next < 1 || next > totalPages.value) return
   page.value = next
-  load()
 }
 
 // ====================================================================
@@ -288,7 +302,19 @@ function closeReplay() {
 // ====================================================================
 
 const deleting = ref<UserFeedbackVO | null>(null)
-const deleteSubmitting = ref(false)
+
+/** 删除反馈提交（成功后失效列表键，末页空页回退见 refreshFeedback） */
+const { isPending: deleteSubmitting, mutate: confirmDeleteMutation } = useMutation({
+  mutationFn: (id: string) => feedbackApi.remove(id),
+  onSuccess: () => {
+    showToast('反馈已删除', 'success')
+    deleting.value = null
+    refreshFeedback()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
+  },
+})
 
 function requestDelete(fb: UserFeedbackVO) {
   deleting.value = fb
@@ -299,26 +325,21 @@ function cancelDelete() {
   deleting.value = null
 }
 
-/** 确认删除：remove → toast → 关闭确认框 → 刷新 */
-async function confirmDelete() {
+/** 确认删除：提交中禁用按钮，完成/失败由 mutation 回调处理 */
+function confirmDelete() {
   if (!deleting.value) return
-  deleteSubmitting.value = true
-  try {
-    await feedbackApi.remove(deleting.value.id)
-    showToast('反馈已删除', 'success')
-    deleting.value = null
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
-  } finally {
-    deleteSubmitting.value = false
-  }
+  confirmDeleteMutation(deleting.value.id)
 }
 </script>
 
 <template>
   <!-- 加载态：骨架屏与最终布局同形（KPI 灰块 + 图表灰块 + 表格灰行） -->
-  <div v-if="loading" data-testid="feedback-skeleton" class="space-y-4" aria-label="反馈报表加载中">
+  <div
+    v-if="isLoading"
+    data-testid="feedback-skeleton"
+    class="space-y-4"
+    aria-label="反馈报表加载中"
+  >
     <div class="grid grid-cols-4 gap-4">
       <div v-for="i in 4" :key="`kpi-${i}`" class="h-20 animate-pulse rounded-xl bg-surface-2" />
     </div>
@@ -329,12 +350,12 @@ async function confirmDelete() {
 
   <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
   <div
-    v-else-if="error"
+    v-else-if="listError"
     role="alert"
     class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
   >
-    <span class="text-sm text-danger">{{ error }}</span>
-    <Button variant="outline" size="sm" data-testid="retry-feedback" @click="load">重试</Button>
+    <span class="text-sm text-danger">{{ listError }}</span>
+    <Button variant="outline" size="sm" data-testid="retry-feedback" @click="refetch">重试</Button>
   </div>
 
   <!-- 正常态 -->
