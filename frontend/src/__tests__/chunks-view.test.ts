@@ -361,11 +361,13 @@ describe('ChunksView：批量修正 Dialog（表单校验 + 提交体 + loading 
 
     await dialog.find('[data-testid="batch-collection-type"]').setValue('TECHNICAL_QA')
     await dialog.find('[data-testid="batch-course-search"]').setValue('实战')
-    // query 化后搜索为异步调度：以 waitFor 收敛（批 2 实证：flushPromises 立即断言不稳）
+    // query 化后搜索为异步调度：收敛目标 = 结果 option 渲染（比 list 被调用更靠后的时序点，
+    // 消除「list-called 先于渲染」的窗口；批 4② reviewer L4）
     await vi.waitFor(() =>
-      expect(courseApi.list).toHaveBeenCalledWith(
-        expect.objectContaining({ keyword: '实战', size: 10 }),
-      ),
+      expect(wrapper.find('[data-testid="batch-course-option-c-9"]').exists()).toBe(true),
+    )
+    expect(courseApi.list).toHaveBeenCalledWith(
+      expect.objectContaining({ keyword: '实战', size: 10 }),
     )
     await wrapper.find('[data-testid="batch-course-option-c-9"]').trigger('click')
     expect(dialog.find('[data-testid="batch-course-picked"]').text()).toContain('RAG 实战营')
