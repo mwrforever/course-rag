@@ -14,7 +14,8 @@
  * （studentCount string、likeRate double）+ feedback/trend?days=7（count string）+
  * documents?sort=created&size=5。四接口并行拉取，任一失败整页 error 横幅 + 重试。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed } from 'vue'
+import { useQuery } from '@tanstack/vue-query'
 import { useRouter } from 'vue-router'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -35,7 +36,7 @@ import { ApiError, dashboardApi, documentApi } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
 
 import type { EChartsCoreOption } from 'echarts/core'
-import type { DashboardStats, DocumentParseStatus, DocumentVO, FeedbackStats } from '@/lib/types'
+import type { DocumentParseStatus } from '@/lib/types'
 
 // ---- ECharts 按需注册（Line + Grid + Tooltip + canvas 渲染，任务 brief 定案） ----
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
@@ -43,22 +44,10 @@ use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 const router = useRouter()
 
 // ====================================================================
-// 数据加载（并行四接口，成功态/错误态/加载态三态页面级收敛）
+// 数据加载（并行四接口，成功态/错误态/加载态三态页面级收敛；vue-query 合并单查询）
 // ====================================================================
 
-const loading = ref(true)
-const error = ref('')
-const stats = ref<DashboardStats | null>(null)
-const feedback = ref<FeedbackStats | null>(null)
-const trend = ref<Array<{ date: string; count: string }>>([])
-const recentDocs = ref<DocumentVO[]>([])
-
-/**
- * 接口错误分级文案（与登录页 messageOf 同构）
- *
- * @param err 捕获异常：ApiError 透出 message（503 统一降级文案）；未知异常页面兜底
- * @returns 展示文案
- */
+/** 接口错误分级文案（与登录页 messageOf 同构） */
 function messageOf(err: unknown): string {
   if (err instanceof ApiError) {
     return err.code === 503 ? '服务暂时不可用，请稍后重试' : err.message
@@ -67,34 +56,43 @@ function messageOf(err: unknown): string {
 }
 
 /**
- * 加载仪表盘全量数据：四接口并行，全部成功才进入正常态
+ * 仪表盘全量数据（四接口并行，全部成功才进入正常态；失败任一条目即整页 error 横幅）
  *
- * 失败任一条目即整页 error 横幅（设计 §1.7），重试按钮重新走本方法；
- * 分区块空态（无文档/无趋势）在成功后按区块收敛。
+ * 查询键稳定（无筛选/分页），挂载即拉取；分区块空态（无文档/无趋势）在成功后按区块收敛。
  */
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
+const {
+  data,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey: ['admin-dashboard-stats'],
+  queryFn: async () => {
     const [s, f, t, docs] = await Promise.all([
       dashboardApi.stats(),
       dashboardApi.feedbackStats('today'),
       dashboardApi.feedbackTrend(7),
       documentApi.list({ sort: 'created', size: 5 }),
     ])
-    stats.value = s
-    feedback.value = f
-    // count 为 Long 字符串，图表序列在 option 内转 number（排序保持接口升序）
-    trend.value = t ?? []
-    recentDocs.value = docs.records ?? []
-  } catch (err) {
-    error.value = messageOf(err)
-  } finally {
-    loading.value = false
-  }
-}
+    return {
+      stats: s,
+      feedback: f,
+      // count 为 Long 字符串，图表序列在 option 内转 number（排序保持接口升序）
+      trend: t ?? [],
+      recentDocs: docs.records ?? [],
+    }
+  },
+})
 
-onMounted(load)
+/** KPI 与图表数据源：全部由查询结果派生 */
+const stats = computed(() => data.value?.stats ?? null)
+const feedback = computed(() => data.value?.feedback ?? null)
+const trend = computed(() => data.value?.trend ?? [])
+const recentDocs = computed(() => data.value?.recentDocs ?? [])
+
+/** 整页加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() => (isError.value ? messageOf(queryError.value) : ''))
 
 // ====================================================================
 // KPI 与点赞率
@@ -237,7 +235,12 @@ const quickEntries: QuickEntry[] = [
 
 <template>
   <!-- 加载态：骨架屏与最终布局同形（KPI 灰块 + 入口灰块 + 双栏灰块，设计 §1.7） -->
-  <div v-if="loading" data-testid="dashboard-skeleton" class="space-y-4" aria-label="仪表盘加载中">
+  <div
+    v-if="isLoading"
+    data-testid="dashboard-skeleton"
+    class="space-y-4"
+    aria-label="仪表盘加载中"
+  >
     <div class="grid grid-cols-4 gap-4">
       <div v-for="i in 4" :key="`kpi-${i}`" class="h-20 animate-pulse rounded-xl bg-surface-2" />
     </div>
@@ -250,18 +253,18 @@ const quickEntries: QuickEntry[] = [
     </div>
   </div>
 
-  <!-- 错误态：页内横幅（danger-soft 底）+ 重试（设计 §1.7），重试重新走 load -->
+  <!-- 错误态：页内横幅（danger-soft 底）+ 重试（设计 §1.7），重试重新拉取全量数据 -->
   <div
-    v-else-if="error"
+    v-else-if="listError"
     role="alert"
     class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
   >
-    <span class="text-sm text-danger">{{ error }}</span>
+    <span class="text-sm text-danger">{{ listError }}</span>
     <button
       type="button"
       data-testid="retry"
       class="shrink-0 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text transition-colors duration-150 hover:bg-surface-2"
-      @click="load"
+      @click="() => refetch()"
     >
       重试
     </button>

@@ -16,7 +16,8 @@
  *
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { z } from 'zod'
 import { PhPlus, PhSpinnerGap, PhWarningCircle } from '@phosphor-icons/vue'
 
@@ -38,14 +39,44 @@ const PAGE_SIZE = 10
 /** 筛选条件：userId/jti/tokenType 经查询按钮提交 */
 const filters = reactive({ userId: '', jti: '', tokenType: '' })
 const pendingFilters = reactive({ userId: '', jti: '', tokenType: '' })
-const items = ref<SysTokenBlacklistVO[]>([])
-const loading = ref(true)
-const error = ref('')
 const page = ref(1)
-const total = ref('0')
+
+/** 查询键：筛选或页码任一变化即重查（vue-query 数据源，C.1.4） */
+const queryKey = computed(() => [
+  'admin-token-blacklist',
+  { userId: filters.userId, jti: filters.jti, tokenType: filters.tokenType },
+  page.value,
+])
+
+const {
+  data,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey,
+  queryFn: () =>
+    securityApi.blacklist({
+      page: page.value,
+      size: PAGE_SIZE,
+      ...(filters.userId ? { userId: filters.userId } : {}),
+      ...(filters.jti ? { jti: filters.jti } : {}),
+      ...(filters.tokenType ? { tokenType: filters.tokenType } : {}),
+    }),
+})
+
+/** 列表行数据：total 为 Long 字符串铁律 */
+const items = computed(() => data.value?.records ?? [])
+const total = computed(() => data.value?.total ?? '0')
 
 /** 总页数：total 为 Long 字符串，转 number 后按 PAGE_SIZE 上取整 */
 const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value) / PAGE_SIZE)))
+
+/** 列表加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '黑名单加载失败，请稍后重试') : '',
+)
 
 /** 接口错误分级文案（ApiError 透出 message，503 统一降级；非 ApiError 兜底） */
 function messageOf(err: unknown, fallback: string): string {
@@ -55,47 +86,29 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-/** 拉取黑名单列表（userId/jti/tokenType 筛选 + 分页，空值不携带） */
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const res = await securityApi.blacklist({
-      page: page.value,
-      size: PAGE_SIZE,
-      ...(filters.userId ? { userId: filters.userId } : {}),
-      ...(filters.jti ? { jti: filters.jti } : {}),
-      ...(filters.tokenType ? { tokenType: filters.tokenType } : {}),
-    })
-    items.value = res.records ?? []
-    total.value = res.total
-    if (items.value.length === 0 && page.value > 1) {
-      page.value -= 1
-      await load()
-    }
-  } catch (err) {
-    error.value = messageOf(err, '黑名单加载失败，请稍后重试')
-  } finally {
-    loading.value = false
+const queryClient = useQueryClient()
+
+/** 写操作成功后的列表刷新：删除末页最后一条会留空页——回退一页（页码变化自动重拉），否则按查询键失效重拉 */
+function refreshItems() {
+  if (items.value.length === 1 && page.value > 1) {
+    page.value -= 1
+  } else {
+    queryClient.invalidateQueries({ queryKey: ['admin-token-blacklist'] })
   }
 }
 
-onMounted(load)
-
-/** 查询按钮：三筛选草稿提交并回第 1 页重查 */
+/** 查询按钮：三筛选草稿提交并回第 1 页（查询键变化自动重查） */
 function applyFilters() {
   filters.userId = pendingFilters.userId.trim()
   filters.jti = pendingFilters.jti.trim()
   filters.tokenType = pendingFilters.tokenType
   page.value = 1
-  load()
 }
 
-/** 翻页：越界保护 */
+/** 翻页：越界保护，页码变化自动重拉 */
 function changePage(next: number) {
   if (next < 1 || next > totalPages.value) return
   page.value = next
-  load()
 }
 
 /** tokenType Badge：ACCESS 强调 / REFRESH 中性（双型区分） */
@@ -114,9 +127,31 @@ const addSchema = z.object({
 })
 
 const addOpen = ref(false)
-const addSubmitting = ref(false)
 const addForm = reactive({ jti: '', tokenType: 'ACCESS', userId: '', expiresAt: '' })
 const addErrors = reactive({ jti: '', userId: '' })
+
+/** 手动加入提交（成功后失效列表键） */
+const { isPending: addSubmitting, mutate: submitAddMutation } = useMutation({
+  mutationFn: (payload: { jti: string; tokenType: string; userId: string; expiresAt: string }) =>
+    securityApi.addBlacklist({
+      jti: payload.jti,
+      tokenType: payload.tokenType,
+      userId: payload.userId,
+      reason: 'MANUAL_REVOKE',
+      ...(payload.expiresAt ? { expiresAt: payload.expiresAt } : {}),
+    }),
+  onSuccess: () => {
+    showToast('已加入黑名单', 'success')
+    addOpen.value = false
+    addForm.jti = ''
+    addForm.userId = ''
+    addForm.expiresAt = ''
+    refreshItems()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '加入黑名单失败，请稍后重试'), 'danger')
+  },
+})
 
 function openAdd() {
   addOpen.value = true
@@ -130,13 +165,12 @@ function closeAdd() {
 }
 
 /**
- * 提交手动加入：zod 前置校验 → addBlacklist 查询参数传参
+ * 提交手动加入：zod 前置校验 → 走 mutation（后端 K5 @RequestParam 查询参数传参）
  *
- * 参数契约（后端 K5 @RequestParam）：reason 恒 MANUAL_REVOKE；expiresAt 未填不携带
- * （后端缺省 7 天后过期）；填写时将 datetime-local「YYYY-MM-DDTHH:mm」补秒位为
- * LocalDateTime 可解析的「YYYY-MM-DDTHH:mm:00」。
+ * 参数契约：reason 恒 MANUAL_REVOKE；expiresAt 未填不携带（后端缺省 7 天后过期）；
+ * 填写时将 datetime-local「YYYY-MM-DDTHH:mm」补秒位为可解析的「YYYY-MM-DDTHH:mm:00」。
  */
-async function submitAdd() {
+function submitAdd() {
   const parsed = addSchema.safeParse(addForm)
   if (!parsed.success) {
     // zod v4 issues.path 为字段路径数组：includes 判定字段归属，就地分列报错
@@ -147,26 +181,12 @@ async function submitAdd() {
   }
   addErrors.jti = ''
   addErrors.userId = ''
-  addSubmitting.value = true
-  try {
-    await securityApi.addBlacklist({
-      jti: addForm.jti.trim(),
-      tokenType: addForm.tokenType,
-      userId: addForm.userId.trim(),
-      reason: 'MANUAL_REVOKE',
-      ...(addForm.expiresAt ? { expiresAt: `${addForm.expiresAt}:00` } : {}),
-    })
-    showToast('已加入黑名单', 'success')
-    addOpen.value = false
-    addForm.jti = ''
-    addForm.userId = ''
-    addForm.expiresAt = ''
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '加入黑名单失败，请稍后重试'), 'danger')
-  } finally {
-    addSubmitting.value = false
-  }
+  submitAddMutation({
+    jti: addForm.jti.trim(),
+    tokenType: addForm.tokenType,
+    userId: addForm.userId.trim(),
+    expiresAt: addForm.expiresAt ? `${addForm.expiresAt}:00` : '',
+  })
 }
 
 // ====================================================================
@@ -174,7 +194,19 @@ async function submitAdd() {
 // ====================================================================
 
 const removing = ref<SysTokenBlacklistVO | null>(null)
-const removeSubmitting = ref(false)
+
+/** 移除黑名单记录提交（Token 过期后清理，二次确认防误删；成功后失效列表键） */
+const { isPending: removeSubmitting, mutate: confirmRemoveMutation } = useMutation({
+  mutationFn: (id: string) => securityApi.removeBlacklist(id),
+  onSuccess: () => {
+    showToast('已从黑名单移除', 'success')
+    removing.value = null
+    refreshItems()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '移除失败，请稍后重试'), 'danger')
+  },
+})
 
 function requestRemove(t: SysTokenBlacklistVO) {
   removing.value = t
@@ -185,36 +217,27 @@ function cancelRemove() {
   removing.value = null
 }
 
-/** 确认移除（Token 过期后清理黑名单记录，二次确认防误删安全保护） */
-async function confirmRemove() {
+/** 确认移除：提交中禁用按钮，完成/失败由 mutation 回调处理 */
+function confirmRemove() {
   if (!removing.value) return
-  removeSubmitting.value = true
-  try {
-    await securityApi.removeBlacklist(removing.value.id)
-    showToast('已从黑名单移除', 'success')
-    removing.value = null
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '移除失败，请稍后重试'), 'danger')
-  } finally {
-    removeSubmitting.value = false
-  }
+  confirmRemoveMutation(removing.value.id)
 }
 
-const cleaning = ref(false)
-
-/** 清理过期：cleanupBlacklist → toast 展示 cleaned 数 → 刷新列表 */
-async function cleanupExpired() {
-  cleaning.value = true
-  try {
-    const res = await securityApi.cleanupBlacklist()
+/** 清理过期提交（toast 按 cleaned 数分级；成功后失效列表键） */
+const { isPending: cleaning, mutate: cleanupExpiredMutation } = useMutation({
+  mutationFn: () => securityApi.cleanupBlacklist(),
+  onSuccess: (res) => {
     showToast(`已清理 ${res.cleaned} 条过期记录`, res.cleaned > 0 ? 'success' : 'info')
-    await load()
-  } catch (err) {
+    refreshItems()
+  },
+  onError: (err) => {
     showToast(messageOf(err, '清理失败，请稍后重试'), 'danger')
-  } finally {
-    cleaning.value = false
-  }
+  },
+})
+
+/** 清理过期入口：提交中禁用按钮，完成/失败由 mutation 回调处理 */
+function cleanupExpired() {
+  cleanupExpiredMutation()
 }
 </script>
 
@@ -277,17 +300,17 @@ async function cleanupExpired() {
 
   <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
   <div
-    v-if="error"
+    v-if="listError"
     role="alert"
     class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
   >
-    <span class="text-sm text-danger">{{ error }}</span>
-    <Button variant="outline" size="sm" data-testid="retry-blacklist" @click="load">重试</Button>
+    <span class="text-sm text-danger">{{ listError }}</span>
+    <Button variant="outline" size="sm" data-testid="retry-blacklist" @click="refetch">重试</Button>
   </div>
 
   <!-- 加载态：表格骨架屏（表头 + 5 行灰条，与最终表格同形） -->
   <div
-    v-else-if="loading"
+    v-else-if="isLoading"
     data-testid="tb-skeleton"
     class="overflow-hidden rounded-xl border border-border bg-surface"
     aria-label="黑名单加载中"

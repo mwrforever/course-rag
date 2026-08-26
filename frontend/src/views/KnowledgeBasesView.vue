@@ -15,7 +15,8 @@
  * 「知识库：文档+分片」不新增导航项，从文档管理页「管理知识库」链接进入
  * （文档页随文档管理任务落地时补充入口）。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { PhPlus, PhSpinnerGap, PhWarningCircle } from '@phosphor-icons/vue'
 import { z } from 'zod'
 
@@ -30,15 +31,34 @@ import type { KnowledgeBaseVO } from '@/lib/types'
 /** 每页条数（设计 §2.6 分页器：总数 + 上/下页） */
 const PAGE_SIZE = 10
 
-/** 列表状态：名称/描述/状态/创建时间 + 分页信息 */
-const kbs = ref<KnowledgeBaseVO[]>([])
-const loading = ref(true)
-const error = ref('')
+/** 页码：查询键组成之一，变化自动触发新查询 */
 const page = ref(1)
-const total = ref('0')
+
+/** 查询键：页码变化即重拉当前页（vue-query 数据源，C.1.4） */
+const queryKey = computed(() => ['admin-knowledge-bases', page.value])
+
+const {
+  data,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey,
+  queryFn: () => knowledgeBaseApi.list({ page: page.value, size: PAGE_SIZE }),
+})
+
+/** 列表行数据：total 为 Long 字符串铁律（契约 §D.4 同步口径） */
+const kbs = computed(() => data.value?.records ?? [])
+const total = computed(() => data.value?.total ?? '0')
 
 /** 总页数：total 为 Long 字符串，转 number 后按 PAGE_SIZE 上取整（至少 1 页） */
 const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value) / PAGE_SIZE)))
+
+/** 列表加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '知识库加载失败，请稍后重试') : '',
+)
 
 /**
  * 接口错误分级文案（与登录页 messageOf 同构）
@@ -54,37 +74,21 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-/**
- * 拉取当前页知识库列表（分页参数 page/size；total 回写分页器）
- *
- * 边界：删除末页最后一条后列表为空且非第一页时回退一页重拉（防空页停留）。
- */
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const res = await knowledgeBaseApi.list({ page: page.value, size: PAGE_SIZE })
-    kbs.value = res.records ?? []
-    total.value = res.total
-    // 删除导致末页清空：回退一页（total 仍大于 0 时递归一次收敛）
-    if (kbs.value.length === 0 && page.value > 1) {
-      page.value -= 1
-      await load()
-    }
-  } catch (err) {
-    error.value = messageOf(err, '知识库加载失败，请稍后重试')
-  } finally {
-    loading.value = false
+const queryClient = useQueryClient()
+
+/** 写操作成功后的列表刷新：删除末页最后一条会留空页——回退一页（页码变化自动重拉），否则按查询键失效重拉 */
+function refreshKbs() {
+  if (kbs.value.length === 1 && page.value > 1) {
+    page.value -= 1
+  } else {
+    queryClient.invalidateQueries({ queryKey: ['admin-knowledge-bases'] })
   }
 }
 
-onMounted(load)
-
-/** 翻页：越界保护（首页/末页禁用态由 disabled 兜底，方法内再防一次） */
+/** 翻页：越界保护（首页/末页禁用态由 disabled 兜底，方法内再防一次），页码变化自动重拉 */
 function changePage(next: number) {
   if (next < 1 || next > totalPages.value) return
   page.value = next
-  load()
 }
 
 // ====================================================================
@@ -101,7 +105,25 @@ const dialogOpen = ref(false)
 const editing = ref<KnowledgeBaseVO | null>(null)
 const form = ref({ name: '', description: '' })
 const fieldError = ref('')
-const submitting = ref(false)
+
+/** 新建/编辑提交（按 editing 分支走 create/update；成功后失效列表键） */
+const { isPending: submitting, mutate: submitForm } = useMutation({
+  mutationFn: async (payload: { name: string; description: string }) => {
+    if (editing.value) {
+      await knowledgeBaseApi.update(editing.value.id, payload)
+    } else {
+      await knowledgeBaseApi.create(payload)
+    }
+  },
+  onSuccess: () => {
+    showToast(editing.value ? '知识库已更新' : '知识库创建成功', 'success')
+    dialogOpen.value = false
+    refreshKbs()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '保存失败，请稍后重试'), 'danger')
+  },
+})
 
 /** 打开新建 Dialog：清空表单与错误 */
 function openCreate() {
@@ -124,34 +146,18 @@ function closeDialog() {
 }
 
 /**
- * 提交表单：zod 校验（失败就地报错不发请求）→ create/update → toast → 刷新列表
+ * 提交表单：zod 校验（失败就地报错不发请求）→ 走 mutation（create/update）
  *
  * 成功后关闭 Dialog；失败 danger toast 展示后端文案且 Dialog 停留可重试。
  */
-async function handleSubmit() {
+function handleSubmit() {
   const parsed = kbSchema.safeParse(form.value)
   if (!parsed.success) {
     fieldError.value = parsed.error.issues[0]?.message ?? '请输入知识库名称'
     return
   }
   fieldError.value = ''
-  submitting.value = true
-  try {
-    const payload = { name: form.value.name, description: form.value.description }
-    if (editing.value) {
-      await knowledgeBaseApi.update(editing.value.id, payload)
-      showToast('知识库已更新', 'success')
-    } else {
-      await knowledgeBaseApi.create(payload)
-      showToast('知识库创建成功', 'success')
-    }
-    dialogOpen.value = false
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '保存失败，请稍后重试'), 'danger')
-  } finally {
-    submitting.value = false
-  }
+  submitForm({ name: form.value.name, description: form.value.description })
 }
 
 // ====================================================================
@@ -160,7 +166,19 @@ async function handleSubmit() {
 
 /** 待删除行：非 null 时展示确认 Dialog（danger 实底按钮需二次确认，设计 §2.6） */
 const deleting = ref<KnowledgeBaseVO | null>(null)
-const deletingLoading = ref(false)
+
+/** 删除知识库提交（成功后失效列表键，末页空页回退见 refreshKbs） */
+const { isPending: deletingLoading, mutate: confirmDeleteMutation } = useMutation({
+  mutationFn: (id: string) => knowledgeBaseApi.remove(id),
+  onSuccess: () => {
+    showToast('知识库已删除', 'success')
+    deleting.value = null
+    refreshKbs()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
+  },
+})
 
 function requestDelete(kb: KnowledgeBaseVO) {
   deleting.value = kb
@@ -170,20 +188,10 @@ function cancelDelete() {
   deleting.value = null
 }
 
-/** 确认删除：remove → toast → 关闭确认框 → 刷新列表（末页清空回退见 load 边界） */
-async function confirmDelete() {
+/** 确认删除：提交中禁用按钮，完成/失败由 mutation 回调处理 */
+function confirmDelete() {
   if (!deleting.value) return
-  deletingLoading.value = true
-  try {
-    await knowledgeBaseApi.remove(deleting.value.id)
-    showToast('知识库已删除', 'success')
-    deleting.value = null
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
-  } finally {
-    deletingLoading.value = false
-  }
+  confirmDeleteMutation(deleting.value.id)
 }
 
 /** 状态 Badge：ACTIVE → emerald / ARCHIVED → 中性（设计 §2.5；列表恒 ACTIVE 由后端过滤） */
@@ -204,17 +212,17 @@ function statusVariant(status: string) {
 
   <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
   <div
-    v-if="error"
+    v-if="listError"
     role="alert"
     class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
   >
-    <span class="text-sm text-danger">{{ error }}</span>
-    <Button variant="outline" size="sm" data-testid="retry-kb" @click="load">重试</Button>
+    <span class="text-sm text-danger">{{ listError }}</span>
+    <Button variant="outline" size="sm" data-testid="retry-kb" @click="refetch">重试</Button>
   </div>
 
   <!-- 加载态：表格骨架屏（表头 + 5 行灰条与表格同形，设计 §1.7） -->
   <div
-    v-else-if="loading"
+    v-else-if="isLoading"
     data-testid="kb-skeleton"
     class="overflow-hidden rounded-xl border border-border bg-surface"
     aria-label="知识库列表加载中"

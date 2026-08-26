@@ -15,7 +15,8 @@
  *
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
 import { PhArrowLeft, PhCheck, PhSpinnerGap, PhWarningCircle, PhX } from '@phosphor-icons/vue'
 
@@ -26,7 +27,7 @@ import { ApiError, chunkApi, documentApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime, formatFileSize } from '@/lib/utils'
 
-import type { DocumentChunkVO, DocumentParseStatus, DocumentVO } from '@/lib/types'
+import type { DocumentParseStatus } from '@/lib/types'
 
 /** 分片每页条数（设计 §2.6 分页器） */
 const CHUNK_PAGE_SIZE = 10
@@ -73,77 +74,64 @@ function messageOf(err: unknown, fallback: string): string {
 }
 
 // ====================================================================
-// 文档详情（信息卡 + 状态时间线数据源）
+// 文档详情（信息卡 + 状态时间线数据源；查询键含路由 docId，参数变化自动重拉）
 // ====================================================================
 
-const doc = ref<DocumentVO | null>(null)
-const docLoading = ref(true)
-const docError = ref('')
+const {
+  data: doc,
+  isLoading: docLoading,
+  isError: docIsError,
+  error: docQueryError,
+  refetch: refetchDoc,
+} = useQuery({
+  queryKey: computed(() => ['admin-document-detail', docId.value]),
+  queryFn: () => documentApi.get(docId.value),
+})
 
 /** 当前解析状态（doc 未加载完成时按 PENDING 兜底，时间线随详情加载后渲染） */
 const parseStatus = computed(() => doc.value?.parseStatus ?? 'PENDING')
 
-/** 拉取文档详情：成功回写 doc，失败进入文档级错误态（四态之一） */
-async function loadDoc() {
-  docLoading.value = true
-  docError.value = ''
-  try {
-    doc.value = await documentApi.get(docId.value)
-  } catch (err) {
-    docError.value = messageOf(err, '文档加载失败，请稍后重试')
-  } finally {
-    docLoading.value = false
-  }
-}
+/** 文档级加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const docErrorText = computed(() =>
+  docIsError.value ? messageOf(docQueryError.value, '文档加载失败，请稍后重试') : '',
+)
 
 // ====================================================================
 // 分片列表（独立请求 + 独立分页 + 独立错误重试）
 // ====================================================================
 
-const chunks = ref<DocumentChunkVO[]>([])
-const chunkLoading = ref(true)
-const chunkError = ref('')
 const chunkPage = ref(1)
-const chunkTotal = ref('0')
+
+const {
+  data: chunkData,
+  isLoading: chunkLoading,
+  isError: chunkIsError,
+  error: chunkQueryError,
+  refetch: refetchChunks,
+} = useQuery({
+  queryKey: computed(() => ['admin-document-chunks', docId.value, chunkPage.value]),
+  queryFn: () =>
+    chunkApi.list({ docId: docId.value, page: chunkPage.value, size: CHUNK_PAGE_SIZE }),
+})
+
+/** 分片行数据：total 为 Long 字符串铁律 */
+const chunks = computed(() => chunkData.value?.records ?? [])
+const chunkTotal = computed(() => chunkData.value?.total ?? '0')
 
 const chunkTotalPages = computed(() =>
   Math.max(1, Math.ceil(Number(chunkTotal.value) / CHUNK_PAGE_SIZE)),
 )
 
-/**
- * 拉取当前页分片（docId 固定，分页参数 page/size；total 回写分页器）
- *
- * 边界：分页参数由 chunkApi.list 传递，翻页越界由 changeChunkPage 拦截。
- */
-async function loadChunks() {
-  chunkLoading.value = true
-  chunkError.value = ''
-  try {
-    const res = await chunkApi.list({
-      docId: docId.value,
-      page: chunkPage.value,
-      size: CHUNK_PAGE_SIZE,
-    })
-    chunks.value = res.records ?? []
-    chunkTotal.value = res.total
-  } catch (err) {
-    chunkError.value = messageOf(err, '分片加载失败，请稍后重试')
-  } finally {
-    chunkLoading.value = false
-  }
-}
+/** 分片级加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const chunkErrorText = computed(() =>
+  chunkIsError.value ? messageOf(chunkQueryError.value, '分片加载失败，请稍后重试') : '',
+)
 
-/** 翻页：越界保护（首页/末页禁用态由 disabled 兜底） */
+/** 翻页：越界保护（首页/末页禁用态由 disabled 兜底），页码变化自动重拉 */
 function changeChunkPage(next: number) {
   if (next < 1 || next > chunkTotalPages.value) return
   chunkPage.value = next
-  loadChunks()
 }
-
-onMounted(() => {
-  loadDoc()
-  loadChunks()
-})
 
 // ====================================================================
 // 状态时间线（G14 静态状态机示意）
@@ -168,22 +156,21 @@ function stepState(step: DocumentParseStatus): 'done' | 'current' | 'pending' {
 // 重新解析（FAILED 终态恢复入口，列表行与详情页共用同一语义）
 // ====================================================================
 
-const reparseLoading = ref(false)
+const queryClient = useQueryClient()
 
-/** 重新解析：POST reparse → toast → 详情与分片一并刷新（状态可能流转） */
-async function handleReparse() {
-  if (!doc.value) return
-  reparseLoading.value = true
-  try {
-    await documentApi.reparse(doc.value.id)
+/** 重新解析提交（状态可能流转；成功后详情与分片一并失效重拉） */
+const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
+  mutationFn: () => documentApi.reparse(doc.value!.id),
+  onSuccess: () => {
     showToast('已重新解析，稍后查看最新状态', 'success')
-    await Promise.all([loadDoc(), loadChunks()])
-  } catch (err) {
+    // 失效匹配为逐项等值比较（非字符串前缀），详情与分片两个键分别失效
+    queryClient.invalidateQueries({ queryKey: ['admin-document-detail'] })
+    queryClient.invalidateQueries({ queryKey: ['admin-document-chunks'] })
+  },
+  onError: (err) => {
     showToast(messageOf(err, '重新解析失败，请稍后重试'), 'danger')
-  } finally {
-    reparseLoading.value = false
-  }
-}
+  },
+})
 </script>
 
 <template>
@@ -223,13 +210,13 @@ async function handleReparse() {
 
   <!-- 文档级错误态：页内横幅 + 重试（设计 §1.7） -->
   <div
-    v-else-if="docError"
+    v-else-if="docErrorText"
     data-testid="detail-error"
     role="alert"
     class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
   >
-    <span class="text-sm text-danger">{{ docError }}</span>
-    <Button variant="outline" size="sm" data-testid="retry-detail" @click="loadDoc">重试</Button>
+    <span class="text-sm text-danger">{{ docErrorText }}</span>
+    <Button variant="outline" size="sm" data-testid="retry-detail" @click="refetchDoc">重试</Button>
   </div>
 
   <!-- 正常态：信息卡 + 状态时间线 + 分片列表 -->
@@ -387,13 +374,13 @@ async function handleReparse() {
 
       <!-- 分片错误态：横幅 + 重试（与文档级错误独立） -->
       <div
-        v-else-if="chunkError"
+        v-else-if="chunkErrorText"
         data-testid="chunk-error"
         role="alert"
         class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
       >
-        <span class="text-sm text-danger">{{ chunkError }}</span>
-        <Button variant="outline" size="sm" data-testid="retry-chunks" @click="loadChunks">
+        <span class="text-sm text-danger">{{ chunkErrorText }}</span>
+        <Button variant="outline" size="sm" data-testid="retry-chunks" @click="refetchChunks">
           重试
         </Button>
       </div>

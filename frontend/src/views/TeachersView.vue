@@ -7,7 +7,8 @@
  * 角色固定 TEACHER：本页只管理教师，不再承载教师/账号混域（用户拍板剥离）。
  * 权限矩阵：自身行禁用/启用入口隐藏（防自锁，后端 A7 同时拒绝）。
  */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { z } from 'zod'
 import { PhSpinnerGap, PhUserPlus, PhWarningCircle } from '@phosphor-icons/vue'
 
@@ -32,14 +33,34 @@ const createSchema = z.object({
   displayName: z.string().trim().min(1, '请输入显示名'),
 })
 
-const teachers = ref<UserDTO[]>([])
-const loading = ref(true)
-const error = ref('')
+/** 页码：查询键组成之一，变化自动触发新查询 */
 const page = ref(1)
-const total = ref('0')
+
+/** 查询键：页码变化即重拉当前页（vue-query 数据源，C.1.4） */
+const queryKey = computed(() => ['admin-teachers', page.value])
+
+const {
+  data,
+  isLoading,
+  isError,
+  error: queryError,
+  refetch,
+} = useQuery({
+  queryKey,
+  queryFn: () => userApi.list({ page: page.value, size: PAGE_SIZE, role: 'TEACHER' }),
+})
+
+/** 列表行数据：total 为 Long 字符串铁律 */
+const teachers = computed(() => data.value?.records ?? [])
+const total = computed(() => data.value?.total ?? '0')
 
 /** 总页数：total 为 Long 字符串，转 number 后按 PAGE_SIZE 上取整 */
 const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value) / PAGE_SIZE)))
+
+/** 列表加载失败横幅文案（queryError 非空时透出；503 统一降级） */
+const listError = computed(() =>
+  isError.value ? messageOf(queryError.value, '教师列表加载失败，请稍后重试') : '',
+)
 
 /** 接口错误分级文案 */
 function messageOf(err: unknown, fallback: string): string {
@@ -49,32 +70,21 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-/** 拉取教师列表（分页 + role=TEACHER；末页清空回退一页） */
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const res = await userApi.list({ page: page.value, size: PAGE_SIZE, role: 'TEACHER' })
-    teachers.value = res.records ?? []
-    total.value = res.total
-    if (teachers.value.length === 0 && page.value > 1) {
-      page.value -= 1
-      await load()
-    }
-  } catch (err) {
-    error.value = messageOf(err, '教师列表加载失败，请稍后重试')
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(load)
-
-/** 翻页：越界保护 */
+/** 翻页：越界保护，页码变化自动重拉 */
 function changePage(next: number) {
   if (next < 1 || next > totalPages.value) return
   page.value = next
-  load()
+}
+
+const queryClient = useQueryClient()
+
+/** 写操作成功后的列表刷新：删除末页最后一条会留空页——回退一页（页码变化自动重拉），否则按查询键失效重拉 */
+function refreshTeachers() {
+  if (teachers.value.length === 1 && page.value > 1) {
+    page.value -= 1
+  } else {
+    queryClient.invalidateQueries({ queryKey: ['admin-teachers'] })
+  }
 }
 
 /** 自身行判定：当前登录用户（auth.userId）的行禁用/启用按钮隐藏（防自锁） */
@@ -90,9 +100,22 @@ function statusVariant(status: UserStatus) {
 // ============ 添加教师 Dialog（角色固定 TEACHER，无角色选择器） ============
 
 const addOpen = ref(false)
-const addSubmitting = ref(false)
 const addForm = reactive({ username: '', password: '', displayName: '' })
 const addErrors = reactive({ username: '', password: '', displayName: '' })
+
+/** 创建教师提交（isPending 驱动按钮禁用与拦截；成功后失效列表键） */
+const { isPending: addSubmitting, mutate: submitAddMutation } = useMutation({
+  mutationFn: (payload: { username: string; password: string; displayName: string }) =>
+    userApi.create({ ...payload, role: 'TEACHER' }),
+  onSuccess: () => {
+    showToast('教师账号已创建', 'success')
+    addOpen.value = false
+    refreshTeachers()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '创建教师失败，请稍后重试'), 'danger')
+  },
+})
 
 function openAdd() {
   addForm.username = ''
@@ -113,8 +136,8 @@ function closeAdd() {
   addOpen.value = false
 }
 
-/** 提交创建教师：zod 前置校验 → create（role 恒 TEACHER）→ toast → 刷新 */
-async function submitAdd() {
+/** 提交创建教师：zod 前置校验通过后走 mutation（role 恒 TEACHER） */
+function submitAdd() {
   const parsed = createSchema.safeParse(addForm)
   if (!parsed.success) {
     const issues = parsed.error.issues
@@ -126,22 +149,11 @@ async function submitAdd() {
   addErrors.username = ''
   addErrors.password = ''
   addErrors.displayName = ''
-  addSubmitting.value = true
-  try {
-    await userApi.create({
-      username: addForm.username.trim(),
-      password: addForm.password,
-      displayName: addForm.displayName.trim(),
-      role: 'TEACHER',
-    })
-    showToast('教师账号已创建', 'success')
-    addOpen.value = false
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '创建教师失败，请稍后重试'), 'danger')
-  } finally {
-    addSubmitting.value = false
-  }
+  submitAddMutation({
+    username: addForm.username.trim(),
+    password: addForm.password,
+    displayName: addForm.displayName.trim(),
+  })
 }
 
 // ============ 编辑 displayName Dialog ============
@@ -149,7 +161,20 @@ async function submitAdd() {
 const editing = ref<UserDTO | null>(null)
 const editName = ref('')
 const editError = ref('')
-const editSubmitting = ref(false)
+
+/** 保存显示名提交（成功后失效列表键） */
+const { isPending: editSubmitting, mutate: saveEditMutation } = useMutation({
+  mutationFn: (payload: { id: string; displayName: string }) =>
+    userApi.update(payload.id, { displayName: payload.displayName }),
+  onSuccess: () => {
+    showToast('显示名已更新', 'success')
+    editing.value = null
+    refreshTeachers()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '保存失败，请稍后重试'), 'danger')
+  },
+})
 
 function openEdit(u: UserDTO) {
   editing.value = u
@@ -162,25 +187,15 @@ function closeEdit() {
   editing.value = null
 }
 
-/** 保存显示名：必填校验 → update({displayName}) → toast → 刷新 */
-async function submitEdit() {
+/** 保存显示名：必填校验通过后走 mutation */
+function submitEdit() {
   if (!editing.value) return
   const name = editName.value.trim()
   if (!name) {
     editError.value = '请输入显示名'
     return
   }
-  editSubmitting.value = true
-  try {
-    await userApi.update(editing.value.id, { displayName: name })
-    showToast('显示名已更新', 'success')
-    editing.value = null
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '保存失败，请稍后重试'), 'danger')
-  } finally {
-    editSubmitting.value = false
-  }
+  saveEditMutation({ id: editing.value.id, displayName: name })
 }
 
 // ============ 重置密码 Dialog（zod ≥6 + 两次输入一致） ============
@@ -191,7 +206,19 @@ const resetting = ref<UserDTO | null>(null)
 const newPassword = ref('')
 const confirmPassword = ref('')
 const resetError = ref('')
-const resetSubmitting = ref(false)
+
+/** 重置密码提交（成功后仅 toast + 关闭，无列表刷新——原逻辑保持） */
+const { isPending: resetSubmitting, mutate: resetPasswordMutation } = useMutation({
+  mutationFn: (payload: { id: string; newPassword: string }) =>
+    userApi.resetPassword(payload.id, { newPassword: payload.newPassword }),
+  onSuccess: () => {
+    showToast('密码已重置', 'success')
+    resetting.value = null
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '重置密码失败，请稍后重试'), 'danger')
+  },
+})
 
 function openReset(u: UserDTO) {
   resetting.value = u
@@ -205,8 +232,8 @@ function closeReset() {
   resetting.value = null
 }
 
-/** 提交重置密码：zod ≥6 前置校验 → 两次输入一致 → resetPassword({newPassword}) */
-async function submitReset() {
+/** 提交重置密码：zod ≥6 前置校验 → 两次输入一致 → 走 mutation */
+function submitReset() {
   if (!resetting.value) return
   const parsed = resetSchema.safeParse({ newPassword: newPassword.value })
   if (!parsed.success) {
@@ -217,23 +244,27 @@ async function submitReset() {
     resetError.value = '两次输入的密码不一致'
     return
   }
-  resetSubmitting.value = true
-  try {
-    await userApi.resetPassword(resetting.value.id, { newPassword: newPassword.value })
-    showToast('密码已重置', 'success')
-    resetting.value = null
-  } catch (err) {
-    showToast(messageOf(err, '重置密码失败，请稍后重试'), 'danger')
-  } finally {
-    resetSubmitting.value = false
-  }
+  resetPasswordMutation({ id: resetting.value.id, newPassword: newPassword.value })
 }
 
 // ============ 禁用/启用（二次确认） ============
 
 const statusTarget = ref<UserDTO | null>(null)
 const statusNext = ref<UserStatus>('DISABLED')
-const statusSubmitting = ref(false)
+
+/** 禁用/启用提交（成功后失效列表键） */
+const { isPending: statusSubmitting, mutate: toggleStatusMutation } = useMutation({
+  mutationFn: (payload: { id: string; status: UserStatus }) =>
+    userApi.updateStatus(payload.id, { status: payload.status }),
+  onSuccess: () => {
+    showToast(statusNext.value === 'DISABLED' ? '已禁用该教师' : '已启用该教师', 'success')
+    statusTarget.value = null
+    refreshTeachers()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '操作失败，请稍后重试'), 'danger')
+  },
+})
 
 function requestStatusToggle(u: UserDTO) {
   statusTarget.value = u
@@ -245,25 +276,27 @@ function cancelStatusToggle() {
   statusTarget.value = null
 }
 
-async function confirmStatusToggle() {
+function confirmStatusToggle() {
   if (!statusTarget.value) return
-  statusSubmitting.value = true
-  try {
-    await userApi.updateStatus(statusTarget.value.id, { status: statusNext.value })
-    showToast(statusNext.value === 'DISABLED' ? '已禁用该教师' : '已启用该教师', 'success')
-    statusTarget.value = null
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '操作失败，请稍后重试'), 'danger')
-  } finally {
-    statusSubmitting.value = false
-  }
+  toggleStatusMutation({ id: statusTarget.value.id, status: statusNext.value })
 }
 
 // ============ 删除（二次确认，不可恢复） ============
 
 const deleting = ref<UserDTO | null>(null)
-const deleteSubmitting = ref(false)
+
+/** 删除教师提交（成功后失效列表键，末页空页回退见 refreshTeachers） */
+const { isPending: deleteSubmitting, mutate: deleteMutation } = useMutation({
+  mutationFn: (id: string) => userApi.remove(id),
+  onSuccess: () => {
+    showToast('教师已删除', 'success')
+    deleting.value = null
+    refreshTeachers()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
+  },
+})
 
 function requestDelete(u: UserDTO) {
   deleting.value = u
@@ -274,19 +307,9 @@ function cancelDelete() {
   deleting.value = null
 }
 
-async function confirmDelete() {
+function confirmDelete() {
   if (!deleting.value) return
-  deleteSubmitting.value = true
-  try {
-    await userApi.remove(deleting.value.id)
-    showToast('教师已删除', 'success')
-    deleting.value = null
-    await load()
-  } catch (err) {
-    showToast(messageOf(err, '删除失败，请稍后重试'), 'danger')
-  } finally {
-    deleteSubmitting.value = false
-  }
+  deleteMutation(deleting.value.id)
 }
 </script>
 
@@ -303,17 +326,19 @@ async function confirmDelete() {
 
     <!-- 错误态：页内横幅 + 重试 -->
     <div
-      v-if="error"
+      v-if="listError"
       role="alert"
       class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
     >
-      <span class="text-sm text-danger">{{ error }}</span>
-      <Button variant="outline" size="sm" data-testid="retry-teachers" @click="load">重试</Button>
+      <span class="text-sm text-danger">{{ listError }}</span>
+      <Button variant="outline" size="sm" data-testid="retry-teachers" @click="refetch"
+        >重试</Button
+      >
     </div>
 
     <!-- 加载态：表格骨架屏 -->
     <div
-      v-else-if="loading"
+      v-else-if="isLoading"
       data-testid="teacher-skeleton"
       class="overflow-hidden rounded-xl border border-border bg-surface"
       aria-label="教师列表加载中"

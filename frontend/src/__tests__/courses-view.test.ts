@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -51,8 +52,9 @@ function course(id: string, over: Partial<CourseDTO> = {}): CourseDTO {
   }
 }
 
-/** 挂载课程列表：pinia + 路由（准备就绪至 /courses） */
+/** 挂载课程列表：独立 QueryClient（retry:false）+ pinia + 路由（TEACHER 登录态） */
 async function mountCourses() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuth({
@@ -65,9 +67,11 @@ async function mountCourses() {
   const router = createAppRouter()
   await router.push('/courses')
   await router.isReady()
-  const wrapper = mount(CoursesView, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(CoursesView, {
+    global: { plugins: [[VueQueryPlugin, { queryClient }], pinia, router] },
+  })
   await flushPromises()
-  return { wrapper, router }
+  return { wrapper, router, queryClient }
 }
 
 describe('CoursesView：列表渲染', () => {
@@ -147,7 +151,18 @@ describe('CoursesView：列表渲染', () => {
     const router2 = createAppRouter()
     await router2.push('/courses')
     await router2.isReady()
-    const wrapper2 = mount(CoursesView, { global: { plugins: [createPinia(), router2] } })
+    const wrapper2 = mount(CoursesView, {
+      global: {
+        plugins: [
+          [
+            VueQueryPlugin,
+            { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+          ],
+          createPinia(),
+          router2,
+        ],
+      },
+    })
     await flushPromises()
     await wrapper2.find('[data-testid="create-course"]').trigger('click')
     await vi.waitFor(() => {
