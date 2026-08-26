@@ -62,9 +62,27 @@ const assignedTeacherIds = computed(() => course.value?.teacherIds ?? [])
 
 const queryClient = useQueryClient()
 
-/** 分配/移除成功后的刷新：按查询键失效重拉（course + 候选池一并重拉，低频操作可接受） */
-function refreshTeachers() {
-  queryClient.invalidateQueries({ queryKey: ['course-teachers'] })
+/**
+ * 分配/移除成功后的刷新：按查询键重拉（course + 候选池合并单查询，低频操作全量重拉可接受——
+ * 评估结论：候选池 ≤100 行、分配/移除低频，拆双查询需整页四态合并且无性能收益，保持合并）
+ *
+ * 重拉失败（如后端瞬时故障）以 toast 提示（恢复原 refreshCourse 的「课程刷新失败」交互），
+ * 不静默；页面错误横幅由查询自身的错误态兜底。
+ */
+/**
+ * 分配/移除成功后的刷新：await 列表查询 refetch（v5 语义：失败也 resolve，不 reject）后
+ * 以查询状态判定重拉失败（status 变 error 即 fetch 失败），失败以 toast 提示
+ * （恢复原 refreshCourse 的「课程刷新失败」交互），不静默；页面错误横幅由查询错误态兜底。
+ *
+ * 候选池与课程同键合并单查询（['course-teachers', courseId]），低频操作全量重拉可接受——
+ * 评估结论见 TASK.md §6（拆双查询需整页四态合并且无性能收益，保持合并）。
+ */
+async function refreshTeachers() {
+  await refetch()
+  const state = queryClient.getQueryState(['course-teachers', courseId.value])
+  if (state?.error) {
+    showToast('课程刷新失败，请重试或刷新页面', 'danger')
+  }
 }
 
 function messageOf(err: unknown, fallback: string): string {
@@ -96,13 +114,13 @@ const assignedTeachers = computed(() =>
     .filter((t): t is UserDTO => Boolean(t)),
 )
 
-/** 分配所选教师提交（POST /{id}/teachers 数组 body；成功后失效键重拉双栏） */
+/** 分配所选教师提交（POST /{id}/teachers 数组 body；成功后重拉双栏，失败以 toast 提示） */
 const { isPending: teacherAssigning, mutate: assignTeachersMutation } = useMutation({
   mutationFn: (ids: string[]) => courseApi.addTeachers(courseId.value, ids),
   onSuccess: () => {
     showToast('教师分配成功', 'success')
     teacherSelected.value = []
-    refreshTeachers()
+    void refreshTeachers()
   },
   onError: (err) => {
     showToast(messageOf(err, '教师分配失败，请稍后重试'), 'danger')
@@ -121,7 +139,7 @@ const { mutate: removeTeacherMutation } = useMutation({
   onSuccess: () => {
     showToast('已移除教师', 'success')
     teacherRemovingId.value = ''
-    refreshTeachers()
+    void refreshTeachers()
   },
   onError: (err) => {
     teacherRemovingId.value = ''
