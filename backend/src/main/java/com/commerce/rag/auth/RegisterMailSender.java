@@ -53,7 +53,7 @@ public class RegisterMailSender {
             helper.setFrom(fromAddress, properties.fromName());
             helper.setTo(toEmail);
             helper.setSubject(properties.subject());
-            helper.setText(buildPlainTextFallback(), buildVerificationHtml(code));
+            helper.setText(buildPlainTextFallback(code), buildVerificationHtml(code));
             javaMailSender.send(message);
             // 日志脱敏：邮箱打码、验证码仅露尾位（供邮件到达性对账，不泄露全量可重放的码）
             log.info("注册验证码邮件已发送: to={}, codeTail=*{}", maskEmail(toEmail), code.charAt(code.length() - 1));
@@ -64,12 +64,16 @@ public class RegisterMailSender {
     }
 
     /**
-     * 解析发件地址；SMTP 凭据未配置时抛 503 提示运维补齐环境变量
+     * 解析发件地址：优先取 register.from-email 配置（env MAIL_USERNAME 同源），
+     * 为空时回退 JavaMailSenderImpl 内的 username；两者皆缺失视为 SMTP 未配置。
      *
      * @return 发件邮箱地址
-     * @throws BizException sender 非 JavaMailSenderImpl 或 username 缺失
+     * @throws BizException 发件地址缺失（fail-fast，提示运维补齐环境变量）
      */
     private String resolveFromAddress() {
+        if (isNotBlank(properties.fromEmail())) {
+            return properties.fromEmail();
+        }
         if (javaMailSender instanceof JavaMailSenderImpl impl && isNotBlank(impl.getUsername())) {
             return impl.getUsername();
         }
@@ -109,9 +113,10 @@ public class RegisterMailSender {
                 .formatted(code, validMinutes);
     }
 
-    /** 不支持 HTML 渲染的客户端回退纯文本（含验证码，正文最简） */
-    private String buildPlainTextFallback() {
-        return "【问渠学堂】您的注册验证码即将随后的 HTML 邮件提供；若客户端不渲染 HTML，请检查原始消息中的六位数字。";
+    /** 不支持 HTML 渲染的客户端回退纯文本（明文携带验证码，保证无 CSS 客户端同样可用） */
+    private String buildPlainTextFallback(String code) {
+        return "【问渠学堂】您的注册验证码为：%s（%d 分钟内有效）。请勿向任何人透露。"
+                .formatted(code, Math.max(1, properties.codeTtl().toMinutes()));
     }
 
     /** 邮箱日志脱敏：本地部分仅保留首字符 + 星号（如 a***@163.com）；非标输入原样置为 masked 占位 */

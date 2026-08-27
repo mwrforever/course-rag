@@ -16,6 +16,8 @@ import org.springframework.validation.annotation.Validated;
  * @param maxVerifyAttempts 单个验证码最大连续错误次数（默认 5 次，超过即作废防爆破）
  * @param fromName          邮件发件人显示名（品牌署名）
  * @param subject           邮件主题模板
+ * @param fromEmail         发件邮箱（与 spring.mail.username 同源注入 MAIL_USERNAME；
+ *                          独立声明以解除对 MailSender 实现类型的耦合）
  *
  * @author commerce-rag
  */
@@ -26,4 +28,5 @@ public record RegisterProperties(
         @DefaultValue("PT60S") @NotNull Duration resendInterval,
         @DefaultValue("5") int maxVerifyAttempts,
         @DefaultValue("问渠学堂") String fromName,
-        @DefaultValue("【问渠学堂】注册验证码") String subject) {}
+        @DefaultValue("【问渠学堂】注册验证码") String subject,
+        @DefaultValue("") String fromEmail) {}

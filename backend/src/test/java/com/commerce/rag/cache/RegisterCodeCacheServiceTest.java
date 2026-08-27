@@ -34,7 +34,7 @@ class RegisterCodeCacheServiceTest {
 
     /** 与生产一致的默认配置实例（record 直出，无 Spring 上下文依赖） */
     private final RegisterProperties properties =
-            new RegisterProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), 5, "问渠学堂", "主题");
+            new RegisterProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), 5, "问渠学堂", "主题", "");
 
     @Mock
     private StringRedisTemplate redisTemplate;

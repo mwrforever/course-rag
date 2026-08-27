@@ -32,7 +32,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  */
 class RegisterIntegrationTest extends IntegrationTestBase {
 
-    private static final Pattern SIX_DIGITS = Pattern.compile("\\b\\d{6}\\b");
+    private static final Pattern CODE_IN_DIV = Pattern.compile(">\\s*(\\d{6})\\s*</div>");
 
     /** 注册验证码邮件发送器依赖的 JavaMailSender：集成态整体替换为可捕获的 mock */
     @MockitoBean
@@ -57,7 +57,9 @@ class RegisterIntegrationTest extends IntegrationTestBase {
         String registerBody =
                 "{\"email\":\"" + email + "\",\"code\":\"" + code + "\",\"password\":\"Super-Secret-88\"}";
         ResponseEntity<String> regResp = postJson("/api/v1/auth/register", registerBody);
-        assertThat(regResp.getStatusCode().value()).isEqualTo(200);
+        assertThat(regResp.getStatusCode().value())
+                .as("注册响应: %s", regResp.getBody())
+                .isEqualTo(200);
         JsonNode regJson = readTree(regResp.getBody());
         assertThat(regJson.get("code").asInt()).isZero();
         assertThat(regJson.at("/data/accessToken").asText()).isNotBlank();
@@ -123,9 +125,11 @@ class RegisterIntegrationTest extends IntegrationTestBase {
         allowMailDelivery();
         String email = "dup.flow@example.com";
         postJson("/api/v1/auth/register/code", mapJson("email", email));
-        ResponseEntity<String> regResp =
-                postJson("/api/v1/auth/register", registerBodyFor(email, extractCapturedCode()));
-        assertThat(regResp.getStatusCode().value()).isEqualTo(200);
+        String regCode = extractCapturedCode();
+        ResponseEntity<String> regResp = postJson("/api/v1/auth/register", registerBodyFor(email, regCode));
+        assertThat(regResp.getStatusCode().value())
+                .as("重复邮箱注册响应: %s", regResp.getBody())
+                .isEqualTo(200);
 
         ResponseEntity<String> again = postJson("/api/v1/auth/register/code", mapJson("email", email));
         assertThat(again.getStatusCode().value()).isEqualTo(409);
@@ -135,6 +139,9 @@ class RegisterIntegrationTest extends IntegrationTestBase {
     @Test
     @DisplayName("SMTP 故障语义：发送失败转 503 且未创建用户")
     void registerFlow_smtpFailureReturns503WithoutUserCreation() {
+        Mockito.doReturn(new org.springframework.mail.javamail.JavaMailSenderImpl().createMimeMessage())
+                .when(mailSender)
+                .createMimeMessage();
         doThrow(new MailSendException("smtp unavailable")).when(mailSender).send(any(MimeMessage.class));
 
         ResponseEntity<String> resp = postJson("/api/v1/auth/register/code", mapJson("email", "smtp.fail@example.com"));
@@ -147,8 +154,11 @@ class RegisterIntegrationTest extends IntegrationTestBase {
 
     // ==================== 测试基础设施 ====================
 
-    /** 允许邮件进入成功分支（void 方法默认即 no-op 成功；显式声明以表意图） */
+    /** 允许邮件进入成功分支：createMimeMessage 返回真实可用对象（Mock 默认 null 会导致组装 NPE） */
     private void allowMailDelivery() {
+        Mockito.doReturn(new org.springframework.mail.javamail.JavaMailSenderImpl().createMimeMessage())
+                .when(mailSender)
+                .createMimeMessage();
         doNothing().when(mailSender).send(any(MimeMessage.class));
     }
 
@@ -184,11 +194,11 @@ class RegisterIntegrationTest extends IntegrationTestBase {
         ArgumentCaptor<MimeMessage> captor = ArgumentCaptor.forClass(MimeMessage.class);
         Mockito.verify(mailSender, Mockito.atLeastOnce()).send(captor.capture());
         String content = dumpContent(captor.getValue());
-        Matcher m = SIX_DIGITS.matcher(content);
+        Matcher m = CODE_IN_DIV.matcher(content);
         if (!m.find()) {
             throw new IllegalStateException("邮件正文未找到六位验证码");
         }
-        return m.group();
+        return m.group(1);
     }
 
     /** 递归展开邮件 Part 内容为字符串（multipart / 文本双兼容） */

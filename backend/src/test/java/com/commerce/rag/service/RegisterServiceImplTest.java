@@ -42,7 +42,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 class RegisterServiceImplTest {
 
     private final RegisterProperties properties =
-            new RegisterProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), 5, "问渠学堂", "主题");
+            new RegisterProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), 5, "问渠学堂", "主题", "");
 
     @Mock
     private ISysUserService sysUserService;
