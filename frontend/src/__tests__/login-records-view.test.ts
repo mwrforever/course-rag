@@ -4,6 +4,7 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, securityApi } from '@/lib/api'
+import { vReveal } from '@/directives/reveal'
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import LoginRecordsView from '@/views/LoginRecordsView.vue'
@@ -69,6 +70,8 @@ async function mountRecords() {
         pinia,
         router,
       ],
+      // 视图使用 v-reveal（main.ts 全局注册），测试侧同源注册（jsdom 无 IO，指令早退不影响断言）
+      directives: { reveal: vReveal },
     },
   })
   await flushPromises()
@@ -173,11 +176,11 @@ describe('LoginRecordsView：踢出设备（二次确认）', () => {
     const revokeSpy = vi.spyOn(securityApi, 'revokeLoginRecord').mockResolvedValue()
     const { wrapper } = await mountRecords()
 
-    // 取消路径
+    // 取消路径（ConfirmDialog 统一壳：取消按钮为其契约 testid cancel-action，语义不变）
     await wrapper.find('[data-testid="op-kick-lr-1"]').trigger('click')
     expect(wrapper.find('[data-testid="kick-dialog"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="kick-dialog"]').text()).toContain('踢出设备')
-    await wrapper.find('[data-testid="cancel-kick"]').trigger('click')
+    await wrapper.find('[data-testid="cancel-action"]').trigger('click')
     expect(revokeSpy).not.toHaveBeenCalled()
     expect(wrapper.find('[data-testid="kick-dialog"]').exists()).toBe(false)
 
