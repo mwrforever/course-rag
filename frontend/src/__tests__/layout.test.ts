@@ -1,4 +1,4 @@
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
@@ -17,14 +17,16 @@ import { useAuthStore } from '@/stores/auth'
 import type { UserRole } from '@/lib/types'
 
 /**
- * 布局壳测试（Task 16 核心 + UI 重构 2026-08-25 深色侧栏）
+ * 布局壳测试（Task 16 核心 + UI 重构 2026-08-27 白色侧栏 · Edukors 形态）
  *
  * 覆盖契约：
  * 1. createNavGroups 双层角色过滤：组级（审计仅超管）+ 项级（教师管理仅超管），空组剔除
- * 2. 深色侧栏：图标分组渲染（单子项直链/多子项可展开默认态）、折叠切换持久化、
- *    分组展开持久化、localStorage 异常降级
- * 3. 顶栏面包屑（分组/页面标题）与用户下拉（Esc/外点关闭 + 退出登录）
- * 4. 路由切换过渡容器与内容区统一限宽
+ * 2. 白色侧栏：图标分组渲染（单子项直链/多子项手风琴默认态）、折叠切换与持久化、
+ *    折叠态 data-tip tooltip、分组手风琴展开持久化、localStorage 异常降级
+ * 3. 移动端抽屉：hamburger 开合 + 遮罩关闭 + 路由跳转自动收起（状态逻辑，
+ *    视口断点由 CSS 承载，jsdom 不应用样式故按钮可直接交互）
+ * 4. 顶栏面包屑（分组/页面标题）与用户下拉（N2 DropdownMenu：Esc/外点关闭 + 退出登录）
+ * 5. 路由切换过渡容器与内容区统一限宽
  */
 
 /** 课程接口调用记录（vi.fn 供「壳不重挂载」回归用例断言取数次数） */
@@ -166,7 +168,7 @@ describe('resolvePageKey：页面级过渡身份键（评审修复 I1）', () =>
   })
 })
 
-describe('AdminLayout 渲染（深色侧栏）', () => {
+describe('AdminLayout 渲染（白色侧栏 · Edukors 形态）', () => {
   beforeEach(() => {
     sessionStorage.clear()
     window.localStorage.clear()
@@ -192,20 +194,27 @@ describe('AdminLayout 渲染（深色侧栏）', () => {
     return { wrapper, router, pinia }
   }
 
-  it('TEACHER：深色侧栏渲染基础分组，无超管导航；内容区统一限宽', async () => {
+  /** 按子项文案定位其所属的手风琴子菜单容器（nav-group-children） */
+  function findChildren(wrapper: ReturnType<typeof mount>, itemLabel: string) {
+    return wrapper
+      .findAll('[data-testid="nav-group-children"]')
+      .find((c) => c.text().includes(itemLabel))
+  }
+
+  it('TEACHER：白色侧栏渲染基础分组，无超管导航；内容区统一限宽', async () => {
     const { wrapper } = await mountLayout('TEACHER')
 
-    // 侧栏：深色 ink 底 + 60 宽（w-60 展开态）
+    // 侧栏：白底（bg-surface 令牌）+ 展开态（无 is-collapsed）
     const aside = wrapper.find('[data-testid="admin-sidebar"]')
-    expect(aside.classes()).toContain('w-60')
-    expect(aside.classes()).toContain('from-ink-950')
+    expect(aside.classes()).toContain('bg-surface')
+    expect(aside.classes()).not.toContain('is-collapsed')
     // 品牌名与基础导航
     expect(wrapper.text()).toContain('课程助手管理后台')
     expect(wrapper.text()).toContain('仪表盘')
     expect(wrapper.text()).toContain('知识库')
     expect(wrapper.text()).toContain('学生管理')
     expect(wrapper.text()).toContain('反馈')
-    // 超管可见项不可见
+    // 超管可见项不可见（角色过滤后整组不渲染）
     expect(wrapper.text()).not.toContain('教师管理')
     expect(wrapper.text()).not.toContain('审计')
     // 全局 1400px 内容容器（非视图层重复包裹）
@@ -214,34 +223,36 @@ describe('AdminLayout 渲染（深色侧栏）', () => {
     wrapper.unmount()
   })
 
-  it('多子项分组：默认展开渲染子项；折叠态仅标题按钮', async () => {
+  it('多子项分组手风琴：默认展开组子菜单 open，审计组默认收起、点击展开', async () => {
     const { wrapper } = await mountLayout('SUPER_ADMIN', '/knowledge/documents')
 
-    // 知识库分组默认展开：三个子项在场
-    expect(wrapper.text()).toContain('知识库管理')
-    expect(wrapper.text()).toContain('文档')
-    expect(wrapper.text()).toContain('分片')
-    // 审计分组 defaultOpen=false：初始折叠，点击展开出现子项
+    // 知识库分组默认展开：子菜单容器带 open（max-height 展开态）
+    expect(findChildren(wrapper, '知识库管理')?.classes()).toContain('open')
+    // 审计分组 defaultOpen=false：初始收起（aria-expanded + 子菜单无 open）
     const toggles = wrapper.findAll('[data-testid="nav-group-toggle"]')
     const auditToggle = toggles.find((t) => t.text().includes('审计'))
     expect(auditToggle?.attributes('aria-expanded')).toBe('false')
-    expect(wrapper.text()).not.toContain('会话审计')
+    expect(findChildren(wrapper, '会话审计')?.classes()).not.toContain('open')
     await auditToggle?.trigger('click')
-    expect(wrapper.text()).toContain('会话审计')
     expect(auditToggle?.attributes('aria-expanded')).toBe('true')
+    expect(findChildren(wrapper, '会话审计')?.classes()).toContain('open')
     wrapper.unmount()
   })
 
-  it('折叠侧栏：切 w-16 图标态并持久化 localStroage；展开恢复', async () => {
+  it('折叠侧栏：切 80px 图标态（is-collapsed）并持久化 localStorage；展开恢复', async () => {
     const { wrapper } = await mountLayout('TEACHER')
 
     await wrapper.find('button[aria-label="收起侧栏"]').trigger('click')
-    expect(wrapper.find('[data-testid="admin-sidebar"]').classes()).toContain('w-16')
+    const aside = wrapper.find('[data-testid="admin-sidebar"]')
+    expect(aside.classes()).toContain('is-collapsed')
     expect(window.localStorage.getItem('cc.admin-sidebar.collapsed')).toBe('1')
-    // 折叠态：品牌名与分组标题隐藏，展开按钮在场
-    expect(wrapper.text()).not.toContain('课程助手管理后台')
+    // 折叠态：导航项携带 data-tip（CSS 悬浮气泡取值源）
+    const tips = wrapper.findAll('[data-tip]').map((t) => t.attributes('data-tip'))
+    expect(tips).toContain('仪表盘')
+    expect(tips).toContain('知识库')
+    // 折叠态折叠钮 aria-label 翻转为「展开侧栏」
     await wrapper.find('button[aria-label="展开侧栏"]').trigger('click')
-    expect(wrapper.find('[data-testid="admin-sidebar"]').classes()).toContain('w-60')
+    expect(aside.classes()).not.toContain('is-collapsed')
     expect(window.localStorage.getItem('cc.admin-sidebar.collapsed')).toBe('0')
     wrapper.unmount()
   })
@@ -250,7 +261,24 @@ describe('AdminLayout 渲染（深色侧栏）', () => {
     window.localStorage.setItem('cc.admin-sidebar.collapsed', '1')
     const { wrapper } = await mountLayout('TEACHER')
 
-    expect(wrapper.find('[data-testid="admin-sidebar"]').classes()).toContain('w-16')
+    expect(wrapper.find('[data-testid="admin-sidebar"]').classes()).toContain('is-collapsed')
+    wrapper.unmount()
+  })
+
+  it('折叠态点分组标题：先展开侧栏，不切换手风琴（设计稿行为）', async () => {
+    const { wrapper } = await mountLayout('SUPER_ADMIN', '/knowledge/documents')
+
+    await wrapper.find('button[aria-label="收起侧栏"]').trigger('click')
+    // 折叠态点审计标题（默认收起）：侧栏恢复展开宽度，审计分组未被切换仍收起，
+    // 知识库分组（默认展开）随侧栏恢复重新展开
+    const auditToggle = wrapper
+      .findAll('[data-testid="nav-group-toggle"]')
+      .find((t) => t.text().includes('审计'))
+    await auditToggle?.trigger('click')
+    const aside = wrapper.find('[data-testid="admin-sidebar"]')
+    expect(aside.classes()).not.toContain('is-collapsed')
+    expect(findChildren(wrapper, '会话审计')?.classes()).not.toContain('open')
+    expect(findChildren(wrapper, '知识库管理')?.classes()).toContain('open')
     wrapper.unmount()
   })
 
@@ -269,30 +297,57 @@ describe('AdminLayout 渲染（深色侧栏）', () => {
     const { wrapper } = await mountLayout('SUPER_ADMIN', '/knowledge/documents')
 
     // onMounted 读取异常 → 展开默认态正常渲染
-    expect(wrapper.find('[data-testid="admin-sidebar"]').classes()).toContain('w-60')
+    const aside = wrapper.find('[data-testid="admin-sidebar"]')
+    expect(aside.classes()).not.toContain('is-collapsed')
     // toggle 写回异常不影响状态切换
     await wrapper.find('button[aria-label="收起侧栏"]').trigger('click')
-    expect(wrapper.find('[data-testid="admin-sidebar"]').classes()).toContain('w-16')
+    expect(aside.classes()).toContain('is-collapsed')
     await wrapper.find('button[aria-label="展开侧栏"]').trigger('click')
+    expect(aside.classes()).not.toContain('is-collapsed')
     // 分组展开写回异常不影响交互
-    const toggles = wrapper.findAll('[data-testid="nav-group-toggle"]')
-    const auditToggle = toggles.find((t) => t.text().includes('审计'))
+    const auditToggle = wrapper
+      .findAll('[data-testid="nav-group-toggle"]')
+      .find((t) => t.text().includes('审计'))
     await auditToggle?.trigger('click')
-    expect(wrapper.text()).toContain('会话审计')
+    expect(findChildren(wrapper, '会话审计')?.classes()).toContain('open')
     getSpy.mockRestore()
     setSpy.mockRestore()
     wrapper.unmount()
   })
 
-  it('分组展开偏好持久化：折叠过的分组重启后保持折叠', async () => {
+  it('分组展开偏好持久化：收起过的分组重启后保持收起', async () => {
     window.localStorage.setItem('cc.admin-sidebar.groups', JSON.stringify({ 知识库: false }))
     const { wrapper } = await mountLayout('SUPER_ADMIN', '/dashboard')
 
-    // 知识库分组已折叠：子项不渲染
-    expect(wrapper.text()).not.toContain('知识库管理')
-    const toggles = wrapper.findAll('[data-testid="nav-group-toggle"]')
-    const kbToggle = toggles.find((t) => t.text().includes('知识库'))
+    // 知识库分组已收起：子菜单无 open + 标题 aria-expanded=false
+    expect(findChildren(wrapper, '知识库管理')?.classes()).not.toContain('open')
+    const kbToggle = wrapper
+      .findAll('[data-testid="nav-group-toggle"]')
+      .find((t) => t.text().includes('知识库'))
     expect(kbToggle?.attributes('aria-expanded')).toBe('false')
+    wrapper.unmount()
+  })
+
+  it('移动端抽屉：hamburger 打开滑入（mobile-open + 遮罩），遮罩与路由跳转关闭', async () => {
+    const { wrapper, router } = await mountLayout('TEACHER')
+
+    const aside = wrapper.find('[data-testid="admin-sidebar"]')
+    // 初始：抽屉关闭、无遮罩（断点显隐由 CSS 承载，此处验证状态逻辑）
+    expect(aside.classes()).not.toContain('mobile-open')
+    expect(wrapper.find('[data-testid="drawer-backdrop"]').exists()).toBe(false)
+    // hamburger 唤起：侧栏滑入标记 + 遮罩显现
+    await wrapper.find('button[aria-label="打开菜单"]').trigger('click')
+    expect(aside.classes()).toContain('mobile-open')
+    expect(wrapper.find('[data-testid="drawer-backdrop"]').exists()).toBe(true)
+    // 遮罩点击关闭
+    await wrapper.find('[data-testid="drawer-backdrop"]').trigger('click')
+    expect(aside.classes()).not.toContain('mobile-open')
+    expect(wrapper.find('[data-testid="drawer-backdrop"]').exists()).toBe(false)
+    // 重新打开后经路由跳转自动收起（抽屉内导航不残留遮罩）
+    await wrapper.find('button[aria-label="打开菜单"]').trigger('click')
+    await router.push('/students')
+    await nextTick()
+    expect(aside.classes()).not.toContain('mobile-open')
     wrapper.unmount()
   })
 
@@ -374,22 +429,24 @@ describe('AdminLayout 渲染（深色侧栏）', () => {
   it('头像下拉：显示名与角色展示，外点/Esc 关闭，退出登录清凭据并跳登录页', async () => {
     const { wrapper, router } = await mountLayout('SUPER_ADMIN')
 
-    expect(wrapper.text()).not.toContain('退出登录')
+    // 初始关闭（DropdownMenu v-if 卸载菜单弹层）
+    expect(wrapper.find('[data-testid="user-menu"]').exists()).toBe(false)
     await wrapper.find('button[aria-label="用户菜单"]').trigger('click')
-    expect(wrapper.text()).toContain('李超管')
-    expect(wrapper.text()).toContain('超级管理员')
-    expect(wrapper.text()).toContain('退出登录')
+    const menu = wrapper.find('[data-testid="user-menu"]')
+    expect(menu.text()).toContain('李超管')
+    expect(menu.text()).toContain('超级管理员')
+    expect(menu.text()).toContain('退出登录')
 
-    // Esc 关闭
-    await wrapper.find('button[aria-label="用户菜单"]').trigger('click')
-    await wrapper.find('button[aria-label="用户菜单"]').trigger('click')
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-    await vi.waitFor(() => expect(wrapper.text()).not.toContain('退出登录'))
+    // Esc 关闭（N2 DropdownMenu 的 window 级监听）
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await nextTick()
+    expect(wrapper.find('[data-testid="user-menu"]').exists()).toBe(false)
 
-    // 外点关闭：展开后 pointerdown 落在布局根（菜单外）
+    // 外点关闭：window pointerdown 落点在组件外
     await wrapper.find('button[aria-label="用户菜单"]').trigger('click')
-    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
-    await vi.waitFor(() => expect(wrapper.text()).not.toContain('退出登录'))
+    window.dispatchEvent(new MouseEvent('pointerdown'))
+    await nextTick()
+    expect(wrapper.find('[data-testid="user-menu"]').exists()).toBe(false)
 
     // 展开后执行退出：登出接口被调 + 清凭据 + 跳转登录页
     await wrapper.find('button[aria-label="用户菜单"]').trigger('click')
