@@ -32,12 +32,16 @@ import {
   PhMagnifyingGlass,
   PhPencilLine,
   PhSpinnerGap,
+  PhStack,
   PhWarningCircle,
   PhX,
 } from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { DataTable } from '@/components/ui/data-table'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageHead } from '@/components/ui/page-head'
 import { ApiError, chunkApi, courseApi, knowledgeBaseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 
@@ -310,7 +314,7 @@ function submitBatchUpdate() {
 
 const correctedConfirmOpen = ref(false)
 
-/** 关闭确认 Dialog：提交期间拦截取消/Esc/遮罩（与批量 Dialog submitting 一致，防误关丢状态） */
+/** 关闭确认 Dialog：提交期间拦截取消/Esc/遮罩（与批量 Dialog submitting 拦截一致，防误关丢状态） */
 function closeCorrectedConfirm() {
   if (correctedSubmitting.value) return
   correctedConfirmOpen.value = false
@@ -445,12 +449,9 @@ function closeContext() {
 </script>
 
 <template>
-  <!-- 页头操作行：流程说明 + 批量修正 / 标记已修正（勾选后出现） -->
-  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-    <p class="text-sm text-text-muted">
-      分片修正工作台：修正内容分类后标记已修正，批量修正按文档级同步向量化
-    </p>
-    <div class="flex items-center gap-2">
+  <!-- 页头（设计稿 .page-head）：主标题 + 副题 + 右侧批量动作区（勾选后出现） -->
+  <PageHead title="分片修正工作台" subtitle="修正内容分类后标记已修正，批量修正按文档级同步向量化">
+    <template #actions>
       <Button
         v-if="selected.size > 0"
         data-testid="batch-update"
@@ -470,16 +471,19 @@ function closeContext() {
         <PhCheckCircle class="h-4 w-4" />
         标记已修正（{{ selected.size }}）
       </Button>
-    </div>
-  </div>
+    </template>
+  </PageHead>
 
-  <!-- 筛选条：kbId 下拉 + docId 输入（后端仅两参，G2-G4） -->
-  <div class="mb-4 flex flex-wrap items-center gap-2">
+  <!-- 筛选条（白卡收纳）：kbId 下拉 + docId 输入（后端仅两参，G2-G4） -->
+  <div
+    v-reveal
+    class="mt-5 mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-xs"
+  >
     <select
       data-testid="filter-kb"
       aria-label="按知识库筛选"
       :value="filters.kbId"
-      class="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+      class="h-9 rounded-xl border border-border bg-surface px-2.5 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
       @change="onFilterKbChange"
     >
       <option value="">全部知识库</option>
@@ -494,7 +498,7 @@ function closeContext() {
         type="text"
         aria-label="按文档 ID 筛选"
         placeholder="输入文档 ID 过滤"
-        class="h-9 w-56 rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+        class="h-9 w-56 rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
         @keyup.enter="applyDocFilter"
       />
       <Button variant="outline" size="sm" data-testid="apply-doc" @click="applyDocFilter">
@@ -508,7 +512,7 @@ function closeContext() {
   <div
     v-if="listError"
     role="alert"
-    class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
+    class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
   >
     <span class="text-sm text-danger">{{ listError }}</span>
     <Button variant="outline" size="sm" data-testid="retry-chunks" @click="refetch">重试</Button>
@@ -518,34 +522,40 @@ function closeContext() {
   <div
     v-else-if="isLoading"
     data-testid="chunk-skeleton"
-    class="overflow-hidden rounded-xl border border-border bg-surface"
+    class="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs"
     aria-label="分片列表加载中"
   >
-    <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
+    <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-5 py-3.5">
       <div v-for="i in 6" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-slate-200" />
     </div>
     <div
       v-for="i in 5"
       :key="`row-${i}`"
-      class="h-11 animate-pulse border-b border-border bg-slate-50"
+      class="h-14 animate-pulse border-b border-border bg-slate-50 last:border-b-0"
     />
   </div>
 
-  <!-- 空态：一句话（禁裸「暂无数据」） -->
+  <!-- 空态（EmptyState 标准结构）：一句话（禁裸「暂无数据」） -->
   <div
     v-else-if="chunks.length === 0"
-    class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
+    v-reveal
+    class="rounded-2xl border border-border bg-surface shadow-xs"
   >
-    <PhWarningCircle class="h-8 w-8 text-text-subtle" />
-    <p class="mt-3 text-sm font-medium text-text">还没有待修正分片</p>
-    <p class="mt-1 text-xs text-text-muted">现有分片全部完成修正，或尚无内容入库</p>
+    <EmptyState title="还没有待修正分片" description="现有分片全部完成修正，或尚无内容入库">
+      <template #icon>
+        <PhStack class="h-6 w-6" aria-hidden="true" />
+      </template>
+    </EmptyState>
   </div>
 
   <!-- 正常态：分页表格（☐/内容预览/所属文档/集合类型/课程/操作） -->
   <template v-else>
-    <div class="overflow-hidden rounded-xl border border-border bg-surface">
-      <table data-testid="chunk-table" class="w-full text-sm">
-        <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
+    <div
+      v-reveal="80"
+      class="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs"
+    >
+      <DataTable data-testid="chunk-table" label="待修正分片列表">
+        <template #header>
           <tr>
             <th class="w-10 px-2 text-center">
               <input
@@ -557,109 +567,102 @@ function closeContext() {
                 @change="toggleAll"
               />
             </th>
-            <th class="px-4 py-2.5 font-medium">内容预览</th>
-            <th class="w-44 px-4 py-2.5 font-medium">所属文档</th>
-            <th class="w-32 px-4 py-2.5 font-medium">集合类型</th>
-            <th class="w-28 px-4 py-2.5 font-medium">课程</th>
-            <th class="w-36 px-4 py-2.5 text-right font-medium">操作</th>
+            <th>内容预览</th>
+            <th class="w-44">所属文档</th>
+            <th class="w-32">集合类型</th>
+            <th class="w-28">课程</th>
+            <th class="w-36 text-right">操作</th>
           </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="c in chunks"
-            :key="c.id"
-            :data-testid="`row-${c.id}`"
-            class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
-          >
-            <td class="px-2 text-center">
-              <input
-                type="checkbox"
-                :data-testid="`select-${c.id}`"
-                aria-label="选择分片"
-                :checked="selected.has(c.id)"
-                class="h-4 w-4 accent-brand"
-                @change="toggleRow(c.id)"
-              />
-            </td>
-            <!-- 内容预览：2 行截断 + 全文 tooltip（设计 §2.4.3） -->
-            <td class="max-w-[320px] px-4">
-              <p
-                :data-testid="`chunk-content-${c.id}`"
-                :title="c.content"
-                class="line-clamp-2 text-sm leading-relaxed text-text"
+        </template>
+        <tr v-for="c in chunks" :key="c.id" :data-testid="`row-${c.id}`">
+          <td class="px-2 text-center">
+            <input
+              type="checkbox"
+              :data-testid="`select-${c.id}`"
+              aria-label="选择分片"
+              :checked="selected.has(c.id)"
+              class="h-4 w-4 accent-brand"
+              @change="toggleRow(c.id)"
+            />
+          </td>
+          <!-- 内容预览：2 行截断 + 全文 tooltip（设计 §2.4.3） -->
+          <td class="max-w-[320px]">
+            <p
+              :data-testid="`chunk-content-${c.id}`"
+              :title="c.content"
+              class="line-clamp-2 text-sm leading-relaxed text-text"
+            >
+              {{ c.content }}
+            </p>
+          </td>
+          <!-- 所属文档：docId 短格式（title 全文）+ kbId 原文小字（无文档名映射） -->
+          <td :data-testid="`chunk-doc-${c.id}`" :title="c.docId">
+            <p class="truncate font-semibold text-text">{{ shortId(c.docId) }}</p>
+            <p class="mt-0.5 truncate text-xs text-text-subtle">{{ c.kbId }}</p>
+          </td>
+          <!-- collection_type Badge：TECHNICAL_QA 蓝 / COURSE_INFO 紫 / null 灰 -->
+          <td>
+            <Badge
+              :data-testid="`chunk-collection-${c.id}`"
+              :variant="
+                c.collectionType === 'TECHNICAL_QA'
+                  ? 'brand'
+                  : c.collectionType === 'COURSE_INFO'
+                    ? 'violet'
+                    : 'default'
+              "
+            >
+              {{ c.collectionType ?? '未分类' }}
+            </Badge>
+          </td>
+          <!-- courseId：空或 'DEFAULT'（通用资料库真实形态）显「通用」灰 Badge，其余显 id 短格式 -->
+          <td>
+            <Badge
+              v-if="!c.courseId || c.courseId === 'DEFAULT'"
+              :data-testid="`chunk-course-${c.id}`"
+              variant="default"
+            >
+              通用
+            </Badge>
+            <span
+              v-else
+              :data-testid="`chunk-course-${c.id}`"
+              :title="c.courseId"
+              class="text-xs tabular-nums text-text-muted"
+            >
+              {{ shortId(c.courseId) }}
+            </span>
+          </td>
+          <td class="text-right">
+            <div class="flex items-center justify-end gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                :data-testid="`op-context-${c.id}`"
+                @click="openContext(c)"
               >
-                {{ c.content }}
-              </p>
-            </td>
-            <!-- 所属文档：docId 短格式（title 全文）+ kbId 原文小字（无文档名映射） -->
-            <td :data-testid="`chunk-doc-${c.id}`" :title="c.docId" class="px-4">
-              <p class="truncate font-medium text-text">{{ shortId(c.docId) }}</p>
-              <p class="truncate text-xs text-text-subtle">{{ c.kbId }}</p>
-            </td>
-            <!-- collection_type Badge：TECHNICAL_QA 蓝 / COURSE_INFO 紫 / null 灰 -->
-            <td class="px-4">
-              <Badge
-                :data-testid="`chunk-collection-${c.id}`"
-                :variant="
-                  c.collectionType === 'TECHNICAL_QA'
-                    ? 'brand'
-                    : c.collectionType === 'COURSE_INFO'
-                      ? 'violet'
-                      : 'default'
-                "
+                <PhListDashes class="h-4 w-4" />
+                上下文
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                :data-testid="`op-edit-${c.id}`"
+                @click="openEdit(c)"
               >
-                {{ c.collectionType ?? '未分类' }}
-              </Badge>
-            </td>
-            <!-- courseId：空或 'DEFAULT'（通用资料库真实形态）显「通用」灰 Badge，其余显 id 短格式 -->
-            <td class="px-4">
-              <Badge
-                v-if="!c.courseId || c.courseId === 'DEFAULT'"
-                :data-testid="`chunk-course-${c.id}`"
-                variant="default"
-              >
-                通用
-              </Badge>
-              <span
-                v-else
-                :data-testid="`chunk-course-${c.id}`"
-                :title="c.courseId"
-                class="tabular-nums text-xs text-text-muted"
-              >
-                {{ shortId(c.courseId) }}
-              </span>
-            </td>
-            <td class="px-4 text-right">
-              <div class="flex items-center justify-end gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  :data-testid="`op-context-${c.id}`"
-                  @click="openContext(c)"
-                >
-                  <PhListDashes class="h-4 w-4" />
-                  上下文
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  :data-testid="`op-edit-${c.id}`"
-                  @click="openEdit(c)"
-                >
-                  <PhPencilLine class="h-4 w-4" />
-                  编辑
-                </Button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+                <PhPencilLine class="h-4 w-4" />
+                编辑
+              </Button>
+            </div>
+          </td>
+        </tr>
+      </DataTable>
     </div>
 
     <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
     <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
       <span>
-        共 <span class="tabular-nums text-text">{{ total }}</span> 条
+        共 <span class="tabular-nums font-semibold text-text">{{ total }}</span> 条
       </span>
       <div class="flex items-center gap-2">
         <Button
@@ -691,15 +694,14 @@ function closeContext() {
   <div
     v-if="batchDialogOpen"
     data-testid="batch-dialog"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+    class="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-overlay p-4"
     @keydown.esc="closeBatchDialog"
     @click.self="closeBatchDialog"
   >
     <div
-      class="w-full max-w-[480px] rounded-xl border border-border bg-surface p-6 shadow-md"
+      class="max-h-[85vh] w-full max-w-[480px] overflow-y-auto rounded-2xl bg-surface p-6 shadow-lg"
       role="dialog"
       aria-modal="true"
-      style="max-height: 85vh; overflow-y: auto"
       @click.stop
     >
       <h2 class="text-base font-semibold text-text">批量修正分片</h2>
@@ -717,7 +719,7 @@ function closeContext() {
             id="batch-collection-type"
             v-model="batchCollectionType"
             data-testid="batch-collection-type"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+            class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
           >
             <option v-for="opt in COLLECTION_TYPE_OPTIONS" :key="opt.value" :value="opt.value">
               {{ opt.label }}
@@ -737,17 +739,17 @@ function closeContext() {
               type="text"
               aria-label="搜索课程"
               placeholder="输入课程名搜索，或不改保持现状"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
             <ul
               data-testid="batch-course-results"
-              class="mt-1 max-h-52 w-full overflow-auto rounded-lg border border-border bg-surface p-1 shadow-md"
+              class="mt-1 max-h-52 w-full overflow-auto rounded-xl border border-border bg-surface p-1 shadow-md"
             >
               <li>
                 <button
                   type="button"
                   data-testid="batch-course-keep"
-                  class="w-full rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                  class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-brand-soft hover:text-brand"
                   @click="pickBatchCourse({ kind: 'keep' })"
                 >
                   不改（保持现有课程）
@@ -757,7 +759,7 @@ function closeContext() {
                 <button
                   type="button"
                   data-testid="batch-course-default"
-                  class="w-full rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                  class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-brand-soft hover:text-brand"
                   @click="pickBatchCourse({ kind: 'default' })"
                 >
                   通用（DEFAULT）
@@ -767,7 +769,7 @@ function closeContext() {
                 <button
                   type="button"
                   :data-testid="`batch-course-option-${c.id}`"
-                  class="w-full rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                  class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-brand-soft hover:text-brand"
                   @click="pickBatchCourse({ kind: 'course', course: c })"
                 >
                   {{ c.title }}
@@ -786,7 +788,7 @@ function closeContext() {
                 ? 'batch-course-picked-default'
                 : 'batch-course-picked'
             "
-            class="flex items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text"
+            class="flex items-center justify-between rounded-xl border border-border bg-brand-light px-3 py-2 text-sm text-text"
           >
             <span>
               已选：
@@ -830,12 +832,12 @@ function closeContext() {
   <div
     v-if="correctedConfirmOpen"
     data-testid="corrected-dialog"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+    class="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-overlay p-4"
     @keydown.esc="closeCorrectedConfirm"
     @click.self="closeCorrectedConfirm"
   >
     <div
-      class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+      class="w-full max-w-[440px] animate-menu-in rounded-2xl bg-surface p-6 shadow-lg"
       role="alertdialog"
       aria-modal="true"
       @click.stop
@@ -881,7 +883,7 @@ function closeContext() {
   <Transition name="fade">
     <div
       v-if="editTarget"
-      class="fixed inset-0 z-50 bg-slate-900/40"
+      class="fixed inset-0 z-50 bg-overlay"
       data-testid="edit-overlay"
       @click="closeEdit"
     />
@@ -892,7 +894,7 @@ function closeContext() {
       data-testid="edit-drawer"
       role="dialog"
       aria-modal="true"
-      class="fixed inset-y-0 right-0 z-50 flex w-[600px] max-w-full flex-col border-l border-border bg-surface shadow-md"
+      class="fixed inset-y-0 right-0 z-50 flex w-[600px] max-w-full flex-col rounded-l-2xl bg-surface shadow-xl"
     >
       <!-- Drawer 头部：标题 + 关闭 -->
       <header class="flex items-center justify-between border-b border-border px-5 py-4">
@@ -907,7 +909,7 @@ function closeContext() {
           type="button"
           data-testid="close-edit"
           aria-label="关闭编辑"
-          class="rounded-md p-1 text-text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text"
+          class="rounded-lg p-1.5 text-text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text"
           @click="closeEdit"
         >
           <PhX class="h-5 w-5" />
@@ -924,7 +926,7 @@ function closeContext() {
             data-testid="edit-content"
             rows="12"
             aria-label="分片内容"
-            class="h-72 w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm leading-relaxed text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            class="h-72 w-full resize-y rounded-xl border border-border bg-surface px-3 py-2 font-mono text-sm leading-relaxed text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
           <p v-if="editError" data-testid="edit-error" class="mt-1 text-xs text-danger">
             {{ editError }}
@@ -933,21 +935,23 @@ function closeContext() {
         <!-- 元数据只读区（设计 §2.4.3：headingPath/charOffset 起止/tokenCount） -->
         <dl
           data-testid="edit-meta"
-          class="rounded-lg border border-border bg-surface-2 p-4 text-sm"
+          class="rounded-xl border border-border bg-brand-light p-4 text-sm"
         >
           <div class="flex items-start justify-between gap-4 border-b border-border pb-2">
             <dt class="shrink-0 text-xs text-text-subtle">章节路径</dt>
-            <dd class="break-all text-right text-text">{{ editTarget.headingPath || '无' }}</dd>
+            <dd class="break-all text-right font-medium text-text">
+              {{ editTarget.headingPath || '无' }}
+            </dd>
           </div>
           <div class="flex items-center justify-between gap-4 border-b border-border py-2">
             <dt class="text-xs text-text-subtle">字符偏移</dt>
-            <dd class="tabular-nums text-text">
+            <dd class="tabular-nums font-medium text-text">
               {{ editTarget.charOffsetStart }} - {{ editTarget.charOffsetEnd }}
             </dd>
           </div>
           <div class="flex items-center justify-between gap-4 pt-2">
             <dt class="text-xs text-text-subtle">Token 数</dt>
-            <dd class="tabular-nums text-text">{{ editTarget.tokenCount }}</dd>
+            <dd class="tabular-nums font-medium text-text">{{ editTarget.tokenCount }}</dd>
           </div>
         </dl>
         <!-- 保存语义提示：改内容触发重新向量化（设计 §2.4.3） -->
@@ -978,7 +982,7 @@ function closeContext() {
   <Transition name="fade">
     <div
       v-if="contextOpen"
-      class="fixed inset-0 z-50 bg-slate-900/40"
+      class="fixed inset-0 z-50 bg-overlay"
       data-testid="context-overlay"
       @click="closeContext"
     />
@@ -989,7 +993,7 @@ function closeContext() {
       data-testid="context-drawer"
       role="dialog"
       aria-modal="true"
-      class="fixed inset-y-0 right-0 z-50 flex w-[600px] max-w-full flex-col border-l border-border bg-surface shadow-md"
+      class="fixed inset-y-0 right-0 z-50 flex w-[600px] max-w-full flex-col rounded-l-2xl bg-surface shadow-xl"
     >
       <header class="flex items-center justify-between border-b border-border px-5 py-4">
         <div>
@@ -1000,7 +1004,7 @@ function closeContext() {
           type="button"
           data-testid="close-context"
           aria-label="关闭上下文"
-          class="rounded-md p-1 text-text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text"
+          class="rounded-lg p-1.5 text-text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text"
           @click="closeContext"
         >
           <PhX class="h-5 w-5" />
@@ -1037,19 +1041,20 @@ function closeContext() {
             :data-testid="`ctx-${node.key}`"
             class="relative"
           >
-            <!-- 轨上圆点 -->
+            <!-- 轨上圆点：当前节点品牌实心、其余空心（层级区分） -->
             <span
               aria-hidden="true"
-              class="absolute -left-[31px] top-1.5 h-3 w-3 rounded-full border-2 border-brand bg-surface"
+              class="absolute -left-[31px] top-1.5 h-3 w-3 rounded-full border-2 border-brand"
+              :class="node.key === 'current' ? 'bg-brand' : 'bg-surface'"
             />
             <p class="text-xs font-medium text-text-muted">{{ node.label }}</p>
-            <p class="mt-1 truncate text-sm font-medium text-text">
+            <p class="mt-1 truncate text-sm font-semibold text-text">
               {{ node.chunk.headingPath || `第 ${node.chunk.chunkIndex} 片` }}
             </p>
             <p class="mt-1 line-clamp-2 text-sm leading-relaxed text-text">
               {{ node.chunk.content }}
             </p>
-            <p class="mt-1 tabular-nums text-xs text-text-subtle">
+            <p class="mt-1 text-xs tabular-nums text-text-subtle">
               #{{ node.chunk.chunkIndex }} · {{ shortId(node.chunk.id) }} ·
               {{ node.chunk.startPage }}-{{ node.chunk.endPage }} 页
             </p>
@@ -1062,12 +1067,22 @@ function closeContext() {
 
 <style scoped>
 /**
- * Drawer 滑入动效（设计 §2.2：MOTION 2，仅 transform/opacity，200ms）
- * fade 作用于遮罩淡入淡出；drawer-slide 作用于面板右滑
+ * 勾选列窄列修正：DataTable 首列默认 22px 左内距面向文本首列（设计稿），
+ * 本表首列为勾选框，收窄为 8px 保持复选框视觉居中。
+ */
+thead tr th:first-child,
+tbody tr td:first-child {
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
+/**
+ * Drawer 滑入动效（设计 §2.2：MOTION 2，仅 transform/opacity）
+ * fade 作用于遮罩淡入淡出；drawer-slide 作用于面板右滑（ease 曲线令牌驱动）
  */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 200ms ease;
+  transition: opacity 300ms var(--ease);
 }
 .fade-enter-from,
 .fade-leave-to {
@@ -1076,8 +1091,8 @@ function closeContext() {
 .drawer-slide-enter-active,
 .drawer-slide-leave-active {
   transition:
-    transform 200ms ease,
-    opacity 200ms ease;
+    transform 300ms var(--ease),
+    opacity 300ms var(--ease);
 }
 .drawer-slide-enter-from,
 .drawer-slide-leave-to {

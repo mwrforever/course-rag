@@ -68,9 +68,10 @@ test.describe('文档管理', () => {
     // FAILED 错误详情需点击徽章展开（EtlStatusBadge errorExpanded toggle）
     await page.getByTestId('etl-badge-toggle').click()
     await expect(page.getByTestId('etl-error-message')).toHaveText('解析超时：分片失败')
-    // 重新解析入口在行操作 ⋮ 菜单内（弹层：菜单项 data-testid=menu-reparse）
+    // 重新解析入口在行操作 ⋮ 菜单内（弹层：菜单项 data-testid=menu-reparse；
+    // 菜单项经 DropdownMenuItem 渲染为 role=menuitem，显式角色覆盖隐式 button）
     await page.getByTestId('doc-menu-d1').click()
-    await page.getByRole('button', { name: '重新解析' }).click()
+    await page.getByRole('menuitem', { name: '重新解析' }).click()
     await expect.poll(() => reparseCalled).toBe(1)
   })
 
@@ -154,7 +155,7 @@ test.describe('文档管理', () => {
       [menuBox.x + menuBox.width / 2, menuBox.y + menuBox.height - 2],
     )
     expect(hitMenu).toBe(true)
-    // 末行菜单全部项可达（含最底部「删除」）
-    await expect(page.getByRole('button', { name: '删除' })).toBeVisible()
+    // 末行菜单全部项可达（含最底部「删除」；菜单项 role=menuitem）
+    await expect(page.getByRole('menuitem', { name: '删除' })).toBeVisible()
   })
 })
