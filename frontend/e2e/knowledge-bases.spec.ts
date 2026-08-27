@@ -5,6 +5,8 @@ import { mockAuth, login, apiOk } from './helpers/api-mock'
  * 知识库 CRUD E2E（整合 spec §3.2 knowledge-bases 组）
  * - 经文档页「管理知识库」入口进入（侧导航无独立项，设计 §2.3）
  * - 列表渲染／新建 Dialog 表单校验与提交（可变列表：POST 后新记录可见）／删除二次确认
+ * - N6a 视觉重制适配：行操作迁 ⋮ 下拉菜单（先展开再点删除项），
+ *   ConfirmDialog 的 confirm-delete testid 与级联警告文案契约不变
  */
 
 test.describe('知识库管理', () => {
@@ -91,10 +93,9 @@ test.describe('知识库管理', () => {
       }
     })
     await enterKbPage(page)
-    await page
-      .getByRole('button', { name: /删除知识库|删除/ })
-      .first()
-      .click()
+    // 行操作迁 ⋮ 下拉菜单：先展开行菜单，再点删除项（menuitem 语义）
+    await page.getByTestId('kb-menu-k1').click()
+    await page.getByRole('menuitem', { name: '删除' }).click()
     await expect(page.getByText(/级联删除|不可恢复/)).toBeVisible()
     await page.getByTestId('confirm-delete').click()
     await expect.poll(() => deleted).toBe(1)
