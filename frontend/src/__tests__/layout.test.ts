@@ -355,6 +355,24 @@ describe('AdminLayout 渲染（白色侧栏 · Edukors 形态）', () => {
     wrapper.unmount()
   })
 
+  it('窗口尺寸变化：指示条按新几何复测落位（resize 监听）', async () => {
+    const { wrapper } = await mountLayout('TEACHER')
+
+    // 挂载即量测：/dashboard 激活项在场，指示条可见（jsdom 无布局，offsetTop/offsetHeight 恒 0）
+    const indicatorEl = wrapper.find('.nav-indicator')
+    expect(indicatorEl.attributes('style')).toContain('opacity: 1')
+    expect(indicatorEl.attributes('style')).toContain('top: 0px')
+
+    // 模拟布局变化（如跨过移动端断点）：改写激活项量测值后触发 resize，
+    // 指示条应按新 offsetTop 重新落位——覆盖 onResize 监听（N9 补测，铁律 100% 行覆盖）
+    const active = wrapper.find('[data-nav-active="true"]').element as HTMLElement
+    Object.defineProperty(active, 'offsetTop', { value: 120, configurable: true })
+    window.dispatchEvent(new Event('resize'))
+    await nextTick()
+    expect(indicatorEl.attributes('style')).toContain('top: 120px')
+    wrapper.unmount()
+  })
+
   it('面包屑：分组名 + 页面标题（文档详情 → 知识库 / 文档管理）', async () => {
     const { wrapper } = await mountLayout('TEACHER', '/knowledge/documents')
 
