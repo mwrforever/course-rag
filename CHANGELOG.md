@@ -14,3 +14,5 @@
 - 2026-08-25 · 宪法草案审核修复（审核专员 2 轮）：Maven 本地仓库路径实测修正为 `D:/code/java/maven/apache-maven-3.9.16/repository`（旧记忆路径作废，见记忆索引）；Part C 补用户拍板前置条款（C 端界面落地前必须与用户沟通）；D.3 启动类名更正为 CommerceRagApplication；TASK.md §5 补 E-6 登记（36 项）。原因：constitution-generator §四.5 审核轮发现并修复。
 - 2026-08-25 · 用户批准定稿：`AGENTS.md.draft` 替换为 `AGENTS.md` 生效（旧版备份 `AGENTS.md.bak.2026-08-25`，git 历史亦保有旧版）。
 - 2026-08-25 · 默认管理员账户改配置驱动：新增 `properties/AdminSeedProperties`（`auth.admin-seed`，默认 admin/admin123，env `AUTH_ADMIN_SEED_*` 可覆盖）+ `config/AdminSeedInitializer`（ApplicationRunner，非 @PostConstruct——顺时序无竞态）+ `ISysUserService#ensureSeedSuperAdmin` 幂等写入（无超管则创建；密码仍为出厂默认则刷新为配置值，env 覆盖生效；已改密绝不覆盖）。原因：V6 迁移凭证硬编码且迁移冻结不可改，凭证改由配置挂载、启动动态注入；配 9 个新单测（seed 五分支 + 属性绑定 + 初始化器委托）。
+## 2026-08-27 · C 端问渠学堂全站 UI 重构 + 学员邮箱注册功能 · 设计稿驱动改版（首页/登录页完整还原 + 全站换肤）与新注册链路上线
+
