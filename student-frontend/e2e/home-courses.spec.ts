@@ -14,13 +14,16 @@ test.describe("首页与课程", () => {
     await mockApi(page);
   });
 
-  test("首页公开渲染：推荐课程 + 快问框，无最近会话区块", async ({ page }) => {
+  test("首页公开渲染：问渠学堂品牌壳 + 精选课程卡 + 能力手风琴，无最近会话区块", async ({ page }) => {
     // 不登录直接浏览（公开化核心契约）
     await page.goto("/");
+    // 设计稿一品牌壳就位：巨型 Hero 字 + 顶栏 Logo
+    await expect(page.locator("#top")).toBeVisible();
+    // 公开课程数据源渲染为精选课程大卡（web-first 自动等待）
     await expect(page.getByText("数据结构与算法精讲")).toBeVisible();
     await expect(page.getByText("Java 从入门到进阶")).toBeVisible();
-    // 快问框（核心入口）
-    await expect(page.getByLabel("快速提问")).toBeVisible();
+    // 能力手风琴四项（业务替换后的平台真实能力）
+    await expect(page.getByTestId("service-head")).toHaveCount(4);
     // 最近会话区块已移除（首页不再出现会话条目）
     await expect(page.getByText("数据结构与算法咨询")).toHaveCount(0);
     await expect(page.getByText("最近会话")).toHaveCount(0);

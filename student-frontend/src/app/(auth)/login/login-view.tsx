@@ -64,10 +64,14 @@ export function LoginView() {
     router.push(searchParams.get("next") || "/");
   }
 
-  /** 注册成功：自动登录已完成，回跳 */
+  /**
+   * 注册成功：凭据已由 api 层落存（AT 内存 + RT localStorage），
+   * 但 AuthProvider 用户态需经「挂载静默续期」建立——整页导航触发完整挂载
+   * （与 E2E RT 注入建立登录态同一条链路，避免客户端上下文与存储不一致）
+   */
   function handleRegisterSuccess() {
     showToast("账户创建成功——欢迎来到问渠学堂");
-    router.push("/");
+    window.location.assign("/");
   }
 
   return (

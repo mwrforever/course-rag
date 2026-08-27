@@ -52,6 +52,28 @@ export async function mockApi(page: Page) {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON_OK(null) });
     }
 
+    // 学员邮箱注册两段式（2026-08-27）：发码成功即 200；注册成功回会话载荷 + Set-Cookie，
+    // 与后端 AuthController /register 同构（注册即自动登录语义）。验证码 "000000" 模拟错误码。
+    if (method === "POST" && path.endsWith("/auth/register/code")) {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON_OK(null) });
+    }
+    if (method === "POST" && path.endsWith("/auth/register")) {
+      const registerBody = JSON.parse(req.postData() ?? "{}") as { email?: string; code?: string };
+      if (!registerBody.email || registerBody.code === "000000") {
+        return route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ code: 400, message: "验证码错误" }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "set-cookie": "commerce_token=at-e2e; Path=/; Max-Age=900; HttpOnly" },
+        body: JSON_OK(E2E_USER),
+      });
+    }
+
     // 公开课程列表（未登录可浏览：首页/课堂页数据源，2026-08-26 公开化）
     if (method === "GET" && path.endsWith("/public/courses")) {
       return route.fulfill({
