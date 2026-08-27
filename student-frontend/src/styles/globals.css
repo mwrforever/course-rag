@@ -1,79 +1,94 @@
-/* ===== 字体自托管（替代 next/font/google 远程拉取，国内网络可用；与 B 端 @fontsource 方案一致） =====
-   Outfit 承担拉丁与数字显示、Noto Sans SC 承担中文、Geist Mono 等宽（设计文档 §1.3）；
-   各字重 CSS 引入 @font-face，浏览器按 unicode-range 分片按需加载 */
+/* ===== 字体自托管（替代 next/font/google 远程拉取，国内网络可用） =====
+   学院风体系（问渠学堂 UI 重构 2026-08-27）：
+   - Cormorant Garamond：拉丁衬线显示字体（大标题英文/数字）
+   - Noto Serif SC：中文衬线（中文标题；仅 600/700 两字重控制体积）
+   - Outfit + Noto Sans SC：正文无衬线
+   - Caveat：手写体点缀（script 类装饰文案）
+   - Geist Mono：等宽 */
+@import "@fontsource/cormorant-garamond/500.css";
+@import "@fontsource/cormorant-garamond/600.css";
+@import "@fontsource/noto-serif-sc/600.css";
+@import "@fontsource/noto-serif-sc/700.css";
 @import "@fontsource/outfit/400.css";
 @import "@fontsource/outfit/500.css";
 @import "@fontsource/outfit/600.css";
 @import "@fontsource/outfit/700.css";
 @import "@fontsource/noto-sans-sc/400.css";
 @import "@fontsource/noto-sans-sc/700.css";
+@import "@fontsource/caveat/400.css";
 @import "@fontsource/geist-mono/400.css";
 @import "tailwindcss";
 
-/* ===== 设计令牌（UI 全面重构 2026-08-25：kimi 蓝系设计语言） =====
-   kimi 参考稿（D:\code\project\assert\kimi\）实测令牌：暖米白底 #FBFAF9 + 品牌蓝 #2F8BF5 族 +
-   蓝紫渐变的 AI 元素；文字用 rgba 黑分四级。组件与页面只允许引用本层语义 token，
-   禁止直写 Primitive 色值。 */
+/* ===== 设计令牌（UI 全面重构 2026-08-27：问渠学堂学院风） =====
+   设计稿语言：奶油纸面 #F6F1E7 + 墨色 #191512 + 赭棕点缀 #7A4A2B，
+   衬线大标题 + 手写体点缀的英伦学院气质；
+   组件与页面只允许引用本层语义 token，禁止直写 Primitive 色值。 */
 @theme {
-  /* ── 中性色板（暖米白系，实测 kimi：底 #FBFAF9 /  hover rgba(0,0,0,.04) / 线条 rgba(0,0,0,.08)）── */
-  --color-bg: #fbfaf9;
-  --color-surface: #ffffff;
-  --color-surface-2: #f4f3f1;
-  --color-border: #e7e5e2;
-  --color-border-strong: #d8d5d0;
-  /* 用户消息气泡底（kimi 实测 #F2F3F5） */
-  --color-bubble: #f2f3f5;
-  /* 深色半透明遮罩（弹窗/抽屉遮罩、封面分类徽章底与 hover CTA 压暗渐变） */
-  --color-overlay: rgba(24, 23, 21, 0.45);
-  /* ── 文字层级（kimi 黑 90%/60%/45%/25%）── */
-  --color-text: #191918;
-  --color-muted: #5f5d59;
-  --color-subtle: #8b8984;
-  --color-faint: #b3b1ac;
-  /* ── 品牌蓝族（kimi #2F8BF5 / #1A73E8，soft=12% 底 / light=6% 底）── */
-  --color-brand: #2f8bf5;
-  --color-brand-strong: #1a73e8;
-  --color-brand-soft: #2f8bf51f;
-  --color-brand-light: #2f8bf50f;
-  /* ── 状态语义色（kimi：success #21AE7D / warn #F5A623 / danger #F2705C，深一档保证文字可读）── */
-  --color-success: #1e9e6f;
-  --color-danger: #e25545;
-  --color-warning: #e09116;
-  /* ── 字体族：Outfit 拉丁数字 + Noto Sans SC 中文；display 优先 Outfit ── */
-  /* 注意：Noto Sans SC 仅保留 400/700（500 由浏览器合成）——中文每字重约 1.1MB，
-     减字重首屏省约 1.2MB（卡顿治理 2026-08-26）；标题 700 单独引入保证清晰 */
-  --font-display: "Outfit", "Noto Sans SC", system-ui, sans-serif;
+  /* ── 中性色板（奶油纸面系）── */
+  --color-bg: #f6f1e7;
+  --color-surface: #fffdf8;
+  --color-surface-2: #fbf7ee;
+  --color-border: #e3dbcc;
+  --color-border-strong: #c9bfa9;
+  /* 用户消息气泡底（对话页沿用暖白层次） */
+  --color-bubble: #f3ecdf;
+  /* 深色半透明遮罩（弹窗/抽屉遮罩、封面压暗渐变） */
+  --color-overlay: rgb(25 21 18 / 55%);
+  /* ── 墨色深景面板族（顶栏/服务区/页脚的深色底）── */
+  --color-ink: #191512;
+  --color-ink-800: #241d15;
+  --color-ink-700: #2c2018;
+  --color-ink-900: #14100d;
+  /* ── 文字层级 ── */
+  --color-text: #191512;
+  --color-muted: #6b6257;
+  --color-subtle: #8a8176;
+  --color-faint: #b7aea0;
+  /* ── 品牌赭棕族（主强调色）── */
+  --color-brand: #7a4a2b;
+  --color-brand-strong: #5e3718;
+  --color-brand-soft: #7a4a2b1f;
+  --color-brand-light: #7a4a2b0d;
+  /* ── 状态语义色 ── */
+  --color-success: #5e7d46;
+  --color-danger: #b4552d;
+  --color-warning: #c98a3d;
+  /* ── 字体族 ──
+     display：Cormorant Garamond 衬线拉丁 + Noto Serif SC 中文衬线（大标题／巨型字） */
+  --font-display: "Cormorant Garamond", "Noto Serif SC", Georgia, serif;
   --font-sans: "Outfit", "Noto Sans SC", system-ui, sans-serif;
+  /* script：手写体（仅拉丁字符生效；中文回退衬线斜体气质） */
+  --font-script: "Caveat", "Noto Serif SC", cursive;
   --font-mono: "Geist Mono", "SF Mono", ui-monospace, monospace;
-  /* ── 圆角体系（全站统一，覆盖 Tailwind rounded-* 默认值）── */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
-  --radius-2xl: 22px;
+  /* ── 圆角体系 ── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
   --radius-full: 9999px;
-  /* ── 阴影体系（kimi：pop / input / code 三档）── */
-  --shadow-xs: 0 1px 2px rgba(20, 18, 16, 0.04);
-  --shadow-sm: 0 2px 10px rgba(20, 18, 16, 0.06);
-  --shadow-md: 0 6px 24px rgba(20, 18, 16, 0.09);
-  --shadow-lg: 0 10px 36px rgba(20, 18, 16, 0.12);
-  --shadow-xl: 0 16px 44px rgba(20, 18, 16, 0.16);
-  /* ── 品牌渐变（仅 Logo / AI 头像 / 徽标 / 强调元素使用）── */
-  --gradient-ai: linear-gradient(135deg, #63c6ff 0%, #2f8bf5 55%, #1a5dd9 100%);
-  /* ── 学科兜底渐变对（course-card 无封面兜底，设计 §1.5.1：from-* / to-* 经 Tailwind 生成渐变）── */
-  --color-subject-code-start: #e0f2fe; /* 计算机/编程：sky-100 起 */
-  --color-subject-code-end: #e0e7ff; /* indigo-100 止 */
-  --color-subject-math-start: #ede9fe; /* 数学/统计：violet-100 起 */
-  --color-subject-math-end: #fae8ff; /* fuchsia-100 止 */
-  --color-subject-lang-start: #ccfbf1; /* 英语/外语：teal-100 起 */
-  --color-subject-lang-end: #d1fae5; /* emerald-100 止 */
-  --color-subject-science-start: #fef3c7; /* 物理/化学/生物：amber-100 起 */
-  --color-subject-science-end: #ffedd5; /* orange-100 止 */
-  --color-subject-business-start: #ffe4e6; /* 经济/管理：rose-100 起 */
-  --color-subject-business-end: #fce7f3; /* pink-100 止 */
-  --color-subject-art-start: #ffedd5; /* 艺术/音乐/设计：orange-100 起 */
-  --color-subject-art-end: #fef9c3; /* yellow-100 止 */
-  /* ── 动效（保留既有动画名，新增页面入场）── */
+  /* ── 阴影体系（偏暖棕投影）── */
+  --shadow-xs: 0 1px 2px rgb(70 45 20 / 5%);
+  --shadow-sm: 0 2px 10px rgb(70 45 20 / 8%);
+  --shadow-md: 0 6px 24px rgb(70 45 20 / 10%);
+  --shadow-lg: 0 10px 36px rgb(70 45 20 / 13%);
+  --shadow-xl: 0 22px 50px rgb(70 45 20 / 20%);
+  /* ── 品牌渐变（Logo/AI 头像/强调元素：赭金暖光）── */
+  --gradient-ai: linear-gradient(135deg, #c9975b 0%, #8a5a33 55%, #5e3718 100%);
+  /* ── 学科兜底渐变对（course-card 无封面兜底）── */
+  --color-subject-code-start: #efe6d3;
+  --color-subject-code-end: #e4dcc8;
+  --color-subject-math-start: #ece0cf;
+  --color-subject-math-end: #f5e7d2;
+  --color-subject-lang-start: #e6e4cf;
+  --color-subject-lang-end: #eee9d8;
+  --color-subject-science-start: #f0e2cd;
+  --color-subject-science-end: #f7ead6;
+  --color-subject-business-start: #edddda;
+  --color-subject-business-end: #f4e7e2;
+  --color-subject-art-start: #f1e4ce;
+  --color-subject-art-end: #f6efd9;
+  /* ── 动效令牌 ── */
   --animate-drawer-in: drawer-in 240ms ease-out;
   --animate-overlay-in: overlay-in 240ms ease-out;
   --animate-cursor-blink: cursor-blink 1s steps(2, start) infinite;
@@ -135,25 +150,245 @@
       opacity: 1;
     }
   }
+
+  /* ===== 设计稿专属关键帧（首页/登录页完整动画体系） ===== */
+  /* Ken Burns 英雄图缓推近 */
+  @keyframes kenburns {
+    from {
+      transform: scale(1.1);
+    }
+    to {
+      transform: scale(1);
+    }
+  }
+  /* 服务区模糊背景漂移 */
+  @keyframes drift {
+    to {
+      transform: translate(3%, -3%) scale(1.06);
+    }
+  }
+  /* 宝丽来照片浮动 */
+  @keyframes floaty {
+    50% {
+      margin-top: -12px;
+    }
+  }
+  /* 英雄区副标题列上浮进场 */
+  @keyframes hero-up {
+    from {
+      opacity: 0;
+      transform: translateY(44px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* 英雄巨字上浮进场 */
+  @keyframes hero-word-up {
+    from {
+      opacity: 0;
+      transform: translateY(44px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* 悬浮胶囊入场 */
+  @keyframes wa-in {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* 浮动按钮弹入 */
+  @keyframes fab-in {
+    from {
+      opacity: 0;
+      transform: scale(0.4);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  /* 登录影像缩放入场 */
+  @keyframes v-in {
+    from {
+      transform: scale(1.08);
+    }
+    to {
+      transform: scale(1);
+    }
+  }
+  /* 引导句上浮 */
+  @keyframes up-fade {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* 表单面板切换平移进场 */
+  @keyframes pane-in {
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* 打字指示点 */
+  @keyframes typing-blink {
+    0%,
+    70%,
+    100% {
+      opacity: 0.25;
+      transform: none;
+    }
+    35% {
+      opacity: 1;
+      transform: translateY(-4px);
+    }
+  }
 }
 
-/* ===== 通用样式工具（渐变类供组件直接引用） ===== */
-@layer components {
-  /* AI 主体渐变（消息头像 / 徽标 / 按钮高光） */
-  .bg-gradient-ai {
-    background-image: var(--gradient-ai);
-  }
-  /* 渐变文字（大标题强调） */
-  .text-gradient-ai {
-    background-image: var(--gradient-ai);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
+/* ===== 滚动入场系统（方向感知 reveal，源自设计稿逐帧实现） ===== */
+.reveal {
+  opacity: 0;
+  transform: translate3d(0, var(--ty, 46px), 0);
+  transition:
+    opacity 0.9s ease var(--rd, var(--d, 0s)),
+    transform 1s cubic-bezier(0.22, 0.61, 0.36, 1) var(--rd, var(--d, 0s));
+}
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+.reveal[data-anim="left"] {
+  transform: translate3d(-52px, 0, 0);
+}
+.reveal[data-anim="right"] {
+  transform: translate3d(52px, 0, 0);
+}
+.reveal[data-anim="scale"] {
+  transform: scale(0.93);
+}
+.reveal[data-anim="blur"] {
+  filter: blur(8px);
+}
+.reveal[data-anim="blur"].in {
+  filter: blur(0);
+}
+/* stagger 子项错峰（--i 由父容器注入序号） */
+.stagger > * {
+  --rd: calc(var(--i, 0) * 0.09s);
+}
+
+/* ===== 手写体 / 衬线工具类 ===== */
+.font-serif-display {
+  font-family: var(--font-display);
+}
+.text-script {
+  font-family: var(--font-script);
+  font-size: clamp(26px, 2.4vw, 34px);
+  line-height: 1.2;
+}
+/* 中文语种的「手写感」替代：赭棕斜体衬线 */
+.text-accent-italic {
+  color: var(--color-brand);
+  font-family: var(--font-display);
+  font-style: italic;
+}
+
+/* ===== 通用按钮（设计稿胶囊按钮三态） ===== */
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font: 500 12px/1 var(--font-sans);
+  letter-spacing: 0.16em;
+  padding: 15px 30px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition:
+    background 0.35s,
+    color 0.35s,
+    border-color 0.35s,
+    transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.btn-dark {
+  background: transparent;
+  border-color: var(--color-ink);
+  color: var(--color-ink);
+}
+.btn-dark:hover {
+  background: var(--color-ink);
+  color: var(--color-bg);
+}
+.btn-solid {
+  background: var(--color-ink);
+  color: var(--color-bg);
+  border-color: var(--color-ink);
+}
+.btn-solid:hover {
+  background: #000;
+}
+.btn-solid:active {
+  transform: scale(0.985);
+}
+.btn-cream {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border-color: var(--color-surface);
+}
+.btn-cream:hover {
+  background: transparent;
+  color: var(--color-surface);
+}
+
+/* ===== 上划线链接（hover 时棕色线从左推进） ===== */
+.rule-link {
+  position: relative;
+  display: inline-block;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  padding-bottom: 20px;
+  color: var(--color-ink);
+}
+.rule-link::after,
+.rule-link::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 1px;
+}
+.rule-link::after {
+  width: 230px;
+  background: var(--color-border-strong);
+}
+.rule-link::before {
+  width: 0;
+  background: var(--color-brand);
+  transition: width 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.rule-link:hover::before {
+  width: 230px;
 }
 
 /* ===== 自定义工具类 ===== */
-/* 隐藏滚动条（横向 chip 条等自滚动容器；scrollbar-width 供 Firefox，::-webkit 供 Chromium/Safari） */
 @utility scrollbar-none {
   scrollbar-width: none;
   &::-webkit-scrollbar {
@@ -161,28 +396,90 @@
   }
 }
 
-/* ===== 基础层：全站底色 / 文字 / 滚动条 / 选区（引用 @theme 语义 token） ===== */
+/* ===== 基础层 ===== */
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
   body {
     background-color: var(--color-bg);
     color: var(--color-text);
-    font-family: var(--font-display);
-    font-variant-numeric: tabular-nums;
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
-  /* 细滚动条（kimi 风格：6px 圆角，悬停加深） */
+  /* 细滚动条 */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.16);
+    background: rgb(25 21 18 / 20%);
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.3);
+    background: rgb(25 21 18 / 40%);
   }
   ::selection {
-    background: var(--color-brand-soft);
+    background: #2e2119;
+    color: #f6f1e7;
+  }
+  :focus-visible {
+    outline: 1.5px dashed currentColor;
+    outline-offset: 3px;
+  }
+}
+
+/* ===== 指引卡「开始」链（hover 棕线自右推进，同设计稿 read 效果） ===== */
+.read-link {
+  position: relative;
+  border-top: 1px solid rgb(25 21 18 / 40%);
+  width: 132px;
+}
+.group:hover > * > .read-link,
+a:hover .read-link {
+  color: var(--color-brand);
+}
+a:hover .read-link::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: 0;
+  height: 1px;
+  width: 100%;
+  background: var(--color-brand);
+}
+
+/* ===== 载入入场（登录页逐层错峰） ===== */
+.fade-up {
+  opacity: 0;
+  transform: translateY(26px);
+  animation: up-fade 0.9s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  animation-delay: var(--d, 0s);
+}
+
+/* ===== 吸顶主栏滚动状态（配合 site-header 组件的 scrolled/header-hide 类切换） ===== */
+#site-header.scrolled {
+  background: rgb(18 14 11 / 94%) !important;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 rgb(246 241 231 / 12%);
+}
+#site-header.header-hide {
+  transform: translateY(-110%);
+}
+
+/* ===== 动效可访问性总开关 ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
   }
 }

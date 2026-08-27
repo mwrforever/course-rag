@@ -8,6 +8,16 @@
 
 ---
 
+## 0. 注册发码配额的反代部署前提（PR#17 复审备注登记）
+
+- [ ] **引入可信反向代理/ingress 时**：发码 IP 配额当前绑定 `request.getRemoteAddr()`（不可伪造，
+      PR#17 审查 F1 定案）。上反代后 remoteAddr 会收敛为代理出口 IP——全站共享同一配额桶
+      （失效方向为可用性限速而非安全旁路，方向保守可接受）。届时需配套：开启 Tomcat
+      forward-headers 策略并强制代理覆写 XFF，或扩展 RegisterProperties 增加 trusted-proxy 开关
+      只采信链尾地址。登记日期 2026-08-27。
+
+---
+
 ## 1. Milvus sparse 检索后续（2026-08-26 整改完成后的遗留项）
 
 **背景**：sparse/BM25 检索已按维护者官方用法整改实施完成（jieba 中文分词 + schema 版本标记 +

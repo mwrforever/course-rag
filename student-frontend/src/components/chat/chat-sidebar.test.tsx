@@ -106,6 +106,7 @@ beforeEach(() => {
     isLoading: false,
     login: vi.fn(),
     logout: vi.fn().mockResolvedValue(undefined),
+    openLoginDialog: vi.fn(),
   });
 });
 
@@ -159,6 +160,24 @@ describe("ChatSidebar 结构", () => {
     renderSidebar();
     expect(await screen.findByText("同学A")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-avatar")).toHaveTextContent("同");
+  });
+
+  it("未登录：用户区显示登录入口（点击触发全局登录弹窗），不渲染头像", async () => {
+    apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
+    const openLoginDialog = vi.fn();
+    authMock.useAuth.mockReturnValue({
+      user: null,
+      accessToken: null,
+      isAuthenticated: false,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      openLoginDialog,
+    });
+    renderSidebar();
+    fireEvent.click(await screen.findByTestId("sidebar-login"));
+    expect(openLoginDialog).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("sidebar-avatar")).toBeNull();
   });
 
   it("退出登录：二次确认后登出清凭据 → 清查询缓存 → 跳首页", async () => {

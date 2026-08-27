@@ -4,18 +4,24 @@ import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.properties.AdminSeedProperties;
 import com.commerce.rag.properties.AuthBlacklistProperties;
 import com.commerce.rag.properties.AuthProperties;
+import com.commerce.rag.properties.RegisterProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * 认证配置类 —— 注册 AuthProperties/AuthBlacklistProperties/AdminSeedProperties + AuthInterceptor
+ * 认证配置类 —— 注册 AuthProperties/AuthBlacklistProperties/AdminSeedProperties/RegisterProperties + AuthInterceptor
  *
  * @author commerce-rag
  */
 @Configuration
-@EnableConfigurationProperties({AuthProperties.class, AuthBlacklistProperties.class, AdminSeedProperties.class})
+@EnableConfigurationProperties({
+    AuthProperties.class,
+    AuthBlacklistProperties.class,
+    AdminSeedProperties.class,
+    RegisterProperties.class
+})
 public class AuthConfig implements WebMvcConfigurer {
 
     private final AuthInterceptor authInterceptor;

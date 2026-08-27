@@ -1,13 +1,13 @@
 /**
- * 首页测试（公开化 2026-08-26：公开课程源 + 快问框 + 登录弹窗触发）
+ * 首页测试（问渠学堂重构 2026-08-27：设计稿一区块化还原）
  *
- * 首页四态全覆盖（设计 §1.7）：Loading 骨架 / Empty 空态 / Error 横幅+重试 / 正常态。
- * 新增公开化语义覆盖：快问框（登录/未登录提交分派）、推荐课程（公开接口数据源 +
- * 已加入徽章交叉）、?login=1 触发登录弹窗；最近会话区块已随会话管理归侧边栏移除。
+ * 覆盖：品牌与结构冒烟（Hero 巨字 / 能力手风琴四项 / 上手指引六卡 / 快捷宫格 /
+ * AI 助教 FAB）；精选课程四态（Loading / 正常含已加入徽章交叉 / Empty / Error 重试）；
+ * 公开浏览契约（未登录无徽章、my-courses 不请求）。
  * 数据层以 vi.mock 注入（react-query 用 QueryClient 包裹并关闭 retry）。
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import HomePage from "./page";
 import type { PublicCourse } from "@/lib/types";
@@ -16,7 +16,7 @@ import type { PublicCourse } from "@/lib/types";
 const apiMock = vi.hoisted(() => ({ getPublicCourses: vi.fn(), getMyCourses: vi.fn() }));
 /** 认证 mock：登录态可切换 + 弹窗操作记录 */
 const authMock = vi.hoisted(() => ({ useAuth: vi.fn() }));
-/** 路由 mock：push/replace 记录（快问提交与 login 参数清理） */
+/** 路由 mock：push/replace 记录 */
 const routerMock = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 
 vi.mock("@/lib/api", () => ({
@@ -33,7 +33,7 @@ function makeCourse(overrides: Partial<PublicCourse> = {}): PublicCourse {
     title: "数据结构与算法",
     description: "入门课程",
     coverImage: null,
-    category: null,
+    category: "计算机",
     instructorName: "王老师",
     duration: "32",
     rating: 4.5,
@@ -75,200 +75,91 @@ beforeEach(() => {
   authMock.useAuth.mockReset();
   routerMock.push.mockReset();
   routerMock.replace.mockReset();
+  apiMock.getPublicCourses.mockResolvedValue([]);
+  apiMock.getMyCourses.mockResolvedValue([]);
   authMock.useAuth.mockReturnValue(defaultAuth());
-  // 默认无 login 参数（history 残留清理）
   window.history.replaceState(null, "", "/");
 });
 
 afterEach(() => {
-  apiMock.getPublicCourses.mockReset();
-  apiMock.getMyCourses.mockReset();
-  authMock.useAuth.mockReset();
+  vi.clearAllTimers?.();
 });
 
-describe("首页 Hero", () => {
-  it("问候 displayName + 快问框 + CTA 跳转（/chat 与 /courses）", async () => {
-    apiMock.getPublicCourses.mockResolvedValue([]);
-    apiMock.getMyCourses.mockResolvedValue([]);
+describe("首页品牌与结构冒烟", () => {
+  it("Hero 巨字品牌名 + 能力手风琴四项 + 指引卡六张 + 宫格入口 + AI 助教 FAB 全部就位", async () => {
     renderHome();
-    expect(await screen.findByText("你好，同学A")).toBeInTheDocument();
-    expect(screen.getByText("课堂资料、AI 助教、对话溯源，都在一个地方")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "提问" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /开始提问/ })).toHaveAttribute("href", "/chat");
-    expect(screen.getByRole("link", { name: "浏览课堂" })).toHaveAttribute("href", "/courses");
-    // AI 助教人格化徽标驻留 Hero 右栏
-    expect(screen.getByTestId("ai-badge")).toBeInTheDocument();
+    // Hero 巨型衬线品牌字（顶栏 Logo 属布局层，不在本测试范围）
+    expect(screen.getAllByText("问渠学堂").length).toBe(1);
+    // 平台能力手风琴（真实能力业务替换：AI 课程问答等四项）
+    const serviceHeads = await screen.findAllByTestId("service-head");
+    expect(serviceHeads.length).toBe(4);
+    expect(serviceHeads[0]).toHaveTextContent("AI 课程问答");
+    // 上手指引横滑区六张卡，全部指向真实功能路由
+    const posts = screen.getAllByTestId("hub-post");
+    expect(posts.length).toBe(6);
+    for (const post of posts) {
+      const href = post.getAttribute("href") ?? "";
+      expect(["/chat", "/courses", "/profile"]).toContain(href);
+    }
+    // 快捷入口宫格与右下 AI 助教浮动按钮
+    expect(screen.getAllByTestId("entry-tile").length).toBe(5);
+    expect(screen.getByTestId("assistant-fab")).toHaveAttribute("aria-label", "打开 AI 课程助教");
   });
 
-  it("未登录（displayName 缺失）问候回退「同学」", async () => {
-    authMock.useAuth.mockReturnValue(defaultAuth({ user: null, isAuthenticated: false }));
-    apiMock.getPublicCourses.mockResolvedValue([]);
-    apiMock.getMyCourses.mockResolvedValue([]);
+  it("点击手风琴项展开正文且互斥收合（服务区交互契约）", async () => {
     renderHome();
-    expect(await screen.findByText("你好，同学")).toBeInTheDocument();
-  });
-});
-
-describe("首页：快速提问", () => {
-  it("已登录提交：跳转 /chat?q= 预填问题", async () => {
-    apiMock.getPublicCourses.mockResolvedValue([]);
-    apiMock.getMyCourses.mockResolvedValue([]);
-    renderHome();
-    const input = await screen.findByLabelText("快速提问");
-    fireEvent.change(input, { target: { value: "什么是索引下推" } });
-    fireEvent.click(screen.getByRole("button", { name: "提问" }));
-    expect(routerMock.push).toHaveBeenCalledWith(
-      "/chat?q=%E4%BB%80%E4%B9%88%E6%98%AF%E7%B4%A2%E5%BC%95%E4%B8%8B%E6%8E%A8",
-    );
-  });
-
-  it("未登录提交：先开登录弹窗（afterLogin 登录成功后继续跳转）", async () => {
-    const openLoginDialog = vi.fn();
-    authMock.useAuth.mockReturnValue(
-      defaultAuth({ user: null, isAuthenticated: false, openLoginDialog }),
-    );
-    apiMock.getPublicCourses.mockResolvedValue([]);
-    apiMock.getMyCourses.mockResolvedValue([]);
-    renderHome();
-    const input = await screen.findByLabelText("快速提问");
-    fireEvent.change(input, { target: { value: "什么是 RAG" } });
-    fireEvent.click(screen.getByRole("button", { name: "提问" }));
-    expect(openLoginDialog).toHaveBeenCalledTimes(1);
-    const options = openLoginDialog.mock.calls[0][0];
-    expect(typeof options.afterLogin).toBe("function");
-    // 未登录时不直接跳转（登录完成后经 afterLogin 跳）
-    expect(routerMock.push).not.toHaveBeenCalled();
-    // afterLogin 执行后跳转课程助手
-    options.afterLogin();
-    expect(routerMock.push).toHaveBeenCalledWith("/chat?q=%E4%BB%80%E4%B9%88%E6%98%AF%20RAG");
-  });
-
-  it("空输入提交：不跳转也不弹窗", async () => {
-    const openLoginDialog = vi.fn();
-    authMock.useAuth.mockReturnValue(defaultAuth({ openLoginDialog }));
-    apiMock.getPublicCourses.mockResolvedValue([]);
-    apiMock.getMyCourses.mockResolvedValue([]);
-    renderHome();
-    fireEvent.click(await screen.findByRole("button", { name: "提问" }));
-    expect(routerMock.push).not.toHaveBeenCalled();
-    expect(openLoginDialog).not.toHaveBeenCalled();
+    const heads = await screen.findAllByTestId("service-head");
+    fireEvent.click(heads[0]);
+    expect(heads[0]).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(heads[1]);
+    // 单选互斥：展开第二项时第一项自动收合
+    expect(heads[1]).toHaveAttribute("aria-expanded", "true");
+    expect(heads[0]).toHaveAttribute("aria-expanded", "false");
   });
 });
 
-describe("首页四态：推荐课程", () => {
-  it("Loading：骨架与最终布局同形", async () => {
-    // 挂起 promise：查询保持 pending，骨架持久可见
+describe("精选课程四态", () => {
+  it("Loading：待响应阶段不渲染课程卡（骨架由布局脉冲块承担）", async () => {
     apiMock.getPublicCourses.mockReturnValue(new Promise(() => {}));
-    apiMock.getMyCourses.mockResolvedValue([]);
     renderHome();
-    expect(screen.getByTestId("courses-skeleton")).toBeInTheDocument();
+    expect(screen.queryByTestId("wenqu-course-card")).toBeNull();
   });
 
-  it("Empty：无课程空态（文案 + 行动入口）", async () => {
+  it("正常态：公开课程大卡渲染，登录用户显示「已加入」交叉标记", async () => {
+    apiMock.getPublicCourses.mockResolvedValue([
+      makeCourse({ id: "c-1" }),
+      makeCourse({ id: "c-2", title: "信号与系统", category: null }),
+    ]);
+    apiMock.getMyCourses.mockResolvedValue([{ ...makeCourse({ id: "c-1" }) }] as never);
+    renderHome();
+    await waitFor(() => expect(screen.getAllByTestId("wenqu-course-card").length).toBe(2));
+    // 已加入徽章仅对 c-1 显示
+    expect(screen.getAllByText("已加入").length).toBe(1);
+    expect(await screen.findByText("信号与系统")).toBeInTheDocument();
+  });
+
+  it("未登录：不请求我的课程且无已加入徽章（公开浏览契约）", async () => {
+    authMock.useAuth.mockReturnValue(defaultAuth({ user: null, isAuthenticated: false }));
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
+    renderHome();
+    expect(await screen.findByTestId("wenqu-course-card")).toBeInTheDocument();
+    expect(apiMock.getMyCourses).not.toHaveBeenCalled();
+    expect(screen.queryByText("已加入")).toBeNull();
+  });
+
+  it("Empty：空态引导去和 AI 助教聊聊", async () => {
     apiMock.getPublicCourses.mockResolvedValue([]);
-    apiMock.getMyCourses.mockResolvedValue([]);
     renderHome();
     expect(await screen.findByText("暂无上架课程，请稍后再来")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "先和 AI 助教聊聊" })).toHaveAttribute("href", "/chat");
   });
 
-  it("Error：加载失败 → 横幅「服务暂时不可用」+ 重试闭环恢复", async () => {
-    apiMock.getPublicCourses
-      .mockRejectedValueOnce(new Error("网络故障"))
-      .mockResolvedValueOnce([makeCourse({ id: "c9", title: "恢复后的课程" })]);
-    apiMock.getMyCourses.mockResolvedValue([]);
+  it("Error：错误横幅可重试（refetch 再次调用数据源）", async () => {
+    apiMock.getPublicCourses.mockRejectedValue(new Error("网络异常"));
     renderHome();
-    const banner = await screen.findByRole("alert");
-    expect(banner).toHaveTextContent("服务暂时不可用，请稍后重试");
-    fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    expect(await screen.findByText("恢复后的课程")).toBeInTheDocument();
-  });
-
-  it("正常态：公开课程网格 + 分类筛选条（各分类计数、点击过滤、全部复位）", async () => {
-    apiMock.getPublicCourses.mockResolvedValue([
-      makeCourse({
-        id: "c1",
-        title: "高等数学（一）",
-        coverImage: "http://localhost:9000/b/c1.jpg",
-      }),
-      makeCourse({ id: "c2", title: "Python 程序设计", category: "计算机" }),
-      makeCourse({ id: "c3", title: "Web 前端开发", category: "计算机" }),
-      makeCourse({ id: "c4", title: "线性代数", category: "数学" }),
-      makeCourse({ id: "c5", title: "数据结构", category: null }),
-    ]);
-    apiMock.getMyCourses.mockResolvedValue([{ id: "c2" }]);
-    renderHome();
-    // 首卡跳转课程工作台 + 封面
-    await screen.findByText("高等数学（一）");
-    const leadLink = screen.getByRole("link", { name: /高等数学（一）/ });
-    expect(leadLink).toHaveAttribute("href", "/courses/c1");
-    expect(screen.getByAltText("高等数学（一）")).toBeInTheDocument();
-
-    // 分类筛选条：全部(5) + 未分类(2) + 计算机(2) + 数学(1)（Map 按课程数据出现序聚合）
-    const chips = screen.getAllByTestId("category-chip");
-    expect(chips.map((chip) => chip.textContent?.replace(/\s/g, ""))).toEqual([
-      "全部5",
-      "未分类2",
-      "计算机2",
-      "数学1",
-    ]);
-    // 默认「全部」选中：5 门课程全部渲染（无封面课程按分类映射渐变兜底）
-    const fallbacks = screen.getAllByTestId("cover-fallback");
-    expect(fallbacks.some((el) => el.classList.contains("from-subject-code-start"))).toBe(true);
-    expect(fallbacks.some((el) => el.classList.contains("from-subject-math-start"))).toBe(true);
-    expect(fallbacks.some((el) => el.classList.contains("from-brand-light"))).toBe(true);
-
-    // 点计算机：过滤到 2 门，Python/Web 仍在、高等数学消失（aria-pressed 反映选中态）
-    fireEvent.click(screen.getByRole("button", { name: /计算机/ }));
-    expect(await screen.findByText("Python 程序设计")).toBeInTheDocument();
-    expect(screen.getByText("Web 前端开发")).toBeInTheDocument();
-    expect(screen.queryByText("高等数学（一）")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /计算机/ })).toHaveAttribute("aria-pressed", "true");
-
-    // 点全部：恢复全部
-    fireEvent.click(screen.getByRole("button", { name: /全部/ }));
-    expect(await screen.findByText("高等数学（一）")).toBeInTheDocument();
-
-    // 资料库入口横幅：跳转课程列表
-    const library = screen.getByRole("link", { name: /通用资料库/ });
-    expect(library).toHaveAttribute("href", "/courses");
-  });
-
-  it("登录用户：我的课程交叉 → 已加入徽章（only 已加入课程）", async () => {
-    apiMock.getPublicCourses.mockResolvedValue([
-      makeCourse({ id: "c1", title: "已加入课程" }),
-      makeCourse({ id: "c2", title: "未加入课程" }),
-    ]);
-    apiMock.getMyCourses.mockResolvedValue([{ id: "c1" }]);
-    renderHome();
-    await screen.findByText("已加入课程");
-    const joinedBadges = screen.getAllByText("已加入");
-    expect(joinedBadges).toHaveLength(1);
-    expect(screen.getByText("已加入")).toBeInTheDocument();
-  });
-
-  it("课程 ≤1：单卡仍渲染 + 资料库入口横幅", async () => {
-    apiMock.getPublicCourses.mockResolvedValue([makeCourse({ title: "唯一课程" })]);
-    apiMock.getMyCourses.mockResolvedValue([]);
-    renderHome();
-    const card = await screen.findByRole("link", { name: /唯一课程/ });
-    expect(card).toHaveAttribute("href", "/courses/c-1");
-    expect(screen.getByRole("link", { name: /通用资料库/ })).toBeInTheDocument();
-  });
-});
-
-describe("首页：登录弹窗触发", () => {
-  it("URL 带 ?login=1（middleware 携带）→ 自动打开登录弹窗并清参", async () => {
-    const openLoginDialog = vi.fn();
-    authMock.useAuth.mockReturnValue(
-      defaultAuth({ user: null, isAuthenticated: false, openLoginDialog }),
-    );
-    apiMock.getPublicCourses.mockResolvedValue([]);
-    apiMock.getMyCourses.mockResolvedValue([]);
-    window.history.replaceState(null, "", "/?login=1");
-    renderHome();
-    await screen.findByText("你好，同学");
-    expect(openLoginDialog).toHaveBeenCalledTimes(1);
-    expect(routerMock.replace).toHaveBeenCalledWith("/", { scroll: false });
+    const retry = await screen.findByRole("button", { name: /重试/ });
+    expect(retry).toBeInTheDocument();
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
+    fireEvent.click(retry);
+    expect(await screen.findByTestId("wenqu-course-card")).toBeInTheDocument();
   });
 });

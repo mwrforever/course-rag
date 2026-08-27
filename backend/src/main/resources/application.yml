@@ -66,6 +66,22 @@ spring:
       max-file-size: 100MB
       max-request-size: 100MB
 
+  # ── SMTP 邮件（学员注册验证码）──
+  # 凭证一律环境变量注入（A.2.3 禁止明文入库）：MAIL_USERNAME / MAIL_PASSWORD
+  # 默认发件通道为网易企业域 SMTP over SSL(465)；超时收敛避免注册请求被慢链路长期占用
+  mail:
+    host: ${MAIL_HOST:smtp.163.com}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.ssl.enable: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
+
   # ── Redis（SSE 流缓冲 + Token 黑名单 + 设备互踢）──
   data:
     redis:
@@ -313,6 +329,20 @@ auth:
     username: admin
     password: admin123
     display-name: 系统管理员
+
+# ── 学员邮箱注册（验证码生命周期 / 防爆破阈值 / 邮件文案，详见 RegisterProperties）──
+register:
+  # 验证码有效期（业务要求 15 分钟失效）
+  code-ttl: PT15M
+  # 同一邮箱两次发送的最小间隔（防刷信箱）
+  resend-interval: PT60S
+  # 单个验证码最大连续错误次数（超过即作废验证码，防暴力猜测）
+  max-verify-attempts: 5
+  # 邮件发件人显示名与主题
+  from-name: 问渠学堂
+  subject: 【问渠学堂】注册验证码
+  # 发件地址（与 spring.mail.username 同源 env 注入；为空且 sender 无用户名时报错 fail-fast）
+  from-email: ${MAIL_USERNAME:}
 
 # ── Worker 线程池（对话执行，与 ETL 独立）──
 # L-12: core-size/max-size 为实际生效值（WorkerConfig 直接读取，原"动态计算+fallback"注释无逻辑）

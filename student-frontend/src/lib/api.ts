@@ -248,6 +248,44 @@ export async function login(username: string, password: string): Promise<LoginRe
 }
 
 /**
+ * 发送注册验证码（HTML 邮件，6 位数字，15 分钟有效；重发间隔与防爆破阈值由后端频控）
+ *
+ * 失败抛 ApiError：409 邮箱已注册或重发间隔未到 / 503 SMTP 故障。
+ */
+export async function sendRegisterCode(email: string): Promise<void> {
+  await apiFetch("/auth/register/code", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
+ * 注册并自动登录：邮箱 + 验证码 + 密码（昵称可选，缺省回退邮箱前缀）
+ *
+ * 成功后 AT 入内存、RT 入 localStorage（注册即登录契约，与 /login 响应同构）；
+ * 失败抛 ApiError：400 验证码过期/错误/锁定 / 409 并发抢注。
+ */
+export async function registerAndLogin(input: {
+  email: string;
+  code: string;
+  password: string;
+  nickname?: string;
+}): Promise<LoginResponse> {
+  const data = await apiFetch<LoginResponse>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      email: input.email,
+      code: input.code,
+      password: input.password,
+      ...(input.nickname ? { nickname: input.nickname } : {}),
+    }),
+  });
+  accessToken = data.accessToken;
+  setRefreshToken(data.refreshToken);
+  return data;
+}
+
+/**
  * 主动刷新（AuthProvider 挂载静默续期入口；与 401 拦截共享单飞去重）
  *
  * @param rt 显式 RT（缺省读 localStorage 存储）

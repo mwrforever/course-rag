@@ -159,15 +159,39 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     public AuthUserView findAuthViewByUsername(String username) {
         LambdaQueryWrapper<SysUser> wrapper = Wrappers.<SysUser>lambdaQuery().eq(SysUser::getUsername, username);
         SysUser user = userMapper.selectOne(wrapper);
-        return user == null
-                ? null
-                : new AuthUserView(
-                        user.getId(),
-                        user.getUsername(),
-                        user.getPasswordHash(),
-                        user.getRole(),
-                        user.getDisplayName(),
-                        user.getStatus());
+        return user == null ? null : toAuthView(user);
+    }
+
+    @Override
+    public AuthUserView findAuthViewByEmail(String email) {
+        // V15 起邮箱登录回退：uniq_sys_user_email 部分唯一索引保证 selectOne 结果唯一
+        LambdaQueryWrapper<SysUser> wrapper = Wrappers.<SysUser>lambdaQuery().eq(SysUser::getEmail, email);
+        SysUser user = userMapper.selectOne(wrapper);
+        return user == null ? null : toAuthView(user);
+    }
+
+    /** Entity → 认证视图收口转换（密码哈希仅限本视图流转，禁止序列化出服务端） */
+    private AuthUserView toAuthView(SysUser user) {
+        return new AuthUserView(
+                user.getId(),
+                user.getUsername(),
+                user.getPasswordHash(),
+                user.getRole(),
+                user.getDisplayName(),
+                user.getStatus());
+    }
+
+    @Override
+    public boolean existsByEmail(String email) {
+        // 只数行不取列（按需取列原则）；DISABLED/软删语义由 deleted 条件自动生效
+        return Boolean.TRUE.equals(
+                this.lambdaQuery().eq(SysUser::getEmail, email).exists());
+    }
+
+    @Override
+    public boolean existsByUsername(String username) {
+        return Boolean.TRUE.equals(
+                this.lambdaQuery().eq(SysUser::getUsername, username).exists());
     }
 
     /**

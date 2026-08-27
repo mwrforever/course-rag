@@ -2,14 +2,17 @@
  * 通用确认弹窗测试（会话删除/登出二次确认载体）
  *
  * 覆盖：打开渲染（title/description/按钮）、Esc 与遮罩关闭、确认回调、loading 禁用、
- * danger 变体、关闭态不渲染。
+ * danger 变体、关闭态不渲染、portal 挂 body（fixed 定位不受调用方容器影响）。
+ *
+ * 注意：弹窗经 createPortal 挂 document.body 且首个 effect 后才渲染（mounted 态），
+ * 打开断言一律 await findByRole 等待挂载；关闭态（open=false）同步不渲染。
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ConfirmDialog } from "./confirm-dialog";
 
 describe("ConfirmDialog", () => {
-  it("打开：渲染标题/说明/确认与取消按钮（默认品牌变体）", () => {
+  it("打开：渲染标题/说明/确认与取消按钮（默认品牌变体）", async () => {
     render(
       <ConfirmDialog
         open
@@ -19,13 +22,30 @@ describe("ConfirmDialog", () => {
         onCancel={vi.fn()}
       />,
     );
-    expect(screen.getByRole("dialog", { name: "删除会话" })).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: "删除会话" });
+    expect(dialog).toBeInTheDocument();
     expect(screen.getByText("确定删除「会话一」吗？")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认" })).toHaveClass("bg-brand");
     expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
   });
 
-  it("danger 变体：确认按钮危险色 + 自定义文案", () => {
+  it("portal 挂 document.body：脱离调用方容器的 fixed 定位（backdrop-blur 等包含块不影响）", async () => {
+    const { container } = render(
+      <ConfirmDialog
+        open
+        title="退出登录"
+        description="确定退出吗？"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "退出登录" });
+    // 弹窗脱离渲染容器，portal 根（fixed 遮罩层）直接挂在 document.body
+    expect(dialog.parentElement).not.toBe(container);
+    expect(dialog.parentElement?.parentElement).toBe(document.body);
+  });
+
+  it("danger 变体：确认按钮危险色 + 自定义文案", async () => {
     render(
       <ConfirmDialog
         open
@@ -37,6 +57,7 @@ describe("ConfirmDialog", () => {
         onCancel={vi.fn()}
       />,
     );
+    await screen.findByRole("dialog", { name: "退出登录" });
     expect(screen.getByRole("button", { name: "退出" })).toHaveClass("bg-danger");
   });
 
@@ -53,7 +74,7 @@ describe("ConfirmDialog", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("确认：点击调用 onConfirm", () => {
+  it("确认：点击调用 onConfirm", async () => {
     const onConfirm = vi.fn();
     render(
       <ConfirmDialog
@@ -64,11 +85,12 @@ describe("ConfirmDialog", () => {
         onCancel={vi.fn()}
       />,
     );
+    await screen.findByRole("dialog", { name: "删除会话" });
     fireEvent.click(screen.getByRole("button", { name: "确认" }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it("取消：按钮/Esc/遮罩点击均调用 onCancel", () => {
+  it("取消：按钮/Esc/遮罩点击均调用 onCancel", async () => {
     const onCancel = vi.fn();
     render(
       <ConfirmDialog
@@ -79,6 +101,7 @@ describe("ConfirmDialog", () => {
         onCancel={onCancel}
       />,
     );
+    await screen.findByRole("dialog", { name: "删除会话" });
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(onCancel).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(window, { key: "Escape" });
@@ -87,7 +110,7 @@ describe("ConfirmDialog", () => {
     expect(onCancel).toHaveBeenCalledTimes(3);
   });
 
-  it("loading：确认与取消按钮禁用（防重复提交）", () => {
+  it("loading：确认与取消按钮禁用（防重复提交）", async () => {
     render(
       <ConfirmDialog
         open
@@ -99,6 +122,7 @@ describe("ConfirmDialog", () => {
         onCancel={vi.fn()}
       />,
     );
+    await screen.findByRole("dialog", { name: "删除会话" });
     expect(screen.getByRole("button", { name: /删除中/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
   });

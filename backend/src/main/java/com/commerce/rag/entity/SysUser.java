@@ -31,6 +31,9 @@ public class SysUser implements Serializable {
     /** 登录名 */
     private String username;
 
+    /** 绑定邮箱（C 端学员自注册唯一标识；可空——存量账户/管理员可能未绑定，V15 起支持邮箱登录回退） */
+    private String email;
+
     /** 密码哈希（BCrypt） */
     @TableField("password_hash")
     private String passwordHash;
