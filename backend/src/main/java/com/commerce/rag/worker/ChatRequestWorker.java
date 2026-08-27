@@ -366,10 +366,12 @@ public class ChatRequestWorker {
      * <p>流程：
      * <ol>
      *   <li>解析请求 → runId, sessionId, userId, userQuery</li>
+     *   <li>推送 METADATA（首个事件，附件处理前——2026-08-27 前移消除附件管线静默）</li>
+     *   <li>附件处理（有附件先推 STAGE(attachments)，阶段可见）</li>
      *   <li>pre-run 快照: saver.get(config) → 容器级浅拷贝</li>
-     *   <li>更新 run 状态: QUEUED → ACTIVE</li>
-     *   <li>创建 bridge ring + 推送 metadata 事件</li>
-     *   <li>执行 SAA 图流: compiledGraph.stream(inputs, config)</li>
+     *   <li>更新 run 状态: QUEUED → ACTIVE + 推送 STAGE(understanding)</li>
+     *   <li>执行 SAA 图流: compiledGraph.stream(inputs, config)（doOnNext 内按节点完成
+     *       chunk 推 STAGE 跃迁 + SOURCES + 内容事件）</li>
      *   <li>onErrorResume: 取消/异常处理</li>
      *   <li>doOnComplete: END 事件 + 批量持久化</li>
      *   <li>finally: bridge.removeRing + cancelFlags.remove + XACK</li>
@@ -415,11 +417,22 @@ public class ChatRequestWorker {
                 .addMetadata("userId", userIdStr)
                 .build();
 
+        // run 上下文（首事件前移：METADATA 需在附件处理前推送，见下方注释）
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create(runIdStr, sessionIdStr, agentModel);
+
+        // ── 首事件前移（2026-08-27 C 端体验改版）──
+        // ring 由入口 ChatStreamEntry 在 XADD 前已创建（createRing 为 computeIfAbsent 幂等），
+        // 此处立即推 METADATA：原实现位于附件处理（process-timeout-ms 最长 60s）与两次 DB 写之后，
+        // 附件管线全程对客户端静默是「等很久没输出」的直接来源之一。订阅先于 XADD 建立，
+        // 前移不改变事件不丢语义（ring 回放覆盖断连窗口）。
+        bridge.createRing(runIdStr);
+        bridge.push(runIdStr, transformer.createMetadataEvent(runState));
+
         // ── 附件处理（spec §5.1：消息发送后 worker 内处理，caption/局部语料 Caffeine 缓存）──
         // 先处理当前消息的 attachments；第二轮起用户不再上传附件时，以 chat_run 为入口查该会话
         // 最近 3 个 run 的附件重建上下文（spec §5.1 最终三表决策：Caffeine 命中直接复用
         // caption/语料，未命中重新下载处理）。处理结果经 RunnableConfig.metadata 传 QU/RetrieveNode
-        // （瞬时注入，不落 state/checkpoint）
+        // （瞬时注入，不落 state/checkpoint）；处理前推 STAGE(attachments) 让长耗时解析对前端可见
         AttachmentContext attachmentContext = AttachmentContext.empty();
         List<AttachmentRecord> attachments = parseAttachments(attachmentsJson);
         if (attachments.isEmpty()) {
@@ -427,6 +440,7 @@ public class ChatRequestWorker {
             attachments = chatRunService.findRecentAttachments(sessionId, runId, 3);
         }
         if (!attachments.isEmpty()) {
+            bridge.push(runIdStr, transformer.createStageEvent(runState, SseEventTransformer.STAGE_ATTACHMENTS));
             attachmentContext = orchestrator.process(attachments);
         }
         if (attachmentContext.hasAny()) {
@@ -449,9 +463,6 @@ public class ChatRequestWorker {
         // 构建 SAA 图输入（messages 列表）
         Map<String, Object> inputs = new HashMap<>();
         inputs.put("messages", List.of(new UserMessage(quQuery)));
-
-        // run 上下文
-        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create(runIdStr, sessionIdStr, agentModel);
 
         // 流式过程中收集最后 NodeOutput（用于消息持久化）
         AtomicReference<NodeOutput> lastOutput = new AtomicReference<>();
@@ -479,19 +490,21 @@ public class ChatRequestWorker {
             // 2.1 落库本次输入附件（业务入口表，spec §5.1 双存决策；紧随 ACTIVE 写入，保证入口数据不丢）
             chatRunService.updateAttachments(runId, attachmentsJson);
 
-            // 3. bridge 创建 ring
-            bridge.createRing(runIdStr);
+            // 3. 阶段事件：意图理解（覆盖 QU 阻塞 LLM 的静默窗口——QU 在图内执行，
+            //    无 chunk 可观测，此处在图启动前推送；QU 完成后的阶段跃迁由 doOnNext
+            //    的 transformStages 按节点完成 chunk 驱动）
+            bridge.push(runIdStr, transformer.createStageEvent(runState, SseEventTransformer.STAGE_UNDERSTANDING));
 
-            // 4. metadata 事件（首个事件）
-            bridge.push(runIdStr, transformer.createMetadataEvent(runState));
-
-            // 5. 执行 SAA 图流
+            // 4. 执行 SAA 图流
             compiledGraph.stream(inputs, config)
                     .doOnNext(chunk -> {
                         // 取消检测
                         checkCancelled(runIdStr);
                         // B3-5：检索来源就绪后补推 SOURCES 事件（首个回答 token 前，一次性）
                         maybePushSources(runIdStr, runState, config, sourcesPushed);
+                        // STAGE 阶段跃迁：QU 完成→检索/生成、retrieveNode 完成→生成、
+                        // reactAgent 首个模型 chunk→生成兜底（RunState CAS 保证每阶段仅一次）
+                        transformer.transformStages(chunk, runState).forEach(e -> bridge.push(runIdStr, e));
                         // 记录最后输出（用于持久化）
                         lastOutput.set(chunk);
                         // transform → bridge.push
