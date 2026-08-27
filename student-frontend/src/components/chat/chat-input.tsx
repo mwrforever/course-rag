@@ -1,10 +1,14 @@
 "use client";
 
 /**
- * 对话输入区（设计 §1.5.4 输入区 + §3.2 错误分级 + §1.6 发送/停止 morph）
+ * 对话输入区（设计 §1.5.4 输入区 + §3.2 错误分级 + §1.6 发送/停止 morph；
+ * 2026-08-27 改版：粘贴附件 + 内嵌上传按钮，容器形态对齐参考设计稿图2）
  *
  * 交互契约：
  * - Enter 发送 / Shift+Enter 换行 / IME 组合态（isComposing）Enter 不发送
+ * - 直接粘贴文件（Ctrl+V）：clipboardData.files 非空时接管事件转发上传回调
+ *   （纯文本粘贴不受影响）；图片与文档走同一入口（用户拍板：一个按钮一个接口）
+ * - attachmentSlot：上传按钮等内容经插槽渲染进输入容器左侧（图2 胶囊输入框形态）
  * - 空输入（trim 后）禁用发送；附件上传中（sendDisabled）同样禁用
  * - 生成中发送键 morph 为停止键（PaperPlaneRight ↔ Square 交叉淡入 + 尺寸弹性，
  *   motion spring 180ms；prefers-reduced-motion 静态切换）
@@ -14,7 +18,7 @@
  */
 import { PaperPlaneRight, Square } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ApiError, NetworkError } from "@/lib/api";
 
 /** 输入区组件 props */
@@ -31,6 +35,10 @@ export interface ChatInputProps {
   onNotify(message: string): void;
   /** 输入初值（/chat?q= 快速提问预填；仅首次挂载生效，后续以内部状态为准） */
   initialValue?: string;
+  /** 粘贴文件回调（Ctrl+V 粘贴图片/文档时转发；纯文本粘贴不触发） */
+  onPasteFiles?: (files: File[]) => void;
+  /** 输入容器左侧插槽（上传按钮等内容；渲染于 textarea 之前的容器内） */
+  attachmentSlot?: ReactNode;
 }
 
 /** 发送/停止图标切换的弹簧参数（设计 §1.6：180ms spring） */
@@ -67,6 +75,8 @@ export function ChatInput({
   onCancel,
   onNotify,
   initialValue,
+  onPasteFiles,
+  attachmentSlot,
 }: ChatInputProps) {
   const [value, setValue] = useState(initialValue ?? "");
   // 挂载门控（hydration 修复 2026-08-26）：useReducedMotion 服务端 null/客户端首帧 false，
@@ -79,6 +89,18 @@ export function ChatInput({
   // reduced-motion 命中或检测不可用：morph 不挂动画（可访问性优先）
   const reduceMotion = useReducedMotion() ?? true;
   const canSend = value.trim().length > 0 && !sendDisabled;
+
+  /**
+   * 粘贴分发：clipboardData 携带文件（截图/复制的图片、拖拷的文档）时接管事件
+   * 转发上传回调；纯文本粘贴原样放行（不 preventDefault）
+   */
+  function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    if (!onPasteFiles) return;
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (files.length === 0) return;
+    event.preventDefault();
+    onPasteFiles(files);
+  }
 
   /** Enter/Shift+Enter/IME 组合态键盘分发（换行走原生 textarea 行为） */
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -109,15 +131,19 @@ export function ChatInput({
   const rows = Math.min(6, Math.max(1, value.split("\n").length));
 
   return (
-    // kimi 输入区形态：20px 大圆角编辑器，聚焦边框加深 + 柔和投影（UI 重构 2026-08-25）
-    <div className="flex w-full items-end gap-2 rounded-[20px] border border-border bg-surface p-2 pl-4 shadow-xs transition-[border-color,box-shadow] focus-within:border-brand/50 focus-within:shadow-md">
+    // kimi 输入区形态：20px 大圆角编辑器，聚焦边框加深 + 柔和投影（UI 重构 2026-08-25）；
+    // 图2 改版：上传按钮经 attachmentSlot 内嵌容器左侧（一个按钮承载图片+文档）
+    <div className="flex w-full items-end gap-2 rounded-[20px] border border-border bg-surface p-2 pl-3 shadow-xs transition-[border-color,box-shadow] focus-within:border-brand/50 focus-within:shadow-md">
+      {attachmentSlot}
       <textarea
         value={value}
         rows={rows}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         placeholder="输入你的问题，Enter 发送，Shift+Enter 换行"
         aria-label="问题输入框"
+        data-testid="chat-textarea"
         className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-1 py-2 text-[15px] leading-6 text-text outline-none placeholder:text-subtle"
       />
       <button

@@ -36,7 +36,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatToast } from "@/components/chat/chat-toast";
-import { useChatStreaming } from "@/components/chat/chat-streaming-context";
+import {
+  useChatStreaming,
+  useChatStreamingSessionId,
+} from "@/components/chat/chat-streaming-context";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { ApiError, deleteSession, getSessions, updateSessionTitle } from "@/lib/api";
@@ -66,6 +69,8 @@ export function ChatSidebar() {
   const { user, logout, openLoginDialog } = useAuth();
   // 流式守卫：工作区正在生成时禁用新建对话跳转（导航重挂载会丢进行中的流视图）
   const isStreaming = useChatStreaming();
+  // 生成中会话定位（2026-08-27）：对应会话行渲染生成中动画（脉冲点 + 标题闪烁）
+  const streamingSessionId = useChatStreamingSessionId();
   const [collapsed, setCollapsed] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   // 登出二次确认（用户拍板：登出必须确认）
@@ -428,7 +433,23 @@ export function ChatSidebar() {
                         collapsed ? "justify-center" : "gap-2.5 px-2.5"
                       } focus-visible:ring-2 focus-visible:ring-brand`}
                     >
-                      <ChatCircleText size={16} aria-hidden className="shrink-0" />
+                      {/* 生成中动画（2026-08-27）：该会话正在流式生成时脉冲点 + 图标换旋转指示 */}
+                      {session.id === streamingSessionId ? (
+                        <>
+                          <span
+                            data-testid="session-generating-dot"
+                            aria-label="正在生成回答"
+                            className="size-1.5 shrink-0 animate-pulse rounded-full bg-brand motion-reduce:animate-none"
+                          />
+                          <ChatCircleText
+                            size={16}
+                            aria-hidden
+                            className="shrink-0 animate-pulse text-brand motion-reduce:animate-none"
+                          />
+                        </>
+                      ) : (
+                        <ChatCircleText size={16} aria-hidden className="shrink-0" />
+                      )}
                       {!collapsed ? (
                         <span className="min-w-0 flex-1 truncate text-sm">{session.title}</span>
                       ) : null}

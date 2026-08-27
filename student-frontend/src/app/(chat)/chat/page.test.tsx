@@ -94,6 +94,7 @@ function makeAssistant(overrides: Partial<StreamMessage> = {}): StreamMessage {
     thinkingEnded: false,
     text: "",
     sources: [],
+    stages: [],
     tools: [],
     endStatus: null,
     messageId: null,
@@ -221,6 +222,7 @@ describe("新对话页：发送与流式状态流转", () => {
             thinkingEnded: false,
             text: "",
             sources: [],
+            stages: [],
             tools: [],
             endStatus: null,
             messageId: null,
@@ -288,6 +290,8 @@ describe("新对话页：发送与流式状态流转", () => {
 
   it("流式渲染：sources 前置 + 打字光标 + end 后操作栏浮现", async () => {
     const assistant = makeAssistant({
+      thinking: "先检索资料",
+      thinkingEnded: true,
       text: "完整回答",
       sources: [SOURCE],
       endStatus: "COMPLETED",
@@ -299,11 +303,15 @@ describe("新对话页：发送与流式状态流转", () => {
       messages: [assistant],
     };
     renderPage();
-    const sources = screen.getByTestId("sources-list");
+    // 2026-08-27：来源改为推理卡「知识片段」pill + 召回抽屉（不再内联 sources-list）
+    const pill = screen.getByTestId("reasoning-sources-pill");
     const body = screen.getByTestId("markdown-view");
-    expect(sources.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(pill.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByTestId("typing-cursor")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /有用/ })).toBeInTheDocument();
+    // 点击 pill 打开召回抽屉，展示片段正文
+    fireEvent.click(pill);
+    expect(screen.getByTestId("retrieval-drawer")).toBeInTheDocument();
   });
 
   it("streaming：发送键 morph 为停止生成，点击触发 cancel", () => {
@@ -338,7 +346,7 @@ describe("新对话页：附件全链路", () => {
     const firstDoc = new File([new Uint8Array(40 * 1024 * 1024)], "a.pdf", {
       type: "application/pdf",
     });
-    setFiles(screen.getByTestId("file-input-doc") as HTMLInputElement, [firstDoc]);
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [firstDoc]);
     await waitFor(() => expect(apiMock.uploadAttachments).toHaveBeenCalledTimes(1));
 
     apiMock.uploadAttachments.mockReset();
@@ -346,7 +354,7 @@ describe("新对话页：附件全链路", () => {
       new File([new Uint8Array(30 * 1024 * 1024)], "b.pdf", { type: "application/pdf" }),
       new File([new Uint8Array(31 * 1024 * 1024)], "c.pdf", { type: "application/pdf" }),
     ];
-    setFiles(screen.getByTestId("file-input-doc") as HTMLInputElement, extra);
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, extra);
     const toast = await screen.findByRole("status");
     expect(toast).toHaveTextContent("附件总大小不能超过 100MB");
     expect(apiMock.uploadAttachments).not.toHaveBeenCalled();
@@ -355,7 +363,7 @@ describe("新对话页：附件全链路", () => {
   it("合法文件：选中即传 → chips 完成（blob 缩略图）", async () => {
     apiMock.uploadAttachments.mockResolvedValue([RECORD]);
     renderPage();
-    setFiles(screen.getByTestId("file-input-image") as HTMLInputElement, [PNG]);
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
     await waitFor(() => expect(apiMock.uploadAttachments).toHaveBeenCalledWith([PNG]));
     const img = await screen.findByRole("img", { name: /图\.png/ });
     expect(img).toHaveAttribute("src", "blob:mock-url");
@@ -364,7 +372,7 @@ describe("新对话页：附件全链路", () => {
   it("移除附件：revoke blob URL", async () => {
     apiMock.uploadAttachments.mockResolvedValue([RECORD]);
     renderPage();
-    setFiles(screen.getByTestId("file-input-image") as HTMLInputElement, [PNG]);
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
     await screen.findByRole("img", { name: /图\.png/ });
     fireEvent.click(screen.getByRole("button", { name: /移除/ }));
     expect(urlMock.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
@@ -383,6 +391,7 @@ describe("新对话页：附件全链路", () => {
         thinkingEnded: false,
         text: "",
         sources: [],
+        stages: [],
         tools: [],
         endStatus: null,
         messageId: null,
@@ -390,7 +399,7 @@ describe("新对话页：附件全链路", () => {
       chatMock.state = { ...chatMock.state, messages: [userMsg], streaming: true };
     });
     renderPage();
-    setFiles(screen.getByTestId("file-input-image") as HTMLInputElement, [PNG]);
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
     await screen.findByRole("img", { name: /图\.png/ });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "看图提问" } });
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });

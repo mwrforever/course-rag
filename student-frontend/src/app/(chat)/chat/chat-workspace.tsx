@@ -19,7 +19,7 @@
  *   页面卸载统一 revoke（D12）
  * - 空态：AI 徽标 + 问候（新对话）/「继续提问」（历史会话占位，Task 13 接回显）
  */
-import { ArrowLeft, FileText, Paperclip, Plus } from "@phosphor-icons/react";
+import { ArrowLeft, Paperclip, Plus } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -119,12 +119,13 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   const setStreaming = useSetChatStreaming();
   const { state, send, cancel, reconnect, reset } = useChatStream(initialSessionId);
 
-  // ── 流式状态上报 (chat) 布局 Context：侧栏据守卫 Ctrl+K/新建对话（防跳转丢流）──
+  // ── 流式状态上报 (chat) 布局 Context：侧栏据守卫 Ctrl+K/新建对话（防跳转丢流），
+  // 并携带会话 id 供侧栏对应会话行渲染生成中动画（2026-08-27）──
   useEffect(() => {
-    setStreaming(state.streaming);
+    setStreaming(state.streaming, state.sessionId);
     // 卸载/导航离开时复位，避免侧栏残留流式守卫态
     return () => setStreaming(false);
-  }, [state.streaming, setStreaming]);
+  }, [state.streaming, state.sessionId, setStreaming]);
 
   // ── 会话归属落位即失效侧栏历史缓存 ──
   // (chat) 组布局常驻 → QueryClient 长活，侧栏查询无 refetch 触发点；
@@ -216,9 +217,9 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   /**
    * 附件选择处理：前置校验（超限即拒，不发网络请求）→ 建 blob 预览 → 选中即传
    *
-   * @param files 文件输入框选中的新文件
+   * @param files 新文件集合（输入框选择的 FileList 或直接粘贴的 File[]，同一链路）
    */
-  async function handleFiles(files: FileList | null) {
+  async function handleFiles(files: FileList | File[] | null) {
     if (!files || files.length === 0) return;
     const incoming = Array.from(files);
     // 前置校验镜像后端（≤10 个/图 10MB/文档 50MB/合计 100MB），超限即拒
@@ -421,63 +422,45 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
       {/* 吸底输入区：bg/80 + backdrop-blur + 顶部 1px 边框（kimi 对话页形态） */}
       <div className="shrink-0 border-t border-border/80 bg-bg/80 backdrop-blur">
         <div className="mx-auto w-full max-w-[840px] px-6 py-4">
+          {/* 附件 chips：输入框上方展示（上传中进度/预览/移除；图2 输入框形态） */}
           {pendings.length > 0 ? (
             <AttachmentChips items={pendings} onRemove={removeAttachment} />
           ) : null}
-          <div className="flex items-end gap-2">
-            {/* ＋附件：图片/文档双入口（G11 白名单各自独立 accept） */}
-            <div className="relative flex shrink-0 items-center">
-              <label
-                htmlFor="attachment-image-input"
-                title="上传图片"
-                aria-label="上传图片"
-                className="grid size-10 cursor-pointer place-items-center rounded-full border border-border bg-surface text-muted transition-colors hover:bg-surface-2 hover:text-brand-strong"
-              >
-                <Paperclip size={17} aria-hidden />
-              </label>
-              <input
-                id="attachment-image-input"
-                data-testid="file-input-image"
-                type="file"
-                accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
-                multiple
-                className="sr-only"
-                onChange={(event) => {
-                  void handleFiles(event.target.files);
-                  // 清空已选，允许同文件重复选择
-                  event.target.value = "";
-                }}
-              />
-              <label
-                htmlFor="attachment-doc-input"
-                title="上传文档"
-                aria-label="上传文档"
-                className="grid size-10 cursor-pointer place-items-center rounded-full border border-border bg-surface text-muted transition-colors hover:bg-surface-2 hover:text-brand-strong"
-              >
-                <FileText size={17} aria-hidden />
-              </label>
-              <input
-                id="attachment-doc-input"
-                data-testid="file-input-doc"
-                type="file"
-                accept=".pdf,.doc,.docx,.txt,.md"
-                multiple
-                className="sr-only"
-                onChange={(event) => {
-                  void handleFiles(event.target.files);
-                  event.target.value = "";
-                }}
-              />
-            </div>
-            <ChatInput
-              streaming={state.streaming}
-              sendDisabled={pendings.some((item) => item.status === "uploading")}
-              onSend={handleSend}
-              onCancel={() => void cancel()}
-              onNotify={notify}
-              initialValue={variant === "new" ? (quickQuery ?? undefined) : undefined}
-            />
-          </div>
+          <ChatInput
+            streaming={state.streaming}
+            sendDisabled={pendings.some((item) => item.status === "uploading")}
+            onSend={handleSend}
+            onCancel={() => void cancel()}
+            onNotify={notify}
+            initialValue={variant === "new" ? (quickQuery ?? undefined) : undefined}
+            onPasteFiles={(files) => void handleFiles(files)}
+            attachmentSlot={
+              /* ＋附件：单按钮单接口承载图片+文档（2026-08-27 用户拍板合并；G11 白名单合并 accept） */
+              <>
+                <label
+                  htmlFor="attachment-input"
+                  title="上传图片 / 文档"
+                  aria-label="上传图片或文档"
+                  className="mb-1 grid size-9 shrink-0 cursor-pointer place-items-center rounded-full text-subtle transition-colors hover:bg-surface-2 hover:text-brand-strong"
+                >
+                  <Paperclip size={18} aria-hidden />
+                </label>
+                <input
+                  id="attachment-input"
+                  data-testid="file-input"
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,.pdf,.doc,.docx,.txt,.md"
+                  multiple
+                  className="sr-only"
+                  onChange={(event) => {
+                    void handleFiles(event.target.files);
+                    // 清空已选，允许同文件重复选择
+                    event.target.value = "";
+                  }}
+                />
+              </>
+            }
+          />
           {/* 底部免责（设计 §1.5.4 输入区 Caption） */}
           <p className="mt-2 text-center text-xs text-subtle">AI 生成内容仅供参考</p>
         </div>

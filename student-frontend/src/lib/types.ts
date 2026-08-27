@@ -96,12 +96,23 @@ export interface ChunkContext {
   next: ChunkBrief | null;
 }
 
-/** 检索来源（SSE SOURCES 事件与历史 sources 数组同构；score 为 double→number 不受 R0 影响） */
+/** 检索来源（SSE SOURCES 事件与历史 sources 数组同构；score 为 double→number 不受 R0 影响；
+ *  content 为片段正文截断预览（2026-08-27 召回抽屉），存量 sources_json 无该字段按可缺省容错） */
 export interface RetrievalSource {
   chunkId: string;
   docTitle: string;
   headingPath: string;
   score: number;
+  content?: string;
+}
+
+/** STAGE 阶段事件键（后端 SseEventTransformer.STAGE_* 同值契约）：附件解析→意图理解→知识库检索→生成回答 */
+export type ChatStageKey = "attachments" | "understanding" | "retrieving" | "generating";
+
+/** STAGE 阶段条目（SSE stage 事件载荷；label 为后端中文文案直接展示） */
+export interface ChatStage {
+  stage: ChatStageKey;
+  label: string;
 }
 
 /** 附件记录（上传返回/历史回显统一载体；url 为 MinIO objectKey 非可直接访问 URL；size 为 Long→string） */

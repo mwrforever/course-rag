@@ -240,8 +240,10 @@ describe("历史会话页：历史回显渲染", () => {
     expect(screen.getByText("讲义.pdf")).toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     // AI 消息：思考卡（已思考折叠）+ 来源卡 + 工具卡（人话标签 + success 摘要）+ 正文
-    expect(screen.getByTestId("thinking-card")).toHaveTextContent("先查资料");
-    expect(screen.getByTestId("sources-list")).toHaveTextContent("RAG 白皮书");
+    // 推理卡默认收起：预览行显示思考末行（2026-08-27）
+    expect(screen.getByTestId("reasoning-preview")).toBeInTheDocument();
+    // 来源经召回抽屉展示：知识片段入口 pill 携带计数
+    expect(screen.getByTestId("reasoning-sources-pill")).toHaveTextContent("1 个知识片段");
     expect(screen.getByTestId("tool-card")).toHaveTextContent("检索课程知识库");
     expect(screen.getByTestId("tool-success")).toBeInTheDocument();
     expect(screen.getByTestId("markdown-view")).toHaveTextContent("RAG 是检索增强生成。");
@@ -298,6 +300,7 @@ describe("历史会话页：历史回显渲染", () => {
             thinkingEnded: false,
             text: "",
             sources: [],
+            stages: [],
             tools: [],
             endStatus: null,
             messageId: null,
