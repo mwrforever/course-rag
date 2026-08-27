@@ -3,6 +3,7 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { vReveal } from '@/directives/reveal'
 import { ApiError, courseApi, documentApi, knowledgeBaseApi } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
 import { createAppRouter } from '@/router'
@@ -105,10 +106,12 @@ async function mountDocuments() {
   })
   const router = createAppRouter()
   const wrapper = mount(DocumentsView, {
-    // teleport stub：行菜单 Teleport 到 body，stub 后菜单项仍在组件子树内可 find 断言
+    // teleport stub：行菜单 Teleport 到 body，stub 后菜单项仍在组件子树内可 find 断言；
+    // reveal 指令：main.ts 全局注册，直挂视图的测试需显式提供（滚动入场指令）
     global: {
       plugins: [[VueQueryPlugin, { queryClient }], pinia, router],
       stubs: { teleport: true },
+      directives: { reveal: vReveal },
     },
   })
   await router.isReady()
