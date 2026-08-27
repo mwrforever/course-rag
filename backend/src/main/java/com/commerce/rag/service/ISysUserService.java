@@ -40,6 +40,30 @@ public interface ISysUserService extends IService<SysUser> {
     AuthUserView findAuthViewByUsername(String username);
 
     /**
+     * 按邮箱查询认证视图（V15 起邮箱登录回退路径用，含密码哈希，禁止出 service 边界）
+     *
+     * @param email 归一化后的绑定邮箱（调用方保证小写）
+     * @return 认证视图；不存在时返回 null
+     */
+    AuthUserView findAuthViewByEmail(String email);
+
+    /**
+     * 是否存在绑定该邮箱的未删除用户（注册查重用，只数行数不取列）
+     *
+     * @param email 归一化后的绑定邮箱
+     * @return 存在返回 true（含 DISABLED 用户——禁用账户同样不允许重复占用邮箱）
+     */
+    boolean existsByEmail(String email);
+
+    /**
+     * 是否存在同名未删除用户（自注册生成用户名的唯一性探测用）
+     *
+     * @param username 候选用户名
+     * @return 存在返回 true
+     */
+    boolean existsByUsername(String username);
+
+    /**
      * 分页查询用户
      */
     IPage<UserDTO> findPage(int page, int size, String role, String status, Long currentUserId);

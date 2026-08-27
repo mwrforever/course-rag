@@ -8,11 +8,15 @@ import com.commerce.rag.dto.ApiResponse;
 import com.commerce.rag.dto.LoginRequest;
 import com.commerce.rag.dto.LoginResponse;
 import com.commerce.rag.dto.RefreshRequest;
+import com.commerce.rag.dto.RegisterCodeRequest;
+import com.commerce.rag.dto.RegisterRequest;
 import com.commerce.rag.dto.UserDTO;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.properties.AuthProperties;
 import com.commerce.rag.record.AuthUserView;
+import com.commerce.rag.record.RegisterResult;
+import com.commerce.rag.service.IRegisterService;
 import com.commerce.rag.service.ISysUserService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.Cookie;
@@ -30,17 +34,20 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 认证 Controller —— 登录/刷新/登出
+ * 认证 Controller —— 登录/学员注册/刷新/登出
  *
  * <p>端点：
  * <ul>
- *   <li>POST /api/v1/auth/login — 登录（用户名+密码 → AT+RT+cookie）</li>
+ *   <li>POST /api/v1/auth/login — 登录（用户名或邮箱 + 密码 → AT+RT+cookie）</li>
+ *   <li>POST /api/v1/auth/register/code — 学员注册第一步：发送邮箱验证码（HTML 邮件，15 分钟有效）</li>
+ *   <li>POST /api/v1/auth/register — 学员注册第二步：校验验证码并开户（成功即自动签发会话）</li>
  *   <li>POST /api/v1/auth/refresh — 刷新 AT（RT → 新 AT+RT）</li>
  *   <li>POST /api/v1/auth/logout — 登出（jti 入黑名单 + cookie 清除）</li>
  * </ul>
  *
  * <p>分层约束：login_record 的创建/刷新更新/登出吊销编排下沉至
- * {@link AuthSessionService}（controller → service → mapper），本类不直调 mapper。
+ * {@link AuthSessionService}（controller → service → mapper），本类不直调 mapper；
+ * 注册业务逻辑（验证码/查重/建户）下沉至 {@link IRegisterService}，本类只做会话签发编排。
  *
  * @author commerce-rag
  */
@@ -56,6 +63,7 @@ public class AuthController {
     private final AuthProperties authProperties;
     private final PasswordEncoder passwordEncoder;
     private final AuthSessionService authSessionService;
+    private final IRegisterService registerService;
 
     public AuthController(
             ISysUserService sysUserService,
@@ -63,13 +71,15 @@ public class AuthController {
             DeviceKickService deviceKickService,
             AuthProperties authProperties,
             PasswordEncoder passwordEncoder,
-            AuthSessionService authSessionService) {
+            AuthSessionService authSessionService,
+            IRegisterService registerService) {
         this.sysUserService = sysUserService;
         this.tokenService = tokenService;
         this.deviceKickService = deviceKickService;
         this.authProperties = authProperties;
         this.passwordEncoder = passwordEncoder;
         this.authSessionService = authSessionService;
+        this.registerService = registerService;
     }
 
     /**
@@ -91,8 +101,13 @@ public class AuthController {
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
 
-        // 1. 查找用户（认证视图，Entity 不出 service 边界）
-        AuthUserView user = sysUserService.findAuthViewByUsername(request.username());
+        // 1. 查找用户（认证视图，Entity 不出 service 边界）：优先用户名；形如邮箱时回退邮箱查询
+        //    （V15 起学员自注册账户以邮箱绑定，登录表单字段「用户名或邮箱」双轨识别）
+        String loginName = request.username();
+        AuthUserView user = sysUserService.findAuthViewByUsername(loginName);
+        if (user == null && loginName != null && loginName.contains("@")) {
+            user = sysUserService.findAuthViewByEmail(loginName.trim().toLowerCase());
+        }
         if (user == null) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
         }
@@ -107,31 +122,50 @@ public class AuthController {
             throw new BizException(ErrorCode.FORBIDDEN, "用户已被禁用");
         }
 
-        // 4. 生成 jti + Token
-        String jtiAt = tokenService.generateJti();
-        String jtiRt = tokenService.generateJti();
-        String accessToken = tokenService.generateAccessToken(user.id(), user.role(), jtiAt);
-        String refreshToken = tokenService.generateRefreshToken(user.id(), jtiRt);
+        // 4. 会话签发（双 Token / 互踢 / 审计 / cookie 收口——与注册成功路径共用同一实现防语义漂移）
+        return ApiResponse.ok(issueSession(
+                user.id(), user.role(), user.displayName(), request.deviceType(), httpRequest, httpResponse));
+    }
 
-        // 5. 设备类型（默认 WEB_DESKTOP）
-        String deviceType = request.deviceType();
-        if (deviceType == null || deviceType.isEmpty()) {
-            deviceType = "WEB_DESKTOP";
-        }
+    /**
+     * 发送学员注册验证码（注册流程第一步）
+     *
+     * <p>业务规则（详见 RegisterServiceImpl/RegisterProperties）：同邮箱 60s 重发间隔（SET NX 原子抢占）、
+     * 已注册邮箱拒绝（409）、HTML 邮件 15 分钟有效。业务失败语义：409 频控或已注册 / 503 SMTP 故障。</p>
+     */
+    @PostMapping("/register/code")
+    public ApiResponse<Void> sendRegisterCode(@Valid @RequestBody RegisterCodeRequest request) {
+        log.info("收到注册验证码发送请求");
+        registerService.sendRegisterCode(request.email());
+        return ApiResponse.ok();
+    }
 
-        // 6. 创建登录记录（下沉 AuthSessionService，controller 不直调 mapper、不接触 Entity）
-        Long loginRecordId = authSessionService.createLoginRecord(
-                user.id(), jtiAt, jtiRt, deviceType, httpRequest.getHeader("User-Agent"), getClientIp(httpRequest));
+    /**
+     * 完成学员注册（注册流程第二步）：校验验证码 → 创建学生账户 → 直接签发会话
+     *
+     * <p>响应契约与 /login 同构（LoginResponse + httpOnly cookie），前端可按「已登录」直接流转；
+     * 业务失败语义：400 验证码过期/错误/锁定，409 并发抢注。</p>
+     *
+     * @param request      注册请求（email/code/password/nickname）
+     * @param httpRequest  取 UA 与客户端 IP 写登录审计
+     * @param httpResponse 写 AT cookie
+     * @return 双 Token 与新用户视图
+     */
+    @PostMapping("/register")
+    public ApiResponse<LoginResponse> register(
+            @Valid @RequestBody RegisterRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
 
-        // 7. 设备互踢
-        deviceKickService.kickAndLogin(user.id(), deviceType, jtiAt, jtiRt, loginRecordId);
+        // 1. 业务段（service 层）：消费验证码 + 创建 STUDENT 账户
+        RegisterResult result = registerService.register(request);
 
-        // 8. 设置 httpOnly cookie
-        setCookie(httpResponse, accessToken);
+        // 2. 会话段（与登录共用收口）：双 Token / 互踢 / 登录审计 / cookie —— 自注册即自动登录
+        LoginResponse response =
+                issueSession(result.userId(), result.role(), result.displayName(), null, httpRequest, httpResponse);
 
-        log.info("用户登录: userId={}, username={}, deviceType={}", user.id(), user.username(), deviceType);
-
-        return ApiResponse.ok(new LoginResponse(accessToken, refreshToken, user.id(), user.role(), user.displayName()));
+        log.info("学员注册完成并自动登录: userId={}", result.userId());
+        return ApiResponse.ok(response);
     }
 
     /**
@@ -255,6 +289,43 @@ public class AuthController {
     // ========================================================================
     // 辅助方法
     // ========================================================================
+
+    /**
+     * 统一签发登录会话 —— 登录与自注册成功两条入口的共用收口
+     *
+     * <p>流程（承接原登录步骤 4-8，语义零变更）：生成独立 jti 的 AT+RT → 创建登录审计记录（PG）→
+     * 设备互踢 Lua 执法（互踢指针 + 新 jti 白名单）→ 设置 httpOnly AT cookie。</p>
+     *
+     * @param userId        用户 ID（注册路径来自 service 结果，登录路径来自认证视图）
+     * @param role          用户角色
+     * @param displayName   显示昵称
+     * @param deviceTypeRaw 设备类型原文（可空 → 默认 WEB_DESKTOP；来自请求体）
+     * @return 会话响应体（AT/RT 明文走 JSON 体，AT 另写 cookie 兜底 middleware 门卫）
+     */
+    private LoginResponse issueSession(
+            Long userId,
+            String role,
+            String displayName,
+            String deviceTypeRaw,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
+        // 双 Token 各持独立 jti：AT 黑名单粒度=单次登出会话，RT 粒度=一次性旋转链
+        String jtiAt = tokenService.generateJti();
+        String jtiRt = tokenService.generateJti();
+        String accessToken = tokenService.generateAccessToken(userId, role, jtiAt);
+        String refreshToken = tokenService.generateRefreshToken(userId, jtiRt);
+
+        // 设备类型缺省 WEB_DESKTOP（历史契约：请求体可显式覆盖）
+        String deviceType = (deviceTypeRaw == null || deviceTypeRaw.isEmpty()) ? "WEB_DESKTOP" : deviceTypeRaw;
+
+        Long loginRecordId = authSessionService.createLoginRecord(
+                userId, jtiAt, jtiRt, deviceType, httpRequest.getHeader("User-Agent"), getClientIp(httpRequest));
+        deviceKickService.kickAndLogin(userId, deviceType, jtiAt, jtiRt, loginRecordId);
+        setCookie(httpResponse, accessToken);
+
+        log.info("会话已签发: userId={}, role={}, deviceType={}", userId, role, deviceType);
+        return new LoginResponse(accessToken, refreshToken, userId, role, displayName);
+    }
 
     private void setCookie(HttpServletResponse response, String token) {
         Cookie cookie = new Cookie(authProperties.cookieName(), token);

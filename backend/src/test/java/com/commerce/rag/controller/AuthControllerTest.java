@@ -16,6 +16,7 @@ import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.properties.AuthProperties;
 import com.commerce.rag.record.AuthUserView;
+import com.commerce.rag.service.IRegisterService;
 import com.commerce.rag.service.ISysUserService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -59,6 +60,9 @@ class AuthControllerTest {
     private AuthSessionService authSessionService;
 
     @Mock
+    private IRegisterService registerService;
+
+    @Mock
     private HttpServletRequest httpRequest;
 
     @Mock
@@ -79,7 +83,13 @@ class AuthControllerTest {
                 List.of("WEB_DESKTOP"),
                 false);
         authController = new AuthController(
-                sysUserService, tokenService, deviceKickService, authProperties, passwordEncoder, authSessionService);
+                sysUserService,
+                tokenService,
+                deviceKickService,
+                authProperties,
+                passwordEncoder,
+                authSessionService,
+                registerService);
 
         lenient().when(httpRequest.getHeader("User-Agent")).thenReturn("test-agent");
         lenient().when(httpRequest.getRemoteAddr()).thenReturn("127.0.0.1");
