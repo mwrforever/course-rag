@@ -7,6 +7,10 @@
  * - {@link Reveal}：单元素滚动入场包装器。进入视口按元素所处位置决定上/下位移方向
  *   （上半屏从下浮入、下半屏从上沉入，模拟「读到哪里、哪里醒来」的自然节律），
  *   支持 left/right/scale/blur 四种方向变体与 --d 延迟参数（CSS 侧承担全部动画，JS 只做触发）。
+ *   默认可重复触发（离开视口复位，再次进入重新入场——多次滚动与反向滚动均有动画，
+ *   2026-08-27 用户拍板）；once=true 时进场定格。
+ *   根修（2026-08-27）：组件自身输出 `reveal` 类——此前调用方漏传该类导致区块
+ *   永不入场或（裸类无观察器时）永久 opacity:0 空白（首页 EntryTiles 事故根因）。
  * - {@link Stagger}：子项错峰容器——为直接子元素注入递增 --i 序号索引，
  *   配合 CSS `.stagger>*{--rd:calc(var(--i)*.09s)}` 实现 stagger 进场。
  *
@@ -36,10 +40,17 @@ interface RevealProps extends React.HTMLAttributes<HTMLDivElement> {
  *
  * @param props.variant 入场方向（默认 up 且方向感知）
  * @param props.delay   延迟秒数（0-1 区间常用）
- * @param props.once    true 时进场即定格
+ * @param props.once    true 时进场即定格；默认 false 反复触发（反向滚动重新入场）
  * @param props.children 内容
  */
-export function Reveal({ variant = "up", delay, once = false, children, ...rest }: RevealProps) {
+export function Reveal({
+  variant = "up",
+  delay,
+  once = false,
+  children,
+  className,
+  ...rest
+}: RevealProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -70,6 +81,7 @@ export function Reveal({ variant = "up", delay, once = false, children, ...rest 
             io.unobserve(target);
           }
         } else if (!once) {
+          // 离开视口复位：下次进入（含反向滚动）重新入场（方向按届时位置感知）
           target.classList.remove("in");
         }
       }
@@ -84,6 +96,9 @@ export function Reveal({ variant = "up", delay, once = false, children, ...rest 
       data-anim={variant === "up" ? undefined : variant}
       style={delay ? ({ "--d": `${delay}s` } as React.CSSProperties) : undefined}
       {...rest}
+      // 根修：reveal 类由组件自带（调用方裸 div 写 reveal 类无观察器 → 永久隐形，
+      // 首页 EntryTiles 空白块事故根因）；置于 spread 之后防调用方 className 覆盖
+      className={`reveal ${className ?? ""}`}
     >
       {children}
     </div>

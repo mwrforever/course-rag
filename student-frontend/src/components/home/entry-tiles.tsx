@@ -1,7 +1,12 @@
 "use client";
 
 /**
- * 快捷入口宫格（设计稿一 Tiles 五联画还原）
+ * 快捷入口宫格（设计稿一 Tiles 五联画还原；2026-08-27 根修空白块事故）
+ *
+ * 事故根因：五联画 Link 裸写 `reveal` 类但无 IntersectionObserver 接管 →
+ * `.reveal{opacity:0}` 永不入场，桌面端最高 920px 纯空白带。
+ * 根修：tile 外层改用 <Reveal>（组件自带 reveal 类 + 观察器；once 定格防
+ * hover 弹性变宽与离场复位动画互搏），Link 降级为整面点击层。
  *
  * 业务替换：私教/咨询业务入口 → 平台四大真实目的地 +
  * 中央箭头区（直达课程助手对话）。交互：hover 弹性变宽（flex-grow 过渡）
@@ -30,13 +35,14 @@ export function EntryTiles() {
     >
       {TILES.map((tile) =>
         tile.mid ? (
-          /* 中央箭头区：灰白影像 + 圆环箭头推进 */
-          <Link
+          /* 中央箭头区：灰白影像 + 圆环箭头推进（Reveal 承载 flex 弹性与定位） */
+          <Reveal
             key="tile-main"
-            href={tile.href}
-            className="reveal group relative grid min-w-0 flex-[1.7] place-items-center overflow-hidden transition-[flex] duration-700 ease-out hover:flex-[3] max-lg:h-[210px] max-lg:flex-basis-full lg:flex-1"
+            once
             data-testid="entry-tile"
+            className="group relative grid min-w-0 flex-[1.7] place-items-center overflow-hidden transition-[flex] duration-700 ease-out hover:flex-[3] max-lg:h-[210px] max-lg:flex-basis-full lg:flex-1"
           >
+            <Link href={tile.href} aria-label="进入课程助手" className="absolute inset-0 z-[3]" />
             <img
               src={tile.src}
               alt=""
@@ -59,14 +65,15 @@ export function EntryTiles() {
                 <path d="M4 12h15M13 5l7 7-7 7" />
               </svg>
             </span>
-          </Link>
+          </Reveal>
         ) : (
-          <Link
+          <Reveal
             key={tile.href + tile.label}
-            href={tile.href}
+            once
             data-testid="entry-tile"
-            className="reveal tile-bw group relative flex min-w-0 flex-1 overflow-hidden transition-[flex] duration-700 ease-out hover:flex-[2.6] max-lg:h-[250px] max-lg:flex-basis-1/2"
+            className="group relative flex min-w-0 flex-1 overflow-hidden transition-[flex] duration-700 ease-out hover:flex-[2.6] max-lg:h-[250px] max-lg:flex-basis-1/2"
           >
+            <Link href={tile.href} aria-label={tile.label} className="absolute inset-0 z-[3]" />
             <img
               src={tile.src}
               alt=""
@@ -80,7 +87,7 @@ export function EntryTiles() {
             <span className="font-serif-display absolute bottom-[26px] left-7 z-[2] text-[clamp(20px,1.8vw,27px)] font-medium text-bg [text-shadow:0_1px_14px_rgb(0_0_0/40%)]">
               {tile.label}
             </span>
-          </Link>
+          </Reveal>
         ),
       )}
     </section>

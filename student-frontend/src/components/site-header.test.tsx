@@ -92,26 +92,24 @@ describe("SiteHeader：登录态切换", () => {
     expect(screen.queryByTestId("register-link")).toBeNull();
   });
 
-  it("未登录：汉堡抽屉含主导航与登录入口（极简顶栏共用抽屉语义）", () => {
+  it("未登录：主导航三项直出（单层导航，2026-08-27）+ 登录注册入口", () => {
     authMock.useAuth.mockReturnValue(defaultAuth({ user: null, isAuthenticated: false }));
     renderHeader();
-    fireEvent.click(screen.getByRole("button", { name: "打开菜单" }));
-    const drawer = screen.getByTestId("nav-drawer");
-    // 抽屉内导航断言（顶条等位置存在同名链接，按抽屉范围精确查询）
-    expect(within(drawer).getByRole("link", { name: "首页" })).toHaveAttribute("href", "/");
-    expect(within(drawer).getByRole("link", { name: "课堂" })).toHaveAttribute("href", "/courses");
-    expect(within(drawer).getByRole("link", { name: "登录 / 注册" })).toHaveAttribute(
-      "href",
-      "/login",
-    );
+    // 单层主栏直出导航（无汉堡抽屉）：三项关联路由 + 激活语义
+    const nav = screen.getByTestId("main-nav");
+    expect(within(nav).getByRole("link", { name: "首页" })).toHaveAttribute("href", "/");
+    expect(within(nav).getByRole("link", { name: "课程助手" })).toHaveAttribute("href", "/chat");
+    expect(within(nav).getByRole("link", { name: "课程中心" })).toHaveAttribute("href", "/courses");
+    // 未登录认证区：登录 + 注册
+    expect(screen.getByTestId("login-link")).toHaveAttribute("href", "/login");
+    expect(screen.getByTestId("register-link")).toHaveAttribute("href", "/login?tab=register");
   });
 
-  it("已登录：汉堡抽屉仅含公开导航（个人中心在用户下拉中）", () => {
+  it("已登录：主导航仍直出（认证区换头像下拉，个人中心在下拉中）", () => {
     renderHeader();
-    fireEvent.click(screen.getByRole("button", { name: "打开菜单" }));
-    const drawer = screen.getByTestId("nav-drawer");
-    expect(within(drawer).getAllByRole("link").length).toBe(3);
-    expect(within(drawer).queryByRole("link", { name: "登录 / 注册" })).toBeNull();
+    const nav = screen.getByTestId("main-nav");
+    expect(within(nav).getAllByRole("link").length).toBe(3);
+    expect(screen.queryByTestId("login-link")).not.toBeInTheDocument();
   });
 });
 

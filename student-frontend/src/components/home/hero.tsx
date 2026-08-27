@@ -53,7 +53,7 @@ export function HomeHero() {
 
   return (
     <section
-      className="relative flex min-h-[calc(100vh-44px-78px)] flex-col overflow-hidden bg-[#1B140E] text-bg"
+      className="relative flex min-h-[calc(100vh-68px)] flex-col overflow-hidden bg-[#1B140E] text-bg md:min-h-[calc(100vh-78px)]"
       id="top"
     >
       {/* 背景：本地化素材 Ken Burns 缓推近 */}

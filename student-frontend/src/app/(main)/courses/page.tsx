@@ -1,6 +1,6 @@
 "use client";
 
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { MagnifyingGlass, Star, TextAa } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -163,15 +163,6 @@ function CoursesContent() {
     setKeyword("");
   }
 
-  /** Chip 激活样式：选中态 teal-soft（设计 §1.5.2） */
-  function chipClass(active: boolean): string {
-    return `rounded-full border px-3.5 py-1.5 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-brand ${
-      active
-        ? "border-brand/30 bg-brand-soft text-brand-strong"
-        : "border-border bg-surface text-muted hover:border-brand/30 hover:text-brand-strong"
-    }`;
-  }
-
   return (
     <div className="mx-auto w-full max-w-6xl px-6 pb-20">
       {/* 页头：H1 + 搜索框（本地即时过滤） */}
@@ -207,39 +198,98 @@ function CoursesContent() {
         />
       ) : (
         <>
-          {/* category Chip 组（从 J1 数据聚合，「全部」恒在首位） */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* 学科 Tab 栏（2026-08-27 用户拍板：筛选改 tab 栏样式；下划线式、横向滚动） */}
+          <div
+            role="tablist"
+            aria-label="学科筛选"
+            data-testid="category-tabs"
+            className="flex items-center gap-1 overflow-x-auto border-b border-border"
+          >
             <button
               type="button"
+              role="tab"
+              aria-selected={category === ""}
+              data-testid="category-tab"
               onClick={() => handleCategory("")}
-              className={chipClass(category === "")}
+              className={`relative shrink-0 px-4 py-2.5 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-brand after:absolute after:inset-x-3 after:bottom-0 after:h-[2px] after:rounded-full after:bg-brand after:transition-transform after:duration-300 ${
+                category === ""
+                  ? "font-medium text-brand-strong after:scale-x-100"
+                  : "text-muted hover:text-text"
+              }`}
             >
               全部
             </button>
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => handleCategory(cat)}
-                className={chipClass(category === cat)}
-              >
-                {cat}
-              </button>
-            ))}
+            {categories.map((cat) => {
+              const active = category === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  data-testid="category-tab"
+                  onClick={() => handleCategory(cat)}
+                  className={`relative shrink-0 px-4 py-2.5 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-brand after:absolute after:inset-x-3 after:bottom-0 after:h-[2px] after:rounded-full after:bg-brand after:transition-transform after:duration-300 ${
+                    active
+                      ? "font-medium text-brand-strong after:scale-x-100"
+                      : "text-muted hover:text-text"
+                  }`}
+                >
+                  {cat}
+                </button>
+              );
+            })}
           </div>
 
-          {/* 工具行：结果计数 + 排序切换 */}
-          <div className="mt-6 flex items-center justify-between gap-4">
+          {/* 工具行：结果计数 + 排序分段控件（2026-08-27 样式优化：select → 胶囊分段切换） */}
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
             <p className="text-sm text-muted tabular-nums">共 {sorted.length} 门课程</p>
-            <select
-              value={sortMode}
-              onChange={(event) => setSortMode(event.target.value as SortMode)}
+            <div
+              role="radiogroup"
               aria-label="排序方式"
-              className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              data-testid="sort-segment"
+              className="flex shrink-0 rounded-full border border-border bg-surface p-1 shadow-xs"
             >
-              <option value="rating">评分优先</option>
-              <option value="name">名称排序</option>
-            </select>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={sortMode === "rating"}
+                data-testid="sort-option-rating"
+                onClick={() => setSortMode("rating")}
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-brand ${
+                  sortMode === "rating"
+                    ? "bg-brand-soft font-medium text-brand-strong"
+                    : "text-muted hover:text-text"
+                }`}
+              >
+                <Star
+                  size={13}
+                  weight="fill"
+                  aria-hidden
+                  className={sortMode === "rating" ? "text-brand" : "text-subtle"}
+                />
+                评分优先
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={sortMode === "name"}
+                data-testid="sort-option-name"
+                onClick={() => setSortMode("name")}
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-brand ${
+                  sortMode === "name"
+                    ? "bg-brand-soft font-medium text-brand-strong"
+                    : "text-muted hover:text-text"
+                }`}
+              >
+                <TextAa
+                  size={13}
+                  aria-hidden
+                  className={sortMode === "name" ? "text-brand" : "text-subtle"}
+                />
+                名称排序
+              </button>
+            </div>
           </div>
 
           {sorted.length === 0 ? (

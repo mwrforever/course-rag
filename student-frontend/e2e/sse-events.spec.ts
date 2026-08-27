@@ -30,7 +30,7 @@ test.describe("SSE 事件逐类", () => {
     await expect(page.getByTestId("model-badge")).toBeVisible();
   });
 
-  test("thinking：思考卡展开并流式追加文本", async ({ page }) => {
+  test("thinking：推理卡默认收起，思考末行经预览行可见（2026-08-27）", async ({ page }) => {
     await mockChatStream(
       page,
       frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
@@ -41,11 +41,13 @@ test.describe("SSE 事件逐类", () => {
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText("正在思考…")).toBeVisible();
-    await expect(page.getByText("正在检索课程资料……")).toBeVisible();
+    // 帧同批送达：end 后收敛为「已深度思考」（瞬态「正在准备…」不可断言）；
+    // 推理卡默认收起，预览行展示思考末行（逐行上滚观感）
+    await expect(page.getByTestId("reasoning-label")).toHaveText("已深度思考");
+    await expect(page.getByTestId("reasoning-preview")).toHaveText(/正在检索课程资料/);
   });
 
-  test("thinking_end：思考卡折叠为「已思考」", async ({ page }) => {
+  test("thinking_end：推理卡收敛为「已深度思考」（默认收起）", async ({ page }) => {
     await mockChatStream(
       page,
       frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
@@ -57,7 +59,7 @@ test.describe("SSE 事件逐类", () => {
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText("已思考")).toBeVisible();
+    await expect(page.getByText("已深度思考")).toBeVisible();
   });
 
   test("delta：正文增量渲染", async ({ page }) => {
@@ -132,15 +134,40 @@ test.describe("SSE 事件逐类", () => {
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByRole("heading", { name: "参考来源" })).toBeVisible();
-    await expect(page.getByText("课程讲义第1章")).toBeVisible();
-    // 来源卡位于正文之前（DOM 顺序断言）
-    const sources = page.getByRole("heading", { name: "参考来源" });
+    // 知识片段触发行（无思考内容时独立入口）位于正文之前，点击打开召回抽屉（2026-08-27）
+    const trigger = page.getByTestId("sources-trigger");
+    await expect(trigger).toBeVisible();
+    await expect(trigger).toHaveText(/1 个片段/);
     const body = page.getByText("正文内容");
-    await expect(sources).toBeVisible();
-    const sourcesBox = await sources.boundingBox();
+    const triggerBox = await trigger.boundingBox();
     const bodyBox = await body.boundingBox();
-    expect(sourcesBox && bodyBox && sourcesBox.y < bodyBox.y).toBeTruthy();
+    expect(triggerBox && bodyBox && triggerBox.y < bodyBox.y).toBeTruthy();
+    await trigger.click();
+    await expect(page.getByTestId("retrieval-drawer")).toBeVisible();
+    await expect(page.getByText("课程讲义第1章")).toBeVisible();
+  });
+
+  test("stage：阶段进度卡显示「知识库查询中」等文案（2026-08-27）", async ({ page }) => {
+    await mockChatStream(
+      page,
+      frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
+        frame("stage", { stage: "understanding", label: "正在理解你的问题" }, 2) +
+        frame("stage", { stage: "retrieving", label: "知识库查询中" }, 3) +
+        frame("delta", { text: "阶段之后的正文。" }, 4) +
+        frame("end", { runId: "9001", status: "COMPLETED", messageId: "5001" }, 5),
+    );
+    await login(page, "/");
+    await page.goto("/chat");
+    await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
+    await page.getByRole("button", { name: "发送" }).click();
+    // 推理卡 label 跟随最新阶段（生成中文案在 delta 后由 thinking_end/终态收敛，此处断言卡就位与首阶段）
+    await expect(page.getByTestId("reasoning-card")).toBeVisible();
+    await expect(page.getByTestId("reasoning-label")).toBeVisible();
+    // 展开卡片可见已完成阶段清单
+    await page.getByTestId("reasoning-toggle").click();
+    await expect(page.getByText("正在理解你的问题")).toBeVisible();
+    await expect(page.getByText("知识库查询中")).toBeVisible();
+    await expect(page.getByText("阶段之后的正文。")).toBeVisible();
   });
 
   test("error：run 级错误横幅 + 重试按钮", async ({ page }) => {
