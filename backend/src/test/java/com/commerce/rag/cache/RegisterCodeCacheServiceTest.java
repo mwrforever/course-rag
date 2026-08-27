@@ -88,8 +88,8 @@ class RegisterCodeCacheServiceTest {
     }
 
     @Test
-    @DisplayName("tryAcquireIpQuota：窗口内前 N 次放行，超阈值拒绝；首击写入过期时间")
-    void tryAcquireIpQuota_fixedWindowCounts() {
+    @DisplayName("tryAcquireIpQuota：窗口内前 N 次放行，超阈值拒绝；每击刷新 TTL（滑动窗语义）")
+    void tryAcquireIpQuota_slidingWindowCounts() {
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
         when(valueOps.increment(AuthCacheKeys.REGISTER_IP_QUOTA_PREFIX + "10.0.0.1"))
                 .thenReturn(1L, 10L, 11L);
@@ -98,8 +98,22 @@ class RegisterCodeCacheServiceTest {
         // 第 10 次 = 阈值边界仍放行；第 11 次超出即拒
         assertThat(service.tryAcquireIpQuota("10.0.0.1")).isTrue();
         assertThat(service.tryAcquireIpQuota("10.0.0.1")).isFalse();
-        verify(redisTemplate)
+        // 每击均刷新 TTL（三次），杜绝「INCR 成功但 EXPIRE 前崩溃」的永生键泄漏（审查 f2）
+        verify(redisTemplate, org.mockito.Mockito.times(3))
                 .expire(eq(AuthCacheKeys.REGISTER_IP_QUOTA_PREFIX + "10.0.0.1"), eq(Duration.ofSeconds(60)));
+    }
+
+    @Test
+    @DisplayName("tryAcquireIpQuota：TTL 续写抛 Redis 异常时同样 fail-open 放行")
+    void tryAcquireIpQuota_degradesOpenOnExpireFailure() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.increment(AuthCacheKeys.REGISTER_IP_QUOTA_PREFIX + "unknown"))
+                .thenReturn(2L);
+        when(redisTemplate.expire(eq(AuthCacheKeys.REGISTER_IP_QUOTA_PREFIX + "unknown"), any(Duration.class)))
+                .thenThrow(new org.springframework.data.redis.RedisSystemException(
+                        "connection lost", new RuntimeException("io")));
+
+        assertThat(service.tryAcquireIpQuota(null)).isTrue();
     }
 
     @Test

@@ -9,7 +9,7 @@
  * → MethodCollage（问渠的方法·宝丽来拼贴视差）→ Testimonials（学员声音轮播）
  * → VoicesSection（暗景语录切换）→ KnowledgeHub（上手指引横滑）
  * → EntryTiles（快捷入口宫格）；底栏由布局 SiteFooter 承担。
- * * 公开浏览契约：首页全程可匿名访问；未登录访问受保护路由由 middleware 直引
+ * 公开浏览契约：首页全程可匿名访问；未登录访问受保护路由由 middleware 直引
  * 独立登录页（/login?next=）。所有动效对 prefers-reduced-motion 静态降级。
  */
 import Link from "next/link";

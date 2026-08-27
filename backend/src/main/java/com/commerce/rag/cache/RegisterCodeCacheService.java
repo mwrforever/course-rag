@@ -4,7 +4,9 @@ import com.commerce.rag.constants.AuthCacheKeys;
 import com.commerce.rag.properties.RegisterProperties;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -20,6 +22,7 @@ import org.springframework.stereotype.Service;
  *
  * @author commerce-rag
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RegisterCodeCacheService {
@@ -67,31 +70,34 @@ public class RegisterCodeCacheService {
         redisTemplate.opsForValue().set(AuthCacheKeys.REGISTER_CODE_PREFIX + email, code, properties.codeTtl());
     }
 
-    /** 按秒的分钟窗（固定 60s 窗口，配额阈值来自 register.max-send-per-ip-per-minute） */
+    /** 配额窗口长度（秒）：每击刷新 ⇒ 语义为无静默期的滑动窗计数器 */
     private static final long IP_QUOTA_WINDOW_SECONDS = 60;
 
     /**
-     * 尝试为该客户端 IP 扣减发码配额（跨邮箱批量刷信防护——审查 M2 加固）
+     * 尝试为该客户端 IP 扣减发码配额（跨邮箱批量刷信防护——审查 M2 加固，F1/F2 复核修订）
      *
-     * <p>实现：INCR 计数 + 首次置 EXPIRE 的固定窗口计数器。INCR/EXPIRE 两步仅在
-     * 「窗口内首请求」存在极小 TTL 双写竞态，最坏多延一次过期时间，无安全语义影响，
-     * 故不需 Lua。键 = {@link AuthCacheKeys#REGISTER_IP_QUOTA_PREFIX} + ip。</p>
+     * <p>实现：INCR 计数 + 每次调用刷新 TTL 的滑动窗计数器。每击刷 TTL 而非「首击才设过期」，
+     * 彻底消除 INCR 成功而 EXPIRE 前崩溃导致的永生键自伤；Redis 访问异常一律 fail-open
+     * （额度不计入或过期续写失败均放行），避免基础设施抖动阻断正常注册或制造误封。</p>
      *
-     * @param clientIp 客户端 IP（可空/未知时回退字面量 unknown，保证仍受全局限速约束）
-     * @return true = 允许本次发送；false = 当前分钟窗配额耗尽，应拒绝
+     * @param clientIp 客户端 TCP 对端地址（Controller 固定传 remoteAddr 这类攻击者不可伪造的来源，
+     *                 可空/未知回退字面量 unknown 以保留全局限速兜底）
+     * @return true = 允许本次发送；false = 当前滑动窗内配额耗尽，应拒绝
      */
     public boolean tryAcquireIpQuota(String clientIp) {
         String key = AuthCacheKeys.REGISTER_IP_QUOTA_PREFIX
                 + (clientIp == null || clientIp.isBlank() ? "unknown" : clientIp);
-        Long count = redisTemplate.opsForValue().increment(key);
-        if (count == null) {
-            // Redis 异常视作「额度未计入」放行，避免基础设施抖动阻断正常注册
+        Long count;
+        try {
+            count = redisTemplate.opsForValue().increment(key);
+            if (count != null) {
+                redisTemplate.expire(key, java.time.Duration.ofSeconds(IP_QUOTA_WINDOW_SECONDS));
+            }
+        } catch (DataAccessException e) {
+            log.warn("IP 发码配额 Redis 访问失败，fail-open 放行: {}", e.getMessage());
             return true;
         }
-        if (count == 1L) {
-            redisTemplate.expire(key, java.time.Duration.ofSeconds(IP_QUOTA_WINDOW_SECONDS));
-        }
-        return count <= properties.maxSendPerIpPerMinute();
+        return count == null || count <= properties.maxSendPerIpPerMinute();
     }
 
     /**

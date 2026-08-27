@@ -3,7 +3,7 @@
  *
  * 覆盖：品牌与结构冒烟（Hero 巨字 / 能力手风琴四项 / 上手指引六卡 / 快捷宫格 /
  * AI 助教 FAB）；精选课程四态（Loading / 正常含已加入徽章交叉 / Empty / Error 重试）；
- * 公开浏览契约（未登录无徽章、my-courses 不请求）；?login=1 自动弹登录窗。
+ * 公开浏览契约（未登录无徽章、my-courses 不请求）。
  * 数据层以 vi.mock 注入（react-query 用 QueryClient 包裹并关闭 retry）。
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

@@ -138,7 +138,11 @@ public class AuthController {
     public ApiResponse<Void> sendRegisterCode(
             @Valid @RequestBody RegisterCodeRequest request, HttpServletRequest httpRequest) {
         log.info("收到注册验证码发送请求: email={}", RegisterMailSender.maskEmail(request.email()));
-        registerService.sendRegisterCode(request.email(), getClientIp(httpRequest));
+        // 安全执法维度必须绑定攻击者无法伪造的标识：直连场景 getClientIp 信任的
+        // X-Forwarded-For 可被任意请求轮换出无限独立配额桶（复用登录审计的信任模型
+        // 会错配安全语义），故此处固定使用 TCP 对端地址 remoteAddr；反代环境经
+        // Tomcat 前置剥离伪头后仍落到本进程可信值（审查 F1 方案 1）
+        registerService.sendRegisterCode(request.email(), httpRequest.getRemoteAddr());
         return ApiResponse.ok();
     }
 
