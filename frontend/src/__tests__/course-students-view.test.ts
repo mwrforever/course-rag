@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
+import { vReveal } from '@/directives/reveal'
 import CourseStudentsView from '@/views/course/CourseStudentsView.vue'
 
 const apiMock = vi.hoisted(() => ({
@@ -78,6 +79,7 @@ async function mountAt(path = '/courses/c-1/students') {
         pinia,
         router,
       ],
+      directives: { reveal: vReveal },
     },
   })
   return { wrapper, router }
@@ -101,7 +103,9 @@ describe('课程学生名单（/courses/:id/students）', () => {
     apiMock.enrollmentApi.students.mockResolvedValue([])
     const { wrapper } = await mountAt()
     await flushPromises()
-    expect(wrapper.text()).toContain('还没有学生报名，点击添加学生开通名额')
+    // EmptyState 拆分标题/描述两行渲染，语义分两段断言
+    expect(wrapper.text()).toContain('还没有学生报名')
+    expect(wrapper.text()).toContain('开通名额')
     wrapper.unmount()
   })
 
@@ -145,7 +149,8 @@ describe('课程学生名单（/courses/:id/students）', () => {
     await flushPromises()
 
     await wrapper.find('[data-testid="student-remove-s-1"]').trigger('click')
-    expect(wrapper.find('[data-testid="student-del-dialog"]').exists()).toBe(true)
+    // ConfirmDialog 受控开合：在场以确认按钮（$attrs 转发 testid）判定
+    expect(wrapper.find('[data-testid="confirm-student-del"]').exists()).toBe(true)
     await wrapper.find('[data-testid="confirm-student-del"]').trigger('click')
     await flushPromises()
     expect(apiMock.enrollmentApi.removeStudent).toHaveBeenCalledWith('c-1', 's-1')

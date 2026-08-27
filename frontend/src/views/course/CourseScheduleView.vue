@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * 课程排期（UI 重构 2026-08-25 从 CourseEditView 拆出）
+ * 课程排期（UI 重构 2026-08-25 从 CourseEditView 拆出；2026-08-27 紫系重制：
+ * DataTable 表壳 + EmptyState + 删除确认迁移 ConfirmDialog）
  *
  * 职责：排期表格（起止/类型/地点/讲师/容量/已报）+ 新增 Dialog + 行内编辑 Dialog +
  * 删除二次确认（全部提交期 Esc/遮罩/取消拦截）。
@@ -8,9 +9,12 @@
 import { computed, reactive, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
-import { PhPencilSimple, PhPlus, PhSpinnerGap, PhTrash, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhCalendarBlank, PhPencilSimple, PhPlus, PhSpinnerGap, PhTrash } from '@phosphor-icons/vue'
 
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DataTable } from '@/components/ui/data-table'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ApiError, scheduleApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import type { CourseScheduleVO } from '@/lib/types'
@@ -178,6 +182,15 @@ function cancelDeleteSchedule() {
   scheduleDeleting.value = null
 }
 
+/**
+ * 删除确认弹窗开合回抛（v-model 语义）
+ *
+ * @param open ConfirmDialog 回抛的开合值：仅 false 有意义（关闭请求经 cancelDeleteSchedule 拦截提交期）
+ */
+function onDelDialogOpen(open: boolean) {
+  if (!open) cancelDeleteSchedule()
+}
+
 /** 确认删除排期：提交中禁用按钮，完成/失败由 mutation 回调处理 */
 function confirmDeleteSchedule() {
   if (!scheduleDeleting.value) return
@@ -186,9 +199,9 @@ function confirmDeleteSchedule() {
 </script>
 
 <template>
-  <section class="overflow-hidden rounded-xl border border-border bg-surface">
-    <div class="flex items-center justify-between border-b border-border px-6 py-4">
-      <h2 class="text-base font-semibold text-text">
+  <section v-reveal class="rounded-2xl border border-border bg-surface shadow-xs">
+    <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-[18px]">
+      <h2 class="text-lg font-extrabold tracking-tight text-text">
         排期
         <span class="ml-2 text-sm font-normal text-text-muted">共 {{ schedules.length }} 个</span>
       </h2>
@@ -199,74 +212,71 @@ function confirmDeleteSchedule() {
     </div>
 
     <!-- 排期空态 -->
-    <div
+    <EmptyState
       v-if="schedules.length === 0"
-      class="flex flex-col items-center justify-center py-10 text-center"
+      title="还没有排期"
+      description="点击右上角「新增排期」添加课程安排"
     >
-      <PhWarningCircle class="h-6 w-6 text-text-subtle" />
-      <p class="mt-2 text-sm text-text-muted">还没有排期，点击新增排期添加课程安排</p>
-    </div>
+      <template #icon>
+        <PhCalendarBlank class="h-6 w-6" aria-hidden="true" />
+      </template>
+    </EmptyState>
 
     <!-- 排期表格：起止/类型/地点/讲师/容量/已报 + 操作 -->
-    <table v-else data-testid="schedule-table" class="w-full text-sm">
-      <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
+    <DataTable v-else data-testid="schedule-table" label="排期列表" class="pb-2">
+      <template #header>
         <tr>
-          <th class="px-4 py-2.5 font-medium">起止日期</th>
-          <th class="w-20 px-4 py-2.5 font-medium">类型</th>
-          <th class="max-w-[140px] px-4 py-2.5 font-medium">地点</th>
-          <th class="max-w-[120px] px-4 py-2.5 font-medium">讲师</th>
-          <th class="w-16 px-4 py-2.5 text-right font-medium">容量</th>
-          <th class="w-16 px-4 py-2.5 text-right font-medium">已报</th>
-          <th class="w-32 px-4 py-2.5 text-right font-medium">操作</th>
+          <th>起止日期</th>
+          <th class="w-20">类型</th>
+          <th class="max-w-[140px]">地点</th>
+          <th class="max-w-[120px]">讲师</th>
+          <th class="w-16 text-right">容量</th>
+          <th class="w-16 text-right">已报</th>
+          <th class="w-32 text-right">操作</th>
         </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="s in schedules"
-          :key="s.id"
-          :data-testid="`schedule-row-${s.id}`"
-          class="h-11 border-b border-border transition-colors duration-150 last:border-b-0 hover:bg-surface-2"
-        >
-          <td class="px-4">
-            <span class="tabular-nums text-text">{{ s.startDate }}</span>
-            <span class="mx-1 text-text-subtle">至</span>
-            <span class="tabular-nums text-text-muted">{{ s.endDate }}</span>
-          </td>
-          <td class="px-4 text-text-muted">{{ s.scheduleType }}</td>
-          <td class="max-w-[140px] truncate px-4 text-text-muted" :title="s.location">
-            {{ s.location || '-' }}
-          </td>
-          <td class="max-w-[120px] truncate px-4 text-text-muted" :title="s.instructorName">
-            {{ s.instructorName || '-' }}
-          </td>
-          <td class="px-4 text-right tabular-nums text-text">{{ s.capacity }}</td>
-          <td class="px-4 text-right tabular-nums text-text-muted">{{ s.enrolled }}</td>
-          <td class="px-4 text-right">
-            <div class="flex items-center justify-end gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                :data-testid="`op-schedule-edit-${s.id}`"
-                @click="openEditSchedule(s)"
-              >
-                <PhPencilSimple class="h-3.5 w-3.5" />
-                编辑
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                class="text-danger hover:bg-danger/5"
-                :data-testid="`op-schedule-del-${s.id}`"
-                @click="requestDeleteSchedule(s)"
-              >
-                <PhTrash class="h-3.5 w-3.5" />
-                删除
-              </Button>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+      </template>
+      <tr v-for="s in schedules" :key="s.id" :data-testid="`schedule-row-${s.id}`">
+        <td>
+          <span class="tabular-nums font-semibold text-text">{{ s.startDate }}</span>
+          <span class="mx-1 text-text-subtle">至</span>
+          <span class="tabular-nums text-text-muted">{{ s.endDate }}</span>
+        </td>
+        <td>{{ s.scheduleType }}</td>
+        <td class="max-w-[140px] truncate" :title="s.location">{{ s.location || '-' }}</td>
+        <td class="max-w-[120px] truncate" :title="s.instructorName">
+          {{ s.instructorName || '-' }}
+        </td>
+        <td class="text-right">
+          <span class="tabular-nums font-semibold text-text">{{ s.capacity }}</span>
+        </td>
+        <td class="text-right">
+          <span class="tabular-nums">{{ s.enrolled }}</span>
+        </td>
+        <td class="text-right">
+          <div class="flex items-center justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              :data-testid="`op-schedule-edit-${s.id}`"
+              @click="openEditSchedule(s)"
+            >
+              <PhPencilSimple class="h-3.5 w-3.5" />
+              编辑
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="text-danger hover:bg-danger/5"
+              :data-testid="`op-schedule-del-${s.id}`"
+              @click="requestDeleteSchedule(s)"
+            >
+              <PhTrash class="h-3.5 w-3.5" />
+              删除
+            </Button>
+          </div>
+        </td>
+      </tr>
+    </DataTable>
 
     <!-- 排期新增/编辑 Dialog（480px；提交期 Esc/遮罩/取消全拦截） -->
     <div
@@ -277,11 +287,11 @@ function confirmDeleteSchedule() {
       @click.self="closeScheduleDialog"
     >
       <div
-        class="animate-menu-in w-full max-w-[480px] rounded-xl border border-border bg-surface p-6 shadow-lg"
+        class="animate-menu-in w-full max-w-[480px] rounded-2xl border border-border bg-surface p-6 shadow-lg"
         role="dialog"
         aria-modal="true"
       >
-        <h2 class="text-base font-semibold text-text">
+        <h2 class="text-lg font-extrabold tracking-tight text-text">
           {{ scheduleEditing ? '编辑排期' : '新增排期' }}
         </h2>
         <div class="mt-5 space-y-4">
@@ -296,7 +306,7 @@ function confirmDeleteSchedule() {
                 type="date"
                 data-testid="schedule-start"
                 aria-label="开始日期"
-                class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm tabular-nums text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+                class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm tabular-nums text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
             </div>
             <div>
@@ -309,7 +319,7 @@ function confirmDeleteSchedule() {
                 type="date"
                 data-testid="schedule-end"
                 aria-label="结束日期"
-                class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm tabular-nums text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+                class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm tabular-nums text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
             </div>
           </div>
@@ -322,7 +332,7 @@ function confirmDeleteSchedule() {
               v-model="scheduleForm.scheduleType"
               data-testid="schedule-type"
               aria-label="排期类型"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
             >
               <option value="ONLINE">ONLINE（线上）</option>
               <option value="OFFLINE">OFFLINE（线下）</option>
@@ -340,7 +350,7 @@ function confirmDeleteSchedule() {
               data-testid="schedule-location"
               aria-label="排期地点"
               placeholder="如 腾讯会议 / 上海教室"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
           </div>
           <div class="grid grid-cols-2 gap-4">
@@ -355,7 +365,7 @@ function confirmDeleteSchedule() {
                 data-testid="schedule-instructor"
                 aria-label="排期讲师"
                 placeholder="主讲老师"
-                class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+                class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
             </div>
             <div>
@@ -370,7 +380,7 @@ function confirmDeleteSchedule() {
                 data-testid="schedule-capacity"
                 aria-label="排期容量"
                 placeholder="人数上限"
-                class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm tabular-nums text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+                class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm tabular-nums text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
             </div>
           </div>
@@ -399,54 +409,16 @@ function confirmDeleteSchedule() {
       </div>
     </div>
 
-    <!-- 排期删除二次确认（danger 实底；提交期拦截关闭） -->
-    <div
-      v-if="scheduleDeleting"
-      data-testid="schedule-del-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
-      @keydown.esc="cancelDeleteSchedule"
-      @click.self="cancelDeleteSchedule"
-    >
-      <div
-        class="animate-menu-in w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-lg"
-        role="alertdialog"
-        aria-modal="true"
-      >
-        <div class="flex items-start gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger/10">
-            <PhWarningCircle class="h-5 w-5 text-danger" />
-          </div>
-          <div>
-            <h2 class="text-base font-semibold text-text">删除排期</h2>
-            <p class="mt-2 text-sm leading-relaxed text-text-muted">
-              将删除
-              <span class="tabular-nums">{{ scheduleDeleting.startDate }}</span>
-              至
-              <span class="tabular-nums">{{ scheduleDeleting.endDate }}</span>
-              的排期，此操作不可恢复。确认删除？
-            </p>
-          </div>
-        </div>
-        <div class="mt-5 flex justify-end gap-2">
-          <Button
-            variant="outline"
-            data-testid="cancel-schedule-del"
-            :disabled="scheduleDeletingLoading"
-            @click="cancelDeleteSchedule"
-          >
-            取消
-          </Button>
-          <Button
-            variant="danger"
-            data-testid="confirm-schedule-del"
-            :disabled="scheduleDeletingLoading"
-            @click="confirmDeleteSchedule"
-          >
-            <PhSpinnerGap v-if="scheduleDeletingLoading" class="h-4 w-4 animate-spin" />
-            {{ scheduleDeletingLoading ? '删除中' : '确认删除' }}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <!-- 排期删除二次确认（ConfirmDialog：danger 实底；提交期关闭经 onDelDialogOpen 拦截） -->
+    <ConfirmDialog
+      :open="scheduleDeleting !== null"
+      data-testid="confirm-schedule-del"
+      title="删除排期"
+      :description="`将删除 ${scheduleDeleting?.startDate ?? ''} 至 ${scheduleDeleting?.endDate ?? ''} 的排期，此操作不可恢复。确认删除？`"
+      confirm-text="确认删除"
+      :loading="scheduleDeletingLoading"
+      @update:open="onDelDialogOpen"
+      @confirm="confirmDeleteSchedule"
+    />
   </section>
 </template>

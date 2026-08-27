@@ -1,16 +1,16 @@
 <script setup lang="ts">
 /**
- * 课程教师分配（UI 重构 2026-08-25 从 CourseEditView 拆出）
+ * 课程教师分配（UI 重构 2026-08-25 从 CourseEditView 拆出；2026-08-27 紫系重制双栏卡壳）
  *
  * 职责：双栏（已分配 / 可选=全量 TEACHER 剔除已分配 + 搜索过滤）+
- * POST [ids] 分配 + 移除 DELETE 带 body（axios data 写法，设计 §2.4.4）。
+ * POST [ids] 分配 + 移除 DELETE 带 body（axios data 写法）。
  * 教师用户池经 GET /users?role=TEACHER 一次拉取（后端无 keyword 参数，搜索客户端过滤，
  * 选择器只列 TEACHER 角色兜底 R18）。
  */
 import { computed, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
-import { PhSpinnerGap } from '@phosphor-icons/vue'
+import { PhMagnifyingGlass, PhSpinnerGap, PhUserCircle, PhUsersThree } from '@phosphor-icons/vue'
 
 import { Button } from '@/components/ui/button'
 import { ApiError, courseApi, userApi } from '@/lib/api'
@@ -62,13 +62,6 @@ const assignedTeacherIds = computed(() => course.value?.teacherIds ?? [])
 
 const queryClient = useQueryClient()
 
-/**
- * 分配/移除成功后的刷新：按查询键重拉（course + 候选池合并单查询，低频操作全量重拉可接受——
- * 评估结论：候选池 ≤100 行、分配/移除低频，拆双查询需整页四态合并且无性能收益，保持合并）
- *
- * 重拉失败（如后端瞬时故障）以 toast 提示（恢复原 refreshCourse 的「课程刷新失败」交互），
- * 不静默；页面错误横幅由查询自身的错误态兜底。
- */
 /**
  * 分配/移除成功后的刷新：await 列表查询 refetch（v5 语义：失败也 resolve，不 reject）后
  * 以查询状态判定重拉失败（status 变 error 即 fetch 失败），失败以 toast 提示
@@ -155,104 +148,126 @@ function removeTeacher(t: UserDTO) {
 </script>
 
 <template>
-  <section class="rounded-xl border border-border bg-surface">
-    <div class="flex items-center justify-between border-b border-border px-6 py-4">
-      <h2 class="text-base font-semibold text-text">教师分配</h2>
+  <section v-reveal class="rounded-2xl border border-border bg-surface shadow-xs">
+    <div class="flex items-center justify-between gap-4 px-6 py-[18px]">
+      <h2 class="text-lg font-extrabold tracking-tight text-text">教师分配</h2>
+      <p class="text-xs text-text-subtle">勾选后批量分配，移除即时生效</p>
     </div>
 
     <!-- 加载骨架 -->
-    <div v-if="isLoading" data-testid="teachers-skeleton" class="animate-pulse space-y-4 p-6">
-      <div class="h-9 rounded-lg bg-surface-2" />
-      <div class="h-40 rounded-lg bg-surface-2" />
+    <div v-if="isLoading" data-testid="teachers-skeleton" class="animate-pulse space-y-4 px-6 pb-6">
+      <div class="h-9 rounded-xl bg-surface-2" />
+      <div class="h-40 rounded-xl bg-surface-2" />
     </div>
 
     <!-- 加载错误：横幅 + 重试 -->
     <div
       v-else-if="listError"
       role="alert"
-      class="flex items-center justify-between gap-4 px-6 py-4"
+      class="flex items-center justify-between gap-4 px-6 pb-6"
     >
       <span class="text-sm text-danger">{{ listError }}</span>
       <Button variant="outline" size="sm" @click="refetch">重试</Button>
     </div>
 
-    <div v-else class="flex flex-1 flex-col gap-4 p-6">
+    <div v-else class="flex flex-1 flex-col gap-5 px-6 pb-6">
       <!-- 搜索过滤（后端 /users 无 keyword 参数，客户端过滤） -->
-      <input
-        v-model="teacherSearch"
-        type="text"
-        data-testid="teacher-search"
-        aria-label="搜索教师"
-        placeholder="搜索教师（显示名/用户名）"
-        class="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-      />
-
-      <!-- 已分配列表（含移除按钮） -->
-      <div>
-        <p class="mb-1.5 text-xs font-semibold tracking-wider text-text-subtle">
-          已分配 {{ assignedTeachers.length }}
-        </p>
-        <div
-          v-if="assignedTeachers.length === 0"
-          class="rounded-lg bg-surface-2 px-3 py-2 text-xs text-text-subtle"
-        >
-          暂无已分配教师
-        </div>
-        <ul v-else class="space-y-1.5">
-          <li
-            v-for="t in assignedTeachers"
-            :key="t.id"
-            :data-testid="`teacher-assigned-${t.id}`"
-            class="flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-3 py-2"
-          >
-            <span class="truncate text-sm text-text">{{ t.displayName }}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              class="h-6 px-2 text-xs text-danger hover:bg-danger/5"
-              :data-testid="`teacher-remove-${t.id}`"
-              :disabled="teacherRemovingId === t.id"
-              @click="removeTeacher(t)"
-            >
-              <PhSpinnerGap v-if="teacherRemovingId === t.id" class="h-3 w-3 animate-spin" />
-              移除
-            </Button>
-          </li>
-        </ul>
+      <div class="relative">
+        <PhMagnifyingGlass
+          class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-text-subtle"
+        />
+        <input
+          v-model="teacherSearch"
+          type="text"
+          data-testid="teacher-search"
+          aria-label="搜索教师"
+          placeholder="搜索教师（显示名/用户名）"
+          class="h-10 w-full rounded-xl border border-border bg-surface pr-3 pl-9 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+        />
       </div>
 
-      <!-- 可选列表：复选框勾选待分配 -->
-      <div class="min-h-0 flex-1">
-        <p class="mb-1.5 text-xs font-semibold tracking-wider text-text-subtle">可选教师</p>
-        <div class="max-h-56 space-y-1.5 overflow-y-auto pr-1">
-          <label
-            v-for="t in availableTeachers"
-            :key="t.id"
-            :data-testid="`teacher-available-${t.id}`"
-            class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 transition-colors duration-150 hover:bg-surface-2"
+      <!-- 双栏：已分配（含移除）/ 可选（复选框勾选待分配） -->
+      <div class="grid items-start gap-5 lg:grid-cols-2">
+        <div class="rounded-xl bg-brand-light p-4">
+          <p
+            class="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wider text-text-muted"
           >
-            <input
-              v-model="teacherSelected"
-              type="checkbox"
-              :value="t.id"
-              :data-testid="`teacher-check-${t.id}`"
-              class="h-4 w-4 accent-brand"
-            />
-            <span class="truncate text-sm text-text">{{ t.displayName }}</span>
-            <span class="truncate text-xs text-text-subtle">{{ t.username }}</span>
-          </label>
+            <PhUserCircle class="h-4 w-4" aria-hidden="true" />
+            已分配 {{ assignedTeachers.length }}
+          </p>
           <div
-            v-if="availableTeachers.length === 0"
-            data-testid="teacher-available-empty"
-            class="rounded-lg bg-surface-2 px-3 py-2 text-xs text-text-subtle"
+            v-if="assignedTeachers.length === 0"
+            class="rounded-[10px] bg-surface px-3 py-2 text-xs text-text-subtle"
           >
-            没有匹配的教师
+            暂无已分配教师
+          </div>
+          <ul v-else class="space-y-1.5">
+            <li
+              v-for="t in assignedTeachers"
+              :key="t.id"
+              :data-testid="`teacher-assigned-${t.id}`"
+              class="flex items-center justify-between gap-2 rounded-[10px] bg-surface px-3 py-2 transition-shadow duration-200 hover:shadow-xs"
+            >
+              <span class="min-w-0 truncate text-sm font-medium text-text">{{
+                t.displayName
+              }}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-6 px-2 text-xs text-danger hover:bg-danger/5"
+                :data-testid="`teacher-remove-${t.id}`"
+                :disabled="teacherRemovingId === t.id"
+                @click="removeTeacher(t)"
+              >
+                <PhSpinnerGap v-if="teacherRemovingId === t.id" class="h-3 w-3 animate-spin" />
+                移除
+              </Button>
+            </li>
+          </ul>
+        </div>
+
+        <div class="rounded-xl bg-brand-light p-4">
+          <p
+            class="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wider text-text-muted"
+          >
+            <PhUsersThree class="h-4 w-4" aria-hidden="true" />
+            可选教师 {{ availableTeachers.length }}
+          </p>
+          <div class="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+            <label
+              v-for="t in availableTeachers"
+              :key="t.id"
+              :data-testid="`teacher-available-${t.id}`"
+              class="flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-transparent bg-surface px-3 py-2 transition-colors duration-150 hover:border-brand/40"
+            >
+              <input
+                v-model="teacherSelected"
+                type="checkbox"
+                :value="t.id"
+                :data-testid="`teacher-check-${t.id}`"
+                class="h-4 w-4 accent-brand"
+              />
+              <span class="min-w-0 truncate text-sm font-medium text-text">{{
+                t.displayName
+              }}</span>
+              <span class="ml-auto shrink-0 truncate text-xs text-text-subtle">{{
+                t.username
+              }}</span>
+            </label>
+            <div
+              v-if="availableTeachers.length === 0"
+              data-testid="teacher-available-empty"
+              class="rounded-[10px] bg-surface px-3 py-2 text-xs text-text-subtle"
+            >
+              没有匹配的教师
+            </div>
           </div>
         </div>
       </div>
 
       <!-- 分配按钮：POST [ids] 数组 -->
       <Button
+        class="self-start"
         data-testid="teacher-assign"
         :disabled="teacherSelected.length === 0 || teacherAssigning"
         @click="assignTeachers"

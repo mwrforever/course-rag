@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 课程内容（UI 重构 2026-08-25 从 CourseEditView 拆出）
+ * 课程内容（UI 重构 2026-08-25 从 CourseEditView 拆出；2026-08-27 紫系重制表壳与 Tab 条）
  *
  * 职责：intro/syllabus/instructor/faq 四个 md-editor-v3 Tab，按后端 sortOrder 排序，
  * 逐 Tab 独立保存（PUT /contents/{contentType} 裸 JSON 字符串 body）。
@@ -123,9 +123,9 @@ function saveContent() {
 </script>
 
 <template>
-  <section class="overflow-hidden rounded-xl border border-border bg-surface">
-    <div class="flex items-center justify-between border-b border-border px-6 py-4">
-      <h2 class="text-base font-semibold text-text">课程内容</h2>
+  <section v-reveal class="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs">
+    <div class="flex items-center justify-between gap-4 px-6 py-[18px]">
+      <h2 class="text-lg font-extrabold tracking-tight text-text">课程内容</h2>
       <p class="text-xs text-text-subtle">四个 Tab 独立保存，互不影响</p>
     </div>
 
@@ -148,19 +148,20 @@ function saveContent() {
     </div>
 
     <template v-else>
-      <!-- Tab 切换条：激活态 brand 下划线 -->
+      <!-- Tab 切换条：激活态 brand 下划线（弹簧展开，见 scoped） -->
       <div class="flex gap-1 border-b border-border px-6 pt-3">
         <button
           v-for="tab in tabOrder"
           :key="tab.type"
           type="button"
           :data-testid="`tab-${tab.type}`"
-          class="-mb-px border-b-2 px-4 py-2.5 text-sm transition-colors duration-150"
+          class="content-tab -mb-px border-b-2 px-4 py-2.5 text-sm transition-colors duration-200"
           :class="
             activeTab === tab.type
-              ? 'border-brand font-medium text-brand-strong'
+              ? 'active border-brand font-semibold text-brand-strong'
               : 'border-transparent text-text-muted hover:text-text'
           "
+          :aria-current="activeTab === tab.type ? 'true' : undefined"
           @click="activeTab = tab.type"
         >
           {{ tab.label }}
@@ -190,3 +191,26 @@ function saveContent() {
     </template>
   </section>
 </template>
+
+<style scoped>
+/* 内容 Tab 激活下划线：brand 实线下钉，弹簧展开（设计稿 A6 指示条弹性曲线） */
+.content-tab {
+  position: relative;
+}
+.content-tab::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -2px;
+  width: 20px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--color-brand);
+  box-shadow: var(--shadow-brand-glow);
+  transform: translateX(-50%) scaleX(0);
+  transition: transform 0.35s var(--spring);
+}
+.content-tab.active::after {
+  transform: translateX(-50%) scaleX(1);
+}
+</style>

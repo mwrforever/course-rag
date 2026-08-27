@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
+import { vReveal } from '@/directives/reveal'
 import CourseTeachersView from '@/views/course/CourseTeachersView.vue'
 
 const apiMock = vi.hoisted(() => ({
@@ -92,6 +93,7 @@ async function mountAt(path = '/courses/c-1/teachers') {
         pinia,
         router,
       ],
+      directives: { reveal: vReveal },
     },
   })
   return { wrapper, router }
