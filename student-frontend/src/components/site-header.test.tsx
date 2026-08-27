@@ -69,14 +69,12 @@ describe("SiteHeader：登录态切换", () => {
     expect(screen.queryByRole("button", { name: "登录" })).toBeNull();
   });
 
-  it("未登录：桌面显示登录按钮，点击触发全局登录弹窗", () => {
-    const openLoginDialog = vi.fn();
-    authMock.useAuth.mockReturnValue(
-      defaultAuth({ user: null, isAuthenticated: false, openLoginDialog }),
-    );
+  it("未登录：桌面「登录」文字链跳独立登录页，「注册」按钮携带 tab=register 参数", () => {
+    authMock.useAuth.mockReturnValue(defaultAuth({ user: null, isAuthenticated: false }));
     renderHeader();
-    fireEvent.click(screen.getByRole("button", { name: "登录" }));
-    expect(openLoginDialog).toHaveBeenCalledTimes(1);
+    // 独立登录页回归（2026-08-27）：导航入口为路由跳转而非全局弹窗
+    expect(screen.getByTestId("login-link")).toHaveAttribute("href", "/login");
+    expect(screen.getByTestId("register-link")).toHaveAttribute("href", "/login?tab=register");
   });
 
   it("未登录：不渲染头像（登出后导航栏不再展示登录样式）", () => {
@@ -85,26 +83,35 @@ describe("SiteHeader：登录态切换", () => {
     expect(screen.queryByTestId("header-avatar")).toBeNull();
   });
 
-  it("挂载静默续期窗口：骨架占位不显示登录按钮（防闪变）", () => {
+  it("挂载静默续期窗口：骨架占位不渲染认证入口（防闪变）", () => {
     authMock.useAuth.mockReturnValue(
       defaultAuth({ user: null, isAuthenticated: false, isLoading: true }),
     );
     renderHeader();
-    expect(screen.queryByRole("button", { name: "登录" })).toBeNull();
+    expect(screen.queryByTestId("login-link")).toBeNull();
+    expect(screen.queryByTestId("register-link")).toBeNull();
   });
 
-  it("未登录移动端：汉堡游客菜单含登录入口与公开导航", () => {
-    const openLoginDialog = vi.fn();
-    authMock.useAuth.mockReturnValue(
-      defaultAuth({ user: null, isAuthenticated: false, openLoginDialog }),
-    );
+  it("未登录：汉堡抽屉含主导航与登录入口（极简顶栏共用抽屉语义）", () => {
+    authMock.useAuth.mockReturnValue(defaultAuth({ user: null, isAuthenticated: false }));
     renderHeader();
-    fireEvent.click(screen.getByRole("button", { name: "用户菜单" }));
-    const guestMenu = screen.getByTestId("guest-menu");
-    // 游客菜单内导航断言（桌面主导航同文案并存，jsdom 无媒体查询，按菜单范围精确查询）
-    expect(within(guestMenu).getByRole("link", { name: "首页" })).toHaveAttribute("href", "/");
-    fireEvent.click(screen.getByTestId("guest-login-button"));
-    expect(openLoginDialog).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "打开菜单" }));
+    const drawer = screen.getByTestId("nav-drawer");
+    // 抽屉内导航断言（顶条等位置存在同名链接，按抽屉范围精确查询）
+    expect(within(drawer).getByRole("link", { name: "首页" })).toHaveAttribute("href", "/");
+    expect(within(drawer).getByRole("link", { name: "课堂" })).toHaveAttribute("href", "/courses");
+    expect(within(drawer).getByRole("link", { name: "登录 / 注册" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+  });
+
+  it("已登录：汉堡抽屉仅含公开导航（个人中心在用户下拉中）", () => {
+    renderHeader();
+    fireEvent.click(screen.getByRole("button", { name: "打开菜单" }));
+    const drawer = screen.getByTestId("nav-drawer");
+    expect(within(drawer).getAllByRole("link").length).toBe(3);
+    expect(within(drawer).queryByRole("link", { name: "登录 / 注册" })).toBeNull();
   });
 });
 

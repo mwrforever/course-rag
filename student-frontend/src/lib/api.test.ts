@@ -501,3 +501,73 @@ describe("公开课程与会话管理端点（公开化 + 会话管理 2026-08-2
     );
   });
 });
+
+describe("注册端点契约（邮箱注册两段式 2026-08-27）", () => {
+  it("sendRegisterCode：POST /auth/register/code 且请求体仅含邮箱；业务失败透传 ApiError", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(res(200, { code: 0, message: "success", data: null }));
+    await expect(api.sendRegisterCode("B@Example.com")).resolves.toBeUndefined();
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/v1/auth/register/code");
+    const init = fetchMock.mock.calls[0][1];
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ email: "B@Example.com" });
+
+    fetchMock.mockResolvedValue(res(409, { code: 409, message: "该邮箱已注册，请直接登录" }));
+    const err = await api.sendRegisterCode("b@example.com").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(api.ApiError);
+    expect((err as InstanceType<typeof api.ApiError>).message).toBe("该邮箱已注册，请直接登录");
+  });
+
+  it("registerAndLogin：POST /auth/register，成功即建立会话（AT 内存 + RT 入 localStorage）", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(
+      res(200, { code: 0, message: "success", data: loginData("at-reg", "rt-reg") }),
+    );
+    const data = await api.registerAndLogin({
+      email: "b@example.com",
+      code: "654321",
+      password: "Password-88",
+    });
+    expect(data.accessToken).toBe("at-reg");
+    expect(localStorage.getItem("c_rt")).toBe("rt-reg");
+    // 昵称缺省时请求体不携带 nickname 键（后端回退邮箱前缀语义）
+    const init = fetchMock.mock.calls[0][1];
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/v1/auth/register");
+    expect(JSON.parse(init.body)).toEqual({
+      email: "b@example.com",
+      code: "654321",
+      password: "Password-88",
+    });
+  });
+
+  it("registerAndLogin：携带昵称时透传；失败（400 验证码错误）不落任何凭据", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(res(400, { code: 400, message: "验证码错误", data: null }));
+    await expect(
+      api.registerAndLogin({
+        email: "b@example.com",
+        code: "000000",
+        password: "Password-88",
+        nickname: "同学B",
+      }),
+    ).rejects.toMatchObject({ code: 400, message: "验证码错误" });
+    expect(localStorage.getItem("c_rt")).toBeNull();
+
+    // 再验证带 nickname 的成功路径请求体结构（与上一用例的省略形态互补覆盖 100% 行）
+    fetchMock.mockResolvedValue(
+      res(200, { code: 0, message: "success", data: loginData("at2", "rt2") }),
+    );
+    await api.registerAndLogin({
+      email: "b@example.com",
+      code: "123456",
+      password: "Password-88",
+      nickname: "同学B",
+    });
+    expect(JSON.parse(fetchMock.mock.calls[fetchMock.mock.calls.length - 1][1].body)).toEqual({
+      email: "b@example.com",
+      code: "123456",
+      password: "Password-88",
+      nickname: "同学B",
+    });
+  });
+});

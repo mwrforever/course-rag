@@ -53,6 +53,6 @@ describe("(main) 主站布局", () => {
       </MainLayout>,
     );
     expect(screen.getByTestId("site-footer")).toBeInTheDocument();
-    expect(screen.getByText("© 2026 课程助手 · 保留所有权利")).toBeInTheDocument();
+    expect(screen.getByText(/© 2026 问渠学堂 Wenqu Academy · 为有源头活水来/)).toBeInTheDocument();
   });
 });

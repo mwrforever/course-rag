@@ -1,30 +1,29 @@
 "use client";
 
 /**
- * 全站顶部导航壳（UI 重构 2026-08-25：kimi 蓝系高级感；会话项下线 2026-08-26）
+ * 全站顶部导航壳（UI 全面重构 2026-08-27：问渠学堂学院风）
  *
- * 64px 固定高度、bg/80 + backdrop-blur 玻璃底 + 底部 1px 边框，滚动时 sticky 置顶。
- * 结构：渐变 Logo + 品牌名 ｜ 主导航（激活态品牌蓝字 + 下划线指示）｜ 用户区
- * （桌面渐变头像 + 移动端汉堡按钮，统一弹出下拉：身份信息 + 导航 + 个人中心 + 退出登录）。
+ * 结构（设计稿一还原）：深墨顶条（客服邮箱 + 快捷锚点）｜ 吸顶主栏：
+ * 左（汉堡菜单 + 搜索入口）· 中（衬线大字 Logo 居中）· 右（认证区）。
+ * 主导航收进汉堡抽屉（桌面/移动共用，设计稿极简顶栏语义）；
+ * 滚动行为：下滑过阈值隐藏吸顶栏（保留可用性——抽屉开启或近顶部不隐藏）、
+ * 过 40px 切换磨砂玻璃底；rAF 方向感知节流。
  *
- * 会话管理已收敛至课程助手侧边栏（用户拍板）：顶导无「会话」项，登出经 ConfirmDialog 二次确认
- * （用户拍板：登出必须确认）。
- *
- * 登录态切换（修复 2026-08-26）：已登录 = 头像/汉堡共用下拉（身份信息 + 导航 + 个人中心 + 退出登录）；
- * 未登录 = 桌面常显渐变「登录」按钮（点击开全局登录弹窗）+ 移动端汉堡（公开导航 + 登录入口），
- * 不再以「学」头像占位冒充登录样式；挂载静默续期窗口（isLoading）显示骨架占位防闪变。
- *
- * 下拉关闭语义（修复历史缺陷）：Esc 键盘 + 点击外部（mousedown/touchstart）+ 路由变化三重关闭；
- * 退出登录与个人中心同契约：登出清凭据 → 清 react-query 缓存 → 跳首页（登录经全局弹窗）。
- * 本组件仅用于 (main) 路由组（首页/课堂/个人中心）；课程助手对话页使用独立 kimi 侧栏壳。
+ * 登录态契约（沿用 2026-08-26 拍板）：未登录 = 文字链「登录」跳独立登录页 + 胶囊「注册」按钮；
+ * 已登录 = 头像下拉（身份信息 + 个人中心 + 退出登录），登出经 ConfirmDialog 二次确认。
+ * 挂载静默续期窗口（isLoading）显示骨架占位防闪变。
+ * 本组件用于 (main) 路由组（首页/课堂/个人中心）；课程助手对话页使用独立侧栏壳。
  */
-import { List, SignOut, Sparkle } from "@phosphor-icons/react";
+import { SignOut } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useAuth } from "@/lib/auth-context";
+
+/** 客服联系邮箱（顶条展示与 mailto 直达） */
+const SUPPORT_EMAIL = "18229923842@163.com";
 
 /** 主导航模型（课程助手对话页不在其中，见类注释；会话管理归侧边栏不设导航项） */
 const NAV_ITEMS = [
@@ -35,42 +34,69 @@ const NAV_ITEMS = [
 
 /**
  * 导航激活判定：首页精确匹配，子路前缀匹配（/chat/[id] 高亮「课程助手」）
- *
- * @param href 导航目标（NAV_ITEMS）
- * @returns 当前路由是否命中
  */
 function isNavActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
 /**
- * 全站顶部导航壳（主导航 + 用户下拉）
+ * 全站顶部导航壳（深墨顶条 + 吸顶主栏 + 汉堡抽屉 + 用户下拉）
  */
 export function SiteHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { user, logout, openLoginDialog, isLoading } = useAuth();
-  // 用户下拉展开态（Esc / 点击外部 / 路由变化关闭）
+  const { user, logout, isLoading } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   // 登出二次确认（用户拍板：登出必须确认）
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
-  // 下拉关闭：Esc 键盘 + 点击外部（修复历史「无外部点击关闭」缺陷）
+  // 滚动状态：下滑隐藏吸顶栏 / 过阈值切玻璃底（方向感知 + rAF 节流）
   useEffect(() => {
-    if (!menuOpen) {
+    const header = document.getElementById("site-header");
+    if (!header || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       return;
     }
+    let lastY = window.scrollY;
+    let rafId = 0;
+    const tick = () => {
+      const y = window.scrollY;
+      const down = y > lastY && Math.abs(y - lastY) > 1;
+      lastY = y;
+      header.classList.toggle("scrolled", y > 40);
+      // 下滑且远离顶部时隐藏（抽屉展开时不隐藏，保证可回退）
+      header.classList.toggle("header-hide", down && y > 200 && !menuOpenRef.current);
+      rafId = requestAnimationFrame(tick);
+    };
+    const menuOpenRef = { current: false };
+    const syncMenuOpen = () => {
+      menuOpenRef.current = menuOpen;
+    };
+    syncMenuOpen();
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [menuOpen]);
+
+  // 抽屉/用户下拉关闭：Esc + 点击外部 + 路由变化
+  useEffect(() => {
+    if (!menuOpen && !userMenuOpen) {
+      return;
+    }
+    const closeAll = () => {
+      setMenuOpen(false);
+      setUserMenuOpen(false);
+    };
     const onPointer = (event: MouseEvent | TouchEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
+        closeAll();
       }
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setMenuOpen(false);
+        closeAll();
       }
     };
     document.addEventListener("mousedown", onPointer);
@@ -81,12 +107,15 @@ export function SiteHeader() {
       document.removeEventListener("touchstart", onPointer);
       document.removeEventListener("keydown", onKey);
     };
-  }, [menuOpen]);
+  }, [menuOpen, userMenuOpen]);
 
-  // 路由变化自动收起下拉（keydown 监听随 useEffect 卸载，保证不悬挂）
-  useEffect(() => setMenuOpen(false), [pathname]);
+  // 路由变化自动收起全部浮层
+  useEffect(() => {
+    setMenuOpen(false);
+    setUserMenuOpen(false);
+  }, [pathname]);
 
-  /** 退出登录：二次确认后登出清凭据 → 清查询缓存（防账号间串数据）→ 跳首页（登录经全局弹窗） */
+  /** 退出登录：二次确认后登出清凭据 → 清查询缓存（防账号间串数据）→ 跳首页 */
   async function handleLogout() {
     if (loggingOut) {
       return;
@@ -105,190 +134,205 @@ export function SiteHeader() {
   const initial = user?.displayName?.charAt(0) || "学";
 
   return (
-    <header className="sticky top-0 z-40 h-16 border-b border-border bg-bg/80 backdrop-blur">
-      <div className="mx-auto flex h-full w-full max-w-6xl items-center gap-4 px-6">
-        {/* Logo：品牌蓝紫渐变徽标 + 品牌名 */}
-        <Link
-          href="/"
-          className="flex shrink-0 items-center gap-2.5 focus-visible:ring-2 focus-visible:ring-brand"
-        >
-          <span
-            data-testid="site-logo"
-            className="bg-gradient-ai grid size-9 place-items-center rounded-xl text-white shadow-md shadow-brand/30"
-          >
-            <Sparkle size={18} weight="fill" aria-hidden />
-          </span>
-          <span className="font-display text-[17px] font-bold tracking-tight text-text">
-            课程助手
-          </span>
-        </Link>
+    <>
+      {/* ===== 深墨顶条：客服邮箱 + 快捷锚点 ===== */}
+      <div className="bg-ink-900 text-[10.5px] tracking-[0.14em] text-bg/85 uppercase">
+        <div className="mx-auto flex h-11 w-full max-w-[1360px] items-center justify-between px-6">
+          <div className="flex gap-8">
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="transition-colors hover:text-white">
+              {SUPPORT_EMAIL}
+            </a>
+            <Link href="/#services" className="hidden transition-colors hover:text-white sm:inline">
+              平台能力
+            </Link>
+          </div>
+          <div className="hidden gap-8 sm:flex">
+            <a
+              href={`mailto:${SUPPORT_EMAIL}?subject=合作咨询`}
+              className="transition-colors hover:text-white"
+            >
+              合作咨询
+            </a>
+            <Link href="/#knowledge-hub" className="transition-colors hover:text-white">
+              上手指引
+            </Link>
+          </div>
+        </div>
+      </div>
 
-        {/* 主导航：桌面显示，激活态品牌蓝字 + 下划线指示 */}
-        <nav aria-label="主导航" className="hidden flex-1 items-center gap-1 md:flex">
-          {NAV_ITEMS.map((item) => {
-            const active = isNavActive(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`relative rounded-lg px-3 py-2 text-sm transition-colors ${
-                  active
-                    ? "font-medium text-brand-strong"
-                    : "text-muted hover:bg-surface-2 hover:text-text"
-                }`}
-              >
-                {item.label}
-                {active ? (
-                  <span
-                    aria-hidden
-                    className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-gradient-ai"
-                  />
-                ) : null}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* 用户区：已登录 = 桌面头像 / 移动端汉堡共用下拉；未登录 = 桌面登录按钮 + 移动端游客菜单 */}
-        {user ? (
-          <div ref={menuRef} className="relative ml-auto shrink-0 md:ml-0">
+      {/* ===== 吸顶主栏 ===== */}
+      <header
+        id="site-header"
+        data-testid="site-header"
+        className="sticky top-0 z-[100] text-bg transition-[transform,background,box-shadow] duration-500 ease-out"
+        style={{ background: "linear-gradient(rgb(16 12 9 / 28%), rgb(16 12 9 / 0%))" }}
+      >
+        <div className="mx-auto grid h-[78px] w-full max-w-[1360px] grid-cols-[1fr_auto_1fr] items-center px-6 lg:h-20">
+          {/* 左：汉堡 + 搜索 */}
+          <div className="flex items-center gap-5">
             <button
               type="button"
-              aria-label="用户菜单"
+              aria-label="打开菜单"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((open) => !open)}
-              className="flex items-center gap-2 rounded-xl p-1 transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand"
+              data-testid="header-burger"
+              className="group flex flex-col gap-1.5 p-2"
             >
-              <span
-                data-testid="header-avatar"
-                className="bg-gradient-ai hidden size-8 place-items-center rounded-full text-xs font-bold text-white shadow-sm shadow-brand/30 md:grid"
-              >
-                {initial}
-              </span>
-              <span className="grid size-8 place-items-center rounded-lg border border-border bg-surface text-muted md:hidden">
-                <List size={18} aria-hidden />
-              </span>
+              <span className="block h-[1.6px] w-[22px] bg-current transition-transform group-hover:-translate-y-0.5" />
+              <span className="block h-[1.6px] w-[22px] bg-current transition-transform group-hover:translate-y-0.5" />
             </button>
-
-            {menuOpen ? (
-              <div
-                data-testid="user-menu"
-                className="absolute right-0 top-12 z-50 w-60 overflow-hidden rounded-xl border border-border bg-surface p-1.5 shadow-lg"
+            <Link
+              href="/courses"
+              aria-label="搜索课程"
+              className="opacity-90 transition-opacity hover:opacity-100"
+            >
+              <svg
+                width="19"
+                height="19"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                aria-hidden
               >
-                {/* 身份信息 */}
-                <div className="border-b border-border px-3 py-2.5">
-                  <p className="text-sm font-medium text-text">{user?.displayName ?? "未登录"}</p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    账号 {user?.userId ?? "—"} ·{" "}
-                    {user?.role === "STUDENT" ? "学生" : (user?.role ?? "—")}
-                  </p>
-                </div>
-                {/* 移动端导航（桌面导航已常显，此处无需重复） */}
-                <div className="py-1 md:hidden">
-                  {[...NAV_ITEMS, { href: "/profile", label: "个人中心" }].map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setMenuOpen(false)}
-                      className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
-                        isNavActive(pathname, item.href)
-                          ? "font-medium text-brand-strong"
-                          : "text-muted hover:bg-surface-2 hover:text-text"
-                      }`}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-                </div>
-                {/* 个人中心（桌面常驻入口）+ 退出登录 */}
-                <div className="border-t border-border pt-1">
-                  <Link
-                    href="/profile"
-                    onClick={() => setMenuOpen(false)}
-                    className="hidden rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text md:block"
-                  >
-                    个人中心
-                  </Link>
-                  <button
-                    type="button"
-                    aria-label="退出登录"
-                    onClick={() => setLogoutConfirmOpen(true)}
-                    disabled={loggingOut}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <SignOut size={15} aria-hidden />
-                    {loggingOut ? "退出中…" : "退出登录"}
-                  </button>
-                </div>
-              </div>
-            ) : null}
+                <circle cx="11" cy="11" r="6.5" />
+                <path d="M16 16l5 5" />
+              </svg>
+            </Link>
           </div>
-        ) : (
-          <div className="relative ml-auto shrink-0">
-            {isLoading ? (
-              /* 挂载静默续期窗口：骨架占位，防「登录按钮→头像」闪变 */
-              <span aria-hidden className="block size-8 animate-pulse rounded-full bg-surface-2" />
-            ) : (
-              <>
-                {/* 桌面：常显渐变登录按钮（点击开全局登录弹窗） */}
+
+          {/* 中：衬线大字 Logo */}
+          <Link
+            href="/"
+            className="font-serif-display whitespace-nowrap text-xl font-medium tracking-[0.22em] focus-visible:ring-2 focus-visible:ring-bg md:text-[23px]"
+          >
+            <span data-testid="site-logo">问渠学堂</span>
+          </Link>
+
+          {/* 右：认证区 */}
+          <div className="flex items-center justify-end gap-6">
+            {user ? (
+              <div ref={menuRef} className="relative">
                 <button
                   type="button"
-                  onClick={() => openLoginDialog()}
-                  className="hidden rounded-full bg-gradient-ai px-5 py-2 text-sm font-medium text-white shadow-md shadow-brand/30 transition-[transform,opacity] hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-brand md:block"
+                  aria-label="用户菜单"
+                  aria-expanded={userMenuOpen}
+                  onClick={() => setUserMenuOpen((open) => !open)}
+                  className="grid size-9 place-items-center rounded-full border border-bg/40 font-serif-display text-sm transition-colors hover:bg-bg/10"
                 >
-                  登录
+                  <span data-testid="header-avatar">{initial}</span>
                 </button>
-                {/* 移动端：汉堡 + 游客菜单（公开导航 + 登录入口，公开浏览契约） */}
-                <div ref={menuRef} className="md:hidden">
-                  <button
-                    type="button"
-                    aria-label="用户菜单"
-                    aria-expanded={menuOpen}
-                    onClick={() => setMenuOpen((open) => !open)}
-                    className="grid size-8 place-items-center rounded-lg border border-border bg-surface text-muted"
+
+                {userMenuOpen ? (
+                  <div
+                    data-testid="user-menu"
+                    className="absolute right-0 top-12 z-50 w-60 overflow-hidden rounded-lg border border-border bg-surface p-1.5 shadow-lg"
                   >
-                    <List size={18} aria-hidden />
-                  </button>
-                  {menuOpen ? (
-                    <div
-                      data-testid="guest-menu"
-                      className="absolute right-0 top-12 z-50 w-60 overflow-hidden rounded-xl border border-border bg-surface p-1.5 shadow-lg"
-                    >
+                    <div className="border-b border-border px-3 py-2.5 text-text">
+                      <p className="text-sm font-medium">{user?.displayName ?? "未登录"}</p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        账号 {user?.userId ?? "—"} ·{" "}
+                        {user?.role === "STUDENT" ? "学生" : (user?.role ?? "—")}
+                      </p>
+                    </div>
+                    <div className="py-1 md:hidden">
+                      {[...NAV_ITEMS, { href: "/profile", label: "个人中心" }].map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setUserMenuOpen(false)}
+                          className={`block rounded-md px-3 py-2 text-sm transition-colors ${
+                            isNavActive(pathname, item.href)
+                              ? "font-medium text-brand-strong"
+                              : "text-muted hover:bg-surface-2 hover:text-text"
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                    <div className="border-t border-border pt-1">
+                      <Link
+                        href="/profile"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="hidden rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text md:block"
+                      >
+                        个人中心
+                      </Link>
                       <button
                         type="button"
-                        data-testid="guest-login-button"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          openLoginDialog();
-                        }}
-                        className="flex w-full items-center justify-center rounded-lg bg-gradient-ai px-3 py-2 text-sm font-medium text-white"
+                        aria-label="退出登录"
+                        onClick={() => setLogoutConfirmOpen(true)}
+                        disabled={loggingOut}
+                        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        登录
+                        <SignOut size={15} aria-hidden />
+                        {loggingOut ? "退出中…" : "退出登录"}
                       </button>
-                      <div className="mt-1 border-t border-border pt-1">
-                        {NAV_ITEMS.map((item) => (
-                          <Link
-                            key={item.href}
-                            href={item.href}
-                            onClick={() => setMenuOpen(false)}
-                            className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
-                              isNavActive(pathname, item.href)
-                                ? "font-medium text-brand-strong"
-                                : "text-muted hover:bg-surface-2 hover:text-text"
-                            }`}
-                          >
-                            {item.label}
-                          </Link>
-                        ))}
-                      </div>
                     </div>
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : isLoading ? (
+              /* 挂载静默续期窗口：骨架占位防闪变 */
+              <span aria-hidden className="block size-8 animate-pulse rounded-full bg-bg/30" />
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  data-testid="login-link"
+                  className="relative pb-1 text-[11px] tracking-[0.16em] uppercase opacity-85 transition-opacity hover:opacity-100 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:origin-right after:scale-x-0 after:bg-bg after:transition-transform after:duration-500 hover:after:origin-left hover:after:scale-x-100"
+                >
+                  登录
+                </Link>
+                <Link
+                  href="/login?tab=register"
+                  data-testid="register-link"
+                  className="btn-pill btn-cream !py-[13px] !text-[11px]"
+                >
+                  注册
+                </Link>
               </>
             )}
           </div>
-        )}
-      </div>
+        </div>
+
+        {/* ===== 汉堡全屏抽屉（导航面板，桌面/移动共用） ===== */}
+        {menuOpen ? (
+          <div
+            data-testid="nav-drawer"
+            className="absolute inset-x-0 top-full border-t border-bg/15 bg-ink-800/95 backdrop-blur-md"
+          >
+            <nav
+              aria-label="主导航"
+              className="mx-auto grid w-full max-w-[1360px] gap-1 px-6 py-8 md:grid-cols-3"
+            >
+              {NAV_ITEMS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`font-serif-display rounded-md px-4 py-3 text-lg transition-colors ${
+                    isNavActive(pathname, item.href)
+                      ? "bg-bg/10 text-bg"
+                      : "text-bg/75 hover:bg-bg/5 hover:text-bg"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+              {!user ? (
+                <Link
+                  href="/login"
+                  onClick={() => setMenuOpen(false)}
+                  className="rounded-md px-4 py-3 text-sm tracking-widest text-bg/75 uppercase transition-colors hover:bg-bg/5 hover:text-bg md:hidden"
+                >
+                  登录 / 注册
+                </Link>
+              ) : null}
+            </nav>
+          </div>
+        ) : null}
+      </header>
 
       {/* 登出二次确认（用户拍板：登出必须确认） */}
       <ConfirmDialog
@@ -300,6 +344,6 @@ export function SiteHeader() {
         onConfirm={() => void handleLogout()}
         onCancel={() => setLogoutConfirmOpen(false)}
       />
-    </header>
+    </>
   );
 }
