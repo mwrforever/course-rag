@@ -163,4 +163,3 @@ describe("精选课程四态", () => {
     expect(await screen.findByTestId("wenqu-course-card")).toBeInTheDocument();
   });
 });
-

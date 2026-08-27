@@ -14,7 +14,9 @@ test.describe("首页与课程", () => {
     await mockApi(page);
   });
 
-  test("首页公开渲染：问渠学堂品牌壳 + 精选课程卡 + 能力手风琴，无最近会话区块", async ({ page }) => {
+  test("首页公开渲染：问渠学堂品牌壳 + 精选课程卡 + 能力手风琴，无最近会话区块", async ({
+    page,
+  }) => {
     // 不登录直接浏览（公开化核心契约）
     await page.goto("/");
     // 设计稿一品牌壳就位：巨型 Hero 字 + 顶栏 Logo

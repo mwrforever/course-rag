@@ -91,7 +91,9 @@ test.describe("认证流（独立登录页 + 注册）", () => {
     await page.getByTestId("login-submit").click();
     // next 白名单校验通过：回到原受保护路由，且登录响应已种下 middleware 门卫所需 AT cookie
     await expect(page).toHaveURL(/\/chat$/);
-    const authCookie = (await page.context().cookies()).find((cookie) => cookie.name === "commerce_token");
+    const authCookie = (await page.context().cookies()).find(
+      (cookie) => cookie.name === "commerce_token",
+    );
     expect(authCookie?.value).toBe("at-e2e");
   });
 

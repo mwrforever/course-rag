@@ -38,6 +38,17 @@ class RegisterIntegrationTest extends IntegrationTestBase {
     @MockitoBean
     private JavaMailSender mailSender;
 
+    /**
+     * 自给发件地址：本类以 @MockitoBean 替换 JavaMailSender，resolveFromAddress 的
+     * 「回退读 sender 用户名」分支永不生效；CI 环境亦无 .env 提供 MAIL_USERNAME。
+     * 显式注入使正常路径用例聚焦注册契约本身（「未配置 fail-fast」由
+     * RegisterMailSenderTest 单测独立覆盖）。
+     */
+    @org.springframework.test.context.DynamicPropertySource
+    static void registerTestProps(org.springframework.test.context.DynamicPropertyRegistry registry) {
+        registry.add("register.from-email", () -> "noreply-wenqu@test.example");
+    }
+
     // ==================== 正常路径 ====================
 
     @Test
