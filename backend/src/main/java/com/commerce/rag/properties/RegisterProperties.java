@@ -1,9 +1,5 @@
 package com.commerce.rag.properties;
 
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
@@ -25,13 +21,38 @@ import org.springframework.validation.annotation.Validated;
  *
  * @author commerce-rag
  */
+/**
+ * 注记（审查 m2）：jakarta @Positive/@Max 无 Duration 支持实现（HV000030），
+ * 正性约束改由紧凑构造器承载——绑定阶段即抛 IllegalArgumentException，同样满足
+ * 「配置非法启动失败」的宪法 A.2.2 语义。
+ */
 @Validated
 @ConfigurationProperties(prefix = "register")
 public record RegisterProperties(
-        @DefaultValue("PT15M") @NotNull @Positive Duration codeTtl,
-        @DefaultValue("PT60S") @NotNull @Positive Duration resendInterval,
-        @DefaultValue("5") @Min(1) int maxVerifyAttempts,
-        @DefaultValue("10") @Min(1) @Max(600) int maxSendPerIpPerMinute,
+        @DefaultValue("PT15M") Duration codeTtl,
+        @DefaultValue("PT60S") Duration resendInterval,
+        @DefaultValue("5") int maxVerifyAttempts,
+        @DefaultValue("10") int maxSendPerIpPerMinute,
         @DefaultValue("问渠学堂") String fromName,
         @DefaultValue("【问渠学堂】注册验证码") String subject,
-        @DefaultValue("") String fromEmail) {}
+        @DefaultValue("") String fromEmail) {
+
+    /** 紧凑构造器：正性/上限校验在属性绑定时执行，非法配置直接阻断应用启动 */
+    public RegisterProperties {
+        requirePositive(codeTtl, "register.code-ttl");
+        requirePositive(resendInterval, "register.resend-interval");
+        if (maxVerifyAttempts < 1) {
+            throw new IllegalArgumentException("register.max-verify-attempts 必须 ≥ 1");
+        }
+        if (maxSendPerIpPerMinute < 1 || maxSendPerIpPerMinute > 600) {
+            throw new IllegalArgumentException("register.max-send-per-ip-per-minute 必须在 1-600 之间");
+        }
+    }
+
+    /** 时长参数正性断言（null / 零 / 负值均视为非法配置） */
+    private static void requirePositive(Duration value, String name) {
+        if (value == null || value.isNegative() || value.isZero()) {
+            throw new IllegalArgumentException(name + " 必须为正时长");
+        }
+    }
+}

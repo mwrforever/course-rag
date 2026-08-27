@@ -89,9 +89,10 @@ test.describe("认证流（独立登录页 + 注册）", () => {
     await page.getByTestId("login-account-input").fill("student");
     await page.getByTestId("login-password-input").fill("123456");
     await page.getByTestId("login-submit").click();
-    // next 白名单校验通过：回到原受保护路由且已建立会话
+    // next 白名单校验通过：回到原受保护路由，且登录响应已种下 middleware 门卫所需 AT cookie
     await expect(page).toHaveURL(/\/chat$/);
-    await expect(page.getByTestId("header-avatar")).toBeVisible();
+    const authCookie = (await page.context().cookies()).find((cookie) => cookie.name === "commerce_token");
+    expect(authCookie?.value).toBe("at-e2e");
   });
 
   test("登录后可访问受保护路由（cookie 放行 middleware）", async ({ page }) => {
