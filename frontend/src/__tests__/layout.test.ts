@@ -383,6 +383,17 @@ describe('AdminLayout 渲染（白色侧栏 · Edukors 形态）', () => {
     wrapper.unmount()
   })
 
+  it('面包屑去重：分组名与页面标题同名（仪表盘）不重复渲染层级', async () => {
+    const { wrapper } = await mountLayout('TEACHER', '/dashboard')
+
+    // 修复前：仪表盘为单子项直链分组且分组名与 meta.title 同名，
+    // 面包屑渲染「首页 / 仪表盘 / 仪表盘」末两级重复（N9 视觉核对未决差异 #1）
+    const text = wrapper.find('[data-testid="breadcrumb"]').text()
+    expect(text).toContain('首页')
+    expect(text.match(/仪表盘/g)).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('面包屑兜底：路由不在导航分组时仅展示页面标题', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)

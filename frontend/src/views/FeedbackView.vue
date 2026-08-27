@@ -338,10 +338,13 @@ function confirmDelete() {
       </div>
     </div>
 
-    <!-- 图 2：意图×赞踩堆叠条卡（stats 空时降级区块空态） -->
+    <!-- 图 2：意图×赞踩堆叠条卡（stats 空时降级区块空态）。
+         高度随意图行数自适应（视觉核对 N9 未决差异 #2）：h-48 为三意图满配高度，
+         后端意图枚举固定 3 类、stats 缺项时行数更少，固定高度会在卡内留下大片死区；
+         空态分支保留 h-48 定高以承载文案垂直居中 -->
     <div v-reveal="160" class="mt-6 rounded-2xl border border-border bg-surface p-6 shadow-xs">
       <h2 class="text-lg font-extrabold tracking-tight text-text">意图 × 赞踩分布</h2>
-      <div v-if="stats.length > 0" class="mt-4 h-48">
+      <div v-if="stats.length > 0" class="mt-4">
         <IntentLikeBar :stats="stats" />
       </div>
       <div v-else class="flex h-48 items-center justify-center">

@@ -286,11 +286,18 @@ const pageKey = computed(() => resolvePageKey(route))
 
 // ── 顶栏面包屑：由导航分组定位「分组名 / 页面标题」──
 const breadcrumbs = computed(() => {
+  const pageTitle = route.meta.title ?? ''
   const group = groups.value.find((g) => g.items.some((item) => isGroupActive(route.path, item.to)))
   if (!group) {
-    return [{ label: route.meta.title ?? '' }]
+    return [{ label: pageTitle }]
   }
-  return [{ label: group.label }, { label: route.meta.title ?? '' }]
+  // 单子项直链分组（如仪表盘）分组名与页面标题同名时去重：
+  // 避免「首页 / 仪表盘 / 仪表盘」末两级重复（视觉核对 N9 未决差异 #1）；
+  // 其余页面分组名与标题不同（知识库 / 知识库管理），仍渲染两级
+  if (group.label === pageTitle) {
+    return [{ label: pageTitle }]
+  }
+  return [{ label: group.label }, { label: pageTitle }]
 })
 
 /** 用户菜单角色文案（角色枚举 → 中文展示；未恢复登录态时为空串） */
