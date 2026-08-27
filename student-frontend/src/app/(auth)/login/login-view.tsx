@@ -58,10 +58,11 @@ export function LoginView() {
     toastTimerRef.current = window.setTimeout(() => setToast(null), 3200);
   }
 
-  /** 登录成功：回跳 next 或首页 */
+  /** 登录成功：回跳目标取 ?next（仅放行站内相对路径，防开放重定向）；非法值收敛回首页 */
   function handleLoginSuccess() {
+    const raw = searchParams.get("next");
     showToast("登录成功，正在带你回到学习现场…");
-    router.push(searchParams.get("next") || "/");
+    router.push(raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/");
   }
 
   /**

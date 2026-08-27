@@ -15,6 +15,7 @@ import { PasswordField } from "@/components/auth/password-field";
 import { loginFormSchema } from "@/lib/auth-schemas";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
+import { SUPPORT_EMAIL } from "@/lib/site-config";
 
 /** 登录面板属性 */
 interface LoginPanelProps {
@@ -129,7 +130,7 @@ export function LoginPanel({ onSuccess }: LoginPanelProps) {
 
       <div className="mt-2 mb-6 flex items-center justify-between">
         <a
-          href="mailto:18229923842@163.com?subject=找回密码"
+          href={`mailto:${SUPPORT_EMAIL}?subject=找回密码`}
           className="border-b border-transparent pb-0.5 text-[11px] tracking-[0.1em] text-muted uppercase transition-colors hover:border-ink hover:text-ink"
         >
           忘记密码？

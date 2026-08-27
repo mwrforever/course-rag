@@ -19,7 +19,8 @@ import jakarta.validation.constraints.Size;
  * @author commerce-rag
  */
 public record RegisterRequest(
-        @NotBlank(message = "邮箱不能为空") @Email(message = "邮箱格式不正确") String email,
+        @NotBlank(message = "邮箱不能为空") @Email(message = "邮箱格式不正确") @Size(max = 255, message = "邮箱最长 255 字符")
+                String email,
         @NotBlank(message = "验证码不能为空") @Pattern(regexp = "^\\d{6}$", message = "验证码为 6 位数字") String code,
         @NotBlank(message = "密码不能为空") @Size(min = 8, max = 64, message = "密码长度须在 8-64 位之间") String password,
         @Size(max = 50, message = "昵称最长 50 字符") String nickname) {}

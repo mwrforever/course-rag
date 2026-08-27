@@ -24,10 +24,11 @@ public interface IRegisterService {
      * <p>执行顺序刻意安排为：先判重再抢锁最后存码发信——刷接口者在最廉价的查重层即被挡下。</p>
      *
      * @param rawEmail 用户提交的邮箱原文（方法内小写归一化）
-     * @throws com.commerce.rag.exception.BizException CONFLICT(409)：邮箱已注册 / 重发间隔未到；
+     * @param clientIp 发起请求的客户端 IP（跨邮箱批量刷信防护的限速维度，由 Controller 提取）
+     * @throws com.commerce.rag.exception.BizException CONFLICT(409)：邮箱已注册 / 重发间隔未到 / IP 配额耗尽；
      *                                                 SERVICE_UNAVAILABLE(503)：SMTP 发送失败（同时清除已存验证码）
      */
-    void sendRegisterCode(String rawEmail);
+    void sendRegisterCode(String rawEmail, String clientIp);
 
     /**
      * 校验验证码并完成学生账号注册

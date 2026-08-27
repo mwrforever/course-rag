@@ -65,7 +65,7 @@ test.describe("认证流（独立登录页 + 注册）", () => {
     // 步骤二：完整注册信息提交（昵称可选不填），正确验证码走通自动登录
     await page.getByTestId("reg-code-input").fill("654321");
     await page.getByTestId("reg-password-input").fill("Password-88");
-    await page.getByTestId("terms-checkbox").click({ force: true });
+    await page.getByTestId("terms-row").click();
     await page.getByTestId("register-submit").click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByTestId("header-avatar")).toBeVisible();
@@ -76,16 +76,22 @@ test.describe("认证流（独立登录页 + 注册）", () => {
     await page.getByTestId("reg-email-input").fill("student@example.com");
     await page.getByTestId("reg-code-input").fill("000000");
     await page.getByTestId("reg-password-input").fill("Password-88");
-    await page.getByTestId("terms-checkbox").click({ force: true });
+    await page.getByTestId("terms-row").click();
     await page.getByTestId("register-submit").click();
     await expect(page.getByText("验证码错误")).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test("未登录访问 /chat：middleware 回首页 ?login=1 并自动打开登录弹窗", async ({ page }) => {
+  test("未登录访问 /chat：middleware 直引独立登录页携带 next，登录后站内回跳", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page).toHaveURL(/\?login=1/);
-    await expect(page.getByRole("dialog", { name: "登录课程助手" })).toBeVisible();
+    // m4 审查修订：深度链路兜底直引独立登录页并携带原路径（替代旧 ?login=1 首页弹窗契约）
+    await expect(page).toHaveURL(/\/login\?next=%2Fchat/);
+    await page.getByTestId("login-account-input").fill("student");
+    await page.getByTestId("login-password-input").fill("123456");
+    await page.getByTestId("login-submit").click();
+    // next 白名单校验通过：回到原受保护路由且已建立会话
+    await expect(page).toHaveURL(/\/chat$/);
+    await expect(page.getByTestId("header-avatar")).toBeVisible();
   });
 
   test("登录后可访问受保护路由（cookie 放行 middleware）", async ({ page }) => {

@@ -9,13 +9,10 @@
  * → MethodCollage（问渠的方法·宝丽来拼贴视差）→ Testimonials（学员声音轮播）
  * → VoicesSection（暗景语录切换）→ KnowledgeHub（上手指引横滑）
  * → EntryTiles（快捷入口宫格）；底栏由布局 SiteFooter 承担。
- *
- * 公开浏览契约：首页全程可匿名访问；?login=1 参数仍走全局登录弹窗
- * （middleware 带回的受保护路由拦截流）。所有动效对 prefers-reduced-motion 静态降级。
+ * * 公开浏览契约：首页全程可匿名访问；未登录访问受保护路由由 middleware 直引
+ * 独立登录页（/login?next=）。所有动效对 prefers-reduced-motion 静态降级。
  */
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { EntryTiles } from "@/components/home/entry-tiles";
 import { FeaturedCourses } from "@/components/home/featured-courses";
 import { FloatingAssistantFab } from "@/components/home/floating-assistant-fab";
@@ -32,18 +29,6 @@ import { useAuth } from "@/lib/auth-context";
  * 首页
  */
 export default function HomePage() {
-  const { openLoginDialog } = useAuth();
-  const router = useRouter();
-
-  // 未登录访问受保护路由被 middleware 带回 /?login=1：自动打开登录弹窗并清参（防重触发）
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("login") === "1") {
-      openLoginDialog();
-      router.replace("/", { scroll: false });
-    }
-  }, [openLoginDialog, router]);
-
   return (
     <div>
       <HomeHero />

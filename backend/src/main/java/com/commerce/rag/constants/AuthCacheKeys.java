@@ -18,4 +18,7 @@ public interface AuthCacheKeys {
 
     /** 发送间隔锁键前缀（后接邮箱；值 = 占位符，TTL = register.resend-interval，SET NX 原子抢占） */
     String REGISTER_SEND_LOCK_PREFIX = "auth:reg:send:";
+
+    /** 按 IP 发码配额计数键前缀（后接客户端 IP；值 = 窗口内已发送次数，跨邮箱批量刷信防护） */
+    String REGISTER_IP_QUOTA_PREFIX = "auth:reg:ipq:";
 }

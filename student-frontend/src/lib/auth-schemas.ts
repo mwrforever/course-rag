@@ -26,6 +26,7 @@ export const sendCodeSchema = z.object({
     .string()
     .trim()
     .toLowerCase()
+    .max(255, "邮箱最长 255 字符")
     .refine((value) => EMAIL_PATTERN.test(value), { message: "请输入有效的邮箱地址" }),
 });
 
@@ -43,6 +44,7 @@ export const registerFormSchema = z.object({
     .string()
     .trim()
     .toLowerCase()
+    .max(255, "邮箱最长 255 字符")
     .refine((value) => EMAIL_PATTERN.test(value), { message: "请输入有效的邮箱地址" }),
   /** 邮箱验证码（6 位数字，从邮件转抄） */
   code: z.string().regex(/^\d{6}$/, "验证码为 6 位数字"),

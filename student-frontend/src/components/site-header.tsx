@@ -22,8 +22,7 @@ import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useAuth } from "@/lib/auth-context";
 
-/** 客服联系邮箱（顶条展示与 mailto 直达） */
-const SUPPORT_EMAIL = "18229923842@163.com";
+import { SUPPORT_EMAIL } from "@/lib/site-config";
 
 /** 主导航模型（课程助手对话页不在其中，见类注释；会话管理归侧边栏不设导航项） */
 const NAV_ITEMS = [

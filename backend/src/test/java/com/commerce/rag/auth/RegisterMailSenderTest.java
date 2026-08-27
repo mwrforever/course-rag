@@ -34,7 +34,7 @@ class RegisterMailSenderTest {
 
     /** 与生产一致的默认配置（15 分钟有效 → HTML 内应出现“15 分钟”） */
     private final RegisterProperties properties =
-            new RegisterProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), 5, "问渠学堂", "【问渠学堂】注册验证码", "");
+            new RegisterProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), 5, 10, "问渠学堂", "【问渠学堂】注册验证码", "");
 
     private JavaMailSenderImpl sender;
 

@@ -11,8 +11,9 @@
  */
 import Link from "next/link";
 
-/** 客服联系邮箱 */
-const SUPPORT_EMAIL = "18229923842@163.com";
+import { SUPPORT_EMAIL } from "@/lib/site-config";
+
+/* 本组件为 RSC：site-config 为纯常量模块无 "use client"，可安全复用 */
 
 /** 探索导航列（与顶导同源语义） */
 const FOOTER_EXPLORE = [

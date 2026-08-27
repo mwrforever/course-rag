@@ -164,13 +164,3 @@ describe("精选课程四态", () => {
   });
 });
 
-describe("受保护路由回跳弹窗", () => {
-  it("URL 带 ?login=1（middleware 携带）→ 自动打开登录弹窗并清参", async () => {
-    window.history.replaceState(null, "", "/?login=1");
-    const openLoginDialog = vi.fn();
-    authMock.useAuth.mockReturnValue(defaultAuth({ openLoginDialog }));
-    renderHome();
-    expect(openLoginDialog).toHaveBeenCalledTimes(1);
-    expect(routerMock.replace).toHaveBeenCalledWith("/", { scroll: false });
-  });
-});

@@ -67,6 +67,33 @@ public class RegisterCodeCacheService {
         redisTemplate.opsForValue().set(AuthCacheKeys.REGISTER_CODE_PREFIX + email, code, properties.codeTtl());
     }
 
+    /** 按秒的分钟窗（固定 60s 窗口，配额阈值来自 register.max-send-per-ip-per-minute） */
+    private static final long IP_QUOTA_WINDOW_SECONDS = 60;
+
+    /**
+     * 尝试为该客户端 IP 扣减发码配额（跨邮箱批量刷信防护——审查 M2 加固）
+     *
+     * <p>实现：INCR 计数 + 首次置 EXPIRE 的固定窗口计数器。INCR/EXPIRE 两步仅在
+     * 「窗口内首请求」存在极小 TTL 双写竞态，最坏多延一次过期时间，无安全语义影响，
+     * 故不需 Lua。键 = {@link AuthCacheKeys#REGISTER_IP_QUOTA_PREFIX} + ip。</p>
+     *
+     * @param clientIp 客户端 IP（可空/未知时回退字面量 unknown，保证仍受全局限速约束）
+     * @return true = 允许本次发送；false = 当前分钟窗配额耗尽，应拒绝
+     */
+    public boolean tryAcquireIpQuota(String clientIp) {
+        String key = AuthCacheKeys.REGISTER_IP_QUOTA_PREFIX
+                + (clientIp == null || clientIp.isBlank() ? "unknown" : clientIp);
+        Long count = redisTemplate.opsForValue().increment(key);
+        if (count == null) {
+            // Redis 异常视作「额度未计入」放行，避免基础设施抖动阻断正常注册
+            return true;
+        }
+        if (count == 1L) {
+            redisTemplate.expire(key, java.time.Duration.ofSeconds(IP_QUOTA_WINDOW_SECONDS));
+        }
+        return count <= properties.maxSendPerIpPerMinute();
+    }
+
     /**
      * 清除某邮箱的全部注册相关键（验证码 + 尝试计数）
      *

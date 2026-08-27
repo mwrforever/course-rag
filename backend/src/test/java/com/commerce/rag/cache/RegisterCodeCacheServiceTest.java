@@ -34,7 +34,7 @@ class RegisterCodeCacheServiceTest {
 
     /** 与生产一致的默认配置实例（record 直出，无 Spring 上下文依赖） */
     private final RegisterProperties properties =
-            new RegisterProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), 5, "问渠学堂", "主题", "");
+            new RegisterProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), 5, 10, "问渠学堂", "主题", "");
 
     @Mock
     private StringRedisTemplate redisTemplate;
@@ -85,6 +85,31 @@ class RegisterCodeCacheServiceTest {
         service.evict(EMAIL);
 
         verify(redisTemplate).delete(expectedKeys);
+    }
+
+    @Test
+    @DisplayName("tryAcquireIpQuota：窗口内前 N 次放行，超阈值拒绝；首击写入过期时间")
+    void tryAcquireIpQuota_fixedWindowCounts() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.increment(AuthCacheKeys.REGISTER_IP_QUOTA_PREFIX + "10.0.0.1"))
+                .thenReturn(1L, 10L, 11L);
+
+        assertThat(service.tryAcquireIpQuota("10.0.0.1")).isTrue();
+        // 第 10 次 = 阈值边界仍放行；第 11 次超出即拒
+        assertThat(service.tryAcquireIpQuota("10.0.0.1")).isTrue();
+        assertThat(service.tryAcquireIpQuota("10.0.0.1")).isFalse();
+        verify(redisTemplate)
+                .expire(eq(AuthCacheKeys.REGISTER_IP_QUOTA_PREFIX + "10.0.0.1"), eq(Duration.ofSeconds(60)));
+    }
+
+    @Test
+    @DisplayName("tryAcquireIpQuota：INCR 返回 null（Redis 异常）视为未计入而放行")
+    void tryAcquireIpQuota_degradesOpenOnRedisFailure() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.increment(AuthCacheKeys.REGISTER_IP_QUOTA_PREFIX + "unknown"))
+                .thenReturn(null);
+
+        assertThat(service.tryAcquireIpQuota(null)).isTrue();
     }
 
     @Test

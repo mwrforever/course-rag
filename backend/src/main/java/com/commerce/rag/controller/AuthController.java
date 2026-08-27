@@ -3,6 +3,7 @@ package com.commerce.rag.controller;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.auth.AuthSessionService;
 import com.commerce.rag.auth.DeviceKickService;
+import com.commerce.rag.auth.RegisterMailSender;
 import com.commerce.rag.auth.TokenService;
 import com.commerce.rag.dto.ApiResponse;
 import com.commerce.rag.dto.LoginRequest;
@@ -134,9 +135,10 @@ public class AuthController {
      * 已注册邮箱拒绝（409）、HTML 邮件 15 分钟有效。业务失败语义：409 频控或已注册 / 503 SMTP 故障。</p>
      */
     @PostMapping("/register/code")
-    public ApiResponse<Void> sendRegisterCode(@Valid @RequestBody RegisterCodeRequest request) {
-        log.info("收到注册验证码发送请求");
-        registerService.sendRegisterCode(request.email());
+    public ApiResponse<Void> sendRegisterCode(
+            @Valid @RequestBody RegisterCodeRequest request, HttpServletRequest httpRequest) {
+        log.info("收到注册验证码发送请求: email={}", RegisterMailSender.maskEmail(request.email()));
+        registerService.sendRegisterCode(request.email(), getClientIp(httpRequest));
         return ApiResponse.ok();
     }
 

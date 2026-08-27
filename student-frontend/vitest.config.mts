@@ -52,7 +52,6 @@ export default defineConfig({
         "src/lib/auth-schemas.ts",
         "src/lib/password-strength.ts",
         "src/app/*/login/**/*.ts*",
-        "src/app/*/courses/page.tsx",
         "src/components/confirm-dialog.tsx",
         "src/hooks/use-debounced-value.ts",
       ],

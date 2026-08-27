@@ -42,7 +42,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 class RegisterServiceImplTest {
 
     private final RegisterProperties properties =
-            new RegisterProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), 5, "问渠学堂", "主题", "");
+            new RegisterProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), 5, 10, "问渠学堂", "主题", "");
 
     @Mock
     private ISysUserService sysUserService;
@@ -68,10 +68,11 @@ class RegisterServiceImplTest {
     @Test
     @DisplayName("发码成功：先查重→抢锁→存码→发信全链有序；邮箱小写归一化贯穿")
     void sendRegisterCode_happyPathStoresAndSendsNormalizedEmail() {
+        when(codeCache.tryAcquireIpQuota("203.0.113.7")).thenReturn(true);
         when(sysUserService.existsByEmail("zhang.san@example.com")).thenReturn(false);
         when(codeCache.tryAcquireSendSlot("zhang.san@example.com")).thenReturn(true);
 
-        service.sendRegisterCode(" ZHANG.San@Example.COM ");
+        service.sendRegisterCode(" ZHANG.San@Example.COM ", "203.0.113.7");
 
         // 存储与发信使用的验证码一致且为 6 位数字
         ArgumentCaptor<String> codeCaptor = ArgumentCaptor.forClass(String.class);
@@ -84,9 +85,10 @@ class RegisterServiceImplTest {
     @Test
     @DisplayName("发码被拒：邮箱已注册 → 409，且不触碰频控锁与发件（最廉价拦截在前）")
     void sendRegisterCode_rejectsRegisteredEmailAs409() {
+        when(codeCache.tryAcquireIpQuota("1.1.1.1")).thenReturn(true);
         when(sysUserService.existsByEmail("taken@example.com")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.sendRegisterCode("taken@example.com"))
+        assertThatThrownBy(() -> service.sendRegisterCode("taken@example.com", "1.1.1.1"))
                 .isInstanceOf(BizException.class)
                 .satisfies(e -> assertThat(((BizException) e).getErrorCode()).isEqualTo(ErrorCode.CONFLICT))
                 .hasMessageContaining("已注册");
@@ -98,10 +100,11 @@ class RegisterServiceImplTest {
     @Test
     @DisplayName("发码被拒：重发间隔窗口内 → 409 且提示秒数来自配置")
     void sendRegisterCode_enforcesResendIntervalAs409() {
+        when(codeCache.tryAcquireIpQuota("1.1.1.1")).thenReturn(true);
         when(sysUserService.existsByEmail("a@example.com")).thenReturn(false);
         when(codeCache.tryAcquireSendSlot("a@example.com")).thenReturn(false);
 
-        assertThatThrownBy(() -> service.sendRegisterCode("a@example.com"))
+        assertThatThrownBy(() -> service.sendRegisterCode("a@example.com", "1.1.1.1"))
                 .isInstanceOf(BizException.class)
                 .satisfies(e -> assertThat(((BizException) e).getErrorCode()).isEqualTo(ErrorCode.CONFLICT))
                 .hasMessageContaining("60");
@@ -110,14 +113,30 @@ class RegisterServiceImplTest {
     }
 
     @Test
+    @DisplayName("发码被拒：IP 分钟窗配额耗尽 → 409，且不触碰邮箱细粒度闸门")
+    void sendRegisterCode_rejectsWhenIpQuotaExhausted() {
+        when(codeCache.tryAcquireIpQuota("9.9.9.9")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.sendRegisterCode("c@example.com", "9.9.9.9"))
+                .isInstanceOf(BizException.class)
+                .satisfies(e -> assertThat(((BizException) e).getErrorCode()).isEqualTo(ErrorCode.CONFLICT))
+                .hasMessageContaining("上限");
+
+        verify(sysUserService, never()).existsByEmail(anyString());
+        verify(mailSender, never()).sendRegisterCode(anyString(), anyString());
+    }
+
+    @Test
     @DisplayName("发码失败兜底：SMTP 异常时清除已存验证码并透传 503")
     void sendRegisterCode_evictsStoredCodeWhenSmtpFails() {
+        when(codeCache.tryAcquireIpQuota("8.8.8.8")).thenReturn(true);
         when(sysUserService.existsByEmail("b@example.com")).thenReturn(false);
         when(codeCache.tryAcquireSendSlot("b@example.com")).thenReturn(true);
         BizException smtpFailure = new BizException(ErrorCode.SERVICE_UNAVAILABLE, "验证码邮件发送失败，请稍后重试");
         org.mockito.Mockito.doThrow(smtpFailure).when(mailSender).sendRegisterCode(anyString(), anyString());
 
-        assertThatThrownBy(() -> service.sendRegisterCode("b@example.com")).isSameAs(smtpFailure);
+        assertThatThrownBy(() -> service.sendRegisterCode("b@example.com", "8.8.8.8"))
+                .isSameAs(smtpFailure);
 
         verify(codeCache).evict("b@example.com");
     }

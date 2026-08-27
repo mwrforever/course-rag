@@ -54,8 +54,14 @@ public class RegisterServiceImpl implements IRegisterService {
      * @param rawEmail 用户提交的邮箱原文（内部小写归一化后参与全部键名与查重）
      */
     @Override
-    public void sendRegisterCode(String rawEmail) {
+    public void sendRegisterCode(String rawEmail, String clientIp) {
         String email = normalizeEmail(rawEmail);
+
+        // 0. 跨邮箱批量刷信防护（审查 M2）：先做按 IP 分钟窗配额，再进按邮箱细粒度闸门——
+        //    攻击者换邮箱打点也无法绕过本层（先挡人群、再挡个体，从廉价到昂贵排序）
+        if (!registerCodeCacheService.tryAcquireIpQuota(clientIp)) {
+            throw new BizException(ErrorCode.CONFLICT, "发送次数已达上限，请稍后再试");
+        }
 
         // 1. 已注册拦截（含 DISABLED——禁用账户同样占用邮箱唯一索引，不允许重复建号）
         if (sysUserService.existsByEmail(email)) {
@@ -82,7 +88,7 @@ public class RegisterServiceImpl implements IRegisterService {
         }
 
         log.info(
-                "注册验证码下发成功: email={}, ttlMinutes={}s",
+                "注册验证码下发成功: email={}, ttlSeconds={}s",
                 RegisterMailSender.maskEmail(email),
                 properties.codeTtl().toSeconds());
     }
