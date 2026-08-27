@@ -6,10 +6,13 @@
  * 1. 列表：#id / 用户 / 标题 / model / 状态 Badge（ACTIVE emerald / CLOSED slate）/
  *    最后消息时间 / 创建时间
  * 2. 详情 Drawer 700px：sessionApi.detail 回放完整 messages 只读流
- *    （role/content/intentType/seq，逐条消息卡片，服务端时序）
+ *    （role/content/intentType/seq，逐条消息气泡，服务端时序）
  * 3. 关闭会话：仅 ACTIVE 行入口 → patch close → toast → 刷新
- * 4. 删除会话：二次确认（danger，级联软删消息与 Run）
+ * 4. 删除会话：二次确认（ConfirmDialog danger，级联软删消息与 Run）
  * 5. 四态：loading 骨架 / empty / error 横幅重试 / 正常 + 分页
+ *
+ * 视觉形态（2026-08-27 紫系换肤 N8b）：PageHead 页头 + 卡片化 DataTable
+ * （lav 表头 / 行悬停 / 行级联入场，N2 组件）+ EmptyState 统一空态 + ConfirmDialog。
  *
  * 契约要点：id/total 为 Long 字符串铁律；seq 为 Integer 保持 number；
  * 时间 ISO-8601 短格式；仅超管可进（路由层已拦截，页面不做二次角色判断）。
@@ -18,10 +21,14 @@
  */
 import { computed, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { PhSpinnerGap, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhChatCircleDots, PhSpinnerGap } from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DataTable } from '@/components/ui/data-table'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageHead } from '@/components/ui/page-head'
 import { ApiError, sessionApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime } from '@/lib/utils'
@@ -175,83 +182,100 @@ function confirmDelete() {
 </script>
 
 <template>
-  <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
-  <div
-    v-if="listError"
-    role="alert"
-    class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
-  >
-    <span class="text-sm text-danger">{{ listError }}</span>
-    <Button variant="outline" size="sm" data-testid="retry-sessions" @click="refetch">重试</Button>
-  </div>
-
-  <!-- 加载态：表格骨架屏（表头 + 5 行灰条，与最终表格同形） -->
-  <div
-    v-else-if="isLoading"
-    data-testid="session-skeleton"
-    class="overflow-hidden rounded-xl border border-border bg-surface"
-    aria-label="会话列表加载中"
-  >
-    <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
-      <div v-for="i in 7" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-slate-200" />
-    </div>
-    <div
-      v-for="i in 5"
-      :key="`row-${i}`"
-      class="h-11 animate-pulse border-b border-border bg-slate-50"
+  <div class="flex flex-col gap-5">
+    <!-- 页头：标题 + 副题（滚动入场，设计稿 page-head 形态） -->
+    <PageHead
+      v-reveal
+      title="会话审计"
+      subtitle="学生发起的 AI 对话会话在此只读汇聚，支持逐条回放与治理"
     />
-  </div>
 
-  <!-- 空态：无会话文案（禁裸「暂无数据」） -->
-  <div
-    v-else-if="sessions.length === 0"
-    class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
-  >
-    <PhWarningCircle class="h-8 w-8 text-text-subtle" />
-    <p class="mt-3 text-sm font-medium text-text">还没有会话</p>
-    <p class="mt-1 text-xs text-text-muted">学生发起的对话会话将在此审计维度汇聚</p>
-  </div>
+    <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
+    <div
+      v-if="listError"
+      role="alert"
+      class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
+    >
+      <span class="text-sm text-danger">{{ listError }}</span>
+      <Button variant="outline" size="sm" data-testid="retry-sessions" @click="refetch">
+        重试
+      </Button>
+    </div>
 
-  <!-- 正常态：分页表格（#id/用户/标题/model/状态/最后消息/创建时间/操作） -->
-  <template v-else>
-    <div class="overflow-hidden rounded-xl border border-border bg-surface">
-      <table data-testid="session-table" class="w-full text-sm">
-        <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
-          <tr>
-            <th class="w-20 px-4 py-2.5 font-medium">#id</th>
-            <th class="w-28 px-4 py-2.5 font-medium">用户</th>
-            <th class="px-4 py-2.5 font-medium">标题</th>
-            <th class="w-28 px-4 py-2.5 font-medium">model</th>
-            <th class="w-24 px-4 py-2.5 font-medium">状态</th>
-            <th class="w-32 px-4 py-2.5 font-medium">最后消息</th>
-            <th class="w-32 px-4 py-2.5 font-medium">创建时间</th>
-            <th class="w-44 px-4 py-2.5 text-right font-medium">操作</th>
-          </tr>
-        </thead>
-        <tbody>
+    <!-- 加载态：表格骨架屏（表头 + 5 行灰条，与最终表格同形） -->
+    <div
+      v-else-if="isLoading"
+      data-testid="session-skeleton"
+      class="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs"
+      aria-label="会话列表加载中"
+    >
+      <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-5 py-3.5">
+        <div
+          v-for="i in 7"
+          :key="`head-${i}`"
+          class="h-3 w-20 animate-pulse rounded bg-slate-200"
+        />
+      </div>
+      <div
+        v-for="i in 5"
+        :key="`row-${i}`"
+        class="h-11 animate-pulse border-b border-border last:border-b-0 bg-slate-50"
+      />
+    </div>
+
+    <!-- 空态：统一空态形态（图标圆 + 标题 + 描述） -->
+    <div
+      v-else-if="sessions.length === 0"
+      class="rounded-2xl border border-border bg-surface shadow-xs"
+    >
+      <EmptyState title="还没有会话" description="学生发起的对话会话将在此审计维度汇聚">
+        <template #icon>
+          <PhChatCircleDots class="h-6 w-6" aria-hidden="true" />
+        </template>
+      </EmptyState>
+    </div>
+
+    <!-- 正常态：分页表格（#id/用户/标题/model/状态/最后消息/创建时间/操作） -->
+    <template v-else>
+      <div
+        v-reveal="80"
+        class="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs"
+      >
+        <!-- DataTable 承担表格视觉壳（lav 圆角表头/行悬停/行级联入场），单元格由插槽提供 -->
+        <DataTable data-testid="session-table" label="会话审计列表">
+          <template #header>
+            <tr>
+              <th class="w-20">#id</th>
+              <th class="w-28">用户</th>
+              <th>标题</th>
+              <th class="w-28">model</th>
+              <th class="w-24">状态</th>
+              <th class="w-32">最后消息</th>
+              <th class="w-32">创建时间</th>
+              <th class="w-44">操作</th>
+            </tr>
+          </template>
           <tr
             v-for="s in sessions"
             :key="s.id"
             :data-testid="`row-${s.id}`"
-            class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
+            class="transition-colors duration-150"
           >
-            <td class="px-4 tabular-nums text-text-muted">#{{ s.id }}</td>
-            <td class="px-4 tabular-nums text-text-muted">{{ s.userId }}</td>
-            <td class="max-w-[240px] px-4">
+            <td class="tabular-nums text-text-muted">#{{ s.id }}</td>
+            <td class="tabular-nums text-text-muted">{{ s.userId }}</td>
+            <td class="max-w-[240px]">
               <p class="truncate font-medium text-text" :title="s.title">{{ s.title }}</p>
             </td>
-            <td class="px-4 text-text-muted">{{ s.model || '未指定' }}</td>
-            <td class="px-4">
+            <td class="text-text-muted">{{ s.model || '未指定' }}</td>
+            <td>
               <Badge :data-testid="`session-status-${s.id}`" :variant="statusVariant(s.status)">
                 {{ s.status }}
               </Badge>
             </td>
-            <td class="px-4 tabular-nums text-text-muted">
-              {{ formatDateTime(s.lastMessageAt) }}
-            </td>
-            <td class="px-4 tabular-nums text-text-muted">{{ formatDateTime(s.createdAt) }}</td>
-            <td class="px-4 text-right">
-              <div class="flex items-center justify-end gap-1">
+            <td class="tabular-nums text-text-muted">{{ formatDateTime(s.lastMessageAt) }}</td>
+            <td class="tabular-nums text-text-muted">{{ formatDateTime(s.createdAt) }}</td>
+            <td>
+              <div class="flex items-center gap-1.5">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -283,38 +307,38 @@ function confirmDelete() {
               </div>
             </td>
           </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
-    <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
-      <span>
-        共 <span class="tabular-nums text-text">{{ total }}</span> 条
-      </span>
-      <div class="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          data-testid="prev-page"
-          :disabled="page <= 1"
-          @click="changePage(page - 1)"
-        >
-          上一页
-        </Button>
-        <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
-        <Button
-          variant="outline"
-          size="sm"
-          data-testid="next-page"
-          :disabled="page >= totalPages"
-          @click="changePage(page + 1)"
-        >
-          下一页
-        </Button>
+        </DataTable>
       </div>
-    </div>
-  </template>
+
+      <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
+      <div class="flex items-center justify-between text-sm text-text-muted">
+        <span>
+          共 <span class="tabular-nums text-text">{{ total }}</span> 条
+        </span>
+        <div class="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="prev-page"
+            :disabled="page <= 1"
+            @click="changePage(page - 1)"
+          >
+            上一页
+          </Button>
+          <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="next-page"
+            :disabled="page >= totalPages"
+            @click="changePage(page + 1)"
+          >
+            下一页
+          </Button>
+        </div>
+      </div>
+    </template>
+  </div>
 
   <!-- 会话详情回放 Drawer（公共组件：detail 拉取 + messages 只读流；仅超管入口展示） -->
   <ConversationReplayDrawer
@@ -325,46 +349,17 @@ function confirmDelete() {
     @close="closeDetail"
   />
 
-  <!-- 删除会话二次确认（级联软删消息 + Run，不可恢复） -->
-  <div
-    v-if="deleting"
-    data-testid="session-del-dialog"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-    @keydown.esc="cancelDelete"
-    @click.self="cancelDelete"
-  >
-    <div
-      class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
-      role="alertdialog"
-      aria-modal="true"
-      @click.stop
-    >
-      <div class="flex items-start gap-3">
-        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
-          <PhWarningCircle class="h-5 w-5 text-danger" />
-        </div>
-        <div>
-          <h2 class="text-base font-semibold text-text">删除会话</h2>
-          <p class="mt-2 text-sm leading-relaxed text-text-muted">
-            删除后该会话及其全部消息一并移除，
-            <span class="font-medium text-danger">此操作不可恢复</span>。确认删除「{{
-              deleting.title
-            }}」？
-          </p>
-        </div>
-      </div>
-      <div class="mt-5 flex justify-end gap-2">
-        <Button variant="outline" :disabled="deleteSubmitting" @click="cancelDelete">取消</Button>
-        <Button
-          variant="danger"
-          data-testid="confirm-session-del"
-          :disabled="deleteSubmitting"
-          @click="confirmDelete"
-        >
-          <PhSpinnerGap v-if="deleteSubmitting" class="h-4 w-4 animate-spin" />
-          {{ deleteSubmitting ? '删除中' : '确认删除' }}
-        </Button>
-      </div>
-    </div>
+  <!-- 删除会话二次确认（级联软删消息 + Run，不可恢复）；外层 div 承载 dialog testid 契约 -->
+  <div v-if="deleting" data-testid="session-del-dialog">
+    <ConfirmDialog
+      :open="!!deleting"
+      title="删除会话"
+      :description="`删除后该会话及其全部消息一并移除，此操作不可恢复。确认删除「${deleting.title}」？`"
+      confirm-text="确认删除"
+      :loading="deleteSubmitting"
+      data-testid="confirm-session-del"
+      @cancel="cancelDelete"
+      @confirm="confirmDelete"
+    />
   </div>
 </template>

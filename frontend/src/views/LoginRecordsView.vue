@@ -7,9 +7,12 @@
  *    userId/deviceType 文本输入经查询按钮统一提交（携带全部参数并回第 1 页）
  * 2. 表格：#id / 用户 / 设备 / IP / 到期时间 / 状态 Badge
  *    （ACTIVE emerald / REVOKED amber / EXPIRED 中性）/ 时间 / 操作 [踢出设备]
- * 3. 踢出设备：仅 ACTIVE 行入口（已踢出/已过期无意义），二次确认（danger 实底）→
+ * 3. 踢出设备：仅 ACTIVE 行入口（已踢出/已过期无意义），二次确认（ConfirmDialog danger）→
  *    revokeLoginRecord → toast → 刷新
  * 4. 四态：loading 骨架 / empty / error 横幅重试 / 正常 + 分页
+ *
+ * 视觉形态（2026-08-27 紫系换肤 N8b）：PageHead 页头 + 卡片化筛选条 + DataTable
+ * （N2 组件）+ EmptyState 统一空态 + ConfirmDialog 统一二次确认。
  *
  * 契约要点：id/total 为 Long 字符串铁律；时间 ISO-8601 短格式；
  * 踢出设备仅超管可操作（路由层已拦截，页面不做二次角色判断）。
@@ -18,10 +21,14 @@
  */
 import { computed, reactive, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { PhSpinnerGap, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhSignIn } from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DataTable } from '@/components/ui/data-table'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageHead } from '@/components/ui/page-head'
 import { ApiError, securityApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime } from '@/lib/utils'
@@ -166,115 +173,135 @@ function confirmKick() {
 </script>
 
 <template>
-  <!-- 筛选条：userId/deviceType 文本（查询按钮提交）+ status 下拉（即时生效） -->
-  <div class="mb-4 flex flex-wrap items-center gap-2">
-    <input
-      v-model="pendingFilters.userId"
-      data-testid="filter-user"
-      type="text"
-      aria-label="按用户 ID 筛选"
-      placeholder="用户 ID"
-      class="h-9 w-44 rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+  <div class="flex flex-col gap-5">
+    <!-- 页头：标题 + 副题（滚动入场，设计稿 page-head 形态） -->
+    <PageHead
+      v-reveal
+      title="登录记录"
+      subtitle="用户设备会话与令牌状态审计，可按条件筛选并踢出在线设备"
     />
-    <input
-      v-model="pendingFilters.deviceType"
-      data-testid="filter-device"
-      type="text"
-      aria-label="按设备类型筛选"
-      placeholder="设备类型"
-      class="h-9 w-44 rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-    />
-    <select
-      data-testid="filter-status"
-      aria-label="按状态筛选"
-      :value="filters.status"
-      class="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
-      @change="onStatusChange"
-    >
-      <option value="">全部状态</option>
-      <option v-for="opt in STATUS_OPTIONS" :key="opt.value" :value="opt.value">
-        {{ opt.label }}
-      </option>
-    </select>
-    <Button variant="outline" size="sm" data-testid="apply-filters" @click="applyFilters">
-      查询
-    </Button>
-  </div>
 
-  <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
-  <div
-    v-if="listError"
-    role="alert"
-    class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
-  >
-    <span class="text-sm text-danger">{{ listError }}</span>
-    <Button variant="outline" size="sm" data-testid="retry-records" @click="refetch">重试</Button>
-  </div>
-
-  <!-- 加载态：表格骨架屏（表头 + 5 行灰条，与最终表格同形） -->
-  <div
-    v-else-if="isLoading"
-    data-testid="lr-skeleton"
-    class="overflow-hidden rounded-xl border border-border bg-surface"
-    aria-label="登录记录加载中"
-  >
-    <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
-      <div v-for="i in 8" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-slate-200" />
-    </div>
+    <!-- 筛选条：userId/deviceType 文本（查询按钮提交）+ status 下拉（即时生效），卡片化承载 -->
     <div
-      v-for="i in 5"
-      :key="`row-${i}`"
-      class="h-11 animate-pulse border-b border-border bg-slate-50"
-    />
-  </div>
+      v-reveal="60"
+      class="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3.5 shadow-xs"
+    >
+      <input
+        v-model="pendingFilters.userId"
+        data-testid="filter-user"
+        type="text"
+        aria-label="按用户 ID 筛选"
+        placeholder="用户 ID"
+        class="h-9 w-44 rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+      />
+      <input
+        v-model="pendingFilters.deviceType"
+        data-testid="filter-device"
+        type="text"
+        aria-label="按设备类型筛选"
+        placeholder="设备类型"
+        class="h-9 w-44 rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+      />
+      <select
+        data-testid="filter-status"
+        aria-label="按状态筛选"
+        :value="filters.status"
+        class="h-9 rounded-xl border border-border bg-surface px-2.5 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+        @change="onStatusChange"
+      >
+        <option value="">全部状态</option>
+        <option v-for="opt in STATUS_OPTIONS" :key="opt.value" :value="opt.value">
+          {{ opt.label }}
+        </option>
+      </select>
+      <Button variant="outline" size="sm" data-testid="apply-filters" @click="applyFilters">
+        查询
+      </Button>
+    </div>
 
-  <!-- 空态：无登录记录文案（禁裸「暂无数据」） -->
-  <div
-    v-else-if="records.length === 0"
-    class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
-  >
-    <PhWarningCircle class="h-8 w-8 text-text-subtle" />
-    <p class="mt-3 text-sm font-medium text-text">还没有登录记录</p>
-    <p class="mt-1 text-xs text-text-muted">用户登录后生成的设备会话记录将在此展示</p>
-  </div>
+    <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
+    <div
+      v-if="listError"
+      role="alert"
+      class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
+    >
+      <span class="text-sm text-danger">{{ listError }}</span>
+      <Button variant="outline" size="sm" data-testid="retry-records" @click="refetch">重试</Button>
+    </div>
 
-  <!-- 正常态：分页表格（#id/用户/设备/IP/到期/状态/时间/操作） -->
-  <template v-else>
-    <div class="overflow-hidden rounded-xl border border-border bg-surface">
-      <table data-testid="lr-table" class="w-full text-sm">
-        <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
-          <tr>
-            <th class="w-20 px-4 py-2.5 font-medium">#id</th>
-            <th class="w-28 px-4 py-2.5 font-medium">用户</th>
-            <th class="w-32 px-4 py-2.5 font-medium">设备</th>
-            <th class="w-36 px-4 py-2.5 font-medium">IP</th>
-            <th class="w-32 px-4 py-2.5 font-medium">到期时间</th>
-            <th class="w-24 px-4 py-2.5 font-medium">状态</th>
-            <th class="w-32 px-4 py-2.5 font-medium">时间</th>
-            <th class="w-28 px-4 py-2.5 text-right font-medium">操作</th>
-          </tr>
-        </thead>
-        <tbody>
+    <!-- 加载态：表格骨架屏（表头 + 5 行灰条，与最终表格同形） -->
+    <div
+      v-else-if="isLoading"
+      data-testid="lr-skeleton"
+      class="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs"
+      aria-label="登录记录加载中"
+    >
+      <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-5 py-3.5">
+        <div
+          v-for="i in 8"
+          :key="`head-${i}`"
+          class="h-3 w-20 animate-pulse rounded bg-slate-200"
+        />
+      </div>
+      <div
+        v-for="i in 5"
+        :key="`row-${i}`"
+        class="h-11 animate-pulse border-b border-border last:border-b-0 bg-slate-50"
+      />
+    </div>
+
+    <!-- 空态：统一空态形态（图标圆 + 标题 + 描述） -->
+    <div
+      v-else-if="records.length === 0"
+      class="rounded-2xl border border-border bg-surface shadow-xs"
+    >
+      <EmptyState title="还没有登录记录" description="用户登录后生成的设备会话记录将在此展示">
+        <template #icon>
+          <PhSignIn class="h-6 w-6" aria-hidden="true" />
+        </template>
+      </EmptyState>
+    </div>
+
+    <!-- 正常态：分页表格（#id/用户/设备/IP/到期/状态/时间/操作） -->
+    <template v-else>
+      <div
+        v-reveal="80"
+        class="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs"
+      >
+        <!-- DataTable 承担表格视觉壳（lav 圆角表头/行悬停/行级联入场），单元格由插槽提供 -->
+        <DataTable data-testid="lr-table" label="登录记录列表">
+          <template #header>
+            <tr>
+              <th class="w-20">#id</th>
+              <th class="w-28">用户</th>
+              <th class="w-32">设备</th>
+              <th class="w-36">IP</th>
+              <th class="w-32">到期时间</th>
+              <th class="w-24">状态</th>
+              <th class="w-32">时间</th>
+              <th class="w-28">操作</th>
+            </tr>
+          </template>
           <tr
             v-for="r in records"
             :key="r.id"
             :data-testid="`row-${r.id}`"
-            class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
+            class="transition-colors duration-150"
           >
-            <td class="px-4 tabular-nums text-text-muted">#{{ r.id }}</td>
-            <td class="px-4 tabular-nums text-text-muted">{{ r.userId }}</td>
-            <td class="px-4 text-text-muted">{{ r.deviceType }}</td>
-            <td class="px-4 tabular-nums text-text-muted">{{ r.ipAddress }}</td>
-            <td :title="formatDateTime(r.expiresAt)" class="px-4 tabular-nums text-text-muted">
+            <td class="tabular-nums text-text-muted">#{{ r.id }}</td>
+            <td class="tabular-nums text-text-muted">{{ r.userId }}</td>
+            <td class="text-text-muted">{{ r.deviceType }}</td>
+            <td class="tabular-nums text-text-muted">{{ r.ipAddress }}</td>
+            <td :title="formatDateTime(r.expiresAt)" class="tabular-nums text-text-muted">
               {{ formatDateTime(r.expiresAt) }}
             </td>
-            <td class="px-4">
+            <td>
               <Badge :data-testid="`lr-status-${r.id}`" :variant="statusVariant(r.status)">
                 {{ r.status }}
               </Badge>
             </td>
-            <td class="px-4 tabular-nums text-text-muted">{{ formatDateTime(r.createdAt) }}</td>
-            <td class="px-4 text-right">
+            <td class="tabular-nums text-text-muted">{{ formatDateTime(r.createdAt) }}</td>
+            <td>
               <!-- 踢出入口：仅 ACTIVE 行（REVOKED/EXPIRED 已无有效令牌） -->
               <Button
                 v-if="r.status === 'ACTIVE'"
@@ -287,86 +314,50 @@ function confirmKick() {
               </Button>
             </td>
           </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
-    <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
-      <span>
-        共 <span class="tabular-nums text-text">{{ total }}</span> 条
-      </span>
-      <div class="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          data-testid="prev-page"
-          :disabled="page <= 1"
-          @click="changePage(page - 1)"
-        >
-          上一页
-        </Button>
-        <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
-        <Button
-          variant="outline"
-          size="sm"
-          data-testid="next-page"
-          :disabled="page >= totalPages"
-          @click="changePage(page + 1)"
-        >
-          下一页
-        </Button>
+        </DataTable>
       </div>
-    </div>
-  </template>
 
-  <!-- 踢出设备二次确认（danger 实底，不可恢复：jti 入黑名单立即失效） -->
-  <div
-    v-if="kicking"
-    data-testid="kick-dialog"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-    @keydown.esc="cancelKick"
-    @click.self="cancelKick"
-  >
-    <div
-      class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
-      role="alertdialog"
-      aria-modal="true"
-      @click.stop
-    >
-      <div class="flex items-start gap-3">
-        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
-          <PhWarningCircle class="h-5 w-5 text-danger" />
-        </div>
-        <div>
-          <h2 class="text-base font-semibold text-text">踢出设备</h2>
-          <p class="mt-2 text-sm leading-relaxed text-text-muted">
-            将立即吊销该设备的全部登录令牌（Access 与 Refresh），
-            <span class="font-medium text-danger">此操作不可恢复</span>。确认踢出设备（{{
-              kicking.deviceType
-            }}，{{ kicking.ipAddress }}）？
-          </p>
+      <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
+      <div class="flex items-center justify-between text-sm text-text-muted">
+        <span>
+          共 <span class="tabular-nums text-text">{{ total }}</span> 条
+        </span>
+        <div class="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="prev-page"
+            :disabled="page <= 1"
+            @click="changePage(page - 1)"
+          >
+            上一页
+          </Button>
+          <span class="tabular-nums">第 {{ page }} / {{ totalPages }} 页</span>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="next-page"
+            :disabled="page >= totalPages"
+            @click="changePage(page + 1)"
+          >
+            下一页
+          </Button>
         </div>
       </div>
-      <div class="mt-5 flex justify-end gap-2">
-        <Button
-          variant="outline"
-          :disabled="kickSubmitting"
-          data-testid="cancel-kick"
-          @click="cancelKick"
-        >
-          取消
-        </Button>
-        <Button
-          variant="danger"
-          data-testid="confirm-kick"
-          :disabled="kickSubmitting"
-          @click="confirmKick"
-        >
-          <PhSpinnerGap v-if="kickSubmitting" class="h-4 w-4 animate-spin" />
-          {{ kickSubmitting ? '踢出中' : '确认踢出' }}
-        </Button>
-      </div>
-    </div>
+    </template>
+  </div>
+
+  <!-- 踢出设备二次确认（danger，不可恢复：jti 入黑名单立即失效）；外层 div 承载 dialog testid 契约 -->
+  <div v-if="kicking" data-testid="kick-dialog">
+    <ConfirmDialog
+      :open="!!kicking"
+      title="踢出设备"
+      :description="`将立即吊销该设备的全部登录令牌（Access 与 Refresh），此操作不可恢复。确认踢出设备（${kicking.deviceType}，${kicking.ipAddress}）？`"
+      confirm-text="确认踢出"
+      :loading="kickSubmitting"
+      data-testid="confirm-kick"
+      @cancel="cancelKick"
+      @confirm="confirmKick"
+    />
   </div>
 </template>
