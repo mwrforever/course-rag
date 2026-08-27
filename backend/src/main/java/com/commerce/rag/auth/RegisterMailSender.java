@@ -84,39 +84,45 @@ public class RegisterMailSender {
     /**
      * 构建品牌化验证码 HTML 正文（视觉规范与 C 端一致：奶油底 / 墨色码块 / 棕色点缀）
      *
+     * <p>占位符替换而非 String.format：SpotBugs VA_FORMAT_STRING_USES_NEWLINE 禁用
+     * 带换行的格式化模板，且静态品牌模板本就无需 printf 语义。</p>
+     *
      * @param code 6 位数字验证码明文
      * @return 完整 HTML 文档字符串
      */
     String buildVerificationHtml(String code) {
         long validMinutes = Math.max(1, properties.codeTtl().toMinutes());
-        return """
-                <!DOCTYPE html>
-                <html lang="zh-CN">
-                <body style="margin:0;padding:0;background:#F6F1E7;font-family:'PingFang SC','Microsoft YaHei','Hiragino Sans GB',sans-serif;">
-                  <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0" style="background:#F6F1E7;padding:36px 12px;">
-                    <tr><td align="center">
-                      <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%%;background:#FFFDF8;border:1px solid rgba(25,21,18,.14);border-radius:18px;padding:42px 46px 34px;color:#191512;">
-                        <tr><td style="font-size:22px;font-weight:600;letter-spacing:.24em;">问渠学堂</td></tr>
-                        <tr><td style="padding-top:10px;color:#7A4A2B;font-size:13px;">为有源头活水来</td></tr>
-                        <tr><td style="padding-top:28px;font-size:15px;line-height:1.9;">您好！您正在注册<b>问渠学堂</b>账号，请使用以下验证码完成邮箱确认：</td></tr>
-                        <tr><td align="center" style="padding:28px 0;">
-                          <div style="background:#191512;color:#F6F1E7;border-radius:12px;padding:20px 36px;font-size:34px;font-weight:700;letter-spacing:.5em;text-indent:.5em;">%s</div>
-                        </td></tr>
-                        <tr><td style="font-size:13px;line-height:2;color:#6B6257;">· 验证码 <b>%d 分钟内有效</b>，超时请重新获取<br>· 请勿向任何人透露该验证码（包括自称官方人员者）<br>· 若这不是您本人的操作，请忽略本邮件</td></tr>
-                        <tr><td style="padding-top:24px;border-top:1px solid rgba(25,21,18,.12);font-size:11px;line-height:1.8;color:#B3B1AC;">问渠学堂 · AI 课程学习助手<br>本邮件由系统自动发送，请勿直接回复</td></tr>
-                      </table>
-                    </td></tr>
-                  </table>
-                </body>
-                </html>
-                """
-                .formatted(code, validMinutes);
+        return TEMPLATE_HTML.replace("__CODE__", code).replace("__MINUTES__", String.valueOf(validMinutes));
     }
+
+    /** 品牌化验证码邮件模板（__CODE__/__MINUTES__ 占位；多客户端兼容的表格布局） */
+    private static final String TEMPLATE_HTML =
+            """
+            <!DOCTYPE html>
+            <html lang="zh-CN">
+            <body style="margin:0;padding:0;background:#F6F1E7;font-family:'PingFang SC','Microsoft YaHei','Hiragino Sans GB',sans-serif;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F6F1E7;padding:36px 12px;">
+                <tr><td align="center">
+                  <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%;background:#FFFDF8;border:1px solid rgba(25,21,18,.14);border-radius:18px;padding:42px 46px 34px;color:#191512;">
+                    <tr><td style="font-size:22px;font-weight:600;letter-spacing:.24em;">问渠学堂</td></tr>
+                    <tr><td style="padding-top:10px;color:#7A4A2B;font-size:13px;">为有源头活水来</td></tr>
+                    <tr><td style="padding-top:28px;font-size:15px;line-height:1.9;">您好！您正在注册<b>问渠学堂</b>账号，请使用以下验证码完成邮箱确认：</td></tr>
+                    <tr><td align="center" style="padding:28px 0;">
+                      <div style="background:#191512;color:#F6F1E7;border-radius:12px;padding:20px 36px;font-size:34px;font-weight:700;letter-spacing:.5em;text-indent:.5em;">__CODE__</div>
+                    </td></tr>
+                    <tr><td style="font-size:13px;line-height:2;color:#6B6257;">· 验证码 <b>__MINUTES__ 分钟内有效</b>，超时请重新获取<br>· 请勿向任何人透露该验证码（包括自称官方人员者）<br>· 若这不是您本人的操作，请忽略本邮件</td></tr>
+                    <tr><td style="padding-top:24px;border-top:1px solid rgba(25,21,18,.12);font-size:11px;line-height:1.8;color:#B3B1AC;">问渠学堂 · AI 课程学习助手<br>本邮件由系统自动发送，请勿直接回复</td></tr>
+                  </table>
+                </td></tr>
+              </table>
+            </body>
+            </html>
+            """;
 
     /** 不支持 HTML 渲染的客户端回退纯文本（明文携带验证码，保证无 CSS 客户端同样可用） */
     private String buildPlainTextFallback(String code) {
-        return "【问渠学堂】您的注册验证码为：%s（%d 分钟内有效）。请勿向任何人透露。"
-                .formatted(code, Math.max(1, properties.codeTtl().toMinutes()));
+        long validMinutes = Math.max(1, properties.codeTtl().toMinutes());
+        return "【问渠学堂】您的注册验证码为：" + code + "（" + validMinutes + " 分钟内有效）。请勿向任何人透露。";
     }
 
     /** 邮箱日志脱敏：本地部分仅保留首字符 + 星号（如 a***@163.com）；非标输入原样置为 masked 占位 */
