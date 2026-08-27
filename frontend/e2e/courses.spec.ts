@@ -104,7 +104,9 @@ test.describe('课程管理', () => {
     )
     await login(page, 'teacher')
     await page.getByRole('link', { name: '课程' }).click()
-    await page.getByRole('button', { name: '编辑' }).first().click()
+    // 行操作收进 ⋮ 下拉菜单：先展开行菜单再点编辑（menuitem 语义）
+    await page.getByTestId('row-menu-co1').click()
+    await page.getByRole('menuitem', { name: '编辑' }).click()
     await expect(page).toHaveURL(/\/courses\/co1$/)
     // 基础信息回显
     await expect(page.locator('#course-title')).toHaveValue('数据结构与算法精讲')

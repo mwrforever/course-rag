@@ -13,11 +13,11 @@ importers:
       '@fontsource/geist-mono':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource/geist-sans':
-        specifier: ^5.3.0
-        version: 5.3.0
       '@fontsource/noto-sans-sc':
         specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/plus-jakarta-sans':
+        specifier: 5.3.0
         version: 5.3.0
       '@phosphor-icons/vue':
         specifier: ^2.2.1
@@ -40,9 +40,6 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
-      echarts:
-        specifier: ^6.1.0
-        version: 6.1.0
       md-editor-v3:
         specifier: ^6.5.6
         version: 6.5.6(vue@3.5.41(typescript@5.9.3))
@@ -58,9 +55,6 @@ importers:
       vue:
         specifier: ^3.5.41
         version: 3.5.41(typescript@5.9.3)
-      vue-echarts:
-        specifier: ^8.1.0
-        version: 8.1.0(echarts@6.1.0)(vue@3.5.41(typescript@5.9.3))
       vue-router:
         specifier: ^4.6.4
         version: 4.6.4(vue@3.5.41(typescript@5.9.3))
@@ -479,9 +473,6 @@ packages:
   '@fontsource/geist-mono@5.3.0':
     resolution: {integrity: sha512-UtJ1BBBCVpMYdIcW7nEB45UAoAw5M53ZXs2t0ciPW+IokuAAIc56M8+kW5tXbRJCTpDw4XTtU7proT6NdQAHTg==}
 
-  '@fontsource/geist-sans@5.3.0':
-    resolution: {integrity: sha512-AmG7cE1AvE4NHROPaOl1sN+a02cB5xy6pA/ZV76HXqWTCsJTV2SCBc9DTFHfJqnVOODm7HhXIYtUIb75NP5QXQ==}
-
   '@fontsource/noto-sans-sc@5.3.0':
     resolution: {integrity: sha512-HeqIlGm0+ohOKxZLuHj1qW6r6avHH0OWdKERAcSDI0RQ+MXrteuLKA+M+5eOA8rYy0MFvOR5AT0fQo2rUkye0Q==}
 
@@ -490,6 +481,9 @@ packages:
 
   '@fontsource/outfit@5.3.0':
     resolution: {integrity: sha512-0AVHzTTVJSxWDOxPKSfMeHhZeBFDU3cmgrcOb76ZEyhGo0+xgyG3GsLF3h9+X8w0IX7G4jzjJgFQEBiWdX6VgA==}
+
+  '@fontsource/plus-jakarta-sans@5.3.0':
+    resolution: {integrity: sha512-9WRw3G74Ve4cyPApAZSXLPY5DiLOZXDn7Q7dIBjFBpA0Pj56ljDItEdy2UUajjJxRuTg2HkMLO5C3K2nAQORWg==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -1882,9 +1876,6 @@ packages:
 
   eastasianwidth@0.2.0:
     resolution: {integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==}
-
-  echarts@6.1.0:
-    resolution: {integrity: sha512-q0yaFPggC9FUdsWH4blavRWFmxdrIodbkoKNAjJudAI6CA9gNPxHtV2RcZNEepZVlk4yvBYkOkbk6HIVpIyHZA==}
 
   editorconfig@1.0.7:
     resolution: {integrity: sha512-e0GOtq/aTQhVdNyDU9e02+wz9oDDM+SIOQxWME2QRjzRX5yyLAuHDE+0aE8vHb9XRC8XD37eO2u57+F09JqFhw==}
@@ -3564,9 +3555,6 @@ packages:
   tsconfig-paths@3.15.0:
     resolution: {integrity: sha512-2Ac2RgzDe/cn48GvOe3M+o82pEFewD3UPbyoUHHdKasHwJKjds4fLXWf/Ux5kATBKN20oaFGu+jbElp1pos0mg==}
 
-  tslib@2.3.0:
-    resolution: {integrity: sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==}
-
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
@@ -3762,12 +3750,6 @@ packages:
       '@vue/composition-api':
         optional: true
 
-  vue-echarts@8.1.0:
-    resolution: {integrity: sha512-/uJVwijy3M2vIZ0NcPDgdZVqgboc6zZtC/vERfESau0eFpkHOIujj0sIiMiLP4kztQrckMFnDYWrid+gLI+IOg==}
-    peerDependencies:
-      echarts: ^6.0.0
-      vue: ^3.3.0
-
   vue-eslint-parser@10.4.1:
     resolution: {integrity: sha512-Gk6gRDj0n/fkRa3C3l0bBheoBckUq/Rs0F/TvMWIS6nzzx67amAViMe9CkNgsP2tXyQONvGiHQESHwFtZ3aYDA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
@@ -3872,9 +3854,6 @@ packages:
 
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
-
-  zrender@6.1.0:
-    resolution: {integrity: sha512-oEGMDB6pOP2S6OwRR4PdVv610zrjnA3Bh+JnSG12fYJlBKjtNAoEb5fSUoCOOINlH96I2fU38/A2UpRKs67xYQ==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -4277,13 +4256,13 @@ snapshots:
 
   '@fontsource/geist-mono@5.3.0': {}
 
-  '@fontsource/geist-sans@5.3.0': {}
-
   '@fontsource/noto-sans-sc@5.3.0': {}
 
   '@fontsource/noto-serif-sc@5.2.8': {}
 
   '@fontsource/outfit@5.3.0': {}
+
+  '@fontsource/plus-jakarta-sans@5.3.0': {}
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -5062,7 +5041,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.11(@types/node@20.19.43)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1)(vite@8.2.2(@types/node@20.19.43)(jiti@2.7.0))
+      vitest: 4.1.11(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1)(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0))
 
   '@vitest/expect@4.1.11':
     dependencies:
@@ -5593,11 +5572,6 @@ snapshots:
       gopd: 1.2.0
 
   eastasianwidth@0.2.0: {}
-
-  echarts@6.1.0:
-    dependencies:
-      tslib: 2.3.0
-      zrender: 6.1.0
 
   editorconfig@1.0.7:
     dependencies:
@@ -7731,8 +7705,6 @@ snapshots:
       minimist: 1.2.8
       strip-bom: 3.0.0
 
-  tslib@2.3.0: {}
-
   tslib@2.8.1: {}
 
   type-check@0.4.0:
@@ -7974,11 +7946,6 @@ snapshots:
     dependencies:
       vue: 3.5.41(typescript@5.9.3)
 
-  vue-echarts@8.1.0(echarts@6.1.0)(vue@3.5.41(typescript@5.9.3)):
-    dependencies:
-      echarts: 6.1.0
-      vue: 3.5.41(typescript@5.9.3)
-
   vue-eslint-parser@10.4.1(eslint@9.39.5(jiti@2.7.0)):
     dependencies:
       debug: 4.4.3
@@ -8114,9 +8081,5 @@ snapshots:
   yocto-queue@0.1.0: {}
 
   zod@4.4.3: {}
-
-  zrender@6.1.0:
-    dependencies:
-      tslib: 2.3.0
 
   zwitch@2.0.4: {}

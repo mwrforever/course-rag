@@ -10,14 +10,14 @@ import LoginView from '@/views/LoginView.vue'
 import type { LoginResponse } from '@/lib/types'
 
 /**
- * 登录页测试（Task 16 交付：左右分栏 + zod 校验 + 错误分级）
+ * 登录页测试（Task 16 交付 + 2026-08-27 紫系换肤 N4 结构断言适配）
  *
- * 覆盖契约（设计 §2.4 /login 行与 §3.2 错误分级）：
- * 1. 左右分栏结构：左 40% slate-900 品牌区 + 右表单区
+ * 覆盖契约（设计 §2.4 /login 行与 §3.2 错误分级，换肤后保持）：
+ * 1. 左右双区结构：左深灰渐变怪物栏（含四小怪挂载点）+ 右轨道表单区
  * 2. zod 校验：用户名非空、密码 ≥6 位，校验不过不调登录接口
- * 3. 登录成功跳 redirect 或仪表盘
+ * 3. 登录成功跳 redirect 或仪表盘（成功 overlay 演出后跳转，等待预算放宽）
  * 4. 错误分级：401 用户名或密码错误 / 403 无权限 / 503 服务暂不可用 / 网络错误
- * 5. 提交中 loading 态 + 密码可见性切换
+ * 5. 提交中 loading 态 + 密码可见性切换（联动怪物 peek 的行为在 use-monsters.test 覆盖）
  */
 
 /** 构造登录响应（Long 序列化铁律：userId 为 string） */
@@ -54,17 +54,22 @@ describe('LoginView：结构与渲染', () => {
     vi.restoreAllMocks()
   })
 
-  it('左右分栏：左 40% slate-900 品牌区 + 右侧表单区', async () => {
+  it('左右双区：左深灰渐变怪物栏（四小怪挂载点）+ 右侧表单区', async () => {
     const { wrapper } = await mountLogin()
 
-    // 品牌区：占 40% 宽 + slate-900 深底 + 品牌名
+    // 品牌区：深灰渐变左栏（login-chars-side）+ 品牌名 + 标语
     const brand = wrapper.find('aside')
-    expect(brand.classes()).toContain('w-[40%]')
-    expect(brand.classes()).toContain('bg-slate-900')
+    expect(brand.classes()).toContain('login-chars-side')
     expect(brand.text()).toContain('课程助手管理后台')
     expect(wrapper.text()).toContain('知识运维与管理，一处完成')
 
-    // 表单区：用户名/密码/登录按钮，无记住我复选框
+    // 四小怪引擎挂载点齐备（紫/黑/黄/橙，data-monster 属性为引擎绑定契约）
+    expect(wrapper.find('[data-monster="purple"]').exists()).toBe(true)
+    expect(wrapper.find('[data-monster="black"]').exists()).toBe(true)
+    expect(wrapper.find('[data-monster="yellow"]').exists()).toBe(true)
+    expect(wrapper.find('[data-monster="orange"]').exists()).toBe(true)
+
+    // 表单区：用户名/密码/登录按钮，无记住我复选框（负向契约，禁回归）
     expect(wrapper.find('input[aria-label="用户名"]').exists()).toBe(true)
     expect(wrapper.find('input[aria-label="密码"]').attributes('type')).toBe('password')
     const submit = wrapper.find('button[type="submit"]')
@@ -146,7 +151,10 @@ describe('LoginView：登录流程与错误分级', () => {
     await router.push({ name: 'login', query: { redirect: '/knowledge/documents' } })
 
     await submitLogin(wrapper as never, 'teacher1', '123456')
-    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/knowledge/documents'))
+    // 成功 overlay 演出（压缩至 1s）后跳转：等待预算放宽到 5s（与仪表盘用例一致）
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/knowledge/documents'), {
+      timeout: 5000,
+    })
     wrapper.unmount()
   })
 

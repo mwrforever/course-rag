@@ -3,6 +3,7 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { vReveal } from '@/directives/reveal'
 import { ApiError, chunkApi, courseApi, knowledgeBaseApi } from '@/lib/api'
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
@@ -91,7 +92,11 @@ async function mountChunks() {
   })
   const router = createAppRouter()
   const wrapper = mount(ChunksView, {
-    global: { plugins: [[VueQueryPlugin, { queryClient }], pinia, router] },
+    // reveal 指令：main.ts 全局注册，直挂视图的测试需显式提供（滚动入场指令）
+    global: {
+      plugins: [[VueQueryPlugin, { queryClient }], pinia, router],
+      directives: { reveal: vReveal },
+    },
   })
   await router.isReady()
   await flushPromises()

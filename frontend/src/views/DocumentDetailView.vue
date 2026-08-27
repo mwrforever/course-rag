@@ -13,6 +13,10 @@
  * 契约要点：id/total 为 Long 字符串铁律；page/size 为 number；时间 ISO-8601。
  * 数据源：文档详情 + 分片列表两个独立请求（分片列表自带分页与独立错误重试）。
  *
+ * N6a 视觉重制（2026-08-27 紫系换肤）：页头迁 PageHead（文档标题为 h1、
+ * 状态徽章入动作区）、分片列表迁 DataTable（lav 表头/悬停行/行级联入场）、
+ * 空态迁 EmptyState、各区卡片 v-reveal 级联入场；查询/时间线/重新解析逻辑零改动。
+ *
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
 import { computed, ref } from 'vue'
@@ -23,6 +27,9 @@ import { PhArrowLeft, PhCheck, PhSpinnerGap, PhWarningCircle, PhX } from '@phosp
 import EtlStatusBadge from '@/components/EtlStatusBadge.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { DataTable } from '@/components/ui/data-table'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageHead } from '@/components/ui/page-head'
 import { ApiError, chunkApi, documentApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime, formatFileSize } from '@/lib/utils'
@@ -179,7 +186,7 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
     to="/knowledge/documents"
     class="mb-4 inline-flex items-center gap-1.5 text-sm text-text-muted transition-colors duration-150 hover:text-brand"
   >
-    <PhArrowLeft class="h-4 w-4" />
+    <PhArrowLeft class="h-4 w-4" aria-hidden="true" />
     返回文档列表
   </router-link>
 
@@ -190,19 +197,19 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
     aria-label="文档详情加载中"
     class="space-y-4"
   >
-    <div class="animate-pulse rounded-xl border border-border bg-surface p-5">
+    <div class="animate-pulse rounded-2xl border border-border bg-surface px-6 py-5">
       <div class="h-5 w-56 rounded bg-slate-200" />
       <div class="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
         <div v-for="i in 4" :key="`meta-${i}`" class="h-4 w-24 rounded bg-slate-200" />
       </div>
     </div>
-    <div class="animate-pulse rounded-xl border border-border bg-surface p-5">
+    <div class="animate-pulse rounded-2xl border border-border bg-surface px-6 py-5">
       <div class="h-4 w-24 rounded bg-slate-200" />
       <div class="mt-4 flex gap-2">
         <div v-for="i in 7" :key="`step-${i}`" class="h-10 w-20 rounded bg-slate-200" />
       </div>
     </div>
-    <div class="animate-pulse rounded-xl border border-border bg-surface p-5">
+    <div class="animate-pulse rounded-2xl border border-border bg-surface px-6 py-5">
       <div class="h-4 w-28 rounded bg-slate-200" />
       <div v-for="i in 4" :key="`chunk-${i}`" class="mt-3 h-9 rounded bg-slate-50" />
     </div>
@@ -213,25 +220,17 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
     v-else-if="docErrorText"
     data-testid="detail-error"
     role="alert"
-    class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
+    class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
   >
     <span class="text-sm text-danger">{{ docErrorText }}</span>
     <Button variant="outline" size="sm" data-testid="retry-detail" @click="refetchDoc">重试</Button>
   </div>
 
-  <!-- 正常态：信息卡 + 状态时间线 + 分片列表 -->
+  <!-- 正常态：页头（标题/ID/状态）+ 信息卡 + 状态时间线 + 分片列表 -->
   <template v-else>
-    <!-- 信息卡（设计 §2.4.2：标题/类型/大小/分片数/时间/状态） -->
-    <section
-      data-testid="doc-info"
-      class="rounded-xl border border-border bg-surface p-5"
-      aria-label="文档信息"
-    >
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 class="text-base font-semibold text-text">{{ doc?.title }}</h2>
-          <p class="mt-1 text-xs text-text-muted">文档 ID：{{ doc?.id }}</p>
-        </div>
+    <!-- 页头：文档标题为 h1（22px/800）+ 文档 ID 副题 + 状态徽章动作区，v-reveal 入场 -->
+    <PageHead v-reveal :title="doc?.title ?? '文档详情'" :subtitle="`文档 ID：${doc?.id}`">
+      <template #actions>
         <!-- 状态 Badge：共享 8 态组件（设计 §2.5 全局唯一映射） -->
         <div data-testid="detail-status">
           <EtlStatusBadge
@@ -239,8 +238,17 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
             :error-message="doc?.errorMessage"
           />
         </div>
-      </div>
-      <dl class="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
+      </template>
+    </PageHead>
+
+    <!-- 信息卡（设计 §2.4.2：类型/大小/分片数/上传·更新时间；16px 圆角紫调柔影卡片） -->
+    <section
+      v-reveal="80"
+      data-testid="doc-info"
+      class="mt-5 rounded-2xl border border-border bg-surface px-6 py-5 shadow-xs"
+      aria-label="文档信息"
+    >
+      <dl class="grid grid-cols-2 gap-4 md:grid-cols-5">
         <div>
           <dt class="text-xs text-text-subtle">类型</dt>
           <dd class="mt-1">
@@ -258,22 +266,22 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
           <dd class="mt-1 tabular-nums text-sm text-text">{{ doc?.chunkCount }}</dd>
         </div>
         <div>
-          <dt class="text-xs text-text-subtle">更新时间</dt>
-          <dd class="mt-1 tabular-nums text-sm text-text">
-            {{ formatDateTime(doc?.updatedAt ?? '') }}
-          </dd>
-        </div>
-        <div>
           <dt class="text-xs text-text-subtle">上传时间</dt>
           <dd class="mt-1 tabular-nums text-sm text-text">
             {{ formatDateTime(doc?.createdAt ?? '') }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs text-text-subtle">更新时间</dt>
+          <dd class="mt-1 tabular-nums text-sm text-text">
+            {{ formatDateTime(doc?.updatedAt ?? '') }}
           </dd>
         </div>
       </dl>
       <!-- FAILED 错误信息固定展示（mono 13px，与设计 §2.5 错误展开区同规格） -->
       <p
         v-if="doc?.parseStatus === 'FAILED' && doc.errorMessage"
-        class="mt-4 break-all rounded-md border border-danger/30 bg-red-50 px-3 py-2 font-mono text-[13px] leading-relaxed text-danger"
+        class="mt-4 break-all rounded-lg border border-danger/30 bg-red-50 px-3 py-2 font-mono text-[13px] leading-relaxed text-danger"
       >
         {{ doc.errorMessage }}
       </p>
@@ -281,8 +289,9 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
 
     <!-- 状态时间线（G14 静态状态机示意：七步 + FAILED 分支） -->
     <section
+      v-reveal="160"
       data-testid="status-timeline"
-      class="mt-4 rounded-xl border border-border bg-surface p-5"
+      class="mt-4 rounded-2xl border border-border bg-surface px-6 py-5 shadow-xs"
       aria-label="解析状态时间线"
     >
       <h3 class="text-sm font-semibold text-text">解析状态</h3>
@@ -301,10 +310,11 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
                 stepState(step) === 'pending' && 'border-slate-200 bg-surface text-slate-400',
               ]"
             >
-              <PhCheck v-if="stepState(step) === 'done'" class="h-4 w-4" />
+              <PhCheck v-if="stepState(step) === 'done'" class="h-4 w-4" aria-hidden="true" />
               <PhSpinnerGap
                 v-else-if="stepState(step) === 'current' && parseStatus === 'CHUNKING'"
                 class="h-4 w-4 animate-spin"
+                aria-hidden="true"
               />
               <span v-else-if="stepState(step) === 'current'">{{ i + 1 }}</span>
             </span>
@@ -331,10 +341,10 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
       <div
         v-else
         data-testid="timeline-failed"
-        class="failed mt-4 rounded-lg border border-danger/30 bg-red-50 p-4"
+        class="failed mt-4 rounded-xl border border-danger/30 bg-red-50 p-4"
       >
         <div class="flex items-center gap-2 text-danger">
-          <PhX class="h-4 w-4" />
+          <PhX class="h-4 w-4" aria-hidden="true" />
           <span class="text-sm font-semibold">解析失败</span>
         </div>
         <p class="mt-2 break-all font-mono text-[13px] leading-relaxed text-danger">
@@ -348,27 +358,27 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
           :disabled="reparseLoading"
           @click="handleReparse"
         >
-          <PhSpinnerGap v-if="reparseLoading" class="h-4 w-4 animate-spin" />
+          <PhSpinnerGap v-if="reparseLoading" class="h-4 w-4 animate-spin" aria-hidden="true" />
           {{ reparseLoading ? '解析中' : '重新解析' }}
         </Button>
       </div>
     </section>
 
     <!-- 分片列表区：独立四态（加载/空/错误/正常）+ 分页 -->
-    <section class="mt-4">
+    <section v-reveal="240" class="mt-4">
       <h3 class="mb-3 text-base font-semibold text-text">文档分片</h3>
 
       <!-- 分片加载骨架：4 行灰条（与列表同形） -->
       <div
         v-if="chunkLoading"
         data-testid="chunk-skeleton"
-        class="overflow-hidden rounded-xl border border-border bg-surface"
+        class="overflow-hidden rounded-2xl border border-border bg-surface"
         aria-label="分片列表加载中"
       >
         <div
           v-for="i in 4"
           :key="`chunk-row-${i}`"
-          class="h-11 animate-pulse border-b border-border bg-slate-50"
+          class="h-[58px] animate-pulse border-b border-border bg-slate-50 last:border-b-0"
         />
       </div>
 
@@ -377,7 +387,7 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
         v-else-if="chunkErrorText"
         data-testid="chunk-error"
         role="alert"
-        class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
+        class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
       >
         <span class="text-sm text-danger">{{ chunkErrorText }}</span>
         <Button variant="outline" size="sm" data-testid="retry-chunks" @click="refetchChunks">
@@ -385,44 +395,54 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
         </Button>
       </div>
 
-      <!-- 分片空态：一句话（禁裸「暂无数据」） -->
+      <!-- 分片空态：EmptyState 统一形态（禁裸「暂无数据」） -->
       <div
         v-else-if="chunks.length === 0"
-        class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-12 text-center"
+        class="rounded-2xl border border-dashed border-border bg-surface"
       >
-        <PhWarningCircle class="h-8 w-8 text-text-subtle" />
-        <p class="mt-3 text-sm font-medium text-text">暂无分片</p>
-        <p class="mt-1 text-xs text-text-muted">文档解析入库后可在此查看分片内容</p>
+        <EmptyState title="暂无分片" description="文档解析入库后可在此查看分片内容">
+          <template #icon>
+            <PhWarningCircle class="h-6 w-6" aria-hidden="true" />
+          </template>
+        </EmptyState>
       </div>
 
-      <!-- 正常态：分片列表（headingPath + 内容 2 行截断）+ 分页器 -->
+      <!-- 正常态：分片表格（DataTable：lav 表头/悬停行/行级联入场）+ 分页器 -->
       <template v-else>
-        <ul
-          data-testid="chunk-list"
-          class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface"
-        >
-          <li
-            v-for="c in chunks"
-            :key="c.id"
-            class="px-4 py-3 transition-colors duration-150 hover:bg-surface-2"
-          >
-            <div class="flex items-center justify-between gap-3">
-              <span class="truncate text-xs font-medium text-text-muted">
-                {{ c.headingPath || `第 ${c.chunkIndex} 片` }}
-              </span>
-              <span class="shrink-0 tabular-nums text-xs text-text-subtle">
-                #{{ c.chunkIndex }} · {{ c.startPage }}-{{ c.endPage }} 页
-              </span>
-            </div>
-            <!-- 内容 2 行截断（设计 §2.4.3 分片预览同规格） -->
-            <p
-              :data-testid="`chunk-content-${c.id}`"
-              class="mt-1 line-clamp-2 text-sm leading-relaxed text-text"
-            >
-              {{ c.content }}
-            </p>
-          </li>
-        </ul>
+        <div class="rounded-2xl border border-border bg-surface pb-2 shadow-xs">
+          <DataTable data-testid="chunk-list" label="文档分片列表">
+            <template #header>
+              <tr>
+                <th class="w-[26%]">分片位置</th>
+                <th>内容</th>
+                <th class="w-[12%]">页码</th>
+              </tr>
+            </template>
+            <!-- 行数据经默认插槽进 tbody（DataTable 已渲染 thead/tbody 骨架） -->
+            <tr v-for="c in chunks" :key="c.id">
+              <!-- 位置列：headingPath 主文字色 + 序号（空 headingPath 回退「第 N 片」） -->
+              <td class="align-top">
+                <span class="block truncate text-[13px] font-semibold text-text">
+                  {{ c.headingPath || `第 ${c.chunkIndex} 片` }}
+                </span>
+                <span class="mt-0.5 block text-xs text-text-subtle">#{{ c.chunkIndex }}</span>
+              </td>
+              <!-- 内容列：2 行截断（设计 §2.4.3 分片预览同规格） -->
+              <td class="align-top">
+                <p
+                  :data-testid="`chunk-content-${c.id}`"
+                  class="line-clamp-2 text-sm leading-relaxed text-text"
+                >
+                  {{ c.content }}
+                </p>
+              </td>
+              <!-- 页码列：起止页码（tabular-nums 全局等宽） -->
+              <td class="align-top">
+                <span class="text-[13px]">{{ c.startPage }}-{{ c.endPage }} 页</span>
+              </td>
+            </tr>
+          </DataTable>
+        </div>
 
         <!-- 分片分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
         <div class="mt-4 flex items-center justify-between text-sm text-text-muted">

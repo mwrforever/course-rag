@@ -3,7 +3,9 @@ import { mockAuth, login, apiOk } from './helpers/api-mock'
 
 /**
  * 仪表盘 E2E（整合 spec §3.2 dashboard 组）
- * - KPI 4 卡数值渲染（mock stats）＋ 单折线图表挂载 ＋ 快捷入口跳转
+ * - KPI 4 卡数值渲染（mock stats）＋ 趋势柱状图挂载 ＋ 快捷入口跳转
+ * - 2026-08-27 紫系换肤适配：图表改 CSS 自绘（原图表库移除）；仪表盘新增
+ *   feedbacks/stats（意图 donut / 意图×赞踩）消费，补对应路由 mock
  */
 
 test.describe('仪表盘', () => {
@@ -34,6 +36,17 @@ test.describe('仪表盘', () => {
           { date: '2026-08-18', count: '12' },
           { date: '2026-08-19', count: '8' },
           { date: '2026-08-20', count: '15' },
+        ]),
+      }),
+    )
+    await page.route('**/api/v1/admin/feedbacks/stats*', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: apiOk([
+          { intentType: 'knowledge_question', likedCount: '9', dislikedCount: '1' },
+          { intentType: 'chat', likedCount: '4', dislikedCount: '2' },
+          { intentType: 'unknown', likedCount: '1', dislikedCount: '0' },
         ]),
       }),
     )

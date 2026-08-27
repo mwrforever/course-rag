@@ -68,6 +68,10 @@ import {
 import EtlStatusBadge from '@/components/EtlStatusBadge.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { DataTable } from '@/components/ui/data-table'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageHead } from '@/components/ui/page-head'
 import { useEtlPolling } from '@/composables/use-etl-polling'
 import { ApiError, courseApi, documentApi, knowledgeBaseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
@@ -296,7 +300,8 @@ function confirmBatchDelete() {
  * 当前展开菜单（行 id + 触发按钮右下角坐标）
  *
  * 菜单 Teleport 到 body 并 fixed 定位：表格容器 overflow-hidden 会裁切行内
- * absolute 菜单（末行展开最明显），移出裁切上下文后任何行均完整可见。
+ * absolute 菜单（末行展开最明显），移出裁切上下文后任何行均完整可见
+ * （e2e「末行菜单完整可见」几何断言依赖此挂载方式，禁止改为行内弹层）。
  */
 const openMenu = ref<{ id: string; x: number; y: number } | null>(null)
 
@@ -581,19 +586,17 @@ function submitUpload() {
 </script>
 
 <template>
-  <!-- 页头操作行：管理知识库链接 + 批量删除（勾选后出现）+ 上传入口 -->
-  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-    <p class="text-sm text-text-muted">
-      管理知识库文档与解析状态
+  <!-- 页头（设计稿 .page-head）：主标题 + 副题 + 右侧动作区（知识库入口 / 批量删除 / 上传） -->
+  <PageHead title="文档管理" subtitle="管理知识库文档与解析状态">
+    <template #actions>
       <router-link
         to="/knowledge-bases"
         data-testid="manage-kbs"
-        class="ml-2 text-brand hover:underline"
+        class="inline-flex h-9 items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-text transition-colors duration-150 hover:bg-surface-2"
       >
         管理知识库
       </router-link>
-    </p>
-    <div class="flex items-center gap-2">
+      <!-- 批量删除：勾选后出现（计数随勾选集联动） -->
       <Button
         v-if="selected.size > 0"
         variant="danger"
@@ -608,16 +611,19 @@ function submitUpload() {
         <PhUploadSimple class="h-4 w-4" />
         上传文档
       </Button>
-    </div>
-  </div>
+    </template>
+  </PageHead>
 
-  <!-- 筛选条：kbId / status / q（搜索按钮或回车提交） -->
-  <div class="mb-4 flex flex-wrap items-center gap-2">
+  <!-- 筛选条（白卡收纳）：kbId / status / q（搜索按钮或回车提交） -->
+  <div
+    v-reveal
+    class="mt-5 mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-xs"
+  >
     <select
       data-testid="filter-kb"
       aria-label="按知识库筛选"
       :value="filters.kbId"
-      class="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+      class="h-9 rounded-xl border border-border bg-surface px-2.5 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
       @change="onFilterKbChange"
     >
       <option value="">全部知识库</option>
@@ -629,7 +635,7 @@ function submitUpload() {
       data-testid="filter-status"
       aria-label="按状态筛选"
       :value="filters.status"
-      class="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+      class="h-9 rounded-xl border border-border bg-surface px-2.5 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
       @change="onFilterStatusChange"
     >
       <option value="">全部状态</option>
@@ -644,7 +650,7 @@ function submitUpload() {
         type="text"
         aria-label="按文件名搜索"
         placeholder="搜索文件名"
-        class="h-9 w-56 rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+        class="h-9 w-56 rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
         @keyup.enter="applyKeyword"
       />
       <Button variant="outline" size="sm" data-testid="apply-q" @click="applyKeyword">
@@ -658,7 +664,7 @@ function submitUpload() {
   <div
     v-if="listError"
     role="alert"
-    class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
+    class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
   >
     <span class="text-sm text-danger">{{ listError }}</span>
     <Button variant="outline" size="sm" data-testid="retry-docs" @click="refetch">重试</Button>
@@ -668,41 +674,48 @@ function submitUpload() {
   <div
     v-else-if="isLoading"
     data-testid="doc-skeleton"
-    class="overflow-hidden rounded-xl border border-border bg-surface"
+    class="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs"
     aria-label="文档列表加载中"
   >
-    <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
+    <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-5 py-3.5">
       <div v-for="i in 7" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-slate-200" />
     </div>
     <div
       v-for="i in 5"
       :key="`row-${i}`"
-      class="h-11 animate-pulse border-b border-border bg-slate-50"
+      class="h-14 animate-pulse border-b border-border bg-slate-50 last:border-b-0"
     />
   </div>
 
-  <!-- 空态：一句话 + 上传行动入口（禁裸「暂无数据」） -->
+  <!-- 空态（EmptyState 标准结构）：一句话 + 上传行动入口（禁裸「暂无数据」） -->
   <div
     v-else-if="docs.length === 0"
-    class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
+    v-reveal
+    class="rounded-2xl border border-border bg-surface shadow-xs"
   >
-    <PhWarningCircle class="h-8 w-8 text-text-subtle" />
-    <p class="mt-3 text-sm font-medium text-text">还没有文档</p>
-    <p class="mt-1 text-xs text-text-muted">上传后自动进入解析管道，可实时查看进度</p>
-    <Button class="mt-4" data-testid="upload-doc-empty" @click="openUpload">
-      <PhUploadSimple class="h-4 w-4" />
-      上传文档
-    </Button>
+    <EmptyState title="还没有文档" description="上传后自动进入解析管道，可实时查看进度">
+      <template #icon>
+        <PhUploadSimple class="h-6 w-6" aria-hidden="true" />
+      </template>
+      <template #action>
+        <Button data-testid="upload-doc-empty" @click="openUpload">
+          <PhUploadSimple class="h-4 w-4" />
+          上传文档
+        </Button>
+      </template>
+    </EmptyState>
   </div>
 
   <!-- 正常态：分页表格（列：☐/文件名/类型/状态/分片数/上传时间/更新时间/操作） -->
   <template v-else>
+    <!-- 表格卡：overflow-hidden 裁出圆角表头（行菜单已 Teleport 到 body，不受容器裁切影响） -->
     <div
+      v-reveal="80"
       data-testid="doc-table-container"
-      class="overflow-hidden rounded-xl border border-border bg-surface"
+      class="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs"
     >
-      <table data-testid="doc-table" class="w-full text-sm">
-        <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
+      <DataTable data-testid="doc-table" label="文档列表">
+        <template #header>
           <tr>
             <th class="w-10 px-2 text-center">
               <!-- 全选：:checked 由 allSelected 计算驱动，@change 切换（无需 v-model） -->
@@ -715,12 +728,12 @@ function submitUpload() {
                 @change="toggleAll"
               />
             </th>
-            <th class="px-4 py-2.5 font-medium">文件名</th>
-            <th class="px-4 py-2.5 font-medium">类型</th>
-            <th class="px-4 py-2.5 font-medium">状态</th>
-            <th class="px-4 py-2.5 text-right font-medium">分片数</th>
+            <th>文件名</th>
+            <th>类型</th>
+            <th>状态</th>
+            <th class="text-right">分片数</th>
             <!-- 排序指示器仅 created/updated 两列启用的表头（后端实测两值） -->
-            <th class="px-4 py-2.5 font-medium">
+            <th>
               <button
                 type="button"
                 data-testid="sort-created"
@@ -735,7 +748,7 @@ function submitUpload() {
                 />
               </button>
             </th>
-            <th class="px-4 py-2.5 font-medium">
+            <th>
               <button
                 type="button"
                 data-testid="sort-updated"
@@ -750,129 +763,123 @@ function submitUpload() {
                 />
               </button>
             </th>
-            <th class="w-16 px-4 py-2.5 text-right font-medium">操作</th>
+            <th class="w-16 text-right">操作</th>
           </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="docItem in docs"
-            :key="docItem.id"
-            :data-testid="`row-${docItem.id}`"
-            class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
+        </template>
+        <tr v-for="docItem in docs" :key="docItem.id" :data-testid="`row-${docItem.id}`">
+          <td class="px-2 text-center">
+            <input
+              type="checkbox"
+              :data-testid="`select-${docItem.id}`"
+              aria-label="选择文档"
+              :checked="selected.has(docItem.id)"
+              class="h-4 w-4 accent-brand"
+              @change="toggleRow(docItem.id)"
+            />
+          </td>
+          <td class="max-w-[240px]">
+            <p class="truncate font-semibold text-text" :title="docItem.title">
+              {{ docItem.title }}
+            </p>
+            <!-- 所属库小字（设计 §2.4.2：文件名 + 所属库） -->
+            <p class="mt-0.5 truncate text-xs text-text-subtle">{{ kbNameOf(docItem.kbId) }}</p>
+          </td>
+          <td>
+            <Badge variant="default">{{ docItem.fileType.toUpperCase() }}</Badge>
+          </td>
+          <td>
+            <EtlStatusBadge :status="docItem.parseStatus" :error-message="docItem.errorMessage" />
+          </td>
+          <td class="text-right tabular-nums">{{ docItem.chunkCount }}</td>
+          <!-- 上传时间：相对展示 + 绝对时间 tooltip（设计 §2.4.2） -->
+          <td
+            :data-testid="`doc-time-${docItem.id}`"
+            :title="formatDateTime(docItem.createdAt)"
+            class="tabular-nums"
           >
-            <td class="px-2 text-center">
-              <input
-                type="checkbox"
-                :data-testid="`select-${docItem.id}`"
-                aria-label="选择文档"
-                :checked="selected.has(docItem.id)"
-                class="h-4 w-4 accent-brand"
-                @change="toggleRow(docItem.id)"
-              />
-            </td>
-            <td class="max-w-[240px] px-4">
-              <p class="truncate font-medium text-text" :title="docItem.title">
-                {{ docItem.title }}
-              </p>
-              <!-- 所属库小字（设计 §2.4.2：文件名 + 所属库） -->
-              <p class="truncate text-xs text-text-subtle">{{ kbNameOf(docItem.kbId) }}</p>
-            </td>
-            <td class="px-4">
-              <Badge variant="default">{{ docItem.fileType.toUpperCase() }}</Badge>
-            </td>
-            <td class="px-4">
-              <EtlStatusBadge :status="docItem.parseStatus" :error-message="docItem.errorMessage" />
-            </td>
-            <td class="px-4 text-right tabular-nums text-text-muted">{{ docItem.chunkCount }}</td>
-            <!-- 上传时间：相对展示 + 绝对时间 tooltip（设计 §2.4.2） -->
-            <td
-              :data-testid="`doc-time-${docItem.id}`"
-              :title="formatDateTime(docItem.createdAt)"
-              class="px-4 tabular-nums text-text-muted"
+            {{ formatRelativeTime(docItem.createdAt) }}
+          </td>
+          <td :title="formatDateTime(docItem.updatedAt)" class="tabular-nums">
+            {{ formatRelativeTime(docItem.updatedAt) }}
+          </td>
+          <td class="text-right">
+            <!-- ⋮ 触发钮（设计稿 eye-btn 圆形操作钮形态）：hover 品牌实底 -->
+            <button
+              type="button"
+              :data-testid="`doc-menu-${docItem.id}`"
+              aria-label="文档操作"
+              class="inline-grid h-[34px] w-[34px] place-items-center rounded-full bg-brand-soft text-text transition-all duration-200 hover:bg-brand hover:text-white active:scale-90"
+              @click="toggleMenu(docItem.id, $event)"
             >
-              {{ formatRelativeTime(docItem.createdAt) }}
-            </td>
-            <td
-              :title="formatDateTime(docItem.updatedAt)"
-              class="px-4 tabular-nums text-text-muted"
-            >
-              {{ formatRelativeTime(docItem.updatedAt) }}
-            </td>
-            <td class="relative px-4 text-right">
-              <Button
-                variant="ghost"
-                size="sm"
-                :data-testid="`doc-menu-${docItem.id}`"
-                aria-label="文档操作"
-                @click="toggleMenu(docItem.id, $event)"
+              <PhDotsThreeVertical class="h-4 w-4" />
+            </button>
+            <!-- 操作菜单（设计稿 tb-menu 形态）：Teleport 到 body + fixed 定位避开表格容器裁切
+                 （几何契约：末行菜单完整可见断言依赖此挂载方式，禁止迁回行内弹层） -->
+            <Teleport to="body">
+              <div
+                v-if="openMenu && openMenu.id === docItem.id"
+                data-testid="doc-menu"
+                role="menu"
+                class="fixed z-30 w-44 animate-menu-in rounded-xl border border-border bg-surface p-1.5 shadow-lg"
+                :style="{ left: `${openMenu.x - 176}px`, top: `${openMenu.y + 6}px` }"
               >
-                <PhDotsThreeVertical class="h-4 w-4" />
-              </Button>
-              <!-- 操作菜单：查看分片/重新解析/下载/改标题/删除（Teleport 到 body 避开表格容器裁切） -->
-              <Teleport to="body">
-                <div
-                  v-if="openMenu && openMenu.id === docItem.id"
-                  data-testid="doc-menu"
-                  class="fixed z-30 w-40 rounded-lg border border-border bg-surface p-1 shadow-md"
-                  :style="{ left: `${openMenu.x - 160}px`, top: `${openMenu.y + 4}px` }"
+                <DropdownMenuItem
+                  data-testid="menu-view"
+                  label="查看分片"
+                  @click="viewChunks(docItem)"
                 >
-                  <button
-                    type="button"
-                    data-testid="menu-view"
-                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
-                    @click="viewChunks(docItem)"
-                  >
-                    <PhMagnifyingGlass class="h-4 w-4 text-text-muted" />
-                    查看分片
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="menu-reparse"
-                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
-                    @click="handleReparse(docItem)"
-                  >
-                    <PhRepeat class="h-4 w-4 text-text-muted" />
-                    重新解析
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="menu-download"
-                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
-                    @click="handleDownload(docItem)"
-                  >
-                    <PhDownloadSimple class="h-4 w-4 text-text-muted" />
-                    下载
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="menu-rename"
-                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
-                    @click="openRename(docItem)"
-                  >
-                    <PhPencilSimple class="h-4 w-4 text-text-muted" />
-                    改标题
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="menu-delete"
-                    class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm text-danger transition-colors duration-150 hover:bg-red-50"
-                    @click="requestDelete(docItem)"
-                  >
-                    <PhTrash class="h-4 w-4" />
-                    删除
-                  </button>
-                </div>
-              </Teleport>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+                  <template #icon>
+                    <PhMagnifyingGlass class="h-4 w-4" aria-hidden="true" />
+                  </template>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-reparse"
+                  label="重新解析"
+                  @click="handleReparse(docItem)"
+                >
+                  <template #icon>
+                    <PhRepeat class="h-4 w-4" aria-hidden="true" />
+                  </template>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-download"
+                  label="下载"
+                  @click="handleDownload(docItem)"
+                >
+                  <template #icon>
+                    <PhDownloadSimple class="h-4 w-4" aria-hidden="true" />
+                  </template>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-rename"
+                  label="改标题"
+                  @click="openRename(docItem)"
+                >
+                  <template #icon>
+                    <PhPencilSimple class="h-4 w-4" aria-hidden="true" />
+                  </template>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-delete"
+                  label="删除"
+                  tone="danger"
+                  @click="requestDelete(docItem)"
+                >
+                  <template #icon>
+                    <PhTrash class="h-4 w-4" aria-hidden="true" />
+                  </template>
+                </DropdownMenuItem>
+              </div>
+            </Teleport>
+          </td>
+        </tr>
+      </DataTable>
     </div>
 
     <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
     <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
       <span>
-        共 <span class="tabular-nums text-text">{{ total }}</span> 条
+        共 <span class="tabular-nums font-semibold text-text">{{ total }}</span> 条
       </span>
       <div class="flex items-center gap-2">
         <Button
@@ -901,19 +908,18 @@ function submitUpload() {
   <!-- 菜单点击外遮罩：点击任意处收起菜单 -->
   <div v-if="openMenu" class="fixed inset-0 z-20" @click="closeMenu" />
 
-  <!-- 上传 Dialog 520px：kbId 必选 + courseId 可选 + 拖拽区 + 进度条 -->
+  <!-- 上传 Dialog（设计稿弹窗形态）：kbId 必选 + courseId 可选 + 拖拽区 + 进度条 -->
   <div
     v-if="uploadOpen"
     data-testid="upload-dialog"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+    class="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-overlay p-4"
     @keydown.esc="closeUpload"
     @click.self="closeUpload"
   >
     <div
-      class="w-full max-w-[520px] rounded-xl border border-border bg-surface p-6 shadow-md"
+      class="max-h-[85vh] w-full max-w-[520px] overflow-y-auto rounded-2xl bg-surface p-6 shadow-lg"
       role="dialog"
       aria-modal="true"
-      style="max-height: 85vh; overflow-y: auto"
       @click.stop
     >
       <h2 class="text-base font-semibold text-text">上传文档</h2>
@@ -931,7 +937,7 @@ function submitUpload() {
             id="upload-kb"
             v-model="uploadKbId"
             data-testid="upload-kb"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+            class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
           >
             <option value="">请选择知识库</option>
             <option v-for="kbItem in kbs" :key="kbItem.id" :value="kbItem.id">
@@ -950,7 +956,7 @@ function submitUpload() {
             type="text"
             aria-label="文档标题"
             placeholder="请输入文档标题"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
         </div>
         <div>
@@ -965,18 +971,18 @@ function submitUpload() {
               type="text"
               aria-label="搜索课程"
               placeholder="输入课程名搜索（不选则归属通用资料）"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
             <ul
               v-if="courseResults.length > 0"
               data-testid="course-results"
-              class="mt-1 max-h-48 w-full overflow-auto rounded-lg border border-border bg-surface p-1 shadow-md"
+              class="mt-1 max-h-48 w-full overflow-auto rounded-xl border border-border bg-surface p-1 shadow-md"
             >
               <li v-for="c in courseResults" :key="c.id">
                 <button
                   type="button"
                   :data-testid="`course-option-${c.id}`"
-                  class="w-full rounded-md px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+                  class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-brand-soft hover:text-brand"
                   @click="pickCourse(c)"
                 >
                   {{ c.title }}
@@ -987,7 +993,7 @@ function submitUpload() {
           <div
             v-else
             data-testid="selected-course"
-            class="flex items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-text"
+            class="flex items-center justify-between rounded-xl border border-border bg-brand-light px-3 py-2 text-sm text-text"
           >
             <span>已选：{{ uploadCourse.title }}</span>
             <button
@@ -1008,13 +1014,15 @@ function submitUpload() {
             role="button"
             tabindex="0"
             aria-label="选择上传文件"
-            class="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-surface-2 px-4 py-8 text-center transition-colors duration-150 hover:border-brand/50"
+            class="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-brand-light px-4 py-8 text-center transition-colors duration-150 hover:border-brand/50"
             @dragover.prevent
             @drop.prevent="onDrop"
             @click="openFilePicker"
           >
-            <PhUploadSimple class="h-6 w-6 text-text-subtle" />
-            <p class="mt-2 text-sm text-text">
+            <span class="grid h-12 w-12 place-items-center rounded-full bg-surface shadow-xs">
+              <PhUploadSimple class="h-6 w-6 text-brand" />
+            </span>
+            <p class="mt-3 text-sm font-medium text-text">
               {{ uploadFile?.name ?? '拖拽文件到此处，或点击选择' }}
             </p>
             <p class="mt-1 text-xs text-text-subtle">支持 pdf/docx/pptx/md/txt，≤100MB</p>
@@ -1028,12 +1036,12 @@ function submitUpload() {
             />
           </div>
         </div>
-        <!-- XHR 上传进度条：onUploadProgress 回调驱动宽度（设计 §2.4.2） -->
+        <!-- XHR 上传进度条（设计稿渐变进度形态）：onUploadProgress 回调驱动宽度（设计 §2.4.2） -->
         <div v-if="uploading" data-testid="upload-progress-wrap">
-          <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+          <div class="h-1.5 w-full overflow-hidden rounded-full bg-brand-light">
             <div
               data-testid="upload-progress"
-              class="h-full rounded-full bg-brand transition-[width] duration-150"
+              class="h-full rounded-full bg-gradient-to-r from-brand to-brand-strong transition-[width] duration-150"
               :style="{ width: `${progress}%` }"
             />
           </div>
@@ -1057,12 +1065,12 @@ function submitUpload() {
   <div
     v-if="renameTarget"
     data-testid="rename-dialog"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+    class="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-overlay p-4"
     @keydown.esc="closeRename"
     @click.self="closeRename"
   >
     <div
-      class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+      class="w-full max-w-[440px] animate-menu-in rounded-2xl bg-surface p-6 shadow-lg"
       role="dialog"
       aria-modal="true"
       @click.stop
@@ -1078,7 +1086,7 @@ function submitUpload() {
           data-testid="rename-input"
           type="text"
           aria-label="新标题"
-          class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+          class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
         <p v-if="renameError" class="mt-1 text-xs text-danger">{{ renameError }}</p>
       </div>
@@ -1096,12 +1104,12 @@ function submitUpload() {
   <div
     v-if="deletingDoc"
     data-testid="delete-dialog"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+    class="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-overlay p-4"
     @keydown.esc="cancelDelete"
     @click.self="cancelDelete"
   >
     <div
-      class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+      class="w-full max-w-[440px] animate-menu-in rounded-2xl bg-surface p-6 shadow-lg"
       role="alertdialog"
       aria-modal="true"
       @click.stop
@@ -1136,12 +1144,12 @@ function submitUpload() {
   <div
     v-if="batchConfirmOpen"
     data-testid="batch-dialog"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+    class="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-overlay p-4"
     @keydown.esc="batchConfirmOpen = false"
     @click.self="batchConfirmOpen = false"
   >
     <div
-      class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
+      class="w-full max-w-[440px] animate-menu-in rounded-2xl bg-surface p-6 shadow-lg"
       role="alertdialog"
       aria-modal="true"
       @click.stop
@@ -1175,3 +1183,15 @@ function submitUpload() {
     </div>
   </div>
 </template>
+
+<style scoped>
+/**
+ * 勾选列窄列修正：DataTable 首列默认 22px 左内距面向文本首列（设计稿），
+ * 本表首列为勾选框，收窄为 8px 保持复选框视觉居中。
+ */
+thead tr th:first-child,
+tbody tr td:first-child {
+  padding-right: 8px;
+  padding-left: 8px;
+}
+</style>

@@ -4,15 +4,20 @@
  *
  * 700px 只读消息抽屉：打开时调 sessionApi.detail 拉取会话完整消息流
  * （role 徽章 + seq 序号 + intentType + content），消息仅展示不编辑。
+ * 视觉形态（2026-08-27 紫系换肤 N8b）：紫黑遮罩 + 2px 毛玻璃 + 面板右滑入
+ * （设计稿 backdrop / A26 参数）+ 消息气泡列表（角色头像圆 + 差异化气泡底色）。
  *
  * 权限差异（回放入口仅超管可见）保留在调用方，本组件不做权限判断；
  * 状态徽章语义 ACTIVE→success / 其余→default，与 SessionsAdminView 原实现一致。
+ *
+ * props/emit 契约冻结（N8a FeedbackView 依赖）：open/sessionId/title/initialStatus + close。
  */
 import { computed, ref, watch } from 'vue'
 
-import { PhSpinnerGap } from '@phosphor-icons/vue'
+import { PhChatCircleDots, PhRobot, PhSpinnerGap, PhUser, PhX } from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ApiError, sessionApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import type { ChatSessionDetailVO, SessionStatus } from '@/lib/types'
@@ -84,23 +89,25 @@ watch(
 </script>
 
 <template>
-  <!-- 会话回放 Drawer（700px）：detail 渲染 messages 只读流 -->
+  <!-- 会话回放 Drawer（700px）：遮罩紫黑半透明 + 轻毛玻璃（设计稿 backdrop 形态） -->
   <div
     v-if="open"
     data-testid="replay-overlay"
-    class="fixed inset-0 z-50 bg-slate-900/40"
+    class="fixed inset-0 z-50 animate-fade-in bg-overlay backdrop-blur-[2px]"
     @click.self="close"
     @keydown.esc="close"
   >
+    <!-- 抽屉面板：右缘贴齐 + 700px 固定宽（窄屏兜底收缩）+ 滑入动画见 scoped -->
     <aside
       data-testid="session-drawer"
-      class="absolute right-0 top-0 flex h-full w-[700px] flex-col border-l border-border bg-surface shadow-md"
+      class="drawer-panel absolute top-0 right-0 flex h-full w-[700px] max-w-[92vw] flex-col border-l border-border bg-surface shadow-lg"
       role="dialog"
       aria-modal="true"
     >
-      <header class="flex items-center justify-between border-b border-border px-6 py-4">
-        <div>
-          <h2 class="text-base font-semibold text-text">{{ title }}</h2>
+      <!-- 头部：标题 + 会话标识与状态徽章 + 图标关闭钮 -->
+      <header class="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
+        <div class="min-w-0">
+          <h2 class="truncate text-base font-semibold text-text" :title="title">{{ title }}</h2>
           <p class="mt-0.5 flex items-center gap-2 text-xs text-text-muted">
             会话 #{{ sessionId }}
             <!-- 状态徽章：详情加载后以明细为准（列表行可能滞后，如刚被外部关闭） -->
@@ -113,13 +120,13 @@ watch(
           type="button"
           data-testid="close-replay"
           aria-label="关闭回放"
-          class="rounded-lg px-2 py-1 text-sm text-text-muted transition-colors duration-150 hover:bg-surface-2"
+          class="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text"
           @click="close"
         >
-          关闭
+          <PhX class="h-4.5 w-4.5" />
         </button>
       </header>
-      <div class="flex-1 overflow-y-auto px-6 py-4">
+      <div class="flex-1 overflow-y-auto bg-bg/40 px-6 py-5">
         <!-- 加载中：spinner + 文案 -->
         <div
           v-if="loading"
@@ -128,30 +135,64 @@ watch(
           <PhSpinnerGap class="h-4 w-4 animate-spin" />
           加载会话消息
         </div>
-        <!-- 空消息兜底 -->
-        <div v-else-if="!detail || detail.messages.length === 0" class="py-10 text-center">
-          <p class="text-sm text-text-muted">该会话暂无消息记录</p>
-        </div>
-        <!-- 消息流：role 徽章 + seq 序号 + intentType + content 只读 -->
-        <ol v-else class="space-y-3">
-          <li
-            v-for="msg in detail.messages"
-            :key="msg.id"
-            class="rounded-lg border border-border bg-surface-2 p-3"
-          >
-            <div class="flex items-center gap-2 text-xs">
-              <Badge :variant="msg.role === 'assistant' ? 'brand' : 'default'">
-                {{ msg.role }}
-              </Badge>
-              <span class="tabular-nums text-text-subtle">seq {{ msg.seq }}</span>
-              <span v-if="msg.intentType" class="text-text-subtle">{{ msg.intentType }}</span>
+        <!-- 空消息兜底：统一空态形态（图标圆 + 标题） -->
+        <EmptyState
+          v-else-if="!detail || detail.messages.length === 0"
+          title="该会话暂无消息记录"
+          description="消息只在会话产生过对话后才会留存"
+        >
+          <template #icon>
+            <PhChatCircleDots class="h-6 w-6" aria-hidden="true" />
+          </template>
+        </EmptyState>
+        <!-- 消息流气泡列表：角色头像圆 + role 徽章 + seq/intentType 元信息 + content 只读 -->
+        <ol v-else class="space-y-4">
+          <li v-for="msg in detail.messages" :key="msg.id" class="flex items-start gap-3">
+            <!-- 角色头像圆：assistant 紫系 / user 中性（气泡列表的视觉锚点） -->
+            <span
+              class="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full"
+              :class="
+                msg.role === 'assistant'
+                  ? 'bg-brand-soft text-brand'
+                  : 'bg-surface-2 text-text-muted'
+              "
+            >
+              <PhRobot v-if="msg.role === 'assistant'" class="h-4.5 w-4.5" />
+              <PhUser v-else class="h-4.5 w-4.5" />
+            </span>
+            <!-- 气泡卡：assistant 浅紫底 / user 次表面底，圆角 16px -->
+            <div
+              class="min-w-0 flex-1 rounded-2xl px-4 py-3"
+              :class="msg.role === 'assistant' ? 'bg-brand-soft/60' : 'bg-surface-2'"
+            >
+              <div class="flex items-center gap-2 text-xs">
+                <Badge :variant="msg.role === 'assistant' ? 'brand' : 'default'">
+                  {{ msg.role }}
+                </Badge>
+                <span class="tabular-nums text-text-subtle">seq {{ msg.seq }}</span>
+                <span v-if="msg.intentType" class="text-text-subtle">{{ msg.intentType }}</span>
+              </div>
+              <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-text">
+                {{ msg.content }}
+              </p>
             </div>
-            <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-text">
-              {{ msg.content }}
-            </p>
           </li>
         </ol>
       </div>
     </aside>
   </div>
 </template>
+
+<style scoped>
+/* 抽屉滑入：右缘外 100% 平移至复位（设计稿 A26 transform .45s ease 参数）；
+   reduced-motion 由 main.css 全局降级总开关接管（animation: none） */
+.drawer-panel {
+  animation: drawer-in 0.45s var(--ease) both;
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+</style>

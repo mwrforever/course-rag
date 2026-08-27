@@ -33,6 +33,10 @@ vi.mock('@/lib/api', () => ({
       Promise.resolve({ studentCount: '30', feedbackCount: '90', likeRate: 0.5 }),
     feedbackTrend: () => Promise.resolve([]),
   },
+  // 意图统计（2026-08-27 仪表盘重构新增消费）：空数组 → donut/堆叠条区块空态
+  feedbackApi: {
+    stats: () => Promise.resolve([]),
+  },
   documentApi: {
     list: () => Promise.resolve({ records: [], total: '0', page: 1, size: 5 }),
   },

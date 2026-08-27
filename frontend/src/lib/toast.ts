@@ -1,7 +1,8 @@
 /**
- * toast 轻提示（设计 §2.6）
+ * toast 轻提示（设计 §2.6 + 2026-08-27 紫系换肤：深紫底 + 弹簧入场，设计稿 A25 形态）
  *
- * 右上角固定容器，success/danger/info 三色左边条，3 秒自动消失（MOTION 2 无动画库）。
+ * 右上角固定容器，深紫底（ink-800 #23214a 同源）白字 + 语义色左边条 +
+ * toast-in 弹簧入场（450ms，@theme 令牌 animate-toast-in），3 秒自动消失（无动画库）。
  * 全局登出流（api 401 刷新失败 → toast「登录已失效，请重新登录」）与后续页面提示复用本实现。
  * 非线程安全注意：纯 DOM 操作，浏览器单线程模型下无并发问题。
  */
@@ -38,10 +39,11 @@ export function showToast(message: string, type: ToastType = 'info'): void {
     document.body.appendChild(container)
   }
 
-  // 单条 toast：surface 底 + 语义色左条 + 阴影（设计 §2.6 造型）
+  // 单条 toast：深紫底白字 + 语义色左条 + 弹簧入场（设计稿 A25 深底造型；
+  // 边条类名 border-success/danger/info 是测试隐式契约，禁改）
   const el = document.createElement('div')
   el.dataset.toast = 'true'
-  el.className = `rounded-md border-l-4 bg-surface px-4 py-3 text-sm text-text shadow-md ${borderClass[type]}`
+  el.className = `animate-toast-in rounded-xl border-l-4 bg-ink-800 px-4 py-3 text-sm font-semibold text-white shadow-lg ${borderClass[type]}`
   el.textContent = message
   container.appendChild(el)
 

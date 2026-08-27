@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * 课程概览（基础信息，UI 重构 2026-08-25 从 CourseEditView 拆出）
+ * 课程概览（基础信息，UI 重构 2026-08-25 从 CourseEditView 拆出；
+ * 2026-08-27 紫系重制：编辑态补 StatCard 统计区 + 表单拆三张分区卡）
  *
  * 职责：封面 URL + 实时预览 / 标题* zod 前置校验 / 简述 / 分类 / 讲师名 / 价格 /
  * 课时 / 标签 chips / 报名链接 / 状态。新建模式（/courses/new 独立路由）create 后
@@ -10,14 +11,23 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useMutation, useQuery } from '@tanstack/vue-query'
 import { useRoute, useRouter } from 'vue-router'
 import { z } from 'zod'
-import { PhImageSquare, PhSpinnerGap, PhX } from '@phosphor-icons/vue'
+import {
+  PhArticle,
+  PhCalendarBlank,
+  PhChalkboardTeacher,
+  PhImageSquare,
+  PhSpinnerGap,
+  PhUsers,
+  PhX,
+} from '@phosphor-icons/vue'
 
 import { Button } from '@/components/ui/button'
+import { StatCard } from '@/components/ui/stat-card'
 import { ApiError, courseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import type { CourseDTO, UpdateCourseRequest } from '@/lib/types'
 
-/** 标题必填校验（设计 §2.4.4：标题*，错误红字 input 下方） */
+/** 标题必填校验（标题*，错误红字 input 下方） */
 const titleSchema = z.object({ title: z.string().min(1, '请输入课程标题') })
 
 /** 基础表单承载：价格以字符串承载，提交时数值化（避免输入过程 Number 精度抖动） */
@@ -73,6 +83,18 @@ watch(courseData, (c) => {
 const listError = computed(() =>
   isError.value ? messageOf(queryError.value, '课程加载失败，请稍后重试') : '',
 )
+
+/** 统计区四卡（编辑态且课程加载完成后渲染；全部为课程真实字段，无装饰性假数） */
+const statCards = computed(() => {
+  const c = courseData.value
+  if (!c) return []
+  return [
+    { label: '学习人数', value: Number(c.learningCount), tone: 'success' as const },
+    { label: '内容板块', value: c.contents?.length ?? 0, tone: 'brand' as const },
+    { label: '排期数量', value: c.schedules?.length ?? 0, tone: 'warning' as const },
+    { label: '分配教师', value: c.teacherIds?.length ?? 0, tone: 'danger' as const },
+  ]
+})
 
 function messageOf(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
@@ -170,10 +192,17 @@ function saveBasic() {
 </script>
 
 <template>
-  <div>
+  <div class="space-y-5">
     <!-- 编辑模式加载骨架 -->
-    <div v-if="isLoading" data-testid="edit-skeleton" class="space-y-6" aria-label="课程加载中">
-      <div class="rounded-xl border border-border bg-surface">
+    <div v-if="isLoading" data-testid="edit-skeleton" class="space-y-5" aria-label="课程加载中">
+      <div class="grid grid-cols-2 gap-5 xl:grid-cols-4">
+        <div
+          v-for="i in 4"
+          :key="`stat-${i}`"
+          class="h-[118px] animate-pulse rounded-2xl bg-surface-2"
+        />
+      </div>
+      <div class="rounded-2xl border border-border bg-surface">
         <div class="h-14 animate-pulse border-b border-border bg-surface-2" />
         <div class="grid grid-cols-2 gap-6 p-6">
           <div v-for="i in 6" :key="`form-${i}`" class="h-10 animate-pulse rounded bg-surface-2" />
@@ -191,229 +220,262 @@ function saveBasic() {
       <Button variant="outline" size="sm" @click="refetch">重试</Button>
     </div>
 
-    <!-- 基础信息表单 -->
-    <section v-else class="rounded-xl border border-border bg-surface p-6">
-      <h2 class="text-base font-semibold text-text">基础信息</h2>
-      <p v-if="isNew" class="mt-1 text-xs text-text-subtle">
-        保存后将进入完整编辑页，可配置内容、排期与学员
-      </p>
-      <div class="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
-        <!-- 封面 URL + 实时预览（无上传接口 G11，onError 兜底占位） -->
-        <div class="col-span-2">
-          <label for="course-cover-url" class="mb-1.5 block text-sm font-medium text-text">
-            封面图 URL
-          </label>
-          <div class="flex items-start gap-4">
+    <template v-else>
+      <!-- 统计区（编辑态专属）：学习人数/内容板块/排期/教师 四卡，全为真实字段 -->
+      <div v-if="statCards.length > 0" class="grid grid-cols-2 gap-[22px] xl:grid-cols-4">
+        <div v-for="(s, i) in statCards" :key="s.label" v-reveal="i * 60">
+          <StatCard :label="s.label" :value="s.value" :tone="s.tone" count-up>
+            <template #icon>
+              <PhUsers v-if="s.label === '学习人数'" class="h-[21px] w-[21px]" />
+              <PhArticle v-else-if="s.label === '内容板块'" class="h-[21px] w-[21px]" />
+              <PhCalendarBlank v-else-if="s.label === '排期数量'" class="h-[21px] w-[21px]" />
+              <PhChalkboardTeacher v-else class="h-[21px] w-[21px]" />
+            </template>
+          </StatCard>
+        </div>
+      </div>
+
+      <!-- 分区卡一：基本信息（封面/标题/分类/简述） -->
+      <section v-reveal class="rounded-2xl border border-border bg-surface p-6 shadow-xs">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 class="text-lg font-extrabold tracking-tight text-text">基本信息</h2>
+          <p v-if="isNew" class="text-xs text-text-subtle">
+            保存后将进入完整编辑页，可配置内容、排期与学员
+          </p>
+        </div>
+        <div class="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
+          <!-- 封面 URL + 实时预览（无上传接口 G11，onError 兜底占位） -->
+          <div class="col-span-2">
+            <label for="course-cover-url" class="mb-1.5 block text-sm font-medium text-text">
+              封面图 URL
+            </label>
+            <div class="flex items-start gap-4">
+              <input
+                id="course-cover-url"
+                v-model="form.coverImage"
+                type="text"
+                data-testid="field-cover"
+                aria-label="封面图 URL"
+                placeholder="https://cdn.example.com/cover.jpg（无上传接口，直接填图片地址）"
+                class="h-10 w-full max-w-[520px] rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+              <img
+                v-if="form.coverImage && !coverBroken"
+                :key="form.coverImage"
+                data-testid="cover-preview"
+                :src="form.coverImage"
+                alt="封面预览"
+                class="h-16 w-28 shrink-0 rounded-[10px] border border-border bg-surface-2 object-cover"
+                @error="coverBroken = true"
+              />
+              <div
+                v-else-if="form.coverImage && coverBroken"
+                data-testid="cover-fallback"
+                class="flex h-16 w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-[10px] border border-border bg-surface-2 text-text-subtle"
+              >
+                <PhImageSquare class="h-5 w-5" />
+                <span class="text-xs">封面预览</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 标题*：zod 前置校验，错误红字 input 下方 -->
+          <div>
+            <label for="course-title" class="mb-1.5 block text-sm font-medium text-text">
+              标题 <span class="text-danger">*</span>
+            </label>
             <input
-              id="course-cover-url"
-              v-model="form.coverImage"
+              id="course-title"
+              v-model="form.title"
               type="text"
-              data-testid="field-cover"
-              aria-label="封面图 URL"
-              placeholder="https://cdn.example.com/cover.jpg（无上传接口，直接填图片地址）"
-              class="h-10 w-full max-w-[520px] rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+              data-testid="field-title"
+              aria-label="课程标题"
+              placeholder="请输入课程标题"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
-            <img
-              v-if="form.coverImage && !coverBroken"
-              :key="form.coverImage"
-              data-testid="cover-preview"
-              :src="form.coverImage"
-              alt="封面预览"
-              class="h-16 w-28 shrink-0 rounded-lg border border-border bg-surface-2 object-cover"
-              @error="coverBroken = true"
-            />
-            <div
-              v-else-if="form.coverImage && coverBroken"
-              data-testid="cover-fallback"
-              class="flex h-16 w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-surface-2 text-text-subtle"
+            <p v-if="fieldError" data-testid="field-error" class="mt-1 text-xs text-danger">
+              {{ fieldError }}
+            </p>
+          </div>
+
+          <!-- 分类 -->
+          <div>
+            <label for="course-category" class="mb-1.5 block text-sm font-medium text-text"
+              >分类</label
             >
-              <PhImageSquare class="h-5 w-5" />
-              <span class="text-xs">封面预览</span>
+            <input
+              id="course-category"
+              v-model="form.category"
+              type="text"
+              data-testid="field-category"
+              aria-label="课程分类"
+              placeholder="如 AI / LLM / RAG"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+
+          <!-- 简述 -->
+          <div class="col-span-2">
+            <label for="course-description" class="mb-1.5 block text-sm font-medium text-text"
+              >简述</label
+            >
+            <textarea
+              id="course-description"
+              v-model="form.description"
+              rows="2"
+              data-testid="field-description"
+              aria-label="课程简述"
+              placeholder="一句话介绍课程内容"
+              class="w-full resize-none rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+        </div>
+      </section>
+
+      <!-- 分区卡二：授课与定价（讲师/价格/课时/状态） -->
+      <section v-reveal="80" class="rounded-2xl border border-border bg-surface p-6 shadow-xs">
+        <h2 class="text-lg font-extrabold tracking-tight text-text">授课与定价</h2>
+        <div class="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
+          <!-- 讲师名 -->
+          <div>
+            <label for="course-instructor" class="mb-1.5 block text-sm font-medium text-text"
+              >讲师名</label
+            >
+            <input
+              id="course-instructor"
+              v-model="form.instructorName"
+              type="text"
+              data-testid="field-instructor"
+              aria-label="讲师名"
+              placeholder="主讲老师姓名"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+
+          <!-- 价格（数字域 tabular-nums，提交时数值化） -->
+          <div>
+            <label for="course-price" class="mb-1.5 block text-sm font-medium text-text"
+              >价格（元）</label
+            >
+            <input
+              id="course-price"
+              v-model="form.price"
+              type="number"
+              min="0"
+              step="0.01"
+              data-testid="field-price"
+              aria-label="课程价格"
+              placeholder="如 199"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm tabular-nums text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+
+          <!-- 课时 -->
+          <div>
+            <label for="course-duration" class="mb-1.5 block text-sm font-medium text-text"
+              >课时</label
+            >
+            <input
+              id="course-duration"
+              v-model="form.duration"
+              type="text"
+              data-testid="field-duration"
+              aria-label="课时"
+              placeholder="如 8 课时"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+
+          <!-- 状态（仅编辑态；新建默认 ACTIVE 由后端落库） -->
+          <div v-if="!isNew">
+            <label for="course-status" class="mb-1.5 block text-sm font-medium text-text"
+              >状态</label
+            >
+            <select
+              id="course-status"
+              v-model="form.status"
+              data-testid="field-status"
+              aria-label="课程状态"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+            >
+              <option value="ACTIVE">ACTIVE（上架）</option>
+              <option value="ARCHIVED">ARCHIVED（归档）</option>
+            </select>
+          </div>
+          <div v-else>
+            <p class="mb-1.5 text-sm font-medium text-text">状态</p>
+            <p class="rounded-xl bg-surface-2 px-3 py-2.5 text-xs text-text-muted">
+              新建课程默认 ACTIVE，保存后可调整
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 分区卡三：报名与标签（含保存行） -->
+      <section v-reveal="160" class="rounded-2xl border border-border bg-surface p-6 shadow-xs">
+        <h2 class="text-lg font-extrabold tracking-tight text-text">报名与标签</h2>
+        <div class="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
+          <!-- 报名链接 -->
+          <div class="col-span-2">
+            <label for="course-link" class="mb-1.5 block text-sm font-medium text-text"
+              >报名链接</label
+            >
+            <input
+              id="course-link"
+              v-model="form.enrollmentLink"
+              type="text"
+              data-testid="field-enrollment-link"
+              aria-label="报名链接"
+              placeholder="https://apply.example.com/xxx（可选）"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+
+          <!-- 标签 chips：回车添加 + X 删除 -->
+          <div class="col-span-2">
+            <label for="course-tags" class="mb-1.5 block text-sm font-medium text-text">标签</label>
+            <div
+              class="flex min-h-10 flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-1.5 transition-colors duration-150 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20"
+            >
+              <span
+                v-for="tag in tags"
+                :key="tag"
+                :data-testid="`tag-chip-${tag}`"
+                class="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-medium text-brand-strong"
+              >
+                {{ tag }}
+                <button
+                  type="button"
+                  :data-testid="`tag-remove-${tag}`"
+                  aria-label="移除标签"
+                  class="text-brand-strong/60 transition-colors duration-150 hover:text-danger"
+                  @click="removeTag(tag)"
+                >
+                  <PhX class="h-3 w-3" weight="bold" />
+                </button>
+              </span>
+              <input
+                id="course-tags"
+                v-model="tagInput"
+                type="text"
+                data-testid="tag-input"
+                aria-label="标签输入"
+                placeholder="输入后回车添加"
+                class="h-7 min-w-[120px] flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-subtle"
+                @keydown.enter.prevent="addTag"
+              />
             </div>
           </div>
         </div>
 
-        <!-- 标题*：zod 前置校验，错误红字 input 下方 -->
-        <div>
-          <label for="course-title" class="mb-1.5 block text-sm font-medium text-text">
-            标题 <span class="text-danger">*</span>
-          </label>
-          <input
-            id="course-title"
-            v-model="form.title"
-            type="text"
-            data-testid="field-title"
-            aria-label="课程标题"
-            placeholder="请输入课程标题"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-          <p v-if="fieldError" data-testid="field-error" class="mt-1 text-xs text-danger">
-            {{ fieldError }}
-          </p>
+        <!-- 保存行：新建 create / 编辑 update（提交期禁用 + spinner） -->
+        <div class="mt-6 flex justify-end border-t border-border pt-4">
+          <Button data-testid="save-basic" :disabled="saving" @click="saveBasic">
+            <PhSpinnerGap v-if="saving" class="h-4 w-4 animate-spin" />
+            {{ saving ? (isNew ? '创建中' : '保存中') : isNew ? '创建课程' : '保存基础信息' }}
+          </Button>
         </div>
-
-        <!-- 分类 -->
-        <div>
-          <label for="course-category" class="mb-1.5 block text-sm font-medium text-text"
-            >分类</label
-          >
-          <input
-            id="course-category"
-            v-model="form.category"
-            type="text"
-            data-testid="field-category"
-            aria-label="课程分类"
-            placeholder="如 AI / LLM / RAG"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-        </div>
-
-        <!-- 简述 -->
-        <div class="col-span-2">
-          <label for="course-description" class="mb-1.5 block text-sm font-medium text-text"
-            >简述</label
-          >
-          <textarea
-            id="course-description"
-            v-model="form.description"
-            rows="2"
-            data-testid="field-description"
-            aria-label="课程简述"
-            placeholder="一句话介绍课程内容"
-            class="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-        </div>
-
-        <!-- 讲师名 -->
-        <div>
-          <label for="course-instructor" class="mb-1.5 block text-sm font-medium text-text"
-            >讲师名</label
-          >
-          <input
-            id="course-instructor"
-            v-model="form.instructorName"
-            type="text"
-            data-testid="field-instructor"
-            aria-label="讲师名"
-            placeholder="主讲老师姓名"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-        </div>
-
-        <!-- 价格（数字域 tabular-nums，提交时数值化） -->
-        <div>
-          <label for="course-price" class="mb-1.5 block text-sm font-medium text-text"
-            >价格（元）</label
-          >
-          <input
-            id="course-price"
-            v-model="form.price"
-            type="number"
-            min="0"
-            step="0.01"
-            data-testid="field-price"
-            aria-label="课程价格"
-            placeholder="如 199"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm tabular-nums text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-        </div>
-
-        <!-- 课时 -->
-        <div>
-          <label for="course-duration" class="mb-1.5 block text-sm font-medium text-text"
-            >课时</label
-          >
-          <input
-            id="course-duration"
-            v-model="form.duration"
-            type="text"
-            data-testid="field-duration"
-            aria-label="课时"
-            placeholder="如 8 课时"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-        </div>
-
-        <!-- 状态（仅编辑态；新建默认 ACTIVE 由后端落库） -->
-        <div v-if="!isNew">
-          <label for="course-status" class="mb-1.5 block text-sm font-medium text-text">状态</label>
-          <select
-            id="course-status"
-            v-model="form.status"
-            data-testid="field-status"
-            aria-label="课程状态"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
-          >
-            <option value="ACTIVE">ACTIVE（上架）</option>
-            <option value="ARCHIVED">ARCHIVED（归档）</option>
-          </select>
-        </div>
-        <div v-else>
-          <p class="mb-1.5 text-sm font-medium text-text">状态</p>
-          <p class="rounded-lg bg-surface-2 px-3 py-2.5 text-xs text-text-muted">
-            新建课程默认 ACTIVE，保存后可调整
-          </p>
-        </div>
-
-        <!-- 报名链接 -->
-        <div class="col-span-2">
-          <label for="course-link" class="mb-1.5 block text-sm font-medium text-text"
-            >报名链接</label
-          >
-          <input
-            id="course-link"
-            v-model="form.enrollmentLink"
-            type="text"
-            data-testid="field-enrollment-link"
-            aria-label="报名链接"
-            placeholder="https://apply.example.com/xxx（可选）"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-        </div>
-
-        <!-- 标签 chips：回车添加 + X 删除 -->
-        <div class="col-span-2">
-          <label for="course-tags" class="mb-1.5 block text-sm font-medium text-text">标签</label>
-          <div
-            class="flex min-h-10 flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5"
-          >
-            <span
-              v-for="tag in tags"
-              :key="tag"
-              :data-testid="`tag-chip-${tag}`"
-              class="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2.5 py-0.5 text-xs font-medium text-brand-strong"
-            >
-              {{ tag }}
-              <button
-                type="button"
-                :data-testid="`tag-remove-${tag}`"
-                aria-label="移除标签"
-                class="text-brand-strong/60 transition-colors duration-150 hover:text-danger"
-                @click="removeTag(tag)"
-              >
-                <PhX class="h-3 w-3" weight="bold" />
-              </button>
-            </span>
-            <input
-              v-model="tagInput"
-              type="text"
-              data-testid="tag-input"
-              aria-label="标签输入"
-              placeholder="输入后回车添加"
-              class="h-7 min-w-[120px] flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-subtle"
-              @keydown.enter.prevent="addTag"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- 保存行：新建 create / 编辑 update（提交期禁用 + spinner） -->
-      <div class="mt-6 flex justify-end border-t border-border pt-4">
-        <Button data-testid="save-basic" :disabled="saving" @click="saveBasic">
-          <PhSpinnerGap v-if="saving" class="h-4 w-4 animate-spin" />
-          {{ saving ? (isNew ? '创建中' : '保存中') : isNew ? '创建课程' : '保存基础信息' }}
-        </Button>
-      </div>
-    </section>
+      </section>
+    </template>
   </div>
 </template>

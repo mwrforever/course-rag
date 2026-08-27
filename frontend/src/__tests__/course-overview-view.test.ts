@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
+import { vReveal } from '@/directives/reveal'
 import CourseOverviewView from '@/views/course/CourseOverviewView.vue'
 
 /** api mock：courseApi 增删改查 + ApiError */
@@ -80,6 +81,7 @@ async function mountAt(path: string) {
         pinia,
         router,
       ],
+      directives: { reveal: vReveal },
     },
   })
   return { wrapper, router }

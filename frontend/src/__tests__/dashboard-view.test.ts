@@ -3,44 +3,42 @@ import { createPinia, setActivePinia } from 'pinia'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, dashboardApi, documentApi } from '@/lib/api'
+import { ApiError, dashboardApi, documentApi, feedbackApi } from '@/lib/api'
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import DashboardView from '@/views/DashboardView.vue'
 
-import type { DashboardStats, DocumentVO, FeedbackStats, FeedbackTrendItem } from '@/lib/types'
+import type {
+  DashboardStats,
+  DocumentVO,
+  FeedbackIntentStat,
+  FeedbackStats,
+  FeedbackTrendItem,
+} from '@/lib/types'
 
 /**
- * 仪表盘页测试（Task 17 核心交付）
+ * 仪表盘页测试（2026-08-27 紫系换肤重构适配）
  *
- * 覆盖契约（设计 §2.4.1 + 任务 brief）：
- * 1. KPI 4 卡渲染（文档总数/待修正分片[amber 警示]/学生总数/点赞率，值全 string 渲染）
- * 2. 单折线挂载：vue-echarts 实例收到 Line option（x 轴日期/序列数值/主题色）
- * 3. 快捷入口 5 项跳转 + 待修正 KPI 卡点击跳分片页
- * 4. 四态：loading skeleton / empty 分区块空态 / error 横幅重试 / 正常
- * 5. 无环比：断言「↗/↑/环比」类元素不存在（后端无历史对比，禁止假数据）
+ * 覆盖契约（设计稿 Edukors Dashboard 映射 + 任务 brief）：
+ * 1. KPI 4 卡（StatCard + count-up）：文档总数/待修正分片[amber 图标警示]/
+ *    学生总数/点赞率，值 Long 字符串转 number 滚动至终值
+ * 2. 反馈趋势 CSS 柱状图：柱数/x 轴 MM-DD 标签/hover tooltip/7-30 天范围切换重拉
+ * 3. 反馈意图 donut：三意图扇区/图例占比/hover tooltip/中心总量
+ * 4. 意图×赞踩堆叠条：三意图行/赞踩计数/行内赞段宽度
+ * 5. 最近上传文档 5 行小表 + eye 按钮跳文档详情路由
+ * 6. 快捷入口 5 项跳转 + 待修正 KPI 卡点击跳分片页
+ * 7. 四态：loading skeleton / empty 分区块空态 / error 横幅重试 / 正常
+ * 8. 无环比：断言「↗/↑/环比」类元素不存在（后端无历史对比，禁止假数据）
  *
- * 图表策略：jsdom 无 canvas 实现，`vi.mock('vue-echarts')` 替换为渲染占位 div 的
- * 桩组件（render 函数形态，runtime-only Vue 无模板编译器），断言挂载与 option 入参。
- * echarts/core 按需注册（use）为纯 JS 注册表操作，jsdom 下安全执行。
+ * 图表策略（图表库移除后）：图表为 CSS/SVG 自绘组件，jsdom 直接渲染真实 DOM
+ * （柱 div/--h 变量/SVG circle/tooltip div），无需 canvas 桩。
+ * 动效确定性：mock '@/lib/motion' 强制 prefersReducedMotion=true，使 count-up
+ * 数字滚动与柱生长动画直接呈现终态（组件内建无障碍降级路径），断言免于动画时序抖动。
  */
-
-/** 桩组件：接收 option 透传即可，避免 echarts 真实 canvas 初始化 */
-vi.mock('vue-echarts', async () => {
-  const { defineComponent, h } = await import('vue')
-  return {
-    default: defineComponent({
-      name: 'VChart',
-      props: { option: { type: Object, default: null } },
-      render() {
-        return h('div', { class: 'v-chart-stub' })
-      },
-    }),
-  }
-})
+vi.mock('@/lib/motion', () => ({ prefersReducedMotion: () => true }))
 
 /** 7 日反馈趋势 mock（count 为 Long 字符串，时间为 ISO-8601 无时区串） */
-const TREND: FeedbackTrendItem[] = [
+const TREND_7: FeedbackTrendItem[] = [
   { date: '2026-08-18', count: '3' },
   { date: '2026-08-19', count: '5' },
   { date: '2026-08-20', count: '0' },
@@ -48,6 +46,19 @@ const TREND: FeedbackTrendItem[] = [
   { date: '2026-08-22', count: '4' },
   { date: '2026-08-23', count: '1' },
   { date: '2026-08-24', count: '6' },
+]
+
+/** 30 日趋势 mock：8 月逐日生成（范围切换档断言用） */
+const TREND_30: FeedbackTrendItem[] = Array.from({ length: 30 }, (_, i) => ({
+  date: `2026-08-${String(i + 1).padStart(2, '0')}`,
+  count: String((i * 7) % 13),
+}))
+
+/** 意图统计 mock：知识问答 12 赞 3 踩 / 闲聊 5 赞 7 踩 / 未知意图 2 赞 1 踩（计数全字符串） */
+const INTENTS: FeedbackIntentStat[] = [
+  { intentType: 'knowledge_question', likedCount: '12', dislikedCount: '3' },
+  { intentType: 'chat', likedCount: '5', dislikedCount: '7' },
+  { intentType: 'unknown', likedCount: '2', dislikedCount: '1' },
 ]
 
 /** 最近文档 mock：覆盖 ETL 多状态（INDEXED 终态 + PENDING/EMBEDDING 工作态 + FAILED 终态） */
@@ -127,20 +138,23 @@ const KPIS: DashboardStats = {
 
 const FEEDBACK: FeedbackStats = { studentCount: '46', feedbackCount: '180', likeRate: 0.86 }
 
-/** 全部接口 spy 恢复为返回稳定 mock（四接口并行加载） */
+/** 全部接口 spy 恢复为返回稳定 mock（五接口并行加载；趋势按天数分档） */
 function mockResolvedData() {
   vi.spyOn(dashboardApi, 'stats').mockResolvedValue(KPIS)
   vi.spyOn(dashboardApi, 'feedbackStats').mockResolvedValue(FEEDBACK)
-  vi.spyOn(dashboardApi, 'feedbackTrend').mockResolvedValue(TREND)
+  vi.spyOn(dashboardApi, 'feedbackTrend').mockImplementation(async (days = 7) =>
+    days === 30 ? TREND_30 : TREND_7,
+  )
   vi.spyOn(documentApi, 'list').mockResolvedValue({
     records: DOCS,
     total: '4',
     page: 1,
     size: 5,
   })
+  vi.spyOn(feedbackApi, 'stats').mockResolvedValue(INTENTS)
 }
 
-/** 挂载仪表盘：登录态 + 独立路由器（快捷入口点击走真实路由守卫） */
+/** 挂载仪表盘：登录态 + 独立路由器（快捷入口/eye/KPI 卡点击走真实路由守卫） */
 async function mountDashboard() {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -169,7 +183,7 @@ async function mountDashboard() {
   return { wrapper, router, pinia }
 }
 
-describe('DashboardView：KPI 4 卡渲染（值全 string）', () => {
+describe('DashboardView：KPI 4 卡渲染（StatCard + count-up 终值）', () => {
   beforeEach(() => {
     sessionStorage.clear()
     vi.restoreAllMocks()
@@ -185,7 +199,7 @@ describe('DashboardView：KPI 4 卡渲染（值全 string）', () => {
     expect(wrapper.text()).toContain('学生总数')
     expect(wrapper.text()).toContain('点赞率')
 
-    // string 计数值直接渲染：128 / 5 / 46 与 likeRate 0.86 → 86%
+    // Long 字符串计数转 number 滚动至终值：128 / 5 / 46 与 likeRate 0.86 → 86%
     expect(wrapper.find('[data-testid="kpi-documents"]').text()).toContain('128')
     expect(wrapper.find('[data-testid="kpi-pending"]').text()).toContain('5')
     expect(wrapper.find('[data-testid="kpi-students"]').text()).toContain('46')
@@ -193,14 +207,17 @@ describe('DashboardView：KPI 4 卡渲染（值全 string）', () => {
     wrapper.unmount()
   })
 
-  it('待修正分片卡带 amber 警示样式（状态语义，非装饰）', async () => {
+  it('四卡为 StatCard 造型（lav 紫白底 + 图标圆），待修正卡 amber 图标警示 + 可点击', async () => {
     mockResolvedData()
     const { wrapper } = await mountDashboard()
 
+    // lav 底（bg-brand-light）StatCard 形态
+    expect(wrapper.find('[data-testid="kpi-documents"]').classes()).toContain('bg-brand-light')
+    // 待修正卡：button 可点击 + 图标圆 amber 警示（text-warning 语义层）+ 行动提示
     const pending = wrapper.find('[data-testid="kpi-pending"]')
-    expect(pending.classes()).toContain('bg-amber-50')
-    // 警示色文字落在卡内标签/数值行（text-warning 语义层）
-    expect(pending.find('p').classes()).toContain('text-warning')
+    expect(pending.element.tagName).toBe('BUTTON')
+    expect(pending.find('.stat-icon').classes()).toContain('text-warning')
+    expect(pending.text()).toContain('点击进入修正工作台')
     wrapper.unmount()
   })
 
@@ -213,51 +230,157 @@ describe('DashboardView：KPI 4 卡渲染（值全 string）', () => {
   })
 })
 
-describe('DashboardView：单折线图表挂载', () => {
+describe('DashboardView：反馈趋势柱状图（CSS 自绘）', () => {
   beforeEach(() => {
     sessionStorage.clear()
     vi.restoreAllMocks()
   })
 
-  it('vue-echarts 实例挂载且收到 Line option（日期轴/数值序列/主题色）', async () => {
+  it('渲染 7 柱 + MM-DD x 轴标签，柱高按满刻度换算（--h 变量）', async () => {
     mockResolvedData()
     const { wrapper } = await mountDashboard()
 
-    const chart = wrapper.findComponent({ name: 'VChart' })
-    expect(chart.exists()).toBe(true)
-
-    // option 断言：x 轴为近 7 日 MM-DD，序列数据为 count 字符串转 number
-    const option = chart.props('option') as {
-      tooltip: { trigger: string }
-      xAxis: { data: string[] }
-      series: Array<{ type: string; data: number[]; lineStyle: { color: string } }>
-    }
-    expect(option.tooltip.trigger).toBe('axis')
-    expect(option.xAxis.data).toEqual([
-      '08-18',
-      '08-19',
-      '08-20',
-      '08-21',
-      '08-22',
-      '08-23',
-      '08-24',
-    ])
-    expect(option.series[0].type).toBe('line')
-    expect(option.series[0].data).toEqual([3, 5, 0, 2, 4, 1, 6])
-    // 主题色来自 design tokens（jsdom 取不到 CSS 变量时回退蓝 600）
-    expect(option.series[0].lineStyle.color).toBe('#2563EB')
+    const bars = wrapper.findAll('[data-testid^="trend-bar-"]')
+    expect(bars).toHaveLength(7)
+    // x 轴标签：date 截取 MM-DD（30 天档才抽稀，7 天档全量）
+    expect(wrapper.find('[data-testid="trend-chart"]').text()).toContain('08-18')
+    expect(wrapper.find('[data-testid="trend-chart"]').text()).toContain('08-24')
+    // 柱高换算：max=6 → 满刻度 8；首柱 count 3 → 3/8 = 37.5%
+    expect(bars[0].find('.bar').attributes('style')).toContain('--h: 37.5%')
+    // 峰值柱 count 6 → 6/8 = 75%
+    expect(bars[6].find('.bar').attributes('style')).toContain('--h: 75%')
     wrapper.unmount()
   })
 
-  it('趋势为空：不挂载图表，展示区块空态', async () => {
+  it('柱 hover 弹出深底 tooltip（短日期 + 条数），移出隐藏', async () => {
+    mockResolvedData()
+    const { wrapper } = await mountDashboard()
+
+    // 初始无 tooltip
+    expect(wrapper.find('[data-testid="trend-tip"]').exists()).toBe(false)
+    // hover 第 2 柱（08-19 · 5 条）
+    await wrapper.find('[data-testid="trend-bar-1"]').trigger('mouseenter')
+    const tip = wrapper.find('[data-testid="trend-tip"]')
+    expect(tip.exists()).toBe(true)
+    expect(tip.text()).toBe('08-19 · 5 条')
+    // 移出绘制区隐藏
+    await wrapper.find('[data-testid="trend-bar-1"]').trigger('mouseleave')
+    expect(wrapper.find('[data-testid="trend-tip"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('时间范围切换 7 → 30 天：feedbackTrend 以 30 重拉并渲染 30 柱', async () => {
+    mockResolvedData()
+    const { wrapper } = await mountDashboard()
+
+    // 打开范围下拉 → 选择「近 30 天」
+    await wrapper.find('[data-testid="trend-range"]').trigger('click')
+    await wrapper.find('[data-testid="range-opt-30"]').trigger('click')
+
+    // queryKey 变化触发重拉：趋势接口收到 days=30，图表重渲染 30 柱（30 天档 x 轴标签抽稀）
+    await vi.waitFor(() => {
+      expect(dashboardApi.feedbackTrend).toHaveBeenCalledWith(30)
+      expect(wrapper.findAll('[data-testid^="trend-bar-"]')).toHaveLength(30)
+    })
+    wrapper.unmount()
+  })
+
+  it('趋势为空：不渲染柱状图，展示区块空态', async () => {
     vi.spyOn(dashboardApi, 'stats').mockResolvedValue(KPIS)
     vi.spyOn(dashboardApi, 'feedbackStats').mockResolvedValue(FEEDBACK)
     vi.spyOn(dashboardApi, 'feedbackTrend').mockResolvedValue([])
     vi.spyOn(documentApi, 'list').mockResolvedValue({ records: DOCS, total: '4', page: 1, size: 5 })
+    vi.spyOn(feedbackApi, 'stats').mockResolvedValue(INTENTS)
     const { wrapper } = await mountDashboard()
 
-    expect(wrapper.findComponent({ name: 'VChart' }).exists()).toBe(false)
+    expect(wrapper.find('[data-testid="trend-chart"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('近 7 日暂无反馈记录')
+    wrapper.unmount()
+  })
+})
+
+describe('DashboardView：反馈意图 donut（SVG 自绘）', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  it('渲染三意图扇区 + 图例占比 + 中心总条数（15+12+3=30）', async () => {
+    mockResolvedData()
+    const { wrapper } = await mountDashboard()
+
+    // 三扇区（意图按 知识问答 → 闲聊 → 未知意图 稳定排序）
+    expect(wrapper.findAll('[data-testid^="donut-seg-"]')).toHaveLength(3)
+    // 图例：标签 + 条数 + 占比（知识问答 15 条 50% / 闲聊 12 条 40% / 未知意图 3 条 10%）
+    const legend = wrapper.find('[data-testid="donut-legend"]').text()
+    expect(legend).toContain('知识问答')
+    expect(legend).toContain('15 条 · 50%')
+    expect(legend).toContain('闲聊')
+    expect(legend).toContain('12 条 · 40%')
+    expect(legend).toContain('未知意图')
+    expect(legend).toContain('3 条 · 10%')
+    // 中心总量（真实数据：全部意图赞踩总条数）
+    expect(wrapper.find('[data-testid="intent-donut"]').text()).toContain('30')
+    wrapper.unmount()
+  })
+
+  it('扇区 hover 高亮 + 深底 tooltip（标签 + 条数 + 占比），移出恢复', async () => {
+    mockResolvedData()
+    const { wrapper } = await mountDashboard()
+
+    // 初始无 tooltip、无 hovering 态
+    expect(wrapper.find('[data-testid="donut-tip"]').exists()).toBe(false)
+    // hover 首扇区（知识问答 · 15 条 · 50%）
+    await wrapper.find('[data-testid="donut-seg-0"]').trigger('mouseenter')
+    const tip = wrapper.find('[data-testid="donut-tip"]')
+    expect(tip.exists()).toBe(true)
+    expect(tip.text()).toBe('知识问答 · 15 条 · 50%')
+    // hover 态：svg 加 hovering 类、当前扇区加 on 类（其余扇区降透明由 CSS 承接）
+    expect(wrapper.find('svg.hovering').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="donut-seg-0"]').classes()).toContain('on')
+    // 移出恢复
+    await wrapper.find('[data-testid="donut-seg-0"]').trigger('mouseleave')
+    expect(wrapper.find('[data-testid="donut-tip"]').exists()).toBe(false)
+    expect(wrapper.find('svg.hovering').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('DashboardView：意图×赞踩堆叠条卡', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  it('三意图行渲染赞踩计数，行内赞段宽度按占比换算', async () => {
+    mockResolvedData()
+    const { wrapper } = await mountDashboard()
+
+    // 三行意图（knowledge_question 12 赞 3 踩 → 赞段 80%）
+    const row = wrapper.find('[data-testid="intent-like-row-knowledge_question"]')
+    expect(row.text()).toContain('知识问答')
+    expect(row.text()).toContain('赞 12 · 踩 3')
+    expect(row.find('.bg-success').attributes('style')).toContain('width: 80%')
+    // 闲聊行（5 赞 7 踩 → 赞段 5/12 ≈ 41.67%，浮点尾数不逐位断言）
+    const chatRow = wrapper.find('[data-testid="intent-like-row-chat"]')
+    expect(chatRow.text()).toContain('赞 5 · 踩 7')
+    expect(chatRow.find('.bg-success').attributes('style')).toMatch(/width: 41\.66\d+%/)
+    wrapper.unmount()
+  })
+
+  it('意图统计为空：donut 与堆叠条双双降级空态', async () => {
+    vi.spyOn(dashboardApi, 'stats').mockResolvedValue(KPIS)
+    vi.spyOn(dashboardApi, 'feedbackStats').mockResolvedValue(FEEDBACK)
+    vi.spyOn(dashboardApi, 'feedbackTrend').mockResolvedValue(TREND_7)
+    vi.spyOn(documentApi, 'list').mockResolvedValue({ records: DOCS, total: '4', page: 1, size: 5 })
+    vi.spyOn(feedbackApi, 'stats').mockResolvedValue([])
+    const { wrapper } = await mountDashboard()
+
+    expect(wrapper.find('[data-testid="intent-donut"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="intent-like-bar"]').exists()).toBe(false)
+    // donut 卡与堆叠条卡双双降级为区块空态文案
+    const emptyTexts = wrapper.findAll('p').filter((p) => p.text() === '暂无意图统计')
+    expect(emptyTexts).toHaveLength(2)
     wrapper.unmount()
   })
 })
@@ -294,11 +417,22 @@ describe('DashboardView：最近上传文档 5 行小表', () => {
     wrapper.unmount()
   })
 
+  it('eye 按钮跳转既有文档详情路由（/knowledge/documents/:id）', async () => {
+    mockResolvedData()
+    const { wrapper, router } = await mountDashboard()
+
+    await wrapper.find('[data-testid="doc-eye-d-1"]').trigger('click')
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/knowledge/documents/d-1'))
+    expect(router.currentRoute.value.name).toBe('knowledge-document-detail')
+    wrapper.unmount()
+  })
+
   it('无文档：区块空态提示（含行动引导，禁止裸「暂无数据」）', async () => {
     vi.spyOn(dashboardApi, 'stats').mockResolvedValue(KPIS)
     vi.spyOn(dashboardApi, 'feedbackStats').mockResolvedValue(FEEDBACK)
-    vi.spyOn(dashboardApi, 'feedbackTrend').mockResolvedValue(TREND)
+    vi.spyOn(dashboardApi, 'feedbackTrend').mockResolvedValue(TREND_7)
     vi.spyOn(documentApi, 'list').mockResolvedValue({ records: [], total: '0', page: 1, size: 5 })
+    vi.spyOn(feedbackApi, 'stats').mockResolvedValue(INTENTS)
     const { wrapper } = await mountDashboard()
 
     expect(wrapper.text()).toContain('暂无上传文档')
@@ -363,13 +497,14 @@ describe('DashboardView：四态', () => {
     vi.restoreAllMocks()
   })
 
-  it('loading：骨架屏与最终布局同形（KPI 灰块 + 入口灰块 + 表格灰行），不出数值', async () => {
+  it('loading：骨架屏与最终布局同形（KPI 灰块 + 入口灰块 + 图表灰块），不出数值', async () => {
     // 全部接口挂起（永不 resolve），锁定加载态
     const never = <T>() => new Promise<T>(() => {})
     vi.spyOn(dashboardApi, 'stats').mockReturnValue(never())
     vi.spyOn(dashboardApi, 'feedbackStats').mockReturnValue(never())
     vi.spyOn(dashboardApi, 'feedbackTrend').mockReturnValue(never())
     vi.spyOn(documentApi, 'list').mockReturnValue(never())
+    vi.spyOn(feedbackApi, 'stats').mockReturnValue(never())
     const { wrapper } = await mountDashboard()
 
     expect(wrapper.find('[data-testid="dashboard-skeleton"]').exists()).toBe(true)
@@ -388,6 +523,7 @@ describe('DashboardView：四态', () => {
       new ApiError(503, '服务暂时不可用', 503),
     )
     vi.spyOn(documentApi, 'list').mockRejectedValueOnce(new ApiError(503, '服务暂时不可用', 503))
+    vi.spyOn(feedbackApi, 'stats').mockRejectedValueOnce(new ApiError(503, '服务暂时不可用', 503))
     mockResolvedData()
     const { wrapper } = await mountDashboard()
 
@@ -409,6 +545,7 @@ describe('DashboardView：四态', () => {
     vi.spyOn(dashboardApi, 'feedbackStats').mockRejectedValueOnce(new Error('boom'))
     vi.spyOn(dashboardApi, 'feedbackTrend').mockRejectedValueOnce(new Error('boom'))
     vi.spyOn(documentApi, 'list').mockRejectedValueOnce(new Error('boom'))
+    vi.spyOn(feedbackApi, 'stats').mockRejectedValueOnce(new Error('boom'))
     const { wrapper } = await mountDashboard()
 
     expect(wrapper.find('[role="alert"]').text()).toContain('仪表盘加载失败，请稍后重试')

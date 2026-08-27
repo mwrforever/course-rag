@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
- * 反馈报表页（设计 §2.4.6）
+ * 反馈报表页（设计 §2.4.6；2026-08-27 紫系换肤重制：
+ * PageHead/StatCard/DataTable/EmptyState/ConfirmDialog 新设计系统组件）
  *
  * 能力清单：
  * 1. KPI 4 卡：总反馈（列表计数）/ 点赞 / 点踩 / 点赞率（feedbacks/stats 三字段求和，
  *    非空总和为 0 时点赞率显示占位）。**无环比、无课程维度图**（后端无数据，D11 禁止假数据）。
- * 2. 图 1（全宽）单折线：近 7 日每日反馈数（dashboardApi.feedbackTrend，无赞踩分列 G7）
- * 3. 图 2 意图×赞踩堆叠柱状图：stats 的 intentType/likedCount/dislikedCount 三字段
- *    （vue-echarts Bar 堆叠，点赞 success 绿 / 点踩 danger 红）
+ * 2. 图 1（全宽）柱状图：近 7 日每日反馈数（dashboardApi.feedbackTrend，无赞踩分列 G7；
+ *    TrendBarChart CSS 自绘共享组件，图表库已随 2026-08-27 紫系换肤移除）
+ * 3. 图 2 意图×赞踩堆叠条卡：stats 的 intentType/likedCount/dislikedCount 三字段
+ *    （IntentLikeBar CSS 横向堆叠条共享组件，点赞 success 绿 / 点踩 danger 红）
  * 4. 列表：feedbacks?intentType 筛选 + 分页；列：#id / 用户（#userId 短格式）/
  *    意图 Badge / 赞踩图标 / 时间 / 操作
  * 5. 回放入口角色差异：仅超管可见「查看会话回放」→ Drawer 700px 调 sessionApi.detail
@@ -22,26 +24,25 @@
  */
 import { computed, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { use } from 'echarts/core'
-import { BarChart, LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
-import VChart from 'vue-echarts'
-import { PhSpinnerGap, PhThumbsDown, PhThumbsUp, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhChatCircleText, PhPercent, PhThumbsDown, PhThumbsUp } from '@phosphor-icons/vue'
 
+import IntentLikeBar from '@/components/charts/IntentLikeBar.vue'
+import TrendBarChart from '@/components/charts/TrendBarChart.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DataTable } from '@/components/ui/data-table'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageHead } from '@/components/ui/page-head'
+import { StatCard } from '@/components/ui/stat-card'
+import { vReveal } from '@/directives/reveal'
 import { ApiError, dashboardApi, feedbackApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth'
 import ConversationReplayDrawer from '@/components/ConversationReplayDrawer.vue'
 
-import type { EChartsCoreOption } from 'echarts/core'
 import type { UserFeedbackVO } from '@/lib/types'
-
-// ---- ECharts 按需注册（Line + Bar + Grid/Tooltip/Legend + canvas 渲染，任务 brief 定案） ----
-use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 /** 每页条数（设计 §2.6 分页器） */
 const PAGE_SIZE = 10
@@ -155,102 +156,10 @@ const likeRateText = computed(() => {
 })
 
 // ====================================================================
-// 图 1 单折线（每日反馈数，trend）+ 图 2 意图×赞踩堆叠柱状图（stats）
+// 图 1 柱状图（TrendBarChart）+ 图 2 意图×赞踩堆叠条（IntentLikeBar）
+// —— 两图均为 CSS 自绘共享组件，数据在组件内换算（count/liked/disliked 字符串转 number），
+//    颜色走 @theme 图表令牌与状态语义色，无 JS 侧取色（图表库已移除）
 // ====================================================================
-
-/**
- * 解析 CSS 变量为图表颜色（jsdom 无 @theme 注入时回退令牌十六进制，
- * 与 main.css @theme 定义一致（同 dashboard-view 策略））
- *
- * @param varName CSS 变量名（如 --color-brand）
- * @param fallback 变量不可用时的令牌十六进制
- */
-function tokenColor(varName: string, fallback: string): string {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim()
-  return value || fallback
-}
-
-/** 折线主色：brand 蓝 600；面积填充：brand-soft */
-const lineColor = tokenColor('--color-brand', '#2563EB')
-const areaColor = tokenColor('--color-brand-soft', '#DBEAFE')
-/** 堆叠柱语义色：点赞 success / 点踩 danger（状态语义色，非装饰） */
-const likedColor = tokenColor('--color-success', '#16A34A')
-const dislikedColor = tokenColor('--color-danger', '#DC2626')
-/** 轴刻度线/网格/标签文字色（--color-chart-* 语义令牌，@theme 定义） */
-const axisColor = tokenColor('--color-chart-axis', '#E2E8F0')
-const gridColor = tokenColor('--color-chart-grid', '#F1F5F9')
-const labelColor = tokenColor('--color-chart-label', '#64748B')
-/** 数据点描边色（与卡片底同色） */
-const pointBorder = tokenColor('--color-chart-point-border', '#FFFFFF')
-
-/** 单折线 option：x 轴 MM-DD，序列数据 count 字符串转 number（无赞踩分列 G7） */
-const trendOption = computed<EChartsCoreOption>(() => ({
-  tooltip: { trigger: 'axis' },
-  grid: { left: 8, right: 16, top: 24, bottom: 8, containLabel: true },
-  xAxis: {
-    type: 'category',
-    boundaryGap: false,
-    data: trend.value.map((t) => t.date.slice(5)),
-    axisLine: { lineStyle: { color: axisColor } },
-    axisTick: { show: false },
-    axisLabel: { color: labelColor, fontSize: 12 },
-  },
-  yAxis: {
-    type: 'value',
-    minInterval: 1,
-    splitLine: { lineStyle: { color: gridColor } },
-    axisLabel: { color: labelColor, fontSize: 12 },
-  },
-  series: [
-    {
-      name: '每日反馈数',
-      type: 'line',
-      data: trend.value.map((t) => Number(t.count)),
-      smooth: true,
-      symbol: 'circle',
-      symbolSize: 6,
-      lineStyle: { color: lineColor, width: 2 },
-      itemStyle: { color: lineColor, borderColor: pointBorder, borderWidth: 1 },
-      areaStyle: { color: areaColor, opacity: 0.5 },
-    },
-  ],
-}))
-
-/** 意图×赞踩堆叠柱状图 option：x 轴意图枚举，点赞/点踩两序列 stack 同名 */
-const statsOption = computed<EChartsCoreOption>(() => ({
-  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-  legend: { bottom: 0, textStyle: { color: labelColor, fontSize: 12 } },
-  grid: { left: 8, right: 16, top: 24, bottom: 36, containLabel: true },
-  xAxis: {
-    type: 'category',
-    data: stats.value.map((s) => s.intentType),
-    axisLine: { lineStyle: { color: axisColor } },
-    axisTick: { show: false },
-    axisLabel: { color: labelColor, fontSize: 12 },
-  },
-  yAxis: {
-    type: 'value',
-    minInterval: 1,
-    splitLine: { lineStyle: { color: gridColor } },
-    axisLabel: { color: labelColor, fontSize: 12 },
-  },
-  series: [
-    {
-      name: '点赞',
-      type: 'bar',
-      stack: '赞踩',
-      itemStyle: { color: likedColor },
-      data: stats.value.map((s) => Number(s.likedCount)),
-    },
-    {
-      name: '点踩',
-      type: 'bar',
-      stack: '赞踩',
-      itemStyle: { color: dislikedColor },
-      data: stats.value.map((s) => Number(s.dislikedCount)),
-    },
-  ],
-}))
 
 // ====================================================================
 // 列表辅助：userId 短格式 / 意图 Badge / 赞踩图标
@@ -333,26 +242,33 @@ function confirmDelete() {
 </script>
 
 <template>
+  <!-- 页头：主标题 + 副题（回放/删除入口在行内，无页级动作） -->
+  <PageHead v-reveal title="反馈报表" subtitle="学生对 AI 回复的赞踩评价与意图分布" />
+
   <!-- 加载态：骨架屏与最终布局同形（KPI 灰块 + 图表灰块 + 表格灰行） -->
   <div
     v-if="isLoading"
     data-testid="feedback-skeleton"
-    class="space-y-4"
+    class="mt-5 space-y-5"
     aria-label="反馈报表加载中"
   >
-    <div class="grid grid-cols-4 gap-4">
-      <div v-for="i in 4" :key="`kpi-${i}`" class="h-20 animate-pulse rounded-xl bg-surface-2" />
+    <div class="grid grid-cols-2 gap-[22px] xl:grid-cols-4">
+      <div
+        v-for="i in 4"
+        :key="`kpi-${i}`"
+        class="h-[122px] animate-pulse rounded-2xl bg-brand-light"
+      />
     </div>
-    <div class="h-60 animate-pulse rounded-xl bg-surface-2" />
-    <div class="h-40 animate-pulse rounded-xl bg-surface-2" />
-    <div class="h-48 animate-pulse rounded-xl bg-surface-2" />
+    <div class="h-[330px] animate-pulse rounded-2xl bg-brand-light" />
+    <div class="h-[280px] animate-pulse rounded-2xl bg-brand-light" />
+    <div class="h-[330px] animate-pulse rounded-2xl bg-brand-light" />
   </div>
 
   <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
   <div
     v-else-if="listError"
     role="alert"
-    class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
+    class="mt-5 flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
   >
     <span class="text-sm text-danger">{{ listError }}</span>
     <Button variant="outline" size="sm" data-testid="retry-feedback" @click="refetch">重试</Button>
@@ -360,61 +276,89 @@ function confirmDelete() {
 
   <!-- 正常态 -->
   <template v-else>
-    <!-- KPI 行：4 卡（总反馈/点赞/点踩/点赞率），数字域 tabular-nums -->
-    <div class="grid grid-cols-4 gap-4">
-      <div
+    <!-- KPI 行：4 卡（总反馈/点赞/点踩/点赞率），stat-card 形态（lav 底 + 图标圆 + 大数值） -->
+    <div v-reveal="60" class="mt-5 grid grid-cols-2 gap-[22px] xl:grid-cols-4">
+      <StatCard
         data-testid="kpi-total"
-        class="rounded-xl border border-border bg-surface p-4 tabular-nums"
+        class="tabular-nums"
+        label="总反馈"
+        :value="total"
+        tone="brand"
       >
-        <p class="text-xs font-medium text-text-muted">总反馈</p>
-        <p class="mt-2 text-2xl font-bold tabular-nums text-text">{{ total }}</p>
-      </div>
-      <div data-testid="kpi-liked" class="rounded-xl border border-border bg-surface p-4">
-        <p class="text-xs font-medium text-text-muted">点赞</p>
-        <p class="mt-2 text-2xl font-bold tabular-nums text-success">{{ likedTotal }}</p>
-      </div>
-      <div data-testid="kpi-disliked" class="rounded-xl border border-border bg-surface p-4">
-        <p class="text-xs font-medium text-text-muted">点踩</p>
-        <p class="mt-2 text-2xl font-bold tabular-nums text-danger">{{ dislikedTotal }}</p>
-      </div>
-      <div data-testid="kpi-rate" class="rounded-xl border border-border bg-surface p-4">
-        <p class="text-xs font-medium text-text-muted">点赞率</p>
-        <p class="mt-2 text-2xl font-bold tabular-nums text-text">{{ likeRateText }}</p>
-      </div>
+        <template #icon>
+          <PhChatCircleText class="h-[21px] w-[21px]" weight="bold" aria-hidden="true" />
+        </template>
+      </StatCard>
+      <StatCard
+        data-testid="kpi-liked"
+        class="tabular-nums"
+        label="点赞"
+        :value="likedTotal"
+        tone="success"
+      >
+        <template #icon>
+          <PhThumbsUp class="h-[21px] w-[21px]" weight="bold" aria-hidden="true" />
+        </template>
+      </StatCard>
+      <StatCard
+        data-testid="kpi-disliked"
+        class="tabular-nums"
+        label="点踩"
+        :value="dislikedTotal"
+        tone="danger"
+      >
+        <template #icon>
+          <PhThumbsDown class="h-[21px] w-[21px]" weight="bold" aria-hidden="true" />
+        </template>
+      </StatCard>
+      <StatCard
+        data-testid="kpi-rate"
+        class="tabular-nums"
+        label="点赞率"
+        :value="likeRateText"
+        tone="brand"
+      >
+        <template #icon>
+          <PhPercent class="h-[21px] w-[21px]" weight="bold" aria-hidden="true" />
+        </template>
+      </StatCard>
     </div>
 
-    <!-- 图 1（全宽）：单折线每日反馈数（trend 空时降级区块空态） -->
-    <div class="mt-4 rounded-xl border border-border bg-surface p-4">
+    <!-- 图 1（全宽）：柱状图每日反馈数（trend 空时降级区块空态） -->
+    <div v-reveal="120" class="mt-6 rounded-2xl border border-border bg-surface p-6 shadow-xs">
       <div class="flex items-center justify-between">
-        <h2 class="text-sm font-semibold text-text">每日反馈数</h2>
-        <span class="text-xs text-text-subtle">近 7 日</span>
+        <h2 class="text-lg font-extrabold tracking-tight text-text">每日反馈数</h2>
+        <span class="text-xs font-semibold text-text-subtle">近 7 日</span>
       </div>
-      <div v-if="trend.length > 0" class="mt-2 h-56">
-        <v-chart :option="trendOption" autoresize class="h-full w-full" />
+      <div v-if="trend.length > 0" class="mt-4 h-56">
+        <TrendBarChart :items="trend" />
       </div>
       <div v-else class="flex h-56 items-center justify-center">
         <p class="text-sm text-text-muted">近 7 日暂无反馈记录</p>
       </div>
     </div>
 
-    <!-- 图 2：意图×赞踩堆叠柱状图（stats 空时降级区块空态） -->
-    <div class="mt-4 rounded-xl border border-border bg-surface p-4">
-      <h2 class="text-sm font-semibold text-text">意图 × 赞踩分布</h2>
-      <div v-if="stats.length > 0" class="mt-2 h-48">
-        <v-chart :option="statsOption" autoresize class="h-full w-full" />
+    <!-- 图 2：意图×赞踩堆叠条卡（stats 空时降级区块空态）。
+         高度随意图行数自适应（视觉核对 N9 未决差异 #2）：h-48 为三意图满配高度，
+         后端意图枚举固定 3 类、stats 缺项时行数更少，固定高度会在卡内留下大片死区；
+         空态分支保留 h-48 定高以承载文案垂直居中 -->
+    <div v-reveal="160" class="mt-6 rounded-2xl border border-border bg-surface p-6 shadow-xs">
+      <h2 class="text-lg font-extrabold tracking-tight text-text">意图 × 赞踩分布</h2>
+      <div v-if="stats.length > 0" class="mt-4">
+        <IntentLikeBar :stats="stats" />
       </div>
       <div v-else class="flex h-48 items-center justify-center">
         <p class="text-sm text-text-muted">暂无意图统计</p>
       </div>
     </div>
 
-    <!-- 列表区：意图筛选 + 分页表格 -->
-    <div class="mt-4 flex items-center gap-2">
+    <!-- 筛选工具条：意图筛选（native select 保持 setValue/change 契约） -->
+    <div v-reveal="200" class="mt-6 flex flex-wrap items-center gap-2">
       <select
         data-testid="filter-intent"
         aria-label="按意图筛选"
         :value="intentType"
-        class="h-9 rounded-lg border border-border bg-surface px-2 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+        class="h-10 rounded-xl border border-border bg-surface px-3 text-sm font-semibold text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
         @change="onFilterChange"
       >
         <option value="">全部意图</option>
@@ -424,98 +368,100 @@ function confirmDelete() {
       </select>
     </div>
 
+    <!-- 空态：语义文案（筛选后无记录） -->
     <div
       v-if="list.length === 0"
-      class="mt-4 flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
+      v-reveal
+      class="mt-4 rounded-2xl border border-border bg-surface shadow-xs"
     >
-      <PhWarningCircle class="h-8 w-8 text-text-subtle" />
-      <p class="mt-3 text-sm font-medium text-text">还没有反馈记录</p>
-      <p class="mt-1 text-xs text-text-muted">学生对话后对 AI 回复进行赞踩评价后汇聚于此</p>
+      <EmptyState title="还没有反馈记录" description="学生对话后对 AI 回复进行赞踩评价后汇聚于此">
+        <template #icon>
+          <PhChatCircleText class="h-6 w-6" aria-hidden="true" />
+        </template>
+      </EmptyState>
     </div>
 
     <template v-else>
-      <div class="mt-4 overflow-hidden rounded-xl border border-border bg-surface">
-        <table data-testid="fb-table" class="w-full text-sm">
-          <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
+      <div
+        v-reveal
+        class="mt-4 overflow-hidden rounded-2xl border border-border bg-surface shadow-xs"
+      >
+        <DataTable data-testid="fb-table" label="反馈列表">
+          <template #header>
             <tr>
-              <th class="w-20 px-4 py-2.5 font-medium">#id</th>
-              <th class="w-32 px-4 py-2.5 font-medium">用户</th>
-              <th class="w-40 px-4 py-2.5 font-medium">意图</th>
-              <th class="w-20 px-4 py-2.5 font-medium">评价</th>
-              <th class="w-32 px-4 py-2.5 font-medium">时间</th>
-              <th class="px-4 py-2.5 text-right font-medium">操作</th>
+              <th class="w-24">#id</th>
+              <th class="w-36">用户</th>
+              <th class="w-44">意图</th>
+              <th class="w-24">评价</th>
+              <th class="w-36">时间</th>
+              <th class="w-64">操作</th>
             </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="fb in list"
-              :key="fb.id"
-              :data-testid="`row-${fb.id}`"
-              class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
-            >
-              <td class="px-4 tabular-nums text-text-muted">#{{ fb.id }}</td>
-              <td :data-testid="`fb-user-${fb.id}`" class="px-4 tabular-nums text-text-muted">
-                {{ shortId(fb.userId) }}
-              </td>
-              <td class="px-4">
-                <Badge :data-testid="`fb-intent-${fb.id}`" :variant="intentVariant(fb.intentType)">
-                  {{ fb.intentType ?? '未标注' }}
-                </Badge>
-              </td>
-              <td class="px-4">
-                <!-- 赞踩图标：Phosphor 线性图标（禁 emoji），语义色表达评价方向 -->
-                <span
-                  v-if="fb.isLiked === true"
-                  :data-testid="`fb-liked-${fb.id}`"
-                  class="inline-flex items-center gap-1 text-xs text-success"
+          </template>
+          <tr v-for="fb in list" :key="fb.id" :data-testid="`row-${fb.id}`">
+            <td>
+              <span class="font-semibold text-text">#{{ fb.id }}</span>
+            </td>
+            <td :data-testid="`fb-user-${fb.id}`" class="tabular-nums">
+              {{ shortId(fb.userId) }}
+            </td>
+            <td>
+              <Badge :data-testid="`fb-intent-${fb.id}`" :variant="intentVariant(fb.intentType)">
+                {{ fb.intentType ?? '未标注' }}
+              </Badge>
+            </td>
+            <td>
+              <!-- 赞踩图标：Phosphor 线性图标（禁 emoji），语义色表达评价方向 -->
+              <span
+                v-if="fb.isLiked === true"
+                :data-testid="`fb-liked-${fb.id}`"
+                class="inline-flex items-center gap-1 text-xs text-success"
+              >
+                <PhThumbsUp class="h-4 w-4" weight="fill" />
+                赞
+              </span>
+              <span
+                v-else-if="fb.isLiked === false"
+                :data-testid="`fb-disliked-${fb.id}`"
+                class="inline-flex items-center gap-1 text-xs text-danger"
+              >
+                <PhThumbsDown class="h-4 w-4" weight="fill" />
+                踩
+              </span>
+              <span v-else class="text-xs text-text-subtle">未评</span>
+            </td>
+            <td :data-testid="`fb-time-${fb.id}`" class="tabular-nums">
+              {{ formatDateTime(fb.createdAt) }}
+            </td>
+            <td>
+              <div class="flex items-center gap-1">
+                <!-- 回放入口角色差异：仅超管可见（设计 §2.4.6） -->
+                <Button
+                  v-if="isAdmin"
+                  variant="ghost"
+                  size="sm"
+                  :data-testid="`op-replay-${fb.id}`"
+                  @click="openReplay(fb)"
                 >
-                  <PhThumbsUp class="h-4 w-4" weight="fill" />
-                  赞
-                </span>
-                <span
-                  v-else-if="fb.isLiked === false"
-                  :data-testid="`fb-disliked-${fb.id}`"
-                  class="inline-flex items-center gap-1 text-xs text-danger"
+                  查看会话回放
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  :data-testid="`op-delete-${fb.id}`"
+                  @click="requestDelete(fb)"
                 >
-                  <PhThumbsDown class="h-4 w-4" weight="fill" />
-                  踩
-                </span>
-                <span v-else class="text-xs text-text-subtle">未评</span>
-              </td>
-              <td :data-testid="`fb-time-${fb.id}`" class="px-4 tabular-nums text-text-muted">
-                {{ formatDateTime(fb.createdAt) }}
-              </td>
-              <td class="px-4 text-right">
-                <div class="flex items-center justify-end gap-1">
-                  <!-- 回放入口角色差异：仅超管可见（设计 §2.4.6） -->
-                  <Button
-                    v-if="isAdmin"
-                    variant="ghost"
-                    size="sm"
-                    :data-testid="`op-replay-${fb.id}`"
-                    @click="openReplay(fb)"
-                  >
-                    查看会话回放
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    :data-testid="`op-delete-${fb.id}`"
-                    @click="requestDelete(fb)"
-                  >
-                    删除
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                  删除
+                </Button>
+              </div>
+            </td>
+          </tr>
+        </DataTable>
       </div>
 
       <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
-      <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-text-muted">
         <span>
-          共 <span class="tabular-nums text-text">{{ total }}</span> 条
+          共 <span class="tabular-nums font-semibold text-text">{{ total }}</span> 条
         </span>
         <div class="flex items-center gap-2">
           <Button
@@ -545,44 +491,19 @@ function confirmDelete() {
   <!-- 会话回放 Drawer（公共组件：detail 拉取 + messages 只读流；仅超管入口展示） -->
   <ConversationReplayDrawer :open="replayOpen" :session-id="replaySessionId" @close="closeReplay" />
 
-  <!-- 删除反馈二次确认（危险操作不可恢复，设计 §2.6） -->
-  <div
-    v-if="deleting"
-    data-testid="fb-del-dialog"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-    @keydown.esc="cancelDelete"
-    @click.self="cancelDelete"
-  >
-    <div
-      class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
-      role="alertdialog"
-      aria-modal="true"
-      @click.stop
-    >
-      <div class="flex items-start gap-3">
-        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
-          <PhWarningCircle class="h-5 w-5 text-danger" />
-        </div>
-        <div>
-          <h2 class="text-base font-semibold text-text">删除反馈</h2>
-          <p class="mt-2 text-sm leading-relaxed text-text-muted">
-            删除后该条赞踩记录从报表中移除，
-            <span class="font-medium text-danger">此操作不可恢复</span>。确认删除？
-          </p>
-        </div>
-      </div>
-      <div class="mt-5 flex justify-end gap-2">
-        <Button variant="outline" :disabled="deleteSubmitting" @click="cancelDelete">取消</Button>
-        <Button
-          variant="danger"
-          data-testid="confirm-fb-del"
-          :disabled="deleteSubmitting"
-          @click="confirmDelete"
-        >
-          <PhSpinnerGap v-if="deleteSubmitting" class="h-4 w-4 animate-spin" />
-          {{ deleteSubmitting ? '删除中' : '确认删除' }}
-        </Button>
-      </div>
-    </div>
+  <!-- 删除反馈二次确认（危险操作不可恢复，设计 §2.6；
+       ConfirmDialog 标准壳：$attrs 转发保住 confirm-fb-del 选择器契约，外层 v-if 包装 div 承载 fb-del-dialog） -->
+  <div v-if="deleting" data-testid="fb-del-dialog" class="contents">
+    <ConfirmDialog
+      :open="true"
+      title="删除反馈"
+      description="删除后该条赞踩记录从报表中移除，此操作不可恢复。确认删除？"
+      confirm-text="确认删除"
+      tone="danger"
+      :loading="deleteSubmitting"
+      data-testid="confirm-fb-del"
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+    />
   </div>
 </template>
