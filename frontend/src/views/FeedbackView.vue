@@ -5,9 +5,10 @@
  * 能力清单：
  * 1. KPI 4 卡：总反馈（列表计数）/ 点赞 / 点踩 / 点赞率（feedbacks/stats 三字段求和，
  *    非空总和为 0 时点赞率显示占位）。**无环比、无课程维度图**（后端无数据，D11 禁止假数据）。
- * 2. 图 1（全宽）单折线：近 7 日每日反馈数（dashboardApi.feedbackTrend，无赞踩分列 G7）
- * 3. 图 2 意图×赞踩堆叠柱状图：stats 的 intentType/likedCount/dislikedCount 三字段
- *    （vue-echarts Bar 堆叠，点赞 success 绿 / 点踩 danger 红）
+ * 2. 图 1（全宽）柱状图：近 7 日每日反馈数（dashboardApi.feedbackTrend，无赞踩分列 G7；
+ *    CSS 柱形自绘，图表库已随 2026-08-27 紫系换肤移除）
+ * 3. 图 2 意图×赞踩堆叠条卡：stats 的 intentType/likedCount/dislikedCount 三字段
+ *    （CSS 横向堆叠条，点赞 success 绿 / 点踩 danger 红）
  * 4. 列表：feedbacks?intentType 筛选 + 分页；列：#id / 用户（#userId 短格式）/
  *    意图 Badge / 赞踩图标 / 时间 / 操作
  * 5. 回放入口角色差异：仅超管可见「查看会话回放」→ Drawer 700px 调 sessionApi.detail
@@ -22,26 +23,19 @@
  */
 import { computed, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { use } from 'echarts/core'
-import { BarChart, LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
-import VChart from 'vue-echarts'
 import { PhSpinnerGap, PhThumbsDown, PhThumbsUp, PhWarningCircle } from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import IntentLikeBar from '@/components/charts/IntentLikeBar.vue'
+import TrendBarChart from '@/components/charts/TrendBarChart.vue'
 import { ApiError, dashboardApi, feedbackApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth'
 import ConversationReplayDrawer from '@/components/ConversationReplayDrawer.vue'
 
-import type { EChartsCoreOption } from 'echarts/core'
 import type { UserFeedbackVO } from '@/lib/types'
-
-// ---- ECharts 按需注册（Line + Bar + Grid/Tooltip/Legend + canvas 渲染，任务 brief 定案） ----
-use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 /** 每页条数（设计 §2.6 分页器） */
 const PAGE_SIZE = 10
@@ -155,102 +149,10 @@ const likeRateText = computed(() => {
 })
 
 // ====================================================================
-// 图 1 单折线（每日反馈数，trend）+ 图 2 意图×赞踩堆叠柱状图（stats）
+// 图 1 柱状图（TrendBarChart）+ 图 2 意图×赞踩堆叠条（IntentLikeBar）
+// —— 两图均为 CSS 自绘共享组件，数据在组件内换算（count/liked/disliked 字符串转 number），
+//    颜色走 @theme 图表令牌与状态语义色，无 JS 侧取色（图表库已移除）
 // ====================================================================
-
-/**
- * 解析 CSS 变量为图表颜色（jsdom 无 @theme 注入时回退令牌十六进制，
- * 与 main.css @theme 定义一致（同 dashboard-view 策略））
- *
- * @param varName CSS 变量名（如 --color-brand）
- * @param fallback 变量不可用时的令牌十六进制
- */
-function tokenColor(varName: string, fallback: string): string {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim()
-  return value || fallback
-}
-
-/** 折线主色：brand 蓝 600；面积填充：brand-soft */
-const lineColor = tokenColor('--color-brand', '#2563EB')
-const areaColor = tokenColor('--color-brand-soft', '#DBEAFE')
-/** 堆叠柱语义色：点赞 success / 点踩 danger（状态语义色，非装饰） */
-const likedColor = tokenColor('--color-success', '#16A34A')
-const dislikedColor = tokenColor('--color-danger', '#DC2626')
-/** 轴刻度线/网格/标签文字色（--color-chart-* 语义令牌，@theme 定义） */
-const axisColor = tokenColor('--color-chart-axis', '#E2E8F0')
-const gridColor = tokenColor('--color-chart-grid', '#F1F5F9')
-const labelColor = tokenColor('--color-chart-label', '#64748B')
-/** 数据点描边色（与卡片底同色） */
-const pointBorder = tokenColor('--color-chart-point-border', '#FFFFFF')
-
-/** 单折线 option：x 轴 MM-DD，序列数据 count 字符串转 number（无赞踩分列 G7） */
-const trendOption = computed<EChartsCoreOption>(() => ({
-  tooltip: { trigger: 'axis' },
-  grid: { left: 8, right: 16, top: 24, bottom: 8, containLabel: true },
-  xAxis: {
-    type: 'category',
-    boundaryGap: false,
-    data: trend.value.map((t) => t.date.slice(5)),
-    axisLine: { lineStyle: { color: axisColor } },
-    axisTick: { show: false },
-    axisLabel: { color: labelColor, fontSize: 12 },
-  },
-  yAxis: {
-    type: 'value',
-    minInterval: 1,
-    splitLine: { lineStyle: { color: gridColor } },
-    axisLabel: { color: labelColor, fontSize: 12 },
-  },
-  series: [
-    {
-      name: '每日反馈数',
-      type: 'line',
-      data: trend.value.map((t) => Number(t.count)),
-      smooth: true,
-      symbol: 'circle',
-      symbolSize: 6,
-      lineStyle: { color: lineColor, width: 2 },
-      itemStyle: { color: lineColor, borderColor: pointBorder, borderWidth: 1 },
-      areaStyle: { color: areaColor, opacity: 0.5 },
-    },
-  ],
-}))
-
-/** 意图×赞踩堆叠柱状图 option：x 轴意图枚举，点赞/点踩两序列 stack 同名 */
-const statsOption = computed<EChartsCoreOption>(() => ({
-  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-  legend: { bottom: 0, textStyle: { color: labelColor, fontSize: 12 } },
-  grid: { left: 8, right: 16, top: 24, bottom: 36, containLabel: true },
-  xAxis: {
-    type: 'category',
-    data: stats.value.map((s) => s.intentType),
-    axisLine: { lineStyle: { color: axisColor } },
-    axisTick: { show: false },
-    axisLabel: { color: labelColor, fontSize: 12 },
-  },
-  yAxis: {
-    type: 'value',
-    minInterval: 1,
-    splitLine: { lineStyle: { color: gridColor } },
-    axisLabel: { color: labelColor, fontSize: 12 },
-  },
-  series: [
-    {
-      name: '点赞',
-      type: 'bar',
-      stack: '赞踩',
-      itemStyle: { color: likedColor },
-      data: stats.value.map((s) => Number(s.likedCount)),
-    },
-    {
-      name: '点踩',
-      type: 'bar',
-      stack: '赞踩',
-      itemStyle: { color: dislikedColor },
-      data: stats.value.map((s) => Number(s.dislikedCount)),
-    },
-  ],
-}))
 
 // ====================================================================
 // 列表辅助：userId 短格式 / 意图 Badge / 赞踩图标
@@ -383,25 +285,25 @@ function confirmDelete() {
       </div>
     </div>
 
-    <!-- 图 1（全宽）：单折线每日反馈数（trend 空时降级区块空态） -->
+    <!-- 图 1（全宽）：柱状图每日反馈数（trend 空时降级区块空态） -->
     <div class="mt-4 rounded-xl border border-border bg-surface p-4">
       <div class="flex items-center justify-between">
         <h2 class="text-sm font-semibold text-text">每日反馈数</h2>
         <span class="text-xs text-text-subtle">近 7 日</span>
       </div>
       <div v-if="trend.length > 0" class="mt-2 h-56">
-        <v-chart :option="trendOption" autoresize class="h-full w-full" />
+        <TrendBarChart :items="trend" />
       </div>
       <div v-else class="flex h-56 items-center justify-center">
         <p class="text-sm text-text-muted">近 7 日暂无反馈记录</p>
       </div>
     </div>
 
-    <!-- 图 2：意图×赞踩堆叠柱状图（stats 空时降级区块空态） -->
+    <!-- 图 2：意图×赞踩堆叠条卡（stats 空时降级区块空态） -->
     <div class="mt-4 rounded-xl border border-border bg-surface p-4">
       <h2 class="text-sm font-semibold text-text">意图 × 赞踩分布</h2>
       <div v-if="stats.length > 0" class="mt-2 h-48">
-        <v-chart :option="statsOption" autoresize class="h-full w-full" />
+        <IntentLikeBar :stats="stats" />
       </div>
       <div v-else class="flex h-48 items-center justify-center">
         <p class="text-sm text-text-muted">暂无意图统计</p>

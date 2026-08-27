@@ -19,34 +19,22 @@ import type {
 } from '@/lib/types'
 
 /**
- * 反馈报表页测试（Task 21 核心交付）
+ * 反馈报表页测试（Task 21 核心交付；2026-08-27 图表库移除适配）
  *
  * 覆盖契约（设计 §2.4.6 + task-21 brief）：
  * 1. KPI 4 卡：总反馈（列表计数）/ 点赞 / 点踩 / 点赞率（feedbacks/stats 求和）
- * 2. 图 1 单折线（trend 每日反馈数）+ 图 2 意图×赞踩堆叠柱状图（stats 三字段）
+ * 2. 图 1 柱状图（trend 每日反馈数，CSS 自绘）+ 图 2 意图×赞踩堆叠条（stats 三字段）
  * 3. intentType 筛选 → list 携带参数
  * 4. 回放入口角色差异：SUPER_ADMIN 可见「查看会话回放」→ Drawer 调 sessionApi.detail
  *    渲染 messages 只读流（role/content/intentType/seq）；TEACHER 无回放入口
  * 5. 删除（两角色均可，二次确认）→ remove → toast → 刷新
  * 6. 四态：loading 骨架 / empty / error 横幅重试 / 正常
  *
- * 图表策略（同 dashboard-view.test.ts）：jsdom 无 canvas，`vi.mock('vue-echarts')`
- * 替换为占位 div 桩组件，断言挂载与 option 入参。
+ * 图表策略（图表库移除后）：图表为 CSS 自绘共享组件，jsdom 直接渲染真实 DOM
+ * （柱 div/SVG 扇区），无 canvas 桩；断言由 option 契约改写为 DOM 数据绑定契约。
+ * 动效确定性：mock '@/lib/motion' 强制减少动效偏好，柱生长直接呈现终态。
  */
-
-/** 桩组件：接收 option 透传即可，避免 echarts 真实 canvas 初始化 */
-vi.mock('vue-echarts', async () => {
-  const { defineComponent, h } = await import('vue')
-  return {
-    default: defineComponent({
-      name: 'VChart',
-      props: { option: { type: Object, default: null } },
-      render() {
-        return h('div', { class: 'v-chart-stub' })
-      },
-    }),
-  }
-})
+vi.mock('@/lib/motion', () => ({ prefersReducedMotion: () => true }))
 
 /** 反馈工厂（isLiked true=赞 / false=踩；userId 为 Long 字符串，10 位供短格式断言） */
 function feedback(id: string, over: Partial<UserFeedbackVO> = {}): UserFeedbackVO {
@@ -179,52 +167,46 @@ describe('FeedbackView：KPI 4 卡（stats + 列表计数）', () => {
   })
 })
 
-describe('FeedbackView：图表挂载', () => {
+describe('FeedbackView：图表挂载（CSS 自绘）', () => {
   beforeEach(() => {
     sessionStorage.clear()
     vi.restoreAllMocks()
   })
 
-  it('挂载两个图表：单折线（trend 每日反馈数）+ 意图×赞踩堆叠柱状图（stats）', async () => {
+  it('挂载两个图表：柱状图（trend 每日反馈数）+ 意图×赞踩堆叠条（stats）', async () => {
     mockResolvedData()
     const { wrapper } = await mountFeedback()
 
-    const charts = wrapper.findAllComponents({ name: 'VChart' })
-    expect(charts.length).toBe(2)
+    // 图 1：柱状图，x 轴 MM-DD 标签全量、柱数与序列一致、count 字符串转 number 换算柱高
+    const chart = wrapper.find('[data-testid="trend-chart"]')
+    expect(chart.exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid^="trend-bar-"]')).toHaveLength(7)
+    expect(chart.text()).toContain('08-18')
+    expect(chart.text()).toContain('08-24')
+    // 满刻度 ceil(6/4)*4=8：首柱 3/8=37.5%、峰值柱 6/8=75%
+    const bars = wrapper.findAll('[data-testid^="trend-bar-"]')
+    expect(bars[0].find('.bar').attributes('style')).toContain('--h: 37.5%')
+    expect(bars[6].find('.bar').attributes('style')).toContain('--h: 75%')
 
-    // 图 1：单折线，x 轴 MM-DD 序列、数据为 count 字符串转 number
-    const line = charts[0].props('option') as {
-      xAxis: { type: string; data: string[] }
-      series: Array<{ type: string; data: number[]; stack?: string }>
-    }
-    expect(line.xAxis.type).toBe('category')
-    expect(line.xAxis.data).toEqual(['08-18', '08-19', '08-20', '08-21', '08-22', '08-23', '08-24'])
-    expect(line.series[0].type).toBe('line')
-    expect(line.series[0].data).toEqual([3, 5, 0, 2, 4, 1, 6])
-    expect(line.series[0].stack).toBeUndefined()
-
-    // 图 2：堆叠柱状图，两序列（点赞/点踩）stack 同名，x 轴为意图，值 string→number
-    const bar = charts[1].props('option') as {
-      xAxis: { type: string; data: string[] }
-      series: Array<{ type: string; stack: string; data: number[] }>
-    }
-    expect(bar.xAxis.type).toBe('category')
-    expect(bar.xAxis.data).toEqual(['knowledge_question', 'chat'])
-    expect(bar.series.map((s) => s.type)).toEqual(['bar', 'bar'])
-    expect(bar.series.every((s) => s.stack.length > 0)).toBe(true)
-    expect(bar.series[0].data).toEqual([12, 5])
-    expect(bar.series[1].data).toEqual([3, 7])
+    // 图 2：堆叠条，两意图行（知识问答 12 赞 3 踩 / 闲聊 5 赞 7 踩），值 string→number
+    expect(wrapper.find('[data-testid="intent-like-bar"]').exists()).toBe(true)
+    const kqRow = wrapper.find('[data-testid="intent-like-row-knowledge_question"]')
+    expect(kqRow.text()).toContain('知识问答')
+    expect(kqRow.text()).toContain('赞 12 · 踩 3')
+    expect(kqRow.find('.bg-success').attributes('style')).toContain('width: 80%')
+    const chatRow = wrapper.find('[data-testid="intent-like-row-chat"]')
+    expect(chatRow.text()).toContain('赞 5 · 踩 7')
     wrapper.unmount()
   })
 
-  it('趋势为空：折线区块降级空态；统计为空：柱状区块降级空态', async () => {
+  it('趋势为空：柱状图区块降级空态；统计为空：堆叠条区块降级空态', async () => {
     vi.spyOn(feedbackApi, 'list').mockResolvedValue(pageOf(FEEDBACKS, '2'))
     vi.spyOn(feedbackApi, 'stats').mockResolvedValue([])
     vi.spyOn(dashboardApi, 'feedbackTrend').mockResolvedValue([])
     const { wrapper } = await mountFeedback()
 
-    const charts = wrapper.findAllComponents({ name: 'VChart' })
-    expect(charts.length).toBe(0)
+    expect(wrapper.find('[data-testid="trend-chart"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="intent-like-bar"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('近 7 日暂无反馈记录')
     expect(wrapper.text()).toContain('暂无意图统计')
     wrapper.unmount()
