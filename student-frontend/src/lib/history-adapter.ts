@@ -121,6 +121,7 @@ function toUserMessage(row: StudentMessage): StreamMessage {
     thinkingEnded: false,
     text: "",
     sources: [],
+    stages: [],
     tools: [],
     endStatus: null,
     messageId: null,
@@ -176,6 +177,9 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
         thinkingEnded: true,
         text: "",
         sources: [],
+        // 历史消息无 STAGE 事件可回放（阶段是瞬时进度，不落库）——恒空数组，
+        // 推理卡对历史消息退化为「已深度思考」折叠态（2026-08-27）
+        stages: [],
         tools: [],
         endStatus: "COMPLETED",
         messageId: null,

@@ -2,20 +2,21 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 /**
- * C 端路由门卫（设计 §3.1 + 审核补记 G6；登录弹窗化 2026-08-26 修订）
+ * C 端路由门卫（设计 §3.1 + 审核补记 G6；登录弹窗化 2026-08-26 修订；
+ * 2026-08-27 用户拍板：仅首页未登录可访问）
  *
  * 边界约束：middleware 运行于 edge runtime 无法验签 JWT，只做 httpOnly cookie 存在性检查
  * （不解析 token 内容）；真实鉴权一律以 API 401 全局拦截（api client 单飞刷新）为准。
  *
- * 规则（2026-08-27 审查 m4 修订：兜底直引独立登录页）：
- * - 公开路由：/（首页）、/courses、/login（独立登录页）——未登录可直接访问
- * - 受保护路由（/chat /profile）：无 AT cookie → /login?next=<原路径>
- *   （登录成功后按 next 白名单站内回跳；不再借道首页 ?login=1 弹窗，
- *   深度链路与独立登录页目标一致）
+ * 规则：
+ * - 公开路由：/（首页）、/login（独立登录页）——未登录可直接访问
+ * - 受保护路由（/courses /chat /profile）：无 AT cookie → /login?next=<原路径>
+ *   （登录成功后按 next 白名单站内回跳）
+ * - 首页推荐课程继续走 /api/v1/public/courses（后端公开端点，不受本门控影响）
  */
 const AUTH_COOKIE = "commerce_token";
-/** 受保护路由前缀（课程对话与个人中心；课程浏览公开） */
-const PROTECTED_PREFIXES = ["/chat", "/profile"];
+/** 受保护路由前缀（课程中心/课程对话/个人中心——仅首页公开，2026-08-27 用户拍板） */
+const PROTECTED_PREFIXES = ["/courses", "/chat", "/profile"];
 
 /** 判定是否受保护路由（前缀匹配） */
 function isProtected(pathname: string): boolean {

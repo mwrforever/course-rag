@@ -137,7 +137,7 @@ describe("课程列表页筛选/搜索/排序", () => {
     ]);
     renderList();
     await screen.findByRole("link", { name: /Beta 课程/ });
-    fireEvent.change(screen.getByLabelText("排序方式"), { target: { value: "name" } });
+    fireEvent.click(screen.getByTestId("sort-option-name"));
     await waitFor(() => {
       const links = screen.getAllByRole("link");
       expect(links[0].textContent).toContain("Alpha 课程");
@@ -155,15 +155,16 @@ describe("课程列表页筛选/搜索/排序", () => {
     renderList();
     await screen.findByRole("link", { name: /计算机原理/ });
     // Chip 集：全部 + 数据中去重后的分类
-    expect(screen.getByRole("button", { name: "全部" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "计算机" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "数学" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "英语" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "全部" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "计算机" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "数学" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "英语" })).toBeInTheDocument();
     // 点击「数学」：只留数学课程，chips 选中态强化，URL 同步
-    fireEvent.click(screen.getByRole("button", { name: "数学" }));
+    fireEvent.click(screen.getByRole("tab", { name: "数学" }));
     expect(await screen.findByRole("link", { name: /高等数学/ }));
     expect(screen.queryByRole("link", { name: /计算机原理/ })).toBeNull();
-    expect(screen.getByRole("button", { name: "数学" })).toHaveClass("bg-brand-soft");
+    // tab 栏选中态：下划线缩放 + 品牌色文字（2026-08-27 tab 化改版）
+    expect(screen.getByRole("tab", { name: "数学", selected: true })).toBeInTheDocument();
     expect(screen.getByText("共 1 门课程")).toBeInTheDocument();
     await waitFor(() => {
       expect(navMock.replace).toHaveBeenCalledWith(`/courses?${qs({ category: "数学" })}`);
@@ -179,7 +180,7 @@ describe("课程列表页筛选/搜索/排序", () => {
     renderList();
     await screen.findByRole("link", { name: /Java 程序设计/ });
     // 先选分类再用关键词收窄：组合过滤（过滤即时，URL 同步 300ms 防抖）
-    fireEvent.click(screen.getByRole("button", { name: "计算机" }));
+    fireEvent.click(screen.getByRole("tab", { name: "计算机" }));
     const input = screen.getByLabelText("搜索课程");
     fireEvent.change(input, { target: { value: "Script" } });
     await waitFor(() => {

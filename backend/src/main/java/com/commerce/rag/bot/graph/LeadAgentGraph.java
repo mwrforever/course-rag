@@ -76,14 +76,16 @@ public class LeadAgentGraph {
 
     private static final Logger log = LoggerFactory.getLogger(LeadAgentGraph.class);
 
-    /** 图节点名：查询理解（Query Understanding，intent + 重写 + filters 单次签出） */
-    private static final String NODE_QUERY_UNDERSTANDING = "queryUnderstandingNode";
+    /** 图节点名：查询理解（Query Understanding，intent + 重写 + filters 单次签出）。
+     *  public：SseEventTransformer 阶段事件映射按节点名识别阶段（STAGE，2026-08-27）。 */
+    public static final String NODE_QUERY_UNDERSTANDING = "queryUnderstandingNode";
 
-    /** 图节点名：检索编排（仅 knowledge_question 分支触发） */
-    private static final String NODE_RETRIEVE = "retrieveNode";
+    /** 图节点名：检索编排（仅 knowledge_question 分支触发）。
+     *  public：同上，STAGE 阶段事件映射引用。 */
+    public static final String NODE_RETRIEVE = "retrieveNode";
 
-    /** 图节点名：ReactAgent */
-    private static final String NODE_REACT_AGENT = "reactAgent";
+    /** 图节点名：ReactAgent。public：同上，STAGE 阶段事件映射引用。 */
+    public static final String NODE_REACT_AGENT = "reactAgent";
 
     /** ReactAgent outputKey */
     private static final String OUTPUT_KEY = "agent_output";

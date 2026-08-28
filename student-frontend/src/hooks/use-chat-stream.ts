@@ -2,8 +2,8 @@
  * useChatStream：对话页 SSE 10 事件状态机（Task 11 核心）
  *
  * 职责（设计文档 §1.5.4 + 契约 §5/§6）：
- * - chatReducer：纯函数状态机，消费 10 种 SSE 事件（metadata/thinking/thinking_end/
- *   delta/tool_call/tool_result/sources/error/end + :heartbeat 心跳仅重置计时，不落状态）
+ * - chatReducer：纯函数状态机，消费 11 种 SSE 事件（metadata/thinking/thinking_end/
+ *   delta/tool_call/tool_result/sources/stage/error/end + :heartbeat 心跳仅重置计时，不落状态）
  *   与 send/reconnect/reset 三个生命周期动作，产出 Task 12 组件消费的渲染视图模型
  * - useChatStream：fetch + ReadableStream + TextDecoder 手写 SSE 解析喂入；
  *   409 发送冲突语义、cancel 竞态静默、30s 断流心跳计时、重连指数退避（1s/2s 封顶 3 次）
@@ -26,7 +26,15 @@
 import { useEffect, useReducer, useRef } from "react";
 import { ApiError, cancelRun, postChat, reconnectChat } from "../lib/api";
 import { createSseParser } from "../lib/sse-parser";
-import type { AttachmentRecord, RetrievalSource } from "../lib/types";
+import type { AttachmentRecord, ChatStage, ChatStageKey, RetrievalSource } from "../lib/types";
+
+/** 合法阶段键集合（后端 STAGE_* 契约同值；未知阶段事件整体忽略，防脏数据进状态机） */
+const STAGE_KEYS: ReadonlySet<string> = new Set([
+  "attachments",
+  "understanding",
+  "retrieving",
+  "generating",
+]);
 
 // ===== 类型定义（Task 12 组件的接口依据，见 task-11-report.md） =====
 
@@ -76,6 +84,11 @@ export interface StreamMessage {
   text: string;
   /** 来源卡数据（仅 knowledge_question 意图发送，不得假设必有；M10 降级重放不更新） */
   sources: RetrievalSource[];
+  /**
+   * 阶段进度条目（STAGE 事件按序追加：附件解析→理解问题→知识库查询→生成回答；
+   * 2026-08-27 C 端改版：检索链路「先准备上下文，再流式返回」过程可见化）
+   */
+  stages: ChatStage[];
   /** 工具卡列表（toolCallId 配对） */
   tools: StreamTool[];
   /** 终态（end 事件后非 null；操作栏/反馈按钮浮现依据） */
@@ -129,6 +142,7 @@ export type ChatAction =
       seq?: number | null;
     }
   | { type: "sources"; sources: RetrievalSource[]; seq?: number | null }
+  | { type: "stage"; stage: ChatStageKey; label: string; seq?: number | null }
   | { type: "error"; kind: ErrorKind; message: string; seq?: number | null }
   | {
       type: "end";
@@ -190,7 +204,7 @@ function updateLastAssistant(
   return state;
 }
 
-/** AI 消息槽工厂（元数据默认值；thinking/text/sources/tools 由事件逐步填充） */
+/** AI 消息槽工厂（元数据默认值；thinking/text/sources/stages/tools 由事件逐步填充） */
 function createAssistantMessage(init: { id: string; model: string }): StreamMessage {
   return {
     id: init.id,
@@ -202,6 +216,7 @@ function createAssistantMessage(init: { id: string; model: string }): StreamMess
     thinkingEnded: false,
     text: "",
     sources: [],
+    stages: [],
     tools: [],
     endStatus: null,
     messageId: null,
@@ -241,6 +256,7 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
         thinkingEnded: false,
         text: "",
         sources: [],
+        stages: [],
         tools: [],
         endStatus: null,
         messageId: null,
@@ -347,6 +363,16 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
         ...msg,
         sources: action.sources,
       }));
+    }
+    case "stage": {
+      // stage：阶段进度按序追加（知识库查询中/正在生成回答等可见化）；
+      // ring 全量回放（锚点丢失）可能重发已消费阶段——按阶段键去重保证幂等
+      if (isTerminal(state)) return state;
+      return updateLastAssistant(applySeq(state, action.seq), (msg) =>
+        msg.stages.some((item) => item.stage === action.stage)
+          ? msg
+          : { ...msg, stages: [...msg.stages, { stage: action.stage, label: action.label }] },
+      );
     }
     case "error": {
       // error：错误分级落位 + 解除流式（run 级错误/重连失败/认证失效统一入口）
@@ -465,6 +491,17 @@ export function sseEventToAction(
       return {
         type: "sources",
         sources: Array.isArray(sources) ? (sources as RetrievalSource[]) : [],
+        seq,
+      };
+    }
+    case "stage": {
+      // STAGE 阶段事件（2026-08-27）：stage 键合法才转发，label 缺省回退键名（不阻断）
+      const stage = strField(payload, "stage");
+      if (!STAGE_KEYS.has(stage)) return null;
+      return {
+        type: "stage",
+        stage: stage as ChatStageKey,
+        label: strField(payload, "label", stage),
         seq,
       };
     }

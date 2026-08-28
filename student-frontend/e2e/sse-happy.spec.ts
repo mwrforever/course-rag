@@ -72,9 +72,9 @@ test.describe("SSE 全链路", () => {
 
     // 渲染屏障：先等用户消息落位（dispatch send 提交），再推进同批渲染断言
     await expect(page.getByText("这门课需要什么基础？")).toBeVisible();
-    // 思考卡：thinking 与 thinking_end 帧同批送达时 React 合并渲染（瞬态「正在思考…」
-    // 不可断言），直接断言折叠后的「已思考」终态
-    await expect(page.getByText("已思考")).toBeVisible({ timeout: 10_000 });
+    // 推理卡（2026-08-27）：thinking 与 thinking_end 帧同批送达时瞬态不可断言，
+    // 直接断言收敛后的「已深度思考」终态（默认收起）
+    await expect(page.getByText("已深度思考")).toBeVisible({ timeout: 10_000 });
 
     // 正文流式渲染
     await expect(page.getByText(/至少掌握一门编程语言/)).toBeVisible();
@@ -83,9 +83,13 @@ test.describe("SSE 全链路", () => {
     // 用 tool_result 的 output 摘要做独特锚；工具卡名称按存在性宽松断言）
     await expect(page.getByText("检索到课程先修要求章节")).toBeVisible();
 
-    // 来源卡：参考来源 + 标题 + 置信条所在卡
-    await expect(page.getByRole("heading", { name: "参考来源" })).toBeVisible();
+    // 来源（2026-08-27）：思考流在位 → 推理卡「知识片段」pill，点击打开召回抽屉
+    const pill = page.getByTestId("reasoning-sources-pill");
+    await expect(pill).toBeVisible();
+    await pill.click();
+    await expect(page.getByTestId("retrieval-drawer")).toBeVisible();
     await expect(page.getByText("课程讲义第1章")).toBeVisible();
+    await page.keyboard.press("Escape");
 
     // end 后操作栏浮现（复制 + 有用/无用）
     await expect(page.getByRole("button", { name: "复制回答" })).toBeVisible();

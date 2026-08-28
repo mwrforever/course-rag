@@ -416,7 +416,7 @@ class StudentControllerTest {
                 10L,
                 1,
                 LocalDateTime.of(2026, 8, 15, 9, 1),
-                List.of(new RetrievalSource("101", "RAG 讲义", "Ch3 > 3.2", 0.87)),
+                List.of(new RetrievalSource("101", "RAG 讲义", "Ch3 > 3.2", 0.87, "片段正文预览")),
                 List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1024L)));
     }
 

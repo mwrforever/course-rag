@@ -95,6 +95,10 @@
   --animate-source-in: source-in 280ms ease-out backwards;
   --animate-fade-in: fade-in 200ms ease-out;
   --animate-page-in: page-in 280ms ease-out both;
+  /* 推理卡思考行逐行浮现（2026-08-27：流式追加的新行淡入上移，仅 transform/opacity） */
+  --animate-line-reveal: line-reveal 280ms ease-out both;
+  /* 流式空窗三点脉冲（METADATA 到达、首个阶段事件未到的极短窗口占位） */
+  --animate-streaming-dot: streaming-dot 1.2s ease-in-out infinite;
 
   @keyframes page-in {
     from {
@@ -148,6 +152,32 @@
     }
     to {
       opacity: 1;
+    }
+  }
+
+  /* 推理卡思考行浮现（2026-08-27：流式新增行淡入上移） */
+  @keyframes line-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* 流式空窗三点脉冲（弹跳节奏，仅 transform/opacity） */
+  @keyframes streaming-dot {
+    0%,
+    70%,
+    100% {
+      opacity: 0.3;
+      transform: none;
+    }
+    35% {
+      opacity: 1;
+      transform: translateY(-3px);
     }
   }
 

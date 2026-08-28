@@ -55,6 +55,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -151,6 +152,17 @@ class ChatRequestWorkerTest {
         // 公共 stub：transformer.createMetadataEvent 返回一个真实 SseEvent
         SseEvent metadataEvent = new SseEvent(SseEventType.METADATA, 1, "{}", System.currentTimeMillis());
         lenient().when(transformer.createMetadataEvent(any())).thenReturn(metadataEvent);
+
+        // 公共 stub：transformer.createStageEvent 返回一个真实 STAGE 事件（2026-08-27 阶段事件，
+        // 默认 null 会让 push 后的事件过滤断言 NPE）
+        SseEvent stageEvent =
+                new SseEvent(SseEventType.STAGE, 2, "{\"stage\":\"understanding\"}", System.currentTimeMillis());
+        lenient().when(transformer.createStageEvent(any(), anyString())).thenReturn(stageEvent);
+
+        // 公共 stub：transformer.transformStages 返回空列表（阶段跃迁逻辑由 SseEventTransformerTest 覆盖）
+        lenient()
+                .when(transformer.transformStages(any(NodeOutput.class), any()))
+                .thenReturn(java.util.List.of());
 
         // 公共 stub：transformer.transform 返回空列表（默认不产生事件）
         lenient().when(transformer.transform(any(NodeOutput.class), any())).thenReturn(java.util.List.of());
@@ -548,7 +560,7 @@ class ChatRequestWorkerTest {
                 cfg.metadata()
                         .ifPresent(m -> m.put(
                                 RetrieveNode.KEY_RETRIEVAL_SOURCES,
-                                List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9))));
+                                List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9, "片段正文预览"))));
                 sink.next(after);
                 sink.complete();
             });
@@ -1322,6 +1334,38 @@ class ChatRequestWorkerTest {
                         .getValue()
                         .metadata(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT)
                         .orElse(null));
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @Test
+    @DisplayName("首事件前移 — METADATA 与 STAGE(attachments) 先于 orchestrator.process 推送（附件管线静默消除）")
+    void processRequest_metadataPushedBeforeAttachmentProcessing() throws Exception {
+        // Given: 消息带 1 个图片附件（触发 orchestrator.process 慢路径）
+        String attachmentsJson = "[{\"type\":\"image\",\"url\":\"0/a.png\",\"name\":\"a.png\",\"size\":1}]";
+        Map<String, Object> body = new HashMap<>();
+        body.put("runId", "100");
+        body.put("sessionId", "200");
+        body.put("userId", "300");
+        body.put("query", "这张图里是什么");
+        body.put("attachments", attachmentsJson);
+        MapRecord<String, Object, Object> record = createMockRecordWithBody(body);
+        when(orchestrator.process(anyList())).thenReturn(AttachmentContext.empty());
+
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(Map.class), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: METADATA → STAGE(attachments) → orchestrator.process 严格时序
+        // （2026-08-27 前移：附件处理最长 60s，此前该窗口对客户端零事件）
+        InOrder inOrder = inOrder(bridge, orchestrator);
+        inOrder.verify(bridge).push(eq("100"), argThat((SseEvent e) -> e != null && e.type() == SseEventType.METADATA));
+        inOrder.verify(bridge).push(eq("100"), argThat((SseEvent e) -> e != null && e.type() == SseEventType.STAGE));
+        inOrder.verify(orchestrator).process(anyList());
+        // 且图执行前推送 STAGE(understanding)（覆盖 QU 阻塞 LLM 静默窗口）
+        verify(transformer, atLeastOnce()).createStageEvent(any(), eq(SseEventTransformer.STAGE_UNDERSTANDING));
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})

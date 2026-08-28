@@ -100,6 +100,7 @@ function aiMsg(over?: Partial<StreamMessage>): StreamMessage {
     thinkingEnded: false,
     text: "回答一部分",
     sources: [],
+    stages: [],
     tools: [],
     endStatus: null,
     messageId: null,
@@ -119,6 +120,7 @@ function userMsg(over?: Partial<StreamMessage>): StreamMessage {
     thinkingEnded: false,
     text: "",
     sources: [],
+    stages: [],
     tools: [],
     endStatus: null,
     messageId: null,
@@ -172,6 +174,7 @@ describe("chatReducer 纯函数", () => {
       thinkingEnded: false,
       text: "",
       sources: [],
+      stages: [],
       tools: [],
       endStatus: null,
       messageId: null,
@@ -295,6 +298,30 @@ describe("chatReducer 纯函数", () => {
     // 幂等：二推整体覆盖，不累积重复
     s = chatReducer(s, { type: "sources", sources: [src3] });
     expect(s.messages[0].sources).toEqual([src3]);
+  });
+
+  it("用例5 扩展 stage（2026-08-27）：阶段按序追加到当前 AI 消息；同键去重（ring 回放幂等）；终态后忽略", () => {
+    let s = streamingWithAi({ messages: [aiMsg()] });
+    s = chatReducer(s, {
+      type: "stage",
+      stage: "understanding",
+      label: "正在理解你的问题",
+      seq: 2,
+    });
+    s = chatReducer(s, { type: "stage", stage: "retrieving", label: "知识库查询中", seq: 3 });
+    expect(s.messages[0].stages).toEqual([
+      { stage: "understanding", label: "正在理解你的问题" },
+      { stage: "retrieving", label: "知识库查询中" },
+    ]);
+    // 同键重发（ring 全量回放）不追加
+    s = chatReducer(s, { type: "stage", stage: "retrieving", label: "知识库查询中", seq: 4 });
+    expect(s.messages[0].stages).toHaveLength(2);
+    // 锚点随 seq 前进
+    expect(s.lastEventId).toBe(4);
+    // 终态后 stage 忽略
+    s = chatReducer(s, { type: "end", status: "COMPLETED", messageId: "m-1", seq: 5 });
+    s = chatReducer(s, { type: "stage", stage: "generating", label: "正在生成回答", seq: 6 });
+    expect(s.messages[0].stages).toHaveLength(2);
   });
 
   it("用例6 error：run 级 retryable 分流（streaming false、endStatus 交由 end 落位）", () => {
@@ -646,6 +673,21 @@ describe("sseEventToAction 事件映射（payload → action）", () => {
       messageId: "m1",
       seq: 2,
     });
+  });
+
+  it("stage 事件映射（2026-08-27）：合法阶段键透传 + label 缺省回退键名；未知键/坏 JSON 忽略", () => {
+    expect(sseEventToAction("stage", J({ stage: "retrieving", label: "知识库查询中" }), 4)).toEqual(
+      { type: "stage", stage: "retrieving", label: "知识库查询中", seq: 4 },
+    );
+    // label 缺失回退键名（不阻断）
+    expect(sseEventToAction("stage", J({ stage: "generating" }), 5)).toEqual({
+      type: "stage",
+      stage: "generating",
+      label: "generating",
+      seq: 5,
+    });
+    // 未知阶段键整体忽略（防脏数据）
+    expect(sseEventToAction("stage", J({ stage: "hacking", label: "x" }), 6)).toBeNull();
   });
 
   it("error 双形态分流：code=REPLAY_FAILED → replay_failed；run 级 → retryable；缺 message 兜底文案", () => {

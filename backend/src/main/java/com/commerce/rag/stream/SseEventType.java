@@ -2,7 +2,7 @@ package com.commerce.rag.stream;
 
 /**
  * SSE 流式事件类型枚举。
- * 与前端设计文档 §1.6.4 的 10 事件 schema 对应。
+ * 与前端设计文档 §1.6.4 的 10 事件 schema 对应（另含本类新增的 STAGE，见成员注释）。
  *
  * <p>关于 HEARTBEAT：SSE 协议规范中 heartbeat 是以 {@code :} 开头的注释行
  * （如 {@code :heartbeat}），用于保活探测。但 Spring {@code SseEmitter} 的
@@ -18,6 +18,18 @@ public enum SseEventType {
     TOOL_CALL("tool_call"),
     TOOL_RESULT("tool_result"),
     SOURCES("sources"),
+    /**
+     * 阶段进度事件（2026-08-27 C 端体验改版新增）。
+     *
+     * <p>动机：QU（阻塞 LLM）→ 检索 → rerank → 主模型首 token 的串行链路全程
+     * 对前端静默（THINKING/DELTA 之前无任何可见事件，心跳是 JS 不可见的注释行），
+     * 用户感知"等很久一点内容都没有"。STAGE 在链路各阶段边界推送，让"上下文准备"
+     * 过程可见（先准备上下文，再流式返回最终结果）。
+     *
+     * <p>payload：{@code {"stage":"understanding|retrieving|generating|attachments",
+     * "label":"中文文案"}}；stage 供前端阶段机消费，label 直接展示。
+     */
+    STAGE("stage"),
     ERROR("error"),
     END("end"),
     /** 心跳保活事件：实际通过 SSE 注释行 {@code :heartbeat} 发送，非命名事件 */

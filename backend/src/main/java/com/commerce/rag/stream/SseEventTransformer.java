@@ -1,8 +1,13 @@
 package com.commerce.rag.stream;
 
+import static com.commerce.rag.bot.graph.OverAllState.KEY_QUERY_PLAN;
+
 import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.streaming.OutputType;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
+import com.commerce.rag.bot.IntentType;
+import com.commerce.rag.bot.graph.LeadAgentGraph;
+import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
@@ -252,6 +257,121 @@ public class SseEventTransformer {
     }
 
     // ========================================================================
+    // 阶段进度事件（STAGE，2026-08-27 C 端体验改版）
+    // ========================================================================
+
+    /** STAGE 阶段键：附件解析（worker 在 orchestrator.process 前后手工推送） */
+    public static final String STAGE_ATTACHMENTS = "attachments";
+    /** STAGE 阶段键：意图理解（worker 在图执行前手工推送，覆盖 QU 阻塞 LLM 阶段） */
+    public static final String STAGE_UNDERSTANDING = "understanding";
+    /** STAGE 阶段键：知识库检索（QU 完成且 intent=knowledge_question 时由本类推送） */
+    public static final String STAGE_RETRIEVING = "retrieving";
+    /** STAGE 阶段键：生成回答（检索完成 / chat 意图 QU 完成 / 首个模型 chunk，三者取最先） */
+    public static final String STAGE_GENERATING = "generating";
+
+    /** STAGE 阶段中文文案（前端直接展示，stage 键供阶段机逻辑消费） */
+    private static final Map<String, String> STAGE_LABELS = Map.of(
+            STAGE_ATTACHMENTS,
+            "正在解析附件",
+            STAGE_UNDERSTANDING,
+            "正在理解你的问题",
+            STAGE_RETRIEVING,
+            "知识库查询中",
+            STAGE_GENERATING,
+            "正在生成回答");
+
+    /**
+     * 构建 STAGE 阶段事件（公开工厂：worker 在附件处理 / 图执行前手工推送阶段边界用）。
+     *
+     * @param runState run 上下文（seqId 递增）
+     * @param stage    阶段键（STAGE_* 常量之一）
+     * @return STAGE 事件（payload 含 stage 与 label）
+     */
+    public SseEvent createStageEvent(RunState runState, String stage) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("stage", stage);
+        payload.put("label", STAGE_LABELS.getOrDefault(stage, stage));
+        return makeEvent(SseEventType.STAGE, runState, payload);
+    }
+
+    /**
+     * 将图流 chunk 映射为 STAGE 阶段事件（2026-08-27 C 端体验改版核心）。
+     *
+     * <p>机制（基于 SAA 1.1.2.0 实证：非流式节点完成时 NodeExecutor.handleNonStreamingResult
+     * 经 {@code Flux.just(GraphResponse.of(nodeOutput))} 向流中发射普通 {@link NodeOutput}，
+     * 携带 {@code node()} 与合并后 state）：
+     * <ul>
+     *   <li>queryUnderstandingNode 完成 chunk：读 state 的 QueryPlan——knowledge_question →
+     *       STAGE retrieving（知识库查询中）；chat/unknown → STAGE generating（直接生成）；
+     *       plan 缺失（异常降级）不发，由 reactAgent 首 chunk 兜底</li>
+     *   <li>retrieveNode 完成 chunk：检索阶段结束 → STAGE generating（worker 的
+     *       maybePushSources 在同 chunk 已推 SOURCES，时序自然形成「来源→生成」）</li>
+     *   <li>reactAgent 首个模型流式 chunk：STAGE generating 兜底（QU plan 缺失 /
+     *       NodeOutput 事件缺失时不丢「生成中」阶段）</li>
+     * </ul>
+     *
+     * <p>每个阶段经 RunState CAS 标记只发一次（与 thinkingEndSent 同款去重）。
+     *
+     * @param chunk    SAA 图流式输出的单个 chunk（可为普通 NodeOutput 或 StreamingOutput）
+     * @param runState 当前 run 上下文
+     * @return 0~1 个 STAGE 事件（同 chunk 至多触发一个阶段跃迁）
+     */
+    public List<SseEvent> transformStages(NodeOutput chunk, RunState runState) {
+        if (chunk == null || runState == null) {
+            return List.of();
+        }
+        String node = chunk.node();
+        // QU 完成：按意图分流到检索或直接生成
+        if (LeadAgentGraph.NODE_QUERY_UNDERSTANDING.equals(node)) {
+            return stageEventIfAbsent(runState, resolvePostUnderstandingStage(chunk));
+        }
+        // 检索完成：进入生成阶段
+        if (LeadAgentGraph.NODE_RETRIEVE.equals(node)) {
+            return stageEventIfAbsent(runState, STAGE_GENERATING);
+        }
+        // reactAgent 首个模型 chunk：生成阶段兜底（plan 缺失/QU chunk 缺失场景）
+        if (chunk instanceof StreamingOutput<?> streaming
+                && streaming.getOutputType() == OutputType.AGENT_MODEL_STREAMING
+                && LeadAgentGraph.NODE_REACT_AGENT.equals(node)) {
+            return stageEventIfAbsent(runState, STAGE_GENERATING);
+        }
+        return List.of();
+    }
+
+    /**
+     * 解析 QU 完成后的下一阶段：knowledge_question → retrieving；chat/unknown → generating；
+     * plan 读取失败返回 null（本 chunk 不发阶段，等 reactAgent 首 chunk 兜底）。
+     *
+     * @param chunk queryUnderstandingNode 完成 chunk（state 已含 QueryPlan）
+     * @return 下一阶段键；不可判定时 null
+     */
+    private String resolvePostUnderstandingStage(NodeOutput chunk) {
+        if (chunk.state() == null) {
+            return null;
+        }
+        return chunk.state()
+                .value(KEY_QUERY_PLAN)
+                .filter(QueryPlan.class::isInstance)
+                .map(QueryPlan.class::cast)
+                .map(plan -> plan.intent() == IntentType.KNOWLEDGE_QUESTION ? STAGE_RETRIEVING : STAGE_GENERATING)
+                .orElse(null);
+    }
+
+    /**
+     * 按阶段 CAS 标记推送 STAGE 事件（stage 为 null 或已发过时返回空列表）。
+     */
+    private List<SseEvent> stageEventIfAbsent(RunState runState, String stage) {
+        if (stage == null) {
+            return List.of();
+        }
+        boolean first = stage.equals(STAGE_RETRIEVING) ? runState.markRetrievingSent() : runState.markGeneratingSent();
+        if (!first) {
+            return List.of();
+        }
+        return List.of(createStageEvent(runState, stage));
+    }
+
+    // ========================================================================
     // 辅助方法
     // ========================================================================
 
@@ -324,6 +444,8 @@ public class SseEventTransformer {
      * @param deltaSent       标记本 run 是否已发送过 DELTA 事件（用于 FINISHED 去重补发判断）
      * @param thinkingSent    标记本 run 是否已发送过 THINKING 事件（text 阶段补发 THINKING_END 的前置条件）
      * @param thinkingEndSent 标记本 run 是否已发送过 THINKING_END 事件（CAS 去重，避免重复发送）
+     * @param retrievingSent  标记本 run 是否已发送过 STAGE(retrieving) 事件（CAS 去重，2026-08-27）
+     * @param generatingSent  标记本 run 是否已发送过 STAGE(generating) 事件（CAS 去重，多触发点取最先）
      */
     public record RunState(
             String runId,
@@ -332,7 +454,9 @@ public class SseEventTransformer {
             AtomicLong seqCounter,
             AtomicBoolean deltaSent,
             AtomicBoolean thinkingSent,
-            AtomicBoolean thinkingEndSent) {
+            AtomicBoolean thinkingEndSent,
+            AtomicBoolean retrievingSent,
+            AtomicBoolean generatingSent) {
 
         /**
          * 递增并返回下一个 SSE 事件序号。
@@ -377,7 +501,22 @@ public class SseEventTransformer {
         }
 
         /**
-         * 工厂方法：创建初始 seqId=0、三标志均为 false 的 RunState。
+         * 标记本 run 已发送过 STAGE(retrieving) 事件，返回是否首次标记成功（CAS 去重）。
+         */
+        public boolean markRetrievingSent() {
+            return retrievingSent.compareAndSet(false, true);
+        }
+
+        /**
+         * 标记本 run 已发送过 STAGE(generating) 事件，返回是否首次标记成功（CAS 去重，
+         * 多触发点——chat 意图 QU 完成 / retrieveNode 完成 / reactAgent 首 chunk——取最先）。
+         */
+        public boolean markGeneratingSent() {
+            return generatingSent.compareAndSet(false, true);
+        }
+
+        /**
+         * 工厂方法：创建初始 seqId=0、五标志均为 false 的 RunState。
          */
         public static RunState create(String runId, String sessionId, String model) {
             return new RunState(
@@ -385,6 +524,8 @@ public class SseEventTransformer {
                     sessionId,
                     model,
                     new AtomicLong(0),
+                    new AtomicBoolean(false),
+                    new AtomicBoolean(false),
                     new AtomicBoolean(false),
                     new AtomicBoolean(false),
                     new AtomicBoolean(false));

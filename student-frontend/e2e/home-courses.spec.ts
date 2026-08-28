@@ -55,15 +55,24 @@ test.describe("首页与课程", () => {
     await expect(page.getByText("Java 从入门到进阶")).toBeVisible();
   });
 
-  test("未登录课程详情页：公开信息可浏览 + 自动弹登录窗 + 资料登录墙", async ({ page }) => {
+  test("未登录访问 /courses 与详情页：middleware 直引登录页并携带 next（2026-08-27 仅首页公开）", async ({
+    page,
+  }) => {
+    // 不登录访问课程中心：重定向 /login?next=/courses
+    await page.goto("/courses");
+    await expect(page).toHaveURL(/\/login\?next=%2Fcourses$/);
+    // 深链详情页同样拦截并携带原路径
+    await page.goto("/courses/1");
+    await expect(page).toHaveURL(/\/login\?next=%2Fcourses%2F1$/);
+  });
+
+  test("登录后课程详情页：无自动登录弹窗（门控由 middleware 承担）", async ({ page }) => {
+    await login(page, "/");
     await page.goto("/courses/1");
     // 公开课程信息即时可见（Hero 标题 + 简介）
     await expect(page.getByRole("heading", { name: "数据结构与算法精讲" })).toBeVisible();
     await expect(page.getByText("从线性表到图论的系统课程")).toBeVisible();
-    // 登录门槛：自动弹窗（可关闭）+ 资料区登录墙
-    await expect(page.getByRole("dialog", { name: "登录课程助手" })).toBeVisible();
-    await expect(page.getByTestId("login-gate")).toBeVisible();
-    await page.keyboard.press("Escape");
+    // 已登录：不再弹出登录窗
     await expect(page.getByRole("dialog", { name: "登录课程助手" })).toBeHidden();
   });
 

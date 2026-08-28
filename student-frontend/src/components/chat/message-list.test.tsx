@@ -34,6 +34,7 @@ function makeUser(overrides: Partial<StreamMessage> = {}): StreamMessage {
     thinkingEnded: false,
     text: "",
     sources: [],
+    stages: [],
     tools: [],
     endStatus: null,
     messageId: null,
@@ -53,6 +54,7 @@ function makeAssistant(overrides: Partial<StreamMessage> = {}): StreamMessage {
     thinkingEnded: false,
     text: "",
     sources: [],
+    stages: [],
     tools: [],
     endStatus: null,
     messageId: null,
@@ -65,6 +67,7 @@ const SOURCE: RetrievalSource = {
   docTitle: "RAG 白皮书",
   headingPath: "第三章",
   score: 0.9,
+  content: "检索式生成（RAG）的核心是先召回后生成……",
 };
 
 function renderList(
@@ -128,11 +131,15 @@ describe("MessageList 用户消息", () => {
 });
 
 describe("MessageList AI 消息组合与顺序", () => {
-  it("来源卡置于正文之前（sources 先于 markdown），工具卡在正文之后", () => {
+  it("推理卡（阶段+思考）与知识片段入口置于正文之前，工具卡在正文之后", () => {
     const assistant = makeAssistant({
       thinking: "先检索。",
       thinkingEnded: true,
       text: "回答正文内容",
+      stages: [
+        { stage: "understanding", label: "正在理解你的问题" },
+        { stage: "retrieving", label: "知识库查询中" },
+      ],
       sources: [SOURCE],
       tools: [
         {
@@ -147,11 +154,36 @@ describe("MessageList AI 消息组合与顺序", () => {
       messageId: "msg-1",
     });
     renderList([assistant], { streaming: false });
-    const sources = screen.getByTestId("sources-list");
+    const reasoning = screen.getByTestId("reasoning-card");
     const body = screen.getByTestId("markdown-view");
     const tool = screen.getByTestId("tool-card");
-    expect(sources.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(reasoning.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(body.compareDocumentPosition(tool) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 推理卡头部含知识片段入口（N 个知识片段 pill）
+    expect(screen.getByTestId("reasoning-sources-pill")).toHaveTextContent("1 个知识片段");
+  });
+
+  it("点击知识片段入口打开召回抽屉，Esc 关闭（2026-08-27 抽屉契约）", () => {
+    const assistant = makeAssistant({
+      thinking: "思考",
+      thinkingEnded: true,
+      text: "正文",
+      sources: [SOURCE],
+      endStatus: "COMPLETED",
+      messageId: "msg-1",
+    });
+    renderList([assistant]);
+    expect(screen.queryByTestId("retrieval-drawer")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("reasoning-sources-pill"));
+    expect(screen.getByTestId("retrieval-drawer")).toBeInTheDocument();
+    expect(screen.getByTestId("retrieval-drawer-list").children).toHaveLength(1);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("retrieval-drawer")).not.toBeInTheDocument();
+  });
+
+  it("流式空窗：streaming 且无阶段/思考/正文时渲染三点脉冲占位", () => {
+    renderList([makeAssistant()], { streaming: true });
+    expect(screen.getByTestId("streaming-dots")).toBeInTheDocument();
   });
 
   it("流式光标：streaming=true 且最后一条为 AI 消息时存在，停止后消失", () => {

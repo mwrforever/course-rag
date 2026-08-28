@@ -1,10 +1,17 @@
 package com.commerce.rag.stream;
 
+import static com.commerce.rag.bot.graph.OverAllState.KEY_QUERY_PLAN;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import com.alibaba.cloud.ai.graph.NodeOutput;
+import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.streaming.OutputType;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
+import com.commerce.rag.bot.IntentType;
+import com.commerce.rag.bot.graph.LeadAgentGraph;
+import com.commerce.rag.bot.rewrite.QueryPlan;
+import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
@@ -497,5 +504,117 @@ class SseEventTransformerTest {
 
         assertEquals(1, result1.get(0).seqId());
         assertEquals(2, result2.get(0).seqId());
+    }
+
+    // ==================== transformStages（STAGE 阶段事件，2026-08-27） ====================
+
+    @Test
+    @DisplayName("QU 完成 chunk + knowledge_question 计划 → STAGE(retrieving)，仅一次")
+    void transformStages_quFinishedKnowledgeQuestion_retrievingOnce() {
+        // Given: QU 完成 chunk（普通 NodeOutput，state 携带 knowledge_question 计划）
+        QueryPlan plan =
+                new QueryPlan(IntentType.KNOWLEDGE_QUESTION, List.of("查询"), new QueryPlanFilters(List.of()), false);
+        NodeOutput quChunk = mock(NodeOutput.class);
+        when(quChunk.node()).thenReturn(LeadAgentGraph.NODE_QUERY_UNDERSTANDING);
+        when(quChunk.state()).thenReturn(new OverAllState(Map.of(KEY_QUERY_PLAN, plan)));
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        // When: 同一 chunk 触发两次（CAS 去重）
+        List<SseEvent> first = transformer.transformStages(quChunk, runState);
+        List<SseEvent> second = transformer.transformStages(quChunk, runState);
+
+        // Then: 首次 1 个 STAGE(retrieving)，payload 含中文文案；第二次空
+        assertEquals(1, first.size());
+        assertEquals(SseEventType.STAGE, first.get(0).type());
+        assertTrue(first.get(0).payload().contains("\"stage\":\"retrieving\""));
+        assertTrue(first.get(0).payload().contains("知识库查询中"));
+        assertTrue(second.isEmpty());
+    }
+
+    @Test
+    @DisplayName("QU 完成 chunk + chat 计划 → STAGE(generating)（不检索直接生成）")
+    void transformStages_quFinishedChat_generating() {
+        QueryPlan plan = new QueryPlan(IntentType.CHAT, List.of("闲聊"), new QueryPlanFilters(List.of()), false);
+        NodeOutput quChunk = mock(NodeOutput.class);
+        when(quChunk.node()).thenReturn(LeadAgentGraph.NODE_QUERY_UNDERSTANDING);
+        when(quChunk.state()).thenReturn(new OverAllState(Map.of(KEY_QUERY_PLAN, plan)));
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        List<SseEvent> events = transformer.transformStages(quChunk, runState);
+
+        assertEquals(1, events.size());
+        assertEquals(SseEventType.STAGE, events.get(0).type());
+        assertTrue(events.get(0).payload().contains("\"stage\":\"generating\""));
+    }
+
+    @Test
+    @DisplayName("QU 完成 chunk + 无计划（异常降级）→ 不发阶段（reactAgent 首 chunk 兜底）")
+    void transformStages_quFinishedNoPlan_noEvent() {
+        NodeOutput quChunk = mock(NodeOutput.class);
+        when(quChunk.node()).thenReturn(LeadAgentGraph.NODE_QUERY_UNDERSTANDING);
+        when(quChunk.state()).thenReturn(new OverAllState(Map.of()));
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        assertTrue(transformer.transformStages(quChunk, runState).isEmpty());
+    }
+
+    @Test
+    @DisplayName("retrieveNode 完成 chunk → STAGE(generating)（检索阶段结束）")
+    void transformStages_retrieveFinished_generating() {
+        NodeOutput retrieveChunk = mock(NodeOutput.class);
+        when(retrieveChunk.node()).thenReturn(LeadAgentGraph.NODE_RETRIEVE);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        List<SseEvent> events = transformer.transformStages(retrieveChunk, runState);
+
+        assertEquals(1, events.size());
+        assertTrue(events.get(0).payload().contains("\"stage\":\"generating\""));
+    }
+
+    @Test
+    @DisplayName("reactAgent 首个模型流式 chunk → STAGE(generating) 兜底（与 retrieveNode 完成互斥去重）")
+    void transformStages_reactAgentFirstChunk_generatingFallback() {
+        // Given: QU chunk 无计划（跳过）→ reactAgent 首个 STREAMING chunk 兜底
+        StreamingOutput<?> modelChunk = mock(StreamingOutput.class);
+        when(modelChunk.node()).thenReturn(LeadAgentGraph.NODE_REACT_AGENT);
+        when(modelChunk.getOutputType()).thenReturn(OutputType.AGENT_MODEL_STREAMING);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        List<SseEvent> events = transformer.transformStages(modelChunk, runState);
+
+        assertEquals(1, events.size());
+        assertTrue(events.get(0).payload().contains("\"stage\":\"generating\""));
+        // 同 run 内 retrieveNode 完成后再触发不再重复（CAS）
+        NodeOutput retrieveChunk = mock(NodeOutput.class);
+        when(retrieveChunk.node()).thenReturn(LeadAgentGraph.NODE_RETRIEVE);
+        assertTrue(transformer.transformStages(retrieveChunk, runState).isEmpty());
+    }
+
+    @Test
+    @DisplayName("无关节点 / 非 reactAgent 流式 chunk → 无阶段事件")
+    void transformStages_unrelatedNode_noEvent() {
+        NodeOutput otherChunk = mock(NodeOutput.class);
+        when(otherChunk.node()).thenReturn("__START__");
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        assertTrue(transformer.transformStages(otherChunk, runState).isEmpty());
+
+        // QU 节点的 AGENT_MODEL_STREAMING（不该出现的组合）也不触发
+        StreamingOutput<?> quStreaming = mock(StreamingOutput.class);
+        when(quStreaming.node()).thenReturn(LeadAgentGraph.NODE_QUERY_UNDERSTANDING);
+        when(quStreaming.getOutputType()).thenReturn(OutputType.AGENT_MODEL_STREAMING);
+        assertTrue(transformer.transformStages(quStreaming, runState).isEmpty());
+    }
+
+    @Test
+    @DisplayName("createStageEvent → STAGE 事件包含 stage 与中文 label")
+    void createStageEvent_containsStageAndLabel() {
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        SseEvent event = transformer.createStageEvent(runState, SseEventTransformer.STAGE_UNDERSTANDING);
+
+        assertEquals(SseEventType.STAGE, event.type());
+        assertTrue(event.payload().contains("\"stage\":\"understanding\""));
+        assertTrue(event.payload().contains("正在理解你的问题"));
     }
 }

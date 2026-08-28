@@ -136,9 +136,9 @@ test.describe("SSE 生命周期", () => {
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    // 渲染屏障：第一段流消费完成。EOF 未终态 → 50ms 后 runReconnect → 重连收到
-    // error(REPLAY_FAILED) 帧 → replay_failed 分级横幅
-    await expect(page.getByTestId("thinking-content")).toBeVisible();
+    // 渲染屏障：第一段流消费完成（推理卡默认收起，2026-08-27——预览行承载思考末行）。
+    // EOF 未终态 → 50ms 后 runReconnect → 重连收到 error(REPLAY_FAILED) 帧 → replay_failed 分级横幅
+    await expect(page.getByTestId("reasoning-preview")).toBeVisible();
     await expect(page.getByText("会话历史不可用，请重新提问")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole("button", { name: "重新提问" })).toBeVisible();
   });

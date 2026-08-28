@@ -354,16 +354,36 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
     /**
      * 组装检索来源列表（B3-5：SOURCES 事件与 sourcesJson 的载荷）
      *
-     * <p>按精排顺序映射为 {@link RetrievalSource}（最小可用字段：chunkId/docTitle/headingPath/score，
-     * 依据前端设计 §1.6.4「sources → 列表渲染」——契约文档未细化 payload 结构）。
+     * <p>按精排顺序映射为 {@link RetrievalSource}（chunkId/docTitle/headingPath/score/content，
+     * 2026-08-27 C 端改版补充 content 片段正文截断预览——前端召回文档抽屉直接展示，
+     * 免二次回查；截断上限 {@link #SOURCE_CONTENT_MAX_CHARS}）。
      *
      * @param chunks 精排后的检索命中（非空）
      * @return 来源列表（与入参同序）
      */
     private static List<RetrievalSource> buildSources(List<KnowledgeChunk> chunks) {
         return chunks.stream()
-                .map(c -> new RetrievalSource(c.chunkId(), c.docTitle(), c.headingPath(), c.score()))
+                .map(c -> new RetrievalSource(
+                        c.chunkId(), c.docTitle(), c.headingPath(), c.score(), truncateContent(c.content())))
                 .toList();
+    }
+
+    /** 来源片段正文截断上限（字符）——SOURCES 事件与 sources_json 落库共用，防大 chunk 撑爆事件与行宽 */
+    private static final int SOURCE_CONTENT_MAX_CHARS = 800;
+
+    /**
+     * 截断来源片段正文（超长截断加省略号标记；null 归一为空串——record 契约 content 非 null）
+     *
+     * @param content 分片正文（可为 null）
+     * @return 截断后的正文预览
+     */
+    private static String truncateContent(String content) {
+        if (content == null || content.isEmpty()) {
+            return "";
+        }
+        return content.length() <= SOURCE_CONTENT_MAX_CHARS
+                ? content
+                : content.substring(0, SOURCE_CONTENT_MAX_CHARS) + "…";
     }
 
     /**
