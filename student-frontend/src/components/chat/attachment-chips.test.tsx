@@ -12,11 +12,14 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   AttachmentChips,
+  FORMAT_ICONS,
   MAX_ATTACHMENTS,
   MAX_DOC_SIZE,
   MAX_IMAGE_SIZE,
   MAX_TOTAL_SIZE,
+  attachmentFormatKind,
   validateAttachments,
+  type AttachmentFormatKind,
 } from "./attachment-chips";
 import type { PendingAttachment } from "./attachment-chips";
 
@@ -158,5 +161,47 @@ describe("AttachmentChips 三态渲染", () => {
     render(<AttachmentChips items={[makeItem({})]} onRemove={onRemove} />);
     fireEvent.click(screen.getByRole("button", { name: /移除/ }));
     expect(onRemove).toHaveBeenCalledWith("att-1");
+  });
+});
+
+describe("附件格式图标映射（Task 12 扩容）", () => {
+  it("attachmentFormatKind：扩展名 → 格式分类全覆盖（含白名单兜底）", () => {
+    // 图片白名单全扩展名
+    for (const ext of ["jpg", "jpeg", "png", "gif", "webp", "bmp"]) {
+      expect(attachmentFormatKind(`图.${ext}`)).toBe("image");
+    }
+    // 文档格式逐类映射
+    expect(attachmentFormatKind("讲义.pdf")).toBe("pdf");
+    expect(attachmentFormatKind("笔记.doc")).toBe("doc");
+    expect(attachmentFormatKind("笔记.docx")).toBe("doc");
+    expect(attachmentFormatKind("成绩单.xls")).toBe("xls");
+    expect(attachmentFormatKind("成绩单.xlsx")).toBe("xls");
+    expect(attachmentFormatKind("课件.ppt")).toBe("ppt");
+    expect(attachmentFormatKind("课件.pptx")).toBe("ppt");
+    expect(attachmentFormatKind("说明.txt")).toBe("text");
+    expect(attachmentFormatKind("说明.md")).toBe("text");
+    // 无扩展名 / 未知扩展名兜底为 text（FileText 图标）
+    expect(attachmentFormatKind("无扩展名")).toBe("text");
+  });
+
+  it("FORMAT_ICONS：六类格式各配置一枚 Phosphor 图标（映射表完整性）", () => {
+    const kinds: AttachmentFormatKind[] = ["image", "pdf", "doc", "xls", "ppt", "text"];
+    for (const kind of kinds) {
+      expect(FORMAT_ICONS[kind]).toBeDefined();
+    }
+  });
+
+  it("chip 点击（非移除钮）→ onPreview 携带整条目（预览弹窗入口）", () => {
+    const onPreview = vi.fn();
+    const item: PendingAttachment = {
+      id: "att-1",
+      file: makeFile("讲义.pdf", 2048, PDF_TYPE),
+      record: { type: "document", url: "obj/1.pdf", name: "讲义.pdf", size: "2048" },
+      status: "done",
+      blobUrl: "blob:mock-1",
+    };
+    render(<AttachmentChips items={[item]} onRemove={() => {}} onPreview={onPreview} />);
+    fireEvent.click(screen.getByRole("button", { name: /预览附件：讲义\.pdf/ }));
+    expect(onPreview).toHaveBeenCalledWith(item);
   });
 });

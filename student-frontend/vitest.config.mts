@@ -8,6 +8,13 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // react-medium-image-zoom 样式仅浏览器构建生效；vitest 内 vite:css 会加载项目
+      // PostCSS 配置（@tailwindcss/postcss 在 node 测试上下文不可实例化直接抛错），
+      // 任何 .css 导入（含空桩）都会失败——别名到空 .ts 模块（命中先于扩展名解析，
+      // 不进 css 管道），Zoom 组件行为不受影响
+      "react-medium-image-zoom/dist/styles.css": fileURLToPath(
+        new URL("./src/test/zoom-styles-stub.ts", import.meta.url),
+      ),
     },
   },
   test: {

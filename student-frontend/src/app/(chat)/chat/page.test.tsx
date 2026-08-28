@@ -403,3 +403,53 @@ describe("新对话页：附件全链路", () => {
     expect(screen.getByRole("img", { name: /图\.png/ })).toBeInTheDocument();
   });
 });
+
+describe("新对话页：拖拽上传与附件预览（Task 12 扩容）", () => {
+  const PNG = new File([new Uint8Array(1024)], "拖拽图.png", { type: "image/png" });
+  const RECORD: AttachmentRecord = {
+    type: "image",
+    url: "obj/drag.png",
+    name: "拖拽图.png",
+    size: "1024",
+  };
+
+  it("拖拽高亮层：dragOver 出现、dragLeave 消失（不误触上传）", () => {
+    renderPage();
+    const workspace = screen.getByTestId("chat-workspace");
+    // 拖拽经过：拦截默认并点亮高亮层
+    fireEvent.dragOver(workspace, { dataTransfer: { types: ["Files"] } });
+    expect(screen.getByTestId("drag-highlight")).toBeInTheDocument();
+    // 拖离（移出容器）：高亮层消失且未触发上传
+    fireEvent.dragLeave(workspace, { relatedTarget: null });
+    expect(screen.queryByTestId("drag-highlight")).not.toBeInTheDocument();
+    expect(apiMock.uploadAttachments).not.toHaveBeenCalled();
+  });
+
+  it("drop 释放文件：触发上传（与文件选择同一链路）", async () => {
+    apiMock.uploadAttachments.mockResolvedValue([RECORD]);
+    renderPage();
+    fireEvent.drop(screen.getByTestId("chat-workspace"), {
+      dataTransfer: { files: [PNG] },
+    });
+    await waitFor(() => {
+      expect(apiMock.uploadAttachments).toHaveBeenCalledWith([PNG]);
+    });
+  });
+
+  it("点击 chip 打开预览弹窗（图片 blob 大图），Esc 关闭", async () => {
+    apiMock.uploadAttachments.mockResolvedValue([RECORD]);
+    renderPage();
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
+    await screen.findByRole("img", { name: /拖拽图\.png/ });
+    // chip 主体点击 → 预览弹窗（portal 挂 body）
+    fireEvent.click(screen.getByRole("button", { name: /预览附件：拖拽图\.png/ }));
+    expect(
+      await screen.findByRole("dialog", { name: /预览附件：拖拽图\.png/ }),
+    ).toBeInTheDocument();
+    // Esc 关闭
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+});

@@ -30,6 +30,7 @@ import {
   validateAttachments,
   type PendingAttachment,
 } from "@/components/chat/attachment-chips";
+import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview-dialog";
 import { ChatInput, chatErrorText } from "@/components/chat/chat-input";
 import { ChatToast } from "@/components/chat/chat-toast";
 import { SIDEBAR_SESSIONS_QUERY_KEY } from "@/components/chat/chat-sidebar";
@@ -155,6 +156,10 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   // ── 附件状态：pending chips + record.url → blob URL 映射（D12 本地预览）──
   const [pendings, setPendings] = useState<PendingAttachment[]>([]);
   const [blobUrls, setBlobUrls] = useState<Record<string, string>>({});
+  // ── 附件预览弹窗（Task 12）：chip 点击打开，Esc/遮罩关闭（null=关闭）──
+  const [previewItem, setPreviewItem] = useState<PendingAttachment | null>(null);
+  // ── 拖拽上传态（Task 12）：文件拖入工作区点亮高亮层，释放触发上传 ──
+  const [dragActive, setDragActive] = useState(false);
   const blobUrlsRef = useRef(blobUrls);
   useEffect(() => {
     blobUrlsRef.current = blobUrls;
@@ -216,6 +221,27 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
     },
     [pendings],
   );
+
+  /** 拖拽经过：拦截浏览器默认打开行为并点亮高亮层（仅文件类拖拽） */
+  function handleDragOver(event: React.DragEvent<HTMLDivElement>) {
+    // 非文件拖拽（页内文本选择等）不接管，保持原生行为
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    setDragActive(true);
+  }
+
+  /** 拖离容器：高亮层熄灭（子元素间移动不误判，relatedTarget 仍在容器内时忽略） */
+  function handleDragLeave(event: React.DragEvent<HTMLDivElement>) {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setDragActive(false);
+  }
+
+  /** 拖拽释放：取 dataTransfer.files 走与文件选择同一上传链路（前置校验即拒共用） */
+  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragActive(false);
+    void handleFiles(event.dataTransfer?.files ?? null);
+  }
 
   /**
    * 附件选择处理：前置校验（超限即拒，不发网络请求）→ 建 blob 预览 → 选中即传
@@ -315,7 +341,13 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   const isEmpty = displayMessages.length === 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-workspace">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col"
+      data-testid="chat-workspace"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* 上下文条：kimi 对话页页头（← 返回课程 · 课程名 chip · 会话标题 · 新建对话） */}
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/80 bg-bg/70 px-5 text-sm backdrop-blur">
         <Link
@@ -422,13 +454,21 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
         ) : null}
       </div>
 
+      {/* 拖拽高亮层（Task 12）：文件拖入工作区时点亮（pointer-events-none 保证 drop 落回容器） */}
+      {dragActive ? (
+        <div
+          data-testid="drag-highlight"
+          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center border-2 border-dashed border-brand bg-bg/85"
+        >
+          <p className="rounded-full border border-brand/40 bg-surface px-5 py-2 text-sm font-medium text-brand-strong">
+            松开鼠标上传附件
+          </p>
+        </div>
+      ) : null}
+
       {/* 吸底输入区：bg/80 + backdrop-blur + 顶部 1px 边框（kimi 对话页形态） */}
       <div className="shrink-0 border-t border-border/80 bg-bg/80 backdrop-blur">
         <div className="mx-auto w-full max-w-[840px] px-6 py-4">
-          {/* 附件 chips：输入框上方展示（上传中进度/预览/移除；图2 输入框形态） */}
-          {pendings.length > 0 ? (
-            <AttachmentChips items={pendings} onRemove={removeAttachment} />
-          ) : null}
           <ChatInput
             streaming={state.streaming}
             sendDisabled={pendings.some((item) => item.status === "uploading")}
@@ -437,6 +477,16 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
             onNotify={notify}
             initialValue={variant === "new" ? (quickQuery ?? undefined) : undefined}
             onPasteFiles={(files) => void handleFiles(files)}
+            /* 附件区（图一扩容形态）：chips 渲染进输入卡内顶部，border-t 与输入行分隔 */
+            attachmentsArea={
+              pendings.length > 0 ? (
+                <AttachmentChips
+                  items={pendings}
+                  onRemove={removeAttachment}
+                  onPreview={setPreviewItem}
+                />
+              ) : undefined
+            }
             attachmentSlot={
               /* ＋附件：单按钮单接口承载图片+文档（2026-08-27 用户拍板合并；G11 白名单合并 accept） */
               <>
@@ -469,6 +519,8 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
         </div>
       </div>
 
+      {/* 附件预览弹窗（Task 12）：图片 Zoom / pdf iframe / 其他格式图标卡 */}
+      <AttachmentPreviewDialog item={previewItem} onClose={() => setPreviewItem(null)} />
       <ChatToast message={toast} />
     </div>
   );

@@ -212,3 +212,119 @@ describe("chatErrorText 错误分级映射（页面建议提问 chip 复用）",
     expect(chatErrorText(new Error("e"))).toBe("发送失败，请稍后重试");
   });
 });
+
+describe("ChatInput 附件区扩容（设计稿图一形态：附件区卡内顶部 + border-t 分隔）", () => {
+  it("attachmentsArea 提供时：附件区渲染于输入行之前且输入行带 border-t 分隔线", () => {
+    render(
+      <ChatInput
+        streaming={false}
+        onSend={onSend}
+        onCancel={onCancel}
+        onNotify={onNotify}
+        attachmentsArea={<div data-testid="mock-attachment-chips">chips</div>}
+      />,
+    );
+    expect(screen.getByTestId("mock-attachment-chips")).toBeInTheDocument();
+    const area = screen.getByTestId("attachment-area");
+    const row = screen.getByTestId("chat-input-row");
+    // 附件区在卡内顶部（输入行之前）
+    expect(area.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 分隔线：附件区存在时输入行挂 border-t 细线
+    expect(row).toHaveClass("border-t");
+  });
+
+  it("无附件区：不渲染占位结构与分隔线", () => {
+    renderInput();
+    expect(screen.queryByTestId("attachment-area")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-input-row")).not.toHaveClass("border-t");
+  });
+});
+
+describe("ChatInput 受控与重置（T12 受控化，T13 新建会话 reset 消费）", () => {
+  it("受控模式：外部 value 驱动输入框，键入经 onValueChange 上抛", () => {
+    const onValueChange = vi.fn();
+    render(
+      <ChatInput
+        streaming={false}
+        onSend={onSend}
+        onCancel={onCancel}
+        onNotify={onNotify}
+        value="预填内容"
+        onValueChange={onValueChange}
+      />,
+    );
+    expect(screen.getByRole("textbox")).toHaveValue("预填内容");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "预填内容2" } });
+    expect(onValueChange).toHaveBeenCalledWith("预填内容2");
+  });
+
+  it("resetKey 变化（受控模式）：onValueChange('') 通知父级清空", () => {
+    const onValueChange = vi.fn();
+    const { rerender } = render(
+      <ChatInput
+        streaming={false}
+        onSend={onSend}
+        onCancel={onCancel}
+        onNotify={onNotify}
+        value="待清理"
+        onValueChange={onValueChange}
+        resetKey={0}
+      />,
+    );
+    rerender(
+      <ChatInput
+        streaming={false}
+        onSend={onSend}
+        onCancel={onCancel}
+        onNotify={onNotify}
+        value="待清理"
+        onValueChange={onValueChange}
+        resetKey={1}
+      />,
+    );
+    expect(onValueChange).toHaveBeenCalledWith("");
+  });
+
+  it("resetKey 变化（非受控模式）：内部输入清空", () => {
+    const { rerender } = render(
+      <ChatInput
+        streaming={false}
+        onSend={onSend}
+        onCancel={onCancel}
+        onNotify={onNotify}
+        resetKey={0}
+      />,
+    );
+    typeText("待清理内容");
+    rerender(
+      <ChatInput
+        streaming={false}
+        onSend={onSend}
+        onCancel={onCancel}
+        onNotify={onNotify}
+        resetKey={1}
+      />,
+    );
+    expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+
+  it("受控模式发送失败：onValueChange 先清空后恢复（供修改重试）", async () => {
+    const onValueChange = vi.fn();
+    onSend.mockRejectedValueOnce(new ApiError(409, "并发"));
+    render(
+      <ChatInput
+        streaming={false}
+        onSend={onSend}
+        onCancel={onCancel}
+        onNotify={onNotify}
+        value="并发问题"
+        onValueChange={onValueChange}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await vi.waitFor(() => {
+      expect(onValueChange).toHaveBeenCalledWith("");
+      expect(onValueChange).toHaveBeenCalledWith("并发问题");
+    });
+  });
+});
