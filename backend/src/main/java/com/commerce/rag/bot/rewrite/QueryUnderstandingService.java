@@ -2,10 +2,12 @@ package com.commerce.rag.bot.rewrite;
 
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.PromptLoader;
+import com.commerce.rag.properties.QueryUnderstandingProperties;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.ThinkingPusher;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -67,13 +69,23 @@ public class QueryUnderstandingService {
     private final PromptLoader promptLoader;
     private final ObjectMapper objectMapper;
     private final String model;
+    /**
+     * 流式聚合硬超时（rag.query-understanding.stream-timeout，默认 60s）。
+     *
+     * <p>必须有界（2026-08-28 评审 C1）：chatModel.stream 走 WebClient 响应式栈，SDK
+     * responseTimeout 仅覆盖至响应建立、chunk 间静默无 idle 保护；外层 worker
+     * blockLast(5min) 与本节点内层阻塞同线程栈不可达。超时抛 IllegalStateException
+     * 落入 understand 既有 catch → CAS 关思考态 → QueryPlan.fallback 降级。
+     */
+    private final Duration streamTimeout;
 
     public QueryUnderstandingService(
             ChatModel chatModel,
             PromptLoader promptLoader,
             ObjectMapper objectMapper,
             @Value("${rag.query-understanding.model:qwen3.7-flash}") String model,
-            @Value("${rag.query-understanding.max-queries:3}") int maxQueries) {
+            @Value("${rag.query-understanding.max-queries:3}") int maxQueries,
+            QueryUnderstandingProperties properties) {
         // chatModel 直引用于流式路径（chatModel.stream 可读到每 chunk 的 reasoningContent metadata，
         // ChatClient .stream().content() 只暴露文本丢 metadata）；chatClient 保留同步 .call 路径
         this.chatModel = chatModel;
@@ -82,6 +94,7 @@ public class QueryUnderstandingService {
         this.objectMapper = objectMapper;
         this.model = model;
         this.maxQueries = maxQueries;
+        this.streamTimeout = properties.streamTimeout();
     }
 
     /**
@@ -232,7 +245,9 @@ public class QueryUnderstandingService {
                             contentBuf.append(text);
                         }
                     })
-                    .blockLast();
+                    // 硬超时自界（评审 C1）：响应式栈 chunk 间静默无 transport idle 保护，
+                    // 超时抛 IllegalStateException 由下方 catch 补 end 后上抛，understand 统一降级
+                    .blockLast(streamTimeout);
         } catch (RuntimeException e) {
             // 流异常：已推过 reasoning 但尚未推过 end → 关思考态后再上抛，由 understand 统一降级
             if (reasoningSeen.get() && thinkingEnded.compareAndSet(false, true)) {

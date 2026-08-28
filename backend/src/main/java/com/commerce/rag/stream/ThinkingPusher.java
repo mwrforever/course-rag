@@ -143,14 +143,17 @@ public class ThinkingPusher {
      * 不进图 state.messages，chat_message thinking 行的 understanding / attachments
      * 阶段全文只能来源于此缓冲；key 为阶段键（首推顺序），value 为该阶段累加全文。
      *
-     * <p>快照为浅拷贝（Map 结构不可变、StringBuilder 引用共享）：本方法在 pushLock 内
-     * 拷贝，返回后调用方只读；run 落库发生在图流 blockLast 之后，不再有并发写入。
+     * <p>快照为深拷贝（锁内 StringBuilder→String）：返回的 Map 与值均不可变，调用方
+     * 锁外读取无竞态——不依赖「落库时无并发写」的接线假设（Task 4 caption 并发推送后
+     * 该假设不成立，StringBuilder 半写状态会被读走，2026-08-28 评审 I1 收口）。
      *
      * @return 阶段键 → 该阶段累加的思考全文（从未推送过时为空 Map，never null）
      */
-    public Map<String, StringBuilder> accumulated() {
+    public Map<String, String> accumulated() {
         synchronized (pushLock) {
-            return Collections.unmodifiableMap(new LinkedHashMap<>(accumulated));
+            Map<String, String> snapshot = new LinkedHashMap<>(accumulated.size());
+            accumulated.forEach((stage, buf) -> snapshot.put(stage, buf.toString()));
+            return Collections.unmodifiableMap(snapshot);
         }
     }
 

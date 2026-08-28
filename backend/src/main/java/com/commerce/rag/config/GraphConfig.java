@@ -11,8 +11,10 @@ import com.alibaba.cloud.ai.graph.checkpoint.savers.postgresql.PostgresSaver;
 import com.alibaba.cloud.ai.graph.state.strategy.AppendStrategy;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
 import com.commerce.rag.bot.graph.LeadAgentGraph;
+import com.commerce.rag.properties.QueryUnderstandingProperties;
 import java.sql.SQLException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -22,12 +24,17 @@ import org.springframework.context.annotation.Configuration;
  * <p>PostgresSaver 负责图执行状态的 checkpoint 持久化（中断恢复）。
  * KeyStrategyFactory 定义 OverAllState 每个 key 的 reducer 策略。
  *
+ * <p>注册 {@link QueryUnderstandingProperties}（rag.query-understanding.*）：QU 图节点流式
+ * 思考聚合的硬超时配置（2026-08-28 评审 C1——响应式栈 chunk 间静默无 transport idle 保护，
+ * 内层 blockLast 必须有界），供 QueryUnderstandingService 注入。
+ *
  * <p>注意：SAA 框架类名是 {@code PostgresSaver}（非 PostgreSqlSaver），
  * 位于 {@code com.alibaba.cloud.ai.graph.checkpoint.savers.postgresql} 包。
  *
  * @author commerce-rag
  */
 @Configuration
+@EnableConfigurationProperties(QueryUnderstandingProperties.class)
 public class GraphConfig {
 
     /**

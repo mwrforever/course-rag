@@ -182,11 +182,11 @@ class ThinkingPusherTest {
         pusher.push("understanding", "思考二");
         pusher.push("attachments", "解析图片");
 
-        Map<String, StringBuilder> acc = pusher.accumulated();
+        Map<String, String> acc = pusher.accumulated();
 
         assertEquals(List.of("understanding", "attachments"), List.copyOf(acc.keySet()), "阶段键按首推顺序");
-        assertEquals("思考一思考二", acc.get("understanding").toString());
-        assertEquals("解析图片", acc.get("attachments").toString());
+        assertEquals("思考一思考二", acc.get("understanding"));
+        assertEquals("解析图片", acc.get("attachments"));
     }
 
     @Test
@@ -197,10 +197,23 @@ class ThinkingPusherTest {
         pusher.push("attachments", null);
         pusher.end("generating");
 
-        Map<String, StringBuilder> snapshot = pusher.accumulated();
+        Map<String, String> snapshot = pusher.accumulated();
         assertEquals(1, snapshot.size(), "仅非空 delta 进入累加缓冲（end/空片段不建行）");
-        assertEquals("A", snapshot.get("understanding").toString());
-        assertThrows(UnsupportedOperationException.class, () -> snapshot.put("x", new StringBuilder()));
+        assertEquals("A", snapshot.get("understanding"));
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.put("x", "y"));
+    }
+
+    @Test
+    @DisplayName("accumulated — 深拷贝快照：取快照后继续 push 不影响已取快照（评审 I1：锁外读取无竞态）")
+    void accumulated_snapshotIsDeepCopyUnaffectedByLaterPush() {
+        pusher.push("understanding", "旧");
+
+        Map<String, String> snapshot = pusher.accumulated();
+        // 快照取得后并发继续推送（Task 4 caption 接线场景）：已取快照保持旧值不半写
+        pusher.push("understanding", "新");
+
+        assertEquals("旧", snapshot.get("understanding"), "快照为锁内深拷贝，不引用 live StringBuilder");
+        assertEquals("旧新", pusher.accumulated().get("understanding"), "新快照含累加全文");
     }
 
     @Test

@@ -13,9 +13,11 @@ import static org.mockito.Mockito.when;
 
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.PromptLoader;
+import com.commerce.rag.properties.QueryUnderstandingProperties;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.ThinkingPusher;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,7 +62,14 @@ class QueryUnderstandingServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new QueryUnderstandingService(chatModel, promptLoader, new ObjectMapper(), "qwen3.7-flash", 3);
+        service = new QueryUnderstandingService(
+                chatModel,
+                promptLoader,
+                new ObjectMapper(),
+                "qwen3.7-flash",
+                3,
+                // 默认生产同量级超时；超时降级用例单独构造短超时实例
+                new QueryUnderstandingProperties(Duration.ofSeconds(60)));
     }
 
     private void stubPrompt() {
@@ -310,6 +319,50 @@ class QueryUnderstandingServiceTest {
 
         assertEquals(IntentType.UNKNOWN, plan.intent());
         assertEquals(List.of("问题"), plan.rewrittenQueries());
+    }
+
+    @Test
+    @DisplayName("understand(带 pusher) — 流挂死超硬超时降级 fallback 且补 end 关思考态（评审 C1：内层 blockLast 必须有界）")
+    void understand_withPusher_streamHangs_timeoutFallback() {
+        stubPrompt();
+        // reasoning 后流永不终结（模拟模型 hang 在 chunk 间静默）：无界 blockLast 会永久占死 worker 线程
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(Flux.concat(Flux.just(reasoningChunk("思考到一半挂住")), Flux.never()));
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        // 短超时实例：50ms 即触发超时降级，避免测试等待生产量级 60s
+        QueryUnderstandingService fastTimeoutService = new QueryUnderstandingService(
+                chatModel,
+                promptLoader,
+                new ObjectMapper(),
+                "qwen3.7-flash",
+                3,
+                new QueryUnderstandingProperties(Duration.ofMillis(50)));
+
+        QueryPlan plan = fastTimeoutService.understand("原始问题", List.of(new UserMessage("原始问题")), pusher);
+
+        // 超时 → IllegalStateException 落入既有降级链：unknown + 原始查询单条，不向图抛错
+        assertEquals(IntentType.UNKNOWN, plan.intent());
+        assertEquals(List.of("原始问题"), plan.rewrittenQueries());
+        verify(pusher).push(SseEventTransformer.STAGE_UNDERSTANDING, "思考到一半挂住");
+        // 超时上抛前补一次 end，前端不残留「思考中」
+        verify(pusher, times(1)).end(SseEventTransformer.STAGE_UNDERSTANDING);
+    }
+
+    @Test
+    @DisplayName("understand(带 pusher) — 纯 reasoning 无 content 流正常结束：兜底补 end 恰好一次，空文本降级 fallback（评审 M2）")
+    void understand_withPusher_pureReasoning_normalEnd_closesThinkingOnce() {
+        stubPrompt();
+        when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.just(reasoningChunk("只有思考没有回答")));
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+
+        QueryPlan plan = service.understand("问题", List.of(new UserMessage("问题")), pusher);
+
+        // 聚合 content 为空 → JSON 解析失败降级 fallback（不向图抛错）
+        assertEquals(IntentType.UNKNOWN, plan.intent());
+        assertEquals(List.of("问题"), plan.rewrittenQueries());
+        verify(pusher).push(SseEventTransformer.STAGE_UNDERSTANDING, "只有思考没有回答");
+        // 无 content 边界可触发：流正常收尾兜底补 end，且 CAS 保证恰好一次
+        verify(pusher, times(1)).end(SseEventTransformer.STAGE_UNDERSTANDING);
     }
 
     @Test

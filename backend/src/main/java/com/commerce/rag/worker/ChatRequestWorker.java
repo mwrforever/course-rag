@@ -772,10 +772,8 @@ public class ChatRequestWorker {
         //    从 per-run 累加缓冲按阶段生成 thinking 行（thinking_stage 落列区分来源），
         //    seq 排在主 agent generating thinking 行之前（主 thinking 来自下方 state 消息转换）
         if (thinkingPusher != null) {
-            for (Map.Entry<String, StringBuilder> entry :
-                    thinkingPusher.accumulated().entrySet()) {
-                String stageThinking =
-                        entry.getValue() == null ? "" : entry.getValue().toString();
+            for (Map.Entry<String, String> entry : thinkingPusher.accumulated().entrySet()) {
+                String stageThinking = entry.getValue() == null ? "" : entry.getValue();
                 if (stageThinking.isBlank()) {
                     continue;
                 }
