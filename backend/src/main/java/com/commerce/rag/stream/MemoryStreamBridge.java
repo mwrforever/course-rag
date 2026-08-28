@@ -34,6 +34,12 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * 回放批次，实际发送由投递线程执行；回放批次与广播事件在同一把锁内入队，FIFO 保证
  * 「回放事件（旧 seq）先于其后推送的实时事件（新 seq）送达」，顺序语义与 P1-1 一致。
  *
+ * <p>seq 契约（task-2b 修复 2026-08-28）：事件 seqId 为生产 1-based 语义
+ * （{@code RunState.nextSeq()} = incrementAndGet，首事件 seq=1），ring 内部 slot 数学与
+ * seq 对齐（seq 写 slot (seq-1)%capacity，replay 同位定位校验 seqId）；对外契约不变——
+ * 前端 lastEventId、SSE id: 行、PG 降级回放均为 1-based seq。修复前 push 按 0-based 写入位
+ * 定位 slot，与 1-based seq 恒差 1，重连回放快照恒空且误报命中（不降级 PG，静默丢事件）。
+ *
  * <p>线程模型：生成线程 → push（锁内写 ring + 入队，纯内存 O(1)，永不阻塞网络 IO）；
  * 投递线程（每 run 一个，daemon）→ take 队列逐条发送。
  *
@@ -143,7 +149,8 @@ public class MemoryStreamBridge {
 
     /**
      * per-run ring buffer。
-     * 正常模式：SseEvent[] 环形数组 + AtomicLong head（永不回绕的自增写入位）。
+     * 正常模式：SseEvent[] 环形数组 + AtomicLong head（= 最后写入事件的 1-based seqId，永不回绕）。
+     * slot 坐标系与 seq 对齐：seq 写入 slot (seq-1)%capacity，replay 按同一定位校验 seqId。
      * 降级模式：ConcurrentLinkedQueue（buffer == null, fallback != null）。
      */
     static final class Ring {
@@ -151,7 +158,12 @@ public class MemoryStreamBridge {
         final String runId;
         final SseEvent[] buffer; // 降级模式下为 null
         final int capacity;
-        final AtomicLong head; // 下一个写入位置（自增，永不回绕）
+        /**
+         * 最后一次写入事件的 seqId（生产语义 1-based，初值 0 表示尚未写入）。
+         * 自增永不回绕，与 RunState.nextSeq() 的 seq 保持同一坐标系。
+         */
+        final AtomicLong head;
+
         final List<SseEmitter> subscribers;
         volatile boolean closed;
 
@@ -250,8 +262,11 @@ public class MemoryStreamBridge {
                 if (fallback != null) {
                     fallback.offer(event);
                 } else {
-                    long idx = head.getAndIncrement();
-                    int slot = (int) (idx % capacity);
+                    // head 与生产 seq 同坐标系（RunState.nextSeq 为 incrementAndGet，seq 从 1 起）：
+                    // 先自增得到本事件 seq，seq 写入 slot (seq-1)%capacity，
+                    // 保证 replay 按 (seq-1)%capacity 定位时 slot 内事件 seqId 恒等命中（task-2b 修复）
+                    long seq = head.incrementAndGet();
+                    int slot = (int) ((seq - 1) % capacity);
                     buffer[slot] = event;
                 }
                 // 广播入队失败（投递线程被慢客户端卡住、队列积满）→ 摘除全部订阅者，
@@ -310,6 +325,7 @@ public class MemoryStreamBridge {
                         }
                     }
                 } else {
+                    // head = 最后写入事件的 1-based seqId（与 push 同坐标系，初值 0=尚无事件）
                     long currentHead = head.get();
                     long oldestSeq = Math.max(0, currentHead - capacity);
                     if (lastEventId < oldestSeq) {
@@ -322,8 +338,10 @@ public class MemoryStreamBridge {
                         return false;
                     }
                     if (lastEventId <= currentHead) {
+                        // 回放区间 seq∈(lastEventId, currentHead]，slot 定位与 push 对齐：
+                        // seq 写于 slot (seq-1)%capacity（1-based seq 减 1 映射到 0-based 数组下标）
                         for (long seq = lastEventId + 1; seq <= currentHead; seq++) {
-                            int slot = (int) (seq % capacity);
+                            int slot = (int) ((seq - 1) % capacity);
                             SseEvent event = buffer[slot];
                             if (event != null && event.seqId() == seq) {
                                 snapshot.add(event);

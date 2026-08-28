@@ -18,8 +18,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 /**
  * MemoryStreamBridge 单元测试 —— 验证 ring buffer 的 push/replay/subscribe/cleanup 逻辑
  *
- * <p>注意：SseEvent 的 seqId 必须与 ring buffer 的 head 位置对齐（seqId 从 0 开始），
- * 因为 replay 逻辑用 {@code seq % capacity} 定位 slot，再校验 {@code event.seqId() == seq}。
+ * <p>注意：测试构造的 seqId 与生产语义一致——{@code RunState.nextSeq()} 为
+ * {@code incrementAndGet()}，seq 从 1 起（1-based）。ring 内部 slot 数学必须对齐
+ * 1-based seq（push 写 {@code (seq-1) % capacity}，replay 查同位并校验
+ * {@code event.seqId() == seq}），否则断线重连回放会静默丢事件（task-2b 缺陷）。
  *
  * <p>H-1 改造后投递为异步（独立投递线程 + 有界队列）：send 断言需经
  * {@link #awaitSendCount} 轮询等待（投递线程逐条 FIFO 发送），
@@ -41,7 +43,7 @@ class MemoryStreamBridgeTest {
 
     // ==================== 辅助方法 ====================
 
-    /** 创建 SseEvent，seqId 从 0 开始递增 */
+    /** 创建 SseEvent，seqId 与生产 RunState.nextSeq() 同语义（1-based 递增） */
     private SseEvent event(long seqId) {
         return new SseEvent(SseEventType.DELTA, seqId, "{\"text\":\"msg" + seqId + "\"}", System.currentTimeMillis());
     }
@@ -82,7 +84,7 @@ class MemoryStreamBridgeTest {
         bridge.createRing("run1");
 
         // 不抛异常即可
-        assertDoesNotThrow(() -> bridge.push("run1", event(0)));
+        assertDoesNotThrow(() -> bridge.push("run1", event(1)));
     }
 
     @Test
@@ -94,7 +96,7 @@ class MemoryStreamBridgeTest {
         bridge.subscribe("run1", mockEmitter);
 
         // When
-        bridge.push("run1", event(0));
+        bridge.push("run1", event(1));
 
         // Then: 投递线程异步发送
         awaitSendCount(mockEmitter, 1);
@@ -120,7 +122,7 @@ class MemoryStreamBridgeTest {
 
         // When: push 必须立即返回（投递在线程中异步执行，而非调用线程同步 send）
         long start = System.currentTimeMillis();
-        bridge.push("run1", event(0));
+        bridge.push("run1", event(1));
         long elapsed = System.currentTimeMillis() - start;
         assertTrue(elapsed < 1000, "push 应异步返回（生成线程不被慢客户端拖停），实际耗时 " + elapsed + "ms");
 
@@ -133,7 +135,7 @@ class MemoryStreamBridgeTest {
     @Test
     @DisplayName("push 到不存在的 ring — 不抛异常（静默忽略）")
     void push_ringNotExist_noException() {
-        assertDoesNotThrow(() -> bridge.push("nonexistent", event(0)));
+        assertDoesNotThrow(() -> bridge.push("nonexistent", event(1)));
     }
 
     // ==================== subscribe + 失败 emitter 测试 ====================
@@ -150,8 +152,8 @@ class MemoryStreamBridgeTest {
         doThrow(new IOException("broken pipe")).when(mockEmitter).send(any(SseEmitter.SseEventBuilder.class));
 
         // When: push 1 个事件 → send 失败 → emitter 被移除；push 第二个事件不再发送
-        bridge.push("run1", event(0));
         bridge.push("run1", event(1));
+        bridge.push("run1", event(2));
         awaitOutboxDrained("run1");
 
         // Then: send 只被调用 1 次（第一次 push），第二次 push 不会调用
@@ -191,7 +193,7 @@ class MemoryStreamBridgeTest {
         bridge.removeRing("run1");
 
         // push 后不应调用 send（ring 已移除）
-        bridge.push("run1", event(0));
+        bridge.push("run1", event(1));
         awaitOutboxDrained("run1");
         verify(mockEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
     }
@@ -221,9 +223,9 @@ class MemoryStreamBridgeTest {
                 .send(any(SseEmitter.SseEventBuilder.class));
         bridge.createRing("run1");
         bridge.subscribe("run1", mockEmitter);
-        bridge.push("run1", event(0)); // 投递线程取走并阻塞在首个 send
+        bridge.push("run1", event(1)); // 投递线程取走并阻塞在首个 send
         assertTrue(sendBlocked.await(3, TimeUnit.SECONDS), "投递线程应已阻塞在首个 send");
-        bridge.push("run1", event(1)); // 积压在 outbox（投递线程被卡未消费）
+        bridge.push("run1", event(2)); // 积压在 outbox（投递线程被卡未消费）
 
         // 异步线程 close：等待 closed 置位（closed 后 subscribe 必返回 false）再放行首个 send，
         // 确保「事件 1 仍积压时 close 语义已生效」的确定性时序
@@ -237,7 +239,7 @@ class MemoryStreamBridgeTest {
         releaseSend.countDown();
         closer.join(5000);
 
-        // 事件 0 + 积压的事件 1 均送达订阅者（close 前入队的事件不丢——drain 语义），随后 complete
+        // seq=1 + 积压的 seq=2 均送达订阅者（close 前入队的事件不丢——drain 语义），随后 complete
         awaitSendCount(mockEmitter, 2);
         verify(mockEmitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
         verify(mockEmitter, timeout(3000).times(1)).complete();
@@ -254,7 +256,7 @@ class MemoryStreamBridgeTest {
         bridge.subscribe("run1", mockEmitter1);
         bridge.subscribe("run1", mockEmitter2);
 
-        bridge.push("run1", event(0));
+        bridge.push("run1", event(1));
 
         awaitSendCount(mockEmitter1, 1);
         awaitSendCount(mockEmitter2, 1);
@@ -274,24 +276,74 @@ class MemoryStreamBridgeTest {
     @Test
     @DisplayName("replayAndSubscribe — 回放 (lastEventId, head] 区间并注册订阅者，新事件实时到达")
     void replayAndSubscribe_replaysAndRegisters() throws Exception {
-        // Given
+        // Given: 生产语义 1-based seq（RunState.nextSeq 从 1 起）
         SseEmitter mockEmitter = mock(SseEmitter.class);
         bridge.createRing("run1");
-        bridge.push("run1", event(0));
         bridge.push("run1", event(1));
         bridge.push("run1", event(2));
+        bridge.push("run1", event(3));
         awaitOutboxDrained("run1");
 
-        // When: lastEventId=0 → 回放 seqId=1,2
-        boolean result = bridge.replayAndSubscribe("run1", 0, mockEmitter);
+        // When: 客户端已收到 seq=1 → lastEventId=1 回放 seqId=2,3
+        boolean result = bridge.replayAndSubscribe("run1", 1, mockEmitter);
 
         // Then: 回放 2 个事件（投递线程异步送达）
         assertTrue(result);
         awaitSendCount(mockEmitter, 2);
         // 注册后新事件实时推送（第 3 次 send）
-        bridge.push("run1", event(3));
+        bridge.push("run1", event(4));
         awaitSendCount(mockEmitter, 3);
         verify(mockEmitter, times(3)).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    @DisplayName("回归（task-2b off-by-one）— 生产 1-based seq：replay(lastEventId=k) 快照完整含 k+1..N（修复前恒为空快照）")
+    void replayAndSubscribe_oneBasedSeq_replaysFullSnapshot() throws Exception {
+        bridge.createRing("run1");
+        int n = 10;
+        for (long seq = 1; seq <= n; seq++) {
+            bridge.push("run1", event(seq));
+        }
+        awaitOutboxDrained("run1");
+
+        // 客户端收到 seq=6 后断线重连 → ring 命中应完整回放 seq 7..10 共 4 个事件；
+        // 修复前 push 的 slot 与 seq 恒差 1，快照为空但仍返回 true（不降级 PG，静默丢事件）
+        SseEmitter reconnected = mock(SseEmitter.class);
+        assertTrue(bridge.replayAndSubscribe("run1", 6, reconnected), "ring 命中应返回 true（不降级 PG）");
+        awaitSendCount(reconnected, 4);
+        verify(reconnected, times(4)).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    @DisplayName("回归 — lastEventId=0（客户端从未收到事件）：回放 ring 起始全量事件 1..N")
+    void replayAndSubscribe_zeroLastEventId_replaysAll() throws Exception {
+        bridge.createRing("run1");
+        for (long seq = 1; seq <= 5; seq++) {
+            bridge.push("run1", event(seq));
+        }
+        awaitOutboxDrained("run1");
+
+        SseEmitter reconnected = mock(SseEmitter.class);
+        assertTrue(bridge.replayAndSubscribe("run1", 0, reconnected));
+        awaitSendCount(reconnected, 5);
+        verify(reconnected, times(5)).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    @DisplayName("回归 — capacity 驱逐环绕后回放中段：slot 数学跨环绕段仍一致（seq 251..300 完整）")
+    void replayAndSubscribe_afterEvictionWrap_midRange() throws Exception {
+        bridge.createRing("run1");
+        for (long seq = 1; seq <= 300; seq++) {
+            bridge.push("run1", event(seq));
+        }
+        awaitOutboxDrained("run1");
+
+        // head=300，oldestSeq=300-256=44，lastEventId=250 在保留区间内 →
+        // 回放 seq 251..300 共 50 个事件，其中 seq 257..300 的 slot 已环绕（(seq-1)%256 回卷到 0..43）
+        SseEmitter reconnected = mock(SseEmitter.class);
+        assertTrue(bridge.replayAndSubscribe("run1", 250, reconnected));
+        awaitSendCount(reconnected, 50);
+        verify(reconnected, times(50)).send(any(SseEmitter.SseEventBuilder.class));
     }
 
     @Test
@@ -299,7 +351,7 @@ class MemoryStreamBridgeTest {
     void replayAndSubscribe_lastEventIdBeyondHead_registersOnly() throws Exception {
         SseEmitter mockEmitter = mock(SseEmitter.class);
         bridge.createRing("run1");
-        bridge.push("run1", event(0));
+        bridge.push("run1", event(1));
         awaitOutboxDrained("run1");
 
         boolean result = bridge.replayAndSubscribe("run1", 100, mockEmitter);
@@ -308,25 +360,28 @@ class MemoryStreamBridgeTest {
         // 空回放批次：无任何 send
         verify(mockEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
         // 注册生效：新事件实时到达
-        bridge.push("run1", event(1));
+        bridge.push("run1", event(2));
         awaitSendCount(mockEmitter, 1);
     }
 
     @Test
-    @DisplayName("replayAndSubscribe 覆盖 — lastEventId 太旧返回 false 且不注册")
+    @DisplayName("replayAndSubscribe 覆盖 — lastEventId 太旧（含 seq=1 已被环绕驱逐）返回 false 且不注册")
     void replayAndSubscribe_tooOld_returnsFalseAndNotRegister() throws Exception {
         SseEmitter mockEmitter = mock(SseEmitter.class);
         bridge.createRing("run1");
-        for (int i = 0; i < BUFFER_SIZE + 1; i++) {
+        // 推入 BUFFER_SIZE+1 个事件（seq 1..257）：head=257，最旧可回放 lastEventId=257-256=1，
+        // seq=1 已被 seq=257 环绕覆盖
+        for (int i = 1; i <= BUFFER_SIZE + 1; i++) {
             bridge.push("run1", event(i));
         }
         awaitOutboxDrained("run1");
 
+        // lastEventId=0 需回放 seq=1 起 → 已被驱逐 → false（降级 PG）
         boolean result = bridge.replayAndSubscribe("run1", 0, mockEmitter);
 
         assertFalse(result);
         // 未注册：后续 push 不送达
-        bridge.push("run1", event(BUFFER_SIZE + 1));
+        bridge.push("run1", event(BUFFER_SIZE + 2));
         awaitOutboxDrained("run1");
         verify(mockEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
     }
@@ -351,7 +406,7 @@ class MemoryStreamBridgeTest {
         Thread pusher = new Thread(() -> {
             try {
                 start.await();
-                for (int i = 0; i < total; i++) {
+                for (int i = 1; i <= total; i++) {
                     bridge.push("run1", event(i));
                 }
             } catch (Throwable t) {
@@ -361,7 +416,7 @@ class MemoryStreamBridgeTest {
         pusher.start();
         start.countDown();
 
-        // When: 与 push 并发重连（lastEventId=0 回放全部已推送事件）
+        // When: 与 push 并发重连（lastEventId=0 回放全部已推送事件，生产语义 seq 从 1 起）
         boolean result = bridge.replayAndSubscribe("run1", 0, mockEmitter);
         pusher.join(5000);
 
@@ -390,24 +445,24 @@ class MemoryStreamBridgeTest {
         bridge.createRing("run1");
         SseEmitter first = mock(SseEmitter.class);
         bridge.subscribe("run1", first);
-        // 先推入 3 个历史事件（seqId 0-2 与 ring slot 对齐，客户端已收到 seq 0）
-        for (long seq = 0; seq <= 2; seq++) {
+        // 先推入 3 个历史事件（生产语义 1-based seq 1-3，客户端已收到 seq=1）
+        for (long seq = 1; seq <= 3; seq++) {
             bridge.push("run1", event(seq));
         }
         awaitSendCount(first, 3);
-        // 重连 emitter：回放 seq 1-2
+        // 重连 emitter：回放 seq 2-3
         SseEmitter reconnected = mock(SseEmitter.class);
-        assertTrue(bridge.replayAndSubscribe("run1", 0L, reconnected));
+        assertTrue(bridge.replayAndSubscribe("run1", 1L, reconnected));
 
         // 阶段 1：在推入任何实时事件之前，回放事件（2 个）已全部送达——
         // 若回放与实时乱序（实时先到），此处 await 会等到实时事件混入而数量超 2
         awaitSendCount(reconnected, 2);
 
-        // 阶段 2：实时事件（seq 3）随后到达，总数为 3（2 回放 + 1 实时）
-        bridge.push("run1", event(3));
+        // 阶段 2：实时事件（seq 4）随后到达，总数为 3（2 回放 + 1 实时）
+        bridge.push("run1", event(4));
         awaitSendCount(reconnected, 3);
         verify(reconnected, times(3)).send(any(SseEmitter.SseEventBuilder.class));
-        // 首订阅者共收到 4 个实时事件（seq 0-3）
+        // 首订阅者共收到 4 个实时事件（seq 1-4）
         awaitSendCount(first, 4);
     }
 
@@ -435,11 +490,11 @@ class MemoryStreamBridgeTest {
         bridge.createRing("run1");
         bridge.subscribe("run1", slowEmitter);
         // 首个事件交给投递线程（阻塞在 send 上，模拟慢客户端）
-        bridge.push("run1", event(0));
+        bridge.push("run1", event(1));
         assertTrue(sendBlocked.await(3, TimeUnit.SECONDS), "投递线程应已开始发送（阻塞）");
 
         // 投递队列容量 = BUFFER_SIZE：投递线程卡在首个 send，后续事件堆积至队列满
-        for (int i = 1; i <= BUFFER_SIZE + 1; i++) {
+        for (int i = 2; i <= BUFFER_SIZE + 2; i++) {
             bridge.push("run1", event(i));
         }
 
@@ -454,15 +509,17 @@ class MemoryStreamBridgeTest {
         SseEmitter slowEmitter = slowEmitter(sendBlocked);
         bridge.createRing("run1");
         bridge.subscribe("run1", slowEmitter);
-        bridge.push("run1", event(0));
+        bridge.push("run1", event(1));
         assertTrue(sendBlocked.await(3, TimeUnit.SECONDS), "投递线程应已开始发送（阻塞）");
-        for (int i = 1; i <= BUFFER_SIZE + 1; i++) {
+        for (int i = 2; i <= BUFFER_SIZE + 2; i++) {
             bridge.push("run1", event(i));
         }
         verify(slowEmitter, timeout(3000).times(1)).complete(); // 队列满已摘除
 
+        // lastEventId 取未被环绕驱逐的区间（head=BUFFER_SIZE+2，可回放下限=head-capacity=2），
+        // 确保命中的是「投递队列满」分支而非「lastEventId 太旧」分支
         SseEmitter reconnected = mock(SseEmitter.class);
-        boolean result = bridge.replayAndSubscribe("run1", 0, reconnected);
+        boolean result = bridge.replayAndSubscribe("run1", BUFFER_SIZE, reconnected);
 
         assertFalse(result, "投递队列满时应返回 false（PG 降级）");
     }
@@ -477,8 +534,8 @@ class MemoryStreamBridgeTest {
         bridge.createRing("run1");
         bridge.subscribe("run1", mockEmitter);
 
-        bridge.push("run1", event(0));
         bridge.push("run1", event(1));
+        bridge.push("run1", event(2));
         awaitOutboxDrained("run1");
 
         // 第一次 send 抛异常 → 移除；第二次事件不再发送
@@ -489,18 +546,19 @@ class MemoryStreamBridgeTest {
     @DisplayName("回放发送失败（断连）→ 不注册订阅者，后续实时事件不送达")
     void replayAndSubscribe_sendFailure_notRegistered() throws Exception {
         bridge.createRing("run1");
-        bridge.push("run1", event(0));
         bridge.push("run1", event(1));
+        bridge.push("run1", event(2));
         awaitOutboxDrained("run1");
 
         SseEmitter reconnected = mock(SseEmitter.class);
         doThrow(new IOException("broken pipe")).when(reconnected).send(any(SseEmitter.SseEventBuilder.class));
-        assertTrue(bridge.replayAndSubscribe("run1", 0, reconnected));
+        // lastEventId=1 → 快照非空（seq=2），首个回放事件即发送失败
+        assertTrue(bridge.replayAndSubscribe("run1", 1, reconnected));
 
         // 首个回放事件发送失败 → 中止回放且不再注册（投递线程静默放弃）
         awaitOutboxDrained("run1");
         verify(reconnected, times(1)).send(any(SseEmitter.SseEventBuilder.class));
-        bridge.push("run1", event(2));
+        bridge.push("run1", event(3));
         awaitOutboxDrained("run1");
         verify(reconnected, times(1)).send(any(SseEmitter.SseEventBuilder.class));
     }
