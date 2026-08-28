@@ -85,6 +85,7 @@ function makeHistoryRow(
     role: "ASSISTANT",
     content: "",
     messageType: null,
+    thinkingStage: null,
     intentType: "knowledge_question",
     runId: "hrun-1",
     seq: 1,

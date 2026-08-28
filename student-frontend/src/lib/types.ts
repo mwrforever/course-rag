@@ -224,12 +224,18 @@ export interface SessionItem {
   createdAt: string;
 }
 
-/** R1 学生历史消息（StudentMessageVO；messageType: null=正文 / thinking / TOOL_CALL / TOOL_RESULT；intentType 存量可 null） */
+/**
+ * R1 学生历史消息（StudentMessageVO；messageType: null=正文 / thinking / TOOL_CALL /
+ * TOOL_RESULT / query_plan；intentType 存量可 null；thinkingStage 为 thinking 行的
+ * 思考阶段键，历史存量行无该列值时为 null——前端降级按 generating 渲染）
+ */
 export interface StudentMessage {
   id: string;
   role: string;
   content: string;
   messageType: string | null;
+  /** thinking 行的阶段键（understanding/attachments/generating）；非 thinking 行与存量旧行为 null */
+  thinkingStage: string | null;
   intentType: string | null;
   runId: string;
   seq: number;
