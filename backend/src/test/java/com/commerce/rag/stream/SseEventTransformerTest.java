@@ -85,6 +85,8 @@ class SseEventTransformerTest {
         assertEquals(SseEventType.THINKING, result.get(0).type());
         assertTrue(result.get(0).payload().contains("思考中"));
         assertTrue(result.get(0).payload().contains("\"delta\""));
+        // 2026-08-28 时间线改版：主 agent 生成路径 THINKING 固定 stage=generating
+        assertTrue(result.get(0).payload().contains("\"stage\":\"generating\""));
     }
 
     @Test
@@ -148,7 +150,8 @@ class SseEventTransformerTest {
         assertEquals(SseEventType.THINKING, first.get(0).type());
         assertEquals(2, second.size());
         assertEquals(SseEventType.THINKING_END, second.get(0).type());
-        assertEquals("{}", second.get(0).payload());
+        // THINKING_END 携带 stage=generating（与 THINKING 配对，2026-08-28 时间线改版）
+        assertEquals("{\"stage\":\"generating\"}", second.get(0).payload());
         assertEquals(SseEventType.DELTA, second.get(1).type());
     }
 
@@ -263,7 +266,8 @@ class SseEventTransformerTest {
         // Then
         assertEquals(1, result.size());
         assertEquals(SseEventType.THINKING_END, result.get(0).type());
-        assertEquals("{}", result.get(0).payload());
+        // THINKING_END 携带 stage=generating（与 THINKING 配对，2026-08-28 时间线改版）
+        assertEquals("{\"stage\":\"generating\"}", result.get(0).payload());
     }
 
     @Test

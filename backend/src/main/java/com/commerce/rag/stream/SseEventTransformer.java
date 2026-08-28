@@ -109,11 +109,16 @@ public class SseEventTransformer {
             return List.of();
         }
 
-        // 1. 检查 reasoningContent → thinking 事件
+        // 1. 检查 reasoningContent → thinking 事件（2026-08-28 时间线改版：payload 加 stage
+        //    区分思考来源，主 agent 生成路径固定 generating；图节点思考经 ThinkingPusher
+        //    回调携带 understanding / attachments 等 stage，前端据此分段归组渲染）
         String reasoning = extractReasoningContent(message);
         if (reasoning != null && !reasoning.isEmpty()) {
             runState.markThinkingSent(); // 标记已发 THINKING，text 阶段补 THINKING_END 的前置条件
-            return List.of(makeEvent(SseEventType.THINKING, runState, Map.of("delta", reasoning)));
+            Map<String, Object> thinkingPayload = new LinkedHashMap<>();
+            thinkingPayload.put("delta", reasoning);
+            thinkingPayload.put("stage", STAGE_GENERATING);
+            return List.of(makeEvent(SseEventType.THINKING, runState, thinkingPayload));
         }
 
         List<SseEvent> events = new ArrayList<>();
@@ -123,8 +128,9 @@ public class SseEventTransformer {
         if (text != null && !text.isEmpty()) {
             // qwen 思考模型 thinking/text 两阶段互斥：首条 text 即思考结束信号，
             // 必须补发 THINKING_END 再发 DELTA，保证前端退出"思考中"状态
+            // （stage=generating 与 THINKING 事件配对，2026-08-28 时间线改版）
             if (runState.isThinkingSent() && runState.markThinkingEndSent()) {
-                events.add(makeEvent(SseEventType.THINKING_END, runState, Map.of()));
+                events.add(makeEvent(SseEventType.THINKING_END, runState, Map.of("stage", STAGE_GENERATING)));
             }
             runState.markDeltaSent(); // 标记本 run 已发 DELTA，FINISHED 时不再补发
             events.add(makeEvent(SseEventType.DELTA, runState, Map.of("text", text)));
@@ -183,7 +189,7 @@ public class SseEventTransformer {
         if (reasoning != null && !reasoning.isEmpty()) {
             runState.markThinkingSent();
             if (runState.markThinkingEndSent()) {
-                events.add(makeEvent(SseEventType.THINKING_END, runState, Map.of()));
+                events.add(makeEvent(SseEventType.THINKING_END, runState, Map.of("stage", STAGE_GENERATING)));
             }
         }
 

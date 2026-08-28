@@ -12,7 +12,21 @@ package com.commerce.rag.stream;
  */
 public enum SseEventType {
     METADATA("metadata"),
+    /**
+     * 思考片段增量事件。
+     *
+     * <p>payload：{@code {"delta":"思考片段","stage":"understanding|attachments|generating"}}
+     * （2026-08-28 对话流式时间线改版新增 stage 字段，区分思考来源阶段）——
+     * 主 agent 生成阶段由 SseEventTransformer 发送（固定 generating），
+     * QU/caption 等图内节点经 {@code ThinkingPusher} 回调（RunnableConfig.metadata 通道）发送。
+     */
     THINKING("thinking"),
+    /**
+     * 指定阶段思考结束事件。
+     *
+     * <p>payload：{@code {"stage":"阶段键"}}（2026-08-28 改版新增 stage，此前为 {@code {}}），
+     * 与同 stage 的 THINKING 事件配对，前端据此退出该阶段"思考中"状态。
+     */
     THINKING_END("thinking_end"),
     DELTA("delta"),
     TOOL_CALL("tool_call"),

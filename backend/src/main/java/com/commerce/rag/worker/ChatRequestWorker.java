@@ -26,6 +26,7 @@ import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEvent;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.SseEventType;
+import com.commerce.rag.stream.ThinkingPusher;
 import com.commerce.rag.vo.ChatRunVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -419,6 +420,14 @@ public class ChatRequestWorker {
 
         // run 上下文（首事件前移：METADATA 需在附件处理前推送，见下方注释）
         SseEventTransformer.RunState runState = SseEventTransformer.RunState.create(runIdStr, sessionIdStr, agentModel);
+
+        // ── per-run 思考事件推送通道注册（2026-08-28 对话流式时间线改版）──
+        // QU / caption 等图内节点经 config.metadata[KEY_THINKING_CALLBACK] 取 ThinkingPusher
+        // 实时推送 reasoning 片段（对模型不可见的瞬时引用通道，与 KEY_RETRIEVAL_SOURCES 同机制）；
+        // seq 与主链路共享 runState 计数器，全局事件序号单调不乱号；ring 随 finally removeRing 关闭，
+        // run 结束后回调残留引用推送会被 bridge 以「ring 不存在」拒绝，无需反注册
+        ThinkingPusher thinkingPusher = new ThinkingPusher(runIdStr, bridge, runState, objectMapper);
+        config.metadata().ifPresent(m -> m.put(RetrieveNode.KEY_THINKING_CALLBACK, thinkingPusher));
 
         // ── 首事件前移（2026-08-27 C 端体验改版）──
         // ring 由入口 ChatStreamEntry 在 XADD 前已创建（createRing 为 computeIfAbsent 幂等），

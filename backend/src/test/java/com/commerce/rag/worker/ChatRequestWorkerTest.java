@@ -33,6 +33,7 @@ import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEvent;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.SseEventType;
+import com.commerce.rag.stream.ThinkingPusher;
 import com.commerce.rag.vo.ChatRunVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -617,6 +618,30 @@ class ChatRequestWorkerTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("应存在 assistant 正文行"));
         assertEquals("[]", assistantRow.getSourcesJson());
+    }
+
+    // ==================== 思考事件推送通道注册（2026-08-28 对话流式时间线改版） ====================
+
+    @Test
+    @DisplayName("run 开始 → config.metadata 注册 ThinkingPusher 回调（KEY_THINKING_CALLBACK，图节点消费通道）")
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void processRequest_registersThinkingPusher() throws Exception {
+        // Given: 正常完成的图流，捕获传入 compiledGraph.stream 的 RunnableConfig
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        ArgumentCaptor<RunnableConfig> configCaptor = ArgumentCaptor.forClass(RunnableConfig.class);
+        when(compiledGraph.stream(any(Map.class), configCaptor.capture())).thenReturn(Flux.just(mockChunk));
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // Then: metadata 携带本 run 的 ThinkingPusher 实例（QU/caption 节点据此实时推思考片段；
+        // 瞬时引用通道与 KEY_RETRIEVAL_SOURCES 同机制，不进 State/checkpoint、对模型不可见）
+        Object callback = configCaptor
+                .getValue()
+                .metadata(RetrieveNode.KEY_THINKING_CALLBACK)
+                .orElse(null);
+        assertInstanceOf(ThinkingPusher.class, callback, "config.metadata 应注册 ThinkingPusher 回调实例");
     }
 
     // ==================== P1-2 工具消息落库格式（与实时事件 schema 一致） ====================
