@@ -9,8 +9,11 @@
  * hover 弹性变宽与离场复位动画互搏），Link 降级为整面点击层。
  *
  * 业务替换：私教/咨询业务入口 → 平台四大真实目的地 +
- * 中央箭头区（直达课程助手对话）。交互：hover 弹性变宽（flex-grow 过渡）
- * 与黑白影像复色，纯 CSS 动画；移动端折行为两列网格。
+ * 中央箭头区（直达课程助手对话）。交互（2026-08-28 层叠化改版）：hover 时目标画
+ * 展开抬升，左右邻画负 margin 滑入其下方形成照片层叠、远画收缩退暗，
+ * flex/margin/filter/transform 统一 expo-out 同曲线消除错拍（样式见
+ * globals.css「首页五联画宫格：层叠式悬浮」块，仅 lg+ 悬停设备生效）；
+ * 移动端折行为两列网格。纯 CSS 动画。
  */
 import Link from "next/link";
 import { Reveal } from "@/components/motion/reveal";
@@ -31,27 +34,27 @@ export function EntryTiles() {
   return (
     <section
       aria-label="快捷入口"
-      className="flex min-h-0 w-full max-lg:flex-wrap lg:h-[min(86vh,920px)]"
+      className="entry-tiles flex min-h-0 w-full max-lg:flex-wrap lg:h-[min(86vh,920px)]"
     >
       {TILES.map((tile) =>
         tile.mid ? (
-          /* 中央箭头区：灰白影像 + 圆环箭头推进（Reveal 承载 flex 弹性与定位） */
+          /* 中央箭头区：灰白影像 + 圆环箭头推进（层叠悬浮几何由 globals.css 承担） */
           <Reveal
             key="tile-main"
             once
             data-testid="entry-tile"
-            className="group relative grid min-w-0 flex-[1.7] place-items-center overflow-hidden transition-[flex] duration-700 ease-out hover:flex-[3] max-lg:h-[210px] max-lg:flex-basis-full lg:flex-1"
+            className="entry-tile entry-tile--mid group relative grid min-w-0 flex-1 place-items-center overflow-hidden max-lg:h-[210px] max-lg:flex-basis-full"
           >
             <Link href={tile.href} aria-label="进入课程助手" className="absolute inset-0 z-[3]" />
             <img
               src={tile.src}
               alt=""
               loading="lazy"
-              className="absolute inset-0 h-full w-full object-cover transition-transform duration-[1200ms] ease-out group-hover:scale-[1.04]"
+              className="absolute inset-0 h-full w-full object-cover"
             />
             <span
               aria-hidden
-              className="absolute inset-0 bg-ink/30 transition-colors duration-500 group-hover:bg-ink/15"
+              className="tile-shade absolute inset-0 bg-ink/30 transition-colors duration-[900ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:bg-ink/15"
             />
             <span className="relative z-[2] grid size-[66px] place-items-center rounded-full border border-bg/70 text-bg transition-all duration-500 group-hover:translate-x-2.5 group-hover:bg-bg/10">
               <svg
@@ -71,20 +74,20 @@ export function EntryTiles() {
             key={tile.href + tile.label}
             once
             data-testid="entry-tile"
-            className="group relative flex min-w-0 flex-1 overflow-hidden transition-[flex] duration-700 ease-out hover:flex-[2.6] max-lg:h-[250px] max-lg:flex-basis-1/2"
+            className="entry-tile group relative flex min-w-0 flex-1 overflow-hidden max-lg:h-[250px] max-lg:flex-basis-1/2"
           >
             <Link href={tile.href} aria-label={tile.label} className="absolute inset-0 z-[3]" />
             <img
               src={tile.src}
               alt=""
               loading="lazy"
-              className="h-full w-full object-cover grayscale transition-all duration-[1200ms] ease-out group-hover:scale-[1.04] group-hover:grayscale-0"
+              className="h-full w-full object-cover grayscale"
             />
             <span
               aria-hidden
-              className="absolute inset-0 bg-ink/35 transition-colors duration-500 group-hover:bg-ink/10"
+              className="tile-shade absolute inset-0 bg-ink/35 transition-colors duration-[900ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:bg-ink/10"
             />
-            <span className="font-serif-display absolute bottom-[26px] left-7 z-[2] text-[clamp(20px,1.8vw,27px)] font-medium text-bg [text-shadow:0_1px_14px_rgb(0_0_0/40%)]">
+            <span className="tile-label font-serif-display absolute bottom-[26px] left-7 z-[2] text-[clamp(20px,1.8vw,27px)] font-medium text-bg [text-shadow:0_1px_14px_rgb(0_0_0/40%)]">
               {tile.label}
             </span>
           </Reveal>

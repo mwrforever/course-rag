@@ -325,6 +325,64 @@
   --rd: calc(var(--i, 0) * 0.09s);
 }
 
+/* ===== 首页五联画宫格：层叠式悬浮（EntryTiles） =====
+   悬浮语义：被悬浮画展开并抬至最上层，左右邻画以负 margin 滑入其下方
+   形成照片层叠，其余画收缩退暗让位；被悬浮画复色轻推近、标签上浮。
+   flex-grow / margin / transform / filter 全量统一 expo-out 曲线
+   （0.9s 布局级 / 1.1s 影像级两档），指针连续扫过多画时不再各跑各的错拍。
+   分层降级：复色状态反馈常开（无位移不动图）；层叠 staging 仅 lg+ 悬停
+   设备且非 reduced-motion 生效（全局动效总开关外再不加戏）；移动端两列折行网格不受影响。 */
+.entry-tiles > .entry-tile img {
+  transition:
+    transform 1.1s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.entry-tiles > .entry-tile:hover img {
+  filter: grayscale(0);
+}
+
+@media (min-width: 1024px) and (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .entry-tiles > .entry-tile {
+    transition:
+      flex-grow 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+      margin 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .entry-tiles .tile-label {
+    transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.05s;
+  }
+  /* 有画被悬浮：非目标画收缩让位（:not(:hover) 防与展开规则互搏） */
+  .entry-tiles:has(.entry-tile:hover) > .entry-tile:not(:hover) {
+    flex-grow: 0.55;
+  }
+  /* 目标画展开并抬至最上层（侧邻得以滑入其下） */
+  .entry-tiles > .entry-tile:hover {
+    flex-grow: 2.4;
+    z-index: 2;
+  }
+  .entry-tiles > .entry-tile--mid:hover {
+    flex-grow: 2.7;
+  }
+  /* 左右邻画向目标画下方滑入：照片堆叠感（% 相对宫格容器宽） */
+  .entry-tiles > .entry-tile:hover + .entry-tile {
+    margin-left: -3.5%;
+  }
+  .entry-tiles > .entry-tile:has(+ .entry-tile:hover) {
+    margin-right: -3.5%;
+  }
+  /* 层叠退远：非目标影像轻微缩小退暗；目标影像轻推近 */
+  .entry-tiles:has(.entry-tile:hover) > .entry-tile:not(:hover) img {
+    transform: scale(0.985);
+    filter: grayscale(1) brightness(0.75);
+  }
+  .entry-tiles > .entry-tile:hover img {
+    transform: scale(1.045);
+  }
+  /* 目标画标签随展开上浮一档 */
+  .entry-tiles > .entry-tile:hover .tile-label {
+    transform: translateY(-4px);
+  }
+}
+
 /* ===== 手写体 / 衬线工具类 ===== */
 .font-serif-display {
   font-family: var(--font-display);
