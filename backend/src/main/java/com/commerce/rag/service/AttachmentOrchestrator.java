@@ -45,7 +45,8 @@ import org.springframework.stereotype.Service;
  *
  * <p>思考流式与取消即时性（2026-08-28 时间线改版 Task 4）：带 ThinkingPusher 时图片 VLM caption
  * 走流式聚合并实时推 attachments 阶段 reasoning；批循环每文件提交前检查取消源
- * （{@link BooleanSupplier}），已取消立即停止提交剩余文件（在途附件仍由总超时兜底回收）。
+ * （{@link BooleanSupplier}），已取消立即停止提交剩余文件（在途附件仍由总超时兜底回收）；
+ * 批量 caption 前再补一次取消检查（评审 M-4），已取消跳过 caption 不耗 VLM 配额。
  *
  * @author commerce-rag
  */
@@ -95,7 +96,8 @@ public class AttachmentOrchestrator {
      * <p>执行流程：每附件一个 future（下载 → 图片收集字节 / 文档同步处理）→ allOf 带
      * 总超时等待 → 超时取消未完成 → 按原始顺序组装 → 图片批量并行 caption。
      *
-     * <p>取消检查点（Task 4）：批循环内每文件提交前检查取消源，已取消则跳过剩余文件——
+     * <p>取消检查点（Task 4 + 评审 M-4）：批循环内每文件提交前检查取消源，已取消则跳过剩余文件；
+     * 提交循环结束后、批量 caption 开始前再检查一次，已取消则跳过 caption——
      * 取消语义下不再为不会再消费的附件耗下载/VLM 配额；在途任务仍由总超时兜底回收。
      *
      * @param attachments 附件记录列表（可为空列表或 null）
@@ -148,9 +150,17 @@ public class AttachmentOrchestrator {
             }
         }
         // 图片批量并行 caption（无图片字节时不调用，避免空入参触发处理器）；
-        // pusher 透传：SSE 链路 reasoning 实时推 attachments 阶段，null 走同步原语义
-        List<ImageCaptionResult> captions =
-                imageBytes.isEmpty() ? List.of() : imageProcessor.processImages(imageBytes, imageNames, pusher);
+        // pusher 透传：SSE 链路 reasoning 实时推 attachments 阶段，null 走同步原语义。
+        // 取消即时检查点（评审 M-4）：提交循环结束到 caption 开始前若已取消，caption 结果
+        // 不会再被消费——跳过批量 caption，不再耗 VLM 配额、不再推送思考事件
+        List<ImageCaptionResult> captions = List.of();
+        if (!imageBytes.isEmpty()) {
+            if (cancelled.getAsBoolean()) {
+                log.info("图片批量 caption 前检测到取消，跳过 caption: 图片数={}", imageBytes.size());
+            } else {
+                captions = imageProcessor.processImages(imageBytes, imageNames, pusher);
+            }
+        }
         return new AttachmentContext(captions, documents);
     }
 

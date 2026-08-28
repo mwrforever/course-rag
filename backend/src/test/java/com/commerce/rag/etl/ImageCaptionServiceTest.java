@@ -2,11 +2,13 @@ package com.commerce.rag.etl;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -17,6 +19,7 @@ import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.ThinkingPusher;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -96,27 +99,29 @@ class ImageCaptionServiceTest {
         assertThrows(RuntimeException.class, () -> service.caption(new byte[] {1}, "image/png"));
     }
 
-    // ==================== captionStreaming（2026-08-28 时间线改版 Task 4） ====================
+    // ==================== captionStreaming（2026-08-28 时间线改版 Task 4，评审 I-2 stage 级收口） ====================
 
     @Test
-    @DisplayName("captionStreaming — reasoning 片段实时推 attachments 阶段，content 聚合成完整 caption，end 恰好一次")
+    @DisplayName("captionStreaming — reasoning 片段实时推 attachments 阶段并置批级标志，content 聚合成完整 caption（方法内不调 end）")
     void captionStreaming_pushesReasoningAndAggregatesContent() {
         ThinkingPusher pusher = mock(ThinkingPusher.class);
+        AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
         // 模拟 qwen3.7-flash 混合思考流：先两段 reasoning、后两段 content（两阶段互斥）
         when(chatModel.stream(any(Prompt.class)))
                 .thenReturn(
                         Flux.just(chunk("", "图中是一张图表，"), chunk("", "横轴为月份"), chunk("这是一张", null), chunk("销量图表", null)));
 
-        String caption = service.captionStreaming(new byte[] {1, 2, 3}, "image/png", pusher);
+        String caption = service.captionStreaming(new byte[] {1, 2, 3}, "image/png", pusher, reasoningSeenAny);
 
         // 聚合文本 = content 增量拼接（与同步 caption 返回语义一致，不含 reasoning）
         assertEquals("这是一张销量图表", caption);
-        // 推送契约：两次 THINKING(attachments) → 首个 content chunk 处成对一次 THINKING_END(attachments)
+        // 推送契约（评审 I-2）：只推 THINKING(attachments)，END 由批完成点统一收口——
+        // 方法内不再出现任何 end 调用；确实推过 reasoning → 批级标志置 true
         InOrder inOrder = inOrder(pusher);
         inOrder.verify(pusher).push(SseEventTransformer.STAGE_ATTACHMENTS, "图中是一张图表，");
         inOrder.verify(pusher).push(SseEventTransformer.STAGE_ATTACHMENTS, "横轴为月份");
-        inOrder.verify(pusher).end(SseEventTransformer.STAGE_ATTACHMENTS);
         inOrder.verifyNoMoreInteractions();
+        assertTrue(reasoningSeenAny.get(), "推过 reasoning 必须置批级标志，供批次统一补 end");
         // 流式路径 Prompt 组装与同步一致：视觉 Media + 按次覆盖 caption 模型名
         ArgumentCaptor<Prompt> captor = ArgumentCaptor.forClass(Prompt.class);
         verify(chatModel).stream(captor.capture());
@@ -124,49 +129,58 @@ class ImageCaptionServiceTest {
     }
 
     @Test
-    @DisplayName("captionStreaming — 全程无 reasoning（非思考响应）不产生任何思考事件（成对契约）")
+    @DisplayName("captionStreaming — 全程无 reasoning（非思考响应）零思考事件且批级标志保持 false（批次不发孤儿 end）")
     void captionStreaming_withoutReasoning_pushesNothing() {
         ThinkingPusher pusher = mock(ThinkingPusher.class);
+        AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
         when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.just(chunk("纯回答文本", null)));
 
-        String caption = service.captionStreaming(new byte[] {1}, "image/png", pusher);
+        String caption = service.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny);
 
         assertEquals("纯回答文本", caption);
         verifyNoInteractions(pusher);
+        assertFalse(reasoningSeenAny.get(), "零 reasoning 批次标志必须保持 false");
     }
 
     @Test
-    @DisplayName("captionStreaming — 纯 reasoning 无 content 结束：仍补一次 end 关思考态，聚合文本为空串")
-    void captionStreaming_reasoningOnly_stillEndsThinking() {
+    @DisplayName("captionStreaming — 纯 reasoning 无 content：仅推 reasoning 并置标志，end 交批次收口（方法内零 end）")
+    void captionStreaming_reasoningOnly_noEndInsideMethod() {
         ThinkingPusher pusher = mock(ThinkingPusher.class);
+        AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
         when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.just(chunk("", "只有思考没有回答")));
 
-        String caption = service.captionStreaming(new byte[] {1}, "image/png", pusher);
+        String caption = service.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny);
 
         assertEquals("", caption);
         verify(pusher).push(SseEventTransformer.STAGE_ATTACHMENTS, "只有思考没有回答");
-        verify(pusher).end(SseEventTransformer.STAGE_ATTACHMENTS);
+        verify(pusher, never()).end(any());
+        assertTrue(reasoningSeenAny.get());
     }
 
     @Test
-    @DisplayName("captionStreaming — 流中途异常：已推 reasoning 先补 end 再上抛（调用方按图跳过降级不变）")
-    void captionStreaming_streamErrorAfterReasoning_endsAndRethrows() {
+    @DisplayName("captionStreaming — 流中途异常：上抛走按图跳过降级；方法内不补 end（关态交批次完成点），但批级标志已置")
+    void captionStreaming_streamErrorAfterReasoning_setsFlagAndRethrows() {
         ThinkingPusher pusher = mock(ThinkingPusher.class);
+        AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
         when(chatModel.stream(any(Prompt.class)))
                 .thenReturn(Flux.concat(
                         Flux.just(chunk("", "思考了一半")), Flux.error(new IllegalStateException("dashscope 断流"))));
 
-        assertThrows(IllegalStateException.class, () -> service.captionStreaming(new byte[] {1}, "image/png", pusher));
+        assertThrows(
+                IllegalStateException.class,
+                () -> service.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny));
 
-        // 异常前已推的 THINKING 必须成对补 THINKING_END，避免前端停留「思考中」
+        // 评审 I-2：异常路径方法内不再自行 end——批次完成点按标志统一补 end，避免多图交错；
+        // 标志已置 true 保证「异常图此前推过思考」不残留思考态
         verify(pusher).push(SseEventTransformer.STAGE_ATTACHMENTS, "思考了一半");
-        verify(pusher).end(SseEventTransformer.STAGE_ATTACHMENTS);
+        verify(pusher, never()).end(any());
+        assertTrue(reasoningSeenAny.get(), "异常前推过 reasoning，批次完成点据此补 end");
     }
 
     @Test
-    @DisplayName("captionStreaming — chunk 间静默超过流式硬超时上抛（阻塞附件池线程有界，评审 C1 同款自界）")
-    void captionStreaming_silentStream_timesOut() {
-        // 单图超时压到 1s 的独立被测服务（Flux.never 永不产生 chunk，验证 blockLast 有界自界）
+    @DisplayName("captionStreaming — 全流总时长超过硬超时上抛（阻塞附件池线程有界，评审 C1 同款自界）")
+    void captionStreaming_streamExceedsTotalBudget_timesOut() {
+        // 单图超时压到 1s 的独立被测服务（Flux.never 永不完成，验证 blockLast 全流总时长有界自界）
         EtlProperties oneSecondProps = new EtlProperties(
                 100,
                 new EtlProperties.Executor(2, 4, 20, "etl-"),
@@ -179,14 +193,17 @@ class ImageCaptionServiceTest {
                 500);
         ImageCaptionService timeoutService = new ImageCaptionService(chatModel, promptLoader, oneSecondProps);
         ThinkingPusher pusher = mock(ThinkingPusher.class);
+        AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
         when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.never());
 
         long start = System.currentTimeMillis();
         assertThrows(
-                RuntimeException.class, () -> timeoutService.captionStreaming(new byte[] {1}, "image/png", pusher));
-        // 约 1s 内返回（有界而非永久阻塞附件池线程），未推过 reasoning 故无思考事件
-        assertTrue(System.currentTimeMillis() - start < 3000, "超时应按流式预算有界触发");
+                RuntimeException.class,
+                () -> timeoutService.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny));
+        // 约 1s 内返回（有界而非永久阻塞附件池线程），未推过 reasoning 故无思考事件、标志保持 false
+        assertTrue(System.currentTimeMillis() - start < 3000, "超时应按全流总时长预算有界触发");
         verifyNoInteractions(pusher);
+        assertFalse(reasoningSeenAny.get());
     }
 
     /**

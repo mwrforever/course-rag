@@ -497,7 +497,9 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
      * 取消即时检查（Task 4）：读取 config.metadata 中 worker 注入的取消源，已取消抛 CancelledException。
      *
      * <p>metadata 无该键（离线评测/图直调等非 worker 链路）按未取消处理；异常携带 threadId（会话标识）
-     * 仅供日志定位，run 级取消回写与终态事件由 worker 取消分支以 runId 统一处理（instanceof 即命中分类）。
+     * 仅供日志定位，run 级取消回写与终态事件由 worker 取消分支以 runId 统一处理——本异常经图引擎
+     * 异步链传播可能被 CompletionException 等包装，worker {@code onErrorResume} 沿 cause 链溯源
+     * 分类（{@code isCancelledError}：链上任一元素为 CancelledException 即按取消处理），非 instanceof 直判。
      *
      * @param config RunnableConfig（metadata 贯穿全图共享）
      * @throws CancelledException 本 run 已被请求取消

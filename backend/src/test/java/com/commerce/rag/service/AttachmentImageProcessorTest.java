@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
@@ -14,6 +15,7 @@ import static org.mockito.Mockito.when;
 import com.commerce.rag.etl.ImageCaptionService;
 import com.commerce.rag.properties.AttachmentProperties;
 import com.commerce.rag.record.ImageCaptionResult;
+import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.ThinkingPusher;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -24,6 +26,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.DisplayName;
@@ -61,7 +64,8 @@ class AttachmentImageProcessorTest {
 
         List<ImageCaptionResult> results = processor.processImages(
                 List.of(normalImage(NORMAL_IMAGE_BYTES), normalImage(NORMAL_IMAGE_BYTES + 1)),
-                List.of("a.png", "b.png"));
+                List.of("a.png", "b.png"),
+                null);
 
         assertEquals(2, results.size());
         assertEquals("图片1:红色图表", results.get(0).caption());
@@ -69,12 +73,12 @@ class AttachmentImageProcessorTest {
     }
 
     @Test
-    @DisplayName("带 ThinkingPusher — VLM 走 captionStreaming，caption 结果语义与同步路径一致")
+    @DisplayName("带 ThinkingPusher — VLM 走 captionStreaming（透传 pusher 与批级标志），caption 结果语义与同步路径一致")
     void processImages_withPusher_usesCaptionStreaming() {
         // Given: SSE 链路场景传入 per-run pusher
         ImageCaptionService captionService = mock(ImageCaptionService.class);
         ThinkingPusher pusher = mock(ThinkingPusher.class);
-        when(captionService.captionStreaming(any(), any(), same(pusher))).thenReturn("流式图表描述");
+        when(captionService.captionStreaming(any(), any(), same(pusher), any())).thenReturn("流式图表描述");
         AttachmentCacheService cache = new AttachmentCacheService(100, 30);
         AttachmentImageProcessor processor = new AttachmentImageProcessor(captionService, cache, Runnable::run, PROPS);
 
@@ -85,19 +89,78 @@ class AttachmentImageProcessorTest {
         // Then: 走流式聚合方法且透传同一 pusher；「图片N:描述」组装语义不变
         assertEquals(1, results.size());
         assertEquals("图片1:流式图表描述", results.get(0).caption());
-        verify(captionService).captionStreaming(any(), eq("image/png"), same(pusher));
+        verify(captionService).captionStreaming(any(), eq("image/png"), same(pusher), any(AtomicBoolean.class));
         verify(captionService, never()).caption(any(), any());
     }
 
     @Test
-    @DisplayName("无 pusher 重载 — 保持同步 caption 路径零变化（不调 captionStreaming）")
+    @DisplayName("多图 reasoning 乱序完成 — 批级收口：END(attachments) 恰好一次（评审 I-2 stage 成对契约）")
+    void processImages_reasoningOutOfOrder_endsExactlyOnce() {
+        ImageCaptionService captionService = mock(ImageCaptionService.class);
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        // 桩模拟真实 captionStreaming 行为：推 reasoning + 置批级标志；图1 慢、图2 快 → 完成顺序颠倒
+        when(captionService.captionStreaming(any(), any(), same(pusher), any())).thenAnswer(inv -> {
+            ThinkingPusher p = inv.getArgument(2);
+            AtomicBoolean reasoningSeenAny = inv.getArgument(3);
+            byte[] bytes = inv.getArgument(0);
+            if (bytes.length == NORMAL_IMAGE_BYTES) {
+                reasoningSeenAny.set(true);
+                p.push(SseEventTransformer.STAGE_ATTACHMENTS, "慢图思考");
+                Thread.sleep(200);
+            } else {
+                reasoningSeenAny.set(true);
+                p.push(SseEventTransformer.STAGE_ATTACHMENTS, "快图思考");
+            }
+            return "流式描述";
+        });
+        AttachmentCacheService cache = new AttachmentCacheService(100, 30);
+        ExecutorService realPool = Executors.newFixedThreadPool(2);
+        try {
+            AttachmentImageProcessor processor = new AttachmentImageProcessor(captionService, cache, realPool, PROPS);
+
+            List<ImageCaptionResult> results = processor.processImages(
+                    List.of(normalImage(NORMAL_IMAGE_BYTES), normalImage(NORMAL_IMAGE_BYTES + 1)),
+                    List.of("slow.png", "fast.png"),
+                    pusher);
+
+            // 两图 reasoning 均实时推送（stage 不变），但无论完成顺序如何 END 只在批完成点补一次
+            assertEquals(2, results.size());
+            verify(pusher, times(2)).push(eq(SseEventTransformer.STAGE_ATTACHMENTS), anyString());
+            verify(pusher, times(1)).end(SseEventTransformer.STAGE_ATTACHMENTS);
+        } finally {
+            realPool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("批内零 reasoning（非思考响应）— pusher 非空也不发孤儿 END(attachments)")
+    void processImages_batchWithoutReasoning_neverEnds() {
+        ImageCaptionService captionService = mock(ImageCaptionService.class);
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        // 桩模拟非思考模型：只返回 content、不推 reasoning、不置批级标志
+        when(captionService.captionStreaming(any(), any(), same(pusher), any())).thenReturn("纯回答描述");
+        AttachmentCacheService cache = new AttachmentCacheService(100, 30);
+        AttachmentImageProcessor processor = new AttachmentImageProcessor(captionService, cache, Runnable::run, PROPS);
+
+        List<ImageCaptionResult> results = processor.processImages(
+                List.of(normalImage(NORMAL_IMAGE_BYTES), normalImage(NORMAL_IMAGE_BYTES + 1)),
+                List.of("a.png", "b.png"),
+                pusher);
+
+        assertEquals(2, results.size());
+        verify(pusher, never()).push(any(), any());
+        verify(pusher, never()).end(any());
+    }
+
+    @Test
+    @DisplayName("pusher=null 调用 — 保持同步 caption 路径零变化（不调 captionStreaming）")
     void processImages_withoutPusher_keepsSyncCaption() {
         ImageCaptionService captionService = mock(ImageCaptionService.class);
         when(captionService.caption(any(), any())).thenReturn("同步描述");
         AttachmentCacheService cache = new AttachmentCacheService(100, 30);
         AttachmentImageProcessor processor = new AttachmentImageProcessor(captionService, cache, Runnable::run, PROPS);
 
-        // When: 带 pusher 重载显式传 null（与两参重载等价）
+        // When: 唯一入口显式传 pusher=null（两参死重载已随评审 M-3 删除）
         List<ImageCaptionResult> results =
                 processor.processImages(List.of(normalImage(NORMAL_IMAGE_BYTES + 7)), List.of("a.png"), null);
 
@@ -105,7 +168,7 @@ class AttachmentImageProcessorTest {
         assertEquals(1, results.size());
         assertEquals("图片1:同步描述", results.get(0).caption());
         verify(captionService).caption(any(), any());
-        verify(captionService, never()).captionStreaming(any(), any(), any());
+        verify(captionService, never()).captionStreaming(any(), any(), any(), any());
     }
 
     @Test
@@ -117,8 +180,8 @@ class AttachmentImageProcessorTest {
         AttachmentImageProcessor processor = new AttachmentImageProcessor(captionService, cache, Runnable::run, PROPS);
 
         byte[] img = normalImage(NORMAL_IMAGE_BYTES + 2);
-        processor.processImages(List.of(img), List.of("a.png"));
-        processor.processImages(List.of(img), List.of("a.png"));
+        processor.processImages(List.of(img), List.of("a.png"), null);
+        processor.processImages(List.of(img), List.of("a.png"), null);
 
         assertEquals(
                 1,
@@ -138,7 +201,8 @@ class AttachmentImageProcessorTest {
 
         List<ImageCaptionResult> results = processor.processImages(
                 List.of(normalImage(NORMAL_IMAGE_BYTES + 3), normalImage(NORMAL_IMAGE_BYTES + 4)),
-                List.of("bad.png", "ok.png"));
+                List.of("bad.png", "ok.png"),
+                null);
 
         assertEquals(1, results.size());
         assertEquals("图片2:正常图", results.get(0).caption());
@@ -153,7 +217,7 @@ class AttachmentImageProcessorTest {
 
         // 两张均小于 10KB，isSmallIcon(bytes, 10) 恒 true，captionInternal 在过滤分支返回 null
         List<ImageCaptionResult> results = processor.processImages(
-                List.of(normalImage(1024), normalImage(2048)), List.of("icon.png", "icon2.png"));
+                List.of(normalImage(1024), normalImage(2048)), List.of("icon.png", "icon2.png"), null);
 
         assertTrue(results.isEmpty(), "小图标全部被过滤，不产生任何 caption 结果");
         // 过滤发生在 VLM 调用之前，caption 一次都不应被触发
@@ -170,7 +234,7 @@ class AttachmentImageProcessorTest {
 
         // 第一张 < 10KB 被过滤（不产生结果但序号 +1），第二张正常生成并占用下一个序号
         List<ImageCaptionResult> results = processor.processImages(
-                List.of(normalImage(1024), normalImage(NORMAL_IMAGE_BYTES)), List.of("small.png", "big.png"));
+                List.of(normalImage(1024), normalImage(NORMAL_IMAGE_BYTES)), List.of("small.png", "big.png"), null);
 
         assertEquals(1, results.size());
         assertEquals("图片2:正常图描述", results.get(0).caption());
@@ -193,7 +257,8 @@ class AttachmentImageProcessorTest {
                         normalImage(NORMAL_IMAGE_BYTES + 2),
                         normalImage(NORMAL_IMAGE_BYTES + 3),
                         normalImage(NORMAL_IMAGE_BYTES + 4)),
-                List.of("a.jpg", "a.gif", "a.webp", "a.bmp", "a.unknownext"));
+                List.of("a.jpg", "a.gif", "a.webp", "a.bmp", "a.unknownext"),
+                null);
 
         // 5 张全为正常大小，全部生成结果，序号按上传顺序递增
         assertEquals(5, results.size());
@@ -225,7 +290,8 @@ class AttachmentImageProcessorTest {
 
             List<ImageCaptionResult> results = processor.processImages(
                     List.of(normalImage(NORMAL_IMAGE_BYTES), normalImage(NORMAL_IMAGE_BYTES + 1)),
-                    List.of("slow.png", "fast.png"));
+                    List.of("slow.png", "fast.png"),
+                    null);
 
             assertEquals(2, results.size());
             // 序号按原始上传位置：位置 1 的慢图占「图片1」，位置 2 的快图占「图片2」
@@ -256,7 +322,8 @@ class AttachmentImageProcessorTest {
 
             List<ImageCaptionResult> results = processor.processImages(
                     List.of(normalImage(NORMAL_IMAGE_BYTES), normalImage(NORMAL_IMAGE_BYTES + 1)),
-                    List.of("bad.png", "ok.png"));
+                    List.of("bad.png", "ok.png"),
+                    null);
 
             assertEquals(1, results.size(), "失败图跳过，正常图保留");
             // 失败图占位序号 1，正常图按原始位置标注「图片2」（不因前面失败而前移）
@@ -273,7 +340,7 @@ class AttachmentImageProcessorTest {
         AttachmentCacheService cache = new AttachmentCacheService(100, 30);
         AttachmentImageProcessor processor = new AttachmentImageProcessor(captionService, cache, Runnable::run, PROPS);
 
-        List<ImageCaptionResult> results = processor.processImages(List.of(), List.of());
+        List<ImageCaptionResult> results = processor.processImages(List.of(), List.of(), null);
 
         assertTrue(results.isEmpty(), "无图片时直接返回空列表");
         verify(captionService, never()).caption(any(), any());
@@ -297,7 +364,8 @@ class AttachmentImageProcessorTest {
 
         List<ImageCaptionResult> results = processor.processImages(
                 List.of(normalImage(NORMAL_IMAGE_BYTES), normalImage(NORMAL_IMAGE_BYTES + 1)),
-                List.of("first.png", "second.png"));
+                List.of("first.png", "second.png"),
+                null);
 
         // 第一张正常 caption；第二张提交被拒仅自身跳过（序号 2 占位不产出），不中断第一张
         assertEquals(1, results.size(), "被拒图片跳过，已提交图片照常处理");
@@ -337,7 +405,8 @@ class AttachmentImageProcessorTest {
 
             List<ImageCaptionResult> results = processor.processImages(
                     List.of(normalImage(NORMAL_IMAGE_BYTES), normalImage(NORMAL_IMAGE_BYTES + 1)),
-                    List.of("slow.png", "fast.png"));
+                    List.of("slow.png", "fast.png"),
+                    null);
 
             // 慢图超时丢弃（无结果），快图保留且序号仍为原始位置 2
             assertEquals(1, results.size(), "慢图超时被丢弃，快图保留");
@@ -377,7 +446,7 @@ class AttachmentImageProcessorTest {
             interrupter.start();
 
             List<ImageCaptionResult> results =
-                    processor.processImages(List.of(normalImage(NORMAL_IMAGE_BYTES)), List.of("pending.png"));
+                    processor.processImages(List.of(normalImage(NORMAL_IMAGE_BYTES)), List.of("pending.png"), null);
 
             interrupter.join(1000);
             // 唯一图片未完成被取消 → 空结果；中断标记交还调用线程（消费掉避免污染后续用例）
@@ -396,7 +465,8 @@ class AttachmentImageProcessorTest {
         AttachmentImageProcessor processor = new AttachmentImageProcessor(captionService, cache, Runnable::run, PROPS);
 
         // 构造 ≥10KB、带 alpha 且有效颜色唯一的 PNG：体积过阈值但命中装饰图规则（大 logo/分割线场景）
-        List<ImageCaptionResult> results = processor.processImages(List.of(decorativePng()), List.of("divider.png"));
+        List<ImageCaptionResult> results =
+                processor.processImages(List.of(decorativePng()), List.of("divider.png"), null);
 
         assertTrue(results.isEmpty(), "单色装饰图应被过滤，不产生 caption 结果");
         verify(captionService, never()).caption(any(), any());
@@ -411,7 +481,7 @@ class AttachmentImageProcessorTest {
         AttachmentImageProcessor processor = new AttachmentImageProcessor(captionService, cache, Runnable::run, PROPS);
 
         List<ImageCaptionResult> results =
-                processor.processImages(List.of(normalImage(NORMAL_IMAGE_BYTES)), List.of("photo.jpeg"));
+                processor.processImages(List.of(normalImage(NORMAL_IMAGE_BYTES)), List.of("photo.jpeg"), null);
 
         assertEquals(1, results.size());
         assertEquals("图片1:照片描述", results.get(0).caption());

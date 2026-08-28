@@ -389,6 +389,33 @@ class AttachmentOrchestratorTest {
     }
 
     @Test
+    @DisplayName("组合检查点 — pusher 非空 + 批中取消：剩余图片既不下载也零 caption 推送")
+    void process_pusherNonNull_cancelledMidBatch_remainingImagesNeverCaptioned() {
+        // Given: 两张图片附件 + 非空 pusher，取消源在文件1提交后转真（评审 M-5 组合覆盖）
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        byte[] img1 = new byte[] {1};
+        when(attachmentService.download("0/a.png")).thenReturn(img1);
+        AtomicInteger checks = new AtomicInteger();
+        BooleanSupplier cancelAfterFirst = () -> checks.incrementAndGet() > 1;
+
+        // When（同步执行器：批循环文件1提交→检查点2命中取消→break，文件2不提交；
+        // 评审 M-4 的 caption 前再检查同样命中 → 整批 caption 跳过）
+        AttachmentContext ctx = orchestrator.process(
+                List.of(
+                        new AttachmentRecord("image", "0/a.png", "a.png", 1L),
+                        new AttachmentRecord("image", "0/b.png", "b.png", 2L)),
+                pusher,
+                cancelAfterFirst);
+
+        // Then: 文件2 未下载；已取消 → 批量 caption 整体跳过，pusher 零交互（零 THINKING/END 事件）
+        verify(attachmentService).download("0/a.png");
+        verify(attachmentService, never()).download("0/b.png");
+        verify(imageProcessor, never()).processImages(anyList(), anyList(), any());
+        verifyNoInteractions(pusher);
+        assertFalse(ctx.hasAny());
+    }
+
+    @Test
     @DisplayName("取消检查点 — 批中取消只跳过剩余文件，已提交附件结果照常组装")
     void process_cancelledMidBatch_skipsRemainingFilesOnly() {
         // Given: 两文档附件，取消源第一次检查（文件1 提交前）为 false、第二次（文件2 提交前）为 true

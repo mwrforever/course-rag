@@ -4,6 +4,7 @@ import com.commerce.rag.etl.ImageCaptionService;
 import com.commerce.rag.etl.ImageFilter;
 import com.commerce.rag.properties.AttachmentProperties;
 import com.commerce.rag.record.ImageCaptionResult;
+import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.ThinkingPusher;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,6 +14,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -24,8 +26,10 @@ import org.springframework.stereotype.Service;
  * 经既有 ImageCaptionService 调 VLM caption（OpenAI 兼容协议，qwen3.7-flash）
  * → 每张图按上传顺序占用一个序号，标注"图片N"。
  *
- * <p>思考流式（2026-08-28 时间线改版 Task 4）：带 {@link ThinkingPusher} 重载时 VLM 走
- * {@code captionStreaming} 聚合，reasoning 片段实时推 attachments 阶段；pusher 为 null
+ * <p>思考流式（2026-08-28 时间线改版 Task 4，评审 I-2 stage 级收口）：带 {@link ThinkingPusher}
+ * 时 VLM 走 {@code captionStreaming} 聚合，reasoning 片段实时推 attachments 阶段；
+ * THINKING_END 不在单图内调用，由本类在全部在途 caption 完成后按批统一补恰好一次
+ * （仅当批内确实推过 reasoning；零 reasoning 批次不发孤儿 end）；pusher 为 null
  * （无 SSE 通道场景）保持原同步 caption 行为零变化。缓存命中不产生 reasoning，无推送。
  *
  * <p>P2-2 并行化：每张图一个 caption 任务提交附件池并行执行（VLM 单次 1~3s，
@@ -77,33 +81,25 @@ public class AttachmentImageProcessor {
     }
 
     /**
-     * 处理一组图片字节（并行 caption，按上传顺序标注图片1/2…）
+     * 处理一组图片字节（并行 caption，可选思考实时推送，按上传顺序标注图片1/2…）
      *
      * <p>序号语义：每张图占用一个序号，无论该图 success / caption 失败 / 被过滤 / 超时——
      * 序号按原始位置预分配（position+1），并发完成后按位置组装，与完成顺序无关。
      *
-     * @param images 图片字节列表（与上传顺序一致）
-     * @param names  原始文件名列表（同序，MIME 识别用）
-     * @return caption 结果列表（"图片N:描述"；被过滤/失败/超时的图片不产生结果；全部失败返回空列表）
-     */
-    public List<ImageCaptionResult> processImages(List<byte[]> images, List<String> names) {
-        // 无思考推送需求的历史调用方：委托带 pusher 重载传 null，走原同步 caption 路径
-        return processImages(images, names, null);
-    }
-
-    /**
-     * 处理一组图片字节（并行 caption，可选思考实时推送）
-     *
-     * <p>序号语义与 {@link #processImages(List, List)} 完全一致；pusher 非空时每图 VLM 走
-     * 流式聚合并实时推 attachments 阶段 reasoning 片段（多图并发 push 由 ThinkingPusher
-     * 内部锁保证原子，每次流式调用各自持有独立 thinkingEnded CAS）。
+     * <p>思考成对契约（评审 I-2 stage 级收口）：pusher 非空时单图 captionStreaming 只推
+     * reasoning 不自行 end；attachments 阶段的 THINKING_END 由本方法在<b>全部在途 caption
+     * 完成后统一补恰好一次</b>（仅当批次内确实推过 reasoning，批级 {@code reasoningSeenAny}
+     * 判定）——超时/取消/单图异常等未全部正常完成路径同样经本完成点收口，不残留思考态；
+     * 零 reasoning 批次不发孤儿 end。
      *
      * @param images 图片字节列表（与上传顺序一致）
      * @param names  原始文件名列表（同序，MIME 识别用）
      * @param pusher per-run 思考推送通道（可为 null——null 时走原同步 caption，行为零变化）
-     * @return caption 结果列表（与无 pusher 重载语义完全相同）
+     * @return caption 结果列表（"图片N:描述"；被过滤/失败/超时的图片不产生结果；全部失败返回空列表）
      */
     public List<ImageCaptionResult> processImages(List<byte[]> images, List<String> names, ThinkingPusher pusher) {
+        // 批次共享标志：任一单图 captionStreaming 推过 reasoning 即置 true，决定批完成点是否补 end
+        AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
         // 每图一个 caption 任务（序号按位置预分配），池满拒绝按该图失败降级（快速跳过不抛出）
         List<CompletableFuture<ImageCaptionResult>> futures = new ArrayList<>(images.size());
         for (int i = 0; i < images.size(); i++) {
@@ -112,7 +108,7 @@ public class AttachmentImageProcessor {
             final String name = names.get(i);
             try {
                 futures.add(CompletableFuture.supplyAsync(
-                        () -> captionOne(bytes, name, position + 1, pusher), attachmentPool));
+                        () -> captionOne(bytes, name, position + 1, pusher, reasoningSeenAny), attachmentPool));
             } catch (RejectedExecutionException e) {
                 // 池满快速失败：该图跳过（completedFuture(null) 占位保持位置对应），不影响其它图
                 log.warn("图片 caption 提交被拒（池满），跳过: name={}", name);
@@ -124,6 +120,12 @@ public class AttachmentImageProcessor {
         }
         // 总超时控制：超时取消未完成 caption，仅保留已完成结果（慢图不拖垮整批）
         awaitWithTimeout(futures);
+        // 思考态批级收口（评审 I-2）：全部在途 caption 完成（含超时/取消/异常路径，
+        // awaitWithTimeout 永不抛出）后统一补 end——多图乱序/并发完成仍仅一个 END(attachments)，
+        // 与批内全部 THINKING 事件按 pushLock 到达序天然配对
+        if (pusher != null && reasoningSeenAny.get()) {
+            pusher.end(SseEventTransformer.STAGE_ATTACHMENTS);
+        }
         // 按位置组装（失败的图已在 captionOne 记日志返回 null，此处仅静默跳过）
         List<ImageCaptionResult> results = new ArrayList<>(images.size());
         for (CompletableFuture<ImageCaptionResult> future : futures) {
@@ -178,14 +180,17 @@ public class AttachmentImageProcessor {
      * @param name  原始文件名（日志/MIME 识别）
      * @param index 预分配序号（原始位置 +1，与完成顺序无关）
      * @param pusher per-run 思考推送通道（可为 null，null 走同步 caption 不推思考）
+     * @param reasoningSeenAny 批次共享标志（本批任一图推过 reasoning 即置 true，批完成点据此补 end）
      * @return caption 结果；被过滤/失败返回 null（不产生结果但序号已按位置占位）
      */
-    private ImageCaptionResult captionOne(byte[] bytes, String name, int index, ThinkingPusher pusher) {
+    private ImageCaptionResult captionOne(
+            byte[] bytes, String name, int index, ThinkingPusher pusher, AtomicBoolean reasoningSeenAny) {
         try {
             String hash = cacheService.computeHash(bytes);
             // 同图只 caption 一次（Caffeine 按字节 hash 缓存，spec §5.1；原子单次计算并行安全；
             // 缓存命中直接复用 caption 文本，无 VLM 调用亦无 reasoning 推送）
-            String caption = cacheService.getOrProcess(hash, b -> captionInternal(b, name, pusher), bytes);
+            String caption =
+                    cacheService.getOrProcess(hash, b -> captionInternal(b, name, pusher, reasoningSeenAny), bytes);
             if (caption == null) {
                 return null;
             }
@@ -200,22 +205,24 @@ public class AttachmentImageProcessor {
     /**
      * caption 内部逻辑：过滤 → VLM 调用（返回 null 表示被过滤）
      *
-     * <p>pusher 非空走流式聚合（reasoning 实时推 attachments 阶段），为 null 保持原同步路径——
-     * 两路径最终 caption 文本语义完全一致，降级/超时行为由各自方法内部界定。
+     * <p>pusher 非空走流式聚合（reasoning 实时推 attachments 阶段、不自行 end——批完成点统一
+     * 收口，评审 I-2），为 null 保持原同步路径——两路径最终 caption 文本语义完全一致，
+     * 降级/超时行为由各自方法内部界定。
      *
      * @param bytes  图片字节
      * @param name   原始文件名（日志/MIME 识别）
      * @param pusher 思考推送通道（可为 null）
+     * @param reasoningSeenAny 批次共享标志（流式路径推过 reasoning 即置 true）
      * @return caption 文本；被过滤返回 null
      */
-    private String captionInternal(byte[] bytes, String name, ThinkingPusher pusher) {
+    private String captionInternal(byte[] bytes, String name, ThinkingPusher pusher, AtomicBoolean reasoningSeenAny) {
         if (ImageFilter.isSmallIcon(bytes, IMAGE_MIN_SIZE_KB) || ImageFilter.isDecorative(bytes)) {
             log.info("图片过滤（小图标/装饰图）: name={}", name);
             return null;
         }
         if (pusher != null) {
-            // SSE 链路：VLM 流式聚合，reasoning 片段实时推送（Task 4）
-            return imageCaptionService.captionStreaming(bytes, mimeOf(name), pusher);
+            // SSE 链路：VLM 流式聚合，reasoning 片段实时推送（Task 4；end 由批完成点统一调用）
+            return imageCaptionService.captionStreaming(bytes, mimeOf(name), pusher, reasoningSeenAny);
         }
         return imageCaptionService.caption(bytes, mimeOf(name));
     }

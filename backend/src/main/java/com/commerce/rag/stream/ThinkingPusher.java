@@ -122,6 +122,11 @@ public class ThinkingPusher {
      * 与主链路 THINKING_END 的区别：主链路由 RunState CAS 全局去重仅一次，
      * 本回调按 stage 各自成对（understanding 的 end 不影响 attachments），去重责任在调用方节点。
      *
+     * <p><b>调用契约（2026-08-28 评审 I-2）</b>：按 stage 的 end 必须由<b>批次/节点完成点统一调用
+     * （同一 stage 至多一次）</b>，禁止并发子任务内 per-call end——多图并行 caption 等场景下
+     * 子任务各自 end 会造成「END(attachments) 后又来 THINKING(attachments)」交错与 N 图 N 个 END，
+     * 破坏前端 stage THINKING/THINKING_END 配对契约。
+     *
      * @param stage 思考来源阶段键（null 按空串输出，保持字段恒存在）
      */
     public void end(String stage) {

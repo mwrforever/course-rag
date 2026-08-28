@@ -17,6 +17,7 @@ import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.commerce.rag.entity.ChatMessage;
+import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.record.AttachmentContext;
@@ -45,6 +46,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -448,6 +450,62 @@ class ChatRequestWorkerTest {
         // spec §7.6/§8.4：非 COMPLETED 终态（error）不触发偏好/经历提取
         verify(memoryExtractionPipeline, never()).submit(any(), any());
         verify(memoryExtractionPipeline, never()).submitEpisodic(any(), any(), any());
+    }
+
+    // ==================== onErrorResume 取消分类 cause 链溯源（评审 I-1 补测） ====================
+
+    @Test
+    @DisplayName("取消分类 — CancelledException 被 CompletionException 包装仍收敛 CANCELLED 终态（isCancelledError cause 链）")
+    void processRequest_cancelledWrappedInCause_updatesStatusCancelled() throws Exception {
+        // Given: 图节点内检查点抛出的取消异常经图引擎异步链包装（CompletionException 壳，
+        // 直判 instanceof 会漏分类成 ERROR——本用例锁死 cause 链溯源行为）
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new CompletionException(new CancelledException("100"))));
+
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: cause 链命中取消 → updateStatus 走取消路径（不得误落 ERROR），END 事件携带 status:CANCELLED
+        verify(chatRunService).updateStatus(100L, "ACTIVE");
+        verify(chatRunService).updateStatus(100L, "CANCELLED");
+        verify(chatRunService, never()).updateStatus(100L, "ERROR");
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        SseEvent endEvent = pushed.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.END)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("取消终态必须推送 END 事件"));
+        assertTrue(endEvent.payload().contains("CANCELLED"), "END payload 应携带 status:CANCELLED");
+        // spec §7.6/§8.4：取消终态不触发偏好/经历提取
+        verify(memoryExtractionPipeline, never()).submit(any(), any());
+        verify(memoryExtractionPipeline, never()).submitEpisodic(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("取消分类反向 — cause 链不含 CancelledException 的包装异常仍收敛 ERROR 终态（不误判取消）")
+    void processRequest_errorWithNonCancelCauseChain_updatesStatusError() throws Exception {
+        // Given: 两层包装的非取消异常（cause 链上无任何 CancelledException）
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new RuntimeException("图引擎执行失败", new IllegalStateException("检索 IO 异常"))));
+
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: cause 链溯源不命中 → 仍走 ERROR 分支（推送 ERROR 事件，不得收敛 CANCELLED）
+        verify(chatRunService).updateStatus(100L, "ACTIVE");
+        verify(chatRunService).updateStatus(100L, "ERROR");
+        verify(chatRunService, never()).updateStatus(100L, "CANCELLED");
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        assertTrue(
+                pushed.getAllValues().stream()
+                        .anyMatch(e ->
+                                e.type() == SseEventType.ERROR && e.payload().contains("ERROR")),
+                "非取消异常应推送 ERROR 终态事件");
     }
 
     // ==================== processRequest 参数解析失败 ====================
