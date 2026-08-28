@@ -722,6 +722,12 @@ describe("chatReducer 纯函数", () => {
     expect(result.current.state.streaming).toBe(false);
     expect(result.current.state.error).toBeNull();
     expect(result.current.state.sessionId).toBe("sess-1");
+    // clearSession 变体（Task 13 新建对话干净态）：会话归属一并清空，
+    // 下一次 send 的 sessionId=null → 后端建新会话
+    await act(async () => {
+      result.current.reset(true);
+    });
+    expect(result.current.state.sessionId).toBeNull();
   });
 
   it("reset：清消息/流式/错误/终结态/事件锚点，保留会话归属", () => {
@@ -736,6 +742,20 @@ describe("chatReducer 纯函数", () => {
     expect(s).toEqual({ ...createInitialState("sess-1"), sessionId: "sess-1" });
     expect(s.messages).toEqual([]);
     expect(s.streaming).toBe(false);
+  });
+
+  it("reset clearSession=true：会话归属一并清空（Task 13 新建对话干净态）", () => {
+    const s0: ChatStreamState = {
+      ...streamingWithAi(),
+      streaming: false,
+      endedStatus: "COMPLETED",
+    };
+    const s = chatReducer(s0, { type: "reset", clearSession: true });
+    // 会话归属清空：下一次 send 的 sessionId=null → 后端建新会话
+    expect(s.sessionId).toBeNull();
+    expect(s.messages).toEqual([]);
+    expect(s.streaming).toBe(false);
+    expect(s.endedStatus).toBeNull();
   });
 
   it("带 seq 的流事件更新 lastEventId（断流重连锚点）；无 seq 不更新", () => {

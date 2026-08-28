@@ -12,10 +12,12 @@
  * - 上下文条：返回课程 / 会话标题「新对话」/ 新建对话 / 课程名面包屑（D7）
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NewChatPage from "./page";
 import { SIDEBAR_SESSIONS_QUERY_KEY } from "@/components/chat/chat-sidebar";
+import { ChatStreamingProvider, useRequestNewChat } from "@/components/chat/chat-streaming-context";
 import { ApiError } from "@/lib/api";
 import type { ChatStreamState, StreamMessage } from "@/hooks/use-chat-stream";
 import type { AttachmentRecord, RetrievalSource } from "@/lib/types";
@@ -26,6 +28,7 @@ const chatMock = vi.hoisted(() => ({
   state: {} as ChatStreamState,
   send: vi.fn(),
   cancel: vi.fn(),
+  reset: vi.fn(),
 }));
 /** 数据层 mock：附件上传与反馈 */
 const apiMock = vi.hoisted(() => ({
@@ -47,6 +50,7 @@ vi.mock("@/hooks/use-chat-stream", () => ({
     send: chatMock.send,
     cancel: chatMock.cancel,
     reconnect: vi.fn(),
+    reset: chatMock.reset,
   }),
 }));
 vi.mock("@/lib/auth-context", () => ({
@@ -119,6 +123,7 @@ beforeEach(() => {
   chatMock.state = initialState();
   chatMock.send.mockReset().mockResolvedValue(undefined);
   chatMock.cancel.mockReset().mockResolvedValue(undefined);
+  chatMock.reset.mockReset();
   apiMock.uploadAttachments.mockReset();
   apiMock.postFeedback.mockReset().mockResolvedValue(undefined);
   routerMock.replace.mockReset();
@@ -162,11 +167,12 @@ function setFiles(input: HTMLInputElement, files: File[]) {
 }
 
 describe("新对话页：上下文条", () => {
-  it("返回课程 / 会话标题「新对话」/ 新建对话入口", () => {
+  it("返回课程 / 会话标题「新对话」（顶栏新建按钮已删，入口在侧栏）", () => {
     renderPage();
     expect(screen.getByRole("link", { name: /返回课程/ })).toHaveAttribute("href", "/courses");
     expect(screen.getByText("新对话")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "新建对话" })).toHaveAttribute("href", "/chat");
+    // Task 13：顶栏「新建对话」Link 移除（新建入口收敛到侧栏按钮）
+    expect(screen.queryByRole("link", { name: "新建对话" })).not.toBeInTheDocument();
   });
 
   it("课程名面包屑（D7）：query 携带 course 时展示课程名", () => {
@@ -451,5 +457,55 @@ describe("新对话页：拖拽上传与附件预览（Task 12 扩容）", () =>
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("新对话页：新建对话信号（Task 13 干净态，侧栏按钮经 Context 驱动）", () => {
+  /** 信号出口引用：探针渲染后持有 Provider 的 requestNewChat */
+  const requestRef = { current: (() => {}) as () => void };
+  /** 信号探针：把 Provider 的 requestNewChat 暴露给用例（模拟侧栏按钮发出） */
+  function SignalProbe() {
+    const request = useRequestNewChat();
+    useEffect(() => {
+      requestRef.current = request;
+    }, [request]);
+    return null;
+  }
+
+  it("信号到达：reset(true) 清流式（含会话归属）+ 附件清（revoke）+ 输入清", async () => {
+    const PNG = new File([new Uint8Array(512)], "信号图.png", { type: "image/png" });
+    const RECORD: AttachmentRecord = {
+      type: "image",
+      url: "obj/signal.png",
+      name: "信号图.png",
+      size: "512",
+    };
+    apiMock.uploadAttachments.mockResolvedValue([RECORD]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ChatStreamingProvider>
+          <SignalProbe />
+          <NewChatPage />
+        </ChatStreamingProvider>
+      </QueryClientProvider>,
+    );
+    // 准备脏态：附件上传完成 + 输入草稿
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
+    await screen.findByRole("img", { name: /信号图\.png/ });
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "未发送的草稿" } });
+    // 发出新建信号（侧栏按钮语义：/chat 同路由不重挂载）
+    act(() => requestRef.current());
+    // 流式状态 reset（clearSession=true：会话归属一并清空，下次发送建新会话）
+    await waitFor(() => {
+      expect(chatMock.reset).toHaveBeenCalledWith(true);
+    });
+    // 附件干净态：chips 消失 + blob URL revoke
+    await waitFor(() => {
+      expect(screen.queryByTestId("attachment-chips")).not.toBeInTheDocument();
+    });
+    expect(urlMock.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
+    // 输入干净态：受控 resetKey 驱动清空
+    expect(screen.getByRole("textbox")).toHaveValue("");
   });
 });

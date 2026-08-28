@@ -167,10 +167,10 @@ describe("历史会话页：初始归属与拉取", () => {
     expect(await screen.findByTestId("markdown-view")).toHaveTextContent("恢复后的回答");
   });
 
-  it("上下文条：标题「历史会话」+ 新建对话入口（历史加载期恒在场）", () => {
+  it("上下文条：标题「历史会话」（顶栏新建按钮已删，新建入口在侧栏；Task 13）", () => {
     renderPage();
     expect(screen.getByText("历史会话")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "新建对话" })).toHaveAttribute("href", "/chat");
+    expect(screen.queryByRole("link", { name: "新建对话" })).not.toBeInTheDocument();
   });
 });
 

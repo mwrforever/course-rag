@@ -144,7 +144,7 @@ export type ChatAction =
       seq?: number | null;
     }
   | { type: "reconnect" }
-  | { type: "reset" };
+  | { type: "reset"; clearSession?: boolean };
 
 // ===== 常量 =====
 
@@ -520,8 +520,9 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
       };
     }
     case "reset": {
-      // reset：清消息/流式/错误/终态/事件锚点，保留会话归属
-      return createInitialState(state.sessionId);
+      // reset：清消息/流式/错误/终态/事件锚点；clearSession=true 时连会话归属一并
+      // 清空（Task 13 新建对话干净态：下一次 send 的 sessionId=null → 后端建新会话）
+      return createInitialState(action.clearSession ? null : state.sessionId);
     }
   }
 }
@@ -673,15 +674,16 @@ function sleep(ms: number): Promise<void> {
  *
  * @param initialSessionId 初始会话 id（/chat 新会话为 null，/chat/[sessionId] 传入 URL 参数）；
  *                         metadata 到达后用其值覆盖（E2E 实证修订：新会话不 replace URL）
- * @returns state 全量对话状态；send/cancel/reconnect/reset 四个生命周期操作（reset 供
- *          REPLAY_FAILED 错误横幅「重新提问」入口清空对话，保留会话归属）
+ * @returns state 全量对话状态；send/cancel/reconnect/reset 四个生命周期操作
+ *          （reset 供 REPLAY_FAILED 横幅「重新提问」保留会话归属；clearSession=true
+ *          供 Task 13 新建对话干净态连会话归属一并清空）
  */
 export function useChatStream(initialSessionId: string | null): {
   state: ChatStreamState;
   send: (query: string, attachments: AttachmentRecord[]) => Promise<void>;
   cancel: () => Promise<void>;
   reconnect: () => Promise<void>;
-  reset: () => void;
+  reset: (clearSession?: boolean) => void;
 } {
   const [state, dispatch] = useReducer(chatReducer, initialSessionId, createInitialState);
   // 最新状态镜像：供 send/cancel/reconnect 等异步回调读取（闭包捕获首渲染实例，经 ref 拿最新值）
@@ -938,7 +940,8 @@ export function useChatStream(initialSessionId: string | null): {
     send,
     cancel,
     reconnect,
-    // 重新提问入口：清空消息/流式/错误/终态/锚点（保留会话归属），由 REPLAY_FAILED 横幅调用
-    reset: () => dispatch({ type: "reset" }),
+    // 重新提问入口：清空消息/流式/错误/终态/锚点；clearSession=true 连会话归属
+    // 一并清空（新建对话干净态），由 REPLAY_FAILED 横幅与侧栏新建信号调用
+    reset: (clearSession?: boolean) => dispatch({ type: "reset", clearSession }),
   };
 }
