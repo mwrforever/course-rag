@@ -1,9 +1,11 @@
 /**
- * useChatStream 测试（Task 11 核心 100%：对话页 SSE 10 事件状态机）
+ * useChatStream 测试（Task 11 核心 100%：对话页 SSE 11 事件状态机 + 到达序时间轴模型）
  *
  * 覆盖层次：
- * 1. chatReducer 纯函数逐事件（brief Step 1 的 9 组 + 幂等/防御/纯函数边界）
- * 2. sseEventToAction 事件映射（payload → action 的 JSON 解析与分流）
+ * 1. chatReducer 纯函数逐事件（brief Step 1 的 9 组 + 幂等/防御/纯函数边界；
+ *    2026-08-28 时间线改版：断言以 StreamMessage.timeline 节点序与合并语义为准）
+ * 2. sseEventToAction 事件映射（payload → action 的 JSON 解析、thinking stage 归一化、
+ *    query_plan zod 边界校验分流）
  * 3. useChatStream 集成（mock fetch 返回可读流逐帧喂入；409/cancel 竞态；
  *    心跳重置与 30s 断流 fake timers；reconnect 指数退避；REPLAY_FAILED 分流；
  *    M10 降级续流不回放 metadata/sources 的等价锚点）
@@ -102,6 +104,7 @@ function aiMsg(over?: Partial<StreamMessage>): StreamMessage {
     sources: [],
     stages: [],
     tools: [],
+    timeline: [],
     endStatus: null,
     messageId: null,
     ...over,
@@ -122,6 +125,7 @@ function userMsg(over?: Partial<StreamMessage>): StreamMessage {
     sources: [],
     stages: [],
     tools: [],
+    timeline: [],
     endStatus: null,
     messageId: null,
     ...over,
@@ -170,12 +174,9 @@ describe("chatReducer 纯函数", () => {
       id: "run-1",
       role: "assistant",
       model: "qwen3.8-max",
-      thinking: "",
-      thinkingEnded: false,
       text: "",
       sources: [],
-      stages: [],
-      tools: [],
+      timeline: [],
       endStatus: null,
       messageId: null,
     });
@@ -203,30 +204,109 @@ describe("chatReducer 纯函数", () => {
     expect(s.runId).toBe("run-9");
   });
 
-  it("用例2 thinking：跨帧文本累积；thinking_end 置折叠标记", () => {
+  it("用例2 thinking（时间线改版）：同 stage 多 delta 合并一节点多行；thinking_end 置节点 ended", () => {
     let s = streamingWithAi({ messages: [aiMsg({ thinking: "" })] });
-    s = chatReducer(s, { type: "thinking", delta: "先检索" });
-    s = chatReducer(s, { type: "thinking", delta: "课程资料" });
-    expect(s.messages[0].thinking).toBe("先检索课程资料");
-    expect(s.messages[0].thinkingEnded).toBe(false);
-    s = chatReducer(s, { type: "thinking_end" });
-    expect(s.messages[0].thinkingEnded).toBe(true);
+    s = chatReducer(s, { type: "thinking", delta: "先检索", stage: "understanding" });
+    s = chatReducer(s, { type: "thinking", delta: "，再组织\n新起一行", stage: "understanding" });
+    // 同 stage 合并：一节点，delta 按换行并入（首段续接末行、其余各起新行）
+    expect(s.messages[0].timeline).toEqual([
+      {
+        kind: "thinking",
+        stage: "understanding",
+        lines: ["先检索，再组织", "新起一行"],
+        ended: false,
+      },
+    ]);
+    s = chatReducer(s, { type: "thinking_end", stage: "understanding" });
+    expect(s.messages[0].timeline[0]).toMatchObject({ kind: "thinking", ended: true });
+    // 重复 thinking_end 幂等（原引用语义不重复置位）
+    const again = chatReducer(s, { type: "thinking_end", stage: "understanding" });
+    expect(again.messages[0].timeline[0]).toMatchObject({ ended: true });
+  });
+
+  it("用例2 扩展：不同 stage 的 thinking 各建节点（到达序）；thinking_end 按 stage 配对", () => {
+    let s = streamingWithAi({ messages: [aiMsg()] });
+    s = chatReducer(s, { type: "thinking", delta: "理解问题", stage: "understanding" });
+    s = chatReducer(s, { type: "thinking", delta: "组织回答", stage: "generating" });
+    s = chatReducer(s, { type: "thinking", delta: "的第一步", stage: "generating" });
+    expect(s.messages[0].timeline).toEqual([
+      { kind: "thinking", stage: "understanding", lines: ["理解问题"], ended: false },
+      { kind: "thinking", stage: "generating", lines: ["组织回答的第一步"], ended: false },
+    ]);
+    // thinking_end 按 stage 精确配对：仅 generating 节点置 ended
+    s = chatReducer(s, { type: "thinking_end", stage: "generating" });
+    expect(s.messages[0].timeline.map((n) => (n.kind === "thinking" ? n.ended : null))).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  it("用例2 扩展：空 delta 不建空节点（噪声防御）", () => {
+    const s = chatReducer(streamingWithAi({ messages: [aiMsg()] }), {
+      type: "thinking",
+      delta: "",
+      stage: "understanding",
+    });
+    expect(s.messages[0].timeline).toEqual([]);
   });
 
   it("用例2 扩展：无 AI 槽时 thinking/delta 防御性忽略（reconnect 降级无 metadata 回放场景）", () => {
     const s0 = createInitialState(null);
-    expect(chatReducer(s0, { type: "thinking", delta: "x" })).toBe(s0);
+    expect(chatReducer(s0, { type: "thinking", delta: "x", stage: "generating" })).toBe(s0);
     expect(chatReducer(s0, { type: "delta", text: "x" })).toBe(s0);
   });
 
-  it("用例3 delta：正文跨帧累积", () => {
+  it("用例3 delta：正文跨帧累积（正文不入时间轴）", () => {
     let s = streamingWithAi({ messages: [aiMsg()] });
     s = chatReducer(s, { type: "delta", text: "第一段。" });
     s = chatReducer(s, { type: "delta", text: "第二段。" });
     expect(s.messages[0].text).toBe("回答一部分第一段。第二段。");
+    expect(s.messages[0].timeline).toEqual([]);
   });
 
-  it("用例4 tool_call 入列 pending；tool_result 按 toolCallId 配对为 success + output", () => {
+  it("用例3b query_plan：建查询计划节点；二推原位替换（重放幂等，位置稳定）", () => {
+    let s = streamingWithAi({ messages: [aiMsg()] });
+    s = chatReducer(s, {
+      type: "stage",
+      stage: "understanding",
+      label: "正在理解你的问题",
+    });
+    s = chatReducer(s, {
+      type: "query_plan",
+      plan: {
+        intent: "knowledge_question",
+        rewritten: ["RAG 检索增强生成"],
+        filters: { courseNames: [] },
+      },
+    });
+    expect(s.messages[0].timeline).toEqual([
+      { kind: "stage", stage: "understanding", label: "正在理解你的问题" },
+      {
+        kind: "queryPlan",
+        intent: "knowledge_question",
+        rewritten: ["RAG 检索增强生成"],
+        courseNames: [],
+      },
+    ]);
+    // 二推（ring 回放重发）：原位替换不追加，节点序稳定
+    s = chatReducer(s, {
+      type: "query_plan",
+      plan: {
+        intent: "chat",
+        rewritten: ["闲聊"],
+        filters: { courseNames: ["高等数学"] },
+      },
+    });
+    expect(s.messages[0].timeline).toHaveLength(2);
+    expect(s.messages[0].timeline[1]).toEqual({
+      kind: "queryPlan",
+      intent: "chat",
+      rewritten: ["闲聊"],
+      courseNames: ["高等数学"],
+    });
+  });
+
+  it("用例4 tool_call 建节点 pending；tool_result 按 toolCallId 原位更新为 success + output", () => {
     let s = streamingWithAi({ messages: [aiMsg()] });
     s = chatReducer(s, {
       type: "tool_call",
@@ -234,8 +314,9 @@ describe("chatReducer 纯函数", () => {
       toolName: "searchKnowledge",
       input: { query: "哈希表" },
     });
-    expect(s.messages[0].tools).toEqual([
+    expect(s.messages[0].timeline).toEqual([
       {
+        kind: "tool",
         toolCallId: "t-1",
         toolName: "searchKnowledge",
         input: { query: "哈希表" },
@@ -249,31 +330,40 @@ describe("chatReducer 纯函数", () => {
       status: "success",
       output: { hits: 2 },
     });
-    expect(s.messages[0].tools[0]).toMatchObject({ status: "success", output: { hits: 2 } });
+    expect(s.messages[0].timeline[0]).toMatchObject({
+      kind: "tool",
+      status: "success",
+      output: { hits: 2 },
+    });
   });
 
-  it("用例4 扩展：toolCallId 空串容错：按到达顺序（索引兜底）配对", () => {
+  it("用例4 扩展：toolCallId 空串容错：按到达顺序（索引兜底）原位配对", () => {
     let s = streamingWithAi({ messages: [aiMsg()] });
     s = chatReducer(s, { type: "tool_call", toolCallId: "", toolName: "a", input: null });
     s = chatReducer(s, { type: "tool_call", toolCallId: "", toolName: "b", input: null });
     s = chatReducer(s, { type: "tool_result", toolCallId: "", status: "success", output: "r1" });
     s = chatReducer(s, { type: "tool_result", toolCallId: "", status: "success", output: "r2" });
-    expect(s.messages[0].tools.map((t) => t.output)).toEqual(["r1", "r2"]);
-    expect(s.messages[0].tools.every((t) => t.status === "success")).toBe(true);
+    expect(s.messages[0].timeline.map((n) => (n.kind === "tool" ? n.output : null))).toEqual([
+      "r1",
+      "r2",
+    ]);
+    expect(s.messages[0].timeline.every((n) => n.kind !== "tool" || n.status === "success")).toBe(
+      true,
+    );
   });
 
   it("用例4 扩展：无法配对的 tool_result 忽略；非 success 状态映射 error 态（类型保留）", () => {
     let s = streamingWithAi({ messages: [aiMsg()] });
     s = chatReducer(s, { type: "tool_call", toolCallId: "t-1", toolName: "a", input: null });
     s = chatReducer(s, { type: "tool_result", toolCallId: "t-9", status: "success", output: "x" });
-    expect(s.messages[0].tools).toHaveLength(1);
-    expect(s.messages[0].tools[0].status).toBe("pending");
+    expect(s.messages[0].timeline).toHaveLength(1);
+    expect(s.messages[0].timeline[0]).toMatchObject({ kind: "tool", status: "pending" });
     // 非 success（后端当前恒 success，保留枚举分支）
     s = chatReducer(s, { type: "tool_result", toolCallId: "t-1", status: "failed", output: null });
-    expect(s.messages[0].tools[0].status).toBe("error");
+    expect(s.messages[0].timeline[0]).toMatchObject({ kind: "tool", status: "error" });
   });
 
-  it("用例5 sources：写入当前 AI 消息；二推覆盖不重复", () => {
+  it("用例5 sources：写入当前 AI 消息 + 时间轴来源节点；二推原位覆盖不重复", () => {
     const src1: RetrievalSource = {
       chunkId: "c-1",
       docTitle: "讲义",
@@ -295,12 +385,14 @@ describe("chatReducer 纯函数", () => {
     let s = streamingWithAi({ messages: [aiMsg()] });
     s = chatReducer(s, { type: "sources", sources: [src1, src2] });
     expect(s.messages[0].sources).toEqual([src1, src2]);
-    // 幂等：二推整体覆盖，不累积重复
+    expect(s.messages[0].timeline).toEqual([{ kind: "sources", sources: [src1, src2] }]);
+    // 幂等：二推整体原位覆盖，不累积重复节点
     s = chatReducer(s, { type: "sources", sources: [src3] });
     expect(s.messages[0].sources).toEqual([src3]);
+    expect(s.messages[0].timeline).toEqual([{ kind: "sources", sources: [src3] }]);
   });
 
-  it("用例5 扩展 stage（2026-08-27）：阶段按序追加到当前 AI 消息；同键去重（ring 回放幂等）；终态后忽略", () => {
+  it("用例5 扩展 stage（2026-08-27）：时间轴建阶段节点；同键去重（ring 回放幂等）；终态后忽略", () => {
     let s = streamingWithAi({ messages: [aiMsg()] });
     s = chatReducer(s, {
       type: "stage",
@@ -309,19 +401,76 @@ describe("chatReducer 纯函数", () => {
       seq: 2,
     });
     s = chatReducer(s, { type: "stage", stage: "retrieving", label: "知识库查询中", seq: 3 });
-    expect(s.messages[0].stages).toEqual([
-      { stage: "understanding", label: "正在理解你的问题" },
-      { stage: "retrieving", label: "知识库查询中" },
+    expect(s.messages[0].timeline).toEqual([
+      { kind: "stage", stage: "understanding", label: "正在理解你的问题" },
+      { kind: "stage", stage: "retrieving", label: "知识库查询中" },
     ]);
     // 同键重发（ring 全量回放）不追加
     s = chatReducer(s, { type: "stage", stage: "retrieving", label: "知识库查询中", seq: 4 });
-    expect(s.messages[0].stages).toHaveLength(2);
+    expect(s.messages[0].timeline).toHaveLength(2);
     // 锚点随 seq 前进
     expect(s.lastEventId).toBe(4);
     // 终态后 stage 忽略
     s = chatReducer(s, { type: "end", status: "COMPLETED", messageId: "m-1", seq: 5 });
     s = chatReducer(s, { type: "stage", stage: "generating", label: "正在生成回答", seq: 6 });
-    expect(s.messages[0].stages).toHaveLength(2);
+    expect(s.messages[0].timeline).toHaveLength(2);
+  });
+
+  it("时间线改版主链路：[thinking(u), query_plan, stage, thinking(g), tool_call, tool_result, sources, delta] 节点序与合并语义", () => {
+    // brief Task 8 Steps 锚定事件序列：断言到达序节点排列（不按事件类型重排）
+    let s = streamingWithAi({ messages: [aiMsg()] });
+    s = chatReducer(s, { type: "thinking", delta: "理解中…", stage: "understanding", seq: 1 });
+    s = chatReducer(s, {
+      type: "query_plan",
+      plan: {
+        intent: "knowledge_question",
+        rewritten: ["RAG 的概念"],
+        filters: { courseNames: [] },
+      },
+      seq: 2,
+    });
+    s = chatReducer(s, { type: "stage", stage: "retrieving", label: "知识库查询中", seq: 3 });
+    s = chatReducer(s, {
+      type: "thinking",
+      delta: "基于检索结果组织",
+      stage: "generating",
+      seq: 4,
+    });
+    s = chatReducer(s, {
+      type: "tool_call",
+      toolCallId: "t-1",
+      toolName: "searchKnowledge",
+      input: null,
+      seq: 5,
+    });
+    s = chatReducer(s, {
+      type: "tool_result",
+      toolCallId: "t-1",
+      status: "success",
+      output: { hits: 3 },
+      seq: 6,
+    });
+    const src: RetrievalSource = { chunkId: "c-9", docTitle: "讲义", headingPath: "", score: 0.5 };
+    s = chatReducer(s, { type: "sources", sources: [src], seq: 7 });
+    s = chatReducer(s, { type: "delta", text: "正文", seq: 8 });
+
+    const ai = s.messages[0];
+    // 节点序严格按到达序；delta 正文不入时间轴
+    expect(ai.timeline.map((node) => node.kind)).toEqual([
+      "thinking",
+      "queryPlan",
+      "stage",
+      "thinking",
+      "tool",
+      "sources",
+    ]);
+    // 合并语义：两个 thinking 节点分属 understanding/generating（未跨 stage 合并）
+    expect(ai.timeline[0]).toMatchObject({ kind: "thinking", stage: "understanding" });
+    expect(ai.timeline[3]).toMatchObject({ kind: "thinking", stage: "generating" });
+    // tool_result 原位更新（不追加第二节点）
+    expect(ai.timeline[4]).toMatchObject({ kind: "tool", status: "success", output: { hits: 3 } });
+    expect(ai.text).toBe("回答一部分正文");
+    expect(s.lastEventId).toBe(8);
   });
 
   it("用例6 error：run 级 retryable 分流（streaming false、endStatus 交由 end 落位）", () => {
@@ -603,7 +752,7 @@ describe("chatReducer 纯函数", () => {
     expect(s.lastEventId).toBe(7);
   });
 
-  it("纯函数：冻结入参不被修改（metadata 建槽 / CANCELLED 后缀均不可变更新）", () => {
+  it("纯函数：冻结入参不被修改（metadata 建槽 / thinking 时间轴合并 / CANCELLED 后缀均不可变更新）", () => {
     // 深层冻结：readonly 形态仅供本用例断言原对象未被修改（reducer 若可变更新会直接抛错）
     const s0 = Object.freeze({
       ...createInitialState(null),
@@ -611,12 +760,16 @@ describe("chatReducer 纯函数", () => {
       messages: Object.freeze([Object.freeze(aiMsg({ thinking: "" }))]),
     }) as unknown as ChatStreamState;
     const s1 = chatReducer(s0, { type: "metadata", runId: "run-1", sessionId: "s1", model: "m" });
-    const s2 = chatReducer(s1, { type: "thinking", delta: "补充" });
+    const s2 = chatReducer(s1, { type: "thinking", delta: "补充", stage: "generating" });
     const s3 = chatReducer(s2, { type: "end", status: "CANCELLED" });
     // 原对象未被任何一步修改（若 reducer 可变更新，冻结会直接抛错）
     expect(s0.messages[0].text).toBe("回答一部分");
     expect(s1.messages[0].text).toBe("回答一部分");
-    expect(s2.messages[0].thinking).toBe("补充");
+    expect(s2.messages[0].timeline[0]).toMatchObject({
+      kind: "thinking",
+      lines: ["补充"],
+      ended: false,
+    });
     expect(s3.messages[0].text).toBe(`回答一部分${STOPPED_SUFFIX}`);
   });
 });
@@ -624,7 +777,7 @@ describe("chatReducer 纯函数", () => {
 // ===== 2. sseEventToAction 事件映射 =====
 
 describe("sseEventToAction 事件映射（payload → action）", () => {
-  it("10 类事件全映射：字段透传 + seq 携带（metadata/thinking/delta/tool_call/tool_result/sources/end）", () => {
+  it("11 类事件全映射：字段透传 + seq 携带（metadata/thinking/thinking_end/delta/query_plan/tool_call/tool_result/sources/end）", () => {
     expect(sseEventToAction("metadata", J({ runId: "r", sessionId: "s", model: "m" }), 1)).toEqual({
       type: "metadata",
       runId: "r",
@@ -632,16 +785,40 @@ describe("sseEventToAction 事件映射（payload → action）", () => {
       model: "m",
       seq: 1,
     });
-    expect(sseEventToAction("thinking", J({ delta: "思" }), 1)).toEqual({
+    expect(sseEventToAction("thinking", J({ delta: "思", stage: "understanding" }), 1)).toEqual({
       type: "thinking",
       delta: "思",
+      stage: "understanding",
       seq: 1,
     });
-    expect(sseEventToAction("thinking_end", J({}), 1)).toEqual({ type: "thinking_end", seq: 1 });
+    expect(sseEventToAction("thinking_end", J({ stage: "generating" }), 1)).toEqual({
+      type: "thinking_end",
+      stage: "generating",
+      seq: 1,
+    });
     expect(sseEventToAction("delta", J({ text: "文" }), 1)).toEqual({
       type: "delta",
       text: "文",
       seq: 1,
+    });
+    expect(
+      sseEventToAction(
+        "query_plan",
+        J({
+          intent: "knowledge_question",
+          rewritten: ["RAG 检索增强生成"],
+          filters: { courseNames: [] },
+        }),
+        2,
+      ),
+    ).toEqual({
+      type: "query_plan",
+      plan: {
+        intent: "knowledge_question",
+        rewritten: ["RAG 检索增强生成"],
+        filters: { courseNames: [] },
+      },
+      seq: 2,
     });
     expect(
       sseEventToAction("tool_call", J({ toolCallId: "t", toolName: "n", input: { q: 1 } }), 1),
@@ -673,6 +850,54 @@ describe("sseEventToAction 事件映射（payload → action）", () => {
       messageId: "m1",
       seq: 2,
     });
+  });
+
+  it("thinking stage 归一化（时间线改版）：缺失/null/未知值降级 generating（历史回放与脏数据契约）", () => {
+    // 后端真机实证：PG 回放的 thinking 行 stage 输出 JSON null
+    expect(sseEventToAction("thinking", J({ delta: "思", stage: null }), 1)).toEqual({
+      type: "thinking",
+      delta: "思",
+      stage: "generating",
+      seq: 1,
+    });
+    // 字段缺失 / 未知键 / 非字符串同样降级（内容不丢）
+    expect(sseEventToAction("thinking", J({ delta: "思" }), 1)).toMatchObject({
+      stage: "generating",
+    });
+    expect(sseEventToAction("thinking", J({ delta: "思", stage: "hacking" }), 1)).toMatchObject({
+      stage: "generating",
+    });
+    expect(sseEventToAction("thinking", J({ delta: "思", stage: 42 }), 1)).toMatchObject({
+      stage: "generating",
+    });
+    expect(sseEventToAction("thinking_end", J({}), 1)).toMatchObject({ stage: "generating" });
+    // 合法阶段键原样透传
+    expect(sseEventToAction("thinking", J({ delta: "", stage: "attachments" }), 1)).toMatchObject({
+      stage: "attachments",
+    });
+  });
+
+  it("query_plan zod 边界校验：结构非法（缺字段/类型错）整体忽略返回 null", () => {
+    // 缺 filters
+    expect(sseEventToAction("query_plan", J({ intent: "chat", rewritten: [] }), 1)).toBeNull();
+    // rewritten 非字符串数组
+    expect(
+      sseEventToAction(
+        "query_plan",
+        J({ intent: "chat", rewritten: "不是数组", filters: { courseNames: [] } }),
+        1,
+      ),
+    ).toBeNull();
+    // courseNames 混入非字符串
+    expect(
+      sseEventToAction(
+        "query_plan",
+        J({ intent: "chat", rewritten: [], filters: { courseNames: [1] } }),
+        1,
+      ),
+    ).toBeNull();
+    // 非对象载荷
+    expect(sseEventToAction("query_plan", "not-json{{{", 1)).toBeNull();
   });
 
   it("stage 事件映射（2026-08-27）：合法阶段键透传 + label 缺省回退键名；未知键/坏 JSON 忽略", () => {
@@ -738,23 +963,35 @@ describe("sseEventToAction 事件映射（payload → action）", () => {
 // ===== 3. useChatStream 集成 =====
 
 describe("useChatStream 集成", () => {
-  it("send 全链路：10 事件逐帧喂入还原完整消息状态机（含 lastEventId 链路锚点）", async () => {
+  it("send 全链路：11 事件逐帧喂入还原完整消息状态机（时间轴节点序 + lastEventId 链路锚点）", async () => {
     fetchMock.mockResolvedValue(
       sseResponse([
         md(),
-        frame(2, "thinking", J({ delta: "先检索课程知识库" })),
-        frame(3, "thinking", J({ delta: "，再组织回答" })),
-        frame(4, "thinking_end", J({})),
-        frame(5, "delta", J({ text: "第一段。" })),
-        frame(6, "delta", J({ text: "第二段。" })),
+        frame(2, "stage", J({ stage: "understanding", label: "正在理解你的问题" })),
+        frame(3, "thinking", J({ delta: "先检索课程知识库", stage: "understanding" })),
+        frame(4, "thinking", J({ delta: "，再组织回答", stage: "understanding" })),
+        frame(5, "thinking_end", J({ stage: "understanding" })),
         frame(
-          7,
+          6,
+          "query_plan",
+          J({
+            intent: "knowledge_question",
+            rewritten: ["哈希表课程资料检索"],
+            filters: { courseNames: [] },
+          }),
+        ),
+        frame(7, "thinking", J({ delta: "组织回答", stage: "generating" })),
+        frame(8, "thinking_end", J({ stage: "generating" })),
+        frame(9, "delta", J({ text: "第一段。" })),
+        frame(10, "delta", J({ text: "第二段。" })),
+        frame(
+          11,
           "tool_call",
           J({ toolCallId: "t-1", toolName: "searchKnowledge", input: { query: "哈希表" } }),
         ),
-        frame(8, "tool_result", J({ toolCallId: "t-1", status: "success", output: { hits: 2 } })),
+        frame(12, "tool_result", J({ toolCallId: "t-1", status: "success", output: { hits: 2 } })),
         frame(
-          9,
+          13,
           "sources",
           J({
             sources: [
@@ -762,7 +999,7 @@ describe("useChatStream 集成", () => {
             ],
           }),
         ),
-        frame(10, "end", J({ runId: "run-1", status: "COMPLETED", messageId: "msg-123" })),
+        frame(14, "end", J({ runId: "run-1", status: "COMPLETED", messageId: "msg-123" })),
       ]),
     );
     const { result } = renderHook(() => useChatStream(null));
@@ -789,24 +1026,44 @@ describe("useChatStream 集成", () => {
     expect(state.messages).toHaveLength(2);
     expect(state.messages[0]).toMatchObject({ role: "user", content: "你好", attachments: [] });
     const ai = state.messages[1];
+    // 时间轴按到达序建节点：stage → thinking(u) → queryPlan → thinking(g) → tool → sources
+    expect(ai.timeline).toEqual([
+      { kind: "stage", stage: "understanding", label: "正在理解你的问题" },
+      {
+        kind: "thinking",
+        stage: "understanding",
+        lines: ["先检索课程知识库，再组织回答"],
+        ended: true,
+      },
+      {
+        kind: "queryPlan",
+        intent: "knowledge_question",
+        rewritten: ["哈希表课程资料检索"],
+        courseNames: [],
+      },
+      { kind: "thinking", stage: "generating", lines: ["组织回答"], ended: true },
+      {
+        kind: "tool",
+        toolCallId: "t-1",
+        toolName: "searchKnowledge",
+        input: { query: "哈希表" },
+        status: "success",
+        output: { hits: 2 },
+      },
+      {
+        kind: "sources",
+        sources: [
+          { chunkId: "c-1", docTitle: "数据结构讲义", headingPath: "Ch3 > 3.1", score: 0.87 },
+        ],
+      },
+    ]);
     expect(ai).toMatchObject({
       id: "run-1",
       role: "assistant",
       model: "qwen3.8-max",
-      thinking: "先检索课程知识库，再组织回答",
-      thinkingEnded: true,
       text: "第一段。第二段。",
       sources: [
         { chunkId: "c-1", docTitle: "数据结构讲义", headingPath: "Ch3 > 3.1", score: 0.87 },
-      ],
-      tools: [
-        {
-          toolCallId: "t-1",
-          toolName: "searchKnowledge",
-          input: { query: "哈希表" },
-          status: "success",
-          output: { hits: 2 },
-        },
       ],
       endStatus: "COMPLETED",
       messageId: "msg-123",
@@ -814,10 +1071,10 @@ describe("useChatStream 集成", () => {
     expect(state.streaming).toBe(false);
     expect(state.endedStatus).toBe("COMPLETED");
     expect(state.error).toBeNull();
-    // 妖点：metadata 到达后 sessionId 暴露（UI replace URL 的依据）
+    // metadata 到达后 sessionId 暴露（状态留存依据，E2E 实证修订：不 replace URL）
     expect(state.sessionId).toBe("sess-1");
     expect(state.runId).toBe("run-1");
-    expect(state.lastEventId).toBe(10);
+    expect(state.lastEventId).toBe(14);
   });
 
   it("send 携带附件：ChatRequest.attachments 透传 + 用户消息渲染附件 chips 数据", async () => {
@@ -903,7 +1160,7 @@ describe("useChatStream 集成", () => {
       streams[0].push(
         frame(1, "metadata", J({ runId: "run-1", sessionId: "sess-1", model: "m1" })),
       );
-      streams[0].push(frame(2, "thinking", J({ delta: "思1" })));
+      streams[0].push(frame(2, "thinking", J({ delta: "思1", stage: "generating" })));
       streams[0].push(frame(3, "delta", J({ text: "第一轮回答" })));
       streams[0].push(
         frame(4, "end", J({ runId: "run-1", status: "COMPLETED", messageId: "msg-1" })),
@@ -921,7 +1178,7 @@ describe("useChatStream 集成", () => {
       streams[1].push(
         frame(1, "metadata", J({ runId: "run-2", sessionId: "sess-1", model: "m1" })),
       );
-      streams[1].push(frame(2, "thinking", J({ delta: "思2" })));
+      streams[1].push(frame(2, "thinking", J({ delta: "思2", stage: "generating" })));
       streams[1].push(frame(3, "delta", J({ text: "第二轮回答" })));
       streams[1].push(
         frame(4, "end", J({ runId: "run-2", status: "COMPLETED", messageId: "msg-2" })),
@@ -930,7 +1187,7 @@ describe("useChatStream 集成", () => {
     await waitFor(() => expect(result.current.state.endedStatus).toBe("COMPLETED"));
     const st2 = result.current.state;
     expect(st2.streaming).toBe(false);
-    // 两轮 AI 消息各自完整落位，互不污染
+    // 两轮 AI 消息各自完整落位，互不污染（时间轴节点随各自 run 归位）
     expect(st2.messages).toHaveLength(4);
     expect(st2.messages[1]).toMatchObject({
       id: "run-1",
@@ -941,11 +1198,13 @@ describe("useChatStream 集成", () => {
     expect(st2.messages[3]).toMatchObject({
       id: "run-2",
       role: "assistant",
-      thinking: "思2",
       text: "第二轮回答",
       endStatus: "COMPLETED",
       messageId: "msg-2",
     });
+    expect(st2.messages[3].timeline).toEqual([
+      { kind: "thinking", stage: "generating", lines: ["思2"], ended: false },
+    ]);
     // 反馈语义：messageId 已更新为第二轮值（J5 反馈接口唯一来源）
     expect(st2.messages[3].messageId).toBe("msg-2");
     expect(st2.runId).toBe("run-2");
@@ -1103,6 +1362,13 @@ describe("useChatStream 集成", () => {
       sources: [{ chunkId: "c-1", docTitle: "数据结构讲义", headingPath: "Ch3", score: 0.87 }],
       text: "部分答案续流内容",
     });
+    // 时间轴来源节点同样原样保留（M10 降级续流不重建时间轴）
+    expect(result.current.state.messages[1].timeline).toEqual([
+      {
+        kind: "sources",
+        sources: [{ chunkId: "c-1", docTitle: "数据结构讲义", headingPath: "Ch3", score: 0.87 }],
+      },
+    ]);
     expect(result.current.state.lastEventId).toBe(4);
   });
 

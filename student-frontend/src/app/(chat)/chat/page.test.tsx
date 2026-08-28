@@ -96,6 +96,7 @@ function makeAssistant(overrides: Partial<StreamMessage> = {}): StreamMessage {
     sources: [],
     stages: [],
     tools: [],
+    timeline: [],
     endStatus: null,
     messageId: null,
     ...overrides,
@@ -224,6 +225,7 @@ describe("新对话页：发送与流式状态流转", () => {
             sources: [],
             stages: [],
             tools: [],
+            timeline: [],
             endStatus: null,
             messageId: null,
           },
@@ -393,6 +395,7 @@ describe("新对话页：附件全链路", () => {
         sources: [],
         stages: [],
         tools: [],
+        timeline: [],
         endStatus: null,
         messageId: null,
       };

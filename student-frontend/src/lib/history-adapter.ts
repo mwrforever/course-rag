@@ -123,6 +123,7 @@ function toUserMessage(row: StudentMessage): StreamMessage {
     sources: [],
     stages: [],
     tools: [],
+    timeline: [],
     endStatus: null,
     messageId: null,
   };
@@ -181,6 +182,7 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
         // 推理卡对历史消息退化为「已深度思考」折叠态（2026-08-27）
         stages: [],
         tools: [],
+        timeline: [],
         endStatus: "COMPLETED",
         messageId: null,
         intentType: row.intentType,

@@ -1,10 +1,13 @@
 /**
- * useChatStream：对话页 SSE 10 事件状态机（Task 11 核心）
+ * useChatStream：对话页 SSE 11 事件状态机（Task 11 核心；2026-08-28 时间线改版）
  *
  * 职责（设计文档 §1.5.4 + 契约 §5/§6）：
- * - chatReducer：纯函数状态机，消费 11 种 SSE 事件（metadata/thinking/thinking_end/
- *   delta/tool_call/tool_result/sources/stage/error/end + :heartbeat 心跳仅重置计时，不落状态）
- *   与 send/reconnect/reset 三个生命周期动作，产出 Task 12 组件消费的渲染视图模型
+ * - chatReducer：纯函数状态机，消费 12 种 SSE 事件（metadata/thinking/thinking_end/
+ *   delta/query_plan/tool_call/tool_result/sources/stage/error/end + :heartbeat 心跳
+ *   仅重置计时，不落状态）与 send/reconnect/reset 三个生命周期动作，产出组件消费的
+ *   渲染视图模型；时间轴（StreamMessage.timeline）按事件到达序 push/merge——
+ *   stage/query_plan/sources/tool_call 各建节点、thinking 同 stage 合并行、
+ *   tool_result 原位更新、delta 正文不入时间轴
  * - useChatStream：fetch + ReadableStream + TextDecoder 手写 SSE 解析喂入；
  *   409 发送冲突语义、cancel 竞态静默、30s 断流心跳计时、重连指数退避（1s/2s 封顶 3 次）
  *
@@ -26,7 +29,15 @@
 import { useEffect, useReducer, useRef } from "react";
 import { ApiError, cancelRun, postChat, reconnectChat } from "../lib/api";
 import { createSseParser } from "../lib/sse-parser";
-import type { AttachmentRecord, ChatStage, ChatStageKey, RetrievalSource } from "../lib/types";
+import {
+  queryPlanPayloadSchema,
+  type AttachmentRecord,
+  type ChatStage,
+  type ChatStageKey,
+  type QueryPlanPayload,
+  type RetrievalSource,
+  type TimelineNode,
+} from "../lib/types";
 
 /** 合法阶段键集合（后端 STAGE_* 契约同值；未知阶段事件整体忽略，防脏数据进状态机） */
 const STAGE_KEYS: ReadonlySet<string> = new Set([
@@ -91,6 +102,12 @@ export interface StreamMessage {
   stages: ChatStage[];
   /** 工具卡列表（toolCallId 配对） */
   tools: StreamTool[];
+  /**
+   * 时间轴节点（2026-08-28 时间线改版）：SSE 事件按到达序 push/merge 的渲染模型——
+   * stage/query_plan/sources/tool_call 各建节点、thinking 同 stage 合并行、
+   * tool_result 原位更新；delta 正文不入时间轴（仍累积 text 由答案区渲染）
+   */
+  timeline: TimelineNode[];
   /** 终态（end 事件后非 null；操作栏/反馈按钮浮现依据） */
   endStatus: EndStatus | null;
   /** end COMPLETED 的 messageId（反馈接口唯一来源；CANCELLED/ERROR 为 null） */
@@ -120,13 +137,14 @@ export interface ChatStreamState {
   endedStatus: EndStatus | null;
 }
 
-/** reducer 动作：10 种 SSE 事件（携带 seq 锚点）+ 生命周期动作（send/reconnect/reset） */
+/** reducer 动作：11 种 SSE 事件（携带 seq 锚点）+ 生命周期动作（send/reconnect/reset） */
 export type ChatAction =
   | { type: "send"; id: string; query: string; attachments: AttachmentRecord[] }
   | { type: "metadata"; runId: string; sessionId: string; model: string; seq?: number | null }
-  | { type: "thinking"; delta: string; seq?: number | null }
-  | { type: "thinking_end"; seq?: number | null }
+  | { type: "thinking"; delta: string; stage: ChatStageKey; seq?: number | null }
+  | { type: "thinking_end"; stage: ChatStageKey; seq?: number | null }
   | { type: "delta"; text: string; seq?: number | null }
+  | { type: "query_plan"; plan: QueryPlanPayload; seq?: number | null }
   | {
       type: "tool_call";
       toolCallId: string;
@@ -172,6 +190,107 @@ function isTerminal(state: ChatStreamState): boolean {
   return state.endedStatus !== null || state.error !== null;
 }
 
+/**
+ * 归一化思考阶段键：STAGE_KEYS 合法集合内原样透传；缺失/null/未知值降级 generating
+ * （契约：历史存量 thinking 行与 PG 回放的 stage:null 均按 generating 渲染，不报错）
+ */
+function normalizeThinkingStage(value: unknown): ChatStageKey {
+  return typeof value === "string" && STAGE_KEYS.has(value)
+    ? (value as ChatStageKey)
+    : "generating";
+}
+
+/**
+ * thinking delta 并入节点行列表：首段续接末行（进行中行，流式自然增长），
+ * 其余各起新行；delta 可能携带任意位置的换行（后端按思考片段切分，不保证行边界）
+ */
+function mergeThinkingLines(lines: string[], delta: string): string[] {
+  const parts = delta.split("\n");
+  const next = lines.length > 0 ? [...lines] : [""];
+  // 首段并入进行中行（末行）；后续段各起新行
+  next[next.length - 1] += parts[0] ?? "";
+  for (let i = 1; i < parts.length; i += 1) {
+    next.push(parts[i]);
+  }
+  return next;
+}
+
+/**
+ * 时间轴 upsert 思考节点：倒序找同 stage 的 thinking 节点合并行（同 stage 多 delta
+ * 一节点多行）；不存在则新建节点。空 delta 且无既有节点时不产生空节点（噪声防御）
+ */
+function upsertThinkingNode(
+  timeline: TimelineNode[],
+  stage: ChatStageKey,
+  delta: string,
+): TimelineNode[] {
+  for (let i = timeline.length - 1; i >= 0; i -= 1) {
+    const node = timeline[i];
+    if (node.kind === "thinking" && node.stage === stage) {
+      const next = timeline.slice();
+      next[i] = { ...node, lines: mergeThinkingLines(node.lines, delta) };
+      return next;
+    }
+  }
+  // 无既有节点：空 delta 不建节点（后端空思考片段无渲染意义）
+  if (delta === "") return timeline;
+  return [
+    ...timeline,
+    { kind: "thinking", stage, lines: mergeThinkingLines([], delta), ended: false },
+  ];
+}
+
+/** 时间轴标记思考结束：倒序找同 stage 的 thinking 节点置 ended（幂等：已 ended 原引用返回） */
+function markThinkingEnded(timeline: TimelineNode[], stage: ChatStageKey): TimelineNode[] {
+  for (let i = timeline.length - 1; i >= 0; i -= 1) {
+    const node = timeline[i];
+    if (node.kind === "thinking" && node.stage === stage) {
+      if (node.ended) return timeline;
+      const next = timeline.slice();
+      next[i] = { ...node, ended: true };
+      return next;
+    }
+  }
+  // 无匹配节点（如回放从 thinking_end 开始）：仅落全局 thinkingEnded 标记，不建空节点
+  return timeline;
+}
+
+/** 时间轴替换或追加节点：同 kind 已存在则原位替换（重放二推幂等，保持首个到达位置） */
+function replaceOrPushNode<T extends TimelineNode>(
+  timeline: TimelineNode[],
+  kind: T["kind"],
+  node: T,
+): TimelineNode[] {
+  const index = timeline.findIndex((item) => item.kind === kind);
+  if (index < 0) return [...timeline, node];
+  const next = timeline.slice();
+  next[index] = node;
+  return next;
+}
+
+/**
+ * 时间轴原位更新工具节点：按 toolCallId 配对首个 pending 工具节点写结果
+ * （空串 toolCallId 同一谓词下按到达顺序兜底配对，与 tools 字段语义一致）；
+ * 无配对返回原引用（防御性忽略）
+ */
+function updateTimelineTool(
+  timeline: TimelineNode[],
+  toolCallId: string,
+  status: string,
+  output: unknown,
+): TimelineNode[] {
+  const index = timeline.findIndex(
+    (item) => item.kind === "tool" && item.toolCallId === toolCallId && item.status === "pending",
+  );
+  if (index < 0) return timeline;
+  const next = timeline.slice();
+  const target = next[index];
+  if (target.kind !== "tool") return timeline;
+  // 后端恒 success（design 注记）；非 success 映射 error 态保留枚举分支
+  next[index] = { ...target, status: status === "success" ? "success" : "error", output };
+  return next;
+}
+
 /** 应用事件锚点 seq 到 lastEventId（无 seq 的事件不改动锚点） */
 function applySeq(state: ChatStreamState, seq: number | null | undefined): ChatStreamState {
   if (seq === undefined || seq === null) return state;
@@ -204,7 +323,7 @@ function updateLastAssistant(
   return state;
 }
 
-/** AI 消息槽工厂（元数据默认值；thinking/text/sources/stages/tools 由事件逐步填充） */
+/** AI 消息槽工厂（元数据默认值；thinking/text/sources/stages/tools/timeline 由事件逐步填充） */
 function createAssistantMessage(init: { id: string; model: string }): StreamMessage {
   return {
     id: init.id,
@@ -218,6 +337,7 @@ function createAssistantMessage(init: { id: string; model: string }): StreamMess
     sources: [],
     stages: [],
     tools: [],
+    timeline: [],
     endStatus: null,
     messageId: null,
   };
@@ -258,6 +378,7 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
         sources: [],
         stages: [],
         tools: [],
+        timeline: [],
         endStatus: null,
         messageId: null,
       };
@@ -292,37 +413,63 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
       };
     }
     case "thinking": {
-      // thinking：思考卡流式追加（无槽/终态时防御性忽略）
+      // thinking：思考流式追加 + 时间轴同 stage 节点合并行（无槽/终态时防御性忽略）
       if (isTerminal(state)) return state;
       return updateLastAssistant(applySeq(state, action.seq), (msg) => ({
         ...msg,
         thinking: msg.thinking + action.delta,
+        timeline: upsertThinkingNode(msg.timeline, action.stage, action.delta),
       }));
     }
     case "thinking_end": {
-      // thinking_end：思考卡折叠标记（UI 折叠为摘要行）
+      // thinking_end：思考折叠标记 + 时间轴同 stage 节点置 ended（UI 退出「思考中」）
       if (isTerminal(state)) return state;
       return updateLastAssistant(applySeq(state, action.seq), (msg) => ({
         ...msg,
         thinkingEnded: true,
+        timeline: markThinkingEnded(msg.timeline, action.stage),
       }));
     }
     case "delta": {
-      // delta：正文流式追加（Markdown 渲染源）
+      // delta：正文流式追加（Markdown 渲染源；正文不入时间轴）
       if (isTerminal(state)) return state;
       return updateLastAssistant(applySeq(state, action.seq), (msg) => ({
         ...msg,
         text: msg.text + action.text,
       }));
     }
+    case "query_plan": {
+      // query_plan：时间轴建查询计划节点（每 run 语义唯一，二推原位替换保幂等）
+      if (isTerminal(state)) return state;
+      return updateLastAssistant(applySeq(state, action.seq), (msg) => ({
+        ...msg,
+        timeline: replaceOrPushNode(msg.timeline, "queryPlan", {
+          kind: "queryPlan",
+          intent: action.plan.intent,
+          rewritten: action.plan.rewritten,
+          courseNames: action.plan.filters.courseNames,
+        }),
+      }));
+    }
     case "tool_call": {
-      // tool_call：插入 pending 工具卡（spinner）
+      // tool_call：插入 pending 工具卡 + 时间轴建 pending 工具节点（spinner/动画环）
       if (isTerminal(state)) return state;
       return updateLastAssistant(applySeq(state, action.seq), (msg) => ({
         ...msg,
         tools: [
           ...msg.tools,
           {
+            toolCallId: action.toolCallId,
+            toolName: action.toolName,
+            input: action.input,
+            status: "pending",
+            output: null,
+          },
+        ],
+        timeline: [
+          ...msg.timeline,
+          {
+            kind: "tool",
             toolCallId: action.toolCallId,
             toolName: action.toolName,
             input: action.input,
@@ -353,15 +500,27 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
                 }
               : t,
           ),
+          // 时间轴原位更新：与 tools 字段同一配对谓词，两条通道状态一致
+          timeline: updateTimelineTool(
+            msg.timeline,
+            action.toolCallId,
+            action.status,
+            action.output,
+          ),
         };
       });
     }
     case "sources": {
-      // sources：写入当前 AI 消息（二推整体覆盖不重复；M10 降级重放不发本事件）
+      // sources：写入当前 AI 消息 + 时间轴来源节点（二推整体原位替换不重复；
+      // M10 降级回放不发本事件，天然不重复）
       if (isTerminal(state)) return state;
       return updateLastAssistant(applySeq(state, action.seq), (msg) => ({
         ...msg,
         sources: action.sources,
+        timeline: replaceOrPushNode(msg.timeline, "sources", {
+          kind: "sources",
+          sources: action.sources,
+        }),
       }));
     }
     case "stage": {
@@ -371,7 +530,15 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
       return updateLastAssistant(applySeq(state, action.seq), (msg) =>
         msg.stages.some((item) => item.stage === action.stage)
           ? msg
-          : { ...msg, stages: [...msg.stages, { stage: action.stage, label: action.label }] },
+          : {
+              ...msg,
+              stages: [...msg.stages, { stage: action.stage, label: action.label }],
+              // 时间轴建阶段节点（同键去重与 stages 字段同步，保持两通道一致）
+              timeline: [
+                ...msg.timeline,
+                { kind: "stage", stage: action.stage, label: action.label },
+              ],
+            },
       );
     }
     case "error": {
@@ -465,11 +632,24 @@ export function sseEventToAction(
         seq,
       };
     case "thinking":
-      return { type: "thinking", delta: strField(payload, "delta"), seq };
+      // thinking 载荷 {delta, stage}：stage 缺失/null/未知降级 generating（历史回放契约）
+      return {
+        type: "thinking",
+        delta: strField(payload, "delta"),
+        stage: normalizeThinkingStage(payload["stage"]),
+        seq,
+      };
     case "thinking_end":
-      return { type: "thinking_end", seq };
+      // thinking_end 载荷 {stage}：与同 stage 的 THINKING 事件配对退出「思考中」
+      return { type: "thinking_end", stage: normalizeThinkingStage(payload["stage"]), seq };
     case "delta":
       return { type: "delta", text: strField(payload, "text"), seq };
+    case "query_plan": {
+      // query_plan 载荷 zod 边界校验：结构非法（缺 intent/rewritten/filters 等）整体忽略
+      const parsed = queryPlanPayloadSchema.safeParse(payload);
+      if (!parsed.success) return null;
+      return { type: "query_plan", plan: parsed.data, seq };
+    }
     case "tool_call":
       return {
         type: "tool_call",

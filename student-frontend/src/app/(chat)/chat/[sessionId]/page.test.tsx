@@ -302,6 +302,7 @@ describe("历史会话页：历史回显渲染", () => {
             sources: [],
             stages: [],
             tools: [],
+            timeline: [],
             endStatus: null,
             messageId: null,
           },
