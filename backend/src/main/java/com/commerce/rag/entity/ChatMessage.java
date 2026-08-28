@@ -78,6 +78,10 @@ public class ChatMessage implements Serializable {
     @TableField("message_type")
     private String messageType;
 
+    /** 思考来源阶段：understanding / attachments / generating（仅 messageType=thinking 行有值，其余行为 null） */
+    @TableField("thinking_stage")
+    private String thinkingStage;
+
     /** 逻辑删除标记（0 = 未删除，删除时写入毫秒时间戳） */
     @TableLogic(value = "0", delval = "1")
     private Long deleted;

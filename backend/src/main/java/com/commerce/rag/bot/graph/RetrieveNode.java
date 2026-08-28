@@ -111,6 +111,14 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
      */
     public static final String KEY_RETRIEVAL_SOURCES = "retrieval_sources";
 
+    /**
+     * per-run 思考事件推送回调 metadata 键（2026-08-28 对话流式时间线改版新增）。
+     * QU（QueryUnderstanding）节点侧产出的思考片段经 {@code RunnableConfig.metadata}
+     * 中本键携带的回调函数实时推送给 SSE 消费端，与 {@link #KEY_RETRIEVAL_SOURCES}
+     * 同通道——不写 State、不进 checkpoint（瞬时上下文，仅本轮 run 生命周期内有效）。
+     */
+    public static final String KEY_THINKING_CALLBACK = "thinkingCallback";
+
     private final SearchKnowledgeTool searchKnowledgeTool;
     private final CourseNameMapper courseNameMapper;
     private final ContextBuilderService contextBuilderService;
