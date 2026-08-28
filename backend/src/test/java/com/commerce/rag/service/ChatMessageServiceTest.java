@@ -83,13 +83,14 @@ class ChatMessageServiceTest {
     }
 
     @Test
-    @DisplayName("findByRunId → 按 run 查询消息并转为消息 VO（剔除内部字段）")
+    @DisplayName("findByRunId → 按 run 查询消息并转为消息 VO（含 thinking_stage，剔除内部字段）")
     void findByRunId_returnsMessages() {
         ChatMessage msg = new ChatMessage();
         msg.setId(1L);
         msg.setRole("ASSISTANT");
         msg.setContent("回答1");
         msg.setMessageType("thinking");
+        msg.setThinkingStage("understanding");
         msg.setRunId(10L);
         msg.setSeq(1);
         when(messageMapper.selectList(any())).thenReturn(List.of(msg));
@@ -101,6 +102,8 @@ class ChatMessageServiceTest {
         assertEquals("ASSISTANT", vo.role());
         assertEquals("回答1", vo.content());
         assertEquals("thinking", vo.messageType());
+        // thinking_stage 随 VO 下发（replayFromPg 降级回放据此重建带 stage 的 THINKING 事件）
+        assertEquals("understanding", vo.thinkingStage());
         assertEquals(10L, vo.runId());
         verify(messageMapper).selectList(any());
     }
@@ -174,27 +177,42 @@ class ChatMessageServiceTest {
         return msg;
     }
 
+    /** 构造 understanding 阶段 thinking 行（2026-08-28 时间线改版：thinking_stage 投影下发） */
+    private ChatMessage thinkingRow(Long id, Long runId) {
+        ChatMessage msg = studentRow(id, "ASSISTANT", runId);
+        msg.setMessageType("thinking");
+        msg.setThinkingStage("understanding");
+        msg.setContent("意图分析思考");
+        return msg;
+    }
+
     @Test
-    @DisplayName("findStudentMessagesBySession → 复合排序 createdAt asc + seq asc，投影含 sources_json/attachments_json")
+    @DisplayName(
+            "findStudentMessagesBySession → 复合排序 createdAt asc + seq asc，投影含 sources_json/attachments_json/thinking_stage")
     @SuppressWarnings("unchecked")
     void findStudentMessagesBySession_ordersByCreatedAtAscSeqAsc() {
-        // Given: 会话内有一个 COMPLETED run
+        // Given: 会话内有一个 COMPLETED run（含一行 understanding thinking 行）
         when(chatRunService.findCompletedRunIds(1L)).thenReturn(List.of(10L));
         Page<ChatMessage> returned = new Page<>(1, 200);
-        returned.setRecords(List.of(studentRow(1L, "USER", null), studentRow(2L, "ASSISTANT", 10L)));
-        returned.setTotal(2);
+        returned.setRecords(
+                List.of(studentRow(1L, "USER", null), thinkingRow(2L, 10L), studentRow(3L, "ASSISTANT", 10L)));
+        returned.setTotal(3);
         when(messageMapper.selectPage(any(), any())).thenReturn(returned);
 
         // When: 查询学生历史消息
         IPage<StudentMessageVO> result = messageService.findStudentMessagesBySession(1L, 1, 200);
 
         // Then: 分页结果转 VO（sources/attachments JSON 解析为对象数组）
-        assertEquals(2, result.getRecords().size());
+        assertEquals(3, result.getRecords().size());
         StudentMessageVO first = result.getRecords().get(0);
         assertEquals("USER", first.role());
         assertEquals("RAG 讲义", first.sources().get(0).docTitle());
         assertEquals("0/a.png", first.attachments().get(0).url());
-        assertEquals(2L, result.getTotal());
+        assertEquals(3L, result.getTotal());
+        // Then: thinking 行的 thinking_stage 随 VO 下发（2026-08-28 时间线改版：前端分段渲染）
+        StudentMessageVO thinking = result.getRecords().get(1);
+        assertEquals("thinking", thinking.messageType());
+        assertEquals("understanding", thinking.thinkingStage());
 
         // Then: 排序为 createdAt asc + seq asc 复合（M5 同根因：批内 created_at 相同排序不稳定）
         ArgumentCaptor<LambdaQueryWrapper<ChatMessage>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
@@ -203,10 +221,11 @@ class ChatMessageServiceTest {
         assertTrue(sqlSegment.contains("created_at ASC"), "应为 createdAt 升序: " + sqlSegment);
         assertTrue(sqlSegment.contains("seq ASC"), "应为 seq 升序（复合排序第二键）: " + sqlSegment);
 
-        // Then: 按需取列——投影含 sources_json/attachments_json 两列（服务端解析 JSON 用）
+        // Then: 按需取列——投影含 sources_json/attachments_json/thinking_stage（服务端解析 JSON 与阶段键下发用）
         String sqlSelect = captor.getValue().getSqlSelect();
         assertTrue(sqlSelect.contains("sources_json"), "投影应含 sources_json: " + sqlSelect);
         assertTrue(sqlSelect.contains("attachments_json"), "投影应含 attachments_json: " + sqlSelect);
+        assertTrue(sqlSelect.contains("thinking_stage"), "投影应含 thinking_stage: " + sqlSelect);
     }
 
     @Test

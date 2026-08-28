@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.commerce.rag.properties.StreamProperties;
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
@@ -13,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -392,6 +396,47 @@ class MemoryStreamBridgeTest {
         SseEmitter mockEmitter = mock(SseEmitter.class);
         boolean result = bridge.replayAndSubscribe("nonexistent", 0, mockEmitter);
         assertFalse(result);
+    }
+
+    @Test
+    @DisplayName("回放定位未命中（slot null）→ 快照跳过该事件且记 warn 观测（2B deferred② 收口）")
+    void replayAndSubscribe_slotMiss_skipsEventAndLogsWarn() throws Exception {
+        // Given: logback ListAppender 捕获 MemoryStreamBridge 日志（静默跳过 → 可观测）
+        ch.qos.logback.classic.Logger bridgeLogger =
+                (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(MemoryStreamBridge.class);
+        ListAppender<ILoggingEvent> watcher = new ListAppender<>();
+        watcher.start();
+        bridgeLogger.addAppender(watcher);
+        try {
+            MemoryStreamBridge.Ring ring = bridge.createRing("run1");
+            bridge.push("run1", event(1));
+            bridge.push("run1", event(2));
+            bridge.push("run1", event(3));
+            awaitOutboxDrained("run1");
+            // 人为破坏 seq=2 的 slot（null）：模拟 ring 数据异常/竞态——修复前该事件被静默跳过
+            ring.buffer[(2 - 1) % BUFFER_SIZE] = null;
+
+            // When: 从头回放（区间 seq 1..3）
+            SseEmitter reconnected = mock(SseEmitter.class);
+            boolean result = bridge.replayAndSubscribe("run1", 0, reconnected);
+
+            // Then: 回放整体成功但缺失事件被跳过（仅送达 seq 1/3），且缺失以 warn 暴露（含期望 seq）
+            assertTrue(result, "单事件缺失不构成整体失败（快照继续，客户端按 seqId 断口感知）");
+            awaitSendCount(reconnected, 2);
+            verify(reconnected, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+            assertTrue(
+                    watcher.list.stream()
+                            .anyMatch(e -> e.getLevel() == Level.WARN
+                                    && e.getFormattedMessage().contains("回放定位未命中")
+                                    && e.getFormattedMessage().contains("seq=2")),
+                    "slot 未命中应记 warn 观测（含期望 seq），实际日志: "
+                            + watcher.list.stream()
+                                    .map(ILoggingEvent::getFormattedMessage)
+                                    .toList());
+        } finally {
+            bridgeLogger.detachAppender(watcher);
+            bridge.removeRing("run1");
+        }
     }
 
     @Test

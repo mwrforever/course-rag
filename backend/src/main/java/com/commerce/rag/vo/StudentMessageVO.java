@@ -18,8 +18,12 @@ import java.util.List;
  *
  * @param id          消息雪花 ID（反馈目标）
  * @param role        角色：USER / ASSISTANT
- * @param content     正文（TOOL_CALL/TOOL_RESULT 行为 JSON 串，与实时事件格式一致）
- * @param messageType 消息类型：null（正文）/ thinking / TOOL_CALL / TOOL_RESULT
+ * @param content     正文（TOOL_CALL/TOOL_RESULT 行为 JSON 串，与实时事件格式一致；
+ *                    query_plan 行为原始 JSON 字符串，由前端 parse，后端不重组）
+ * @param messageType 消息类型：null（正文）/ thinking / TOOL_CALL / TOOL_RESULT / query_plan
+ * @param thinkingStage thinking 行的思考阶段键（understanding/attachments/generating）；
+ *                    2026-08-28 时间线改版新增，历史存量 thinking 行无该列值时为 null
+ *                    （null 语义 = 前端降级按 generating 渲染，接口不报错）
  * @param intentType  意图类型（knowledge_question / chat / unknown；R2 落库修复前的存量行为 null，前端按可空处理）
  * @param runId       所属 run
  * @param seq         run 内序号
@@ -33,6 +37,7 @@ public record StudentMessageVO(
         String role,
         String content,
         String messageType,
+        String thinkingStage,
         String intentType,
         Long runId,
         Integer seq,

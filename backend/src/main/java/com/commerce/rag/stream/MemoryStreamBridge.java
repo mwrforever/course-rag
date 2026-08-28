@@ -345,6 +345,15 @@ public class MemoryStreamBridge {
                             SseEvent event = buffer[slot];
                             if (event != null && event.seqId() == seq) {
                                 snapshot.add(event);
+                            } else {
+                                // 2B deferred② 收口：slot 未命中（null 或 seqId 不匹配）此前静默跳过，
+                                // ring 数据异常/竞态导致的事件丢失对观测不可见——记 warn 暴露丢失事实
+                                // （快照继续，缺事件由客户端按 seqId 断口感知并可重连降级 PG 补偿）
+                                log.warn(
+                                        "回放定位未命中，事件缺失: runId={}, 期望 seq={}, slot内={}",
+                                        runId,
+                                        seq,
+                                        event == null ? "null" : event.seqId());
                             }
                         }
                     }
