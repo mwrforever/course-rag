@@ -1,19 +1,22 @@
 "use client";
 
 /**
- * 课程助手左侧栏（UI 重构 2026-08-25：kimi 式对话应用壳；会话管理化 2026-08-26）
+ * 课程助手左侧栏（UI 重构 2026-08-25：kimi 式对话应用壳；会话管理化 2026-08-26；
+ * 2026-08-29 Task 13 弹窗化：行内编辑 → RenameDialog、搜索框 → SessionSearchPanel
+ * 浮层、新建对话 Link → button 信号化）
  *
  * 结构（对齐 kimi 设计稿 assets/kimi.css 侧边栏）：品牌区 → 新建对话按钮（Ctrl+K 快捷键）
- * → 搜索框（标题模糊搜索，300ms 防抖）→ 会话历史列表（分页加载、当前会话激活态、
- * hover 行内操作：编辑标题 / 删除）→ 底部用户区（渐变头像 + 显示名 + 退出）。
+ * → 会话搜索浮层面板（聚焦弹出结果列表）→ 会话历史列表（分页加载、当前会话激活态、
+ * hover 行操作：重命名 / 删除）→ 底部用户区（渐变头像 + 显示名 + 退出）。
  * 折叠态 260px↔64px 宽度过渡（200ms），偏好经 localStorage 持久化（kimi 语义）。
  *
  * 会话管理（用户拍板：会话在侧边栏单一管理，二次确认契约）：
- * - 增：新建对话无确认（无破坏性、可撤销；流式进行中禁用）
- * - 改：行内编辑标题（点编辑 → 输入 → 保存/回车，取消/Esc 放弃）
+ * - 增：新建对话无确认（无破坏性、可撤销；流式进行中禁用）——/chat 同路由经
+ *   Context 新建信号驱动工作区 reset 干净态（不重挂载），其它路由走 router.push
+ * - 改：重命名弹窗 RenameDialog（预填标题 + zod 非空≤50 校验 + Enter 提交）
  * - 删：ConfirmDialog 二次确认；后端 409（活跃 run）→ toast「会话正在对话中」；
  *   删除当前激活会话后回 /chat 新对话
- * - 查：标题模糊搜索（后端 keyword 参数），清除按钮恢复全量列表
+ * - 查：SessionSearchPanel 浮层（keyword 防抖查询 + 点击跳转；主列表恒全量分页）
  * - 登出：ConfirmDialog 二次确认（用户拍板）
  *
  * 职责：纯导航壳，不承载业务状态；会话定位能力由 /chat/[id] 承担。
@@ -22,14 +25,12 @@ import {
   CaretLeft,
   CaretRight,
   ChatCircleText,
-  MagnifyingGlass,
   PencilSimple,
   Plus,
   SignIn,
   SignOut,
   Sparkle,
   Trash,
-  X,
 } from "@phosphor-icons/react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -39,9 +40,11 @@ import { ChatToast } from "@/components/chat/chat-toast";
 import {
   useChatStreaming,
   useChatStreamingSessionId,
+  useRequestNewChat,
 } from "@/components/chat/chat-streaming-context";
+import { RenameDialog } from "@/components/chat/rename-dialog";
+import { SessionSearchPanel } from "@/components/chat/session-search-panel";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { ApiError, deleteSession, getSessions, updateSessionTitle } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { SessionItem } from "@/lib/types";
@@ -52,12 +55,8 @@ const COLLAPSE_STORAGE_KEY = "cc.chat-sidebar.collapsed";
 export const SIDEBAR_SESSIONS_QUERY_KEY = ["chat-sidebar-sessions"] as const;
 /** 会话列表每页容量（分页加载，加载更多逐页追加） */
 const SIDEBAR_SESSION_PAGE_SIZE = 20;
-/** 搜索防抖窗口（毫秒）：输入静默后才发起 keyword 查询 */
-const SEARCH_DEBOUNCE_MS = 300;
-/** toast 展示时长（毫秒，到时自动消失） */
+/** toast 展示时长（毫秒），到时自动消失） */
 const TOAST_DURATION_MS = 2400;
-/** 会话标题最大长度（与后端 @Size(max=300) 对齐，前端先行限制） */
-const TITLE_MAX_LENGTH = 300;
 
 /**
  * 课程助手左侧栏（可折叠）
@@ -67,8 +66,11 @@ export function ChatSidebar() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, logout, openLoginDialog } = useAuth();
-  // 流式守卫：工作区正在生成时禁用新建对话跳转（导航重挂载会丢进行中的流视图）
+  // 流式守卫：工作区正在生成时禁用新建对话（同路由 reset 会丢进行中的流视图，
+  // 跳转路径同理）；流式中守卫统一（按钮 disabled + 快捷键忽略）
   const isStreaming = useChatStreaming();
+  // 新建对话信号出口（/chat 同路由：驱动工作区 reset 干净态，不重挂载）
+  const requestNewChat = useRequestNewChat();
   // 生成中会话定位（2026-08-27）：对应会话行渲染生成中动画（脉冲点 + 标题闪烁）
   const streamingSessionId = useChatStreamingSessionId();
   const [collapsed, setCollapsed] = useState(false);
@@ -96,31 +98,40 @@ export function ChatSidebar() {
     });
   };
 
+  /**
+   * 新建对话统一入口（按钮与 Ctrl+K 共用）：
+   * - /chat 同路由：经 Context 新建信号驱动工作区 reset 干净态（不重挂载，Task 13）
+   * - 其它路由：router.push('/chat') 由页面重挂载天然干净
+   * - 流式进行中：双保险直接返回（按钮 disabled + 此处守卫）
+   */
+  const handleNewChat = useCallback(() => {
+    if (isStreaming) return;
+    if (pathname === "/chat") {
+      requestNewChat();
+    } else {
+      router.push("/chat");
+    }
+  }, [isStreaming, pathname, requestNewChat, router]);
+
   // Ctrl/Cmd+K 新建对话快捷键（kimi 语义；浏览器聚焦输入框时由应用层快捷键先行）
-  // 流式进行中忽略：跳转会重挂载工作区致流式状态整体丢失（chat-workspace 实证注释）
+  // 流式进行中忽略：reset/跳转都会丢失进行中的流视图（chat-workspace 实证注释）
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         if (isStreaming) return;
         event.preventDefault();
-        router.push("/chat");
+        handleNewChat();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router, isStreaming]);
+  }, [isStreaming, handleNewChat]);
 
-  // ── 会话搜索与列表（查）──
-  // 搜索词防抖后再驱动查询（消除每键请求抖动）；keyword 为空 = 全量列表
-  const [keyword, setKeyword] = useState("");
-  const debouncedKeyword = useDebouncedValue(keyword, SEARCH_DEBOUNCE_MS);
-
-  // 会话历史分页：keyword 变化即建立新查询（key 含 keyword）；工作区发送消息后
-  // 按 SIDEBAR_SESSIONS_QUERY_KEY 前缀失效（invalidateQueries 前缀匹配，搜索态一并刷新）
+  // ── 会话历史分页（主列表恒全量；keyword 搜索职责在 SessionSearchPanel 浮层）──
+  // 工作区发送消息后按 SIDEBAR_SESSIONS_QUERY_KEY 失效（新会话即时进列表）
   const sessionsQuery = useInfiniteQuery({
-    queryKey: [...SIDEBAR_SESSIONS_QUERY_KEY, debouncedKeyword],
-    queryFn: ({ pageParam }) =>
-      getSessions(pageParam, SIDEBAR_SESSION_PAGE_SIZE, debouncedKeyword || undefined),
+    queryKey: [...SIDEBAR_SESSIONS_QUERY_KEY],
+    queryFn: ({ pageParam }) => getSessions(pageParam, SIDEBAR_SESSION_PAGE_SIZE),
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) => {
       const loaded = allPages.reduce((sum, page) => sum + page.records.length, 0);
@@ -134,49 +145,7 @@ export function ChatSidebar() {
     [sessionsQuery.data],
   );
 
-  // ── 行内编辑（改）──：editingId = 展开编辑的行，editTitle 为该行输入值 ──
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [savingTitle, setSavingTitle] = useState(false);
-  const editInputRef = useRef<HTMLInputElement | null>(null);
-
-  /** 开始编辑：记录行 id 与初值并聚焦输入框 */
-  function startEdit(session: SessionItem) {
-    setEditingId(session.id);
-    setEditTitle(session.title);
-    // 聚焦等待渲染完成后执行（输入框渲染于编辑态分支）
-    window.setTimeout(() => editInputRef.current?.focus(), 0);
-  }
-
-  /** 保存标题：PATCH → 失效列表（新标题生效）；空标题/未变化直接退出编辑 */
-  async function saveTitle(sessionId: string) {
-    const title = editTitle.trim();
-    if (savingTitle) {
-      return;
-    }
-    if (!title) {
-      setEditingId(null);
-      return;
-    }
-    setSavingTitle(true);
-    try {
-      await updateSessionTitle(sessionId, title);
-      void queryClient.invalidateQueries({ queryKey: SIDEBAR_SESSIONS_QUERY_KEY });
-      setEditingId(null);
-    } catch {
-      // 保存失败：保留编辑态（用户可修正重试），toast 提示
-      notify("保存失败，请稍后重试");
-    } finally {
-      setSavingTitle(false);
-    }
-  }
-
-  // 当前会话高亮：pathname /chat/{sessionId}；/chat 新对话无高亮
-  const activeSessionId = pathname.startsWith("/chat/") ? pathname.slice("/chat/".length) : null;
-
-  // ── 删除（删）──：ConfirmDialog 二次确认；409（活跃 run）toast 分级提示 ──
-  const [deleteTarget, setDeleteTarget] = useState<SessionItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  // ── 轻量 toast（侧栏级状态：改名/删除分级提示，定时自动消失）──
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notify = useCallback((message: string) => {
@@ -190,6 +159,44 @@ export function ChatSidebar() {
     },
     [],
   );
+
+  // ── 重命名（改）──：RenameDialog 弹窗（预填标题 + zod 校验，Task 13 弹窗化） ──
+  const [renameTarget, setRenameTarget] = useState<SessionItem | null>(null);
+  const [renaming, setRenaming] = useState(false);
+
+  /**
+   * 重命名确认：PATCH → 失效列表（新标题生效）→ 关窗
+   * 失败：toast 提示且弹窗保留（用户修正后可重试）
+   *
+   * @param title 弹窗 zod 校验通过后的新标题（非空 ≤50 字）
+   */
+  const confirmRename = useCallback(
+    async (title: string) => {
+      if (!renameTarget || renaming) {
+        return;
+      }
+      const target = renameTarget;
+      setRenaming(true);
+      try {
+        await updateSessionTitle(target.id, title);
+        setRenameTarget(null);
+        void queryClient.invalidateQueries({ queryKey: SIDEBAR_SESSIONS_QUERY_KEY });
+      } catch {
+        // 保存失败：弹窗保留（用户可修正重试），toast 提示
+        notify("保存失败，请稍后重试");
+      } finally {
+        setRenaming(false);
+      }
+    },
+    [renameTarget, renaming, queryClient, notify],
+  );
+
+  // 当前会话高亮：pathname /chat/{sessionId}；/chat 新对话无高亮
+  const activeSessionId = pathname.startsWith("/chat/") ? pathname.slice("/chat/".length) : null;
+
+  // ── 删除（删）──：ConfirmDialog 二次确认；409（活跃 run）toast 分级提示 ──
+  const [deleteTarget, setDeleteTarget] = useState<SessionItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget || deleting) {
@@ -277,69 +284,45 @@ export function ChatSidebar() {
         )}
       </div>
 
-      {/* 新建对话按钮（折叠为纯图标）；流式中置灰提示（点击仍跳转，快捷键已守卫） */}
+      {/* 新建对话按钮（折叠为纯图标）；流式中禁用置灰（Task 13 守卫统一）：
+          /chat 同路由经信号 reset 干净态（不重挂载），其它路由跳转 */}
       {collapsed ? (
-        <Link
-          href="/chat"
+        <button
+          type="button"
           aria-label="新建对话"
+          onClick={handleNewChat}
+          disabled={isStreaming}
           title={isStreaming ? "正在生成回答，结束后再新建对话" : undefined}
-          className={`mx-auto grid size-9 place-items-center rounded-xl border border-border bg-surface text-brand transition-colors hover:border-brand/40 hover:bg-brand-light ${
-            isStreaming ? "cursor-not-allowed opacity-50" : ""
-          }`}
+          className="mx-auto grid size-9 place-items-center rounded-xl border border-border bg-surface text-brand transition-colors hover:border-brand/40 hover:bg-brand-light focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus size={16} weight="bold" aria-hidden />
-        </Link>
+        </button>
       ) : (
-        <Link
-          href="/chat"
+        <button
+          type="button"
+          onClick={handleNewChat}
+          disabled={isStreaming}
           title={isStreaming ? "正在生成回答，结束后再新建对话" : undefined}
-          className="mx-2 flex h-10 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-sm text-text transition-colors hover:border-brand/40 hover:bg-brand-light hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
+          className="mx-2 flex h-10 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-sm text-text transition-colors hover:border-brand/40 hover:bg-brand-light hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus size={15} weight="bold" aria-hidden className="text-brand" />
-          <span className="flex-1">新建对话</span>
+          <span className="flex-1 text-left">新建对话</span>
           <kbd className="rounded-md border border-border px-1.5 py-0.5 font-mono text-[11px] text-subtle">
             Ctrl K
           </kbd>
-        </Link>
+        </button>
       )}
 
-      {/* 搜索框（仅展开态）：标题模糊搜索，防抖 300ms；清除恢复全量 */}
+      {/* 会话搜索浮层面板（仅展开态，Task 13）：聚焦弹出结果列表，主列表不再过滤 */}
       {!collapsed ? (
         <div className="mx-2 mt-2 shrink-0">
-          <label className="relative block">
-            <MagnifyingGlass
-              size={15}
-              aria-hidden
-              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-subtle"
-            />
-            <input
-              type="search"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              aria-label="搜索会话"
-              data-testid="sidebar-session-search"
-              placeholder="搜索会话标题"
-              className="w-full rounded-lg border border-border bg-surface py-2 pr-8 pl-8.5 text-[13px] text-text outline-none transition-colors placeholder:text-subtle focus:border-brand/50 focus-visible:ring-2 focus-visible:ring-brand"
-            />
-            {keyword ? (
-              <button
-                type="button"
-                aria-label="清除搜索"
-                onClick={() => setKeyword("")}
-                className="absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-0.5 text-subtle transition-colors hover:text-text focus-visible:ring-2 focus-visible:ring-brand"
-              >
-                <X size={14} aria-hidden />
-              </button>
-            ) : null}
-          </label>
+          <SessionSearchPanel />
         </div>
       ) : null}
 
       {/* 会话历史区 */}
       {!collapsed ? (
-        <p className="shrink-0 px-4 pt-4 pb-1.5 text-xs text-subtle">
-          {debouncedKeyword ? `搜索「${debouncedKeyword}」` : "会话历史"}
-        </p>
+        <p className="shrink-0 px-4 pt-4 pb-1.5 text-xs text-subtle">会话历史</p>
       ) : (
         <div className="h-3" />
       )}
@@ -355,11 +338,8 @@ export function ChatSidebar() {
           </div>
         ) : sessions.length === 0 ? (
           !collapsed ? (
-            <p className="px-2.5 py-2 text-xs text-subtle">
-              {debouncedKeyword
-                ? `没有找到「${debouncedKeyword}」相关会话`
-                : "还没有会话，开始一段对话吧"}
-            </p>
+            // 主列表恒全量（keyword 搜索在浮层内）：空态即无任何会话
+            <p className="px-2.5 py-2 text-xs text-subtle">还没有会话，开始一段对话吧</p>
           ) : null
         ) : (
           <>
@@ -367,53 +347,6 @@ export function ChatSidebar() {
               {sessions.map((session) => {
                 const active = session.id === activeSessionId;
                 const href = `/chat/${session.id}`;
-                // 行内编辑态：输入框 + 保存/取消（点击编辑按钮进入，二次确认语义）
-                if (editingId === session.id) {
-                  return (
-                    <div
-                      key={session.id}
-                      data-testid="sidebar-session-edit"
-                      className="flex h-9 items-center gap-1 rounded-lg border border-brand/30 bg-surface px-2"
-                    >
-                      <input
-                        ref={editInputRef}
-                        value={editTitle}
-                        onChange={(event) => setEditTitle(event.target.value)}
-                        maxLength={TITLE_MAX_LENGTH}
-                        aria-label="编辑会话标题"
-                        data-testid="sidebar-session-edit-input"
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void saveTitle(session.id);
-                          }
-                          if (event.key === "Escape") {
-                            setEditingId(null);
-                          }
-                        }}
-                        className="min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-subtle"
-                      />
-                      <button
-                        type="button"
-                        aria-label="保存标题"
-                        disabled={savingTitle}
-                        onClick={() => void saveTitle(session.id)}
-                        className="shrink-0 rounded-md bg-brand px-2 py-0.5 text-xs font-medium text-white transition-colors hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-brand"
-                      >
-                        {savingTitle ? "保存中…" : "保存"}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="取消编辑"
-                        disabled={savingTitle}
-                        onClick={() => setEditingId(null)}
-                        className="shrink-0 rounded-md px-1.5 py-0.5 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:ring-2 focus-visible:ring-brand"
-                      >
-                        取消
-                      </button>
-                    </div>
-                  );
-                }
                 return (
                   <div
                     key={session.id}
@@ -454,13 +387,13 @@ export function ChatSidebar() {
                         <span className="min-w-0 flex-1 truncate text-sm">{session.title}</span>
                       ) : null}
                     </Link>
-                    {/* 行内操作（仅展开态 hover 显示）：编辑标题 / 删除（二次确认） */}
+                    {/* 行操作（仅展开态 hover 显示）：重命名（弹窗）/ 删除（二次确认） */}
                     {!collapsed ? (
                       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                         <button
                           type="button"
                           aria-label={`编辑会话标题 ${session.title}`}
-                          onClick={() => startEdit(session)}
+                          onClick={() => setRenameTarget(session)}
                           className="grid size-6 place-items-center rounded-md text-subtle transition-colors hover:bg-surface-2 hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
                         >
                           <PencilSimple size={13} aria-hidden />
@@ -543,6 +476,13 @@ export function ChatSidebar() {
         </div>
       )}
 
+      {/* 重命名弹窗（Task 13 弹窗化：预填标题 + zod 非空≤50 校验） */}
+      <RenameDialog
+        open={renameTarget !== null}
+        initialTitle={renameTarget?.title ?? ""}
+        onConfirm={(title) => confirmRename(title)}
+        onCancel={() => setRenameTarget(null)}
+      />
       {/* 删除二次确认（danger） */}
       <ConfirmDialog
         open={deleteTarget !== null}

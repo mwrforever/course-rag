@@ -85,6 +85,8 @@ class SseEventTransformerTest {
         assertEquals(SseEventType.THINKING, result.get(0).type());
         assertTrue(result.get(0).payload().contains("思考中"));
         assertTrue(result.get(0).payload().contains("\"delta\""));
+        // 2026-08-28 时间线改版：主 agent 生成路径 THINKING 固定 stage=generating
+        assertTrue(result.get(0).payload().contains("\"stage\":\"generating\""));
     }
 
     @Test
@@ -148,7 +150,8 @@ class SseEventTransformerTest {
         assertEquals(SseEventType.THINKING, first.get(0).type());
         assertEquals(2, second.size());
         assertEquals(SseEventType.THINKING_END, second.get(0).type());
-        assertEquals("{}", second.get(0).payload());
+        // THINKING_END 携带 stage=generating（与 THINKING 配对，2026-08-28 时间线改版）
+        assertEquals("{\"stage\":\"generating\"}", second.get(0).payload());
         assertEquals(SseEventType.DELTA, second.get(1).type());
     }
 
@@ -263,7 +266,8 @@ class SseEventTransformerTest {
         // Then
         assertEquals(1, result.size());
         assertEquals(SseEventType.THINKING_END, result.get(0).type());
-        assertEquals("{}", result.get(0).payload());
+        // THINKING_END 携带 stage=generating（与 THINKING 配对，2026-08-28 时间线改版）
+        assertEquals("{\"stage\":\"generating\"}", result.get(0).payload());
     }
 
     @Test
@@ -509,7 +513,7 @@ class SseEventTransformerTest {
     // ==================== transformStages（STAGE 阶段事件，2026-08-27） ====================
 
     @Test
-    @DisplayName("QU 完成 chunk + knowledge_question 计划 → STAGE(retrieving)，仅一次")
+    @DisplayName("QU 完成 chunk + knowledge_question 计划 → QUERY_PLAN + STAGE(retrieving)，仅一次")
     void transformStages_quFinishedKnowledgeQuestion_retrievingOnce() {
         // Given: QU 完成 chunk（普通 NodeOutput，state 携带 knowledge_question 计划）
         QueryPlan plan =
@@ -523,16 +527,46 @@ class SseEventTransformerTest {
         List<SseEvent> first = transformer.transformStages(quChunk, runState);
         List<SseEvent> second = transformer.transformStages(quChunk, runState);
 
-        // Then: 首次 1 个 STAGE(retrieving)，payload 含中文文案；第二次空
-        assertEquals(1, first.size());
-        assertEquals(SseEventType.STAGE, first.get(0).type());
-        assertTrue(first.get(0).payload().contains("\"stage\":\"retrieving\""));
-        assertTrue(first.get(0).payload().contains("知识库查询中"));
-        assertTrue(second.isEmpty());
+        // Then: 首次 QUERY_PLAN 在前 + STAGE(retrieving) 在后（需求解析结果先可见再跃迁），第二次空
+        assertEquals(2, first.size());
+        assertEquals(SseEventType.QUERY_PLAN, first.get(0).type());
+        assertEquals(SseEventType.STAGE, first.get(1).type());
+        assertTrue(first.get(1).payload().contains("\"stage\":\"retrieving\""));
+        assertTrue(first.get(1).payload().contains("知识库查询中"));
+        assertTrue(second.isEmpty(), "QUERY_PLAN 与 STAGE 均 CAS 一次，重复 chunk 不再发事件");
     }
 
     @Test
-    @DisplayName("QU 完成 chunk + chat 计划 → STAGE(generating)（不检索直接生成）")
+    @DisplayName("QUERY_PLAN 事件 payload 契约 {intent, rewritten, filters:{courseNames}}，CAS 仅一次")
+    void transformStages_quFinished_emitsQueryPlanEventWithExactPayload() {
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 教学大纲"), new QueryPlanFilters(List.of("高等数学")), true);
+        NodeOutput quChunk = mock(NodeOutput.class);
+        when(quChunk.node()).thenReturn(LeadAgentGraph.NODE_QUERY_UNDERSTANDING);
+        when(quChunk.state()).thenReturn(new OverAllState(Map.of(KEY_QUERY_PLAN, plan)));
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        List<SseEvent> events = transformer.transformStages(quChunk, runState);
+
+        SseEvent queryPlanEvent = events.get(0);
+        assertEquals(SseEventType.QUERY_PLAN, queryPlanEvent.type());
+        // 字段名与值逐字对齐简报契约（intent 为 code() 小写规范名）
+        assertEquals(
+                "{\"intent\":\"knowledge_question\",\"rewritten\":[\"高等数学 教学大纲\"],"
+                        + "\"filters\":{\"courseNames\":[\"高等数学\"]}}",
+                queryPlanEvent.payload());
+        // seq 与主链路同源连续（本 run 首个事件 seq=1）
+        assertEquals(1, queryPlanEvent.seqId());
+
+        // 同 run 二次到达（重复/回放 chunk）：CAS 后不再发 QUERY_PLAN 与阶段事件
+        NodeOutput again = mock(NodeOutput.class);
+        when(again.node()).thenReturn(LeadAgentGraph.NODE_QUERY_UNDERSTANDING);
+        when(again.state()).thenReturn(new OverAllState(Map.of(KEY_QUERY_PLAN, plan)));
+        assertTrue(transformer.transformStages(again, runState).isEmpty());
+    }
+
+    @Test
+    @DisplayName("QU 完成 chunk + chat 计划 → QUERY_PLAN(chat) + STAGE(generating)（不检索直接生成）")
     void transformStages_quFinishedChat_generating() {
         QueryPlan plan = new QueryPlan(IntentType.CHAT, List.of("闲聊"), new QueryPlanFilters(List.of()), false);
         NodeOutput quChunk = mock(NodeOutput.class);
@@ -542,13 +576,16 @@ class SseEventTransformerTest {
 
         List<SseEvent> events = transformer.transformStages(quChunk, runState);
 
-        assertEquals(1, events.size());
-        assertEquals(SseEventType.STAGE, events.get(0).type());
-        assertTrue(events.get(0).payload().contains("\"stage\":\"generating\""));
+        assertEquals(2, events.size());
+        assertEquals(SseEventType.QUERY_PLAN, events.get(0).type());
+        assertTrue(events.get(0).payload().contains("\"intent\":\"chat\""));
+        assertTrue(events.get(0).payload().contains("\"courseNames\":[]"));
+        assertEquals(SseEventType.STAGE, events.get(1).type());
+        assertTrue(events.get(1).payload().contains("\"stage\":\"generating\""));
     }
 
     @Test
-    @DisplayName("QU 完成 chunk + 无计划（异常降级）→ 不发阶段（reactAgent 首 chunk 兜底）")
+    @DisplayName("QU 完成 chunk + 无计划（异常降级）→ QUERY_PLAN 与阶段事件均不发（reactAgent 首 chunk 兜底）")
     void transformStages_quFinishedNoPlan_noEvent() {
         NodeOutput quChunk = mock(NodeOutput.class);
         when(quChunk.node()).thenReturn(LeadAgentGraph.NODE_QUERY_UNDERSTANDING);

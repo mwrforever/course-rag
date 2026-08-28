@@ -79,13 +79,37 @@ class ChatSessionConverterTest {
         assertThat(vo.role()).isEqualTo("user");
         assertThat(vo.content()).isEqualTo("问题1");
         assertThat(vo.messageType()).isEqualTo("TEXT");
+        // 非 thinking 行无阶段键（2026-08-28 时间线改版新增字段，null 语义 = 前端降级 generating）
+        assertThat(vo.thinkingStage()).isNull();
         assertThat(vo.intentType()).isEqualTo("knowledge_question");
         assertThat(vo.runId()).isEqualTo(10L);
         assertThat(vo.seq()).isEqualTo(1);
         assertThat(vo.createdAt()).isEqualTo(LocalDateTime.of(2026, 8, 15, 9, 1));
         assertThat(vo)
                 .isEqualTo(new ChatMessageVO(
-                        1L, "user", "问题1", "TEXT", "knowledge_question", 10L, 1, LocalDateTime.of(2026, 8, 15, 9, 1)));
+                        1L,
+                        "user",
+                        "问题1",
+                        "TEXT",
+                        null,
+                        "knowledge_question",
+                        10L,
+                        1,
+                        LocalDateTime.of(2026, 8, 15, 9, 1)));
         assertThat(vo.toString()).contains("问题1");
+    }
+
+    @Test
+    @DisplayName("消息实体 → 消息视图：thinking 行 thinkingStage 同名映射（2026-08-28 时间线改版，replayFromPg 数据通道）")
+    void toMessageVO_mapsThinkingStage() {
+        // Given: thinking 行带阶段键（understanding/attachments/generating 之一）
+        ChatMessage m = message(2L);
+        m.setMessageType("thinking");
+        m.setThinkingStage("understanding");
+
+        // When / Then: 同名映射进 VO（回放与 B 端出参共用该通道）
+        ChatMessageVO vo = converter.toMessageVO(m);
+        assertThat(vo.messageType()).isEqualTo("thinking");
+        assertThat(vo.thinkingStage()).isEqualTo("understanding");
     }
 }

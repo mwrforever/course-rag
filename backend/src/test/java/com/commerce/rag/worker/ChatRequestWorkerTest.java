@@ -17,6 +17,7 @@ import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.commerce.rag.entity.ChatMessage;
+import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.record.AttachmentContext;
@@ -33,6 +34,7 @@ import com.commerce.rag.stream.MemoryStreamBridge;
 import com.commerce.rag.stream.SseEvent;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.SseEventType;
+import com.commerce.rag.stream.ThinkingPusher;
 import com.commerce.rag.vo.ChatRunVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,11 +46,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -234,8 +239,9 @@ class ChatRequestWorkerTest {
         return (ConcurrentHashMap<String, AtomicBoolean>) f.get(worker);
     }
 
-    /** 通过反射调用 private persistMessages（P0-4a 游标去重用例：验证仅持久化游标后的新增消息）
-     * 返回落库结果（R2 补口 B：persisted=已落库/幂等跳过；assistantMessageId=assistant 正文行落库回填 ID） */
+    /** 通过反射调用 private persistMessages（无 thinkingPusher 场景：不落 understanding 阶段思考行）
+     * 返回落库结果（R2 补口 B：persisted=已落库/幂等跳过；assistantMessageId=assistant 正文行落库回填 ID）
+     * Task 5：默认正常完成路径来源（state 汇总权威、无累加器） */
     private PersistOutcome invokePersistMessages(
             Long runId,
             Long sessionId,
@@ -245,6 +251,57 @@ class ChatRequestWorkerTest {
             int historyCursor,
             NodeOutput lastOutput)
             throws Exception {
+        return invokePersistMessages(
+                runId,
+                sessionId,
+                userQuery,
+                attachmentsJson,
+                sourcesJson,
+                historyCursor,
+                lastOutput,
+                null,
+                null,
+                false);
+    }
+
+    /** 通过反射调用 private persistMessages（P0-4a 游标去重 + 2026-08-28 时间线 query_plan/thinking_stage 行；
+     * Task 5：默认正常完成路径来源） */
+    private PersistOutcome invokePersistMessages(
+            Long runId,
+            Long sessionId,
+            String userQuery,
+            String attachmentsJson,
+            String sourcesJson,
+            int historyCursor,
+            NodeOutput lastOutput,
+            ThinkingPusher thinkingPusher)
+            throws Exception {
+        return invokePersistMessages(
+                runId,
+                sessionId,
+                userQuery,
+                attachmentsJson,
+                sourcesJson,
+                historyCursor,
+                lastOutput,
+                thinkingPusher,
+                null,
+                false);
+    }
+
+    /** 通过反射调用 private persistMessages（Task 5 全参：delta 累加器 + 落库来源标志） */
+    private PersistOutcome invokePersistMessages(
+            Long runId,
+            Long sessionId,
+            String userQuery,
+            String attachmentsJson,
+            String sourcesJson,
+            int historyCursor,
+            NodeOutput lastOutput,
+            ThinkingPusher thinkingPusher,
+            DeltaAccumulator deltaAccumulator,
+            boolean abnormalPath)
+            throws Exception {
         Method method = ChatRequestWorker.class.getDeclaredMethod(
                 "persistMessages",
                 Long.class,
@@ -253,10 +310,23 @@ class ChatRequestWorkerTest {
                 String.class,
                 String.class,
                 int.class,
-                NodeOutput.class);
+                NodeOutput.class,
+                ThinkingPusher.class,
+                DeltaAccumulator.class,
+                boolean.class);
         method.setAccessible(true);
         return (PersistOutcome) method.invoke(
-                worker, runId, sessionId, userQuery, attachmentsJson, sourcesJson, historyCursor, lastOutput);
+                worker,
+                runId,
+                sessionId,
+                userQuery,
+                attachmentsJson,
+                sourcesJson,
+                historyCursor,
+                lastOutput,
+                thinkingPusher,
+                deltaAccumulator,
+                abnormalPath);
     }
 
     // ==================== cancel() 测试 ====================
@@ -424,6 +494,62 @@ class ChatRequestWorkerTest {
         verify(memoryExtractionPipeline, never()).submitEpisodic(any(), any(), any());
     }
 
+    // ==================== onErrorResume 取消分类 cause 链溯源（评审 I-1 补测） ====================
+
+    @Test
+    @DisplayName("取消分类 — CancelledException 被 CompletionException 包装仍收敛 CANCELLED 终态（isCancelledError cause 链）")
+    void processRequest_cancelledWrappedInCause_updatesStatusCancelled() throws Exception {
+        // Given: 图节点内检查点抛出的取消异常经图引擎异步链包装（CompletionException 壳，
+        // 直判 instanceof 会漏分类成 ERROR——本用例锁死 cause 链溯源行为）
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new CompletionException(new CancelledException("100"))));
+
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: cause 链命中取消 → updateStatus 走取消路径（不得误落 ERROR），END 事件携带 status:CANCELLED
+        verify(chatRunService).updateStatus(100L, "ACTIVE");
+        verify(chatRunService).updateStatus(100L, "CANCELLED");
+        verify(chatRunService, never()).updateStatus(100L, "ERROR");
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        SseEvent endEvent = pushed.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.END)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("取消终态必须推送 END 事件"));
+        assertTrue(endEvent.payload().contains("CANCELLED"), "END payload 应携带 status:CANCELLED");
+        // spec §7.6/§8.4：取消终态不触发偏好/经历提取
+        verify(memoryExtractionPipeline, never()).submit(any(), any());
+        verify(memoryExtractionPipeline, never()).submitEpisodic(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("取消分类反向 — cause 链不含 CancelledException 的包装异常仍收敛 ERROR 终态（不误判取消）")
+    void processRequest_errorWithNonCancelCauseChain_updatesStatusError() throws Exception {
+        // Given: 两层包装的非取消异常（cause 链上无任何 CancelledException）
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new RuntimeException("图引擎执行失败", new IllegalStateException("检索 IO 异常"))));
+
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: cause 链溯源不命中 → 仍走 ERROR 分支（推送 ERROR 事件，不得收敛 CANCELLED）
+        verify(chatRunService).updateStatus(100L, "ACTIVE");
+        verify(chatRunService).updateStatus(100L, "ERROR");
+        verify(chatRunService, never()).updateStatus(100L, "CANCELLED");
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        assertTrue(
+                pushed.getAllValues().stream()
+                        .anyMatch(e ->
+                                e.type() == SseEventType.ERROR && e.payload().contains("ERROR")),
+                "非取消异常应推送 ERROR 终态事件");
+    }
+
     // ==================== processRequest 参数解析失败 ====================
 
     @Test
@@ -484,6 +610,317 @@ class ChatRequestWorkerTest {
         assertEquals(2, inserted.size()); // USER + 本轮 assistant
         assertEquals("USER", inserted.get(0).getRole());
         assertEquals("本轮回答", inserted.get(1).getContent());
+    }
+
+    // ==================== persistMessages 时间线行落库（2026-08-28 query_plan + thinking_stage） ====================
+
+    @Test
+    @DisplayName("persistMessages → query_plan 行 + understanding/generating thinking 行按 seq 排序且落 thinking_stage")
+    @SuppressWarnings("unchecked")
+    void persistMessages_timelineRows_queryPlanBeforeThinkingAndStagePersisted() throws Exception {
+        // Given: 最终 state 含 QueryPlan（QU 签出）+ 主 agent 终消息（reasoningContent 思考 + 正文）
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 大纲"), new QueryPlanFilters(List.of("高等数学")), false);
+        AssistantMessage finalAssistant = AssistantMessage.builder()
+                .content("这是回答")
+                .properties(Map.of("reasoningContent", "主agent思考"))
+                .build();
+        OverAllState state = new OverAllState(
+                Map.of("messages", List.of(new UserMessage("高等数学怎么学"), finalAssistant), KEY_QUERY_PLAN, plan));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        // understanding 阶段思考不在 state.messages，来自 ThinkingPusher 累加缓冲（真实实例 + mock bridge）
+        ThinkingPusher pusher =
+                new ThinkingPusher("1", bridge, SseEventTransformer.RunState.create("1", "1", "m"), new ObjectMapper());
+        pusher.push(SseEventTransformer.STAGE_UNDERSTANDING, "先分析意图，");
+        pusher.push(SseEventTransformer.STAGE_UNDERSTANDING, "再收窄到课程查询");
+
+        // When
+        invokePersistMessages(1L, 2L, "高等数学怎么学", "[]", "[]", 0, lastOutput, pusher);
+
+        // Then: 行序 user(0) → query_plan(1) → understanding thinking(2) → generating thinking(3) → 正文(4)
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> rows = captor.getValue();
+        assertEquals(5, rows.size());
+        assertEquals("USER", rows.get(0).getRole());
+        assertEquals(0, rows.get(0).getSeq().intValue());
+
+        ChatMessage planRow = rows.get(1);
+        assertEquals("query_plan", planRow.getMessageType());
+        assertEquals(1, planRow.getSeq().intValue());
+        // content 与 SSE query_plan 事件 payload 同款 JSON（单一构造点契约一致）
+        assertEquals(
+                "{\"intent\":\"knowledge_question\",\"rewritten\":[\"高等数学 大纲\"],"
+                        + "\"filters\":{\"courseNames\":[\"高等数学\"]}}",
+                planRow.getContent());
+
+        ChatMessage understandingRow = rows.get(2);
+        assertEquals("thinking", understandingRow.getMessageType());
+        assertEquals("understanding", understandingRow.getThinkingStage());
+        assertEquals("先分析意图，再收窄到课程查询", understandingRow.getContent());
+
+        ChatMessage generatingRow = rows.get(3);
+        assertEquals("thinking", generatingRow.getMessageType());
+        assertEquals("generating", generatingRow.getThinkingStage());
+        assertEquals("主agent思考", generatingRow.getContent());
+
+        ChatMessage bodyRow = rows.get(4);
+        assertEquals("这是回答", bodyRow.getContent());
+        assertNull(bodyRow.getMessageType());
+        // R2 意图标注仅正文行（query_plan/thinking 行不标）
+        assertEquals("knowledge_question", bodyRow.getIntentType());
+        assertNull(planRow.getIntentType());
+        assertNull(understandingRow.getIntentType());
+    }
+
+    @Test
+    @DisplayName("persistMessages → 无 QueryPlan（异常中断）不落 query_plan 行；pusher 无思考不落成对 thinking 行")
+    @SuppressWarnings("unchecked")
+    void persistMessages_noPlanNoThinking_fallbackToLegacyRows() throws Exception {
+        AssistantMessage body = new AssistantMessage("回答");
+        OverAllState state = new OverAllState(Map.of("messages", List.of(body)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        invokePersistMessages(
+                1L,
+                2L,
+                "问题",
+                "[]",
+                "[]",
+                0,
+                lastOutput,
+                new ThinkingPusher(
+                        "1", bridge, SseEventTransformer.RunState.create("1", "1", "m"), new ObjectMapper()));
+
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> rows = captor.getValue();
+        assertEquals(2, rows.size(), "仅 user + 正文两行，无 query_plan / 阶段 thinking 行");
+        assertTrue(rows.stream().noneMatch(r -> "query_plan".equals(r.getMessageType())));
+    }
+
+    // ==================== Task 5：取消/错误路径 delta 累加器落库（不变量） ====================
+
+    /** 构造 DELTA 事件（payload {text}；seq/timestamp 与累加器消费无关，占位合法值即可） */
+    private SseEvent deltaEvent(String text) throws Exception {
+        return new SseEvent(
+                SseEventType.DELTA,
+                1,
+                new ObjectMapper().writeValueAsString(Map.of("text", text)),
+                System.currentTimeMillis());
+    }
+
+    /** 构造 THINKING 事件（payload {delta, stage}） */
+    private SseEvent thinkingEvent(String delta, String stage) throws Exception {
+        return new SseEvent(
+                SseEventType.THINKING,
+                1,
+                new ObjectMapper().writeValueAsString(Map.of("delta", delta, "stage", stage)),
+                System.currentTimeMillis());
+    }
+
+    /** 从 SSE payload JSON 提取指定字符串字段（不变量断言用：与已推送事件逐字对齐） */
+    private String payloadField(String payload, String field) throws Exception {
+        return new ObjectMapper().readTree(payload).path(field).asText(null);
+    }
+
+    @Test
+    @DisplayName("不变量（Task 5）— 错误中断 state 无终消息：终态落库内容 ≡ 已推送事件序列")
+    @SuppressWarnings("unchecked")
+    void processRequest_errorPath_persistedContentEqualsPushedEvents_invariant() throws Exception {
+        // Given: 三个 chunk 依次产出 generating THINKING + 两条 DELTA，随后流中断
+        // （chunk.state()=null → lastOutput 无终消息，state 汇总路径无正文可落）
+        NodeOutput c1 = mock(NodeOutput.class);
+        NodeOutput c2 = mock(NodeOutput.class);
+        NodeOutput c3 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        lenient().when(c2.state()).thenReturn(null);
+        lenient().when(c3.state()).thenReturn(null);
+        when(transformer.transform(any(NodeOutput.class), any()))
+                .thenReturn(List.of(thinkingEvent("先想一步，", "generating")))
+                .thenReturn(List.of(deltaEvent("你")))
+                .thenReturn(List.of(deltaEvent("好，世界")));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.just(c1, c2, c3).concatWith(Flux.error(new RuntimeException("生成中断"))));
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // Then: 错误终态正常收敛 + 落库恰好一次（persisted 防双写不回归）
+        verify(chatRunService).updateStatus(100L, "ERROR");
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService, times(1)).batchInsert(msgCaptor.capture());
+        List<ChatMessage> rows = msgCaptor.getValue();
+        ChatMessage bodyRow = rows.stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("错误路径应存在累加器正文行"));
+        ChatMessage thinkingRow = rows.stream()
+                .filter(m -> "thinking".equals(m.getMessageType()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("错误路径应存在 generating 思考行"));
+
+        // 不变量断言：落库内容与 bridge.push 实际推送的事件序列逐字对齐（而非仅对齐 stub 数据）
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), evtCaptor.capture());
+        StringBuilder pushedText = new StringBuilder();
+        StringBuilder pushedThinking = new StringBuilder();
+        evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.DELTA || e.type() == SseEventType.THINKING)
+                .forEach(e -> {
+                    try {
+                        if (e.type() == SseEventType.DELTA) {
+                            pushedText.append(payloadField(e.payload(), "text"));
+                        } else {
+                            pushedThinking.append(payloadField(e.payload(), "delta"));
+                        }
+                    } catch (Exception ex) {
+                        throw new IllegalStateException(ex);
+                    }
+                });
+        assertEquals(pushedText.toString(), bodyRow.getContent(), "落库正文必须等于已推送 DELTA 拼接（不变量）");
+        assertEquals(pushedThinking.toString(), thinkingRow.getContent(), "落库思考必须等于已推送 THINKING 拼接（不变量）");
+        assertEquals("generating", thinkingRow.getThinkingStage(), "transformer 产思考恒为 generating 阶段");
+    }
+
+    @Test
+    @DisplayName("不变量（Task 5）— 取消中断（流中途置取消标记）：落库正文 = 已推送 delta 前缀")
+    @SuppressWarnings("unchecked")
+    void processRequest_cancelPath_persistedBodyEqualsPushedDeltaPrefix() throws Exception {
+        // Given: chunk1 产出一条 DELTA 后标记取消，chunk2 的 doOnNext 检查点抛 CancelledException
+        NodeOutput c1 = mock(NodeOutput.class);
+        NodeOutput c2 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        lenient().when(c2.state()).thenReturn(null);
+        when(transformer.transform(any(NodeOutput.class), any()))
+                .thenReturn(List.of(deltaEvent("生成到一半的")))
+                .thenReturn(List.of(deltaEvent("被取消的部分")));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.create(sink -> {
+            sink.next(c1);
+            // chunk1 已推送后置取消标记：chunk2 检查点即抛取消异常（中断点前事件已到前端）
+            worker.cancel("100");
+            sink.next(c2);
+            sink.complete();
+        }));
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // Then: 取消终态 + 落库一次，正文 = 已推送部分（state 无终消息，累加器为唯一事实源）
+        verify(chatRunService).updateStatus(100L, "CANCELLED");
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService, times(1)).batchInsert(msgCaptor.capture());
+        ChatMessage bodyRow = msgCaptor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("取消路径应存在累加器正文行"));
+        assertEquals("生成到一半的", bodyRow.getContent(), "取消路径落库正文必须等于已推送 delta 前缀");
+    }
+
+    @Test
+    @DisplayName("Task 5 取消/错误路径 — 累加器优先且抑制 state 同义行（正文/generating 思考不双行）")
+    @SuppressWarnings("unchecked")
+    void persistMessages_abnormalWithAccumulator_suppressesStateDuplicates() throws Exception {
+        // Given: state 同时带有终消息（generating 思考 + 正文）且累加器非空——不抑制会出现双行
+        AssistantMessage finalAssistant = AssistantMessage.builder()
+                .content("state 汇总正文")
+                .properties(Map.of("reasoningContent", "state 汇总思考"))
+                .build();
+        OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage("问题"), finalAssistant)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        DeltaAccumulator acc = new DeltaAccumulator(new ObjectMapper());
+        acc.accumulate(deltaEvent("已推送正文"));
+        acc.accumulate(thinkingEvent("已推送思考", "generating"));
+
+        // When: 取消/错误路径（abnormalPath=true）
+        invokePersistMessages(1L, 2L, "问题", "[]", "[]", 0, lastOutput, null, acc, true);
+
+        // Then: 正文/思考各仅一行且取累加器内容（与前端已渲染一致）
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> rows = captor.getValue();
+        List<ChatMessage> bodyRows = rows.stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .toList();
+        assertEquals(1, bodyRows.size(), "正文行不得双行（state 同义行被抑制）");
+        assertEquals("已推送正文", bodyRows.get(0).getContent());
+        List<ChatMessage> thinkingRows =
+                rows.stream().filter(m -> "thinking".equals(m.getMessageType())).toList();
+        assertEquals(1, thinkingRows.size(), "generating 思考行不得双行（state 同义行被抑制）");
+        assertEquals("已推送思考", thinkingRows.get(0).getContent());
+        assertEquals("generating", thinkingRows.get(0).getThinkingStage());
+    }
+
+    @Test
+    @DisplayName("Task 5 取消/错误路径 — 累加器为空回退 state 汇总（中断前无 delta 的窗口）")
+    @SuppressWarnings("unchecked")
+    void persistMessages_abnormalEmptyAccumulator_fallsBackToState() throws Exception {
+        // Given: 累加器为空（中断发生在首个 DELTA 之前），state 带终消息
+        AssistantMessage finalAssistant = new AssistantMessage("state 汇总正文");
+        OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage("问题"), finalAssistant)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        invokePersistMessages(
+                1L, 2L, "问题", "[]", "[]", 0, lastOutput, null, new DeltaAccumulator(new ObjectMapper()), true);
+
+        // Then: 回退 state 汇总正文（累加器空不得导致正文丢失）
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        ChatMessage bodyRow = captor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("回退 state 时应存在正文行"));
+        assertEquals("state 汇总正文", bodyRow.getContent());
+    }
+
+    @Test
+    @DisplayName("Task 5 正常完成路径 — state 汇总为权威，累加器不参与（abnormalPath=false）")
+    @SuppressWarnings("unchecked")
+    void persistMessages_normalPath_stateAuthoritativeAccumulatorIgnored() throws Exception {
+        // Given: state 带终消息，累加器也非空（正常完成时两者等价，state 为权威）
+        AssistantMessage finalAssistant = new AssistantMessage("state 汇总正文");
+        OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage("问题"), finalAssistant)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+        DeltaAccumulator acc = new DeltaAccumulator(new ObjectMapper());
+        acc.accumulate(deltaEvent("已推送正文"));
+
+        invokePersistMessages(1L, 2L, "问题", "[]", "[]", 0, lastOutput, null, acc, false);
+
+        // Then: 正文取 state 汇总且单行（累加器不产生第二行）
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> bodyRows = captor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .toList();
+        assertEquals(1, bodyRows.size());
+        assertEquals("state 汇总正文", bodyRows.get(0).getContent());
+    }
+
+    @Test
+    @DisplayName("Task 5 取消/错误路径 — (run_id,seq) 唯一索引冲突幂等路径不回归")
+    void persistMessages_abnormalPath_uniqueIndexConflict_treatedAsPersisted() throws Exception {
+        // Given: 累加器非空的取消路径重试落库，本批消息撞唯一索引（重复落库幂等兜底不回归）
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(null);
+        doThrow(new DataIntegrityViolationException("重复键违反唯一约束 uniq_chat_message_run_seq"))
+                .when(chatMessageService)
+                .batchInsert(anyList());
+        DeltaAccumulator acc = new DeltaAccumulator(new ObjectMapper());
+        acc.accumulate(deltaEvent("已推送正文"));
+
+        // When
+        PersistOutcome outcome = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, acc, true);
+
+        // Then: 幂等跳过按已落库处理（调用方不得重试）
+        assertTrue(outcome.persisted(), "取消路径唯一索引冲突同样按已落库幂等处理");
+        assertNull(outcome.assistantMessageId());
     }
 
     // ==================== catch 分支 handleError 失败兜底（P0-4b 复合故障） ====================
@@ -617,6 +1054,133 @@ class ChatRequestWorkerTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("应存在 assistant 正文行"));
         assertEquals("[]", assistantRow.getSourcesJson());
+    }
+
+    // ==================== T7 修复：SAA config 派生副本写隔离 → sink 容器双通道 ====================
+
+    /** 反射调用 private readSourcesJson（T7 修复后双通道读取的定点验证入口） */
+    private String invokeReadSourcesJson(RunnableConfig config) throws Exception {
+        Method method = ChatRequestWorker.class.getDeclaredMethod("readSourcesJson", RunnableConfig.class);
+        method.setAccessible(true);
+        return (String) method.invoke(worker, config);
+    }
+
+    @Test
+    @DisplayName("SOURCES（T7 修复）— 图节点 config 为派生副本：metadata 写回隔离，仍经 sink 容器推 SOURCES 事件")
+    @SuppressWarnings("unchecked")
+    void processRequest_derivedConfigIsolation_sourcesEventPushedViaSink() throws Exception {
+        // 复刻 SAA 派生副本行为（RunnableConfig$Builder(RunnableConfig) 内部经 HasMetadata$Builder
+        // 以 new HashMap 拷贝 metadata：容器独立、值对象引用共享）——mock 图流把 worker 传入的
+        // config 复制出节点侧副本，RetrieveNode 写 KEY_RETRIEVAL_SOURCES 只落副本（worker 原实例
+        // 不可见，即真机实证的写隔离根因），仅 sink 容器引用经浅拷贝穿透
+        NodeOutput before = mock(NodeOutput.class);
+        lenient().when(before.state()).thenReturn(null);
+        AssistantMessage assistantMsg = new AssistantMessage("引用资料的回答");
+        NodeOutput after = mock(NodeOutput.class);
+        lenient().when(after.state()).thenReturn(new OverAllState(Map.of("messages", List.of(assistantMsg))));
+        RunnableConfig[] workerConfigHolder = new RunnableConfig[1];
+
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenAnswer(inv -> {
+            RunnableConfig workerConfig = inv.getArgument(1);
+            workerConfigHolder[0] = workerConfig;
+            return Flux.create(sink -> {
+                sink.next(before);
+                // 模拟 SAA 派生副本：metadata 容器独立拷贝，值（sink 容器对象）引用共享
+                RunnableConfig derived = RunnableConfig.builder(workerConfig).build();
+                List<RetrievalSource> sources = List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9, "片段正文预览"));
+                // 模拟 RetrieveNode 双写：① KEY_RETRIEVAL_SOURCES 写副本 metadata（worker 原实例
+                // 读不到——写隔离）；② sink 容器 set（引用穿透派生副本，worker 原实例可读——T7 修复通道）
+                derived.metadata().ifPresent(m -> m.put(RetrieveNode.KEY_RETRIEVAL_SOURCES, sources));
+                Object sinkRef = derived.metadata()
+                        .map(m -> m.get(RetrieveNode.KEY_SOURCES_SINK))
+                        .orElse(null);
+                ((AtomicReference<List<RetrievalSource>>) sinkRef).set(sources);
+                sink.next(after);
+                sink.complete();
+            });
+        });
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "高等数学怎么学"));
+
+        // 前提锁死：派生副本写隔离成立——worker 原实例 metadata 键恒空（若 SAA 未来改为共享
+        // metadata，此断言失败提示本用例前提已变化）
+        assertNull(
+                workerConfigHolder[0]
+                        .metadata()
+                        .map(m -> m.get(RetrieveNode.KEY_RETRIEVAL_SOURCES))
+                        .orElse(null),
+                "派生副本写隔离前提：worker 原实例不得看到节点 metadata 写回");
+        // RED/GREEN 判据：若实现只读 metadata 键（修复前形态），sink 未被读、事件不推送，本断言必失败
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        List<SseEvent> sourcesEvents = evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.SOURCES)
+                .toList();
+        assertEquals(1, sourcesEvents.size(), "SOURCES 事件应经 sink 通道恰好推送一次");
+        assertTrue(sourcesEvents.get(0).payload().contains("高等数学讲义"), "payload 应含来源文档标题");
+        assertTrue(sourcesEvents.get(0).payload().contains("c1"), "payload 应含 chunkId");
+    }
+
+    @Test
+    @DisplayName("readSourcesJson（T7 修复）— sink 容器优先：节点已 sink.set 时读 sink 值（metadata 键隔离不可达）")
+    void readSourcesJson_sinkPriority_returnsSinkValue() throws Exception {
+        // 生产链路形态：worker 注册的 sink 容器被节点跨派生副本写回；KEY_RETRIEVAL_SOURCES
+        // 只在副本上、worker 原实例 metadata 无该键——仅 sink 通道可得来源
+        AtomicReference<List<RetrievalSource>> sink = new AtomicReference<>();
+        sink.set(List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9, "片段正文预览")));
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("200")
+                .addMetadata(RetrieveNode.KEY_SOURCES_SINK, sink)
+                .build();
+
+        String json = invokeReadSourcesJson(config);
+
+        assertTrue(json.contains("高等数学讲义"), "sink 通道值应被优先读取");
+        assertTrue(json.contains("c1"), "sink 通道值应含 chunkId");
+    }
+
+    @Test
+    @DisplayName("readSourcesJson（T7 修复）— metadata 键回退：sink 容器在但节点未写回时回退读 metadata 键")
+    void readSourcesJson_metadataFallback_whenSinkNotWritten() throws Exception {
+        // 直传同一 config 实例场景（单测模拟/图内其他潜在消费方）：sink 容器存在但未写回，
+        // 来源只经 KEY_RETRIEVAL_SOURCES 键可见——回退读取保证该路径不回归
+        AtomicReference<List<RetrievalSource>> emptySink = new AtomicReference<>();
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("200")
+                .addMetadata(RetrieveNode.KEY_SOURCES_SINK, emptySink)
+                .addMetadata(
+                        RetrieveNode.KEY_RETRIEVAL_SOURCES,
+                        List.of(new RetrievalSource("c2", "学习方法FAQ", "第二节", 0.8, "片段预览")))
+                .build();
+
+        String json = invokeReadSourcesJson(config);
+
+        assertTrue(json.contains("学习方法FAQ"), "sink 未写回时应回退读取 metadata 键值");
+        assertTrue(json.contains("c2"), "回退值应含 chunkId");
+    }
+
+    // ==================== 思考事件推送通道注册（2026-08-28 对话流式时间线改版） ====================
+
+    @Test
+    @DisplayName("run 开始 → config.metadata 注册 ThinkingPusher 回调（KEY_THINKING_CALLBACK，图节点消费通道）")
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void processRequest_registersThinkingPusher() throws Exception {
+        // Given: 正常完成的图流，捕获传入 compiledGraph.stream 的 RunnableConfig
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        ArgumentCaptor<RunnableConfig> configCaptor = ArgumentCaptor.forClass(RunnableConfig.class);
+        when(compiledGraph.stream(any(Map.class), configCaptor.capture())).thenReturn(Flux.just(mockChunk));
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // Then: metadata 携带本 run 的 ThinkingPusher 实例（QU/caption 节点据此实时推思考片段；
+        // 瞬时引用通道与 KEY_RETRIEVAL_SOURCES 同机制，不进 State/checkpoint、对模型不可见）
+        Object callback = configCaptor
+                .getValue()
+                .metadata(RetrieveNode.KEY_THINKING_CALLBACK)
+                .orElse(null);
+        assertInstanceOf(ThinkingPusher.class, callback, "config.metadata 应注册 ThinkingPusher 回调实例");
     }
 
     // ==================== P1-2 工具消息落库格式（与实时事件 schema 一致） ====================
@@ -1158,7 +1722,7 @@ class ChatRequestWorkerTest {
         MapRecord<String, Object, Object> record = createMockRecordWithBody(body);
 
         // 附件编排 mock：返回空上下文（本用例聚焦 run/message 双存，不关心 caption 组装）
-        when(orchestrator.process(anyList())).thenReturn(AttachmentContext.empty());
+        when(orchestrator.process(anyList(), any(), any())).thenReturn(AttachmentContext.empty());
 
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1251,7 +1815,7 @@ class ChatRequestWorkerTest {
 
         AttachmentContext context =
                 new AttachmentContext(List.of(new ImageCaptionResult("图片1:红色图表", "a.png")), Map.of());
-        when(orchestrator.process(anyList())).thenReturn(context);
+        when(orchestrator.process(anyList(), any(), any())).thenReturn(context);
 
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1267,12 +1831,18 @@ class ChatRequestWorkerTest {
         List<?> msgs = (List<?>) inputsCaptor.getValue().get("messages");
         assertEquals("图片1:红色图表 这张图里是什么", ((UserMessage) msgs.get(0)).getText());
 
-        // Then: orchestrator 收到解析后的附件记录（url/type 原样透传）
+        // Then: orchestrator 收到解析后的附件记录（url/type 原样透传），且 Task 4 接线传入
+        // thinkingPusher（caption 思考流式）与取消源（附件批循环即时取消）
         ArgumentCaptor<List<AttachmentRecord>> attCaptor = ArgumentCaptor.forClass(List.class);
-        verify(orchestrator).process(attCaptor.capture());
+        ArgumentCaptor<ThinkingPusher> pusherCaptor = ArgumentCaptor.forClass(ThinkingPusher.class);
+        ArgumentCaptor<BooleanSupplier> cancelCaptor = ArgumentCaptor.forClass(BooleanSupplier.class);
+        verify(orchestrator).process(attCaptor.capture(), pusherCaptor.capture(), cancelCaptor.capture());
         assertEquals(1, attCaptor.getValue().size());
         assertEquals("image", attCaptor.getValue().get(0).type());
         assertEquals("0/a.png", attCaptor.getValue().get(0).url());
+        assertNotNull(pusherCaptor.getValue(), "SSE 链路必须传入 per-run thinkingPusher");
+        assertNotNull(cancelCaptor.getValue(), "必须传入 run 级取消源");
+        assertFalse(cancelCaptor.getValue().getAsBoolean(), "未被取消的 run 取消源应返回 false");
 
         // Then: metadata 携带附件上下文（QU/RetrieveNode 消费通道）
         assertEquals(
@@ -1281,6 +1851,10 @@ class ChatRequestWorkerTest {
                         .getValue()
                         .metadata(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT)
                         .orElse(null));
+        // Then: metadata 注册取消源（RetrieveNode 三段 join 前检查点消费通道，Task 4）
+        assertTrue(
+                configCaptor.getValue().metadata(RetrieveNode.KEY_CANCEL_CHECK).orElse(null) instanceof BooleanSupplier,
+                "worker 必须在 config.metadata 注册 KEY_CANCEL_CHECK 取消源");
 
         // Then: 当前消息已带附件 → 不触发 chat_run 历史重建（Task 11 重建仅覆盖后续无附件轮次）
         verify(chatRunService, never()).findRecentAttachments(anyLong(), anyLong(), anyInt());
@@ -1312,7 +1886,7 @@ class ChatRequestWorkerTest {
 
         AttachmentContext context = new AttachmentContext(
                 List.of(), Map.of("0/doc.pdf", List.of(new DocumentLocalChunk("附件正文", new float[] {1f}, 0))));
-        when(orchestrator.process(anyList())).thenReturn(context);
+        when(orchestrator.process(anyList(), any(), any())).thenReturn(context);
 
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1349,7 +1923,7 @@ class ChatRequestWorkerTest {
         body.put("query", "这张图里是什么");
         body.put("attachments", attachmentsJson);
         MapRecord<String, Object, Object> record = createMockRecordWithBody(body);
-        when(orchestrator.process(anyList())).thenReturn(AttachmentContext.empty());
+        when(orchestrator.process(anyList(), any(), any())).thenReturn(AttachmentContext.empty());
 
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1363,7 +1937,7 @@ class ChatRequestWorkerTest {
         InOrder inOrder = inOrder(bridge, orchestrator);
         inOrder.verify(bridge).push(eq("100"), argThat((SseEvent e) -> e != null && e.type() == SseEventType.METADATA));
         inOrder.verify(bridge).push(eq("100"), argThat((SseEvent e) -> e != null && e.type() == SseEventType.STAGE));
-        inOrder.verify(orchestrator).process(anyList());
+        inOrder.verify(orchestrator).process(anyList(), any(), any());
         // 且图执行前推送 STAGE(understanding)（覆盖 QU 阻塞 LLM 静默窗口）
         verify(transformer, atLeastOnce()).createStageEvent(any(), eq(SseEventTransformer.STAGE_UNDERSTANDING));
     }
@@ -1387,7 +1961,7 @@ class ChatRequestWorkerTest {
 
         // Then: 触发重建查询但查无历史（mock 默认空列表）→ orchestrator 不被调用，query 原样，无附件上下文 metadata
         verify(chatRunService).findRecentAttachments(200L, 100L, 3);
-        verify(orchestrator, never()).process(anyList());
+        verify(orchestrator, never()).process(anyList(), any(), any());
         List<?> msgs = (List<?>) inputsCaptor.getValue().get("messages");
         assertEquals("你好", ((UserMessage) msgs.get(0)).getText());
         assertTrue(configCaptor
@@ -1411,7 +1985,7 @@ class ChatRequestWorkerTest {
 
         // orchestrator 返回含旧图 caption 的附件上下文（Caffeine 命中直接复用或重新 caption）
         AttachmentContext context = new AttachmentContext(List.of(new ImageCaptionResult("图片1:旧图", "a.png")), Map.of());
-        when(orchestrator.process(recent)).thenReturn(context);
+        when(orchestrator.process(eq(recent), any(), any())).thenReturn(context);
 
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1425,8 +1999,8 @@ class ChatRequestWorkerTest {
 
         // Then: 以 chat_run 为入口查该会话最近 3 个 run 的附件（排除当前 run）
         verify(chatRunService).findRecentAttachments(200L, 100L, 3);
-        // orchestrator.process 收到重建出的附件记录
-        verify(orchestrator).process(recent);
+        // orchestrator.process 收到重建出的附件记录（pusher/取消源由 worker 接线传入）
+        verify(orchestrator).process(eq(recent), any(), any());
         // metadata 携带重建的附件上下文（QU/RetrieveNode 消费通道）
         assertEquals(
                 context,
@@ -1509,6 +2083,8 @@ class ChatRequestWorkerTest {
         assertEquals(1, result.size());
         assertEquals("thinking", result.get(0).getMessageType());
         assertEquals("深度思考过程", result.get(0).getContent());
+        // 2026-08-28 时间线改版：state 消息来源的思考恒属主 agent 生成阶段
+        assertEquals("generating", result.get(0).getThinkingStage());
     }
 
     // ==================== 其它私有方法边界 ====================

@@ -85,6 +85,7 @@ function makeHistoryRow(
     role: "ASSISTANT",
     content: "",
     messageType: null,
+    thinkingStage: null,
     intentType: "knowledge_question",
     runId: "hrun-1",
     seq: 1,
@@ -166,10 +167,10 @@ describe("历史会话页：初始归属与拉取", () => {
     expect(await screen.findByTestId("markdown-view")).toHaveTextContent("恢复后的回答");
   });
 
-  it("上下文条：标题「历史会话」+ 新建对话入口（历史加载期恒在场）", () => {
+  it("上下文条：标题「历史会话」（顶栏新建按钮已删，新建入口在侧栏；Task 13）", () => {
     renderPage();
     expect(screen.getByText("历史会话")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "新建对话" })).toHaveAttribute("href", "/chat");
+    expect(screen.queryByRole("link", { name: "新建对话" })).not.toBeInTheDocument();
   });
 });
 
@@ -239,13 +240,12 @@ describe("历史会话页：历史回显渲染", () => {
     expect(screen.getByText("图.png")).toBeInTheDocument();
     expect(screen.getByText("讲义.pdf")).toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
-    // AI 消息：思考卡（已思考折叠）+ 来源卡 + 工具卡（人话标签 + success 摘要）+ 正文
-    // 推理卡默认收起：预览行显示思考末行（2026-08-27）
-    expect(screen.getByTestId("reasoning-preview")).toBeInTheDocument();
-    // 来源经召回抽屉展示：知识片段入口 pill 携带计数
-    expect(screen.getByTestId("reasoning-sources-pill")).toHaveTextContent("1 个知识片段");
-    expect(screen.getByTestId("tool-card")).toHaveTextContent("检索课程知识库");
-    expect(screen.getByTestId("tool-success")).toBeInTheDocument();
+    // AI 消息：时间轴（思考节点默认收起 + 工具步骤 + 检索步骤）+ 正文
+    // 思考步骤：历史行 ended=true 呈「思考已完成」；工具步骤并入时间轴（人话标签）
+    expect(screen.getByTestId("thinking-step")).toBeInTheDocument();
+    expect(screen.getByText("思考已完成")).toBeInTheDocument();
+    expect(screen.getByTestId("tool-step")).toHaveTextContent("检索课程知识库");
+    expect(screen.getByTestId("sources-step")).toHaveTextContent("已检索");
     expect(screen.getByTestId("markdown-view")).toHaveTextContent("RAG 是检索增强生成。");
     // 操作栏：历史消息 messageId 透传 → 反馈按钮在场
     expect(screen.getByRole("button", { name: /有用/ })).toBeInTheDocument();
@@ -296,12 +296,9 @@ describe("历史会话页：历史回显渲染", () => {
             content: query,
             attachments: [],
             model: null,
-            thinking: "",
-            thinkingEnded: false,
             text: "",
             sources: [],
-            stages: [],
-            tools: [],
+            timeline: [],
             endStatus: null,
             messageId: null,
           },

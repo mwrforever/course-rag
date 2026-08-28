@@ -60,7 +60,7 @@ class AdminSessionControllerTest {
 
     private ChatMessageVO messageVO(Long id) {
         return new ChatMessageVO(
-                id, "user", "问题" + id, "TEXT", "knowledge_question", 10L, 1, LocalDateTime.of(2026, 8, 15, 9, 1));
+                id, "user", "问题" + id, "TEXT", null, "knowledge_question", 10L, 1, LocalDateTime.of(2026, 8, 15, 9, 1));
     }
 
     @Test

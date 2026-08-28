@@ -3,9 +3,10 @@
 /**
  * 对话页共享工作区（/chat 新对话 与 /chat/[sessionId] 历史会话共用，全 CSR）
  *
- * 结构（设计 §1.5.4）：上下文条 48px/h-12（返回课程/会话标题/新建对话 + D7 课程名面包屑）
+ * 结构（设计 §1.5.4）：上下文条 48px/h-12（返回课程/会话标题 + D7 课程名面包屑；
+ * 2026-08-29 Task 13 顶栏「新建对话」移除，新建入口收敛到侧栏按钮）
  * → 消息流滚动区（max-w-840 居中、智能吸底滚动）→ 吸底输入区
- * （bg-bg/80 + backdrop-blur + 附件 chips + 发送/停止 morph）。
+ * （bg-bg/80 + backdrop-blur + 附件 chips 内嵌输入卡 + 发送/停止 morph）。
  *
  * 职责：
  * - useChatStream 全量状态消费；新会话（initialSessionId=null）metadata 到达后
@@ -19,7 +20,7 @@
  *   页面卸载统一 revoke（D12）
  * - 空态：AI 徽标 + 问候（新对话）/「继续提问」（历史会话占位，Task 13 接回显）
  */
-import { ArrowLeft, Paperclip, Plus } from "@phosphor-icons/react";
+import { ArrowLeft, Paperclip } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -30,10 +31,11 @@ import {
   validateAttachments,
   type PendingAttachment,
 } from "@/components/chat/attachment-chips";
+import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview-dialog";
 import { ChatInput, chatErrorText } from "@/components/chat/chat-input";
 import { ChatToast } from "@/components/chat/chat-toast";
 import { SIDEBAR_SESSIONS_QUERY_KEY } from "@/components/chat/chat-sidebar";
-import { useSetChatStreaming } from "@/components/chat/chat-streaming-context";
+import { useChatNewChatSeq, useSetChatStreaming } from "@/components/chat/chat-streaming-context";
 import { MessageList, shouldStickToBottom } from "@/components/chat/message-list";
 import { SectionError } from "@/components/section-error";
 import { useChatStream, type StreamMessage } from "@/hooks/use-chat-stream";
@@ -117,7 +119,14 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   const quickQuery = searchParams.get("q");
   const queryClient = useQueryClient();
   const setStreaming = useSetChatStreaming();
+  // 新建对话信号（Task 13）：侧栏 /chat 同路由按钮经 Context 发出，本组件消费执行干净态
+  const newChatSeq = useChatNewChatSeq();
   const { state, send, cancel, reconnect, reset } = useChatStream(initialSessionId);
+
+  // ── 受控输入（Task 13）：工作区持有输入值，新建信号经 resetKey 驱动清空 ──
+  // 初值取 /chat?q= 快速提问预填（仅新对话页；预填不自动发送，避免误发）
+  const [inputValue, setInputValue] = useState(variant === "new" ? (quickQuery ?? "") : "");
+  const [inputResetKey, setInputResetKey] = useState(0);
 
   // ── 流式状态上报 (chat) 布局 Context：侧栏据守卫 Ctrl+K/新建对话（防跳转丢流），
   // 并携带会话 id 供侧栏对应会话行渲染生成中动画（2026-08-27）──
@@ -155,6 +164,10 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   // ── 附件状态：pending chips + record.url → blob URL 映射（D12 本地预览）──
   const [pendings, setPendings] = useState<PendingAttachment[]>([]);
   const [blobUrls, setBlobUrls] = useState<Record<string, string>>({});
+  // ── 附件预览弹窗（Task 12）：chip 点击打开，Esc/遮罩关闭（null=关闭）──
+  const [previewItem, setPreviewItem] = useState<PendingAttachment | null>(null);
+  // ── 拖拽上传态（Task 12）：文件拖入工作区点亮高亮层，释放触发上传 ──
+  const [dragActive, setDragActive] = useState(false);
   const blobUrlsRef = useRef(blobUrls);
   useEffect(() => {
     blobUrlsRef.current = blobUrls;
@@ -175,13 +188,36 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
     [],
   );
 
+  // ── 新建对话信号消费（Task 13）：侧栏按钮 seq 自增 → 干净态 ──
+  // 清流式（clearSession=true 连会话归属清空，下次发送建新会话）+ 附件 chips 与
+  // blob 全量 revoke + 预览弹窗收起 + 输入清空（resetKey 驱动）；URL 不变不重挂载
+  const lastNewChatSeq = useRef(newChatSeq);
+  useEffect(() => {
+    if (lastNewChatSeq.current === newChatSeq) return;
+    lastNewChatSeq.current = newChatSeq;
+    reset(true);
+    // 附件干净态：pending chips 与消息内 blob 映射全部 revoke 后清空
+    pendings.forEach((item) => URL.revokeObjectURL(item.blobUrl));
+    Object.values(blobUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+    blobUrlsRef.current = {};
+    setBlobUrls({});
+    setPendings([]);
+    setPreviewItem(null);
+    // 输入干净态：resetKey 自增驱动 ChatInput 清空
+    setInputResetKey((key) => key + 1);
+    // pendings 入 deps 仅取最新值：seq 未变时守卫直接返回，无重复执行
+  }, [newChatSeq, reset, pendings]);
+
   // ── 智能吸底滚动：仅距底 80px 内跟随（用户上翻阅读不打扰）──
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastMessage = state.messages.at(-1);
-  // 流式输出变化锚点：最后一条 AI 消息的正文+思考长度变化即触发检查
+  // 流式输出变化锚点：最后一条 AI 消息的正文+时间轴规模变化即触发检查
+  // （时间轴以「节点数 + 末思考节点行数」计——思考行流式追加时逐行驱动吸底检查）
+  const lastNode = lastMessage?.role === "assistant" ? lastMessage.timeline.at(-1) : undefined;
+  const lastThinkingLines = lastNode?.kind === "thinking" ? lastNode.lines.length : 0;
   const streamAnchor =
     lastMessage?.role === "assistant"
-      ? `${lastMessage.text.length}-${lastMessage.thinking.length}`
+      ? `${lastMessage.text.length}-${lastMessage.timeline.length}-${lastThinkingLines}`
       : "idle";
   useEffect(() => {
     const el = scrollRef.current;
@@ -213,6 +249,27 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
     },
     [pendings],
   );
+
+  /** 拖拽经过：拦截浏览器默认打开行为并点亮高亮层（仅文件类拖拽） */
+  function handleDragOver(event: React.DragEvent<HTMLDivElement>) {
+    // 非文件拖拽（页内文本选择等）不接管，保持原生行为
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    setDragActive(true);
+  }
+
+  /** 拖离容器：高亮层熄灭（子元素间移动不误判，relatedTarget 仍在容器内时忽略） */
+  function handleDragLeave(event: React.DragEvent<HTMLDivElement>) {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setDragActive(false);
+  }
+
+  /** 拖拽释放：取 dataTransfer.files 走与文件选择同一上传链路（前置校验即拒共用） */
+  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragActive(false);
+    void handleFiles(event.dataTransfer?.files ?? null);
+  }
 
   /**
    * 附件选择处理：前置校验（超限即拒，不发网络请求）→ 建 blob 预览 → 选中即传
@@ -312,7 +369,13 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   const isEmpty = displayMessages.length === 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-workspace">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col"
+      data-testid="chat-workspace"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* 上下文条：kimi 对话页页头（← 返回课程 · 课程名 chip · 会话标题 · 新建对话） */}
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/80 bg-bg/70 px-5 text-sm backdrop-blur">
         <Link
@@ -335,13 +398,8 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
         <span className="min-w-0 truncate text-muted" data-testid="context-title">
           {contextTitle}
         </span>
-        <Link
-          href="/chat"
-          className="ml-auto flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-xs text-muted transition-colors hover:bg-surface-2 hover:text-brand-strong"
-        >
-          <Plus size={13} aria-hidden />
-          新建对话
-        </Link>
+        {/* Task 13：顶栏「新建对话」按钮移除——新建入口收敛到侧栏按钮（/chat 同路由
+            经信号 reset 干净态，避免导航重挂载丢滚动位置）；此处 ml-auto 保持标题左侧 */}
       </div>
 
       {/* 消息流滚动区（智能吸底滚动） */}
@@ -419,21 +477,41 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
         ) : null}
       </div>
 
+      {/* 拖拽高亮层（Task 12）：文件拖入工作区时点亮（pointer-events-none 保证 drop 落回容器） */}
+      {dragActive ? (
+        <div
+          data-testid="drag-highlight"
+          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center border-2 border-dashed border-brand bg-bg/85"
+        >
+          <p className="rounded-full border border-brand/40 bg-surface px-5 py-2 text-sm font-medium text-brand-strong">
+            松开鼠标上传附件
+          </p>
+        </div>
+      ) : null}
+
       {/* 吸底输入区：bg/80 + backdrop-blur + 顶部 1px 边框（kimi 对话页形态） */}
       <div className="shrink-0 border-t border-border/80 bg-bg/80 backdrop-blur">
         <div className="mx-auto w-full max-w-[840px] px-6 py-4">
-          {/* 附件 chips：输入框上方展示（上传中进度/预览/移除；图2 输入框形态） */}
-          {pendings.length > 0 ? (
-            <AttachmentChips items={pendings} onRemove={removeAttachment} />
-          ) : null}
           <ChatInput
             streaming={state.streaming}
             sendDisabled={pendings.some((item) => item.status === "uploading")}
             onSend={handleSend}
             onCancel={() => void cancel()}
             onNotify={notify}
-            initialValue={variant === "new" ? (quickQuery ?? undefined) : undefined}
+            value={inputValue}
+            onValueChange={setInputValue}
+            resetKey={inputResetKey}
             onPasteFiles={(files) => void handleFiles(files)}
+            /* 附件区（图一扩容形态）：chips 渲染进输入卡内顶部，border-t 与输入行分隔 */
+            attachmentsArea={
+              pendings.length > 0 ? (
+                <AttachmentChips
+                  items={pendings}
+                  onRemove={removeAttachment}
+                  onPreview={setPreviewItem}
+                />
+              ) : undefined
+            }
             attachmentSlot={
               /* ＋附件：单按钮单接口承载图片+文档（2026-08-27 用户拍板合并；G11 白名单合并 accept） */
               <>
@@ -466,6 +544,8 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
         </div>
       </div>
 
+      {/* 附件预览弹窗（Task 12）：图片 Zoom / pdf iframe / 其他格式图标卡 */}
+      <AttachmentPreviewDialog item={previewItem} onClose={() => setPreviewItem(null)} />
       <ChatToast message={toast} />
     </div>
   );

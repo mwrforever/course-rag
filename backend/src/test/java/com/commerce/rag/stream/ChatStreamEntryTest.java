@@ -434,7 +434,8 @@ class ChatStreamEntryTest {
                 .thenReturn(false);
 
         when(chatMessageService.findByRunId(123L))
-                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史思考内容", "thinking", null, 123L, 1, null)));
+                .thenReturn(
+                        List.of(new ChatMessageVO(1L, "ASSISTANT", "历史思考内容", "thinking", null, null, 123L, 1, null)));
 
         // When
         SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
@@ -455,7 +456,8 @@ class ChatStreamEntryTest {
                 .thenReturn(false);
 
         when(chatMessageService.findByRunId(123L))
-                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史思考内容", "thinking", null, 123L, 1, null)));
+                .thenReturn(
+                        List.of(new ChatMessageVO(1L, "ASSISTANT", "历史思考内容", "thinking", null, null, 123L, 1, null)));
 
         // When
         SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
@@ -549,7 +551,7 @@ class ChatStreamEntryTest {
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
         when(chatMessageService.findByRunId(123L))
-                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史内容", "thinking", null, 123L, 1, null)));
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史内容", "thinking", null, null, 123L, 1, null)));
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
@@ -571,7 +573,7 @@ class ChatStreamEntryTest {
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
         when(chatMessageService.findByRunId(123L))
-                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史内容", "thinking", null, 123L, 1, null)));
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史内容", "thinking", null, null, 123L, 1, null)));
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
 
         // When
@@ -593,7 +595,7 @@ class ChatStreamEntryTest {
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
         when(chatMessageService.findByRunId(123L))
-                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史内容", "thinking", null, 123L, 1, null)));
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "历史内容", "thinking", null, null, 123L, 1, null)));
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
 
         // When
@@ -607,18 +609,19 @@ class ChatStreamEntryTest {
     // ==================== replayFromPg() 降级回放事件类型（P1-2 schema 对齐） ====================
 
     @Test
-    @DisplayName("replayFromPg USER 消息跳过 + thinking/DELTA 事件转义发送")
-    void reconnect_replayFromPg_skipsUserAndEmitsThinkingAndDelta() {
-        // Given: 消息含 USER（跳过——客户端已有用户查询）、thinking（THINKING 事件 + escapeJson 转义）、
+    @DisplayName("replayFromPg USER 消息跳过 + thinking/DELTA 事件转义发送；旧数据无 thinking_stage 输出 stage:null")
+    void reconnect_replayFromPg_skipsUserAndEmitsThinkingAndDelta() throws Exception {
+        // Given: 消息含 USER（跳过——客户端已有用户查询）、thinking（THINKING 事件 + escapeJson 转义；
+        // 历史存量行 thinkingStage=null → payload stage 输出 JSON null，前端降级 generating 不报错）、
         // 普通助手消息（DELTA 事件）
         when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
         when(chatMessageService.findByRunId(123L))
                 .thenReturn(List.of(
-                        new ChatMessageVO(1L, "USER", "你好", null, null, 123L, 1, null),
-                        new ChatMessageVO(2L, "ASSISTANT", "他说\"你好\"\n含反斜杠\\t", "thinking", null, 123L, 2, null),
-                        new ChatMessageVO(3L, "ASSISTANT", "答案文本", null, null, 123L, 3, null)));
+                        new ChatMessageVO(1L, "USER", "你好", null, null, null, 123L, 1, null),
+                        new ChatMessageVO(2L, "ASSISTANT", "他说\"你好\"\n含反斜杠\\t", "thinking", null, null, 123L, 2, null),
+                        new ChatMessageVO(3L, "ASSISTANT", "答案文本", null, null, null, 123L, 3, null)));
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
@@ -627,6 +630,41 @@ class ChatStreamEntryTest {
         // Then: USER 被跳过，thinking/DELTA 均完成回放并继续订阅实时事件
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
         assertNotNull(emitter);
+        // Then: 回放 payload 契约——thinking 含 delta+stage 字段（旧数据 stage=null 显式输出，
+        // 与实时事件 {delta, stage} 同构）；正文为 DELTA {text}
+        List<String> sent = sentDataStrings(emitter);
+        assertTrue(
+                sent.stream().anyMatch(s -> s.startsWith("{\"delta\":\"") && s.endsWith(",\"stage\":null}")),
+                "旧数据 thinking 回放应输出 stage:null（前端降级 generating）: " + sent);
+        assertTrue(sent.contains("{\"text\":\"答案文本\"}"), "正文应以 DELTA {text} 回放: " + sent);
+    }
+
+    @Test
+    @DisplayName("replayFromPg thinking 行带 thinking_stage → THINKING 事件 payload 原样携带 stage（与实时事件同构）")
+    void reconnect_replayFromPg_thinkingRowCarriesStage() throws Exception {
+        // Given: 新落库的 thinking 行带阶段键（understanding / generating 各一行）
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(
+                        new ChatMessageVO(1L, "ASSISTANT", "意图分析思考", "thinking", "understanding", null, 123L, 1, null),
+                        new ChatMessageVO(2L, "ASSISTANT", "生成阶段思考", "thinking", "generating", null, 123L, 2, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 两条 THINKING 回放分别携带各自 stage（前端按 stage 分段归组渲染）
+        List<String> sent = sentDataStrings(emitter);
+        assertTrue(
+                sent.stream()
+                        .anyMatch(s -> s.contains("\"delta\":\"意图分析思考\"") && s.contains("\"stage\":\"understanding\"")),
+                "understanding 思考应携带 stage: " + sent);
+        assertTrue(
+                sent.stream()
+                        .anyMatch(s -> s.contains("\"delta\":\"生成阶段思考\"") && s.contains("\"stage\":\"generating\"")),
+                "generating 思考应携带 stage: " + sent);
     }
 
     @Test
@@ -644,6 +682,7 @@ class ChatStreamEntryTest {
                         "ASSISTANT",
                         "{\"toolCallId\":\"tc-1\",\"toolName\":\"search\"}",
                         "TOOL_CALL",
+                        null,
                         null,
                         123L,
                         1,
@@ -677,6 +716,7 @@ class ChatStreamEntryTest {
                         "{\"tool\":\"calculator\",\"args\":{\"a\":1}}",
                         "TOOL_CALL",
                         null,
+                        null,
                         123L,
                         1,
                         null)));
@@ -709,6 +749,7 @@ class ChatStreamEntryTest {
                         "{\"tool\":\"calculator\",\"result\":\"42\"}",
                         "TOOL_RESULT",
                         null,
+                        null,
                         123L,
                         1,
                         null)));
@@ -732,7 +773,8 @@ class ChatStreamEntryTest {
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
         when(chatMessageService.findByRunId(123L))
-                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "not-json", "TOOL_CALL", null, 123L, 1, null)));
+                .thenReturn(List.of(
+                        new ChatMessageVO(1L, "ASSISTANT", "not-json", "TOOL_CALL", null, null, 123L, 1, null)));
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
@@ -751,7 +793,7 @@ class ChatStreamEntryTest {
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
         when(chatMessageService.findByRunId(123L))
-                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "  ", "TOOL_CALL", null, 123L, 1, null)));
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", "  ", "TOOL_CALL", null, null, 123L, 1, null)));
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
@@ -761,6 +803,30 @@ class ChatStreamEntryTest {
         verify(objectMapper, never()).readTree(anyString());
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
         assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("replayFromPg query_plan 行 → 同名 query_plan 事件透传 content（不当正文 DELTA 泄漏 JSON）")
+    void reconnect_replayFromPg_queryPlanRow_passthrough() throws Exception {
+        // Given: 2026-08-28 时间线改版落库的 query_plan 行（content 即实时事件同款 JSON）
+        String planJson = "{\"intent\":\"knowledge_question\",\"rewritten\":[\"高等数学 大纲\"],"
+                + "\"filters\":{\"courseNames\":[\"高等数学\"]}}";
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(
+                        List.of(new ChatMessageVO(1L, "ASSISTANT", planJson, "query_plan", null, null, 123L, 1, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: payload 原样透传回放，且不产生 {"text":...} 正文 DELTA（防止 JSON 泄漏成正文）
+        List<String> sent = sentDataStrings(emitter);
+        assertTrue(sent.contains(planJson), "query_plan 行应原样透传为 query_plan 事件 payload");
+        assertTrue(sent.stream().noneMatch(s -> s.startsWith("{\"text\":")), "不得被当正文 DELTA 回放");
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
     }
 
     @Test
@@ -825,9 +891,9 @@ class ChatStreamEntryTest {
         when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
         when(chatMessageService.findByRunId(123L))
                 .thenReturn(List.of(
-                        new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, 123L, 1, null),
-                        new ChatMessageVO(8L, "ASSISTANT", "工具调用", "TOOL_CALL", null, 123L, 2, null),
-                        new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, 123L, 3, null)));
+                        new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, null, 123L, 1, null),
+                        new ChatMessageVO(8L, "ASSISTANT", "工具调用", "TOOL_CALL", null, null, 123L, 2, null),
+                        new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, null, 123L, 3, null)));
 
         // 反向扫描跳过 thinking/TOOL_* 行，命中最后一条正文行（messageType==null）
         assertEquals("777", invokeResolveAssistantMessageId("123"));
@@ -860,8 +926,8 @@ class ChatStreamEntryTest {
         // PG 消息：thinking + assistant 正文（id=777）——replay 与 messageId 解析共用同一查询结果
         when(chatMessageService.findByRunId(123L))
                 .thenReturn(List.of(
-                        new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, 123L, 1, null),
-                        new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, 123L, 2, null)));
+                        new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, null, 123L, 1, null),
+                        new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, null, 123L, 2, null)));
 
         SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
 
@@ -879,7 +945,7 @@ class ChatStreamEntryTest {
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
         when(chatMessageService.findByRunId(123L))
-                .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "半截回答", null, null, 123L, 2, null)));
+                .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "半截回答", null, null, null, 123L, 2, null)));
 
         SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
 
@@ -895,7 +961,7 @@ class ChatStreamEntryTest {
                 .thenReturn(false);
         // 仅 thinking 行（正文缺失）：run 完成但反馈目标不可解析 → 显式 null（前端可空容忍）
         when(chatMessageService.findByRunId(123L))
-                .thenReturn(List.of(new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, 123L, 1, null)));
+                .thenReturn(List.of(new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, null, 123L, 1, null)));
 
         SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
 
@@ -916,7 +982,7 @@ class ChatStreamEntryTest {
         // findByRunId 两次消费：replayFromPg 无历史（-1）→ messageId 解析返回 assistant 正文行
         when(chatMessageService.findByRunId(123L))
                 .thenReturn(null)
-                .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, 123L, 2, null)));
+                .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, null, 123L, 2, null)));
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
 
         SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
@@ -935,7 +1001,7 @@ class ChatStreamEntryTest {
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
         when(chatMessageService.findByRunId(123L))
-                .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, 123L, 1, null)));
+                .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, null, 123L, 1, null)));
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
 
         SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));

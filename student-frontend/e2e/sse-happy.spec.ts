@@ -2,10 +2,11 @@ import { test, expect } from "@playwright/test";
 import { mockApi, login, mockChatStream, frame } from "./helpers/sse-route";
 
 /**
- * SSE happy path E2E（整合 spec §3.2 SSE-happy 组）
+ * SSE happy path E2E（整合 spec §3.2 SSE-happy 组；2026-08-28 时间线改版断言对齐）
  *
  * 完整链路：metadata→thinking→thinking_end→delta×2→tool_call→tool_result→sources→end
- * 断言：URL 不跳转（E2E 实证修订，见设计文档 §六.13）、思考卡折叠、正文流式、工具卡配对成功、来源卡前置、操作栏浮现。
+ * 断言：URL 不跳转（E2E 实证修订，见设计文档 §六.13）、思考步骤收敛完成态、正文流式、
+ * 工具步骤配对成功、检索步骤（来源）承载、操作栏浮现。
  * 注意：mock 一次性 fulfill 整条流，前端解析器跨 chunk 增量消费（单测已覆盖残包）。
  */
 
@@ -72,23 +73,24 @@ test.describe("SSE 全链路", () => {
 
     // 渲染屏障：先等用户消息落位（dispatch send 提交），再推进同批渲染断言
     await expect(page.getByText("这门课需要什么基础？")).toBeVisible();
-    // 推理卡（2026-08-27）：thinking 与 thinking_end 帧同批送达时瞬态不可断言，
-    // 直接断言收敛后的「已深度思考」终态（默认收起）
-    await expect(page.getByText("已深度思考")).toBeVisible({ timeout: 10_000 });
+    // 时间轴思考步骤（2026-08-28）：thinking 与 thinking_end 帧同批送达时瞬态不可断言，
+    // 直接断言收敛后的「思考已完成」终态（默认收起）
+    await expect(page.getByTestId("thinking-status")).toHaveText("思考已完成");
 
     // 正文流式渲染
     await expect(page.getByText(/至少掌握一门编程语言/)).toBeVisible();
 
-    // 工具卡：人话映射 + 成功摘要（注意 toolName 人话与思考摘要文案可能同串，
-    // 用 tool_result 的 output 摘要做独特锚；工具卡名称按存在性宽松断言）
+    // 工具步骤：人话映射 + 成功摘要（注意 toolName 人话与思考摘要文案可能同串，
+    // 用 tool_result 的 output 摘要做独特锚；工具步骤名称按存在性宽松断言）
     await expect(page.getByText("检索到课程先修要求章节")).toBeVisible();
 
-    // 来源（2026-08-27）：思考流在位 → 推理卡「知识片段」pill，点击打开召回抽屉
-    const pill = page.getByTestId("reasoning-sources-pill");
-    await expect(pill).toBeVisible();
-    await pill.click();
-    await expect(page.getByTestId("retrieval-drawer")).toBeVisible();
-    await expect(page.getByText("课程讲义第1章")).toBeVisible();
+    // 来源（2026-08-28 时间线改版）：检索步骤到达即完成态，点击打开召回抽屉
+    const sourcesStep = page.getByTestId("sources-step");
+    await expect(sourcesStep).toContainText("已检索 1 篇相关资料");
+    await sourcesStep.click();
+    const drawer = page.getByTestId("retrieval-drawer");
+    await expect(drawer).toBeVisible();
+    await expect(drawer).toContainText("课程讲义第1章");
     await page.keyboard.press("Escape");
 
     // end 后操作栏浮现（复制 + 有用/无用）

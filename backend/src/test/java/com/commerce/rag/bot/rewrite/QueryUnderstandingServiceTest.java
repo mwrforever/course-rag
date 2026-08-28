@@ -4,13 +4,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.PromptLoader;
+import com.commerce.rag.properties.QueryUnderstandingProperties;
+import com.commerce.rag.stream.SseEventTransformer;
+import com.commerce.rag.stream.ThinkingPusher;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,12 +36,15 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import reactor.core.publisher.Flux;
 
 /**
  * QueryUnderstandingService 单元测试 —— 意图判定 + 查询重写（LLM 调用 / JSON 解析 / 降级）
  *
  * <p>构造器内 ChatClient.builder(chatModel) 生成真实 DefaultChatClient，mock ChatModel.call(Prompt)
- * 模拟 LLM 返回；JSON 解析用 QueryPlan.intent 断言验证未知字符串降级 unknown（不拒答）。
+ * 模拟 LLM 返回；流式重载（带 ThinkingPusher）mock ChatModel.stream(Prompt) 吐
+ * reasoning/content 混合 chunk，断言思考实时推送与聚合解析（2026-08-28 时间线改版）；
+ * JSON 解析用 QueryPlan.intent 断言验证未知字符串降级 unknown（不拒答）。
  *
  * @author commerce-rag
  */
@@ -52,7 +62,14 @@ class QueryUnderstandingServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new QueryUnderstandingService(chatModel, promptLoader, new ObjectMapper(), "qwen3.7-flash", 3);
+        service = new QueryUnderstandingService(
+                chatModel,
+                promptLoader,
+                new ObjectMapper(),
+                "qwen3.7-flash",
+                3,
+                // 默认生产同量级超时；超时降级用例单独构造短超时实例
+                new QueryUnderstandingProperties(Duration.ofSeconds(60)));
     }
 
     private void stubPrompt() {
@@ -65,6 +82,19 @@ class QueryUnderstandingServiceTest {
     private void stubReply(String content) {
         when(chatModel.call(any(Prompt.class)))
                 .thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage(content)))));
+    }
+
+    /** 构造 reasoning chunk（思考阶段：content 空、metadata.reasoningContent 携带片段，DashScope 映射实证形态） */
+    private ChatResponse reasoningChunk(String reasoning) {
+        return new ChatResponse(List.of(new Generation(AssistantMessage.builder()
+                .content("")
+                .properties(Map.of("reasoningContent", reasoning))
+                .build())));
+    }
+
+    /** 构造正文 delta chunk（无 reasoning，getText 即 content 增量） */
+    private ChatResponse contentChunk(String text) {
+        return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
     }
 
     @Test
@@ -204,6 +234,147 @@ class QueryUnderstandingServiceTest {
                 captor.getValue().getOptions() instanceof OpenAiChatOptions,
                 "Prompt options 应为 OpenAiChatOptions（独立模型通道）");
         assertEquals("qwen3.7-flash", ((OpenAiChatOptions) captor.getValue().getOptions()).getModel());
+    }
+
+    // ==================== 流式重载（2026-08-28 对话流式时间线改版） ====================
+
+    @Test
+    @DisplayName("understand(带 pusher) — reasoning 逐 chunk 推 understanding，首 content chunk 推 end，聚合文本解析 QueryPlan")
+    void understand_withPusher_streamsReasoningAndParsesAggregatedPlan() {
+        stubPrompt();
+        String json = "{\"intent\": \"knowledge_question\", \"rewrittenQueries\": [\"高等数学 教学大纲\"], "
+                + "\"filters\": {\"course_names\": [\"高等数学\"]}, \"recall_history\": true}";
+        // JSON 拆两 chunk 下发：验证聚合发生在解析之前（半截 JSON 不单独解析）
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(Flux.just(
+                        reasoningChunk("先分析用户意图"),
+                        reasoningChunk("命中课程查询"),
+                        contentChunk(json.substring(0, 30)),
+                        contentChunk(json.substring(30))));
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+
+        QueryPlan plan = service.understand("高等数学讲什么", List.of(new UserMessage("高等数学讲什么")), pusher);
+
+        assertEquals(IntentType.KNOWLEDGE_QUESTION, plan.intent());
+        assertEquals(List.of("高等数学 教学大纲"), plan.rewrittenQueries());
+        assertEquals(List.of("高等数学"), plan.filters().courseNames());
+        assertTrue(plan.recallHistory());
+        // 思考片段逐 chunk 实时推送（understanding 阶段）
+        verify(pusher).push(SseEventTransformer.STAGE_UNDERSTANDING, "先分析用户意图");
+        verify(pusher).push(SseEventTransformer.STAGE_UNDERSTANDING, "命中课程查询");
+        // 思考→回答边界：首 content chunk 恰好推一次 end
+        verify(pusher, times(1)).end(SseEventTransformer.STAGE_UNDERSTANDING);
+        // 流式路径不再走同步 .call()
+        verify(chatModel, never()).call(any(Prompt.class));
+        // 独立模型通道（qwen3.7-flash）在流式路径同样生效
+        ArgumentCaptor<Prompt> captor = ArgumentCaptor.forClass(Prompt.class);
+        verify(chatModel).stream(captor.capture());
+        assertEquals("qwen3.7-flash", ((OpenAiChatOptions) captor.getValue().getOptions()).getModel());
+    }
+
+    @Test
+    @DisplayName("understand(带 pusher) — 流中断降级 unknown 且补 end 关思考态，异常不向图抛出")
+    void understand_withPusher_streamError_fallbackAndClosesThinking() {
+        stubPrompt();
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(
+                        Flux.concat(Flux.just(reasoningChunk("思考了一半")), Flux.error(new RuntimeException("流式通道中断"))));
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+
+        QueryPlan plan = service.understand("原始问题", List.of(new UserMessage("原始问题")), pusher);
+
+        // 降级行为与流式化前一致：unknown + 原始查询单条
+        assertEquals(IntentType.UNKNOWN, plan.intent());
+        assertEquals(List.of("原始问题"), plan.rewrittenQueries());
+        assertFalse(plan.recallHistory());
+        verify(pusher).push(SseEventTransformer.STAGE_UNDERSTANDING, "思考了一半");
+        // 已推 reasoning 但流未出 content：异常上抛前补一次 end，前端不残留「思考中」
+        verify(pusher, times(1)).end(SseEventTransformer.STAGE_UNDERSTANDING);
+    }
+
+    @Test
+    @DisplayName("understand(带 pusher) — 无 reasoning 的纯 content 流：不推任何思考事件，解析正常")
+    void understand_withPusher_noReasoning_pushesNothing() {
+        stubPrompt();
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(Flux.just(contentChunk("{\"intent\": \"chat\", \"rewrittenQueries\": [\"你好\"]}")));
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+
+        QueryPlan plan = service.understand("你好", List.of(new UserMessage("你好")), pusher);
+
+        assertEquals(IntentType.CHAT, plan.intent());
+        verify(pusher, never()).push(anyString(), anyString());
+        verify(pusher, never()).end(anyString());
+    }
+
+    @Test
+    @DisplayName("understand(带 pusher) — content 解析失败（非 JSON）降级 fallback，不向图抛错")
+    void understand_withPusher_unparsableContent_fallback() {
+        stubPrompt();
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(Flux.just(reasoningChunk("想一下"), contentChunk("这不是 JSON")));
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+
+        QueryPlan plan = service.understand("问题", List.of(new UserMessage("问题")), pusher);
+
+        assertEquals(IntentType.UNKNOWN, plan.intent());
+        assertEquals(List.of("问题"), plan.rewrittenQueries());
+    }
+
+    @Test
+    @DisplayName("understand(带 pusher) — 流挂死超硬超时降级 fallback 且补 end 关思考态（评审 C1：内层 blockLast 必须有界）")
+    void understand_withPusher_streamHangs_timeoutFallback() {
+        stubPrompt();
+        // reasoning 后流永不终结（模拟模型 hang 在 chunk 间静默）：无界 blockLast 会永久占死 worker 线程
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(Flux.concat(Flux.just(reasoningChunk("思考到一半挂住")), Flux.never()));
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        // 短超时实例：50ms 即触发超时降级，避免测试等待生产量级 60s
+        QueryUnderstandingService fastTimeoutService = new QueryUnderstandingService(
+                chatModel,
+                promptLoader,
+                new ObjectMapper(),
+                "qwen3.7-flash",
+                3,
+                new QueryUnderstandingProperties(Duration.ofMillis(50)));
+
+        QueryPlan plan = fastTimeoutService.understand("原始问题", List.of(new UserMessage("原始问题")), pusher);
+
+        // 超时 → IllegalStateException 落入既有降级链：unknown + 原始查询单条，不向图抛错
+        assertEquals(IntentType.UNKNOWN, plan.intent());
+        assertEquals(List.of("原始问题"), plan.rewrittenQueries());
+        verify(pusher).push(SseEventTransformer.STAGE_UNDERSTANDING, "思考到一半挂住");
+        // 超时上抛前补一次 end，前端不残留「思考中」
+        verify(pusher, times(1)).end(SseEventTransformer.STAGE_UNDERSTANDING);
+    }
+
+    @Test
+    @DisplayName("understand(带 pusher) — 纯 reasoning 无 content 流正常结束：兜底补 end 恰好一次，空文本降级 fallback（评审 M2）")
+    void understand_withPusher_pureReasoning_normalEnd_closesThinkingOnce() {
+        stubPrompt();
+        when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.just(reasoningChunk("只有思考没有回答")));
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+
+        QueryPlan plan = service.understand("问题", List.of(new UserMessage("问题")), pusher);
+
+        // 聚合 content 为空 → JSON 解析失败降级 fallback（不向图抛错）
+        assertEquals(IntentType.UNKNOWN, plan.intent());
+        assertEquals(List.of("问题"), plan.rewrittenQueries());
+        verify(pusher).push(SseEventTransformer.STAGE_UNDERSTANDING, "只有思考没有回答");
+        // 无 content 边界可触发：流正常收尾兜底补 end，且 CAS 保证恰好一次
+        verify(pusher, times(1)).end(SseEventTransformer.STAGE_UNDERSTANDING);
+    }
+
+    @Test
+    @DisplayName("understand(旧两参签名) — 委托 pusher=null 走原同步 .call() 路径，不触发 stream")
+    void understand_withoutPusher_usesSyncCall() {
+        stubPrompt();
+        stubReply("{\"intent\": \"chat\", \"rewrittenQueries\": [\"你好\"]}");
+
+        QueryPlan plan = service.understand("你好", List.of(new UserMessage("你好")));
+
+        assertEquals(IntentType.CHAT, plan.intent());
+        verify(chatModel, never()).stream(any(Prompt.class));
     }
 
     @Test

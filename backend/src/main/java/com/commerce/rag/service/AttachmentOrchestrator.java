@@ -5,6 +5,7 @@ import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.record.DocumentLocalChunk;
 import com.commerce.rag.record.ImageCaptionResult;
+import com.commerce.rag.stream.ThinkingPusher;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -17,6 +18,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BooleanSupplier;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -40,6 +42,11 @@ import org.springframework.stereotype.Service;
  *
  * <p>附件上下文经 {@code AttachmentContext} 载体返回，由 worker 写入 RunnableConfig.metadata
  * （metadata 键见 {@link #KEY_ATTACHMENT_CONTEXT}），供 QU 节点与 RetrieveNode 后续消费（Task 10/11）。
+ *
+ * <p>思考流式与取消即时性（2026-08-28 时间线改版 Task 4）：带 ThinkingPusher 时图片 VLM caption
+ * 走流式聚合并实时推 attachments 阶段 reasoning；批循环每文件提交前检查取消源
+ * （{@link BooleanSupplier}），已取消立即停止提交剩余文件（在途附件仍由总超时兜底回收）；
+ * 批量 caption 前再补一次取消检查（评审 M-4），已取消跳过 caption 不耗 VLM 配额。
  *
  * @author commerce-rag
  */
@@ -89,17 +96,33 @@ public class AttachmentOrchestrator {
      * <p>执行流程：每附件一个 future（下载 → 图片收集字节 / 文档同步处理）→ allOf 带
      * 总超时等待 → 超时取消未完成 → 按原始顺序组装 → 图片批量并行 caption。
      *
+     * <p>取消检查点（Task 4 + 评审 M-4）：批循环内每文件提交前检查取消源，已取消则跳过剩余文件；
+     * 提交循环结束后、批量 caption 开始前再检查一次，已取消则跳过 caption——
+     * 取消语义下不再为不会再消费的附件耗下载/VLM 配额；在途任务仍由总超时兜底回收。
+     *
      * @param attachments 附件记录列表（可为空列表或 null）
-     * @return 附件处理结果载体（无附件/全部失败/全部超时返回 {@link AttachmentContext#empty()}；不抛异常）
+     * @param pusher      per-run 思考推送通道（可为 null——null 时 caption 走同步路径不推思考，
+     *                    保持离线/测试兼容）
+     * @param cancelled   取消源（worker 注入 run 级取消标志读取器；不允许为 null，无取消场景传
+     *                    {@code () -> false}；批循环每文件提交前调用一次）
+     * @return 附件处理结果载体（无附件/全部失败/全部超时/已取消返回 {@link AttachmentContext#empty()}；不抛异常）
      */
-    public AttachmentContext process(List<AttachmentRecord> attachments) {
+    public AttachmentContext process(
+            List<AttachmentRecord> attachments, ThinkingPusher pusher, BooleanSupplier cancelled) {
         // 空输入按空上下文处理，不触发任何下载/处理
         if (attachments == null || attachments.isEmpty()) {
             return AttachmentContext.empty();
         }
         // 阶段 1：附件级并行（futures 按原始附件顺序提交，组装时保持相对顺序）
         List<CompletableFuture<AttachmentOutcome>> futures = new ArrayList<>(attachments.size());
-        for (AttachmentRecord att : attachments) {
+        for (int i = 0; i < attachments.size(); i++) {
+            AttachmentRecord att = attachments.get(i);
+            if (cancelled.getAsBoolean()) {
+                // 取消即时检查点：停止提交剩余文件（已提交的不回退，总超时兜底），
+                // 不抛异常——worker 后续 doOnNext 检查点会以既有 CancelledException 收敛终态
+                log.info("附件处理检测到取消，跳过剩余文件: 已提交={}/{}个", i, attachments.size());
+                break;
+            }
             try {
                 futures.add(CompletableFuture.supplyAsync(() -> downloadAndHandle(att), attachmentPool));
             } catch (RejectedExecutionException e) {
@@ -126,9 +149,18 @@ public class AttachmentOrchestrator {
                 documents.put(outcome.url(), outcome.chunks());
             }
         }
-        // 图片批量并行 caption（无图片字节时不调用，避免空入参触发处理器）
-        List<ImageCaptionResult> captions =
-                imageBytes.isEmpty() ? List.of() : imageProcessor.processImages(imageBytes, imageNames);
+        // 图片批量并行 caption（无图片字节时不调用，避免空入参触发处理器）；
+        // pusher 透传：SSE 链路 reasoning 实时推 attachments 阶段，null 走同步原语义。
+        // 取消即时检查点（评审 M-4）：提交循环结束到 caption 开始前若已取消，caption 结果
+        // 不会再被消费——跳过批量 caption，不再耗 VLM 配额、不再推送思考事件
+        List<ImageCaptionResult> captions = List.of();
+        if (!imageBytes.isEmpty()) {
+            if (cancelled.getAsBoolean()) {
+                log.info("图片批量 caption 前检测到取消，跳过 caption: 图片数={}", imageBytes.size());
+            } else {
+                captions = imageProcessor.processImages(imageBytes, imageNames, pusher);
+            }
+        }
         return new AttachmentContext(captions, documents);
     }
 

@@ -74,8 +74,10 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
     /**
      * 按 run_id 查询消息（按 seq 升序），用于降级重组和前端历史回放
      *
-     * <p>L-2：按需取列——仅投影 ChatMessageVO 所需 8 列（sourcesJson/tokenCount/
+     * <p>L-2：按需取列——仅投影 ChatMessageVO 所需 9 列（sourcesJson/tokenCount/
      * confidence/traceId/sessionId 等大字段或内部字段丢弃）。
+     * 2026-08-28 时间线改版：投影补 thinking_stage（replayFromPg 降级回放据此重建
+     * 带 stage 的 THINKING 事件；历史存量行该列为 null，回放输出 JSON null 不报错）。
      *
      * @param runId Run ID
      * @return 消息视图对象列表（按 seq 升序，剔除 sessionId/sourcesJson 等内部字段）
@@ -87,6 +89,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
                         ChatMessage::getRole,
                         ChatMessage::getContent,
                         ChatMessage::getMessageType,
+                        ChatMessage::getThinkingStage,
                         ChatMessage::getIntentType,
                         ChatMessage::getRunId,
                         ChatMessage::getSeq,
@@ -154,12 +157,14 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
         // size 上限钳制（一轮工具调用产出 5+ 行，防止无界拉取）
         Page<ChatMessage> pageObj = new Page<>(page, Math.min(size, MAX_PAGE_SIZE));
         LambdaQueryWrapper<ChatMessage> wrapper = Wrappers.<ChatMessage>lambdaQuery()
-                // 按需取列：投影补 sources_json/attachments_json（服务端解析 JSON 用），丢弃内部字段
+                // 按需取列：投影补 sources_json/attachments_json（服务端解析 JSON 用）+
+                // thinking_stage（2026-08-28 时间线改版：thinking 行阶段键下发给前端分段渲染），丢弃内部字段
                 .select(
                         ChatMessage::getId,
                         ChatMessage::getRole,
                         ChatMessage::getContent,
                         ChatMessage::getMessageType,
+                        ChatMessage::getThinkingStage,
                         ChatMessage::getIntentType,
                         ChatMessage::getRunId,
                         ChatMessage::getSeq,

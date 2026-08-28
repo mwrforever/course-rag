@@ -405,12 +405,13 @@ class StudentControllerTest {
                 LocalDateTime.of(2026, 8, 15, 9, 0));
     }
 
-    /** 构造带解析后 sources/attachments 的学生消息 VO（模拟 service 出参） */
+    /** 构造带解析后 sources/attachments 的学生消息 VO（模拟 service 出参；thinkingStage 见时间线改版用例） */
     private StudentMessageVO studentMessageVO(Long id, String role) {
         return new StudentMessageVO(
                 id,
                 role,
                 "内容-" + id,
+                null,
                 null,
                 "knowledge_question",
                 10L,
@@ -421,20 +422,33 @@ class StudentControllerTest {
     }
 
     @Test
-    @DisplayName("历史消息 → 归属校验通过后返回分页消息（含 sources/attachments 解析数组）")
+    @DisplayName("历史消息 → 归属校验通过后返回分页消息（含 sources/attachments 解析数组与 thinking 阶段键）")
     void sessionMessages_returnsParsedArrays() {
         when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 5L));
         Page<StudentMessageVO> paged = new Page<>(1, 200);
-        paged.setRecords(List.of(studentMessageVO(1L, "USER"), studentMessageVO(2L, "ASSISTANT")));
-        paged.setTotal(2);
+        // 2026-08-28 时间线改版：thinking 行携带 thinkingStage 下发（前端分段归组渲染；null 语义=降级 generating）
+        StudentMessageVO thinkingRow = new StudentMessageVO(
+                3L,
+                "ASSISTANT",
+                "意图分析思考",
+                "thinking",
+                "understanding",
+                null,
+                10L,
+                2,
+                LocalDateTime.of(2026, 8, 15, 9, 1),
+                List.of(),
+                List.of());
+        paged.setRecords(List.of(studentMessageVO(1L, "USER"), studentMessageVO(2L, "ASSISTANT"), thinkingRow));
+        paged.setTotal(3);
         when(messageService.findStudentMessagesBySession(1L, 1, 200)).thenReturn(paged);
 
         ApiResponse<PageResponse<StudentMessageVO>> result = controller.sessionMessages(studentRequest(5L), 1L, 1, 200);
 
         PageResponse<StudentMessageVO> data = result.data();
         assertEquals(0, result.code());
-        assertEquals(2, data.records().size());
-        assertEquals(2L, data.total());
+        assertEquals(3, data.records().size());
+        assertEquals(3L, data.total());
         assertEquals(1, data.page());
         assertEquals(200, data.size());
         StudentMessageVO first = data.records().get(0);
@@ -449,6 +463,10 @@ class StudentControllerTest {
         // attachments 为服务端解析后的对象数组（type/url/name/size）
         assertEquals("0/a.png", first.attachments().get(0).url());
         assertEquals(1024L, first.attachments().get(0).size());
+        // thinking 行阶段键经接口透传（同构实时 THINKING 事件的 stage 字段）
+        StudentMessageVO thinking = data.records().get(2);
+        assertEquals("thinking", thinking.messageType());
+        assertEquals("understanding", thinking.thinkingStage());
     }
 
     @Test

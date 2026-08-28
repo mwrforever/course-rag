@@ -52,3 +52,25 @@
 **背景**：C 端意图体系（knowledge_question / chat / unknown）相关 UI 微调无明确需求。
 
 **当前状态**：无行动；用户提出具体项后按常规流程立项。
+
+---
+
+## 4. 流式时间轴分支 deferred 登记（feature/2026-08-28-chat-streaming-timeline，2026-08-29 Task 15a 收口）
+
+> 批一/批二 SDD 执行与审核中裁决「不处理/后置」的四项，登记于此随后续批次处理；完成即删本节对应行。
+
+- [ ] **A.2.2 rag.query-understanding 前缀 @Value 混用收口**（批一 Task 3 minor）：该前缀下
+      `model`/`max-queries` 两项仍经 `@Value` 散注而其余键走属性类强类型绑定，违反宪法
+      A.2.2（禁止散落 `@Value` 逐条注入）。收口方式：并入既有属性类补两字段 + 启动期校验，
+      改动局限 QueryUnderstanding 相关配置消费点。
+- [ ] **M-2 配置命名空间挪用**（批一 Task 4 复审 T4-R 裁决维持不处理）：attachment caption
+      相关配置项挂在非自有命名空间下（挪用了相邻前缀），涉及后端配置兼容（改前缀=运行时
+      配置源失效），裁决登记待后续配置体系整理时一并迁移。
+- [ ] **Task 2B deferred ①③④**（MemoryStreamBridge ring 实现，②已在 Task 6 收口加 warn 观测）：
+      ① slot 改 `event.seqId()` 直取 + head 维护 max，彻底消除「取号-推送不变式」依赖
+      （Task 7 实证交错窗口回放完整性受益）；③ 补 seqId 身份逐一断言测试（现按集合断言）；
+      ④ `oldestSeq` 命名 nit（实义为 ring 内最小已写入序号）。
+- [ ] **批一审核 Minor「findBySessionId 投影未同步」**：`ChatMessageMapper.findBySessionId`
+      （B 端管理通道）投影 8 列未随 thinking_stage 加列（Task 6 只同步了 findByRunId /
+      findStudentMessagesBySession），其注释「与 findByRunId 同款投影」现为近似表述；
+      B 端无 stage 消费方故未动，严格同步时一并加列并修订注释。

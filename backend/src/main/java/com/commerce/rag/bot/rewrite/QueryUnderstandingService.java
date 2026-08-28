@@ -2,11 +2,16 @@ package com.commerce.rag.bot.rewrite;
 
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.PromptLoader;
+import com.commerce.rag.properties.QueryUnderstandingProperties;
+import com.commerce.rag.stream.SseEventTransformer;
+import com.commerce.rag.stream.ThinkingPusher;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +21,8 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -29,6 +36,9 @@ import org.springframework.stereotype.Service;
  *       「## 对话摘要:」前缀 SM，如有）+ 最近三轮对话（仅 UserMessage + AssistantMessage；
  *       document/preference 由 interceptor 瞬时注入不落 state，天然无污染）+ 当前用户消息</li>
  *   <li>并行签出：一次调用输出 intent / rewrittenQueries / filters.course_names / recall_history</li>
+ *   <li>流式思考推送（2026-08-28 对话流式时间线改版）：SSE 链路经带 ThinkingPusher 的重载走
+ *       chatModel.stream 聚合，qwen3.7-flash 混合思考默认开启，reasoning 片段实时推
+ *       understanding 阶段；聚合完整文本后 JSON 解析逻辑与降级行为不变</li>
  *   <li>降级（spec §2.2）：LLM 失败或 JSON 解析失败 → QueryPlan.fallback（intent=unknown +
  *       原始查询单条 + 空 filters + recall_history=false），unknown 不拒答</li>
  * </ul>
@@ -54,32 +64,79 @@ public class QueryUnderstandingService {
     /** 单次 LLM 调用签出的最大重写查询条数（spec §2.2 上限 3，配置化） */
     private final int maxQueries;
 
+    private final ChatModel chatModel;
     private final ChatClient chatClient;
     private final PromptLoader promptLoader;
     private final ObjectMapper objectMapper;
     private final String model;
+    /**
+     * 流式聚合硬超时（rag.query-understanding.stream-timeout，默认 60s）。
+     *
+     * <p>必须有界（2026-08-28 评审 C1）：chatModel.stream 走 WebClient 响应式栈，SDK
+     * responseTimeout 仅覆盖至响应建立、chunk 间静默无 idle 保护；外层 worker
+     * blockLast(5min) 与本节点内层阻塞同线程栈不可达。超时抛 IllegalStateException
+     * 落入 understand 既有 catch → CAS 关思考态 → QueryPlan.fallback 降级。
+     */
+    private final Duration streamTimeout;
 
     public QueryUnderstandingService(
             ChatModel chatModel,
             PromptLoader promptLoader,
             ObjectMapper objectMapper,
             @Value("${rag.query-understanding.model:qwen3.7-flash}") String model,
-            @Value("${rag.query-understanding.max-queries:3}") int maxQueries) {
+            @Value("${rag.query-understanding.max-queries:3}") int maxQueries,
+            QueryUnderstandingProperties properties) {
+        // chatModel 直引用于流式路径（chatModel.stream 可读到每 chunk 的 reasoningContent metadata，
+        // ChatClient .stream().content() 只暴露文本丢 metadata）；chatClient 保留同步 .call 路径
+        this.chatModel = chatModel;
         this.chatClient = ChatClient.builder(chatModel).build();
         this.promptLoader = promptLoader;
         this.objectMapper = objectMapper;
         this.model = model;
         this.maxQueries = maxQueries;
+        this.streamTimeout = properties.streamTimeout();
     }
 
     /**
-     * 理解用户查询，签出完整 QueryPlan
+     * 理解用户查询，签出完整 QueryPlan（同步 .call 路径）
+     *
+     * <p>无思考推送需求的历史调用方（离线评测 / 无 SSE 通道的图执行）走此重载：
+     * 内部委托 {@link #understand(String, List, ThinkingPusher)} 传 pusher=null，
+     * 保持原 {@code .call().content()} 同步阻塞行为完全不变（既有单测 mock ChatModel.call）。
      *
      * @param userQuery 当前用户消息原文（含图片 caption 文本，计划 3/5 接入；可空白）
      * @param messages  会话完整消息列表（自 state 读取；摘要 SM 与历史轮次从中提取）
      * @return QueryPlan（失败降级 fallback，never null）
      */
     public QueryPlan understand(String userQuery, List<Message> messages) {
+        return understand(userQuery, messages, null);
+    }
+
+    /**
+     * 理解用户查询并实时推送思考片段，签出完整 QueryPlan
+     *
+     * <p>核心流程：
+     * <ol>
+     *   <li>pusher 非空 → 走流式路径 {@link #streamContent}：{@code chatModel.stream(Prompt)}
+     *       逐 chunk 聚合，每 chunk 的 reasoningContent 非空即经 pusher 实时推 understanding
+     *       阶段思考（qwen3.7-flash 混合思考模式默认开启，reasoning_content 经 OpenAI 兼容
+     *       流式 chunk 的 AssistantMessage.metadata['reasoningContent'] 返回，spring-ai-openai
+     *       1.1.2 已映射）；首个 content chunk 到达（思考→回答边界）补 pusher.end 退出思考态；
+     *       流式在图节点内同步 blockLast 聚合，聚合完整文本后走与同步路径同款 JSON 解析</li>
+     *   <li>pusher 为空 → 走原同步 {@code .call().content()} 路径（行为零变化）</li>
+     *   <li>解析失败 / LLM 或流异常 → 降级 {@link QueryPlan#fallback}（unknown 不拒答），
+     *       降级行为与流式化前完全一致，异常不向图抛出</li>
+     * </ol>
+     *
+     * <p>并发/事务：本方法在 queryUnderstandingNode 节点线程内阻塞聚合（与原 .call() 同步语义等价），
+     * 不开事务；思考推送经 ThinkingPusher 内部锁保证 seq 与入队序一致。
+     *
+     * @param userQuery 当前用户消息原文（含图片 caption 文本；可空白，空白直接降级不调 LLM）
+     * @param messages  会话完整消息列表（自 state 读取；摘要 SM 与历史轮次从中提取）
+     * @param pusher    per-run 思考推送通道（可为 null——null 时走原同步路径不推思考）
+     * @return QueryPlan（失败降级 fallback，never null）
+     */
+    public QueryPlan understand(String userQuery, List<Message> messages, ThinkingPusher pusher) {
         if (userQuery == null || userQuery.isBlank()) {
             log.debug("Query Understanding: 空白用户消息，直接降级");
             return QueryPlan.fallback(userQuery);
@@ -92,13 +149,10 @@ public class QueryUnderstandingService {
                     .replace("{query}", userQuery);
 
             OpenAiChatOptions options = OpenAiChatOptions.builder().model(model).build();
-            String content = chatClient
-                    .prompt()
-                    .system(system)
-                    .user(instruction)
-                    .options(options)
-                    .call()
-                    .content();
+            // pusher 非空 → 流式（思考实时推送）；否则维持原 .call() 同步路径（既有单测依赖）
+            String content = pusher != null
+                    ? streamContent(system, instruction, options, pusher)
+                    : callContent(system, instruction, options);
 
             if (content != null && !content.isBlank()) {
                 QueryPlan plan = parse(content);
@@ -117,6 +171,110 @@ public class QueryUnderstandingService {
             log.warn("Query Understanding 失败，降级 unknown（不拒答）: {}", e.getMessage());
         }
         return QueryPlan.fallback(userQuery);
+    }
+
+    /**
+     * 同步调用 LLM 返回完整文本（原路径，行为零变化）。
+     *
+     * @param system     system prompt 文本
+     * @param instruction 渲染后的 user instruction 文本
+     * @param options    DashScope OpenAiChatOptions（指定 qwen3.7-flash 通道）
+     * @return LLM 完整返回文本（可为 null/空，调用方走降级）
+     */
+    private String callContent(String system, String instruction, OpenAiChatOptions options) {
+        return chatClient
+                .prompt()
+                .system(system)
+                .user(instruction)
+                .options(options)
+                .call()
+                .content();
+    }
+
+    /**
+     * 流式调用 LLM：逐 chunk 实时推送 reasoning 片段 + 聚合 content 文本，同步阻塞至流结束。
+     *
+     * <p>设计要点：
+     * <ul>
+     *   <li>ChatClient stream API 项目内无先例（其余调用点均 .call().content()），按简报约定改用
+     *       {@code chatModel.stream(Prompt)} 拿 {@code Flux<ChatResponse>}，方能读到每 chunk 的
+     *       AssistantMessage.metadata['reasoningContent']（.stream().content() 只暴露文本丢 metadata）</li>
+     *   <li>reasoning 与 content 在 qwen 思考模型流里两阶段互斥：先 reasoning chunk（content 空），
+     *       后 content chunk（reasoning 空）；确实推过 reasoning 后，首个 content chunk 即
+     *       思考→回答边界，CAS 保证 pusher.end('understanding') 恰好一次（无 reasoning 则不发
+     *       孤儿 THINKING_END，保持与 THINKING 成对契约）</li>
+     *   <li>聚合文本交回调用方走原有 {@link #parse} JSON 解析逻辑，解析/降级完全不变</li>
+     *   <li>流中途异常：blockLast 抛出向上传播由 understand 统一 catch 降级（与原 .call() 异常一致）；
+     *       但若已推过 reasoning，则异常上抛前先补 pusher.end 关思考态，避免前端停留「思考中」</li>
+     * </ul>
+     *
+     * @param system      system prompt 文本
+     * @param instruction 渲染后的 user instruction 文本
+     * @param options     DashScope OpenAiChatOptions
+     * @param pusher      per-run 思考推送通道（非空）
+     * @return 聚合后的完整 content 文本（不含 reasoning）
+     */
+    private String streamContent(String system, String instruction, OpenAiChatOptions options, ThinkingPusher pusher) {
+        Prompt prompt = new Prompt(List.of(new SystemMessage(system), new UserMessage(instruction)), options);
+        StringBuilder contentBuf = new StringBuilder();
+        // 思考→回答边界只推一次 end；并记录是否已推过 reasoning（异常兜底关态判断用）
+        AtomicBoolean thinkingEnded = new AtomicBoolean(false);
+        AtomicBoolean reasoningSeen = new AtomicBoolean(false);
+        try {
+            chatModel.stream(prompt)
+                    .doOnNext(chatResponse -> {
+                        Generation generation = chatResponse.getResult();
+                        if (generation == null || generation.getOutput() == null) {
+                            return;
+                        }
+                        AssistantMessage message = generation.getOutput();
+                        // 1. reasoning 片段实时推送（DashScope 思考内容在 metadata['reasoningContent']）
+                        String reasoning = extractReasoningContent(message);
+                        if (reasoning != null && !reasoning.isEmpty()) {
+                            reasoningSeen.set(true);
+                            pusher.push(SseEventTransformer.STAGE_UNDERSTANDING, reasoning);
+                        }
+                        // 2. content 片段聚合；首个 content chunk = 思考结束边界，补一次 THINKING_END
+                        //    （仅在此前确实推过 reasoning 时——THINKING_END 与 THINKING 成对契约，
+                        //    非思考模型全程无 reasoning，发孤儿 end 会让前端阶段机收到无配对事件）
+                        String text = message.getText();
+                        if (text != null && !text.isEmpty()) {
+                            if (reasoningSeen.get() && thinkingEnded.compareAndSet(false, true)) {
+                                pusher.end(SseEventTransformer.STAGE_UNDERSTANDING);
+                            }
+                            contentBuf.append(text);
+                        }
+                    })
+                    // 硬超时自界（评审 C1）：响应式栈 chunk 间静默无 transport idle 保护，
+                    // 超时抛 IllegalStateException 由下方 catch 补 end 后上抛，understand 统一降级
+                    .blockLast(streamTimeout);
+        } catch (RuntimeException e) {
+            // 流异常：已推过 reasoning 但尚未推过 end → 关思考态后再上抛，由 understand 统一降级
+            if (reasoningSeen.get() && thinkingEnded.compareAndSet(false, true)) {
+                pusher.end(SseEventTransformer.STAGE_UNDERSTANDING);
+            }
+            throw e;
+        }
+        // 流正常结束但全程无 content（纯 reasoning / 空响应）：若已推 reasoning 仍须关思考态
+        if (reasoningSeen.get() && thinkingEnded.compareAndSet(false, true)) {
+            pusher.end(SseEventTransformer.STAGE_UNDERSTANDING);
+        }
+        return contentBuf.toString();
+    }
+
+    /**
+     * 从 AssistantMessage.metadata 提取 DashScope reasoningContent（与 SseEventTransformer 同源）。
+     *
+     * @param message 图流式 chunk 的输出消息
+     * @return reasoning 文本，无值/非字符串返回 null
+     */
+    private String extractReasoningContent(AssistantMessage message) {
+        Map<String, Object> metadata = message.getMetadata();
+        if (metadata == null || metadata.isEmpty()) {
+            return null;
+        }
+        Object value = metadata.get("reasoningContent");
+        return value instanceof String s ? s : null;
     }
 
     /**

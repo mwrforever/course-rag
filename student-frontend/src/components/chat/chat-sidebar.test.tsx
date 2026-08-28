@@ -1,18 +1,24 @@
 /**
- * 课程助手对话侧栏测试（UI 重构 2026-08-25 新增组件）
+ * 课程助手对话侧栏测试（UI 重构 2026-08-25 新增组件；2026-08-29 弹窗化改版）
  *
- * 覆盖：品牌/新建对话入口、会话历史渲染与激活态、空态与骨架、
- * 折叠切换（宽度类 + localStorage 持久化）、Ctrl+K 快捷键、用户区与退出登录。
+ * 覆盖：品牌/新建对话入口（button + 新建信号/跳转双路径）、会话历史渲染与激活态、
+ * 空态与骨架、折叠切换（宽度类 + localStorage 持久化）、Ctrl+K 快捷键、
+ * 改名弹窗（RenameDialog 化）、删除/登出二次确认、用户区。
  *
  * 说明：jsdom 无 App Router 上下文，next/navigation 用最小 mock；
  * motion 未在侧栏使用（纯 Tailwind 过渡），无需动画 mock。
+ * 搜索浮层（SessionSearchPanel）行为由独立测试文件覆盖，此处不重复。
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatSidebar } from "./chat-sidebar";
-import { ChatStreamingProvider, useSetChatStreaming } from "./chat-streaming-context";
+import {
+  ChatStreamingProvider,
+  useChatNewChatSeq,
+  useSetChatStreaming,
+} from "./chat-streaming-context";
 import type { SessionItem } from "@/lib/types";
 
 /** 数据层 mock：getSessions 会话列表（骨架/空/正常态）+ 重命名/删除（会话管理用例） */
@@ -89,6 +95,15 @@ function StreamingProbe({ onReady }: { onReady: (set: (streaming: boolean) => vo
   return null;
 }
 
+/** 新建对话信号计数探针：观察 Provider 的 newChatSeq 自增（信号已发出的可观察证据） */
+function NewChatSeqProbe({ onChange }: { onChange: (seq: number) => void }) {
+  const seq = useChatNewChatSeq();
+  useEffect(() => {
+    onChange(seq);
+  }, [onChange, seq]);
+  return null;
+}
+
 beforeEach(() => {
   apiMock.getSessions.mockReset();
   apiMock.updateSessionTitle.mockReset();
@@ -115,14 +130,14 @@ afterEach(() => {
 });
 
 describe("ChatSidebar 结构", () => {
-  it("展开态：品牌链接触达首页 + 新建对话链接 + Ctrl K 快捷键提示", async () => {
+  it("展开态：品牌链接触达首页 + 新建对话按钮（弹窗化改版：button 非 Link）+ Ctrl K 提示", async () => {
     apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
     renderSidebar();
     expect(await screen.findByRole("link", { name: /课程助手/ })).toHaveAttribute("href", "/");
-    const newChat = screen.getByRole("link", { name: /新建对话/ });
-    expect(newChat).toHaveAttribute("href", "/chat");
+    // 新建对话改 button（/chat 同路由经信号 reset，非 /chat 跳转；行为见下方信号用例）
+    expect(screen.getByRole("button", { name: /新建对话/ })).toBeInTheDocument();
     expect(screen.getByText("Ctrl K")).toBeInTheDocument();
-    // 展开宽度 64（w-64）与「会话历史」分组标题
+    // 展开宽度 64（w-64）与「会话历史」分组标题（搜索浮层化后标题恒定）
     expect(screen.getByTestId("chat-sidebar")).toHaveClass("w-64");
     expect(screen.getByText("会话历史")).toBeInTheDocument();
   });
@@ -213,64 +228,64 @@ describe("ChatSidebar 会话管理（增删改查）", () => {
     return { records, total: String(total), page: 1, size: 20 };
   }
 
-  it("查：输入关键词防抖后按 keyword 请求（空时恢复全量）", async () => {
+  it("查：列表查询恒全量（keyword 搜索职责移交搜索浮层面板）", async () => {
     apiMock.getSessions.mockResolvedValue(
       pageOf([makeSession({ id: "s1", title: "RAG 是什么" })], 1),
     );
     renderSidebar();
     await screen.findByText("RAG 是什么");
-    const input = screen.getByTestId("sidebar-session-search");
-    fireEvent.change(input, { target: { value: "索引" } });
-    // 防抖 300ms 后才发起关键词查询
-    await waitFor(() => {
-      expect(apiMock.getSessions).toHaveBeenCalledWith(1, 20, "索引");
-    });
-    // 清除按钮恢复全量列表（keyword 空）
-    fireEvent.click(screen.getByRole("button", { name: "清除搜索" }));
-    await waitFor(() => {
-      expect(apiMock.getSessions).toHaveBeenCalledWith(1, 20, undefined);
-    });
+    // 侧栏主列表不再按 keyword 过滤（两参调用；搜索浮层独立查询）
+    expect(apiMock.getSessions).toHaveBeenCalledWith(1, 20);
   });
 
-  it("查：搜索无结果 → 提示文案", async () => {
-    apiMock.getSessions.mockResolvedValue(pageOf([], 0));
-    renderSidebar();
-    const input = screen.getByTestId("sidebar-session-search");
-    fireEvent.change(input, { target: { value: "不存在的" } });
-    expect(await screen.findByText(/没有找到「不存在的」相关会话/)).toBeInTheDocument();
-  });
-
-  it("改：hover 编辑按钮 → 行内输入 → 保存 → PATCH + 失效列表", async () => {
+  it("改：编辑按钮 → 改名弹窗预填旧标题 → 修改保存 → PATCH + 失效列表", async () => {
     apiMock.updateSessionTitle.mockResolvedValue(makeSession({ id: "s1", title: "新标题" }));
     apiMock.getSessions.mockResolvedValue(pageOf([makeSession({ id: "s1", title: "旧标题" })], 1));
     renderSidebar();
     await screen.findByText("旧标题");
-    // 打开行内编辑
+    // 打开改名弹窗（预填旧标题）
     fireEvent.click(screen.getByRole("button", { name: /编辑会话标题/ }));
-    const input = screen.getByTestId("sidebar-session-edit-input");
+    const input = (await screen.findByRole("textbox", { name: "会话标题" })) as HTMLInputElement;
+    expect(input.value).toBe("旧标题");
     fireEvent.change(input, { target: { value: "新标题" } });
     fireEvent.click(screen.getByRole("button", { name: /保存/ }));
     await waitFor(() => {
       expect(apiMock.updateSessionTitle).toHaveBeenCalledWith("s1", "新标题");
       expect(navMock.invalidateQueries).toHaveBeenCalled();
     });
-    // 保存后编辑态关闭
-    expect(screen.queryByTestId("sidebar-session-edit-input")).toBeNull();
+    // 保存成功后弹窗关闭
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "重命名会话" })).not.toBeInTheDocument();
+    });
   });
 
-  it("改：空标题保存直接退出编辑（不发请求）", async () => {
+  it("改：空标题 → 弹窗校验错误不提交（不发 PATCH）", async () => {
     apiMock.getSessions.mockResolvedValue(pageOf([makeSession({ id: "s1", title: "旧标题" })], 1));
     renderSidebar();
     await screen.findByText("旧标题");
     fireEvent.click(screen.getByRole("button", { name: /编辑会话标题/ }));
-    fireEvent.change(screen.getByTestId("sidebar-session-edit-input"), {
-      target: { value: "   " },
-    });
+    const input = await screen.findByRole("textbox", { name: "会话标题" });
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: /保存/ }));
+    expect(await screen.findByText("标题不能为空")).toBeInTheDocument();
+    expect(apiMock.updateSessionTitle).not.toHaveBeenCalled();
+    // 弹窗保留（用户修正后可重试）
+    expect(screen.getByRole("dialog", { name: "重命名会话" })).toBeInTheDocument();
+  });
+
+  it("改：PATCH 失败 → toast 提示且弹窗保留可重试", async () => {
+    apiMock.updateSessionTitle.mockRejectedValue(new Error("保存失败"));
+    apiMock.getSessions.mockResolvedValue(pageOf([makeSession({ id: "s1", title: "旧标题" })], 1));
+    renderSidebar();
+    await screen.findByText("旧标题");
+    fireEvent.click(screen.getByRole("button", { name: /编辑会话标题/ }));
+    const input = await screen.findByRole("textbox", { name: "会话标题" });
+    fireEvent.change(input, { target: { value: "新标题" } });
     fireEvent.click(screen.getByRole("button", { name: /保存/ }));
     await waitFor(() => {
-      expect(screen.queryByTestId("sidebar-session-edit-input")).toBeNull();
+      expect(screen.getByText("保存失败，请稍后重试")).toBeInTheDocument();
     });
-    expect(apiMock.updateSessionTitle).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "重命名会话" })).toBeInTheDocument();
   });
 
   it("删：二次确认 → DELETE + 失效列表；删除当前激活会话后跳 /chat 新对话", async () => {
@@ -323,7 +338,7 @@ describe("ChatSidebar 会话管理（增删改查）", () => {
     const more = screen.getByTestId("sidebar-load-more");
     fireEvent.click(more);
     await waitFor(() => {
-      expect(apiMock.getSessions).toHaveBeenCalledWith(2, 20, undefined);
+      expect(apiMock.getSessions).toHaveBeenCalledWith(2, 20);
     });
     expect(await screen.findByText("会话 21")).toBeInTheDocument();
   });
@@ -333,7 +348,7 @@ describe("ChatSidebar 折叠与快捷键", () => {
   it("折叠切换：收起为 w-16 图标态，偏好写回 localStorage，展开恢复", async () => {
     apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
     renderSidebar();
-    await screen.findByRole("link", { name: /新建对话/ });
+    await screen.findByRole("button", { name: /新建对话/ });
     fireEvent.click(screen.getByRole("button", { name: "收起侧栏" }));
     expect(screen.getByTestId("chat-sidebar")).toHaveClass("w-16");
     expect(window.localStorage.getItem("cc.chat-sidebar.collapsed")).toBe("1");
@@ -363,42 +378,103 @@ describe("ChatSidebar 折叠与快捷键", () => {
     expect(screen.queryByText("会话一")).not.toBeInTheDocument();
   });
 
-  it("Ctrl+K（cmd+K）快捷键：拦截默认并跳转新建对话", async () => {
+  it("Ctrl+K（cmd+K）快捷键：非 /chat 路由跳转 /chat；/chat 路由发新建信号（不重挂载）", async () => {
     apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
-    renderSidebar();
+    // 路径一：历史会话页 → 跳转新对话
+    const first = renderSidebar("/chat/s1");
+    await screen.findByRole("button", { name: /新建对话/ });
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    await waitFor(() => {
+      expect(navMock.push).toHaveBeenCalledWith("/chat");
+    });
+    first.unmount();
+
+    // 路径二：已在 /chat → 经 Context 信号驱动工作区 reset（同路由不重挂载）
+    navMock.pathname = "/chat";
+    const seqs: number[] = [];
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ChatStreamingProvider>
+          <NewChatSeqProbe onChange={(seq) => seqs.push(seq)} />
+          <ChatSidebar />
+        </ChatStreamingProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("button", { name: /新建对话/ });
+    navMock.push.mockClear();
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    // 信号计数自增（信号已发出）且不发 push（/chat 同路由不重挂载）
+    await waitFor(() => {
+      expect(seqs.at(-1)).toBeGreaterThan(0);
+    });
+    expect(navMock.push).not.toHaveBeenCalled();
+  });
+
+  it("新建对话按钮：/chat 同路由点击 → 发出新建信号（不走 push）", async () => {
+    apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
+    const seqs: number[] = [];
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ChatStreamingProvider>
+          <NewChatSeqProbe onChange={(seq) => seqs.push(seq)} />
+          <ChatSidebar />
+        </ChatStreamingProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("button", { name: /新建对话/ });
+    fireEvent.click(screen.getByRole("button", { name: /新建对话/ }));
+    // 信号计数自增（按钮经 Context 通知工作区 reset），且不发生路由跳转
+    await waitFor(() => {
+      expect(seqs.at(-1)).toBeGreaterThan(0);
+    });
+    expect(navMock.push).not.toHaveBeenCalled();
+  });
+
+  it("新建对话按钮：非 /chat 路由点击 → router.push('/chat')", async () => {
+    apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
+    renderSidebar("/chat/s1");
+    await screen.findByRole("button", { name: /新建对话/ });
+    fireEvent.click(screen.getByRole("button", { name: /新建对话/ }));
     await waitFor(() => {
       expect(navMock.push).toHaveBeenCalledWith("/chat");
     });
   });
 
-  it("流式进行中：Ctrl+K 守卫不跳转、新建对话置灰提示，结束后恢复", async () => {
+  it("流式进行中：新建对话按钮禁用 + Ctrl+K 守卫不动作，结束后恢复", async () => {
     apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
-    // 探针：模拟工作区经 Context 上报流式状态
+    // 探针：模拟工作区经 Context 上报流式状态 + 观察新建信号计数
     let setStreaming!: (streaming: boolean) => void;
+    const seqs: number[] = [];
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
         <ChatStreamingProvider>
           <StreamingProbe onReady={(set) => (setStreaming = set)} />
+          <NewChatSeqProbe onChange={(seq) => seqs.push(seq)} />
           <ChatSidebar />
         </ChatStreamingProvider>
       </QueryClientProvider>,
     );
-    await screen.findByRole("link", { name: /新建对话/ });
+    const newChat = await screen.findByRole("button", { name: /新建对话/ });
 
     act(() => setStreaming(true));
+    expect(newChat).toBeDisabled();
+    expect(newChat).toHaveAttribute("title", "正在生成回答，结束后再新建对话");
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(navMock.push).not.toHaveBeenCalled();
-    expect(screen.getByRole("link", { name: /新建对话/ })).toHaveAttribute(
-      "title",
-      "正在生成回答，结束后再新建对话",
-    );
+    // 流式中信号不发出（seq 恒为初始 0）
+    expect(seqs.at(-1)).toBe(0);
 
-    // 流结束（或工作区卸载复位）：快捷键恢复可用
+    // 流结束（或工作区卸载复位）：按钮与快捷键恢复（/chat 路径 → 信号而非跳转）
     act(() => setStreaming(false));
+    expect(newChat).toBeEnabled();
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
-    expect(navMock.push).toHaveBeenCalledWith("/chat");
+    await waitFor(() => {
+      expect(seqs.at(-1)).toBeGreaterThan(0);
+    });
+    expect(navMock.push).not.toHaveBeenCalled();
   });
 
   it("加载骨架：会话查询挂起时灰条骨架可见", async () => {

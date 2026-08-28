@@ -21,6 +21,7 @@ import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.bot.rewrite.QueryUnderstandingService;
 import com.commerce.rag.bot.tool.CourseApiTool;
+import com.commerce.rag.stream.ThinkingPusher;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -54,7 +55,8 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>关键参数：</b>
  * <ul>
- *   <li>ReactAgent.asNode(true, false) — includeContents=true, returnReasoningContents=false</li>
+ *   <li>ReactAgent.asNode(true, true) — includeContents=true, returnReasoningContents=true
+ *       （2026-08-28 改版：主 agent 思考随终消息 metadata 回传，落库 generating thinking 行）</li>
  *   <li>outputKey="agent_output" — Builder 独立字段，非 asNode 第三参（⚠️ 漂移看板 D1）</li>
  *   <li>ModelCallLimitHook(runLimit=15) — 框架无 maxIterations 常量（⚠️ 漂移看板 D2）</li>
  * </ul>
@@ -161,8 +163,9 @@ public class LeadAgentGraph {
         // 4. 构建 ReactAgent 子图
         ReactAgent reactAgent = buildReactAgent();
 
-        // 5. 添加 ReactAgent 为子图节点
-        stateGraph.addNode(NODE_REACT_AGENT, reactAgent.asNode(true, false));
+        // 5. 添加 ReactAgent 为子图节点（asNode(includeContents=true, returnReasoningContents=true)：
+        //    2026-08-28 时间线改版翻转第二参——主 agent 思考进终消息 metadata，供 persistMessages 落 generating 行）
+        stateGraph.addNode(NODE_REACT_AGENT, reactAgent.asNode(true, true));
 
         // 6. 接线: START → queryUnderstandingNode →(条件边)→ retrieveNode/ReactAgent → END
         stateGraph.addEdge(StateGraph.START, NODE_QUERY_UNDERSTANDING);
@@ -195,10 +198,19 @@ public class LeadAgentGraph {
             // 2. 提取当前用户消息
             String userQuery = extractLastUserQuery(messages);
 
-            // 3. 调用 QueryUnderstandingService（含降级：失败 → unknown + 原始查询，不拒答）
-            QueryPlan plan = queryUnderstandingService.understand(userQuery, messages);
+            // 3. 取 per-run 思考推送通道（worker 在 RunnableConfig.metadata 注册，对模型不可见的
+            //    瞬时引用通道）：命中则 understand 走流式重载，实时推 understanding 思考片段；
+            //    缺失（非 worker 驱动，如离线评测）传 null 维持原同步路径
+            ThinkingPusher pusher = config.metadata()
+                    .map(m -> m.get(RetrieveNode.KEY_THINKING_CALLBACK))
+                    .filter(ThinkingPusher.class::isInstance)
+                    .map(ThinkingPusher.class::cast)
+                    .orElse(null);
 
-            // 4. 返回增量更新 Map（只写入 queryPlan，不返回完整 state）
+            // 4. 调用 QueryUnderstandingService（含降级：失败 → unknown + 原始查询，不拒答）
+            QueryPlan plan = queryUnderstandingService.understand(userQuery, messages, pusher);
+
+            // 5. 返回增量更新 Map（只写入 queryPlan，不返回完整 state）
             log.info(
                     "queryUnderstandingNode 完成: intent={}, 重写={}条, filters={}, recall_history={}",
                     plan.intent().name(),
@@ -263,7 +275,9 @@ public class LeadAgentGraph {
                 .interceptors(
                         coalescingInterceptor, documentAssemblerInterceptor, preferenceInterceptor, episodicInterceptor)
                 .includeContents(true)
-                .returnReasoningContents(false)
+                // 2026-08-28 时间线改版：主 agent 思考进终消息 metadata（reasoningContent），
+                // 供 ChatRequestWorker.persistMessages 落 generating 阶段 thinking 行
+                .returnReasoningContents(true)
                 .build();
     }
 

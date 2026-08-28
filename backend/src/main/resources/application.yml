@@ -258,6 +258,9 @@ rag:
     model: qwen3.7-flash
     # 单次签出最大重写查询条数（spec §2.2 上限 3）
     max-queries: 3
+    # QU 流式思考聚合硬超时（chunk 间静默累计上限）：响应式栈无 transport idle 保护，
+    # 内层 blockLast 必须有界防 worker 线程挂死（2026-08-28 评审 C1）
+    stream-timeout: PT60S
 
   # ── S1 Context Builder（spec §3.2：注入条数配置化，Top-K 仅限系统检索）──
   context-builder:

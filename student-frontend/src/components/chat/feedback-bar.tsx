@@ -109,43 +109,43 @@ export function FeedbackBar({
   }
 
   return (
-    <div className="flex items-center gap-1" data-testid="feedback-bar">
+    // 操作栏按钮组对齐设计稿 .act（Task 11）：衬线 12px/10px 圆角/hover 上浮 1px+阴影+边框、
+    // on 态金棕胶囊底（act-btn 类族见 globals.css）
+    <div className="flex items-center gap-1.5" data-testid="feedback-bar">
       <button
         type="button"
         aria-label="复制回答"
         onClick={() => void copyAnswer()}
-        className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-subtle transition-colors hover:bg-surface-2 hover:text-text focus-visible:ring-2 focus-visible:ring-brand"
+        className="act-btn focus-visible:ring-2 focus-visible:ring-brand"
       >
         <Copy size={13} aria-hidden />
         复制
       </button>
       {canFeedback ? (
         <>
-          {/* 有用：选中态 brand 填充（一次选择后锁定，D9） */}
+          {/* 有用：选中态金棕胶囊（一次选择后锁定，D9） */}
           <button
             type="button"
             aria-label="有用"
             disabled={locked}
+            data-testid="feedback-like"
             onClick={() => void submitFeedback(true)}
-            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-brand ${
-              choice === true
-                ? "bg-brand-soft font-medium text-brand-strong"
-                : "text-subtle hover:bg-surface-2 hover:text-text"
+            className={`act-btn focus-visible:ring-2 focus-visible:ring-brand ${
+              choice === true ? "act-btn--on" : ""
             }`}
           >
             <ThumbsUp size={13} weight={choice === true ? "fill" : "regular"} aria-hidden />
             有用
           </button>
-          {/* 无用：选中态 danger 填充 */}
+          {/* 无用：选中态 danger 胶囊（语义区分） */}
           <button
             type="button"
             aria-label="无用"
             disabled={locked}
+            data-testid="feedback-dislike"
             onClick={() => void submitFeedback(false)}
-            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-brand ${
-              choice === false
-                ? "bg-danger/10 font-medium text-danger"
-                : "text-subtle hover:bg-surface-2 hover:text-text"
+            className={`act-btn focus-visible:ring-2 focus-visible:ring-brand ${
+              choice === false ? "act-btn--on-danger" : ""
             }`}
           >
             <ThumbsDown size={13} weight={choice === false ? "fill" : "regular"} aria-hidden />

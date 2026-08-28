@@ -1,20 +1,21 @@
 "use client";
 
 /**
- * 知识库召回抽屉（2026-08-27 C 端改版，结构对齐参考设计稿图2 右侧来源面板）
+ * 知识库召回抽屉（2026-08-27 C 端改版；2026-08-28 Task 11 对齐设计稿 chunk 卡）
  *
  * 展示本轮回答引用的系统知识库召回片段（仅 SearchKnowledgeTool 命中的
  * RetrievalSource——附件局部语料与经历记忆不经此通道，天然满足「只展示系统
  * 知识库召回的片段」）。
  *
  * - 深色头部条：标题「知识库召回」+ 片段计数 + 关闭按钮
- * - 片段列表项：文档图标 + docTitle + headingPath 面包屑 + 相关度百分比 +
- *   片段正文（content 截断预览，存量数据无 content 时降级为占位文案）
- * - 交互：Esc / 遮罩点击 / 关闭按钮三种关闭路径；右侧滑入（transform/opacity，
- *   reduced-motion 静态）
+ * - chunk 卡（设计稿 .chunk 复刻）：类型徽标（知识库）+ 相似度百分比 + 标题 +
+ *   正文（默认 3 行截断，点击卡片切换展开全文）+ 相似度 meter（4px 金渐变填充，
+ *   进场后 width 1s 过渡到目标值）+ 卡片错峰进场（animationDelay 85ms/张）
+ * - 交互：Esc / 遮罩点击 / 关闭按钮三种关闭路径（保留）；点击卡片展开/收起正文
+ * - 存量数据无 content 时降级占位文案
  */
 import { FileText, X } from "@phosphor-icons/react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { RetrievalSource } from "@/lib/types";
 
 /** 召回抽屉 props */
@@ -31,6 +32,9 @@ function clampPercent(score: number): number {
   return Math.round(clamped * 100);
 }
 
+/** meter 进场延迟基数（设计稿实证：首张 120ms 后开始填充） */
+const METER_FILL_DELAY_MS = 120;
+
 /**
  * 知识库召回抽屉（sources 非 null 时挂载）
  *
@@ -38,6 +42,18 @@ function clampPercent(score: number): number {
  * @param onClose 关闭回调
  */
 export function RetrievalDrawer({ sources, onClose }: RetrievalDrawerProps) {
+  // meter 填充开关：进场后延迟置位，width 经 1s 过渡从 0 长到目标值
+  const [meterFilled, setMeterFilled] = useState(false);
+  // 展开态卡片集合（按列表下标；点击卡片切换 line-clamp）
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
+
+  // meter 进场动画：挂载后 120ms 统一置位（各卡填充经 transitionDelay 错峰）
+  useEffect(() => {
+    if (sources === null) return;
+    const timer = window.setTimeout(() => setMeterFilled(true), METER_FILL_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [sources]);
+
   // Esc 关闭监听（抽屉开启期间挂载；hook 无条件调用，内部按 sources 判空）
   useEffect(() => {
     if (sources === null) {
@@ -55,6 +71,20 @@ export function RetrievalDrawer({ sources, onClose }: RetrievalDrawerProps) {
   if (sources === null) {
     return null;
   }
+
+  /** 卡片点击/键盘激活：切换该卡正文展开态（line-clamp 3 行 ↔ 全文） */
+  function toggleExpanded(index: number): void {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  }
+
   return (
     <div className="fixed inset-0 z-50">
       {/* 遮罩：点击空白关闭（仅 opacity 动画） */}
@@ -90,7 +120,7 @@ export function RetrievalDrawer({ sources, onClose }: RetrievalDrawerProps) {
             <X size={15} aria-hidden />
           </button>
         </header>
-        {/* 片段列表（按精排顺序 = 相关度降序） */}
+        {/* 片段列表（按精排顺序 = 相关度降序；卡片错峰进场） */}
         <div className="flex-1 overflow-y-auto p-4">
           {sources.length === 0 ? (
             <p className="px-2 py-8 text-center text-sm text-subtle">本轮回答未引用知识库片段</p>
@@ -98,30 +128,70 @@ export function RetrievalDrawer({ sources, onClose }: RetrievalDrawerProps) {
             <ol className="space-y-3" data-testid="retrieval-drawer-list">
               {sources.map((source, index) => {
                 const percent = clampPercent(source.score);
+                const isOpen = expanded.has(index);
                 return (
                   <li
                     key={source.chunkId}
                     data-testid="retrieval-source-item"
-                    className="rounded-xl border border-border bg-surface-2 p-3.5"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isOpen}
+                    onClick={() => toggleExpanded(index)}
+                    onKeyDown={(event) => {
+                      // 键盘可达性：Enter/Space 与点击同路径切换展开
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        toggleExpanded(index);
+                      }
+                    }}
+                    // 错峰进场：每张卡延迟 85ms（设计稿 chunk 动画实证值）
+                    style={{ animationDelay: `${index * 85}ms` }}
+                    className={`chunk-card ${isOpen ? "chunk-card--exp" : ""}`}
                   >
-                    <div className="flex items-start gap-2.5">
-                      {/* 序号徽标：召回排位 */}
-                      <span className="grid size-5 shrink-0 place-items-center rounded-md bg-brand-soft text-[11px] font-semibold text-brand-strong tabular-nums">
-                        {index + 1}
+                    {/* 顶行：类型徽标（系统知识库来源）+ 面包屑 + 相似度百分比 */}
+                    <div className="flex items-center gap-2">
+                      <span className="chunk-type shrink-0">知识库</span>
+                      <span className="min-w-0 flex-1 truncate text-xs text-muted">
+                        {source.headingPath || source.docTitle}
                       </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-text">{source.docTitle}</p>
-                        <p className="mt-0.5 truncate text-xs text-muted">{source.headingPath}</p>
-                      </div>
-                      {/* 相关度：百分比 + 细条（钳制后的精排分数） */}
-                      <span className="shrink-0 text-xs font-medium text-brand-strong tabular-nums">
-                        {percent}%
+                      <span className="shrink-0 text-[11px] text-faint tabular-nums">
+                        相似度 {percent}%
                       </span>
                     </div>
-                    {/* 片段正文预览（存量数据无 content 降级占位） */}
-                    <p className="mt-2.5 border-t border-border/60 pt-2.5 text-[13px] leading-6 whitespace-pre-wrap text-muted">
+                    {/* 片段标题 */}
+                    <p className="mt-2 text-[13.5px] leading-relaxed font-bold text-text">
+                      {source.docTitle}
+                    </p>
+                    {/* 片段正文：默认 3 行截断；展开态解除（存量数据无 content 降级占位） */}
+                    <p
+                      data-testid="retrieval-source-text"
+                      className="chunk-text whitespace-pre-wrap"
+                    >
                       {source.content?.trim() || "（片段内容暂不可用）"}
                     </p>
+                    {/* 底行：相似度 meter（进场后 width 1s 过渡填充）+ 展开提示 */}
+                    <div className="mt-2.5 flex items-center gap-3">
+                      <div
+                        className="chunk-meter"
+                        role="meter"
+                        aria-label={`相似度 ${percent}%`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={percent}
+                      >
+                        {/* 填充延迟随下标错峰（meterFilled 置位后 width 过渡到目标值） */}
+                        <i
+                          data-testid="retrieval-source-meter"
+                          style={{
+                            width: meterFilled ? `${percent}%` : "0%",
+                            transitionDelay: `${index * 85}ms`,
+                          }}
+                        />
+                      </div>
+                      <span className="shrink-0 text-[10.5px] tracking-wider text-faint">
+                        {isOpen ? "收起" : "展开全文"}
+                      </span>
+                    </div>
                   </li>
                 );
               })}

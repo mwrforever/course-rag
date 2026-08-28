@@ -38,6 +38,21 @@ if (typeof globalThis.IntersectionObserver === "undefined") {
   });
 }
 
+// ResizeObserver 桩：react-medium-image-zoom（Task 12 附件图片放大预览）在
+// componentDidMount 里实例化 ResizeObserver 观察图片尺寸，jsdom 无实现直接抛错；
+// 注入最小空观察器（构造/observe/disconnect 均 no-op，不影响渲染断言）
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    value: ResizeObserverStub,
+    writable: true,
+  });
+}
+
 // matchMedia 桩：useReducedMotion 在 jsdom 缺失实现会抛错（matchMedia is not a function）
 if (typeof globalThis.matchMedia === "undefined") {
   Object.defineProperty(globalThis, "matchMedia", {

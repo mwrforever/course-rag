@@ -3,6 +3,7 @@ package com.commerce.rag.bot.graph;
 import static com.commerce.rag.bot.graph.OverAllState.KEY_QUERY_PLAN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -29,6 +30,7 @@ import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.commerce.rag.bot.tool.SearchKnowledgeTool;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.MemoryProperties;
 import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.DocumentLocalChunk;
@@ -44,6 +46,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -144,6 +148,52 @@ class RetrieveNodeTest {
                         argThat(queries -> queries.size() == 1
                                 && queries.get(0).courseIds().equals(List.of("101"))),
                         argThat(RetrieveNodeTest::isQueryVector));
+    }
+
+    @Test
+    @DisplayName("取消检查点 — 三段 join 前取消源为 true：抛 CancelledException 走 worker 取消分支")
+    void apply_cancelledBeforeJoin_throwsCancelled() throws Exception {
+        // Given: worker 经 KEY_CANCEL_CHECK 注入已取消标志（如 QU 阶段用户点了取消）
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 学习方法"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("高等数学怎么学"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("s1")
+                .addMetadata(RetrieveNode.KEY_CANCEL_CHECK, (BooleanSupplier) () -> true)
+                .build();
+
+        // When / Then: apply 同步抛既有 CancelledException（不再阻塞等待最慢一段远程 IO）
+        assertThrows(CancelledException.class, () -> newRetrieveNode().apply(state, config));
+    }
+
+    @Test
+    @DisplayName("取消检查点 — 取消源为 false：不拦截，检索链路正常完成")
+    void apply_cancelSourceFalse_proceedsNormally() throws Exception {
+        // Given: 正常 run（未取消），取消源恒 false
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 学习方法"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("高等数学怎么学"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("s1")
+                .addMetadata(RetrieveNode.KEY_CANCEL_CHECK, (BooleanSupplier) () -> false)
+                .build();
+        KnowledgeChunk k =
+                new KnowledgeChunk("c1", "内容", "", "讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "h".repeat(64));
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of(k)));
+        when(contextBuilderService.buildDocument("高等数学怎么学", List.of("高等数学 学习方法"), List.of(k)))
+                .thenReturn("<document>D</document>");
+
+        // When
+        Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
+
+        // Then: 正常走完检索与 document 写出（Task 4 键生效不误伤主链路）
+        assertTrue(result.isEmpty());
+        assertEquals(
+                "<document>D</document>",
+                config.metadata().get().get(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT));
     }
 
     @Test
@@ -615,6 +665,43 @@ class RetrieveNodeTest {
         assertEquals("第一章", sources.get(0).headingPath());
         assertEquals(0.9, sources.get(0).score(), 0.001);
         assertEquals("c2", sources.get(1).chunkId());
+    }
+
+    @Test
+    @DisplayName("apply — 检索命中非空：来源列表双写 sink 容器，值与 metadata 写入一致（KEY_SOURCES_SINK，T7 修复）")
+    void apply_retrievalHit_writesSourcesSinkConsistentWithMetadata() throws Exception {
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 学习方法"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("高等数学怎么学"))));
+        // worker 生产链路注册形态：run 开始注入空 sink 容器（跨 SAA 派生副本的回写通道）
+        AtomicReference<List<RetrievalSource>> sourcesSink = new AtomicReference<>();
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("s1")
+                .addMetadata(PreferenceInterceptor.KEY_USER_ID, "42")
+                .addMetadata(RetrieveNode.KEY_SOURCES_SINK, sourcesSink)
+                .build();
+
+        KnowledgeChunk k1 = new KnowledgeChunk(
+                "c1", "内容1", "", "高等数学讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "a".repeat(64));
+        KnowledgeChunk k2 = new KnowledgeChunk(
+                "c2", "内容2", "", "学习方法FAQ", "第二节", 0.8, IntentType.KNOWLEDGE_QUESTION, "b".repeat(64));
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of(k1, k2)));
+        when(contextBuilderService.buildDocument(anyString(), any(), any())).thenReturn("<document>D</document>");
+
+        Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
+
+        assertTrue(result.isEmpty(), "来源列表不写 state");
+        // 双写断言：sink.set 已调用（容器值就位）且与 metadata 键写入完全一致（同一次 buildSources 产物）
+        Object metadataSources = config.metadata().get().get(RetrieveNode.KEY_RETRIEVAL_SOURCES);
+        assertNotNull(metadataSources, "metadata 键写保留（直传 config 场景兜底）");
+        assertNotNull(sourcesSink.get(), "检索命中非空必须写回 sink 容器（跨派生副本通道）");
+        assertEquals(metadataSources, sourcesSink.get(), "sink 值与 metadata 写入一致（双通道同源）");
+        assertEquals(2, sourcesSink.get().size(), "sink 值按精排顺序携带全部命中");
+        assertEquals("c1", sourcesSink.get().get(0).chunkId());
+        assertEquals("高等数学讲义", sourcesSink.get().get(0).docTitle());
+        assertEquals("c2", sourcesSink.get().get(1).chunkId());
     }
 
     @Test

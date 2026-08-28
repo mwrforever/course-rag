@@ -421,8 +421,13 @@ public class ChatStreamEntry {
                 String payload;
 
                 if ("thinking".equals(msg.messageType())) {
+                    // 2026-08-28 时间线改版：THINKING 回放 payload 与实时事件同构 {delta, stage}——
+                    // stage 取落库 thinking_stage 原样透传；历史存量行该列为 null 时输出 JSON null
+                    // （锁定决策：null 语义 = 前端降级按 generating 渲染，回放不报错、后端不代填）
                     eventType = SseEventType.THINKING.getEventName();
-                    payload = "{\"delta\":\"" + escapeJson(msg.content()) + "\"}";
+                    String stage = msg.thinkingStage();
+                    payload = "{\"delta\":\"" + escapeJson(msg.content()) + "\",\"stage\":"
+                            + (stage == null ? "null" : "\"" + escapeJson(stage) + "\"") + "}";
                 } else if ("TOOL_CALL".equals(msg.messageType())) {
                     // P1-2: 与实时 TOOL_CALL 事件 schema 对齐（toolCallId/toolName/input）——
                     // 新格式直接透传；历史旧格式（{"tool","args"}）重建，保证前端按 toolCallId 配对
@@ -432,6 +437,12 @@ public class ChatStreamEntry {
                     // P1-2: 与实时 TOOL_RESULT 事件 schema 对齐（toolCallId/status/output）
                     eventType = SseEventType.TOOL_RESULT.getEventName();
                     payload = normalizeToolPayload(msg.content(), false);
+                } else if ("query_plan".equals(msg.messageType())) {
+                    // 2026-08-28 时间线改版：query_plan 行 content 即实时 query_plan 事件同款 JSON
+                    // （单一构造点 SseEventTransformer.buildQueryPlanPayload）——同名事件原样透传
+                    // 保持回放与实时契约一致；不得落入 else 分支被当正文 DELTA 泄漏 JSON
+                    eventType = SseEventType.QUERY_PLAN.getEventName();
+                    payload = msg.content();
                 } else {
                     // 普通助手消息 → DELTA 事件
                     eventType = SseEventType.DELTA.getEventName();

@@ -109,11 +109,16 @@ public class SseEventTransformer {
             return List.of();
         }
 
-        // 1. 检查 reasoningContent → thinking 事件
+        // 1. 检查 reasoningContent → thinking 事件（2026-08-28 时间线改版：payload 加 stage
+        //    区分思考来源，主 agent 生成路径固定 generating；图节点思考经 ThinkingPusher
+        //    回调携带 understanding / attachments 等 stage，前端据此分段归组渲染）
         String reasoning = extractReasoningContent(message);
         if (reasoning != null && !reasoning.isEmpty()) {
             runState.markThinkingSent(); // 标记已发 THINKING，text 阶段补 THINKING_END 的前置条件
-            return List.of(makeEvent(SseEventType.THINKING, runState, Map.of("delta", reasoning)));
+            Map<String, Object> thinkingPayload = new LinkedHashMap<>();
+            thinkingPayload.put("delta", reasoning);
+            thinkingPayload.put("stage", STAGE_GENERATING);
+            return List.of(makeEvent(SseEventType.THINKING, runState, thinkingPayload));
         }
 
         List<SseEvent> events = new ArrayList<>();
@@ -123,8 +128,9 @@ public class SseEventTransformer {
         if (text != null && !text.isEmpty()) {
             // qwen 思考模型 thinking/text 两阶段互斥：首条 text 即思考结束信号，
             // 必须补发 THINKING_END 再发 DELTA，保证前端退出"思考中"状态
+            // （stage=generating 与 THINKING 事件配对，2026-08-28 时间线改版）
             if (runState.isThinkingSent() && runState.markThinkingEndSent()) {
-                events.add(makeEvent(SseEventType.THINKING_END, runState, Map.of()));
+                events.add(makeEvent(SseEventType.THINKING_END, runState, Map.of("stage", STAGE_GENERATING)));
             }
             runState.markDeltaSent(); // 标记本 run 已发 DELTA，FINISHED 时不再补发
             events.add(makeEvent(SseEventType.DELTA, runState, Map.of("text", text)));
@@ -183,7 +189,7 @@ public class SseEventTransformer {
         if (reasoning != null && !reasoning.isEmpty()) {
             runState.markThinkingSent();
             if (runState.markThinkingEndSent()) {
-                events.add(makeEvent(SseEventType.THINKING_END, runState, Map.of()));
+                events.add(makeEvent(SseEventType.THINKING_END, runState, Map.of("stage", STAGE_GENERATING)));
             }
         }
 
@@ -301,29 +307,41 @@ public class SseEventTransformer {
      * 经 {@code Flux.just(GraphResponse.of(nodeOutput))} 向流中发射普通 {@link NodeOutput}，
      * 携带 {@code node()} 与合并后 state）：
      * <ul>
-     *   <li>queryUnderstandingNode 完成 chunk：读 state 的 QueryPlan——knowledge_question →
-     *       STAGE retrieving（知识库查询中）；chat/unknown → STAGE generating（直接生成）；
-     *       plan 缺失（异常降级）不发，由 reactAgent 首 chunk 兜底</li>
+     *   <li>queryUnderstandingNode 完成 chunk：读 state 的 QueryPlan——先产 QUERY_PLAN 事件
+     *       （需求解析结果 {intent, rewritten, filters} 对前端即时可见，2026-08-28 改版）；
+     *       再按意图分流 knowledge_question → STAGE retrieving（知识库查询中）、
+     *       chat/unknown → STAGE generating（直接生成）；plan 缺失（异常降级）两者均不发，
+     *       由 reactAgent 首 chunk 兜底</li>
      *   <li>retrieveNode 完成 chunk：检索阶段结束 → STAGE generating（worker 的
      *       maybePushSources 在同 chunk 已推 SOURCES，时序自然形成「来源→生成」）</li>
      *   <li>reactAgent 首个模型流式 chunk：STAGE generating 兜底（QU plan 缺失 /
      *       NodeOutput 事件缺失时不丢「生成中」阶段）</li>
      * </ul>
      *
-     * <p>每个阶段经 RunState CAS 标记只发一次（与 thinkingEndSent 同款去重）。
+     * <p>每个阶段（含 QUERY_PLAN）经 RunState CAS 标记只发一次（与 thinkingEndSent 同款去重）。
      *
      * @param chunk    SAA 图流式输出的单个 chunk（可为普通 NodeOutput 或 StreamingOutput）
      * @param runState 当前 run 上下文
-     * @return 0~1 个 STAGE 事件（同 chunk 至多触发一个阶段跃迁）
+     * @return 0~2 个事件（QU 完成 chunk 可含 QUERY_PLAN + STAGE；其余场景同 chunk 至多一个阶段跃迁）
      */
     public List<SseEvent> transformStages(NodeOutput chunk, RunState runState) {
         if (chunk == null || runState == null) {
             return List.of();
         }
         String node = chunk.node();
-        // QU 完成：按意图分流到检索或直接生成
+        // QU 完成：先产 QUERY_PLAN（需求解析结果即时可见，CAS 一次、无 plan 不发），
+        // 再按意图分流到检索或直接生成阶段事件（同 chunk 至多一阶段跃迁）
         if (LeadAgentGraph.NODE_QUERY_UNDERSTANDING.equals(node)) {
-            return stageEventIfAbsent(runState, resolvePostUnderstandingStage(chunk));
+            List<SseEvent> events = new ArrayList<>();
+            QueryPlan plan = extractQueryPlan(chunk);
+            if (plan != null && runState.markQueryPlanSent()) {
+                events.add(makeEvent(SseEventType.QUERY_PLAN, runState, buildQueryPlanPayload(plan)));
+            }
+            String nextStage = plan == null
+                    ? null
+                    : plan.intent() == IntentType.KNOWLEDGE_QUESTION ? STAGE_RETRIEVING : STAGE_GENERATING;
+            events.addAll(stageEventIfAbsent(runState, nextStage));
+            return events;
         }
         // 检索完成：进入生成阶段
         if (LeadAgentGraph.NODE_RETRIEVE.equals(node)) {
@@ -339,13 +357,34 @@ public class SseEventTransformer {
     }
 
     /**
-     * 解析 QU 完成后的下一阶段：knowledge_question → retrieving；chat/unknown → generating；
-     * plan 读取失败返回 null（本 chunk 不发阶段，等 reactAgent 首 chunk 兜底）。
+     * 构建 QUERY_PLAN 事件 payload —— {@code {intent, rewritten, filters:{courseNames}}}。
      *
-     * @param chunk queryUnderstandingNode 完成 chunk（state 已含 QueryPlan）
-     * @return 下一阶段键；不可判定时 null
+     * <p>公开静态：chat_message 的 query_plan 行（ChatRequestWorker.persistMessages）落库
+     * 与本事件同款 JSON，事件与回放共用单一构造点保证契约一致。intent 用 code() 小写规范名
+     * （与条件边路由键、R2 意图落库口径一致）。
+     *
+     * @param plan queryUnderstandingNode 签出的查询计划（非 null）
+     * @return 有序 Map（LinkedHashMap，字段序稳定：intent → rewritten → filters）
      */
-    private String resolvePostUnderstandingStage(NodeOutput chunk) {
+    public static Map<String, Object> buildQueryPlanPayload(QueryPlan plan) {
+        Map<String, Object> filters = new LinkedHashMap<>();
+        filters.put(
+                "courseNames",
+                plan.filters() == null ? List.of() : plan.filters().courseNames());
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("intent", plan.intent().code());
+        payload.put("rewritten", plan.rewrittenQueries());
+        payload.put("filters", filters);
+        return payload;
+    }
+
+    /**
+     * 从 QU 完成 chunk 的 state 提取 QueryPlan（2026-08-28 改版：QUERY_PLAN 事件与阶段跃迁共用）。
+     *
+     * @param chunk queryUnderstandingNode 完成 chunk（state 已含 QueryPlan；异常降级时无）
+     * @return 查询计划；无 state / 无计划 / 类型不符返回 null
+     */
+    private QueryPlan extractQueryPlan(NodeOutput chunk) {
         if (chunk.state() == null) {
             return null;
         }
@@ -353,7 +392,6 @@ public class SseEventTransformer {
                 .value(KEY_QUERY_PLAN)
                 .filter(QueryPlan.class::isInstance)
                 .map(QueryPlan.class::cast)
-                .map(plan -> plan.intent() == IntentType.KNOWLEDGE_QUESTION ? STAGE_RETRIEVING : STAGE_GENERATING)
                 .orElse(null);
     }
 
@@ -446,6 +484,7 @@ public class SseEventTransformer {
      * @param thinkingEndSent 标记本 run 是否已发送过 THINKING_END 事件（CAS 去重，避免重复发送）
      * @param retrievingSent  标记本 run 是否已发送过 STAGE(retrieving) 事件（CAS 去重，2026-08-27）
      * @param generatingSent  标记本 run 是否已发送过 STAGE(generating) 事件（CAS 去重，多触发点取最先）
+     * @param queryPlanSent   标记本 run 是否已发送过 QUERY_PLAN 事件（CAS 去重，2026-08-28 时间线改版）
      */
     public record RunState(
             String runId,
@@ -456,7 +495,8 @@ public class SseEventTransformer {
             AtomicBoolean thinkingSent,
             AtomicBoolean thinkingEndSent,
             AtomicBoolean retrievingSent,
-            AtomicBoolean generatingSent) {
+            AtomicBoolean generatingSent,
+            AtomicBoolean queryPlanSent) {
 
         /**
          * 递增并返回下一个 SSE 事件序号。
@@ -516,7 +556,14 @@ public class SseEventTransformer {
         }
 
         /**
-         * 工厂方法：创建初始 seqId=0、五标志均为 false 的 RunState。
+         * 标记本 run 已发送过 QUERY_PLAN 事件，返回是否首次标记成功（CAS 去重，2026-08-28）。
+         */
+        public boolean markQueryPlanSent() {
+            return queryPlanSent.compareAndSet(false, true);
+        }
+
+        /**
+         * 工厂方法：创建初始 seqId=0、六标志均为 false 的 RunState。
          */
         public static RunState create(String runId, String sessionId, String model) {
             return new RunState(
@@ -524,6 +571,7 @@ public class SseEventTransformer {
                     sessionId,
                     model,
                     new AtomicLong(0),
+                    new AtomicBoolean(false),
                     new AtomicBoolean(false),
                     new AtomicBoolean(false),
                     new AtomicBoolean(false),

@@ -1,24 +1,28 @@
 /**
- * 历史消息适配器测试（Task 13 TDD 先行用例）
+ * 历史消息适配器测试（Task 13 TDD 先行用例；2026-08-28 时间线改版补时间轴重建）
  *
  * 覆盖设计文档 §六.6 R1 历史回显映射规则：
  * - USER 行 → 用户消息（正文 + 附件 chips；G8 历史态无缩略图，由 MessageList 降级图标）
- * - ASSISTANT 行按 runId 归并为一条 AI 消息：正文→text、thinking→思考卡（thinkingEnded），
- *   TOOL_CALL/TOOL_RESULT→工具卡（run 内按 toolCallId 配对，空串按到达顺序兜底）、
- *   sources→来源卡（取最后一组非空）、intentType 透传、messageId=正文行 id（J5 反馈来源）
+ * - ASSISTANT 行按 runId 归并为一条 AI 消息：正文→text、thinking→时间轴思考节点
+ *   （按 thinkingStage 归组，存量 null 降级 generating）、query_plan 行 JSON parse + zod、
+ *   TOOL_CALL/TOOL_RESULT→时间轴工具节点（run 内按 toolCallId 配对，空串按到达顺序兜底）、
+ *   sources→来源卡与时间轴来源节点（取最后一组非空，原位替换）、
+ *   intentType 透传、messageId=正文行 id（J5 反馈来源）
+ * - 三场景（Task 9 验收）：完整 run 重建 / 取消 run 过滤后仅剩用户行 / 旧数据无 stage 降级
  * - 输入按 (createdAt, seq) 稳定排序；空列表 → []
  */
 import { describe, expect, it } from "vitest";
 import { historyAdapter } from "./history-adapter";
 import type { RetrievalSource, StudentMessage } from "./types";
 
-/** 历史消息行工厂（默认一条 ASSISTANT 正文行） */
+/** 历史消息行工厂（默认一条 ASSISTANT 正文行；thinkingStage 默认 null = 存量旧行） */
 function makeRow(overrides: Partial<StudentMessage> & { role?: string } = {}): StudentMessage {
   return {
     id: "m-1",
     role: "ASSISTANT",
     content: "",
     messageType: null,
+    thinkingStage: null,
     intentType: "knowledge_question",
     runId: "run-1",
     seq: 1,
@@ -62,7 +66,7 @@ describe("historyAdapter：基础映射", () => {
     expect(message.endStatus).toBeNull();
   });
 
-  it("ASSISTANT 正文行 → AI 消息：text/messageId=行 id/endStatus COMPLETED/intentType 透传 + sources", () => {
+  it("ASSISTANT 正文行 → AI 消息：text/messageId=行 id/endStatus COMPLETED/intentType 透传 + sources（时间轴来源节点）", () => {
     const rows = [
       makeRow({
         id: "msg-a-1",
@@ -80,8 +84,7 @@ describe("historyAdapter：基础映射", () => {
     expect(message.messageId).toBe("msg-a-1");
     expect(message.endStatus).toBe("COMPLETED");
     expect(message.intentType).toBe("knowledge_question");
-    expect(message.thinking).toBe("");
-    expect(message.tools).toEqual([]);
+    expect(message.timeline).toEqual([{ kind: "sources", sources: [SOURCE] }]);
   });
 
   it("intentType 为 null（存量消息）原样透传 null", () => {
@@ -98,21 +101,69 @@ describe("historyAdapter：基础映射", () => {
     expect(message.intentType).toBe("chat");
   });
 
-  it("thinking 行 → 思考文本累积（多行按序拼接）+ thinkingEnded=true（折叠思考卡）", () => {
+  it("thinking 行 → 时间轴思考节点（同 stage 合并行、恒 ended=true）", () => {
     const rows = [
-      makeRow({ id: "r1", seq: 2, messageType: "thinking", content: "第一步分析" }),
-      makeRow({ id: "r2", seq: 3, messageType: "thinking", content: "，第二步检索" }),
+      makeRow({
+        id: "r1",
+        seq: 2,
+        messageType: "thinking",
+        content: "第一步分析",
+        thinkingStage: "understanding",
+      }),
+      makeRow({
+        id: "r2",
+        seq: 3,
+        messageType: "thinking",
+        content: "，第二步检索",
+        thinkingStage: "understanding",
+      }),
       makeRow({ id: "r3", seq: 4, messageType: null, content: "最终回答" }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.thinking).toBe("第一步分析，第二步检索");
-    expect(message.thinkingEnded).toBe(true);
+    // 同 stage 多行合并一节点（持久化即完成态：ended=true）
+    expect(message.timeline).toEqual([
+      { kind: "thinking", stage: "understanding", lines: ["第一步分析，第二步检索"], ended: true },
+    ]);
     expect(message.text).toBe("最终回答");
+  });
+
+  it("query_plan 行 → JSON parse + zod 校验建查询计划节点；坏 JSON/结构非法静默跳过", () => {
+    const plan = {
+      intent: "knowledge_question",
+      rewritten: ["RAG 检索增强生成的概念"],
+      filters: { courseNames: ["高等数学"] },
+    };
+    const rows = [
+      makeRow({ id: "q1", seq: 2, messageType: "query_plan", content: JSON.stringify(plan) }),
+      makeRow({ id: "q2", seq: 3, messageType: null, content: "回答" }),
+    ];
+    const [message] = historyAdapter(rows);
+    expect(message.timeline).toEqual([
+      {
+        kind: "queryPlan",
+        intent: "knowledge_question",
+        rewritten: ["RAG 检索增强生成的概念"],
+        courseNames: ["高等数学"],
+      },
+    ]);
+    // 坏 JSON / 结构非法（缺 filters）：不建节点不崩溃，正文正常回显
+    const bad = historyAdapter([
+      makeRow({ id: "q3", seq: 2, messageType: "query_plan", content: "not-json" }),
+      makeRow({
+        id: "q4",
+        seq: 3,
+        messageType: "query_plan",
+        content: JSON.stringify({ intent: "chat", rewritten: [] }),
+      }),
+      makeRow({ id: "q5", seq: 4, messageType: null, content: "回答" }),
+    ]);
+    expect(bad[0].timeline).toEqual([]);
+    expect(bad[0].text).toBe("回答");
   });
 });
 
 describe("historyAdapter：工具卡配对", () => {
-  it("TOOL_CALL/TOOL_RESULT 按 toolCallId 配对（success 态写回 output）", () => {
+  it("TOOL_CALL/TOOL_RESULT 按 toolCallId 配对（success 态写回 output；时间轴工具节点同步原位更新）", () => {
     const rows = [
       makeRow({
         seq: 2,
@@ -130,17 +181,20 @@ describe("historyAdapter：工具卡配对", () => {
       }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.tools).toHaveLength(1);
-    expect(message.tools[0]).toEqual({
-      toolCallId: "t1",
-      toolName: "searchKnowledge",
-      input: { query: "RAG" },
-      status: "success",
-      output: { hits: 3 },
-    });
+    // 时间轴工具节点：TOOL_CALL 建 pending 节点 → TOOL_RESULT 原位转 success
+    expect(message.timeline).toEqual([
+      {
+        kind: "tool",
+        toolCallId: "t1",
+        toolName: "searchKnowledge",
+        input: { query: "RAG" },
+        status: "success",
+        output: { hits: 3 },
+      },
+    ]);
   });
 
-  it("空 toolCallId 按到达顺序兜底配对（等价索引兜底）", () => {
+  it("空 toolCallId 按到达顺序兜底配对（等价索引兜底；时间轴同步）", () => {
     const rows = [
       makeRow({
         seq: 2,
@@ -164,8 +218,11 @@ describe("historyAdapter：工具卡配对", () => {
       }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.tools.map((tool) => tool.output)).toEqual(["A", "B"]);
-    expect(message.tools.map((tool) => tool.status)).toEqual(["success", "success"]);
+    // 时间轴工具节点：空 toolCallId 按到达顺序原位配对
+    expect(message.timeline.map((node) => (node.kind === "tool" ? node.output : null))).toEqual([
+      "A",
+      "B",
+    ]);
   });
 
   it("多 run 隔离：各 run 工具卡独立配对，不串 run", () => {
@@ -196,10 +253,13 @@ describe("historyAdapter：工具卡配对", () => {
     expect(user1.role).toBe("user");
     expect(user2.role).toBe("user");
     expect(assistant1.id).toBe("run-1");
-    expect(assistant1.tools.map((tool) => tool.status)).toEqual(["pending"]);
+    expect(assistant1.timeline.map((node) => (node.kind === "tool" ? node.status : null))).toEqual([
+      "pending",
+    ]);
     expect(assistant2.id).toBe("run-2");
-    expect(assistant2.tools).toHaveLength(1);
-    expect(assistant2.tools[0]).toMatchObject({
+    expect(assistant2.timeline).toHaveLength(1);
+    expect(assistant2.timeline[0]).toMatchObject({
+      kind: "tool",
       toolName: "queryCourseDetail",
       status: "success",
       output: "课程详情",
@@ -212,12 +272,11 @@ describe("historyAdapter：工具卡配对", () => {
       makeRow({ seq: 3, messageType: "TOOL_RESULT", content: "also-bad" }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.tools).toHaveLength(1);
-    expect(message.tools[0].status).toBe("success");
-    expect(message.tools[0].toolCallId).toBe("");
+    expect(message.timeline).toHaveLength(1);
+    expect(message.timeline[0]).toMatchObject({ kind: "tool", status: "success", toolCallId: "" });
   });
 
-  it("无配对的 TOOL_RESULT 忽略（不产生错误工具卡）", () => {
+  it("无配对的 TOOL_RESULT 忽略（不产生错误工具卡，时间轴同样不建节点）", () => {
     const rows = [
       makeRow({
         seq: 2,
@@ -226,7 +285,7 @@ describe("historyAdapter：工具卡配对", () => {
       }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.tools).toEqual([]);
+    expect(message.timeline).toEqual([]);
   });
 });
 
@@ -270,7 +329,9 @@ describe("historyAdapter：顺序与归并", () => {
       "assistant",
     ]);
     expect(messages[1].text).toBe("回答一");
-    expect(messages[1].thinking).toBe("思考一");
+    expect(messages[1].timeline).toEqual([
+      { kind: "thinking", stage: "generating", lines: ["思考一"], ended: true },
+    ]);
     expect(messages[3].text).toBe("回答二");
   });
 
@@ -284,18 +345,27 @@ describe("historyAdapter：顺序与归并", () => {
     expect(message.messageId).toBe("a2");
   });
 
-  it("sources 取最后一组非空数组（空数组不覆盖既有来源）", () => {
+  it("sources 取最后一组非空数组（空数组不覆盖既有来源；时间轴来源节点原位替换）", () => {
+    const later: RetrievalSource = {
+      chunkId: "c-2",
+      docTitle: "新讲义",
+      headingPath: "一",
+      score: 0.8,
+    };
     const rows = [
       makeRow({ seq: 2, messageType: null, content: "正文", sources: [SOURCE] }),
-      makeRow({ seq: 3, messageType: null, content: "续写", sources: [] }),
+      makeRow({ seq: 3, messageType: null, content: "续写", sources: [later] }),
+      makeRow({ seq: 4, messageType: null, content: "收尾", sources: [] }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.sources).toEqual([SOURCE]);
+    expect(message.sources).toEqual([later]);
+    // 时间轴来源节点：单节点原位替换（内容取最后一组非空，位置保持首现）
+    expect(message.timeline).toEqual([{ kind: "sources", sources: [later] }]);
   });
 
   it("run 无正文行：仅思考/工具卡也还原（messageId=null，无反馈来源）", () => {
     const rows = [
-      makeRow({ seq: 2, messageType: "thinking", content: "思考中" }),
+      makeRow({ seq: 2, messageType: "thinking", content: "思考中", thinkingStage: "generating" }),
       makeRow({
         seq: 3,
         messageType: "TOOL_CALL",
@@ -304,9 +374,214 @@ describe("historyAdapter：顺序与归并", () => {
     ];
     const [message] = historyAdapter(rows);
     expect(message.text).toBe("");
-    expect(message.thinking).toBe("思考中");
-    expect(message.tools).toHaveLength(1);
     expect(message.messageId).toBeNull();
     expect(message.endStatus).toBe("COMPLETED");
+    expect(message.timeline.map((node) => node.kind)).toEqual(["thinking", "tool"]);
+  });
+});
+
+describe("historyAdapter：时间轴重建三场景（Task 9 验收）", () => {
+  it("场景一 完整 run：thinking/query_plan/tool/sources 行按 seq 重建与实时 SSE 同构的时间轴", () => {
+    // 模拟真机落库行序：thinking(u) → query_plan → TOOL_CALL → TOOL_RESULT → thinking(g) → 正文(带 sources)
+    const plan = {
+      intent: "knowledge_question",
+      rewritten: ["RAG检索增强生成技术的概念与原理"],
+      filters: { courseNames: [] },
+    };
+    const rows = [
+      makeRow({ id: "u1", role: "USER", content: "什么是 RAG？", runId: "run-9", seq: 1 }),
+      makeRow({
+        id: "t-u",
+        runId: "run-9",
+        seq: 2,
+        messageType: "thinking",
+        thinkingStage: "understanding",
+        content: "用户想了解 RAG 概念\n需要检索课程资料",
+      }),
+      makeRow({
+        id: "q-p",
+        runId: "run-9",
+        seq: 3,
+        messageType: "query_plan",
+        content: JSON.stringify(plan),
+      }),
+      makeRow({
+        id: "t-c",
+        runId: "run-9",
+        seq: 4,
+        messageType: "TOOL_CALL",
+        content: JSON.stringify({
+          toolCallId: "tc-1",
+          toolName: "searchKnowledge",
+          input: { query: "RAG" },
+        }),
+      }),
+      makeRow({
+        id: "t-r",
+        runId: "run-9",
+        seq: 5,
+        messageType: "TOOL_RESULT",
+        content: JSON.stringify({ toolCallId: "tc-1", status: "success", output: { hits: 2 } }),
+      }),
+      makeRow({
+        id: "t-g",
+        runId: "run-9",
+        seq: 6,
+        messageType: "thinking",
+        thinkingStage: "generating",
+        content: "组织回答结构",
+      }),
+      makeRow({
+        id: "a-1",
+        runId: "run-9",
+        seq: 7,
+        messageType: null,
+        content: "RAG 是检索增强生成。",
+        sources: [SOURCE],
+      }),
+    ];
+    const [user, assistant] = historyAdapter(rows);
+    expect(user.role).toBe("user");
+    expect(assistant.timeline).toEqual([
+      {
+        kind: "thinking",
+        stage: "understanding",
+        lines: ["用户想了解 RAG 概念", "需要检索课程资料"],
+        ended: true,
+      },
+      {
+        kind: "queryPlan",
+        intent: "knowledge_question",
+        rewritten: ["RAG检索增强生成技术的概念与原理"],
+        courseNames: [],
+      },
+      {
+        kind: "tool",
+        toolCallId: "tc-1",
+        toolName: "searchKnowledge",
+        input: { query: "RAG" },
+        status: "success",
+        output: { hits: 2 },
+      },
+      { kind: "thinking", stage: "generating", lines: ["组织回答结构"], ended: true },
+      { kind: "sources", sources: [SOURCE] },
+    ]);
+  });
+
+  it("场景二 取消 run 过滤后：服务端剔除取消 run 的 assistant 行，仅剩 USER 行独立成条（无悬挂 AI 消息）", () => {
+    // 服务端契约（M3 半截过滤）：仅 COMPLETED run 的 assistant 行下发；取消 run 的
+    // USER 行保留——前端视角 = 一条用户消息后无 AI 消息，直接衔接下一 run
+    const rows = [
+      makeRow({ id: "u1", role: "USER", content: "被取消的问题", runId: "run-cancel", seq: 1 }),
+      makeRow({ id: "u2", role: "USER", content: "下一个问题", runId: "run-ok", seq: 2 }),
+      makeRow({ id: "a1", runId: "run-ok", seq: 3, messageType: null, content: "正常回答" }),
+    ];
+    const messages = historyAdapter(rows);
+    expect(messages.map((message) => message.role)).toEqual(["user", "user", "assistant"]);
+    expect(messages[0]).toMatchObject({ content: "被取消的问题", timeline: [] });
+    expect(messages[2]).toMatchObject({ id: "run-ok", text: "正常回答" });
+  });
+
+  it("场景三 旧数据无 stage 列：thinking 行 thinkingStage=null 全部降级归组 generating 节点", () => {
+    const rows = [
+      makeRow({
+        id: "t1",
+        seq: 2,
+        messageType: "thinking",
+        content: "旧思考一",
+        thinkingStage: null,
+      }),
+      makeRow({
+        id: "t2",
+        seq: 3,
+        messageType: "thinking",
+        content: "旧思考二",
+        thinkingStage: null,
+      }),
+      makeRow({ id: "a1", seq: 4, messageType: null, content: "旧回答" }),
+    ];
+    const [message] = historyAdapter(rows);
+    // 降级契约：null → generating；存量逐 delta 行按增量续接（与旧 join("") 渲染等价）
+    expect(message.timeline).toEqual([
+      { kind: "thinking", stage: "generating", lines: ["旧思考一旧思考二"], ended: true },
+    ]);
+    expect(message.text).toBe("旧回答");
+  });
+
+  it("thinking 行内容全为空白：不建空节点（防御）", () => {
+    const rows = [
+      makeRow({
+        id: "t1",
+        seq: 2,
+        messageType: "thinking",
+        content: "  \n  ",
+        thinkingStage: "generating",
+      }),
+      makeRow({ id: "a1", seq: 3, messageType: null, content: "回答" }),
+    ];
+    const [message] = historyAdapter(rows);
+    expect(message.timeline).toEqual([]);
+    expect(message.text).toBe("回答");
+  });
+
+  it("query_plan 行二现：原位替换（与实时 reducer replaceOrPush 语义一致）", () => {
+    const rows = [
+      makeRow({
+        id: "q1",
+        seq: 2,
+        messageType: "query_plan",
+        content: JSON.stringify({
+          intent: "chat",
+          rewritten: ["旧改写"],
+          filters: { courseNames: [] },
+        }),
+      }),
+      makeRow({
+        id: "q2",
+        seq: 3,
+        messageType: "query_plan",
+        content: JSON.stringify({
+          intent: "knowledge_question",
+          rewritten: ["新改写"],
+          filters: { courseNames: [] },
+        }),
+      }),
+      makeRow({ id: "a1", seq: 4, messageType: null, content: "回答" }),
+    ];
+    const [message] = historyAdapter(rows);
+    expect(message.timeline).toHaveLength(1);
+    expect(message.timeline[0]).toMatchObject({ kind: "queryPlan", intent: "knowledge_question" });
+  });
+
+  it("不同 stage 的 thinking 行各自归组（understanding 与 generating 不合并）", () => {
+    const rows = [
+      makeRow({
+        id: "t1",
+        seq: 2,
+        messageType: "thinking",
+        content: "理解",
+        thinkingStage: "understanding",
+      }),
+      makeRow({
+        id: "t2",
+        seq: 3,
+        messageType: "thinking",
+        content: "生成",
+        thinkingStage: "generating",
+      }),
+      makeRow({
+        id: "t3",
+        seq: 4,
+        messageType: "thinking",
+        content: "继续生成",
+        thinkingStage: "generating",
+      }),
+    ];
+    const [message] = historyAdapter(rows);
+    // 同 stage 行按增量续接为同一行（存量行 = 逐 delta 落库），不同 stage 各建节点
+    expect(message.timeline).toEqual([
+      { kind: "thinking", stage: "understanding", lines: ["理解"], ended: true },
+      { kind: "thinking", stage: "generating", lines: ["生成继续生成"], ended: true },
+    ]);
   });
 });

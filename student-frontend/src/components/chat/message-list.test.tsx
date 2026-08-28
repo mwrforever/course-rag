@@ -1,13 +1,13 @@
 /**
- * 消息流测试（Task 12 TDD 先行用例）
+ * 消息流测试（2026-08-28 时间线改版：链式时间轴挂链 + 答案块）
  *
  * 覆盖（设计 §1.5.4 消息流 + §1.6 动效）：
- * - 用户消息：右对齐 teal-50 气泡（rounded-br-md 形状锁例外）+ 附件缩略 chips
- * - AI 消息：无气泡整栏 + 思考卡/来源卡/正文/工具卡/操作栏的组合顺序
- *   （来源卡置于正文之前，仅 knowledge_question 有）
+ * - 用户消息：右对齐 bubble 气泡（rounded-br 形状锁例外）+ 附件缩略 chips
+ * - AI 消息：模型徽标 → 链式时间轴（阶段/思考/查询计划/检索/工具挂链）→
+ *   答案块（左渐变竖线）→ 操作栏的组合顺序；来源步骤点击开召回抽屉
+ * - 流式空窗三点脉冲（时间轴与正文皆空）
  * - 流式打字光标（streaming 时存在）
  * - 「已停止生成」后缀由 hook 追加，UI 按 endedStatus 渲染（不重复）
- * - end 后操作栏浮现（复制/有用/无用）
  * - 智能吸底滚动判定纯函数（仅底部 80px 内跟随）
  */
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -18,7 +18,7 @@ vi.mock("@/lib/api", () => ({ postFeedback: apiMock.postFeedback }));
 
 import { MessageList, shouldStickToBottom } from "./message-list";
 import type { StreamMessage } from "@/hooks/use-chat-stream";
-import type { RetrievalSource } from "@/lib/types";
+import type { RetrievalSource, TimelineNode } from "@/lib/types";
 
 const onNotify = vi.fn();
 
@@ -30,19 +30,16 @@ function makeUser(overrides: Partial<StreamMessage> = {}): StreamMessage {
     content: "什么是 RAG？",
     attachments: [],
     model: null,
-    thinking: "",
-    thinkingEnded: false,
     text: "",
     sources: [],
-    stages: [],
-    tools: [],
+    timeline: [],
     endStatus: null,
     messageId: null,
     ...overrides,
   };
 }
 
-/** 构造 AI 消息（thinking/sources/tools/终态可覆盖） */
+/** 构造 AI 消息（timeline/sources/终态可覆盖） */
 function makeAssistant(overrides: Partial<StreamMessage> = {}): StreamMessage {
   return {
     id: "run-1",
@@ -50,12 +47,9 @@ function makeAssistant(overrides: Partial<StreamMessage> = {}): StreamMessage {
     content: "",
     attachments: [],
     model: "qwen3-8b",
-    thinking: "",
-    thinkingEnded: false,
     text: "",
     sources: [],
-    stages: [],
-    tools: [],
+    timeline: [],
     endStatus: null,
     messageId: null,
     ...overrides,
@@ -69,6 +63,27 @@ const SOURCE: RetrievalSource = {
   score: 0.9,
   content: "检索式生成（RAG）的核心是先召回后生成……",
 };
+
+/** 标准时间轴样本：阶段 → 思考 → 查询计划 → 检索 → 工具 */
+const TIMELINE: TimelineNode[] = [
+  { kind: "stage", stage: "understanding", label: "正在理解你的问题" },
+  { kind: "thinking", stage: "understanding", lines: ["先检索。"], ended: true },
+  {
+    kind: "queryPlan",
+    intent: "knowledge_question",
+    rewritten: ["RAG 检索增强生成"],
+    courseNames: [],
+  },
+  { kind: "sources", sources: [SOURCE] },
+  {
+    kind: "tool",
+    toolCallId: "tc-1",
+    toolName: "searchKnowledge",
+    input: {},
+    status: "success",
+    output: {},
+  },
+];
 
 function renderList(
   messages: StreamMessage[],
@@ -107,7 +122,7 @@ describe("shouldStickToBottom 智能吸底滚动判定", () => {
 });
 
 describe("MessageList 用户消息", () => {
-  it("用户气泡：右对齐 + kimi 灰底 + 右下小圆角（形状锁例外）", () => {
+  it("用户气泡：右对齐 + 暖白底 + 右下小圆角（形状锁例外）", () => {
     renderList([makeUser()]);
     const bubble = screen.getByTestId("user-message");
     expect(bubble.className).toContain("justify-end");
@@ -131,57 +146,45 @@ describe("MessageList 用户消息", () => {
 });
 
 describe("MessageList AI 消息组合与顺序", () => {
-  it("推理卡（阶段+思考）与知识片段入口置于正文之前，工具卡在正文之后", () => {
+  it("链式时间轴置于答案块之前；时间轴内含思考/查询计划/检索/工具步骤", () => {
     const assistant = makeAssistant({
-      thinking: "先检索。",
-      thinkingEnded: true,
-      text: "回答正文内容",
-      stages: [
-        { stage: "understanding", label: "正在理解你的问题" },
-        { stage: "retrieving", label: "知识库查询中" },
-      ],
+      timeline: TIMELINE,
       sources: [SOURCE],
-      tools: [
-        {
-          toolCallId: "tc-1",
-          toolName: "searchKnowledge",
-          input: {},
-          status: "success",
-          output: {},
-        },
-      ],
+      text: "回答正文内容",
       endStatus: "COMPLETED",
       messageId: "msg-1",
     });
     renderList([assistant], { streaming: false });
-    const reasoning = screen.getByTestId("reasoning-card");
+    const chain = screen.getByTestId("chain-timeline");
     const body = screen.getByTestId("markdown-view");
-    const tool = screen.getByTestId("tool-card");
-    expect(reasoning.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(body.compareDocumentPosition(tool) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // 推理卡头部含知识片段入口（N 个知识片段 pill）
-    expect(screen.getByTestId("reasoning-sources-pill")).toHaveTextContent("1 个知识片段");
+    expect(chain.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 时间轴步骤族齐备（工具卡并入时间轴，不再独立成卡）
+    expect(screen.getByTestId("thinking-step")).toBeInTheDocument();
+    expect(screen.getByTestId("query-plan-step")).toBeInTheDocument();
+    expect(screen.getByTestId("sources-step")).toHaveTextContent("已检索");
+    expect(screen.getByTestId("tool-step")).toBeInTheDocument();
+    // 答案块挂左渐变竖线类
+    expect(screen.getByTestId("markdown-view").closest(".chain-answer")).not.toBeNull();
   });
 
-  it("点击知识片段入口打开召回抽屉，Esc 关闭（2026-08-27 抽屉契约）", () => {
+  it("点击检索步骤打开召回抽屉，Esc 关闭（抽屉契约：三关闭路径之一）", () => {
     const assistant = makeAssistant({
-      thinking: "思考",
-      thinkingEnded: true,
-      text: "正文",
+      timeline: [{ kind: "sources", sources: [SOURCE] }],
       sources: [SOURCE],
+      text: "正文",
       endStatus: "COMPLETED",
       messageId: "msg-1",
     });
     renderList([assistant]);
     expect(screen.queryByTestId("retrieval-drawer")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("reasoning-sources-pill"));
+    fireEvent.click(screen.getByTestId("sources-step"));
     expect(screen.getByTestId("retrieval-drawer")).toBeInTheDocument();
     expect(screen.getByTestId("retrieval-drawer-list").children).toHaveLength(1);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByTestId("retrieval-drawer")).not.toBeInTheDocument();
   });
 
-  it("流式空窗：streaming 且无阶段/思考/正文时渲染三点脉冲占位", () => {
+  it("流式空窗：streaming 且时间轴/正文皆空时渲染三点脉冲占位", () => {
     renderList([makeAssistant()], { streaming: true });
     expect(screen.getByTestId("streaming-dots")).toBeInTheDocument();
   });

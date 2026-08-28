@@ -1,15 +1,17 @@
 /**
- * 知识库召回抽屉测试（2026-08-27 C 端改版）
+ * 知识库召回抽屉测试（2026-08-27 C 端改版；2026-08-28 Task 11 对齐设计稿 chunk 卡）
  *
  * 覆盖：
  * - sources=null 不渲染；非 null 挂载（空数组渲染空态）
- * - 片段列表项：序号徽标 / docTitle / headingPath / 相关度百分比 / content 正文
+ * - chunk 卡：类型徽标（知识库）/ docTitle / headingPath 面包屑 / 相似度百分比 /
+ *   content 正文（3 行截断类）+ meter（进场 0% → 延迟后填充目标值）+ 错峰进场延迟
+ * - 点击卡片切换展开全文（line-clamp 类切换 + 提示文案 收起/展开全文）
  * - 存量数据无 content：降级占位「（片段内容暂不可用）」
- * - 关闭路径：关闭按钮 / Esc / 遮罩点击
+ * - 关闭路径：关闭按钮 / Esc / 遮罩点击（三路径保留）
  * - score 越界钳制（>1 / <0 归一）
  */
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RetrievalDrawer } from "./retrieval-drawer";
 import type { RetrievalSource } from "@/lib/types";
@@ -31,22 +33,64 @@ const SOURCES: RetrievalSource[] = [
   },
 ];
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("RetrievalDrawer 挂载与列表", () => {
   it("sources=null 不渲染任何节点", () => {
     const { container } = render(<RetrievalDrawer sources={null} onClose={vi.fn()} />);
     expect(container.firstChild).toBeNull();
   });
 
-  it("片段列表按序渲染：标题/面包屑/百分比/正文", () => {
+  it("chunk 卡按序渲染：类型徽标/标题/面包屑/相似度百分比/正文", () => {
     render(<RetrievalDrawer sources={SOURCES} onClose={vi.fn()} />);
     expect(screen.getByTestId("retrieval-drawer")).toBeInTheDocument();
     const items = screen.getAllByTestId("retrieval-source-item");
     expect(items).toHaveLength(2);
+    expect(screen.getAllByText("知识库")).toHaveLength(2);
     expect(screen.getByText("RAG 白皮书")).toBeInTheDocument();
     expect(screen.getByText("第三章 > 3.2")).toBeInTheDocument();
-    expect(screen.getByText("87%")).toBeInTheDocument();
-    expect(screen.getByText("42%")).toBeInTheDocument();
+    expect(screen.getByText("相似度 87%")).toBeInTheDocument();
+    expect(screen.getByText("相似度 42%")).toBeInTheDocument();
     expect(screen.getByText("召回片段正文预览一")).toBeInTheDocument();
+    // 默认收起：3 行截断类 + 展开提示；错峰进场延迟随下标递增
+    expect(items[0]).not.toHaveClass("chunk-card--exp");
+    expect(screen.getAllByText("展开全文")).toHaveLength(2);
+    expect(items[0].style.animationDelay).toBe("0ms");
+    expect(items[1].style.animationDelay).toBe("85ms");
+  });
+
+  it("meter 进场动画：挂载 0%，120ms 后填充到目标百分比（width 1s 过渡由 CSS 承担）", () => {
+    vi.useFakeTimers();
+    render(<RetrievalDrawer sources={SOURCES} onClose={vi.fn()} />);
+    const meters = screen.getAllByTestId("retrieval-source-meter");
+    expect(meters[0].style.width).toBe("0%");
+    expect(meters[1].style.width).toBe("0%");
+    // 推进进场延迟计时器（120ms 置位 + React 提交在 act 内完成）
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(meters[0].style.width).toBe("87%");
+    expect(meters[1].style.width).toBe("42%");
+    // meter 填充错峰：第二张卡带 85ms 填充延迟
+    expect(meters[1].style.transitionDelay).toBe("85ms");
+  });
+
+  it("点击卡片切换展开全文（line-clamp 类 + 提示文案）；键盘 Enter 同路径", () => {
+    render(<RetrievalDrawer sources={SOURCES} onClose={vi.fn()} />);
+    const card = screen.getAllByTestId("retrieval-source-item")[0];
+    expect(card).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(card);
+    expect(card).toHaveClass("chunk-card--exp");
+    expect(card).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("收起")).toBeInTheDocument();
+    // 再点收起
+    fireEvent.click(card);
+    expect(card).not.toHaveClass("chunk-card--exp");
+    // 键盘路径：Enter 切换
+    fireEvent.keyDown(card, { key: "Enter" });
+    expect(card).toHaveClass("chunk-card--exp");
   });
 
   it("空来源：空态文案（未引用知识库片段）", () => {
@@ -74,8 +118,8 @@ describe("RetrievalDrawer 挂载与列表", () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByText("100%")).toBeInTheDocument();
-    expect(screen.getByText("0%")).toBeInTheDocument();
+    expect(screen.getByText("相似度 100%")).toBeInTheDocument();
+    expect(screen.getByText("相似度 0%")).toBeInTheDocument();
   });
 });
 
