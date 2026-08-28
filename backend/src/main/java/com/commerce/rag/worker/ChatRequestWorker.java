@@ -430,6 +430,13 @@ public class ChatRequestWorker {
         ThinkingPusher thinkingPusher = new ThinkingPusher(runIdStr, bridge, runState, objectMapper);
         config.metadata().ifPresent(m -> m.put(RetrieveNode.KEY_THINKING_CALLBACK, thinkingPusher));
 
+        // ── 正文/思考 delta 累加器（2026-08-28 时间线改版 Task 5）──
+        // 在下方 doOnNext 推送点同步累积 transformer 产出的 DELTA/THINKING 事件：取消/错误路径
+        // 图 state 往往没有终消息（in-flight 消息只在节点完成点进 state），落库若直接取 state
+        // 会得到空正文或与前端已渲染不一致的内容；累加器记录的正是已推送事件序列，保证不变量
+        // 「终态落库内容 ≡ 已推送事件序列」。正常完成路径不消费（state 汇总仍为权威）。
+        DeltaAccumulator deltaAccumulator = new DeltaAccumulator(objectMapper);
+
         // ── 取消源注册（2026-08-28 时间线改版 Task 4）──
         // 供 RetrieveNode 三段并行 join 前即时检查取消（读到即抛 CancelledException 走既有取消分支），
         // 附件编排批循环同样复用本引用；读取语义与 checkCancelled 一致（标志存在且为 true 才算取消）。
@@ -527,9 +534,12 @@ public class ChatRequestWorker {
                         transformer.transformStages(chunk, runState).forEach(e -> bridge.push(runIdStr, e));
                         // 记录最后输出（用于持久化）
                         lastOutput.set(chunk);
-                        // transform → bridge.push
+                        // transform → 推送点同步累积（Task 5：先累积后推送，不改 transformer 纯函数性）
                         List<SseEvent> events = transformer.transform(chunk, runState);
-                        events.forEach(e -> bridge.push(runIdStr, e));
+                        events.forEach(e -> {
+                            deltaAccumulator.accumulate(e);
+                            bridge.push(runIdStr, e);
+                        });
                     })
                     .onErrorResume(e -> {
                         errored.set(true);
@@ -549,7 +559,8 @@ public class ChatRequestWorker {
                             }
                         }
                         // 持久化已收集的消息（游标 = pre-run checkpoint 消息数，只落本轮新增）；
-                        // R2：错误终态不带 messageId，返回的 assistantMessageId 在此分支不消费
+                        // R2：错误终态不带 messageId，返回的 assistantMessageId 在此分支不消费；
+                        // 来源=取消/错误路径（Task 5）：正文/思考以 delta 累加器优先（与前端已渲染一致）
                         persistMessages(
                                 runId,
                                 sessionId,
@@ -558,7 +569,9 @@ public class ChatRequestWorker {
                                 readSourcesJson(config),
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
                                 lastOutput.get(),
-                                thinkingPusher);
+                                thinkingPusher,
+                                deltaAccumulator,
+                                true);
                         return Mono.empty();
                     })
                     .doOnComplete(() -> {
@@ -569,7 +582,8 @@ public class ChatRequestWorker {
                         // 先持久化消息、再推 END + 写 COMPLETED 终态——
                         // 「run 终态 = 数据已完整落库」语义（chat_message 与状态非原子，
                         // 先状态后落库会让外部观察者在终态可见时查到空消息表）
-                        // R2 补口 B：落库返回 assistant 正文行回填 ID，END 事件据此携带 messageId
+                        // R2 补口 B：落库返回 assistant 正文行回填 ID，END 事件据此携带 messageId；
+                        // 来源=正常完成路径（Task 5）：state 汇总为权威，delta 累加器不参与
                         PersistOutcome outcome = persistMessages(
                                 runId,
                                 sessionId,
@@ -578,7 +592,9 @@ public class ChatRequestWorker {
                                 readSourcesJson(config),
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
                                 lastOutput.get(),
-                                thinkingPusher);
+                                thinkingPusher,
+                                deltaAccumulator,
+                                false);
                         persisted.set(outcome.persisted());
                         // B2-4: 先占位终态标记再调 handleCompleted——其推 END 后 updateStatusWithRetry
                         // 若耗尽上抛，catch 分支据此跳过第二个终态事件（客户端只认首个终态）
@@ -614,7 +630,8 @@ public class ChatRequestWorker {
             if (persisted.get()) {
                 log.info("消息已持久化，跳过 catch 分支重复持久化: runId={}", runId);
             } else {
-                // R2：错误终态不带 messageId，此分支仅消费 persisted 标记
+                // R2：错误终态不带 messageId，此分支仅消费 persisted 标记；
+                // 来源=取消/错误路径（Task 5）：正文/思考以 delta 累加器优先（与前端已渲染一致）
                 PersistOutcome retryOutcome = persistMessages(
                         runId,
                         sessionId,
@@ -623,7 +640,9 @@ public class ChatRequestWorker {
                         readSourcesJson(config),
                         snapshot != null ? snapshot.historyMessageCount() : 0,
                         lastOutput.get(),
-                        thinkingPusher);
+                        thinkingPusher,
+                        deltaAccumulator,
+                        true);
                 persisted.set(retryOutcome.persisted());
             }
         } finally {
@@ -714,7 +733,10 @@ public class ChatRequestWorker {
      * <p>消息来源：
      * <ol>
      *   <li>用户查询 → ChatMessage(role=USER)</li>
-     *   <li>最终图状态的 messages 列表 → 转换为 ChatMessage 实体</li>
+     *   <li>query_plan 行（QueryPlan 签出时，content 与 SSE 事件同款 JSON）</li>
+     *   <li>ThinkingPusher 累加缓冲 → understanding/attachments 阶段 thinking 行</li>
+     *   <li>取消/错误路径：delta 累加器优先 → 正文行 + generating 思考行（与前端已渲染一致）</li>
+     *   <li>最终图状态的 messages 列表 → 转换为 ChatMessage 实体（正常完成路径权威来源）</li>
      * </ol>
      *
      * <p>N-F2-5 说明：{@code lastOutput.state()} 是 SAA 流式输出的最后一个 NodeOutput
@@ -735,6 +757,11 @@ public class ChatRequestWorker {
      * @param lastOutput       流式输出的最后一个 NodeOutput（可为 null，此时仅持久化用户消息）
      * @param thinkingPusher   per-run 思考推送通道（2026-08-28 时间线改版：understanding/attachments
      *                         阶段思考不在 state.messages，从该通道累加缓冲补落 thinking 行；可为 null）
+     * @param deltaAccumulator per-run 正文/思考 delta 累加器（2026-08-28 时间线改版 Task 5：推送点累积的
+     *                         已推送事件序列，取消/错误路径落库事实源；可为 null——视为空，回退 state）
+     * @param abnormalPath     落库来源标志（Task 5）：true=取消/错误路径（正文/思考以累加器优先，
+     *                         与前端已渲染严格一致；两者皆空回退 state 汇总）；false=正常完成路径
+     *                         （state 汇总为权威，累加器不参与）
      * @return 落库结果（R2 补口 B）：persisted=true=已落库（含 (run_id,seq) 唯一索引冲突的幂等跳过，
      *         调用方不得重试）；false=落库失败且未确认写入（调用方可重试）；
      *         assistantMessageId=assistant 正文行（role=ASSISTANT 且 messageType==null）落库回填的
@@ -749,7 +776,9 @@ public class ChatRequestWorker {
             String sourcesJson,
             int historyCursor,
             NodeOutput lastOutput,
-            ThinkingPusher thinkingPusher) {
+            ThinkingPusher thinkingPusher,
+            DeltaAccumulator deltaAccumulator,
+            boolean abnormalPath) {
         List<ChatMessage> messages = new ArrayList<>();
         int seq = 0;
 
@@ -801,9 +830,53 @@ public class ChatRequestWorker {
             }
         }
 
-        // 4. 从最终状态提取 messages 列表，仅转换本轮新增（index >= 游标）——P0-4a 修复：
+        // 4. 取消/错误路径：delta 累加器优先落库（Task 5，不变量「终态落库内容 ≡ 已推送事件序列」）——
+        //    流中断时 state 往往没有终消息（in-flight 消息只在节点完成点进 state），正文行用
+        //    textAcc、generating 思考行用 thinkingAcc[generating]；两者皆空回退下方 state 汇总。
+        //    正常完成路径（abnormalPath=false）整体跳过，state 汇总仍为权威
+        boolean accBodyUsed = false;
+        boolean accGeneratingThinkingUsed = false;
+        if (abnormalPath && deltaAccumulator != null) {
+            // 4.1 generating 思考行：transformer 产出的 THINKING 事件（固定 stage=generating）累积全文
+            String accThinking = deltaAccumulator.thinking(SseEventTransformer.STAGE_GENERATING);
+            if (accThinking != null && !accThinking.isBlank()) {
+                accGeneratingThinkingUsed = true;
+                ChatMessage cm = new ChatMessage();
+                cm.setSessionId(sessionId);
+                cm.setRunId(runId);
+                cm.setRole("ASSISTANT");
+                cm.setMessageType("thinking");
+                cm.setThinkingStage(SseEventTransformer.STAGE_GENERATING);
+                cm.setContent(accThinking);
+                cm.setSourcesJson("[]");
+                cm.setSeq(seq++);
+                messages.add(cm);
+            }
+            // 4.2 正文行：已推送 DELTA 事件片段按序拼接（与前端已渲染严格一致）
+            String accBody = deltaAccumulator.text();
+            if (!accBody.isBlank()) {
+                accBodyUsed = true;
+                ChatMessage cm = new ChatMessage();
+                cm.setSessionId(sessionId);
+                cm.setRunId(runId);
+                cm.setRole("ASSISTANT");
+                cm.setContent(accBody);
+                // 检索来源与 state 汇总路径同源（metadata 通道，chat/unknown 意图无来源保持 "[]"）
+                cm.setSourcesJson(sourcesJson == null || sourcesJson.isBlank() ? "[]" : sourcesJson);
+                // R2：正文行意图标注口径与 state 路径一致（无计划保持 null）
+                if (intentType != null) {
+                    cm.setIntentType(intentType);
+                }
+                cm.setSeq(seq++);
+                messages.add(cm);
+            }
+        }
+
+        // 5. 从最终状态提取 messages 列表，仅转换本轮新增（index >= 游标）——P0-4a 修复：
         //    state 跨 run 累积（AppendStrategy），游标 = pre-run checkpoint 消息数，
-        //    否则历史 assistant/thinking/tool 消息每轮全量重插
+        //    否则历史 assistant/thinking/tool 消息每轮全量重插。
+        //    Task 5：累加器已落库的行在此抑制同义 state 行（正文/generating 思考），防止双行重复；
+        //    TOOL_CALL/TOOL_RESULT 行不抑制（前端同样已见对应事件，照常落库）
         if (lastOutput != null && lastOutput.state() != null) {
             Optional<Object> messagesOpt = lastOutput.state().value("messages");
             if (messagesOpt.isPresent() && messagesOpt.get() instanceof List<?> rawList) {
@@ -817,6 +890,16 @@ public class ChatRequestWorker {
                         }
                         List<ChatMessage> converted = toChatMessages(msg, runId, sessionId, sourcesJson);
                         for (ChatMessage cm : converted) {
+                            // 累加器已落正文行 → 抑制 state 侧 assistant 正文行（防双行）
+                            if (accBodyUsed && "ASSISTANT".equals(cm.getRole()) && cm.getMessageType() == null) {
+                                continue;
+                            }
+                            // 累加器已落 generating 思考行 → 抑制 state 侧同阶段思考行（防双行）
+                            if (accGeneratingThinkingUsed
+                                    && "thinking".equals(cm.getMessageType())
+                                    && SseEventTransformer.STAGE_GENERATING.equals(cm.getThinkingStage())) {
+                                continue;
+                            }
                             cm.setSeq(seq++);
                             // R2：仅 assistant 正文行（messageType==null）标注意图——
                             // thinking/TOOL_* 行与用户行不落（意图描述的是本轮 AI 回答性质）
@@ -830,7 +913,7 @@ public class ChatRequestWorker {
             }
         }
 
-        // 5. 批量插入
+        // 6. 批量插入
         if (!messages.isEmpty()) {
             try {
                 chatMessageService.batchInsert(messages);

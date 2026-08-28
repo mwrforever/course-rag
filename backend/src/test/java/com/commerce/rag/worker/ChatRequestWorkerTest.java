@@ -239,7 +239,8 @@ class ChatRequestWorkerTest {
     }
 
     /** 通过反射调用 private persistMessages（无 thinkingPusher 场景：不落 understanding 阶段思考行）
-     * 返回落库结果（R2 补口 B：persisted=已落库/幂等跳过；assistantMessageId=assistant 正文行落库回填 ID） */
+     * 返回落库结果（R2 补口 B：persisted=已落库/幂等跳过；assistantMessageId=assistant 正文行落库回填 ID）
+     * Task 5：默认正常完成路径来源（state 汇总权威、无累加器） */
     private PersistOutcome invokePersistMessages(
             Long runId,
             Long sessionId,
@@ -250,10 +251,20 @@ class ChatRequestWorkerTest {
             NodeOutput lastOutput)
             throws Exception {
         return invokePersistMessages(
-                runId, sessionId, userQuery, attachmentsJson, sourcesJson, historyCursor, lastOutput, null);
+                runId,
+                sessionId,
+                userQuery,
+                attachmentsJson,
+                sourcesJson,
+                historyCursor,
+                lastOutput,
+                null,
+                null,
+                false);
     }
 
-    /** 通过反射调用 private persistMessages（P0-4a 游标去重 + 2026-08-28 时间线 query_plan/thinking_stage 行） */
+    /** 通过反射调用 private persistMessages（P0-4a 游标去重 + 2026-08-28 时间线 query_plan/thinking_stage 行；
+     * Task 5：默认正常完成路径来源） */
     private PersistOutcome invokePersistMessages(
             Long runId,
             Long sessionId,
@@ -264,6 +275,32 @@ class ChatRequestWorkerTest {
             NodeOutput lastOutput,
             ThinkingPusher thinkingPusher)
             throws Exception {
+        return invokePersistMessages(
+                runId,
+                sessionId,
+                userQuery,
+                attachmentsJson,
+                sourcesJson,
+                historyCursor,
+                lastOutput,
+                thinkingPusher,
+                null,
+                false);
+    }
+
+    /** 通过反射调用 private persistMessages（Task 5 全参：delta 累加器 + 落库来源标志） */
+    private PersistOutcome invokePersistMessages(
+            Long runId,
+            Long sessionId,
+            String userQuery,
+            String attachmentsJson,
+            String sourcesJson,
+            int historyCursor,
+            NodeOutput lastOutput,
+            ThinkingPusher thinkingPusher,
+            DeltaAccumulator deltaAccumulator,
+            boolean abnormalPath)
+            throws Exception {
         Method method = ChatRequestWorker.class.getDeclaredMethod(
                 "persistMessages",
                 Long.class,
@@ -273,7 +310,9 @@ class ChatRequestWorkerTest {
                 String.class,
                 int.class,
                 NodeOutput.class,
-                ThinkingPusher.class);
+                ThinkingPusher.class,
+                DeltaAccumulator.class,
+                boolean.class);
         method.setAccessible(true);
         return (PersistOutcome) method.invoke(
                 worker,
@@ -284,7 +323,9 @@ class ChatRequestWorkerTest {
                 sourcesJson,
                 historyCursor,
                 lastOutput,
-                thinkingPusher);
+                thinkingPusher,
+                deltaAccumulator,
+                abnormalPath);
     }
 
     // ==================== cancel() 测试 ====================
@@ -658,6 +699,227 @@ class ChatRequestWorkerTest {
         List<ChatMessage> rows = captor.getValue();
         assertEquals(2, rows.size(), "仅 user + 正文两行，无 query_plan / 阶段 thinking 行");
         assertTrue(rows.stream().noneMatch(r -> "query_plan".equals(r.getMessageType())));
+    }
+
+    // ==================== Task 5：取消/错误路径 delta 累加器落库（不变量） ====================
+
+    /** 构造 DELTA 事件（payload {text}；seq/timestamp 与累加器消费无关，占位合法值即可） */
+    private SseEvent deltaEvent(String text) throws Exception {
+        return new SseEvent(
+                SseEventType.DELTA,
+                1,
+                new ObjectMapper().writeValueAsString(Map.of("text", text)),
+                System.currentTimeMillis());
+    }
+
+    /** 构造 THINKING 事件（payload {delta, stage}） */
+    private SseEvent thinkingEvent(String delta, String stage) throws Exception {
+        return new SseEvent(
+                SseEventType.THINKING,
+                1,
+                new ObjectMapper().writeValueAsString(Map.of("delta", delta, "stage", stage)),
+                System.currentTimeMillis());
+    }
+
+    /** 从 SSE payload JSON 提取指定字符串字段（不变量断言用：与已推送事件逐字对齐） */
+    private String payloadField(String payload, String field) throws Exception {
+        return new ObjectMapper().readTree(payload).path(field).asText(null);
+    }
+
+    @Test
+    @DisplayName("不变量（Task 5）— 错误中断 state 无终消息：终态落库内容 ≡ 已推送事件序列")
+    @SuppressWarnings("unchecked")
+    void processRequest_errorPath_persistedContentEqualsPushedEvents_invariant() throws Exception {
+        // Given: 三个 chunk 依次产出 generating THINKING + 两条 DELTA，随后流中断
+        // （chunk.state()=null → lastOutput 无终消息，state 汇总路径无正文可落）
+        NodeOutput c1 = mock(NodeOutput.class);
+        NodeOutput c2 = mock(NodeOutput.class);
+        NodeOutput c3 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        lenient().when(c2.state()).thenReturn(null);
+        lenient().when(c3.state()).thenReturn(null);
+        when(transformer.transform(any(NodeOutput.class), any()))
+                .thenReturn(List.of(thinkingEvent("先想一步，", "generating")))
+                .thenReturn(List.of(deltaEvent("你")))
+                .thenReturn(List.of(deltaEvent("好，世界")));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.just(c1, c2, c3).concatWith(Flux.error(new RuntimeException("生成中断"))));
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // Then: 错误终态正常收敛 + 落库恰好一次（persisted 防双写不回归）
+        verify(chatRunService).updateStatus(100L, "ERROR");
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService, times(1)).batchInsert(msgCaptor.capture());
+        List<ChatMessage> rows = msgCaptor.getValue();
+        ChatMessage bodyRow = rows.stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("错误路径应存在累加器正文行"));
+        ChatMessage thinkingRow = rows.stream()
+                .filter(m -> "thinking".equals(m.getMessageType()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("错误路径应存在 generating 思考行"));
+
+        // 不变量断言：落库内容与 bridge.push 实际推送的事件序列逐字对齐（而非仅对齐 stub 数据）
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), evtCaptor.capture());
+        StringBuilder pushedText = new StringBuilder();
+        StringBuilder pushedThinking = new StringBuilder();
+        evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.DELTA || e.type() == SseEventType.THINKING)
+                .forEach(e -> {
+                    try {
+                        if (e.type() == SseEventType.DELTA) {
+                            pushedText.append(payloadField(e.payload(), "text"));
+                        } else {
+                            pushedThinking.append(payloadField(e.payload(), "delta"));
+                        }
+                    } catch (Exception ex) {
+                        throw new IllegalStateException(ex);
+                    }
+                });
+        assertEquals(pushedText.toString(), bodyRow.getContent(), "落库正文必须等于已推送 DELTA 拼接（不变量）");
+        assertEquals(pushedThinking.toString(), thinkingRow.getContent(), "落库思考必须等于已推送 THINKING 拼接（不变量）");
+        assertEquals("generating", thinkingRow.getThinkingStage(), "transformer 产思考恒为 generating 阶段");
+    }
+
+    @Test
+    @DisplayName("不变量（Task 5）— 取消中断（流中途置取消标记）：落库正文 = 已推送 delta 前缀")
+    @SuppressWarnings("unchecked")
+    void processRequest_cancelPath_persistedBodyEqualsPushedDeltaPrefix() throws Exception {
+        // Given: chunk1 产出一条 DELTA 后标记取消，chunk2 的 doOnNext 检查点抛 CancelledException
+        NodeOutput c1 = mock(NodeOutput.class);
+        NodeOutput c2 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        lenient().when(c2.state()).thenReturn(null);
+        when(transformer.transform(any(NodeOutput.class), any()))
+                .thenReturn(List.of(deltaEvent("生成到一半的")))
+                .thenReturn(List.of(deltaEvent("被取消的部分")));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.create(sink -> {
+            sink.next(c1);
+            // chunk1 已推送后置取消标记：chunk2 检查点即抛取消异常（中断点前事件已到前端）
+            worker.cancel("100");
+            sink.next(c2);
+            sink.complete();
+        }));
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // Then: 取消终态 + 落库一次，正文 = 已推送部分（state 无终消息，累加器为唯一事实源）
+        verify(chatRunService).updateStatus(100L, "CANCELLED");
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService, times(1)).batchInsert(msgCaptor.capture());
+        ChatMessage bodyRow = msgCaptor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("取消路径应存在累加器正文行"));
+        assertEquals("生成到一半的", bodyRow.getContent(), "取消路径落库正文必须等于已推送 delta 前缀");
+    }
+
+    @Test
+    @DisplayName("Task 5 取消/错误路径 — 累加器优先且抑制 state 同义行（正文/generating 思考不双行）")
+    @SuppressWarnings("unchecked")
+    void persistMessages_abnormalWithAccumulator_suppressesStateDuplicates() throws Exception {
+        // Given: state 同时带有终消息（generating 思考 + 正文）且累加器非空——不抑制会出现双行
+        AssistantMessage finalAssistant = AssistantMessage.builder()
+                .content("state 汇总正文")
+                .properties(Map.of("reasoningContent", "state 汇总思考"))
+                .build();
+        OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage("问题"), finalAssistant)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        DeltaAccumulator acc = new DeltaAccumulator(new ObjectMapper());
+        acc.accumulate(deltaEvent("已推送正文"));
+        acc.accumulate(thinkingEvent("已推送思考", "generating"));
+
+        // When: 取消/错误路径（abnormalPath=true）
+        invokePersistMessages(1L, 2L, "问题", "[]", "[]", 0, lastOutput, null, acc, true);
+
+        // Then: 正文/思考各仅一行且取累加器内容（与前端已渲染一致）
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> rows = captor.getValue();
+        List<ChatMessage> bodyRows = rows.stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .toList();
+        assertEquals(1, bodyRows.size(), "正文行不得双行（state 同义行被抑制）");
+        assertEquals("已推送正文", bodyRows.get(0).getContent());
+        List<ChatMessage> thinkingRows =
+                rows.stream().filter(m -> "thinking".equals(m.getMessageType())).toList();
+        assertEquals(1, thinkingRows.size(), "generating 思考行不得双行（state 同义行被抑制）");
+        assertEquals("已推送思考", thinkingRows.get(0).getContent());
+        assertEquals("generating", thinkingRows.get(0).getThinkingStage());
+    }
+
+    @Test
+    @DisplayName("Task 5 取消/错误路径 — 累加器为空回退 state 汇总（中断前无 delta 的窗口）")
+    @SuppressWarnings("unchecked")
+    void persistMessages_abnormalEmptyAccumulator_fallsBackToState() throws Exception {
+        // Given: 累加器为空（中断发生在首个 DELTA 之前），state 带终消息
+        AssistantMessage finalAssistant = new AssistantMessage("state 汇总正文");
+        OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage("问题"), finalAssistant)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        invokePersistMessages(
+                1L, 2L, "问题", "[]", "[]", 0, lastOutput, null, new DeltaAccumulator(new ObjectMapper()), true);
+
+        // Then: 回退 state 汇总正文（累加器空不得导致正文丢失）
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        ChatMessage bodyRow = captor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("回退 state 时应存在正文行"));
+        assertEquals("state 汇总正文", bodyRow.getContent());
+    }
+
+    @Test
+    @DisplayName("Task 5 正常完成路径 — state 汇总为权威，累加器不参与（abnormalPath=false）")
+    @SuppressWarnings("unchecked")
+    void persistMessages_normalPath_stateAuthoritativeAccumulatorIgnored() throws Exception {
+        // Given: state 带终消息，累加器也非空（正常完成时两者等价，state 为权威）
+        AssistantMessage finalAssistant = new AssistantMessage("state 汇总正文");
+        OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage("问题"), finalAssistant)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+        DeltaAccumulator acc = new DeltaAccumulator(new ObjectMapper());
+        acc.accumulate(deltaEvent("已推送正文"));
+
+        invokePersistMessages(1L, 2L, "问题", "[]", "[]", 0, lastOutput, null, acc, false);
+
+        // Then: 正文取 state 汇总且单行（累加器不产生第二行）
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> bodyRows = captor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .toList();
+        assertEquals(1, bodyRows.size());
+        assertEquals("state 汇总正文", bodyRows.get(0).getContent());
+    }
+
+    @Test
+    @DisplayName("Task 5 取消/错误路径 — (run_id,seq) 唯一索引冲突幂等路径不回归")
+    void persistMessages_abnormalPath_uniqueIndexConflict_treatedAsPersisted() throws Exception {
+        // Given: 累加器非空的取消路径重试落库，本批消息撞唯一索引（重复落库幂等兜底不回归）
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(null);
+        doThrow(new DataIntegrityViolationException("重复键违反唯一约束 uniq_chat_message_run_seq"))
+                .when(chatMessageService)
+                .batchInsert(anyList());
+        DeltaAccumulator acc = new DeltaAccumulator(new ObjectMapper());
+        acc.accumulate(deltaEvent("已推送正文"));
+
+        // When
+        PersistOutcome outcome = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, acc, true);
+
+        // Then: 幂等跳过按已落库处理（调用方不得重试）
+        assertTrue(outcome.persisted(), "取消路径唯一索引冲突同样按已落库幂等处理");
+        assertNull(outcome.assistantMessageId());
     }
 
     // ==================== catch 分支 handleError 失败兜底（P0-4b 复合故障） ====================
