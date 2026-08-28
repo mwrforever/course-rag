@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
+import { vReveal } from '@/directives/reveal'
 import CourseScheduleView from '@/views/course/CourseScheduleView.vue'
 
 const apiMock = vi.hoisted(() => ({
@@ -70,6 +71,7 @@ async function mountAt(path = '/courses/c-1/schedule') {
         pinia,
         router,
       ],
+      directives: { reveal: vReveal },
     },
   })
   return { wrapper, router }
@@ -97,7 +99,9 @@ describe('课程排期（/courses/:id/schedule）', () => {
     apiMock.scheduleApi.listByCourse.mockResolvedValue([])
     const { wrapper } = await mountAt()
     await flushPromises()
-    expect(wrapper.text()).toContain('还没有排期，点击新增排期添加课程安排')
+    // EmptyState 拆分标题/描述两行渲染，语义分两段断言
+    expect(wrapper.text()).toContain('还没有排期')
+    expect(wrapper.text()).toContain('添加课程安排')
     wrapper.unmount()
   })
 
@@ -154,9 +158,10 @@ describe('课程排期（/courses/:id/schedule）', () => {
     await flushPromises()
 
     await wrapper.find('[data-testid="op-schedule-del-s-1"]').trigger('click')
-    expect(wrapper.find('[data-testid="schedule-del-dialog"]').exists()).toBe(true)
+    // ConfirmDialog 受控开合：在场以确认按钮（$attrs 转发 testid）判定
+    expect(wrapper.find('[data-testid="confirm-schedule-del"]').exists()).toBe(true)
     // 取消不调用
-    await wrapper.find('[data-testid="cancel-schedule-del"]').trigger('click')
+    await wrapper.find('[data-testid="cancel-action"]').trigger('click')
     await flushPromises()
     expect(apiMock.scheduleApi.remove).not.toHaveBeenCalled()
     // 确认删除

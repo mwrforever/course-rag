@@ -4,6 +4,7 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, sessionApi } from '@/lib/api'
+import { vReveal } from '@/directives/reveal'
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import SessionsAdminView from '@/views/SessionsAdminView.vue'
@@ -101,6 +102,8 @@ async function mountSessions() {
         pinia,
         router,
       ],
+      // 视图使用 v-reveal（main.ts 全局注册），测试侧同源注册（jsdom 无 IO，指令早退不影响断言）
+      directives: { reveal: vReveal },
     },
   })
   await flushPromises()

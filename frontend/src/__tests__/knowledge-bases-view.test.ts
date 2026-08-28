@@ -4,6 +4,7 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, knowledgeBaseApi } from '@/lib/api'
+import { vReveal } from '@/directives/reveal'
 import KnowledgeBasesView from '@/views/KnowledgeBasesView.vue'
 
 import type { KnowledgeBaseVO, PageResponse } from '@/lib/types'
@@ -14,12 +15,16 @@ import type { KnowledgeBaseVO, PageResponse } from '@/lib/types'
  * 覆盖契约（设计 §2.4 知识库 CRUD 行 + §2.6 表格/表单/弹窗规范 + 任务 brief）：
  * 1. 列表渲染：名称/描述/状态 Badge/创建时间 + 分页器「共 N 条」
  * 2. 新建 Dialog：name 必填校验（zod 前置，不发请求）、提交成功 toast + 刷新列表
- * 3. 编辑回填：行内编辑打开 Dialog 预填 name/description，保存走 update
+ * 3. 编辑回填：行菜单（⋮ DropdownMenu）内编辑打开 Dialog 预填 name/description，保存走 update
  * 4. 删除二次确认：级联告警文案 + 取消不调接口 + 确认后 remove + toast
  * 5. 分页：上一页/下一页禁用态与翻页请求参数
  * 6. 四态：loading skeleton / empty 空态（含行动入口）/ error 横幅重试 / 正常
  *
  * 接口层以 vi.spyOn 替换 api 模块函数（视图直接调 api 函数，内存 mock 无网络）。
+ *
+ * N6a 视觉重制适配：行操作迁 DropdownMenu（编辑/删除收纳进 ⋮ 菜单，断言前先开菜单）、
+ * 删除确认迁 ConfirmDialog（confirm-delete 落确认钮、取消钮为 cancel-action testid）、
+ * v-reveal 指令经 mount 全局 directives 注册（jsdom 无 IO 时指令自身降级直显）。
  */
 
 /** 分页响应构造（Long total 为 string，page/size 为 number） */
@@ -45,7 +50,7 @@ function kb(
   }
 }
 
-/** 挂载知识库页（独立 pinia；视图不依赖路由，无需 router 插件） */
+/** 挂载知识库页（独立 pinia；视图不依赖路由，无需 router 插件；注册 v-reveal 指令） */
 async function mountKb() {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -58,6 +63,7 @@ async function mountKb() {
         ],
         pinia,
       ],
+      directives: { reveal: vReveal },
     },
   })
   await flushPromises()
@@ -68,6 +74,11 @@ async function mountKb() {
 async function openCreateDialog(wrapper: ReturnType<typeof mount>) {
   await wrapper.find('[data-testid="create-kb"]').trigger('click')
   return wrapper.find('[data-testid="kb-dialog"]')
+}
+
+/** 打开行操作 ⋮ 菜单（编辑/删除项仅在菜单展开后渲染） */
+async function openRowMenu(wrapper: ReturnType<typeof mount>, id: string) {
+  await wrapper.find(`[data-testid="kb-menu-${id}"]`).trigger('click')
 }
 
 describe('KnowledgeBasesView：列表渲染', () => {
@@ -187,6 +198,8 @@ describe('KnowledgeBasesView：编辑回填与保存', () => {
     const updateSpy = vi.spyOn(knowledgeBaseApi, 'update').mockResolvedValue()
     const { wrapper } = await mountKb()
 
+    // 行菜单（⋮）内编辑入口：先展开菜单再点击编辑项
+    await openRowMenu(wrapper, 'kb-1')
     await wrapper.find('[data-testid="edit-kb-1"]').trigger('click')
     const dialog = wrapper.find('[data-testid="kb-dialog"]')
     expect(dialog.exists()).toBe(true)
@@ -226,6 +239,8 @@ describe('KnowledgeBasesView：删除二次确认', () => {
     const removeSpy = vi.spyOn(knowledgeBaseApi, 'remove').mockResolvedValue()
     const { wrapper } = await mountKb()
 
+    // 行菜单（⋮）内删除入口：先展开菜单再点击删除项（danger 色系）
+    await openRowMenu(wrapper, 'kb-1')
     await wrapper.find('[data-testid="delete-kb-1"]').trigger('click')
     const dialog = wrapper.find('[data-testid="delete-dialog"]')
     expect(dialog.exists()).toBe(true)
@@ -234,7 +249,8 @@ describe('KnowledgeBasesView：删除二次确认', () => {
     expect(dialog.text()).toContain('不可恢复')
     expect(dialog.text()).toContain('前端知识库')
 
-    await wrapper.find('[data-testid="cancel-delete"]').trigger('click')
+    // 取消钮（ConfirmDialog 统一 cancel-action testid）：关闭且不调删除接口
+    await wrapper.find('[data-testid="cancel-action"]').trigger('click')
     expect(wrapper.find('[data-testid="delete-dialog"]').exists()).toBe(false)
     expect(removeSpy).not.toHaveBeenCalled()
     wrapper.unmount()
@@ -248,6 +264,8 @@ describe('KnowledgeBasesView：删除二次确认', () => {
     const { wrapper } = await mountKb()
     const listCallsBefore = listSpy.mock.calls.length
 
+    // 行菜单内删除 → 确认删除（confirm-delete 契约落在 ConfirmDialog 确认钮）
+    await openRowMenu(wrapper, 'kb-1')
     await wrapper.find('[data-testid="delete-kb-1"]').trigger('click')
     await wrapper.find('[data-testid="confirm-delete"]').trigger('click')
     await flushPromises()
@@ -270,21 +288,22 @@ describe('KnowledgeBasesView：删除二次确认', () => {
     const removeSpy = vi.spyOn(knowledgeBaseApi, 'remove').mockResolvedValue()
     const { wrapper } = await mountKb()
 
-    // 翻到第 2 页（末页仅剩 1 条）
+    // 翻到第 2 页（末页仅剩 1 条）：行存在性以 ⋮ 触发器 testid 断言（菜单项仅展开后渲染）
     await wrapper.find('[data-testid="next-page"]').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('第 2 / 2 页')
-    expect(wrapper.find('[data-testid="delete-kb-9"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="kb-menu-kb-9"]').exists()).toBe(true)
 
     // 删除唯一行：回退到第 1 页（不展示空页）
+    await openRowMenu(wrapper, 'kb-9')
     await wrapper.find('[data-testid="delete-kb-9"]').trigger('click')
     await wrapper.find('[data-testid="confirm-delete"]').trigger('click')
     await flushPromises()
     expect(removeSpy).toHaveBeenCalledWith('kb-9')
     await vi.waitFor(() => {
       expect(wrapper.text()).toContain('第 1 / 1 页')
-      expect(wrapper.find('[data-testid="delete-kb-1"]').exists()).toBe(true)
-      expect(wrapper.find('[data-testid="delete-kb-9"]').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="kb-menu-kb-1"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="kb-menu-kb-9"]').exists()).toBe(false)
       expect(listSpy.mock.calls.length).toBeGreaterThan(2)
     })
     wrapper.unmount()

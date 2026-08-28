@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * 学生管理（UI 重构 2026-08-25：从 UsersView 拆分，职责=学生账号域）
+ * 学生管理（UI 重构 2026-08-25：从 UsersView 拆分，职责=学生账号域；
+ * 2026-08-27 紫系换肤重制：PageHead/DataTable/EmptyState/ConfirmDialog 新设计系统组件）
  *
  * 能力：学生账号分页列表（用户名/显示名/状态/创建时间）+ 添加学生 + 编辑显示名 +
  * 重置密码（zod ≥6 + 两次一致）+ 禁用/启用（二次确认）+ 删除（二次确认）。
@@ -10,10 +11,15 @@
 import { computed, reactive, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { z } from 'zod'
-import { PhSpinnerGap, PhUserPlus, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhSpinnerGap, PhStudent, PhUserPlus } from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DataTable } from '@/components/ui/data-table'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageHead } from '@/components/ui/page-head'
+import { vReveal } from '@/directives/reveal'
 import { ApiError, userApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime } from '@/lib/utils'
@@ -315,20 +321,21 @@ function confirmDelete() {
 
 <template>
   <div>
-    <!-- 页头操作行：添加学生（本页职责=学生账号域，无教师入口） -->
-    <div class="mb-4 flex items-center justify-between">
-      <p class="text-sm text-text-muted">管理学生账号、状态与密码</p>
-      <Button data-testid="add-student" @click="openAdd">
-        <PhUserPlus class="h-4 w-4" />
-        添加学生
-      </Button>
-    </div>
+    <!-- 页头：主标题 + 副题 + 右侧「添加学生」主操作（设计稿 page-head 形态） -->
+    <PageHead v-reveal title="学生管理" subtitle="管理学生账号、状态与密码">
+      <template #actions>
+        <Button data-testid="add-student" @click="openAdd">
+          <PhUserPlus class="h-4 w-4" aria-hidden="true" />
+          添加学生
+        </Button>
+      </template>
+    </PageHead>
 
     <!-- 错误态：页内横幅 + 重试 -->
     <div
       v-if="listError"
       role="alert"
-      class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
+      class="mt-5 flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
     >
       <span class="text-sm text-danger">{{ listError }}</span>
       <Button variant="outline" size="sm" data-testid="retry-students" @click="refetch"
@@ -340,10 +347,10 @@ function confirmDelete() {
     <div
       v-else-if="isLoading"
       data-testid="student-skeleton"
-      class="overflow-hidden rounded-xl border border-border bg-surface"
+      class="mt-5 overflow-hidden rounded-2xl border border-border bg-surface shadow-xs"
       aria-label="学生列表加载中"
     >
-      <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
+      <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-6 py-4">
         <div
           v-for="i in 5"
           :key="`head-${i}`"
@@ -353,106 +360,105 @@ function confirmDelete() {
       <div
         v-for="i in 5"
         :key="`row-${i}`"
-        class="h-11 animate-pulse border-b border-border bg-surface"
+        class="h-12 animate-pulse border-b border-border bg-surface last:border-b-0"
       />
     </div>
 
     <!-- 空态：语义文案 + 添加入口 -->
     <div
       v-else-if="students.length === 0"
-      class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
+      v-reveal
+      class="mt-5 rounded-2xl border border-border bg-surface shadow-xs"
     >
-      <PhWarningCircle class="h-8 w-8 text-text-subtle" />
-      <p class="mt-3 text-sm font-medium text-text">还没有学生</p>
-      <p class="mt-1 text-xs text-text-muted">创建学生账号后即可由学生登录使用课程助手</p>
-      <div class="mt-4">
-        <Button data-testid="add-student-empty" @click="openAdd">添加学生</Button>
-      </div>
+      <EmptyState title="还没有学生" description="创建学生账号后即可由学生登录使用课程助手">
+        <template #icon>
+          <PhStudent class="h-6 w-6" aria-hidden="true" />
+        </template>
+        <template #action>
+          <Button data-testid="add-student-empty" @click="openAdd">添加学生</Button>
+        </template>
+      </EmptyState>
     </div>
 
-    <!-- 正常态：分页表格 -->
+    <!-- 正常态：分页表格（DataTable 壳：lav 圆角表头 + 行悬停 + 行级联入场） -->
     <template v-else>
-      <div class="overflow-hidden rounded-xl border border-border bg-surface">
-        <table data-testid="student-table" class="w-full text-sm">
-          <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
+      <div v-reveal class="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs">
+        <DataTable data-testid="student-table" label="学生列表">
+          <template #header>
             <tr>
-              <th class="px-4 py-2.5 font-medium">用户名</th>
-              <th class="px-4 py-2.5 font-medium">显示名</th>
-              <th class="w-28 px-4 py-2.5 font-medium">状态</th>
-              <th class="w-40 px-4 py-2.5 font-medium">创建时间</th>
-              <th class="w-64 px-4 py-2.5 text-right font-medium">操作</th>
+              <th class="w-[24%]">用户名</th>
+              <th>显示名</th>
+              <th class="w-32">状态</th>
+              <th class="w-48">创建时间</th>
+              <th class="w-80">操作</th>
             </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="u in students"
-              :key="u.id"
-              :data-testid="`row-${u.id}`"
-              class="h-11 border-b border-border transition-colors duration-150 last:border-b-0 hover:bg-surface-2"
-            >
-              <td class="px-4 font-medium text-text">{{ u.username }}</td>
-              <td class="px-4 text-text-muted">{{ u.displayName }}</td>
-              <td class="px-4">
-                <Badge :data-testid="`user-status-${u.id}`" :variant="statusVariant(u.status)">
-                  {{ u.status }}
-                </Badge>
-              </td>
-              <td class="px-4 tabular-nums text-text-muted">{{ formatDateTime(u.createdAt) }}</td>
-              <td class="px-4 text-right">
-                <div class="flex items-center justify-end gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    :data-testid="`op-edit-${u.id}`"
-                    @click="openEdit(u)"
-                  >
-                    编辑
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    :data-testid="`op-reset-${u.id}`"
-                    @click="openReset(u)"
-                  >
-                    重置密码
-                  </Button>
-                  <Button
-                    v-if="!isSelf(u) && u.status === 'ACTIVE'"
-                    variant="danger"
-                    size="sm"
-                    :data-testid="`op-disable-${u.id}`"
-                    @click="requestStatusToggle(u)"
-                  >
-                    禁用
-                  </Button>
-                  <Button
-                    v-else-if="!isSelf(u) && u.status === 'DISABLED'"
-                    variant="outline"
-                    size="sm"
-                    :data-testid="`op-enable-${u.id}`"
-                    @click="requestStatusToggle(u)"
-                  >
-                    启用
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    :data-testid="`op-delete-${u.id}`"
-                    @click="requestDelete(u)"
-                  >
-                    删除
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+          </template>
+          <tr v-for="u in students" :key="u.id" :data-testid="`row-${u.id}`">
+            <!-- 主标识列：深色半粗（设计稿 .course-name 主列强调，其余列 muted） -->
+            <td>
+              <span class="font-semibold text-text">{{ u.username }}</span>
+            </td>
+            <td>{{ u.displayName }}</td>
+            <td>
+              <Badge :data-testid="`user-status-${u.id}`" :variant="statusVariant(u.status)">
+                {{ u.status }}
+              </Badge>
+            </td>
+            <td class="tabular-nums">{{ formatDateTime(u.createdAt) }}</td>
+            <td>
+              <div class="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :data-testid="`op-edit-${u.id}`"
+                  @click="openEdit(u)"
+                >
+                  编辑
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :data-testid="`op-reset-${u.id}`"
+                  @click="openReset(u)"
+                >
+                  重置密码
+                </Button>
+                <Button
+                  v-if="!isSelf(u) && u.status === 'ACTIVE'"
+                  variant="danger"
+                  size="sm"
+                  :data-testid="`op-disable-${u.id}`"
+                  @click="requestStatusToggle(u)"
+                >
+                  禁用
+                </Button>
+                <Button
+                  v-else-if="!isSelf(u) && u.status === 'DISABLED'"
+                  variant="outline"
+                  size="sm"
+                  :data-testid="`op-enable-${u.id}`"
+                  @click="requestStatusToggle(u)"
+                >
+                  启用
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  :data-testid="`op-delete-${u.id}`"
+                  @click="requestDelete(u)"
+                >
+                  删除
+                </Button>
+              </div>
+            </td>
+          </tr>
+        </DataTable>
       </div>
 
-      <!-- 分页器 -->
-      <div class="mt-4 flex items-center justify-between text-sm text-text-muted">
+      <!-- 分页器：左「共 N 条」右 上/下页 + 页码 -->
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-text-muted">
         <span>
-          共 <span class="tabular-nums text-text">{{ total }}</span> 条
+          共 <span class="tabular-nums font-semibold text-text">{{ total }}</span> 条
         </span>
         <div class="flex items-center gap-2">
           <Button
@@ -478,21 +484,22 @@ function confirmDelete() {
       </div>
     </template>
 
-    <!-- 添加学生 Dialog（角色固定 STUDENT，无角色选择器） -->
+    <!-- 添加学生 Dialog（角色固定 STUDENT，无角色选择器；表单 Dialog 保留内联实现承载 zod 校验） -->
     <div
       v-if="addOpen"
       data-testid="add-user-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
+      class="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-overlay p-4"
       @keydown.esc="closeAdd"
       @click.self="closeAdd"
     >
       <div
-        class="animate-menu-in w-full max-w-[480px] rounded-xl border border-border bg-surface p-6 shadow-lg"
+        class="animate-menu-in w-full max-w-[480px] rounded-2xl bg-surface p-6 shadow-lg"
         role="dialog"
         aria-modal="true"
+        aria-label="添加学生"
         @click.stop
       >
-        <h2 class="text-base font-semibold text-text">添加学生</h2>
+        <h2 class="text-lg font-bold text-text">添加学生</h2>
         <form data-testid="add-form" class="mt-5 space-y-4" novalidate @submit.prevent="submitAdd">
           <div>
             <label for="add-username" class="mb-1.5 block text-sm font-medium text-text">
@@ -505,7 +512,7 @@ function confirmDelete() {
               type="text"
               aria-label="用户名"
               placeholder="用于登录的用户名"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
             <p
               v-if="addErrors.username"
@@ -526,7 +533,7 @@ function confirmDelete() {
               type="password"
               aria-label="初始密码"
               placeholder="至少 6 位"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
             <p v-if="addErrors.password" class="mt-1 text-xs text-danger">
               {{ addErrors.password }}
@@ -543,7 +550,7 @@ function confirmDelete() {
               type="text"
               aria-label="显示名"
               placeholder="展示在后台与对话中的名称"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
             <p v-if="addErrors.displayName" class="mt-1 text-xs text-danger">
               {{ addErrors.displayName }}
@@ -570,17 +577,18 @@ function confirmDelete() {
     <div
       v-if="editing"
       data-testid="edit-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
+      class="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-overlay p-4"
       @keydown.esc="closeEdit"
       @click.self="closeEdit"
     >
       <div
-        class="animate-menu-in w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-lg"
+        class="animate-menu-in w-full max-w-[440px] rounded-2xl bg-surface p-6 shadow-lg"
         role="dialog"
         aria-modal="true"
+        aria-label="编辑显示名"
         @click.stop
       >
-        <h2 class="text-base font-semibold text-text">编辑显示名</h2>
+        <h2 class="text-lg font-bold text-text">编辑显示名</h2>
         <div class="mt-5">
           <label for="edit-displayname" class="mb-1.5 block text-sm font-medium text-text">
             显示名 <span class="text-danger">*</span>
@@ -591,7 +599,7 @@ function confirmDelete() {
             data-testid="edit-displayname"
             type="text"
             aria-label="显示名"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
+            class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
           <p v-if="editError" class="mt-1 text-xs text-danger">{{ editError }}</p>
         </div>
@@ -615,17 +623,18 @@ function confirmDelete() {
     <div
       v-if="resetting"
       data-testid="reset-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
+      class="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-overlay p-4"
       @keydown.esc="closeReset"
       @click.self="closeReset"
     >
       <div
-        class="animate-menu-in w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-lg"
+        class="animate-menu-in w-full max-w-[440px] rounded-2xl bg-surface p-6 shadow-lg"
         role="dialog"
         aria-modal="true"
+        aria-label="重置密码"
         @click.stop
       >
-        <h2 class="text-base font-semibold text-text">重置密码</h2>
+        <h2 class="text-lg font-bold text-text">重置密码</h2>
         <p class="mt-2 text-sm text-text-muted">
           为「{{ resetting.displayName }}」设置新密码，重置后需使用新密码登录
         </p>
@@ -641,7 +650,7 @@ function confirmDelete() {
               type="password"
               aria-label="新密码"
               placeholder="至少 6 位"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
           </div>
           <div>
@@ -655,7 +664,7 @@ function confirmDelete() {
               type="password"
               aria-label="确认新密码"
               placeholder="再次输入新密码"
-              class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
           </div>
           <p v-if="resetError" data-testid="reset-error" class="text-xs text-danger">
@@ -678,103 +687,39 @@ function confirmDelete() {
       </div>
     </div>
 
-    <!-- 禁用/启用二次确认 -->
-    <div
-      v-if="statusTarget"
-      data-testid="status-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
-      @keydown.esc="cancelStatusToggle"
-      @click.self="cancelStatusToggle"
-    >
-      <div
-        class="animate-menu-in w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-lg"
-        role="alertdialog"
-        aria-modal="true"
-        @click.stop
-      >
-        <div class="flex items-start gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger/10">
-            <PhWarningCircle class="h-5 w-5 text-danger" />
-          </div>
-          <div>
-            <h2 class="text-base font-semibold text-text">
-              {{ statusNext === 'DISABLED' ? '禁用学生' : '启用学生' }}
-            </h2>
-            <p class="mt-2 text-sm leading-relaxed text-text-muted">
-              <template v-if="statusNext === 'DISABLED'">
-                禁用后「{{ statusTarget.displayName }}」将无法登录课程助手，已登录设备会被
-                后续登录校验拦截。确认禁用？
-              </template>
-              <template v-else>确认恢复「{{ statusTarget.displayName }}」的登录权限？</template>
-            </p>
-          </div>
-        </div>
-        <div class="mt-5 flex justify-end gap-2">
-          <Button
-            variant="outline"
-            :disabled="statusSubmitting"
-            data-testid="cancel-status"
-            @click="cancelStatusToggle"
-            >取消</Button
-          >
-          <Button
-            :variant="statusNext === 'DISABLED' ? 'danger' : 'default'"
-            data-testid="submit-status"
-            :disabled="statusSubmitting"
-            @click="confirmStatusToggle"
-          >
-            <PhSpinnerGap v-if="statusSubmitting" class="h-4 w-4 animate-spin" />
-            {{ statusSubmitting ? '提交中' : '确认' }}
-          </Button>
-        </div>
-      </div>
+    <!-- 禁用/启用二次确认（ConfirmDialog 标准壳：$attrs 转发保住 submit-status 选择器契约；
+         外层 v-if 包装 div 承载 status-dialog 选择器，contents 不参与布局） -->
+    <div v-if="statusTarget" data-testid="status-dialog" class="contents">
+      <ConfirmDialog
+        :open="true"
+        :title="statusNext === 'DISABLED' ? '禁用学生' : '启用学生'"
+        :description="
+          statusNext === 'DISABLED'
+            ? `禁用后「${statusTarget.displayName}」将无法登录课程助手，已登录设备会被后续登录校验拦截。确认禁用？`
+            : `确认恢复「${statusTarget.displayName}」的登录权限？`
+        "
+        confirm-text="确认"
+        :tone="statusNext === 'DISABLED' ? 'danger' : 'brand'"
+        :loading="statusSubmitting"
+        data-testid="submit-status"
+        @confirm="confirmStatusToggle"
+        @cancel="cancelStatusToggle"
+      />
     </div>
 
-    <!-- 删除学生二次确认 -->
-    <div
-      v-if="deleting"
-      data-testid="user-del-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
-      @keydown.esc="cancelDelete"
-      @click.self="cancelDelete"
-    >
-      <div
-        class="animate-menu-in w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-lg"
-        role="alertdialog"
-        aria-modal="true"
-        @click.stop
-      >
-        <div class="flex items-start gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger/10">
-            <PhWarningCircle class="h-5 w-5 text-danger" />
-          </div>
-          <div>
-            <h2 class="text-base font-semibold text-text">删除学生</h2>
-            <p class="mt-2 text-sm leading-relaxed text-text-muted">
-              删除后「{{ deleting.displayName }}」的账号与登录权限一并移除，
-              <span class="font-medium text-danger">此操作不可恢复</span>。确认删除？
-            </p>
-          </div>
-        </div>
-        <div class="mt-5 flex justify-end gap-2">
-          <Button
-            variant="outline"
-            :disabled="deleteSubmitting"
-            data-testid="cancel-user-del"
-            @click="cancelDelete"
-            >取消</Button
-          >
-          <Button
-            variant="danger"
-            data-testid="confirm-user-del"
-            :disabled="deleteSubmitting"
-            @click="confirmDelete"
-          >
-            <PhSpinnerGap v-if="deleteSubmitting" class="h-4 w-4 animate-spin" />
-            {{ deleteSubmitting ? '删除中' : '确认删除' }}
-          </Button>
-        </div>
-      </div>
+    <!-- 删除学生二次确认（ConfirmDialog：confirm-user-del 选择器契约同上） -->
+    <div v-if="deleting" data-testid="user-del-dialog" class="contents">
+      <ConfirmDialog
+        :open="true"
+        title="删除学生"
+        :description="`删除后「${deleting.displayName}」的账号与登录权限一并移除，此操作不可恢复。确认删除？`"
+        confirm-text="确认删除"
+        tone="danger"
+        :loading="deleteSubmitting"
+        data-testid="confirm-user-del"
+        @confirm="confirmDelete"
+        @cancel="cancelDelete"
+      />
     </div>
   </div>
 </template>

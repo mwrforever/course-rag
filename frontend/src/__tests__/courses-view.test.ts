@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, courseApi } from '@/lib/api'
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
+import { vReveal } from '@/directives/reveal'
 import CoursesView from '@/views/CoursesView.vue'
 
 import type { CourseDTO, PageResponse } from '@/lib/types'
@@ -68,7 +69,10 @@ async function mountCourses() {
   await router.push('/courses')
   await router.isReady()
   const wrapper = mount(CoursesView, {
-    global: { plugins: [[VueQueryPlugin, { queryClient }], pinia, router] },
+    global: {
+      plugins: [[VueQueryPlugin, { queryClient }], pinia, router],
+      directives: { reveal: vReveal },
+    },
   })
   await flushPromises()
   return { wrapper, router, queryClient }
@@ -117,7 +121,8 @@ describe('CoursesView：列表渲染', () => {
     expect(archivedBadge.text()).toContain('ARCHIVED')
     expect(archivedBadge.classes()).toContain('bg-slate-100')
 
-    // 操作列：编辑 / 删除
+    // 操作列：编辑 / 删除（收纳进行操作 ⋮ 下拉菜单，打开后断言菜单项在场）
+    await wrapper.find('[data-testid="row-menu-c-1"]').trigger('click')
     expect(wrapper.find('[data-testid="op-edit-c-1"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="op-delete-c-1"]').exists()).toBe(true)
 
@@ -141,6 +146,7 @@ describe('CoursesView：列表渲染', () => {
 
     // 编辑 → course-detail 路由（同一编辑组件复用新建/详情两路由）；
     // 目标组件为懒加载 chunk，导航异步完成需 waitFor 轮询收敛（flushPromises 只清微任务）
+    await wrapper.find('[data-testid="row-menu-c-9"]').trigger('click')
     await wrapper.find('[data-testid="op-edit-c-9"]').trigger('click')
     await vi.waitFor(() => {
       expect(router.currentRoute.value.name).toBe('course-detail')
@@ -161,6 +167,7 @@ describe('CoursesView：列表渲染', () => {
           createPinia(),
           router2,
         ],
+        directives: { reveal: vReveal },
       },
     })
     await flushPromises()
@@ -231,7 +238,8 @@ describe('CoursesView：删除（二次确认）', () => {
     expect(wrapper.text()).toContain('第 2 / 2 页')
     expect(wrapper.find('[data-testid="row-c-9"]').exists()).toBe(true)
 
-    // 删除唯一行：回退到第 1 页（不展示空页）
+    // 删除唯一行：回退到第 1 页（不展示空页）；删除项收进行菜单，先展开
+    await wrapper.find('[data-testid="row-menu-c-9"]').trigger('click')
     await wrapper.find('[data-testid="op-delete-c-9"]').trigger('click')
     await wrapper.find('[data-testid="confirm-course-del"]').trigger('click')
     await flushPromises()
@@ -249,16 +257,18 @@ describe('CoursesView：删除（二次确认）', () => {
     const removeSpy = vi.spyOn(courseApi, 'remove').mockResolvedValue()
     const { wrapper } = await mountCourses()
 
+    // 删除项收进行菜单：先展开再断言 danger 色系并触发
+    await wrapper.find('[data-testid="row-menu-c-1"]').trigger('click')
     const btn = wrapper.find('[data-testid="op-delete-c-1"]')
-    expect(btn.classes()).toContain('bg-danger')
+    expect(btn.classes()).toContain('text-danger')
     await btn.trigger('click')
-    const dialog = wrapper.find('[data-testid="course-del-dialog"]')
+    const dialog = wrapper.find('[role="dialog"]')
     expect(dialog.exists()).toBe(true)
     expect(dialog.text()).toContain('删除课程')
 
-    await wrapper.find('[data-testid="cancel-course-del"]').trigger('click')
+    await dialog.find('[data-testid="cancel-action"]').trigger('click')
     expect(removeSpy).not.toHaveBeenCalled()
-    expect(wrapper.find('[data-testid="course-del-dialog"]').exists()).toBe(false)
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -270,13 +280,14 @@ describe('CoursesView：删除（二次确认）', () => {
     const removeSpy = vi.spyOn(courseApi, 'remove').mockResolvedValue()
     const { wrapper } = await mountCourses()
 
+    await wrapper.find('[data-testid="row-menu-c-1"]').trigger('click')
     await wrapper.find('[data-testid="op-delete-c-1"]').trigger('click')
     await wrapper.find('[data-testid="confirm-course-del"]').trigger('click')
     await flushPromises()
 
     expect(removeSpy).toHaveBeenCalledWith('c-1')
     expect(document.body.textContent).toContain('课程已删除')
-    expect(wrapper.find('[data-testid="course-del-dialog"]').exists()).toBe(false)
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     // 失效重拉为异步链：行消失与重拉次数以 waitFor 收敛
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="row-c-1"]').exists()).toBe(false)
@@ -294,22 +305,23 @@ describe('CoursesView：删除（二次确认）', () => {
       .mockImplementation(() => new Promise<void>((resolve) => (resolveDelete = resolve)))
     const { wrapper } = await mountCourses()
 
+    await wrapper.find('[data-testid="row-menu-c-1"]').trigger('click')
     await wrapper.find('[data-testid="op-delete-c-1"]').trigger('click')
-    const dialog = wrapper.find('[data-testid="course-del-dialog"]')
+    const dialog = wrapper.find('[role="dialog"]')
     await dialog.find('[data-testid="confirm-course-del"]').trigger('click')
     await flushPromises()
 
-    expect(
-      (dialog.find('[data-testid="cancel-course-del"]').element as HTMLButtonElement).disabled,
-    ).toBe(true)
+    // 提交期间：取消按钮 / Esc / 遮罩点击的关闭请求均被视图层拦截，Dialog 保持打开
+    // （ConfirmDialog 为受控开合，回抛 update:open=false 被 submitting 守卫吞掉）
+    await dialog.find('[data-testid="cancel-action"]').trigger('click')
     await dialog.trigger('keydown', { key: 'Escape' })
     await dialog.trigger('click')
-    expect(wrapper.find('[data-testid="course-del-dialog"]').exists()).toBe(true)
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
     expect(removeSpy).toHaveBeenCalledTimes(1)
 
     resolveDelete()
     await flushPromises()
-    expect(wrapper.find('[data-testid="course-del-dialog"]').exists()).toBe(false)
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -318,12 +330,13 @@ describe('CoursesView：删除（二次确认）', () => {
     vi.spyOn(courseApi, 'remove').mockRejectedValue(new ApiError(500, '删除失败', 500))
     const { wrapper } = await mountCourses()
 
+    await wrapper.find('[data-testid="row-menu-c-1"]').trigger('click')
     await wrapper.find('[data-testid="op-delete-c-1"]').trigger('click')
     await wrapper.find('[data-testid="confirm-course-del"]').trigger('click')
     await flushPromises()
 
     expect(document.body.textContent).toContain('删除失败')
-    expect(wrapper.find('[data-testid="course-del-dialog"]').exists()).toBe(true)
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
     wrapper.unmount()
   })
 })

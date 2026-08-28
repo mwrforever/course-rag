@@ -4,6 +4,7 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, chunkApi, documentApi } from '@/lib/api'
+import { vReveal } from '@/directives/reveal'
 import { formatDateTime, formatFileSize } from '@/lib/utils'
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
@@ -20,6 +21,10 @@ import type { DocumentChunkVO, DocumentParseStatus, DocumentVO, PageResponse } f
  * 3. 状态时间线：当前态高亮（brand）/ 前序已完成（emerald）/ 后续待处理（中性），FAILED 终态分支
  * 4. FAILED：errorMessage 展开 + [重新解析] 调接口
  * 5. 四态：loading/empty（暂无分片）/error 重试/正常
+ *
+ * N6a 视觉重制适配：标题与状态徽章迁 PageHead（h1 承载文档标题、detail-status 入
+ * 动作区）、分片列表迁 DataTable、空态迁 EmptyState、v-reveal 指令经 mount 全局
+ * directives 注册（jsdom 无 IO 时指令自身降级直显）。
  */
 
 /** 分页响应构造（Long total 为 string） */
@@ -104,6 +109,7 @@ async function mountDetail(docId = 'd-1') {
         pinia,
         router,
       ],
+      directives: { reveal: vReveal },
     },
   })
   await flushPromises()
@@ -123,8 +129,9 @@ describe('DocumentDetailView：信息卡渲染', () => {
     )
     const { wrapper } = await mountDetail()
 
+    // 文档标题迁 PageHead h1（N6a 重制：页头承载标题 + 状态徽章）
+    expect(wrapper.find('h1').text()).toContain('RAG 架构入门.pdf')
     const info = wrapper.find('[data-testid="doc-info"]')
-    expect(info.text()).toContain('RAG 架构入门.pdf')
     expect(info.text()).toContain('PDF')
     expect(info.text()).toContain(formatFileSize('2048')) // 2.0 KB
     expect(info.text()).toContain('42') // 分片数

@@ -14,14 +14,31 @@
  * 可达性：路由 /knowledge-bases 已注册（Task 16），设计 §2.3 侧导航为
  * 「知识库：文档+分片」不新增导航项，从文档管理页「管理知识库」链接进入
  * （文档页随文档管理任务落地时补充入口）。
+ *
+ * N6a 视觉重制（2026-08-27 紫系换肤）：页头迁 PageHead、列表迁 DataTable
+ * （lav 表头/悬停行/行级联入场）、行操作迁 DropdownMenu、删除确认迁
+ * ConfirmDialog（confirm-delete testid 与级联告警文案契约保留）、空态迁
+ * EmptyState、页头与表格卡 v-reveal 入场；查询/校验/提交逻辑零改动。
  */
 import { computed, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { PhPlus, PhSpinnerGap, PhWarningCircle } from '@phosphor-icons/vue'
+import {
+  PhDotsThreeVertical,
+  PhNotePencil,
+  PhPlus,
+  PhSpinnerGap,
+  PhTrash,
+  PhWarningCircle,
+} from '@phosphor-icons/vue'
 import { z } from 'zod'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DataTable } from '@/components/ui/data-table'
+import { DropdownMenu, DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageHead } from '@/components/ui/page-head'
 import { ApiError, knowledgeBaseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime } from '@/lib/utils'
@@ -184,6 +201,28 @@ function requestDelete(kb: KnowledgeBaseVO) {
   deleting.value = kb
 }
 
+/**
+ * 行菜单「编辑」适配器（N6a 重制新增）：收起 ⋮ 菜单后打开编辑 Dialog
+ *
+ * @param kb 目标知识库行（来源列表数据）
+ * @param close DropdownMenu 作用域插槽下发的收起方法
+ */
+function editFromMenu(kb: KnowledgeBaseVO, close: () => void) {
+  close()
+  openEdit(kb)
+}
+
+/**
+ * 行菜单「删除」适配器（N6a 重制新增）：收起 ⋮ 菜单后进入删除二次确认
+ *
+ * @param kb 目标知识库行（来源列表数据）
+ * @param close DropdownMenu 作用域插槽下发的收起方法
+ */
+function deleteFromMenu(kb: KnowledgeBaseVO, close: () => void) {
+  close()
+  requestDelete(kb)
+}
+
 function cancelDelete() {
   deleting.value = null
 }
@@ -201,20 +240,22 @@ function statusVariant(status: string) {
 </script>
 
 <template>
-  <!-- 页头操作行：新建入口常驻（列表态/空态共用同一方法） -->
-  <div class="mb-4 flex items-center justify-between">
-    <p class="text-sm text-text-muted">仅展示 ACTIVE 状态知识库</p>
-    <Button data-testid="create-kb" @click="openCreate">
-      <PhPlus class="h-4 w-4" />
-      新建知识库
-    </Button>
-  </div>
+  <!-- 页头：PageHead 统一形态（h1 22px/800 + 副题 13px muted + 右侧动作区），v-reveal 滚动入场 -->
+  <PageHead v-reveal title="知识库管理" subtitle="仅展示 ACTIVE 状态知识库">
+    <template #actions>
+      <!-- 新建入口常驻页头（列表态/空态共用同一方法） -->
+      <Button data-testid="create-kb" @click="openCreate">
+        <PhPlus class="h-4 w-4" aria-hidden="true" />
+        新建知识库
+      </Button>
+    </template>
+  </PageHead>
 
   <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
   <div
     v-if="listError"
     role="alert"
-    class="flex items-center justify-between gap-4 rounded-lg border border-danger/30 bg-red-50 px-4 py-3"
+    class="mt-5 flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
   >
     <span class="text-sm text-danger">{{ listError }}</span>
     <Button variant="outline" size="sm" data-testid="retry-kb" @click="refetch">重试</Button>
@@ -224,82 +265,108 @@ function statusVariant(status: string) {
   <div
     v-else-if="isLoading"
     data-testid="kb-skeleton"
-    class="overflow-hidden rounded-xl border border-border bg-surface"
+    class="mt-5 overflow-hidden rounded-2xl border border-border bg-surface"
     aria-label="知识库列表加载中"
   >
-    <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-4 py-2.5">
+    <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-5 py-3.5">
       <div v-for="i in 4" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-slate-200" />
     </div>
     <div
       v-for="i in 5"
       :key="`row-${i}`"
-      class="h-11 animate-pulse border-b border-border bg-slate-50"
+      class="h-[54px] animate-pulse border-b border-border bg-slate-50 last:border-b-0"
     />
   </div>
 
-  <!-- 空态：一句话 + 行动入口（设计 §1.7，禁裸「暂无数据」） -->
+  <!-- 空态：EmptyState 统一形态（图标圆 + 标题 + 引导文案 + 行动入口，禁裸「暂无数据」） -->
   <div
     v-else-if="kbs.length === 0"
-    class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface py-14 text-center"
+    v-reveal
+    class="mt-5 rounded-2xl border border-dashed border-border bg-surface"
   >
-    <PhWarningCircle class="h-8 w-8 text-text-subtle" />
-    <p class="mt-3 text-sm font-medium text-text">还没有知识库</p>
-    <p class="mt-1 text-xs text-text-muted">创建第一个知识库后即可上传文档</p>
-    <Button class="mt-4" data-testid="create-kb-empty" @click="openCreate">新建知识库</Button>
+    <EmptyState title="还没有知识库" description="创建第一个知识库后即可上传文档">
+      <template #icon>
+        <PhWarningCircle class="h-6 w-6" aria-hidden="true" />
+      </template>
+      <template #action>
+        <Button data-testid="create-kb-empty" @click="openCreate">新建知识库</Button>
+      </template>
+    </EmptyState>
   </div>
 
-  <!-- 正常态：分页表格 -->
+  <!-- 正常态：分页表格（DataTable 视觉壳：lav 圆角表头/行悬停高亮/行级联入场） -->
   <template v-else>
-    <div class="overflow-hidden rounded-xl border border-border bg-surface">
-      <table data-testid="kb-table" class="w-full text-sm">
-        <thead class="border-b border-border bg-surface-2 text-left text-xs text-text-muted">
+    <!--
+      表格卡：16px 圆角 + 紫调柔影（设计稿 .table-card 形态）；
+      不设 overflow-hidden——行操作下拉菜单为 absolute 定位，裁切上下文会把末行菜单裁掉
+      （表头圆角由 DataTable 内部 thead th 半径承担）
+    -->
+    <div v-reveal="100" class="mt-5 rounded-2xl border border-border bg-surface pb-2 shadow-xs">
+      <DataTable data-testid="kb-table" label="知识库列表">
+        <template #header>
           <tr>
-            <th class="px-4 py-2.5 font-medium">名称</th>
-            <th class="px-4 py-2.5 font-medium">描述</th>
-            <th class="px-4 py-2.5 font-medium">状态</th>
-            <th class="px-4 py-2.5 font-medium">创建时间</th>
-            <th class="px-4 py-2.5 text-right font-medium">操作</th>
+            <th class="w-[26%]">名称</th>
+            <th class="w-[34%]">描述</th>
+            <th class="w-[12%]">状态</th>
+            <th class="w-[16%]">创建时间</th>
+            <th class="w-[12%]">操作</th>
           </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="kb in kbs"
-            :key="kb.id"
-            :data-testid="`row-${kb.id}`"
-            class="h-11 border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
-          >
-            <td class="max-w-[220px] truncate px-4 font-medium text-text" :title="kb.name">
-              {{ kb.name }}
-            </td>
-            <td class="max-w-[320px] truncate px-4 text-text-muted" :title="kb.description">
-              {{ kb.description || '-' }}
-            </td>
-            <td class="px-4">
-              <Badge :variant="statusVariant(kb.status)">{{ kb.status }}</Badge>
-            </td>
-            <td class="px-4 tabular-nums text-text-muted">{{ formatDateTime(kb.createdAt) }}</td>
-            <td class="px-4 text-right">
-              <Button
-                variant="ghost"
-                size="sm"
-                :data-testid="`edit-${kb.id}`"
-                @click="openEdit(kb)"
-              >
-                编辑
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                class="text-danger hover:bg-red-50"
-                :data-testid="`delete-${kb.id}`"
-                @click="requestDelete(kb)"
-              >
-                删除
-              </Button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        </template>
+        <!-- 行数据经默认插槽进 tbody（DataTable 已渲染 thead/tbody 骨架） -->
+        <tr v-for="kb in kbs" :key="kb.id" :data-testid="`row-${kb.id}`">
+          <!-- 名称列：主文字色 + 截断（title 悬浮全量，设计稿 .course-name 同规格） -->
+          <td class="max-w-[260px] truncate" :title="kb.name">
+            <span class="font-semibold text-text">{{ kb.name }}</span>
+          </td>
+          <!-- 描述列：次级文字色（td 基础色）+ 截断 -->
+          <td class="max-w-[340px] truncate" :title="kb.description">
+            {{ kb.description || '-' }}
+          </td>
+          <td>
+            <Badge :variant="statusVariant(kb.status)">{{ kb.status }}</Badge>
+          </td>
+          <td>
+            <span class="tabular-nums">{{ formatDateTime(kb.createdAt) }}</span>
+          </td>
+          <td>
+            <!-- 行操作下拉：eye-btn 圆钮造型换 ⋮ 触发器，编辑/删除两项（删除 danger 色系） -->
+            <DropdownMenu>
+              <template #trigger="{ toggle }">
+                <button
+                  type="button"
+                  :data-testid="`kb-menu-${kb.id}`"
+                  aria-label="知识库操作菜单"
+                  class="grid h-9 w-9 place-items-center rounded-full bg-brand-light text-text transition-all duration-200 hover:bg-brand hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand active:scale-95"
+                  @click="toggle"
+                >
+                  <PhDotsThreeVertical class="h-[18px] w-[18px]" aria-hidden="true" />
+                </button>
+              </template>
+              <template #default="{ close }">
+                <DropdownMenuItem
+                  label="编辑"
+                  :data-testid="`edit-${kb.id}`"
+                  @click="editFromMenu(kb, close)"
+                >
+                  <template #icon>
+                    <PhNotePencil class="h-4 w-4" aria-hidden="true" />
+                  </template>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  label="删除"
+                  tone="danger"
+                  :data-testid="`delete-${kb.id}`"
+                  @click="deleteFromMenu(kb, close)"
+                >
+                  <template #icon>
+                    <PhTrash class="h-4 w-4" aria-hidden="true" />
+                  </template>
+                </DropdownMenuItem>
+              </template>
+            </DropdownMenu>
+          </td>
+        </tr>
+      </DataTable>
     </div>
 
     <!-- 分页器：左「共 N 条」右 上/下页 + 页码（设计 §2.6） -->
@@ -335,12 +402,12 @@ function statusVariant(status: string) {
   <div
     v-if="dialogOpen"
     data-testid="kb-dialog"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+    class="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-overlay p-4"
     @keydown.esc="closeDialog"
     @click.self="closeDialog"
   >
     <div
-      class="w-full max-w-[480px] rounded-xl border border-border bg-surface p-6 shadow-md"
+      class="w-full max-w-[480px] animate-menu-in rounded-2xl bg-surface p-6 shadow-lg"
       role="dialog"
       aria-modal="true"
       @click.stop
@@ -358,7 +425,7 @@ function statusVariant(status: string) {
             aria-label="知识库名称"
             autofocus
             placeholder="请输入知识库名称"
-            class="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
           <p v-if="fieldError" class="mt-1 text-xs text-danger">{{ fieldError }}</p>
         </div>
@@ -370,13 +437,13 @@ function statusVariant(status: string) {
             rows="3"
             aria-label="知识库描述"
             placeholder="可选，简要说明该知识库的用途"
-            class="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+            class="w-full resize-none rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
         </div>
         <div class="flex justify-end gap-2 pt-2">
           <Button variant="outline" @click="closeDialog">取消</Button>
           <Button type="submit" :disabled="submitting">
-            <PhSpinnerGap v-if="submitting" class="h-4 w-4 animate-spin" />
+            <PhSpinnerGap v-if="submitting" class="h-4 w-4 animate-spin" aria-hidden="true" />
             {{ submitting ? '提交中' : editing ? '保存' : '创建' }}
           </Button>
         </div>
@@ -384,45 +451,21 @@ function statusVariant(status: string) {
     </div>
   </div>
 
-  <!-- 删除二次确认 Dialog（danger 实底 + 级联告警，设计 §2.4/§2.6；遮罩点击关闭） -->
-  <div
-    v-if="deleting"
-    data-testid="delete-dialog"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-    @keydown.esc="cancelDelete"
-    @click.self="cancelDelete"
-  >
-    <div
-      class="w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-md"
-      role="alertdialog"
-      aria-modal="true"
-      @click.stop
-    >
-      <div class="flex items-start gap-3">
-        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
-          <PhWarningCircle class="h-5 w-5 text-danger" />
-        </div>
-        <div>
-          <h2 class="text-base font-semibold text-text">删除知识库</h2>
-          <p class="mt-2 text-sm leading-relaxed text-text-muted">
-            删除后该知识库下的全部文档与分片将被级联删除，且不可恢复。确认删除「{{
-              deleting.name
-            }}」？
-          </p>
-        </div>
-      </div>
-      <div class="mt-5 flex justify-end gap-2">
-        <Button variant="outline" data-testid="cancel-delete" @click="cancelDelete">取消</Button>
-        <Button
-          variant="danger"
-          data-testid="confirm-delete"
-          :disabled="deletingLoading"
-          @click="confirmDelete"
-        >
-          <PhSpinnerGap v-if="deletingLoading" class="h-4 w-4 animate-spin" />
-          {{ deletingLoading ? '删除中' : '确认删除' }}
-        </Button>
-      </div>
-    </div>
+  <!-- 删除二次确认：ConfirmDialog 统一壳（danger 确认键 + 级联告警，设计 §2.4/§2.6）；
+       外层 v-if 承载 delete-dialog testid 契约（开=true 关=false），confirm-delete 经
+       $attrs 落到确认按钮；Esc/遮罩点击经 update:open 回抛走取消 -->
+  <div v-if="deleting" data-testid="delete-dialog">
+    <ConfirmDialog
+      open
+      title="删除知识库"
+      :description="`删除后该知识库下的全部文档与分片将被级联删除，且不可恢复。确认删除「${deleting.name}」？`"
+      :confirm-text="deletingLoading ? '删除中' : '确认删除'"
+      tone="danger"
+      :loading="deletingLoading"
+      data-testid="confirm-delete"
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+      @update:open="cancelDelete"
+    />
   </div>
 </template>
