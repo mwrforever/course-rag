@@ -82,7 +82,7 @@ export function SessionSearchPanel() {
           className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-subtle"
         />
         <input
-          type="search"
+          type="text"
           value={keyword}
           onFocus={() => setOpen(true)}
           onChange={(event) => {
@@ -92,6 +92,8 @@ export function SessionSearchPanel() {
           aria-label="搜索会话"
           data-testid="sidebar-session-search"
           placeholder="搜索会话标题"
+          // 注：不用 type="search"——Chromium 原生 Esc 清空会触发 onChange 重开浮层，
+          // 与「Esc 收起浮层（输入保留）」契约冲突；清除走自定义 X 钮
           className="w-full rounded-lg border border-border bg-surface py-2 pr-8 pl-8.5 text-[13px] text-text outline-none transition-colors placeholder:text-subtle focus:border-brand/50 focus-visible:ring-2 focus-visible:ring-brand"
         />
         {keyword ? (

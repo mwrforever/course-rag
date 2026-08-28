@@ -9,8 +9,8 @@
  * - 命名事件：`id:<seq>\nevent:<name>\ndata:<原始JSON>\n\n`（data 不加引号，
  *   Spring 序列化冒号后无空格）
  * - 心跳保活：注释行 `:heartbeat\n\n`（SseEmitter.event().comment("heartbeat") 产生）
- * - 事件名 9 种：metadata / thinking / thinking_end / delta / tool_call /
- *   tool_result / sources / error / end；id 行每条事件可有可无
+ * - 事件名 11 种：metadata / thinking / thinking_end / delta / query_plan /
+ *   tool_call / tool_result / sources / stage / error / end；id 行每条事件可有可无
  *
  * 解析规则（对齐 SSE 规范）：
  * - 空行终止一帧：出现过 data 行 → onEvent（event: 缺省取规范默认 "message"）；

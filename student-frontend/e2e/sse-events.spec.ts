@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test";
 import { mockApi, login, mockChatStream, frame, heartbeat } from "./helpers/sse-route";
 
 /**
- * SSE 10 事件逐类断言（整合 spec §3.2 SSE-事件逐类 组，TASK.md §2 硬性要求）
+ * SSE 11 事件逐类断言（整合 spec §3.2 SSE-事件逐类 组，TASK.md §2 硬性要求；
+ * 2026-08-28 时间线改版：thinking/query_plan/stage 断言对齐链式时间轴 testid）
  *
  * 原则：每类事件一个最小用例：先推目标事件帧，再以 end 收尾
  * （避免 EOF 未终态触发重连退避链，保证用例独立可并行）。
@@ -30,36 +31,94 @@ test.describe("SSE 事件逐类", () => {
     await expect(page.getByTestId("model-badge")).toBeVisible();
   });
 
-  test("thinking：推理卡默认收起，思考末行经预览行可见（2026-08-27）", async ({ page }) => {
+  test("thinking：时间轴思考步骤渲染，默认收起（末行可见）+ 帧同批收敛「思考已完成」", async ({
+    page,
+  }) => {
     await mockChatStream(
       page,
       frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
-        frame("thinking", { delta: "正在检索课程资料……" }, 2) +
+        frame("thinking", { delta: "正在检索课程资料……", stage: "understanding" }, 2) +
         frame("end", { runId: "9001", status: "COMPLETED", messageId: "5001" }, 3),
     );
     await login(page, "/");
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    // 帧同批送达：end 后收敛为「已深度思考」（瞬态「正在准备…」不可断言）；
-    // 推理卡默认收起，预览行展示思考末行（逐行上滚观感）
-    await expect(page.getByTestId("reasoning-label")).toHaveText("已深度思考");
-    await expect(page.getByTestId("reasoning-preview")).toHaveText(/正在检索课程资料/);
+    // 2026-08-28 时间线改版：思考经链式时间轴 thinking-step 渲染（推理卡已删）；
+    // 帧同批送达时 end 已收敛为完成态（瞬态「思考中」不可断言）
+    await expect(page.getByTestId("chain-timeline")).toBeVisible();
+    await expect(page.getByTestId("thinking-step")).toBeVisible();
+    await expect(page.getByTestId("thinking-status")).toHaveText("思考已完成");
+    // 收起态思考体锚定底部：末行落入 26px 可视窗（DOM 含全部思考行）
+    await expect(page.getByTestId("thinking-body")).toContainText("正在检索课程资料");
   });
 
-  test("thinking_end：推理卡收敛为「已深度思考」（默认收起）", async ({ page }) => {
+  test("thinking_end：思考步骤收敛为「思考已完成」（默认收起）", async ({ page }) => {
     await mockChatStream(
       page,
       frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
-        frame("thinking", { delta: "思考内容" }, 2) +
-        frame("thinking_end", {}, 3) +
+        frame("thinking", { delta: "思考内容", stage: "understanding" }, 2) +
+        frame("thinking_end", { stage: "understanding" }, 3) +
         frame("end", { runId: "9001", status: "COMPLETED", messageId: "5001" }, 4),
     );
     await login(page, "/");
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText("已深度思考")).toBeVisible();
+    await expect(page.getByTestId("thinking-status")).toHaveText("思考已完成");
+  });
+
+  test("query_plan：查询计划步骤渲染意图标签与改写查询（2026-08-28 时间线改版）", async ({
+    page,
+  }) => {
+    await mockChatStream(
+      page,
+      frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
+        frame(
+          "query_plan",
+          {
+            intent: "knowledge_question",
+            rewritten: ["什么是倒排索引"],
+            filters: { courseNames: ["数据结构与算法"] },
+          },
+          2,
+        ) +
+        frame("delta", { text: "改写后的回答正文。" }, 3) +
+        frame("end", { runId: "9001", status: "COMPLETED", messageId: "5001" }, 4),
+    );
+    await login(page, "/");
+    await page.goto("/chat");
+    await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
+    await page.getByRole("button", { name: "发送" }).click();
+    // 查询计划步骤：意图标签（人话映射）+ 首条改写查询
+    await expect(page.getByTestId("query-plan-step")).toBeVisible();
+    await expect(page.getByTestId("query-plan-intent")).toHaveText("知识问答");
+    await expect(page.getByTestId("query-plan-rewritten-first")).toContainText("什么是倒排索引");
+    await expect(page.getByText("改写后的回答正文。")).toBeVisible();
+  });
+
+  test("stage-thinking：阶段步骤与思考步骤按到达序挂链（stage → thinking）", async ({ page }) => {
+    await mockChatStream(
+      page,
+      frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
+        frame("stage", { stage: "understanding", label: "正在理解你的问题" }, 2) +
+        frame("thinking", { delta: "分析提问意图", stage: "understanding" }, 3) +
+        frame("thinking_end", { stage: "understanding" }, 4) +
+        frame("end", { runId: "9001", status: "COMPLETED", messageId: "5001" }, 5),
+    );
+    await login(page, "/");
+    await page.goto("/chat");
+    await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
+    await page.getByRole("button", { name: "发送" }).click();
+    // 阶段步骤（OpStep）与思考步骤同链：阶段在前、思考在后（到达序）
+    const stageText = page.getByTestId("op-step-text").filter({ hasText: "正在理解你的问题" });
+    await expect(stageText).toBeVisible();
+    const thinking = page.getByTestId("thinking-step");
+    await expect(thinking).toBeVisible();
+    const stageBox = await stageText.boundingBox();
+    const thinkingBox = await thinking.boundingBox();
+    expect(stageBox && thinkingBox && stageBox.y < thinkingBox.y).toBeTruthy();
+    await expect(page.getByTestId("thinking-status")).toHaveText("思考已完成");
   });
 
   test("delta：正文增量渲染", async ({ page }) => {
@@ -134,10 +193,11 @@ test.describe("SSE 事件逐类", () => {
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    // 知识片段触发行（无思考内容时独立入口）位于正文之前，点击打开召回抽屉（2026-08-27）
-    const trigger = page.getByTestId("sources-trigger");
+    // 2026-08-28 时间线改版：来源经检索步骤（sources-step，到达即完成态）承载，
+    // 位于正文之前，点击打开召回抽屉
+    const trigger = page.getByTestId("sources-step");
     await expect(trigger).toBeVisible();
-    await expect(trigger).toHaveText(/1 个片段/);
+    await expect(trigger).toContainText("已检索 1 篇相关资料");
     const body = page.getByText("正文内容");
     const triggerBox = await trigger.boundingBox();
     const bodyBox = await body.boundingBox();
@@ -147,7 +207,9 @@ test.describe("SSE 事件逐类", () => {
     await expect(page.getByText("课程讲义第1章")).toBeVisible();
   });
 
-  test("stage：阶段进度卡显示「知识库查询中」等文案（2026-08-27）", async ({ page }) => {
+  test("stage：时间轴阶段步骤显示「知识库查询中」等文案（2026-08-28 时间线改版）", async ({
+    page,
+  }) => {
     await mockChatStream(
       page,
       frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
@@ -160,14 +222,18 @@ test.describe("SSE 事件逐类", () => {
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    // 推理卡 label 跟随最新阶段（生成中文案在 delta 后由 thinking_end/终态收敛，此处断言卡就位与首阶段）
-    await expect(page.getByTestId("reasoning-card")).toBeVisible();
-    await expect(page.getByTestId("reasoning-label")).toBeVisible();
-    // 展开卡片可见已完成阶段清单
-    await page.getByTestId("reasoning-toggle").click();
-    await expect(page.getByText("正在理解你的问题")).toBeVisible();
-    await expect(page.getByText("知识库查询中")).toBeVisible();
-    await expect(page.getByText("阶段之后的正文。")).toBeVisible();
+    // 2026-08-28 时间线改版：阶段经链式时间轴 OpStep 直接平铺（推理卡已删，
+    // 无展开交互）；两个阶段按到达序挂链且位于正文之前
+    const first = page.getByTestId("op-step-text").filter({ hasText: "正在理解你的问题" });
+    const second = page.getByTestId("op-step-text").filter({ hasText: "知识库查询中" });
+    await expect(first).toBeVisible();
+    await expect(second).toBeVisible();
+    const body = page.getByText("阶段之后的正文。");
+    const firstBox = await first.boundingBox();
+    const secondBox = await second.boundingBox();
+    const bodyBox = await body.boundingBox();
+    expect(firstBox && secondBox && firstBox.y < secondBox.y).toBeTruthy();
+    expect(secondBox && bodyBox && secondBox.y < bodyBox.y).toBeTruthy();
   });
 
   test("error：run 级错误横幅 + 重试按钮", async ({ page }) => {
