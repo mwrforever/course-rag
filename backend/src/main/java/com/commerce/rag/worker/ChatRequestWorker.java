@@ -546,7 +546,8 @@ public class ChatRequestWorker {
                                 attachmentsJson,
                                 readSourcesJson(config),
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
-                                lastOutput.get());
+                                lastOutput.get(),
+                                thinkingPusher);
                         return Mono.empty();
                     })
                     .doOnComplete(() -> {
@@ -565,7 +566,8 @@ public class ChatRequestWorker {
                                 attachmentsJson,
                                 readSourcesJson(config),
                                 snapshot != null ? snapshot.historyMessageCount() : 0,
-                                lastOutput.get());
+                                lastOutput.get(),
+                                thinkingPusher);
                         persisted.set(outcome.persisted());
                         // B2-4: 先占位终态标记再调 handleCompleted——其推 END 后 updateStatusWithRetry
                         // 若耗尽上抛，catch 分支据此跳过第二个终态事件（客户端只认首个终态）
@@ -609,7 +611,8 @@ public class ChatRequestWorker {
                         attachmentsJson,
                         readSourcesJson(config),
                         snapshot != null ? snapshot.historyMessageCount() : 0,
-                        lastOutput.get());
+                        lastOutput.get(),
+                        thinkingPusher);
                 persisted.set(retryOutcome.persisted());
             }
         } finally {
@@ -719,6 +722,8 @@ public class ChatRequestWorker {
      * @param historyCursor    持久化游标（pre-run checkpoint 中 messages 数，P0-4a）：
      *                         仅持久化 rawList 中 index >= historyCursor 的新增消息，避免历史消息每轮重插
      * @param lastOutput       流式输出的最后一个 NodeOutput（可为 null，此时仅持久化用户消息）
+     * @param thinkingPusher   per-run 思考推送通道（2026-08-28 时间线改版：understanding/attachments
+     *                         阶段思考不在 state.messages，从该通道累加缓冲补落 thinking 行；可为 null）
      * @return 落库结果（R2 补口 B）：persisted=true=已落库（含 (run_id,seq) 唯一索引冲突的幂等跳过，
      *         调用方不得重试）；false=落库失败且未确认写入（调用方可重试）；
      *         assistantMessageId=assistant 正文行（role=ASSISTANT 且 messageType==null）落库回填的
@@ -732,13 +737,15 @@ public class ChatRequestWorker {
             String attachmentsJson,
             String sourcesJson,
             int historyCursor,
-            NodeOutput lastOutput) {
+            NodeOutput lastOutput,
+            ThinkingPusher thinkingPusher) {
         List<ChatMessage> messages = new ArrayList<>();
         int seq = 0;
 
         // R2 意图落库修复：从最终 state 的查询计划取意图规范名小写（修复 intent_type 恒 NULL；
         // 无计划（异常中断/QU 未写入）返回 null，正文行 intent_type 保持 null——存量行不受影响）
-        String intentType = resolveIntentType(lastOutput);
+        QueryPlan queryPlan = resolveQueryPlan(lastOutput);
+        String intentType = queryPlan == null ? null : queryPlan.intent().code();
 
         // 1. 用户消息（携带本轮附件列表，供前端渲染/审计回放 —— spec §5.1 双存决策）
         ChatMessage userMsg = new ChatMessage();
@@ -751,7 +758,41 @@ public class ChatRequestWorker {
         userMsg.setAttachmentsJson(attachmentsJson);
         messages.add(userMsg);
 
-        // 2. 从最终状态提取 messages 列表，仅转换本轮新增（index >= 游标）——P0-4a 修复：
+        // 2. query_plan 行（2026-08-28 时间线改版）：QU 签出的需求解析结果落库，content 与 SSE
+        //    query_plan 事件同款 JSON（buildQueryPlanPayload 单一构造点），回放可重建该事件；
+        //    seq 恒排在本轮所有 thinking 行之前；无计划（异常中断）不落行
+        ChatMessage queryPlanRow = buildQueryPlanRow(runId, sessionId, queryPlan);
+        if (queryPlanRow != null) {
+            queryPlanRow.setSeq(seq++);
+            messages.add(queryPlanRow);
+        }
+
+        // 3. 图内节点阶段思考行（understanding / attachments，2026-08-28 时间线改版）：
+        //    QU/caption 的思考经 ThinkingPusher 瞬时通道推送、不进 state.messages——
+        //    从 per-run 累加缓冲按阶段生成 thinking 行（thinking_stage 落列区分来源），
+        //    seq 排在主 agent generating thinking 行之前（主 thinking 来自下方 state 消息转换）
+        if (thinkingPusher != null) {
+            for (Map.Entry<String, StringBuilder> entry :
+                    thinkingPusher.accumulated().entrySet()) {
+                String stageThinking =
+                        entry.getValue() == null ? "" : entry.getValue().toString();
+                if (stageThinking.isBlank()) {
+                    continue;
+                }
+                ChatMessage cm = new ChatMessage();
+                cm.setSessionId(sessionId);
+                cm.setRunId(runId);
+                cm.setRole("ASSISTANT");
+                cm.setMessageType("thinking");
+                cm.setThinkingStage(entry.getKey());
+                cm.setContent(stageThinking);
+                cm.setSourcesJson("[]");
+                cm.setSeq(seq++);
+                messages.add(cm);
+            }
+        }
+
+        // 4. 从最终状态提取 messages 列表，仅转换本轮新增（index >= 游标）——P0-4a 修复：
         //    state 跨 run 累积（AppendStrategy），游标 = pre-run checkpoint 消息数，
         //    否则历史 assistant/thinking/tool 消息每轮全量重插
         if (lastOutput != null && lastOutput.state() != null) {
@@ -780,7 +821,7 @@ public class ChatRequestWorker {
             }
         }
 
-        // 3. 批量插入
+        // 5. 批量插入
         if (!messages.isEmpty()) {
             try {
                 chatMessageService.batchInsert(messages);
@@ -823,17 +864,16 @@ public class ChatRequestWorker {
     }
 
     /**
-     * 从最终 state 的查询计划解析意图规范名（R2 意图落库修复）。
+     * 从最终 state 提取查询计划（R2 意图落库 + 2026-08-28 query_plan 行共用单一提取点）。
      *
-     * <p>KEY_QUERY_PLAN 由 queryUnderstandingNode 写入（ReplaceStrategy，每次 run 覆盖），
-     * 取 {@link QueryPlan#intent()} 的小写规范名（knowledge_question / chat / unknown，
-     * 与条件边路由键一致）。异常中断（lastOutput=null）或计划缺失时返回 null——
-     * 正文行 intent_type 保持 null，前端按可空处理。
+     * <p>KEY_QUERY_PLAN 由 queryUnderstandingNode 写入（ReplaceStrategy，每次 run 覆盖）。
+     * 异常中断（lastOutput=null）或计划缺失时返回 null——正文行 intent_type 保持 null、
+     * 不落 query_plan 行，前端按可空处理。
      *
      * @param lastOutput 流式输出的最后一个 NodeOutput（可为 null）
-     * @return 意图规范名小写；无 state/无计划/类型不符时返回 null
+     * @return 查询计划；无 state/无计划/类型不符时返回 null
      */
-    private String resolveIntentType(NodeOutput lastOutput) {
+    private QueryPlan resolveQueryPlan(NodeOutput lastOutput) {
         if (lastOutput == null || lastOutput.state() == null) {
             return null;
         }
@@ -842,8 +882,39 @@ public class ChatRequestWorker {
                 .value(KEY_QUERY_PLAN)
                 .filter(QueryPlan.class::isInstance)
                 .map(QueryPlan.class::cast)
-                .map(plan -> plan.intent().code())
                 .orElse(null);
+    }
+
+    /**
+     * 构建 query_plan 落库行（2026-08-28 对话流式时间线改版）。
+     *
+     * <p>messageType="query_plan"、content 与 SSE query_plan 事件 payload 同款 JSON
+     * （{@link SseEventTransformer#buildQueryPlanPayload} 单一构造点，PG 降级回放可原样重建事件）。
+     * 序列化失败或无计划返回 null（跳过该行，不阻断主流程落库）。
+     *
+     * @param runId     Run ID
+     * @param sessionId 会话 ID
+     * @param plan      查询计划（可为 null——null 时不落行）
+     * @return 待赋 seq 的 query_plan 行；无计划/序列化失败返回 null
+     */
+    private ChatMessage buildQueryPlanRow(Long runId, Long sessionId, QueryPlan plan) {
+        if (plan == null) {
+            return null;
+        }
+        try {
+            // 与 SSE 事件 payload 同款 JSON 契约（intent/rewritten/filters.courseNames）
+            ChatMessage row = new ChatMessage();
+            row.setSessionId(sessionId);
+            row.setRunId(runId);
+            row.setRole("ASSISTANT");
+            row.setMessageType("query_plan");
+            row.setContent(objectMapper.writeValueAsString(SseEventTransformer.buildQueryPlanPayload(plan)));
+            row.setSourcesJson("[]");
+            return row;
+        } catch (JsonProcessingException e) {
+            log.warn("query_plan 行序列化失败，跳过该行落库: runId={}, err={}", runId, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -877,6 +948,9 @@ public class ChatRequestWorker {
             result.add(cm);
         } else if (msg instanceof AssistantMessage am) {
             // thinking 持久化 —— 设计文档 §3.5: msg_type='thinking', 存 reasoning 内容
+            // （2026-08-28 时间线改版：state 消息来源的思考恒属主 agent 生成阶段，
+            //   thinking_stage 落 generating；understanding/attachments 行由 persistMessages
+            //   从 ThinkingPusher 累加缓冲另行生成，不经此路径）
             String reasoning = extractReasoningContent(am);
             if (reasoning != null && !reasoning.isEmpty()) {
                 ChatMessage thinkingMsg = new ChatMessage();
@@ -884,6 +958,7 @@ public class ChatRequestWorker {
                 thinkingMsg.setRunId(runId);
                 thinkingMsg.setRole("ASSISTANT");
                 thinkingMsg.setMessageType("thinking");
+                thinkingMsg.setThinkingStage(SseEventTransformer.STAGE_GENERATING);
                 thinkingMsg.setContent(reasoning);
                 thinkingMsg.setSourcesJson("[]");
                 result.add(thinkingMsg);

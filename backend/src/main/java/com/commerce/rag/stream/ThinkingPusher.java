@@ -2,6 +2,7 @@ package com.commerce.rag.stream;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -53,6 +54,16 @@ public class ThinkingPusher {
     private final Object pushLock = new Object();
 
     /**
+     * 按 stage 累加的思考全文缓冲（LinkedHashMap 保持阶段首推顺序）。
+     *
+     * <p>动机（2026-08-28 时间线改版）：QU/caption 等图内节点的思考不进图 state.messages
+     * （瞬时 metadata 通道），run 结束落库 chat_message 时无法从 state 提取——由本缓冲兜住
+     * 全文，worker persistMessages 经 {@link #accumulated()} 取快照生成 understanding /
+     * attachments 阶段的 thinking 行。读写均在 pushLock 内，线程安全。
+     */
+    private final Map<String, StringBuilder> accumulated = new LinkedHashMap<>();
+
+    /**
      * 构造 per-run 思考推送通道。
      *
      * @param runId       run 唯一标识（字符串，bridge ring 键）
@@ -85,11 +96,16 @@ public class ThinkingPusher {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("delta", delta);
         payload.put("stage", stage == null ? "" : stage);
-        // 取号与入队同锁原子：锁外取号会出现「先取号后入队」的乱序窗口
+        // 取号与入队同锁原子：锁外取号会出现「先取号后入队」的乱序窗口；
+        // 累加缓冲同锁写入（与 accumulated() 快照读取互斥，防 StringBuilder 半写状态被读走）
         SseEvent event;
         synchronized (pushLock) {
             event = buildEvent(SseEventType.THINKING, payload);
             bridge.push(runId, event);
+            // 按 stage 累加思考全文：供 run 结束落库 understanding/attachments thinking 行
+            accumulated
+                    .computeIfAbsent(stage == null ? "" : stage, k -> new StringBuilder())
+                    .append(delta);
         }
         log.debug(
                 "推送 THINKING 事件: runId={}, stage={}, seqId={}, delta预览={}",
@@ -118,6 +134,24 @@ public class ThinkingPusher {
             bridge.push(runId, event);
         }
         log.debug("推送 THINKING_END 事件: runId={}, stage={}, seqId={}", runId, stage, event.seqId());
+    }
+
+    /**
+     * 取按阶段累加的思考全文只读快照（2026-08-28 时间线改版，落库用）。
+     *
+     * <p>适用场景：worker persistMessages 在 run 结束后调用——QU/caption 图内节点的思考
+     * 不进图 state.messages，chat_message thinking 行的 understanding / attachments
+     * 阶段全文只能来源于此缓冲；key 为阶段键（首推顺序），value 为该阶段累加全文。
+     *
+     * <p>快照为浅拷贝（Map 结构不可变、StringBuilder 引用共享）：本方法在 pushLock 内
+     * 拷贝，返回后调用方只读；run 落库发生在图流 blockLast 之后，不再有并发写入。
+     *
+     * @return 阶段键 → 该阶段累加的思考全文（从未推送过时为空 Map，never null）
+     */
+    public Map<String, StringBuilder> accumulated() {
+        synchronized (pushLock) {
+            return Collections.unmodifiableMap(new LinkedHashMap<>(accumulated));
+        }
     }
 
     /**

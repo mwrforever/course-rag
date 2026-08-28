@@ -432,6 +432,12 @@ public class ChatStreamEntry {
                     // P1-2: 与实时 TOOL_RESULT 事件 schema 对齐（toolCallId/status/output）
                     eventType = SseEventType.TOOL_RESULT.getEventName();
                     payload = normalizeToolPayload(msg.content(), false);
+                } else if ("query_plan".equals(msg.messageType())) {
+                    // 2026-08-28 时间线改版：query_plan 行 content 即实时 query_plan 事件同款 JSON
+                    // （单一构造点 SseEventTransformer.buildQueryPlanPayload）——同名事件原样透传
+                    // 保持回放与实时契约一致；不得落入 else 分支被当正文 DELTA 泄漏 JSON
+                    eventType = SseEventType.QUERY_PLAN.getEventName();
+                    payload = msg.content();
                 } else {
                     // 普通助手消息 → DELTA 事件
                     eventType = SseEventType.DELTA.getEventName();

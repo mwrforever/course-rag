@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -170,5 +171,41 @@ class ThinkingPusherTest {
                             + events.get(i).seqId());
         }
         assertEquals(threads * perThread, events.get(events.size() - 1).seqId(), "末事件 seq 应等于总数（从 1 连续）");
+    }
+
+    // ==================== accumulated：按阶段累加思考全文（2026-08-28 时间线改版，落库用） ====================
+
+    @Test
+    @DisplayName("accumulated — push 按阶段累加：全文拼接、key 为首推顺序（供 worker 落 thinking 行）")
+    void accumulated_concatenatesPerStageInInsertionOrder() {
+        pusher.push("understanding", "思考一");
+        pusher.push("understanding", "思考二");
+        pusher.push("attachments", "解析图片");
+
+        Map<String, StringBuilder> acc = pusher.accumulated();
+
+        assertEquals(List.of("understanding", "attachments"), List.copyOf(acc.keySet()), "阶段键按首推顺序");
+        assertEquals("思考一思考二", acc.get("understanding").toString());
+        assertEquals("解析图片", acc.get("attachments").toString());
+    }
+
+    @Test
+    @DisplayName("accumulated — 快照 Map 只读；空/null delta 与 end 不产生累加")
+    void accumulated_mapReadOnlyAndIgnoresEmptyDelta() {
+        pusher.push("understanding", "A");
+        pusher.push("understanding", "");
+        pusher.push("attachments", null);
+        pusher.end("generating");
+
+        Map<String, StringBuilder> snapshot = pusher.accumulated();
+        assertEquals(1, snapshot.size(), "仅非空 delta 进入累加缓冲（end/空片段不建行）");
+        assertEquals("A", snapshot.get("understanding").toString());
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.put("x", new StringBuilder()));
+    }
+
+    @Test
+    @DisplayName("accumulated — 从未推送时返回空 Map（never null）")
+    void accumulated_noPush_returnsEmptyMap() {
+        assertTrue(pusher.accumulated().isEmpty());
     }
 }

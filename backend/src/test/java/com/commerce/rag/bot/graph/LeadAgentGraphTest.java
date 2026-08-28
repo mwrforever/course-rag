@@ -24,6 +24,7 @@ import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.commerce.rag.bot.rewrite.QueryUnderstandingService;
 import com.commerce.rag.bot.tool.CourseApiTool;
 import com.commerce.rag.config.GraphConfig;
+import com.commerce.rag.stream.ThinkingPusher;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
@@ -267,7 +268,9 @@ class LeadAgentGraphTest {
         // 理解服务返回 knowledge_question 计划（1 条重写查询）
         QueryPlan plan =
                 new QueryPlan(IntentType.KNOWLEDGE_QUESTION, List.of("q1"), new QueryPlanFilters(List.of()), false);
-        when(queryUnderstandingService.understand(anyString(), anyList())).thenReturn(plan);
+        // config 未注册 ThinkingPusher → 节点以 pusher=null 调三参重载（维持同步路径语义）
+        when(queryUnderstandingService.understand(anyString(), anyList(), isNull()))
+                .thenReturn(plan);
 
         OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage("Java 课程怎么学"))));
         Map<String, Object> result = applyUnderstanding(state);
@@ -284,14 +287,15 @@ class LeadAgentGraphTest {
     void queryUnderstandingNode_noMessages_writesFallbackPlan() throws Exception {
         // 无用户消息 → understand 以 null 调用，返回降级计划（unknown + 原始查询）
         QueryPlan fallback = QueryPlan.fallback(null);
-        when(queryUnderstandingService.understand(isNull(), anyList())).thenReturn(fallback);
+        when(queryUnderstandingService.understand(isNull(), anyList(), isNull()))
+                .thenReturn(fallback);
 
         Map<String, Object> result = applyUnderstanding(new OverAllState(Map.of()));
 
         // 恒写入 queryPlan：条件边有值可路由，unknown 分支走 ReactAgent 不拒答
         assertSame(fallback, result.get(KEY_QUERY_PLAN));
         assertEquals(IntentType.UNKNOWN, fallback.intent());
-        verify(queryUnderstandingService).understand(isNull(), anyList());
+        verify(queryUnderstandingService).understand(isNull(), anyList(), isNull());
     }
 
     @Test
@@ -300,7 +304,8 @@ class LeadAgentGraphTest {
         // 空白消息在 extractLastUserQuery 中视为无用户消息（text.isBlank() 过滤）→ understand 以 null 调用降级，
         // 节点不做提前短路，queryPlan 恒写入
         QueryPlan fallback = QueryPlan.fallback(null);
-        when(queryUnderstandingService.understand(isNull(), anyList())).thenReturn(fallback);
+        when(queryUnderstandingService.understand(isNull(), anyList(), isNull()))
+                .thenReturn(fallback);
 
         OverAllState state = new OverAllState(Map.of("messages", List.of(new UserMessage("   "))));
         Map<String, Object> result = applyUnderstanding(state);
@@ -315,12 +320,31 @@ class LeadAgentGraphTest {
         List<Message> messages = List.of(new UserMessage("课程价格"), new AssistantMessage("推荐课程"));
         QueryPlan plan =
                 new QueryPlan(IntentType.KNOWLEDGE_QUESTION, List.of("价格查询"), new QueryPlanFilters(List.of()), false);
-        when(queryUnderstandingService.understand("课程价格", messages)).thenReturn(plan);
+        when(queryUnderstandingService.understand("课程价格", messages, null)).thenReturn(plan);
 
         Map<String, Object> result = applyUnderstanding(new OverAllState(Map.of("messages", messages)));
 
         assertSame(plan, result.get(KEY_QUERY_PLAN));
-        verify(queryUnderstandingService).understand("课程价格", messages);
+        verify(queryUnderstandingService).understand("课程价格", messages, null);
+    }
+
+    @Test
+    @DisplayName("queryUnderstandingNode → RunnableConfig.metadata 注册的 ThinkingPusher 透传给流式重载（2026-08-28 改版）")
+    void queryUnderstandingNode_thinkingPusherInMetadata_passedToUnderstand() throws Exception {
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        List<Message> messages = List.of(new UserMessage("高数怎么学"));
+        QueryPlan plan = new QueryPlan(IntentType.CHAT, List.of("高数怎么学"), new QueryPlanFilters(List.of()), false);
+        when(queryUnderstandingService.understand("高数怎么学", messages, pusher)).thenReturn(plan);
+
+        // worker 驱动场景：config.metadata 携带 KEY_THINKING_CALLBACK → 节点取到同一实例传入 understand
+        RunnableConfig config = RunnableConfig.builder()
+                .addMetadata(RetrieveNode.KEY_THINKING_CALLBACK, pusher)
+                .build();
+        CompletableFuture<Map<String, Object>> future =
+                queryUnderstandingNodeAction().apply(new OverAllState(Map.of("messages", messages)), config);
+
+        assertSame(plan, future.get(5, TimeUnit.SECONDS).get(KEY_QUERY_PLAN));
+        verify(queryUnderstandingService).understand("高数怎么学", messages, pusher);
     }
 
     @Test

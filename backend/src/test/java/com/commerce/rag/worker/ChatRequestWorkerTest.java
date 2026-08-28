@@ -235,7 +235,7 @@ class ChatRequestWorkerTest {
         return (ConcurrentHashMap<String, AtomicBoolean>) f.get(worker);
     }
 
-    /** 通过反射调用 private persistMessages（P0-4a 游标去重用例：验证仅持久化游标后的新增消息）
+    /** 通过反射调用 private persistMessages（无 thinkingPusher 场景：不落 understanding 阶段思考行）
      * 返回落库结果（R2 补口 B：persisted=已落库/幂等跳过；assistantMessageId=assistant 正文行落库回填 ID） */
     private PersistOutcome invokePersistMessages(
             Long runId,
@@ -246,6 +246,21 @@ class ChatRequestWorkerTest {
             int historyCursor,
             NodeOutput lastOutput)
             throws Exception {
+        return invokePersistMessages(
+                runId, sessionId, userQuery, attachmentsJson, sourcesJson, historyCursor, lastOutput, null);
+    }
+
+    /** 通过反射调用 private persistMessages（P0-4a 游标去重 + 2026-08-28 时间线 query_plan/thinking_stage 行） */
+    private PersistOutcome invokePersistMessages(
+            Long runId,
+            Long sessionId,
+            String userQuery,
+            String attachmentsJson,
+            String sourcesJson,
+            int historyCursor,
+            NodeOutput lastOutput,
+            ThinkingPusher thinkingPusher)
+            throws Exception {
         Method method = ChatRequestWorker.class.getDeclaredMethod(
                 "persistMessages",
                 Long.class,
@@ -254,10 +269,19 @@ class ChatRequestWorkerTest {
                 String.class,
                 String.class,
                 int.class,
-                NodeOutput.class);
+                NodeOutput.class,
+                ThinkingPusher.class);
         method.setAccessible(true);
         return (PersistOutcome) method.invoke(
-                worker, runId, sessionId, userQuery, attachmentsJson, sourcesJson, historyCursor, lastOutput);
+                worker,
+                runId,
+                sessionId,
+                userQuery,
+                attachmentsJson,
+                sourcesJson,
+                historyCursor,
+                lastOutput,
+                thinkingPusher);
     }
 
     // ==================== cancel() 测试 ====================
@@ -485,6 +509,96 @@ class ChatRequestWorkerTest {
         assertEquals(2, inserted.size()); // USER + 本轮 assistant
         assertEquals("USER", inserted.get(0).getRole());
         assertEquals("本轮回答", inserted.get(1).getContent());
+    }
+
+    // ==================== persistMessages 时间线行落库（2026-08-28 query_plan + thinking_stage） ====================
+
+    @Test
+    @DisplayName("persistMessages → query_plan 行 + understanding/generating thinking 行按 seq 排序且落 thinking_stage")
+    @SuppressWarnings("unchecked")
+    void persistMessages_timelineRows_queryPlanBeforeThinkingAndStagePersisted() throws Exception {
+        // Given: 最终 state 含 QueryPlan（QU 签出）+ 主 agent 终消息（reasoningContent 思考 + 正文）
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 大纲"), new QueryPlanFilters(List.of("高等数学")), false);
+        AssistantMessage finalAssistant = AssistantMessage.builder()
+                .content("这是回答")
+                .properties(Map.of("reasoningContent", "主agent思考"))
+                .build();
+        OverAllState state = new OverAllState(
+                Map.of("messages", List.of(new UserMessage("高等数学怎么学"), finalAssistant), KEY_QUERY_PLAN, plan));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        // understanding 阶段思考不在 state.messages，来自 ThinkingPusher 累加缓冲（真实实例 + mock bridge）
+        ThinkingPusher pusher =
+                new ThinkingPusher("1", bridge, SseEventTransformer.RunState.create("1", "1", "m"), new ObjectMapper());
+        pusher.push(SseEventTransformer.STAGE_UNDERSTANDING, "先分析意图，");
+        pusher.push(SseEventTransformer.STAGE_UNDERSTANDING, "再收窄到课程查询");
+
+        // When
+        invokePersistMessages(1L, 2L, "高等数学怎么学", "[]", "[]", 0, lastOutput, pusher);
+
+        // Then: 行序 user(0) → query_plan(1) → understanding thinking(2) → generating thinking(3) → 正文(4)
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> rows = captor.getValue();
+        assertEquals(5, rows.size());
+        assertEquals("USER", rows.get(0).getRole());
+        assertEquals(0, rows.get(0).getSeq().intValue());
+
+        ChatMessage planRow = rows.get(1);
+        assertEquals("query_plan", planRow.getMessageType());
+        assertEquals(1, planRow.getSeq().intValue());
+        // content 与 SSE query_plan 事件 payload 同款 JSON（单一构造点契约一致）
+        assertEquals(
+                "{\"intent\":\"knowledge_question\",\"rewritten\":[\"高等数学 大纲\"],"
+                        + "\"filters\":{\"courseNames\":[\"高等数学\"]}}",
+                planRow.getContent());
+
+        ChatMessage understandingRow = rows.get(2);
+        assertEquals("thinking", understandingRow.getMessageType());
+        assertEquals("understanding", understandingRow.getThinkingStage());
+        assertEquals("先分析意图，再收窄到课程查询", understandingRow.getContent());
+
+        ChatMessage generatingRow = rows.get(3);
+        assertEquals("thinking", generatingRow.getMessageType());
+        assertEquals("generating", generatingRow.getThinkingStage());
+        assertEquals("主agent思考", generatingRow.getContent());
+
+        ChatMessage bodyRow = rows.get(4);
+        assertEquals("这是回答", bodyRow.getContent());
+        assertNull(bodyRow.getMessageType());
+        // R2 意图标注仅正文行（query_plan/thinking 行不标）
+        assertEquals("knowledge_question", bodyRow.getIntentType());
+        assertNull(planRow.getIntentType());
+        assertNull(understandingRow.getIntentType());
+    }
+
+    @Test
+    @DisplayName("persistMessages → 无 QueryPlan（异常中断）不落 query_plan 行；pusher 无思考不落成对 thinking 行")
+    @SuppressWarnings("unchecked")
+    void persistMessages_noPlanNoThinking_fallbackToLegacyRows() throws Exception {
+        AssistantMessage body = new AssistantMessage("回答");
+        OverAllState state = new OverAllState(Map.of("messages", List.of(body)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        invokePersistMessages(
+                1L,
+                2L,
+                "问题",
+                "[]",
+                "[]",
+                0,
+                lastOutput,
+                new ThinkingPusher(
+                        "1", bridge, SseEventTransformer.RunState.create("1", "1", "m"), new ObjectMapper()));
+
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> rows = captor.getValue();
+        assertEquals(2, rows.size(), "仅 user + 正文两行，无 query_plan / 阶段 thinking 行");
+        assertTrue(rows.stream().noneMatch(r -> "query_plan".equals(r.getMessageType())));
     }
 
     // ==================== catch 分支 handleError 失败兜底（P0-4b 复合故障） ====================
@@ -1534,6 +1648,8 @@ class ChatRequestWorkerTest {
         assertEquals(1, result.size());
         assertEquals("thinking", result.get(0).getMessageType());
         assertEquals("深度思考过程", result.get(0).getContent());
+        // 2026-08-28 时间线改版：state 消息来源的思考恒属主 agent 生成阶段
+        assertEquals("generating", result.get(0).getThinkingStage());
     }
 
     // ==================== 其它私有方法边界 ====================

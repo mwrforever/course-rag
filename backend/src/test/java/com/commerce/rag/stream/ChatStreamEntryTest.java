@@ -764,6 +764,29 @@ class ChatStreamEntryTest {
     }
 
     @Test
+    @DisplayName("replayFromPg query_plan 行 → 同名 query_plan 事件透传 content（不当正文 DELTA 泄漏 JSON）")
+    void reconnect_replayFromPg_queryPlanRow_passthrough() throws Exception {
+        // Given: 2026-08-28 时间线改版落库的 query_plan 行（content 即实时事件同款 JSON）
+        String planJson = "{\"intent\":\"knowledge_question\",\"rewritten\":[\"高等数学 大纲\"],"
+                + "\"filters\":{\"courseNames\":[\"高等数学\"]}}";
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", planJson, "query_plan", null, 123L, 1, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: payload 原样透传回放，且不产生 {"text":...} 正文 DELTA（防止 JSON 泄漏成正文）
+        List<String> sent = sentDataStrings(emitter);
+        assertTrue(sent.contains(planJson), "query_plan 行应原样透传为 query_plan 事件 payload");
+        assertTrue(sent.stream().noneMatch(s -> s.startsWith("{\"text\":")), "不得被当正文 DELTA 回放");
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+    }
+
+    @Test
     @DisplayName("replayFromPg findByRunId 抛异常 → 返回 -1 降级为仅订阅实时事件")
     void reconnect_replayFromPg_findByRunIdThrows_returnsMinusOne() {
         // Given: PG 查询抛异常 → replayFromPg 捕获后返回 -1；run 活跃则仅订阅实时事件
