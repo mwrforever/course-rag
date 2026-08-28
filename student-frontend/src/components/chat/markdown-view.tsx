@@ -14,7 +14,7 @@
  * 无需做增量 diff；打字光标由 message-list 独立挂载）。
  */
 import { Copy } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
 import bash from "react-syntax-highlighter/dist/esm/languages/prism/bash";
 import css from "react-syntax-highlighter/dist/esm/languages/prism/css";
@@ -216,12 +216,13 @@ function TableWrapper({
 }
 
 /**
- * AI 回答 Markdown 渲染（流式累积重渲染）
+ * AI 回答 Markdown 渲染（memo 化 Task 14：content 与 onNotify 引用不变即跳过重渲染，
+ * 历史行不随末条流式 delta 重复解析 Markdown）
  *
  * @param content Markdown 原文
  * @param onNotify 复制提示回调
  */
-export function MarkdownView({ content, onNotify }: MarkdownViewProps) {
+export const MarkdownView = memo(function MarkdownView({ content, onNotify }: MarkdownViewProps) {
   return (
     <div data-testid="markdown-view" className="text-[15px] leading-7 text-text">
       <ReactMarkdown
@@ -294,4 +295,4 @@ export function MarkdownView({ content, onNotify }: MarkdownViewProps) {
       </ReactMarkdown>
     </div>
   );
-}
+});

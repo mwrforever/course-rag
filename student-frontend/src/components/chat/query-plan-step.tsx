@@ -11,6 +11,7 @@
  * @param node 查询计划节点（intent/rewritten/courseNames）
  */
 import { Compass } from "@phosphor-icons/react";
+import { memo } from "react";
 import { ChainNode } from "./chain-node";
 import type { TimelineQueryPlanNode } from "@/lib/types";
 
@@ -38,11 +39,11 @@ export function intentLabel(intent: string): string {
 }
 
 /**
- * 查询计划步骤（意图标签 + 改写查询列表）
+ * 查询计划步骤（意图标签 + 改写查询列表；memo 化 Task 14——node 引用稳定即跳过）
  *
  * @param props 见 QueryPlanStepProps
  */
-export function QueryPlanStep({ node }: QueryPlanStepProps) {
+export const QueryPlanStep = memo(function QueryPlanStep({ node }: QueryPlanStepProps) {
   return (
     <div data-testid="query-plan-step" className="chain-step">
       <ChainNode state="idle" icon={<Compass weight="fill" />} />
@@ -75,4 +76,4 @@ export function QueryPlanStep({ node }: QueryPlanStepProps) {
       </div>
     </div>
   );
-}
+});

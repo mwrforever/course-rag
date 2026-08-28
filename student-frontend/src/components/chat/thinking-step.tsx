@@ -13,7 +13,7 @@
  * - a11y：头部按钮 aria-expanded + 状态文字 aria-live=polite（思考中 → 已完成播报）
  */
 import { Brain, CaretDown, Check } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { ChainNode } from "./chain-node";
 import type { TimelineThinkingNode } from "@/lib/types";
 
@@ -37,11 +37,12 @@ export function visibleThinkingLines(lines: string[]): string[] {
 }
 
 /**
- * 思考步骤组件（头部行原位 + mask 收起展开 + 逐行 reveal）
+ * 思考步骤组件（头部行原位 + mask 收起展开 + 逐行 reveal；memo 化 Task 14——
+ * 流式 delta 只更新末思考节点身份，前序思考/计划步骤引用稳定即跳过重渲染）
  *
  * @param props 见 ThinkingStepProps
  */
-export function ThinkingStep({ node, running }: ThinkingStepProps) {
+export const ThinkingStep = memo(function ThinkingStep({ node, running }: ThinkingStepProps) {
   // 折叠开关：默认收起（用户拍板「默认卡片收起」沿用）
   const [open, setOpen] = useState(false);
   // 内容体引用：收起态锚定底部（露最新一行，设计稿 sticky-scroll 语义）
@@ -105,4 +106,4 @@ export function ThinkingStep({ node, running }: ThinkingStepProps) {
       </div>
     </div>
   );
-}
+});

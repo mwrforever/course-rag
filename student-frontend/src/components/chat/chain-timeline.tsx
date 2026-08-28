@@ -17,7 +17,7 @@
  * 各自内聚判定完成）；历史消息（active=false）全部呈现完成态。
  */
 import { Lightbulb, MagnifyingGlass, Paperclip, PenNib, Wrench } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { OpStep, summarizeOutput, toolNameLabel } from "./op-step";
 import { QueryPlanStep } from "./query-plan-step";
 import { ThinkingStep } from "./thinking-step";
@@ -60,11 +60,16 @@ export function isNodeRunning(node: TimelineNode, isLast: boolean, active: boole
 }
 
 /**
- * 链式时间轴容器（竖线 + 逐节点步骤）
+ * 链式时间轴容器（竖线 + 逐节点步骤；memo 化 Task 14——历史行 timeline 引用稳定，
+ * 整轴跳过重渲染；流式行仅变化节点经步骤级 memo 局部更新）
  *
  * @param props 见 ChainTimelineProps
  */
-export function ChainTimeline({ timeline, active, onOpenSources }: ChainTimelineProps) {
+export const ChainTimeline = memo(function ChainTimeline({
+  timeline,
+  active,
+  onOpenSources,
+}: ChainTimelineProps) {
   const lastIndex = timeline.length - 1;
   return (
     <div data-testid="chain-timeline" className="chain-timeline">
@@ -140,4 +145,4 @@ export function ChainTimeline({ timeline, active, onOpenSources }: ChainTimeline
       })}
     </div>
   );
-}
+});
