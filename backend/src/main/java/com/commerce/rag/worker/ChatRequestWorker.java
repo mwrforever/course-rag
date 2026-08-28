@@ -51,6 +51,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -429,6 +430,13 @@ public class ChatRequestWorker {
         ThinkingPusher thinkingPusher = new ThinkingPusher(runIdStr, bridge, runState, objectMapper);
         config.metadata().ifPresent(m -> m.put(RetrieveNode.KEY_THINKING_CALLBACK, thinkingPusher));
 
+        // ── 取消源注册（2026-08-28 时间线改版 Task 4）──
+        // 供 RetrieveNode 三段并行 join 前即时检查取消（读到即抛 CancelledException 走既有取消分支），
+        // 附件编排批循环同样复用本引用；读取语义与 checkCancelled 一致（标志存在且为 true 才算取消）。
+        // 与 KEY_THINKING_CALLBACK 同通道——瞬时 Java 引用，不落 state/checkpoint、模型不可见。
+        BooleanSupplier cancelSource = () -> isCancelled(runIdStr);
+        config.metadata().ifPresent(m -> m.put(RetrieveNode.KEY_CANCEL_CHECK, cancelSource));
+
         // ── 首事件前移（2026-08-27 C 端体验改版）──
         // ring 由入口 ChatStreamEntry 在 XADD 前已创建（createRing 为 computeIfAbsent 幂等），
         // 此处立即推 METADATA：原实现位于附件处理（process-timeout-ms 最长 60s）与两次 DB 写之后，
@@ -450,7 +458,10 @@ public class ChatRequestWorker {
         }
         if (!attachments.isEmpty()) {
             bridge.push(runIdStr, transformer.createStageEvent(runState, SseEventTransformer.STAGE_ATTACHMENTS));
-            attachmentContext = orchestrator.process(attachments);
+            // Task 4 接线：thinkingPusher 使图片 VLM caption 走流式聚合，reasoning 实时推
+            // attachments 阶段（THINKING 事件与本 STAGE 事件同阶段键）；cancelSource 使取消在
+            // 附件批处理循环内即时生效（已取消跳过剩余文件，不再耗下载/VLM 配额）
+            attachmentContext = orchestrator.process(attachments, thinkingPusher, cancelSource);
         }
         if (attachmentContext.hasAny()) {
             // 局部 final 转发（attachmentContext 上方被赋值非 effectively final，lambda 捕获需 final 变量）
@@ -528,7 +539,7 @@ public class ChatRequestWorker {
                         // B2-4: compareAndSet 占位终态——后续 catch 分支不再推第二个终态
                         if (terminalPushed.compareAndSet(false, true)) {
                             try {
-                                if (e instanceof CancelledException) {
+                                if (isCancelledError(e)) {
                                     handleCancelled(runIdStr, runId, runState, config, snapshot);
                                 } else {
                                     handleError(runIdStr, runId, runState, e);
@@ -1257,10 +1268,42 @@ public class ChatRequestWorker {
      * 取消检测：如果 cancelFlags 中 runId 对应的标记为 true，抛出 CancelledException。
      */
     private void checkCancelled(String runId) {
-        AtomicBoolean flag = cancelFlags.get(runId);
-        if (flag != null && flag.get()) {
+        if (isCancelled(runId)) {
             throw new CancelledException(runId);
         }
+    }
+
+    /**
+     * 取消标志读取（worker 取消语义唯一入口）：cancelFlags 中 runId 标志存在且为 true 即已取消。
+     *
+     * <p>doOnNext 检查点抛异常前的判定、以及经 {@code KEY_CANCEL_CHECK} 注入 config.metadata
+     * 供 RetrieveNode join 前检查与附件编排批循环检查，共用本方法保证三处取消口径一致。
+     *
+     * @param runId Run 唯一标识（字符串形态，cancelFlags 键）
+     * @return true 表示本 run 已被请求取消
+     */
+    private boolean isCancelled(String runId) {
+        AtomicBoolean flag = cancelFlags.get(runId);
+        return flag != null && flag.get();
+    }
+
+    /**
+     * 终态分类的取消判定：异常自身或 cause 链上任一元素为 CancelledException 即按取消处理。
+     *
+     * <p>doOnNext 检查点抛出的 CancelledException 原样直达 onErrorResume；但图节点内（如
+     * RetrieveNode join 前检查点）抛出的取消异常可能经图引擎异步链包装（CompletionException 等），
+     * 仅 {@code instanceof} 直判会漏分类成 ERROR 终态，故沿 cause 链溯源（限深防自引用死循环）。
+     *
+     * @param e onErrorResume 收到的异常
+     * @return true 表示应按取消分支处理
+     */
+    private static boolean isCancelledError(Throwable e) {
+        for (Throwable t = e; t != null && t != t.getCause(); t = t.getCause()) {
+            if (t instanceof CancelledException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

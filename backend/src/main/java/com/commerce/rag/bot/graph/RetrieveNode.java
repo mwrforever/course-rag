@@ -13,6 +13,7 @@ import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.bot.tool.SearchKnowledgeTool;
 import com.commerce.rag.bot.tool.TypedQuery;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.MemoryProperties;
 import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.DocumentLocalChunk;
@@ -34,6 +35,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
@@ -118,6 +120,15 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
      * 同通道——不写 State、不进 checkpoint（瞬时上下文，仅本轮 run 生命周期内有效）。
      */
     public static final String KEY_THINKING_CALLBACK = "thinkingCallback";
+
+    /**
+     * run 级取消源 metadata 键（2026-08-28 对话流式时间线改版 Task 4 新增）。
+     * worker 在 config.metadata 放入 {@code BooleanSupplier}（读 cancelFlags 当前 run 标志），
+     * 本节点在三段并行 join 前检查——已取消立即抛 {@link com.commerce.rag.exception.CancelledException}
+     * 走 worker 既有取消分支，不再白等最慢一段远程 IO。与 KEY_THINKING_CALLBACK 同通道——
+     * 不写 State、不进 checkpoint（瞬时引用，仅本轮 run 生命周期内有效）。
+     */
+    public static final String KEY_CANCEL_CHECK = "cancelCheck";
 
     private final SearchKnowledgeTool searchKnowledgeTool;
     private final CourseNameMapper courseNameMapper;
@@ -234,6 +245,9 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
 
         // recallEpisodic 内部已全异常降级（不会抛出）；附件局部检索 embed 异常在
         // buildUserDocumentText 内降级为 null（跳过局部检索，B3-4），三段 join 均不向上传播
+        // 取消即时检查点（Task 4）：join 前检查 worker 注入的取消源——已取消立即上抛
+        // CancelledException（走 worker 既有取消分支），不再阻塞等待最慢一段远程 IO 完成
+        checkCancelled(config);
         episodicFuture.join();
         List<KnowledgeChunk> chunks = chunksFuture.join();
         String userDocument = userDocFuture.join();
@@ -477,6 +491,26 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         }
         // 以空 <document> 壳为底，把 user-document 合并进 </document> 前（spec §3.2 装配顺序）
         return contextBuilderService.appendUserDocument("<document>\n</document>", userDocument);
+    }
+
+    /**
+     * 取消即时检查（Task 4）：读取 config.metadata 中 worker 注入的取消源，已取消抛 CancelledException。
+     *
+     * <p>metadata 无该键（离线评测/图直调等非 worker 链路）按未取消处理；异常携带 threadId（会话标识）
+     * 仅供日志定位，run 级取消回写与终态事件由 worker 取消分支以 runId 统一处理（instanceof 即命中分类）。
+     *
+     * @param config RunnableConfig（metadata 贯穿全图共享）
+     * @throws CancelledException 本 run 已被请求取消
+     */
+    private static void checkCancelled(RunnableConfig config) {
+        BooleanSupplier cancelled = config.metadata()
+                .map(m -> m.get(KEY_CANCEL_CHECK))
+                .filter(BooleanSupplier.class::isInstance)
+                .map(BooleanSupplier.class::cast)
+                .orElse(null);
+        if (cancelled != null && cancelled.getAsBoolean()) {
+            throw new CancelledException(config.threadId().orElse("unknown"));
+        }
     }
 
     /**

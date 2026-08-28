@@ -3,6 +3,7 @@ package com.commerce.rag.bot.graph;
 import static com.commerce.rag.bot.graph.OverAllState.KEY_QUERY_PLAN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -29,6 +30,7 @@ import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.commerce.rag.bot.tool.SearchKnowledgeTool;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.MemoryProperties;
 import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.DocumentLocalChunk;
@@ -44,6 +46,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -144,6 +147,52 @@ class RetrieveNodeTest {
                         argThat(queries -> queries.size() == 1
                                 && queries.get(0).courseIds().equals(List.of("101"))),
                         argThat(RetrieveNodeTest::isQueryVector));
+    }
+
+    @Test
+    @DisplayName("取消检查点 — 三段 join 前取消源为 true：抛 CancelledException 走 worker 取消分支")
+    void apply_cancelledBeforeJoin_throwsCancelled() throws Exception {
+        // Given: worker 经 KEY_CANCEL_CHECK 注入已取消标志（如 QU 阶段用户点了取消）
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 学习方法"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("高等数学怎么学"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("s1")
+                .addMetadata(RetrieveNode.KEY_CANCEL_CHECK, (BooleanSupplier) () -> true)
+                .build();
+
+        // When / Then: apply 同步抛既有 CancelledException（不再阻塞等待最慢一段远程 IO）
+        assertThrows(CancelledException.class, () -> newRetrieveNode().apply(state, config));
+    }
+
+    @Test
+    @DisplayName("取消检查点 — 取消源为 false：不拦截，检索链路正常完成")
+    void apply_cancelSourceFalse_proceedsNormally() throws Exception {
+        // Given: 正常 run（未取消），取消源恒 false
+        QueryPlan plan = new QueryPlan(
+                IntentType.KNOWLEDGE_QUESTION, List.of("高等数学 学习方法"), new QueryPlanFilters(List.of()), false);
+        OverAllState state =
+                new OverAllState(Map.of(KEY_QUERY_PLAN, plan, "messages", List.of(new UserMessage("高等数学怎么学"))));
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("s1")
+                .addMetadata(RetrieveNode.KEY_CANCEL_CHECK, (BooleanSupplier) () -> false)
+                .build();
+        KnowledgeChunk k =
+                new KnowledgeChunk("c1", "内容", "", "讲义", "第一章", 0.9, IntentType.KNOWLEDGE_QUESTION, "h".repeat(64));
+        when(embeddingModel.embed(anyString())).thenReturn(QUERY_VECTOR);
+        when(searchKnowledgeTool.searchKnowledge(any(), any())).thenReturn(new KnowledgeSearchResult(List.of(k)));
+        when(contextBuilderService.buildDocument("高等数学怎么学", List.of("高等数学 学习方法"), List.of(k)))
+                .thenReturn("<document>D</document>");
+
+        // When
+        Map<String, Object> result = RetrieveNodeTestUtil.apply(newRetrieveNode(), state, config);
+
+        // Then: 正常走完检索与 document 写出（Task 4 键生效不误伤主链路）
+        assertTrue(result.isEmpty());
+        assertEquals(
+                "<document>D</document>",
+                config.metadata().get().get(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT));
     }
 
     @Test

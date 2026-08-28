@@ -50,6 +50,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -1297,7 +1298,7 @@ class ChatRequestWorkerTest {
         MapRecord<String, Object, Object> record = createMockRecordWithBody(body);
 
         // 附件编排 mock：返回空上下文（本用例聚焦 run/message 双存，不关心 caption 组装）
-        when(orchestrator.process(anyList())).thenReturn(AttachmentContext.empty());
+        when(orchestrator.process(anyList(), any(), any())).thenReturn(AttachmentContext.empty());
 
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1390,7 +1391,7 @@ class ChatRequestWorkerTest {
 
         AttachmentContext context =
                 new AttachmentContext(List.of(new ImageCaptionResult("图片1:红色图表", "a.png")), Map.of());
-        when(orchestrator.process(anyList())).thenReturn(context);
+        when(orchestrator.process(anyList(), any(), any())).thenReturn(context);
 
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1406,12 +1407,18 @@ class ChatRequestWorkerTest {
         List<?> msgs = (List<?>) inputsCaptor.getValue().get("messages");
         assertEquals("图片1:红色图表 这张图里是什么", ((UserMessage) msgs.get(0)).getText());
 
-        // Then: orchestrator 收到解析后的附件记录（url/type 原样透传）
+        // Then: orchestrator 收到解析后的附件记录（url/type 原样透传），且 Task 4 接线传入
+        // thinkingPusher（caption 思考流式）与取消源（附件批循环即时取消）
         ArgumentCaptor<List<AttachmentRecord>> attCaptor = ArgumentCaptor.forClass(List.class);
-        verify(orchestrator).process(attCaptor.capture());
+        ArgumentCaptor<ThinkingPusher> pusherCaptor = ArgumentCaptor.forClass(ThinkingPusher.class);
+        ArgumentCaptor<BooleanSupplier> cancelCaptor = ArgumentCaptor.forClass(BooleanSupplier.class);
+        verify(orchestrator).process(attCaptor.capture(), pusherCaptor.capture(), cancelCaptor.capture());
         assertEquals(1, attCaptor.getValue().size());
         assertEquals("image", attCaptor.getValue().get(0).type());
         assertEquals("0/a.png", attCaptor.getValue().get(0).url());
+        assertNotNull(pusherCaptor.getValue(), "SSE 链路必须传入 per-run thinkingPusher");
+        assertNotNull(cancelCaptor.getValue(), "必须传入 run 级取消源");
+        assertFalse(cancelCaptor.getValue().getAsBoolean(), "未被取消的 run 取消源应返回 false");
 
         // Then: metadata 携带附件上下文（QU/RetrieveNode 消费通道）
         assertEquals(
@@ -1420,6 +1427,10 @@ class ChatRequestWorkerTest {
                         .getValue()
                         .metadata(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT)
                         .orElse(null));
+        // Then: metadata 注册取消源（RetrieveNode 三段 join 前检查点消费通道，Task 4）
+        assertTrue(
+                configCaptor.getValue().metadata(RetrieveNode.KEY_CANCEL_CHECK).orElse(null) instanceof BooleanSupplier,
+                "worker 必须在 config.metadata 注册 KEY_CANCEL_CHECK 取消源");
 
         // Then: 当前消息已带附件 → 不触发 chat_run 历史重建（Task 11 重建仅覆盖后续无附件轮次）
         verify(chatRunService, never()).findRecentAttachments(anyLong(), anyLong(), anyInt());
@@ -1451,7 +1462,7 @@ class ChatRequestWorkerTest {
 
         AttachmentContext context = new AttachmentContext(
                 List.of(), Map.of("0/doc.pdf", List.of(new DocumentLocalChunk("附件正文", new float[] {1f}, 0))));
-        when(orchestrator.process(anyList())).thenReturn(context);
+        when(orchestrator.process(anyList(), any(), any())).thenReturn(context);
 
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1488,7 +1499,7 @@ class ChatRequestWorkerTest {
         body.put("query", "这张图里是什么");
         body.put("attachments", attachmentsJson);
         MapRecord<String, Object, Object> record = createMockRecordWithBody(body);
-        when(orchestrator.process(anyList())).thenReturn(AttachmentContext.empty());
+        when(orchestrator.process(anyList(), any(), any())).thenReturn(AttachmentContext.empty());
 
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1502,7 +1513,7 @@ class ChatRequestWorkerTest {
         InOrder inOrder = inOrder(bridge, orchestrator);
         inOrder.verify(bridge).push(eq("100"), argThat((SseEvent e) -> e != null && e.type() == SseEventType.METADATA));
         inOrder.verify(bridge).push(eq("100"), argThat((SseEvent e) -> e != null && e.type() == SseEventType.STAGE));
-        inOrder.verify(orchestrator).process(anyList());
+        inOrder.verify(orchestrator).process(anyList(), any(), any());
         // 且图执行前推送 STAGE(understanding)（覆盖 QU 阻塞 LLM 静默窗口）
         verify(transformer, atLeastOnce()).createStageEvent(any(), eq(SseEventTransformer.STAGE_UNDERSTANDING));
     }
@@ -1526,7 +1537,7 @@ class ChatRequestWorkerTest {
 
         // Then: 触发重建查询但查无历史（mock 默认空列表）→ orchestrator 不被调用，query 原样，无附件上下文 metadata
         verify(chatRunService).findRecentAttachments(200L, 100L, 3);
-        verify(orchestrator, never()).process(anyList());
+        verify(orchestrator, never()).process(anyList(), any(), any());
         List<?> msgs = (List<?>) inputsCaptor.getValue().get("messages");
         assertEquals("你好", ((UserMessage) msgs.get(0)).getText());
         assertTrue(configCaptor
@@ -1550,7 +1561,7 @@ class ChatRequestWorkerTest {
 
         // orchestrator 返回含旧图 caption 的附件上下文（Caffeine 命中直接复用或重新 caption）
         AttachmentContext context = new AttachmentContext(List.of(new ImageCaptionResult("图片1:旧图", "a.png")), Map.of());
-        when(orchestrator.process(recent)).thenReturn(context);
+        when(orchestrator.process(eq(recent), any(), any())).thenReturn(context);
 
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1564,8 +1575,8 @@ class ChatRequestWorkerTest {
 
         // Then: 以 chat_run 为入口查该会话最近 3 个 run 的附件（排除当前 run）
         verify(chatRunService).findRecentAttachments(200L, 100L, 3);
-        // orchestrator.process 收到重建出的附件记录
-        verify(orchestrator).process(recent);
+        // orchestrator.process 收到重建出的附件记录（pusher/取消源由 worker 接线传入）
+        verify(orchestrator).process(eq(recent), any(), any());
         // metadata 携带重建的附件上下文（QU/RetrieveNode 消费通道）
         assertEquals(
                 context,

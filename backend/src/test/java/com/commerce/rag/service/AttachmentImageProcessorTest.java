@@ -3,6 +3,8 @@ package com.commerce.rag.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -12,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.commerce.rag.etl.ImageCaptionService;
 import com.commerce.rag.properties.AttachmentProperties;
 import com.commerce.rag.record.ImageCaptionResult;
+import com.commerce.rag.stream.ThinkingPusher;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
@@ -63,6 +66,46 @@ class AttachmentImageProcessorTest {
         assertEquals(2, results.size());
         assertEquals("图片1:红色图表", results.get(0).caption());
         assertEquals("图片2:蓝色图表", results.get(1).caption());
+    }
+
+    @Test
+    @DisplayName("带 ThinkingPusher — VLM 走 captionStreaming，caption 结果语义与同步路径一致")
+    void processImages_withPusher_usesCaptionStreaming() {
+        // Given: SSE 链路场景传入 per-run pusher
+        ImageCaptionService captionService = mock(ImageCaptionService.class);
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        when(captionService.captionStreaming(any(), any(), same(pusher))).thenReturn("流式图表描述");
+        AttachmentCacheService cache = new AttachmentCacheService(100, 30);
+        AttachmentImageProcessor processor = new AttachmentImageProcessor(captionService, cache, Runnable::run, PROPS);
+
+        // When
+        List<ImageCaptionResult> results =
+                processor.processImages(List.of(normalImage(NORMAL_IMAGE_BYTES)), List.of("a.png"), pusher);
+
+        // Then: 走流式聚合方法且透传同一 pusher；「图片N:描述」组装语义不变
+        assertEquals(1, results.size());
+        assertEquals("图片1:流式图表描述", results.get(0).caption());
+        verify(captionService).captionStreaming(any(), eq("image/png"), same(pusher));
+        verify(captionService, never()).caption(any(), any());
+    }
+
+    @Test
+    @DisplayName("无 pusher 重载 — 保持同步 caption 路径零变化（不调 captionStreaming）")
+    void processImages_withoutPusher_keepsSyncCaption() {
+        ImageCaptionService captionService = mock(ImageCaptionService.class);
+        when(captionService.caption(any(), any())).thenReturn("同步描述");
+        AttachmentCacheService cache = new AttachmentCacheService(100, 30);
+        AttachmentImageProcessor processor = new AttachmentImageProcessor(captionService, cache, Runnable::run, PROPS);
+
+        // When: 带 pusher 重载显式传 null（与两参重载等价）
+        List<ImageCaptionResult> results =
+                processor.processImages(List.of(normalImage(NORMAL_IMAGE_BYTES + 7)), List.of("a.png"), null);
+
+        // Then: 仍走原同步 caption，不触流式方法（离线/测试兼容承诺）
+        assertEquals(1, results.size());
+        assertEquals("图片1:同步描述", results.get(0).caption());
+        verify(captionService).caption(any(), any());
+        verify(captionService, never()).captionStreaming(any(), any(), any());
     }
 
     @Test
