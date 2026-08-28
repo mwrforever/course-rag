@@ -178,10 +178,13 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   // ── 智能吸底滚动：仅距底 80px 内跟随（用户上翻阅读不打扰）──
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastMessage = state.messages.at(-1);
-  // 流式输出变化锚点：最后一条 AI 消息的正文+思考长度变化即触发检查
+  // 流式输出变化锚点：最后一条 AI 消息的正文+时间轴规模变化即触发检查
+  // （时间轴以「节点数 + 末思考节点行数」计——思考行流式追加时逐行驱动吸底检查）
+  const lastNode = lastMessage?.role === "assistant" ? lastMessage.timeline.at(-1) : undefined;
+  const lastThinkingLines = lastNode?.kind === "thinking" ? lastNode.lines.length : 0;
   const streamAnchor =
     lastMessage?.role === "assistant"
-      ? `${lastMessage.text.length}-${lastMessage.thinking.length}`
+      ? `${lastMessage.text.length}-${lastMessage.timeline.length}-${lastThinkingLines}`
       : "idle";
   useEffect(() => {
     const el = scrollRef.current;

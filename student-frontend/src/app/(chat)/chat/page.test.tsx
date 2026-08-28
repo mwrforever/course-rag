@@ -90,12 +90,8 @@ function makeAssistant(overrides: Partial<StreamMessage> = {}): StreamMessage {
     content: "",
     attachments: [],
     model: "qwen3-8b",
-    thinking: "",
-    thinkingEnded: false,
     text: "",
     sources: [],
-    stages: [],
-    tools: [],
     timeline: [],
     endStatus: null,
     messageId: null,
@@ -219,12 +215,8 @@ describe("新对话页：发送与流式状态流转", () => {
             content: query,
             attachments: [],
             model: null,
-            thinking: "",
-            thinkingEnded: false,
             text: "",
             sources: [],
-            stages: [],
-            tools: [],
             timeline: [],
             endStatus: null,
             messageId: null,
@@ -290,10 +282,12 @@ describe("新对话页：发送与流式状态流转", () => {
     });
   });
 
-  it("流式渲染：sources 前置 + 打字光标 + end 后操作栏浮现", async () => {
+  it("终态渲染：时间轴（检索步骤）前置 + 无打字光标 + end 后操作栏浮现", async () => {
     const assistant = makeAssistant({
-      thinking: "先检索资料",
-      thinkingEnded: true,
+      timeline: [
+        { kind: "thinking", stage: "understanding", lines: ["先检索资料"], ended: true },
+        { kind: "sources", sources: [SOURCE] },
+      ],
       text: "完整回答",
       sources: [SOURCE],
       endStatus: "COMPLETED",
@@ -305,14 +299,14 @@ describe("新对话页：发送与流式状态流转", () => {
       messages: [assistant],
     };
     renderPage();
-    // 2026-08-27：来源改为推理卡「知识片段」pill + 召回抽屉（不再内联 sources-list）
-    const pill = screen.getByTestId("reasoning-sources-pill");
+    // 2026-08-28：链式时间轴承载思考/检索步骤，来源经检索步骤点击开召回抽屉
+    const chain = screen.getByTestId("chain-timeline");
     const body = screen.getByTestId("markdown-view");
-    expect(pill.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(chain.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByTestId("typing-cursor")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /有用/ })).toBeInTheDocument();
-    // 点击 pill 打开召回抽屉，展示片段正文
-    fireEvent.click(pill);
+    // 点击检索步骤打开召回抽屉，展示片段正文
+    fireEvent.click(screen.getByTestId("sources-step"));
     expect(screen.getByTestId("retrieval-drawer")).toBeInTheDocument();
   });
 
@@ -389,12 +383,8 @@ describe("新对话页：附件全链路", () => {
         content: "看图提问",
         attachments,
         model: null,
-        thinking: "",
-        thinkingEnded: false,
         text: "",
         sources: [],
-        stages: [],
-        tools: [],
         timeline: [],
         endStatus: null,
         messageId: null,

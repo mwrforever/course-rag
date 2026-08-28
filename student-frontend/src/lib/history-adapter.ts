@@ -22,7 +22,7 @@
  * - 历史消息一律落 endStatus=COMPLETED（持久化即完成态；取消/异常 run 的 assistant
  *   行由服务端过滤不下发，前端天然只见完整 run）
  */
-import type { StreamMessage, StreamTool } from "@/hooks/use-chat-stream";
+import type { StreamMessage } from "@/hooks/use-chat-stream";
 import {
   queryPlanPayloadSchema,
   type ChatStageKey,
@@ -105,16 +105,19 @@ function parseToolResult(content: string): ToolResultPayload {
 }
 
 /**
- * 在 run 归并草稿中追加一条工具结果：按 toolCallId 配对本 run 首个 pending 工具卡
- *（空串同一谓词按到达顺序配对；已配对/无匹配返回 false 静默忽略）
+ * 在时间轴原位配对一条工具结果：按 toolCallId 找本 run 首个 pending 工具节点
+ * 写结果（空串同一谓词按到达顺序配对，与实时 chatReducer 语义一致）；
+ * 无配对静默忽略
  */
-function pairToolResult(tools: StreamTool[], result: ToolResultPayload): void {
-  const target = tools.find(
-    (tool) => tool.toolCallId === result.toolCallId && tool.status === "pending",
+function pairTimelineToolResult(timeline: TimelineNode[], result: ToolResultPayload): void {
+  const target = timeline.find(
+    (node) =>
+      node.kind === "tool" && node.toolCallId === result.toolCallId && node.status === "pending",
   );
-  if (!target) {
+  if (!target || target.kind !== "tool") {
     return;
   }
+  // 后端恒 success（design 注记）；非 success 映射 error 态保留枚举分支
   target.status = result.status === "success" ? "success" : "error";
   target.output = result.output;
 }
@@ -157,10 +160,6 @@ interface RunDraft {
   runId: string;
   /** 正文行内容（messageType=null）按序拼接 */
   textParts: string[];
-  /** thinking 行内容按序拼接 */
-  thinkingParts: string[];
-  /** 工具卡（TOOL_CALL 插入 / TOOL_RESULT 配对） */
-  tools: StreamTool[];
   /** 时间轴节点（按行序到达序重建；thinking/query_plan/tool/sources 各建节点） */
   timeline: TimelineNode[];
   /** 来源卡数据（取最后一组非空数组） */
@@ -179,12 +178,8 @@ function toUserMessage(row: StudentMessage): StreamMessage {
     content: row.content,
     attachments: row.attachments,
     model: null,
-    thinking: "",
-    thinkingEnded: false,
     text: "",
     sources: [],
-    stages: [],
-    tools: [],
     timeline: [],
     endStatus: null,
     messageId: null,
@@ -223,8 +218,6 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
       draft = {
         runId,
         textParts: [],
-        thinkingParts: [],
-        tools: [],
         timeline: [],
         sources: [],
         mainMessageId: null,
@@ -238,13 +231,10 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
         content: "",
         attachments: [],
         model: null,
-        thinking: "",
-        thinkingEnded: true,
         text: "",
         sources: [],
-        // 历史消息无 STAGE 事件可回放（阶段是瞬时进度，不落库）——恒空数组
-        stages: [],
-        tools: [],
+        // 历史消息无 STAGE 事件可回放（阶段是瞬时进度，不落库）——时间轴由
+        // thinking/query_plan/tool/sources 行重建，阶段节点天然缺席
         timeline: [],
         endStatus: "COMPLETED",
         messageId: null,
@@ -258,8 +248,7 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
 
     switch (row.messageType) {
       case "thinking":
-        // thinking 行：思考文本累积（持久化行齐备 → 折叠思考卡）+ 时间轴同 stage 合并节点
-        draft.thinkingParts.push(row.content);
+        // thinking 行：时间轴同 stage 合并节点（持久化行齐备 → 恒 ended=true）
         upsertHistoryThinkingNode(
           draft.timeline,
           normalizeThinkingStage(row.thinkingStage),
@@ -288,9 +277,8 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
         break;
       }
       case "TOOL_CALL": {
-        // 工具调用行：插入 pending 工具卡（后续 TOOL_RESULT 按 toolCallId 配对）
+        // 工具调用行：时间轴插入 pending 工具节点（后续 TOOL_RESULT 按 toolCallId 配对）
         const call = parseToolCall(row.content);
-        draft.tools.push({ ...call, status: "pending", output: null });
         draft.timeline.push({
           kind: "tool",
           toolCallId: call.toolCallId,
@@ -302,19 +290,8 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
         break;
       }
       case "TOOL_RESULT": {
-        // 工具结果行：配对本 run 内首个同 toolCallId 的 pending 工具卡（双通道同步原位更新）
-        const result = parseToolResult(row.content);
-        pairToolResult(draft.tools, result);
-        const target = draft.timeline.find(
-          (item) =>
-            item.kind === "tool" &&
-            item.toolCallId === result.toolCallId &&
-            item.status === "pending",
-        );
-        if (target && target.kind === "tool") {
-          target.status = result.status === "success" ? "success" : "error";
-          target.output = result.output;
-        }
+        // 工具结果行：时间轴原位配对本 run 内首个同 toolCallId 的 pending 工具节点
+        pairTimelineToolResult(draft.timeline, parseToolResult(row.content));
         break;
       }
       default:
@@ -341,8 +318,6 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
     const index = indices.get(runId) as number;
     const target = output[index];
     target.text = draft.textParts.join("");
-    target.thinking = draft.thinkingParts.join("");
-    target.tools = draft.tools;
     target.sources = draft.sources;
     target.timeline = draft.timeline;
     target.messageId = draft.mainMessageId;

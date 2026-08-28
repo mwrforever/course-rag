@@ -98,12 +98,8 @@ function aiMsg(over?: Partial<StreamMessage>): StreamMessage {
     content: "",
     attachments: [],
     model: "m",
-    thinking: "",
-    thinkingEnded: false,
     text: "回答一部分",
     sources: [],
-    stages: [],
-    tools: [],
     timeline: [],
     endStatus: null,
     messageId: null,
@@ -119,12 +115,8 @@ function userMsg(over?: Partial<StreamMessage>): StreamMessage {
     content: "问题",
     attachments: [],
     model: null,
-    thinking: "",
-    thinkingEnded: false,
     text: "",
     sources: [],
-    stages: [],
-    tools: [],
     timeline: [],
     endStatus: null,
     messageId: null,
@@ -205,7 +197,7 @@ describe("chatReducer 纯函数", () => {
   });
 
   it("用例2 thinking（时间线改版）：同 stage 多 delta 合并一节点多行；thinking_end 置节点 ended", () => {
-    let s = streamingWithAi({ messages: [aiMsg({ thinking: "" })] });
+    let s = streamingWithAi({ messages: [aiMsg()] });
     s = chatReducer(s, { type: "thinking", delta: "先检索", stage: "understanding" });
     s = chatReducer(s, { type: "thinking", delta: "，再组织\n新起一行", stage: "understanding" });
     // 同 stage 合并：一节点，delta 按换行并入（首段续接末行、其余各起新行）
@@ -757,7 +749,7 @@ describe("chatReducer 纯函数", () => {
     const s0 = Object.freeze({
       ...createInitialState(null),
       streaming: true,
-      messages: Object.freeze([Object.freeze(aiMsg({ thinking: "" }))]),
+      messages: Object.freeze([Object.freeze(aiMsg())]),
     }) as unknown as ChatStreamState;
     const s1 = chatReducer(s0, { type: "metadata", runId: "run-1", sessionId: "s1", model: "m" });
     const s2 = chatReducer(s1, { type: "thinking", delta: "补充", stage: "generating" });

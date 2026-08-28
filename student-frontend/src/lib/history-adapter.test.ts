@@ -101,7 +101,7 @@ describe("historyAdapter：基础映射", () => {
     expect(message.intentType).toBe("chat");
   });
 
-  it("thinking 行 → 时间轴思考节点（同 stage 合并行、恒 ended=true）+ thinkingEnded 折叠标记", () => {
+  it("thinking 行 → 时间轴思考节点（同 stage 合并行、恒 ended=true）", () => {
     const rows = [
       makeRow({
         id: "r1",
@@ -124,7 +124,6 @@ describe("historyAdapter：基础映射", () => {
     expect(message.timeline).toEqual([
       { kind: "thinking", stage: "understanding", lines: ["第一步分析，第二步检索"], ended: true },
     ]);
-    expect(message.thinkingEnded).toBe(true);
     expect(message.text).toBe("最终回答");
   });
 
@@ -182,15 +181,7 @@ describe("historyAdapter：工具卡配对", () => {
       }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.tools).toHaveLength(1);
-    expect(message.tools[0]).toEqual({
-      toolCallId: "t1",
-      toolName: "searchKnowledge",
-      input: { query: "RAG" },
-      status: "success",
-      output: { hits: 3 },
-    });
-    // 时间轴工具节点与 tools 字段同构（pending 建节点 → result 原位转 success）
+    // 时间轴工具节点：TOOL_CALL 建 pending 节点 → TOOL_RESULT 原位转 success
     expect(message.timeline).toEqual([
       {
         kind: "tool",
@@ -227,8 +218,7 @@ describe("historyAdapter：工具卡配对", () => {
       }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.tools.map((tool) => tool.output)).toEqual(["A", "B"]);
-    expect(message.tools.map((tool) => tool.status)).toEqual(["success", "success"]);
+    // 时间轴工具节点：空 toolCallId 按到达顺序原位配对
     expect(message.timeline.map((node) => (node.kind === "tool" ? node.output : null))).toEqual([
       "A",
       "B",
@@ -263,10 +253,13 @@ describe("historyAdapter：工具卡配对", () => {
     expect(user1.role).toBe("user");
     expect(user2.role).toBe("user");
     expect(assistant1.id).toBe("run-1");
-    expect(assistant1.tools.map((tool) => tool.status)).toEqual(["pending"]);
+    expect(assistant1.timeline.map((node) => (node.kind === "tool" ? node.status : null))).toEqual([
+      "pending",
+    ]);
     expect(assistant2.id).toBe("run-2");
-    expect(assistant2.tools).toHaveLength(1);
-    expect(assistant2.tools[0]).toMatchObject({
+    expect(assistant2.timeline).toHaveLength(1);
+    expect(assistant2.timeline[0]).toMatchObject({
+      kind: "tool",
       toolName: "queryCourseDetail",
       status: "success",
       output: "课程详情",
@@ -279,9 +272,8 @@ describe("historyAdapter：工具卡配对", () => {
       makeRow({ seq: 3, messageType: "TOOL_RESULT", content: "also-bad" }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.tools).toHaveLength(1);
-    expect(message.tools[0].status).toBe("success");
-    expect(message.tools[0].toolCallId).toBe("");
+    expect(message.timeline).toHaveLength(1);
+    expect(message.timeline[0]).toMatchObject({ kind: "tool", status: "success", toolCallId: "" });
   });
 
   it("无配对的 TOOL_RESULT 忽略（不产生错误工具卡，时间轴同样不建节点）", () => {
@@ -293,7 +285,6 @@ describe("historyAdapter：工具卡配对", () => {
       }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.tools).toEqual([]);
     expect(message.timeline).toEqual([]);
   });
 });
@@ -383,7 +374,6 @@ describe("historyAdapter：顺序与归并", () => {
     ];
     const [message] = historyAdapter(rows);
     expect(message.text).toBe("");
-    expect(message.tools).toHaveLength(1);
     expect(message.messageId).toBeNull();
     expect(message.endStatus).toBe("COMPLETED");
     expect(message.timeline.map((node) => node.kind)).toEqual(["thinking", "tool"]);
