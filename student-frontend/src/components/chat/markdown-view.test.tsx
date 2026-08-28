@@ -73,6 +73,29 @@ describe("MarkdownView 基础渲染", () => {
     expect(screen.getAllByRole("separator").length).toBeGreaterThan(0);
   });
 
+  it("映射覆写（Task 11）：h2/h3 挂 a-h 类；无序列表项挂 a-li 菱形；strong 深棕强调", () => {
+    const md = ["## 二级标题", "", "### 三级标题", "", "- 菱形列表项", "", "这是**强调内容**"].join(
+      "\n",
+    );
+    renderMarkdown(md);
+    // h2/h3 → 设计稿 a-h 样式类（15px/700/gold-deep/字距 1.5px 由 CSS 承担）
+    expect(screen.getByRole("heading", { level: 2, name: "二级标题" })).toHaveClass("a-h");
+    expect(screen.getByRole("heading", { level: 3, name: "三级标题" })).toHaveClass("a-h");
+    // 无序列表项 → 菱形 bullet 类（ul 去默认圆点）
+    expect(screen.getByText("菱形列表项")).toHaveClass("a-li");
+    // strong → brand-strong 深棕强调
+    const strong = screen.getByText("强调内容");
+    expect(strong.tagName).toBe("STRONG");
+    expect(strong).toHaveClass("text-brand-strong");
+  });
+
+  it("有序列表保留十进制编号（ol 上下文关闭菱形 bullet，步骤语义不丢失）", () => {
+    renderMarkdown(["1. 第一步", "2. 第二步"].join("\n"));
+    const ol = screen.getByRole("list");
+    expect(ol.tagName).toBe("OL");
+    expect(ol.className).toContain("list-decimal");
+  });
+
   it("行内代码：等宽样式包裹", () => {
     renderMarkdown("使用 `useChatStream` 订阅流");
     expect(screen.getByText("useChatStream")).toBeInTheDocument();

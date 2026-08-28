@@ -207,10 +207,10 @@
   @keyframes node-pulse {
     0%,
     100% {
-      box-shadow: 0 0 0 0 rgb(201 151 91 / 35%);
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-gold) 35%, transparent);
     }
     50% {
-      box-shadow: 0 0 0 6px rgb(201 151 91 / 0%);
+      box-shadow: 0 0 0 6px transparent;
     }
   }
   /* 完成态弹跳（scale .5 → 1.2 → 1） */
@@ -687,8 +687,8 @@ a:hover .read-link::after {
   background: linear-gradient(
     180deg,
     var(--color-gold) 0%,
-    rgb(201 151 91 / 35%) 70%,
-    rgb(201 151 91 / 12%) 100%
+    color-mix(in srgb, var(--color-gold) 35%, transparent) 70%,
+    color-mix(in srgb, var(--color-gold) 12%, transparent) 100%
   );
 }
 /* 步骤行：节点列 + 内容列；hover 仅在可点击步骤给暖白底 */
@@ -705,7 +705,7 @@ a:hover .read-link::after {
   cursor: pointer;
 }
 .chain-step--clickable:hover {
-  background: rgb(255 253 248 / 75%);
+  background: color-mix(in srgb, var(--color-surface) 75%, transparent);
 }
 .chain-step--shake {
   animation: var(--animate-step-shake);
@@ -799,7 +799,7 @@ a:hover .read-link::after {
 }
 .chain-step--done.chain-step--green .chain-node {
   color: var(--color-success);
-  background: rgb(94 125 70 / 14%);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
 }
 /* 步骤内容列 */
 .chain-body {
@@ -897,7 +897,7 @@ a:hover .read-link::after {
   height: 5px;
   border-radius: 1.5px;
   transform: rotate(45deg);
-  background: rgb(201 151 91 / 35%);
+  background: color-mix(in srgb, var(--color-gold) 35%, transparent);
 }
 .chain-tl--now::before {
   background: var(--color-gold);
@@ -1026,7 +1026,7 @@ a:hover .read-link::after {
     180deg,
     var(--color-gold-light),
     var(--color-gold) 60%,
-    rgb(201 151 91 / 10%)
+    color-mix(in srgb, var(--color-gold) 10%, transparent)
   );
 }
 
@@ -1044,4 +1044,141 @@ a:hover .read-link::after {
     transform: none !important;
     filter: none !important;
   }
+}
+
+/* ===== 答案区 Markdown 映射（2026-08-28 时间线改版 Task 11：设计稿 .a-h/.a-li 复刻） ===== */
+/* 标题层级：15px/700/gold-deep/字距 1.5px（accent-d → gold-deep 令牌映射） */
+.a-h {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-gold-deep);
+  letter-spacing: 1.5px;
+  margin-top: 8px;
+}
+/* 无序列表项：菱形 bullet（6px 旋转 45° 金渐变；绝对定位 + 左内边距兼容多块级子内容） */
+.a-li {
+  position: relative;
+  padding-left: 17px;
+}
+.a-li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  background: linear-gradient(135deg, var(--color-gold-light), var(--color-gold));
+}
+/* 有序列表上下文：关闭菱形 bullet（保留十进制编号，步骤语义信息不丢失） */
+ol .a-li {
+  padding-left: 4px;
+}
+ol .a-li::before {
+  content: none;
+}
+
+/* ===== 消息操作栏按钮组（2026-08-28 时间线改版 Task 11：设计稿 .act 复刻） ===== */
+/* 衬线字体 + 12px/10px 圆角；hover 上浮 1px + 阴影 + 边框；on 态金棕胶囊底 */
+.act-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-faint);
+  font-family: var(--font-display);
+  font-size: 12px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    background 0.3s var(--ease-chain),
+    color 0.3s var(--ease-chain),
+    border-color 0.3s var(--ease-chain),
+    transform 0.3s var(--ease-chain),
+    box-shadow 0.3s var(--ease-chain);
+}
+.act-btn:hover:not(:disabled) {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+.act-btn:disabled {
+  cursor: not-allowed;
+}
+/* on 态：有用（金棕胶囊）/ 无用（danger 胶囊，语义区分） */
+.act-btn--on {
+  color: var(--color-gold-deep);
+  background: var(--color-brand-soft);
+  border-color: color-mix(in srgb, var(--color-gold) 30%, transparent);
+}
+.act-btn--on-danger {
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 30%, transparent);
+}
+
+/* ===== 召回抽屉 chunk 卡（2026-08-28 时间线改版 Task 11：设计稿 .chunk 复刻） ===== */
+/* 错峰进场（animationDelay 由组件按序注入）+ hover 左移浮起 */
+.chunk-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 14px 15px;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  transition:
+    transform 0.35s var(--ease-chain),
+    box-shadow 0.35s,
+    border-color 0.35s;
+  animation: var(--animate-source-in);
+}
+.chunk-card:hover {
+  transform: translateX(-3px);
+  border-color: color-mix(in srgb, var(--color-gold) 45%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+/* 类型徽标：金棕胶囊 */
+.chunk-type {
+  font-size: 10.5px;
+  color: var(--color-gold-deep);
+  background: var(--color-brand-soft);
+  padding: 3px 9px;
+  border-radius: 999px;
+  letter-spacing: 1px;
+}
+/* 片段正文：默认 3 行截断，展开态解除（点击卡片切换） */
+.chunk-text {
+  font-size: 12.5px;
+  color: var(--color-muted);
+  line-height: 1.9;
+  margin-top: 7px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+.chunk-card--exp .chunk-text {
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+/* 相似度 meter：4px 高、金渐变填充、width 1s 过渡（进场后由组件注入目标宽度） */
+.chunk-meter {
+  flex: 1;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+.chunk-meter i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--color-gold-light), var(--color-gold));
+  transition: width 1s var(--ease-chain);
 }

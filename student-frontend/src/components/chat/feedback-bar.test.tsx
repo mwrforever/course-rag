@@ -96,6 +96,30 @@ describe("FeedbackBar 复制", () => {
   });
 });
 
+describe("FeedbackBar act 按钮组样式（Task 11 对齐设计稿 .act）", () => {
+  it("三个按钮挂 act-btn 类；选中态金棕/danger 胶囊（hover 上浮由 CSS 承担）", async () => {
+    renderBar({ messageId: "m-1" });
+    expect(screen.getByRole("button", { name: "复制回答" })).toHaveClass("act-btn");
+    const like = screen.getByTestId("feedback-like");
+    const dislike = screen.getByTestId("feedback-dislike");
+    expect(like).toHaveClass("act-btn");
+    expect(like).not.toHaveClass("act-btn--on");
+    fireEvent.click(like);
+    await waitFor(() => expect(apiMock.postFeedback).toHaveBeenCalled());
+    // 锁定后：选中态胶囊类落位
+    expect(like).toHaveClass("act-btn--on");
+    expect(dislike).not.toHaveClass("act-btn--on-danger");
+  });
+
+  it("点踩选中态挂 danger 胶囊类（语义区分）", async () => {
+    renderBar({ messageId: "m-1" });
+    const dislike = screen.getByTestId("feedback-dislike");
+    fireEvent.click(dislike);
+    await waitFor(() => expect(apiMock.postFeedback).toHaveBeenCalled());
+    expect(dislike).toHaveClass("act-btn--on-danger");
+  });
+});
+
 describe("FeedbackBar 反馈与锁定", () => {
   it("点赞：请求体携带 sessionId/messageId/isLiked=true/intentType=knowledge_question", async () => {
     renderBar({ hasSources: true });

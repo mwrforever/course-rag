@@ -267,14 +267,21 @@ export function MarkdownView({ content, onNotify }: MarkdownViewProps) {
               </TableWrapper>
             );
           },
-          // 标题层级：紧凑阶梯（正文阅读层级明确）
+          // 标题层级：h2/h3 → 设计稿 a-h 样式（15px/700/gold-deep/字距 1.5px）；
+          // h1 罕见（GFM 答案惯例从 h2 起），保留紧凑阶梯
           h1: ({ children }) => <h1 className="mt-5 mb-2 text-xl font-semibold">{children}</h1>,
-          h2: ({ children }) => <h2 className="mt-5 mb-2 text-lg font-semibold">{children}</h2>,
-          h3: ({ children }) => <h3 className="mt-4 mb-2 text-base font-semibold">{children}</h3>,
+          h2: ({ children }) => <h2 className="a-h mt-2 mb-1">{children}</h2>,
+          h3: ({ children }) => <h3 className="a-h mt-2 mb-1">{children}</h3>,
           p: ({ children }) => <p className="my-2">{children}</p>,
-          ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-6">{children}</ul>,
+          // 无序列表：菱形 bullet（a-li，去默认圆点）；有序列表保留十进制编号（步骤语义，
+          // ol 下的 a-li 菱形由 CSS 作用域关闭）
+          ul: ({ children }) => <ul className="my-2 list-none space-y-1 pl-0">{children}</ul>,
           ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-6">{children}</ol>,
-          li: ({ children }) => <li className="pl-1">{children}</li>,
+          li: ({ children }) => <li className="a-li pl-1">{children}</li>,
+          // strong 强调：brand-strong 深棕（Task 11 映射覆写）
+          strong: ({ children }) => (
+            <strong className="font-bold text-brand-strong">{children}</strong>
+          ),
           blockquote: ({ children }) => (
             <blockquote className="my-2 border-l-2 border-brand/40 pl-3 text-muted">
               {children}
