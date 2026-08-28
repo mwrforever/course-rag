@@ -233,6 +233,15 @@ describe("chatReducer 纯函数", () => {
     ]);
   });
 
+  it("用例2 扩展：thinking_end 无同 stage 节点时防御性忽略（回放从 thinking_end 开始场景）", () => {
+    const s = chatReducer(streamingWithAi({ messages: [aiMsg()] }), {
+      type: "thinking_end",
+      stage: "understanding",
+    });
+    // 不建空节点（时间轴保持原样），仅流事件本身被消费
+    expect(s.messages[0].timeline).toEqual([]);
+  });
+
   it("用例2 扩展：空 delta 不建空节点（噪声防御）", () => {
     const s = chatReducer(streamingWithAi({ messages: [aiMsg()] }), {
       type: "thinking",

@@ -142,13 +142,10 @@ function upsertHistoryThinkingNode(
   for (let i = timeline.length - 1; i >= 0; i -= 1) {
     const node = timeline[i];
     if (node.kind === "thinking" && node.stage === stage) {
-      // 首段续接末行（同 stage 多行拼接），其余各起新行
-      if (node.lines.length === 0) {
-        node.lines.push(...parts);
-      } else {
-        node.lines[node.lines.length - 1] += parts[0];
-        node.lines.push(...parts.slice(1));
-      }
+      // 首段续接末行（同 stage 多行拼接），其余各起新行；
+      // 既有节点恒有 ≥1 行（空内容在上方守卫已拦截，无空行节点入轴）
+      node.lines[node.lines.length - 1] += parts[0];
+      node.lines.push(...parts.slice(1));
       return;
     }
   }

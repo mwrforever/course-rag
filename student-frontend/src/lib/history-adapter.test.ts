@@ -508,6 +508,51 @@ describe("historyAdapter：时间轴重建三场景（Task 9 验收）", () => {
     expect(message.text).toBe("旧回答");
   });
 
+  it("thinking 行内容全为空白：不建空节点（防御）", () => {
+    const rows = [
+      makeRow({
+        id: "t1",
+        seq: 2,
+        messageType: "thinking",
+        content: "  \n  ",
+        thinkingStage: "generating",
+      }),
+      makeRow({ id: "a1", seq: 3, messageType: null, content: "回答" }),
+    ];
+    const [message] = historyAdapter(rows);
+    expect(message.timeline).toEqual([]);
+    expect(message.text).toBe("回答");
+  });
+
+  it("query_plan 行二现：原位替换（与实时 reducer replaceOrPush 语义一致）", () => {
+    const rows = [
+      makeRow({
+        id: "q1",
+        seq: 2,
+        messageType: "query_plan",
+        content: JSON.stringify({
+          intent: "chat",
+          rewritten: ["旧改写"],
+          filters: { courseNames: [] },
+        }),
+      }),
+      makeRow({
+        id: "q2",
+        seq: 3,
+        messageType: "query_plan",
+        content: JSON.stringify({
+          intent: "knowledge_question",
+          rewritten: ["新改写"],
+          filters: { courseNames: [] },
+        }),
+      }),
+      makeRow({ id: "a1", seq: 4, messageType: null, content: "回答" }),
+    ];
+    const [message] = historyAdapter(rows);
+    expect(message.timeline).toHaveLength(1);
+    expect(message.timeline[0]).toMatchObject({ kind: "queryPlan", intent: "knowledge_question" });
+  });
+
   it("不同 stage 的 thinking 行各自归组（understanding 与 generating 不合并）", () => {
     const rows = [
       makeRow({
