@@ -35,6 +35,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -112,6 +113,22 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
      * （瞬时上下文，仅本轮 run 生命周期内有效）。
      */
     public static final String KEY_RETRIEVAL_SOURCES = "retrieval_sources";
+
+    /**
+     * 检索来源回写容器 metadata 键（2026-08-28 T7 真机实证修复新增）。
+     *
+     * <p>写隔离根因：SAA 1.1.2.0 {@code CompiledGraph.stream(inputs, config)} 交给节点 action 的
+     * config 是派生副本——{@code HasMetadata$Builder(Map)} 构造器以 {@code new HashMap<>(source)}
+     * 复制 metadata。读穿透（worker 预写键本节点可达）与图内节点间互通不受影响，但本节点写回的
+     * {@link #KEY_RETRIEVAL_SOURCES} 只落在副本 Map 上，worker 原实例恒读空——真机实证 SSE 无
+     * SOURCES 事件、chat_message.sources_json 恒 "[]"。
+     *
+     * <p>修复：worker 在 run 开始注入 {@code AtomicReference<List<RetrievalSource>>} 容器
+     * （容器对象引用经浅拷贝穿透派生副本），本节点检索命中后经 {@code sink.set} 写回，worker 读
+     * 容器即得真实来源——与 {@link #KEY_THINKING_CALLBACK} 同构的「节点经注入回调」通道。
+     * {@link #KEY_RETRIEVAL_SOURCES} metadata 写保留（单测直传 config、图内其他潜在消费方兜底）。
+     */
+    public static final String KEY_SOURCES_SINK = "retrieval_sources_sink";
 
     /**
      * per-run 思考事件推送回调 metadata 键（2026-08-28 对话流式时间线改版新增）。
@@ -267,11 +284,18 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
             return CompletableFuture.completedFuture(Map.of());
         }
 
-        // B3-5：检索命中非空 → 来源列表（chunkId/docTitle/headingPath/score）写入 metadata，
-        // ChatRequestWorker 读取后推 SOURCES 事件并持久化 chat_message.sourcesJson（与
-        // document_context 同通道，不落 state/checkpoint）；chat/unknown 意图与空检索不写
-        // （worker 侧不推 SOURCES、sourcesJson 保持 "[]"）
-        config.metadata().ifPresent(m -> m.put(KEY_RETRIEVAL_SOURCES, buildSources(chunks)));
+        // B3-5：检索命中非空 → 来源列表（chunkId/docTitle/headingPath/score）双通道写出（T7 修复）：
+        // ① KEY_RETRIEVAL_SOURCES 写入本节点 config 的 metadata（单测直传 config、图内其他
+        //    潜在消费方兜底；生产链路本 config 是 SAA 派生副本，此写对 worker 原实例不可见）；
+        // ② KEY_SOURCES_SINK 容器 set——生产链路主通道：容器对象引用经派生副本浅拷贝穿透，
+        //    worker 原实例读容器即得（修复 SOURCES 事件与 sources_json 恒空缺陷）；
+        // chat/unknown 意图与空检索两通道均不写（worker 侧不推 SOURCES、sourcesJson 保持 "[]"）
+        List<RetrievalSource> sources = buildSources(chunks);
+        config.metadata().ifPresent(m -> m.put(KEY_RETRIEVAL_SOURCES, sources));
+        AtomicReference<List<RetrievalSource>> sourcesSink = readSourcesSink(config);
+        if (sourcesSink != null) {
+            sourcesSink.set(sources);
+        }
 
         // 5. 组装 <document>（system-document）并合并 <user-document>（附件上下文，spec §5.3/§5.4）
         String document = contextBuilderService.buildDocument(originalQuery, plan.rewrittenQueries(), chunks);
@@ -526,6 +550,22 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
                 .map(m -> m.get(AttachmentOrchestrator.KEY_ATTACHMENT_CONTEXT))
                 .filter(AttachmentContext.class::isInstance)
                 .map(AttachmentContext.class::cast)
+                .orElse(null);
+    }
+
+    /**
+     * 读取 worker 注入的检索来源回写容器（{@link #KEY_SOURCES_SINK}，T7 修复通道）。
+     *
+     * @param config RunnableConfig（worker 原实例注册的容器引用经 SAA 派生副本浅拷贝传达到本节点）
+     * @return 来源回写容器；metadata 无该键/类型不符返回 null（离线评测等非 worker 链路，
+     *         调用方跳过容器写、仅保留 metadata 键写）
+     */
+    @SuppressWarnings("unchecked")
+    private static AtomicReference<List<RetrievalSource>> readSourcesSink(RunnableConfig config) {
+        return config.metadata()
+                .map(m -> m.get(KEY_SOURCES_SINK))
+                .filter(AtomicReference.class::isInstance)
+                .map(sink -> (AtomicReference<List<RetrievalSource>>) sink)
                 .orElse(null);
     }
 

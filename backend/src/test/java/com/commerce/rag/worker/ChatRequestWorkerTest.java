@@ -52,6 +52,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -1053,6 +1054,109 @@ class ChatRequestWorkerTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("应存在 assistant 正文行"));
         assertEquals("[]", assistantRow.getSourcesJson());
+    }
+
+    // ==================== T7 修复：SAA config 派生副本写隔离 → sink 容器双通道 ====================
+
+    /** 反射调用 private readSourcesJson（T7 修复后双通道读取的定点验证入口） */
+    private String invokeReadSourcesJson(RunnableConfig config) throws Exception {
+        Method method = ChatRequestWorker.class.getDeclaredMethod("readSourcesJson", RunnableConfig.class);
+        method.setAccessible(true);
+        return (String) method.invoke(worker, config);
+    }
+
+    @Test
+    @DisplayName("SOURCES（T7 修复）— 图节点 config 为派生副本：metadata 写回隔离，仍经 sink 容器推 SOURCES 事件")
+    @SuppressWarnings("unchecked")
+    void processRequest_derivedConfigIsolation_sourcesEventPushedViaSink() throws Exception {
+        // 复刻 SAA 派生副本行为（RunnableConfig$Builder(RunnableConfig) 内部经 HasMetadata$Builder
+        // 以 new HashMap 拷贝 metadata：容器独立、值对象引用共享）——mock 图流把 worker 传入的
+        // config 复制出节点侧副本，RetrieveNode 写 KEY_RETRIEVAL_SOURCES 只落副本（worker 原实例
+        // 不可见，即真机实证的写隔离根因），仅 sink 容器引用经浅拷贝穿透
+        NodeOutput before = mock(NodeOutput.class);
+        lenient().when(before.state()).thenReturn(null);
+        AssistantMessage assistantMsg = new AssistantMessage("引用资料的回答");
+        NodeOutput after = mock(NodeOutput.class);
+        lenient().when(after.state()).thenReturn(new OverAllState(Map.of("messages", List.of(assistantMsg))));
+        RunnableConfig[] workerConfigHolder = new RunnableConfig[1];
+
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenAnswer(inv -> {
+            RunnableConfig workerConfig = inv.getArgument(1);
+            workerConfigHolder[0] = workerConfig;
+            return Flux.create(sink -> {
+                sink.next(before);
+                // 模拟 SAA 派生副本：metadata 容器独立拷贝，值（sink 容器对象）引用共享
+                RunnableConfig derived = RunnableConfig.builder(workerConfig).build();
+                List<RetrievalSource> sources = List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9, "片段正文预览"));
+                // 模拟 RetrieveNode 双写：① KEY_RETRIEVAL_SOURCES 写副本 metadata（worker 原实例
+                // 读不到——写隔离）；② sink 容器 set（引用穿透派生副本，worker 原实例可读——T7 修复通道）
+                derived.metadata().ifPresent(m -> m.put(RetrieveNode.KEY_RETRIEVAL_SOURCES, sources));
+                Object sinkRef = derived.metadata()
+                        .map(m -> m.get(RetrieveNode.KEY_SOURCES_SINK))
+                        .orElse(null);
+                ((AtomicReference<List<RetrievalSource>>) sinkRef).set(sources);
+                sink.next(after);
+                sink.complete();
+            });
+        });
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "高等数学怎么学"));
+
+        // 前提锁死：派生副本写隔离成立——worker 原实例 metadata 键恒空（若 SAA 未来改为共享
+        // metadata，此断言失败提示本用例前提已变化）
+        assertNull(
+                workerConfigHolder[0]
+                        .metadata()
+                        .map(m -> m.get(RetrieveNode.KEY_RETRIEVAL_SOURCES))
+                        .orElse(null),
+                "派生副本写隔离前提：worker 原实例不得看到节点 metadata 写回");
+        // RED/GREEN 判据：若实现只读 metadata 键（修复前形态），sink 未被读、事件不推送，本断言必失败
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        List<SseEvent> sourcesEvents = evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.SOURCES)
+                .toList();
+        assertEquals(1, sourcesEvents.size(), "SOURCES 事件应经 sink 通道恰好推送一次");
+        assertTrue(sourcesEvents.get(0).payload().contains("高等数学讲义"), "payload 应含来源文档标题");
+        assertTrue(sourcesEvents.get(0).payload().contains("c1"), "payload 应含 chunkId");
+    }
+
+    @Test
+    @DisplayName("readSourcesJson（T7 修复）— sink 容器优先：节点已 sink.set 时读 sink 值（metadata 键隔离不可达）")
+    void readSourcesJson_sinkPriority_returnsSinkValue() throws Exception {
+        // 生产链路形态：worker 注册的 sink 容器被节点跨派生副本写回；KEY_RETRIEVAL_SOURCES
+        // 只在副本上、worker 原实例 metadata 无该键——仅 sink 通道可得来源
+        AtomicReference<List<RetrievalSource>> sink = new AtomicReference<>();
+        sink.set(List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9, "片段正文预览")));
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("200")
+                .addMetadata(RetrieveNode.KEY_SOURCES_SINK, sink)
+                .build();
+
+        String json = invokeReadSourcesJson(config);
+
+        assertTrue(json.contains("高等数学讲义"), "sink 通道值应被优先读取");
+        assertTrue(json.contains("c1"), "sink 通道值应含 chunkId");
+    }
+
+    @Test
+    @DisplayName("readSourcesJson（T7 修复）— metadata 键回退：sink 容器在但节点未写回时回退读 metadata 键")
+    void readSourcesJson_metadataFallback_whenSinkNotWritten() throws Exception {
+        // 直传同一 config 实例场景（单测模拟/图内其他潜在消费方）：sink 容器存在但未写回，
+        // 来源只经 KEY_RETRIEVAL_SOURCES 键可见——回退读取保证该路径不回归
+        AtomicReference<List<RetrievalSource>> emptySink = new AtomicReference<>();
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId("200")
+                .addMetadata(RetrieveNode.KEY_SOURCES_SINK, emptySink)
+                .addMetadata(
+                        RetrieveNode.KEY_RETRIEVAL_SOURCES,
+                        List.of(new RetrievalSource("c2", "学习方法FAQ", "第二节", 0.8, "片段预览")))
+                .build();
+
+        String json = invokeReadSourcesJson(config);
+
+        assertTrue(json.contains("学习方法FAQ"), "sink 未写回时应回退读取 metadata 键值");
+        assertTrue(json.contains("c2"), "回退值应含 chunkId");
     }
 
     // ==================== 思考事件推送通道注册（2026-08-28 对话流式时间线改版） ====================

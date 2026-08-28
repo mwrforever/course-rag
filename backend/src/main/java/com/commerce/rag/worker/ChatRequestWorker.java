@@ -18,6 +18,7 @@ import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.record.ImageCaptionResult;
 import com.commerce.rag.record.PersistOutcome;
+import com.commerce.rag.record.RetrievalSource;
 import com.commerce.rag.service.AttachmentOrchestrator;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
@@ -443,6 +444,16 @@ public class ChatRequestWorker {
         // 与 KEY_THINKING_CALLBACK 同通道——瞬时 Java 引用，不落 state/checkpoint、模型不可见。
         BooleanSupplier cancelSource = () -> isCancelled(runIdStr);
         config.metadata().ifPresent(m -> m.put(RetrieveNode.KEY_CANCEL_CHECK, cancelSource));
+
+        // ── 检索来源回写容器注册（2026-08-28 T7 真机实证修复）──
+        // SAA CompiledGraph.stream 交给图节点的 config 是 metadata 派生副本（HasMetadata$Builder
+        // 以 new HashMap 拷贝），RetrieveNode 写入的 KEY_RETRIEVAL_SOURCES 只落副本、本 worker
+        // 原实例恒读空——真机实证 SSE 无 SOURCES 事件、sources_json 恒 "[]"。注入 AtomicReference
+        // 容器（对象引用经浅拷贝穿透派生副本），节点经 KEY_SOURCES_SINK 以 sink.set 跨副本写回，
+        // 本 worker 读取统一走 readRetrievalSources（sink 优先、metadata 键回退）。与
+        // KEY_THINKING_CALLBACK 同构——瞬时 Java 引用，不落 state/checkpoint、模型不可见。
+        AtomicReference<List<RetrievalSource>> sourcesSink = new AtomicReference<>();
+        config.metadata().ifPresent(m -> m.put(RetrieveNode.KEY_SOURCES_SINK, sourcesSink));
 
         // ── 首事件前移（2026-08-27 C 端体验改版）──
         // ring 由入口 ChatStreamEntry 在 XADD 前已创建（createRing 为 computeIfAbsent 幂等），
@@ -1283,9 +1294,10 @@ public class ChatRequestWorker {
      * 补推 SOURCES 事件（B3-5，契约补齐——docs/plans/2026-07-16-frontend-design.md §1.6.4
      * SSE 10 事件之一，此前全链路零发送）
      *
-     * <p>时机：RetrieveNode 检索命中非空后把来源列表写入 config.metadata()
-     * （{@link RetrieveNode#KEY_RETRIEVAL_SOURCES}），本方法在来源就绪后的首个 chunk 处
-     * 推送一次（早于该 chunk 的 THINKING/DELTA 事件——首个回答 token 前）；
+     * <p>时机：RetrieveNode 检索命中非空后把来源列表经 KEY_SOURCES_SINK 容器跨派生副本写回
+     * （生产链路 SAA 派生副本下 KEY_RETRIEVAL_SOURCES metadata 写对 worker 原实例不可见，
+     * 读取统一走 {@link #readRetrievalSources} 双通道，T7 修复），本方法在来源就绪后的首个
+     * chunk 处推送一次（早于该 chunk 的 THINKING/DELTA 事件——首个回答 token 前）；
      * chat/unknown 意图与空检索无来源则不推（sourcesJson 同理保持 "[]"）。
      *
      * <p>payload 结构：契约文档未细化，按最小可用 {@code {"sources":[{chunkId,docTitle,headingPath,score}]}}
@@ -1293,7 +1305,7 @@ public class ChatRequestWorker {
      *
      * @param runIdStr      Run 唯一标识（ring 键）
      * @param runState      SSE 事件序列状态（seqId 递增）
-     * @param config        RunnableConfig（贯穿全图共享的 metadata 通道）
+     * @param config        RunnableConfig（worker 原实例，来源经 {@link #readRetrievalSources} 双通道读取）
      * @param sourcesPushed 本 run 的 SOURCES 已推送标记（CAS 保证仅推一次）
      */
     private void maybePushSources(
@@ -1304,9 +1316,7 @@ public class ChatRequestWorker {
         if (sourcesPushed.get()) {
             return;
         }
-        Object sources = config.metadata()
-                .map(m -> m.get(RetrieveNode.KEY_RETRIEVAL_SOURCES))
-                .orElse(null);
+        Object sources = readRetrievalSources(config);
         if (!(sources instanceof List<?> list) || list.isEmpty()) {
             return;
         }
@@ -1324,17 +1334,15 @@ public class ChatRequestWorker {
     /**
      * 读取检索来源 JSON（B3-5：chat_message.sources_json 持久化用）
      *
-     * <p>从 config.metadata() 读 RetrieveNode 写入的来源列表并序列化为 JSON 数组；
-     * 无来源（chat/unknown 意图/空检索）或序列化失败返回 {@code "[]"}
-     * （契约第 2 节：集合字段恒输出 [] 而非 null）。
+     * <p>经 {@link #readRetrievalSources}（sink 容器优先、metadata 键回退，T7 修复）读
+     * RetrieveNode 写回的来源列表并序列化为 JSON 数组；无来源（chat/unknown 意图/空检索）
+     * 或序列化失败返回 {@code "[]"}（契约第 2 节：集合字段恒输出 [] 而非 null）。
      *
-     * @param config RunnableConfig（贯穿全图共享的 metadata 通道）
+     * @param config RunnableConfig（worker 原实例，来源经 {@link #readRetrievalSources} 双通道读取）
      * @return 来源 JSON 数组字符串，无来源时为 "[]"
      */
     private String readSourcesJson(RunnableConfig config) {
-        Object sources = config.metadata()
-                .map(m -> m.get(RetrieveNode.KEY_RETRIEVAL_SOURCES))
-                .orElse(null);
+        Object sources = readRetrievalSources(config);
         if (!(sources instanceof List<?> list) || list.isEmpty()) {
             return "[]";
         }
@@ -1345,6 +1353,34 @@ public class ChatRequestWorker {
             log.warn("检索来源 JSON 序列化失败，sourcesJson 降级为空数组: {}", e.getMessage());
             return "[]";
         }
+    }
+
+    /**
+     * 统一读取检索来源列表（T7 修复：双通道读取——sink 容器优先、metadata 键回退）。
+     *
+     * <p>双通道原因：SAA CompiledGraph.stream 交给图节点的 config 是 metadata 派生副本
+     * （HasMetadata$Builder 以 new HashMap 浅拷贝），RetrieveNode 写入的 KEY_RETRIEVAL_SOURCES
+     * 只落副本、本 worker 原实例经该键恒读空（真机实证 SOURCES 事件与 sources_json 恒空）；
+     * 本 worker 在 run 开始注入 KEY_SOURCES_SINK 容器（AtomicReference 引用经浅拷贝穿透派生
+     * 副本），节点 sink.set 跨副本写回——生产链路唯一可靠通道。metadata 键回退兜底直传同一
+     * config 实例的场景（单测模拟、图内其他潜在消费方）。
+     *
+     * @param config RunnableConfig（worker 原实例，metadata 含 run 开始自注册的 sink 容器）
+     * @return 检索来源列表（元素 RetrievalSource）；无来源/类型不符返回 null——
+     *         调用方沿用 {@code instanceof List<?>} 判空语义（与既有单通道读取一致）
+     */
+    private Object readRetrievalSources(RunnableConfig config) {
+        // ① sink 容器优先：RetrieveNode 经 KEY_SOURCES_SINK 跨派生副本写回的生产通道
+        // （容器存在且节点已 set 才有值；未写回时 get 为 null，落到下方回退）
+        Object sink =
+                config.metadata().map(m -> m.get(RetrieveNode.KEY_SOURCES_SINK)).orElse(null);
+        if (sink instanceof AtomicReference<?> ref && ref.get() != null) {
+            return ref.get();
+        }
+        // ② metadata 键回退：直传同一 config 实例场景（生产派生副本链路上此键恒空，回退不生效属预期）
+        return config.metadata()
+                .map(m -> m.get(RetrieveNode.KEY_RETRIEVAL_SOURCES))
+                .orElse(null);
     }
 
     /**
