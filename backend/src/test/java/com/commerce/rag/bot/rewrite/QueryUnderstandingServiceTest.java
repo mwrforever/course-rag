@@ -2,6 +2,7 @@ package com.commerce.rag.bot.rewrite;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -14,6 +15,7 @@ import static org.mockito.Mockito.when;
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.PromptLoader;
 import com.commerce.rag.properties.QueryUnderstandingProperties;
+import com.commerce.rag.record.AssistantMessageSink;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.ThinkingPusher;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -375,6 +377,84 @@ class QueryUnderstandingServiceTest {
 
         assertEquals(IntentType.CHAT, plan.intent());
         verify(chatModel, never()).stream(any(Prompt.class));
+    }
+
+    // ==================== 消息实体化 QU 捕获（2026-08-29，spec §3.2） ====================
+
+    @Test
+    @DisplayName("understand(带 sink) — 流式聚合完成点捕获 thinking 全文 + query_plan payload JSON（与 SSE 事件同构）")
+    void understand_withSink_capturesThinkingAndPlanPayload() {
+        stubPrompt();
+        String json = "{\"intent\": \"knowledge_question\", \"rewrittenQueries\": [\"高等数学 大纲\"], "
+                + "\"filters\": {\"course_names\": [\"高等数学\"]}, \"recall_history\": false}";
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(Flux.just(reasoningChunk("先分析意图，"), reasoningChunk("再收窄到课程查询"), contentChunk(json)));
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        // 思考全文经 ThinkingPusher 累加缓冲（与已推送 THINKING 事件逐字一致）
+        when(pusher.accumulated()).thenReturn(Map.of(SseEventTransformer.STAGE_UNDERSTANDING, "先分析意图，再收窄到课程查询"));
+        AssistantMessageSink sink = new AssistantMessageSink();
+
+        QueryPlan plan = service.understand("高等数学讲什么", List.of(new UserMessage("高等数学讲什么")), pusher, sink);
+
+        assertEquals(IntentType.KNOWLEDGE_QUESTION, plan.intent());
+        var captures = sink.snapshot();
+        assertEquals(1, captures.size(), "每次 QU 调用恰好捕获一条");
+        var capture = captures.get(0);
+        assertEquals(SseEventTransformer.STAGE_UNDERSTANDING, capture.stage());
+        assertEquals("先分析意图，再收窄到课程查询", capture.reasoning(), "捕获 thinking 全文（与已推送一致）");
+        assertEquals(
+                "{\"intent\":\"knowledge_question\",\"rewritten\":[\"高等数学 大纲\"],\"filters\":{\"courseNames\":[\"高等数学\"]}}",
+                capture.text(),
+                "text = query_plan payload JSON（前端 parse 契约 intent/rewritten/filters.courseNames）");
+        assertTrue(capture.toolCalls().isEmpty(), "QU 工具调用恒空");
+    }
+
+    @Test
+    @DisplayName("understand(带 sink) — 流中断降级 fallback：仍捕获已产出的思考与 fallback payload JSON（不丢行）")
+    void understand_withSink_streamError_capturesPartialThinkingAndFallbackPayload() {
+        stubPrompt();
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(Flux.concat(Flux.just(reasoningChunk("思考了一半")), Flux.error(new RuntimeException("中断"))));
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        when(pusher.accumulated()).thenReturn(Map.of(SseEventTransformer.STAGE_UNDERSTANDING, "思考了一半"));
+        AssistantMessageSink sink = new AssistantMessageSink();
+
+        QueryPlan plan = service.understand("原始问题", List.of(new UserMessage("原始问题")), pusher, sink);
+
+        assertEquals(IntentType.UNKNOWN, plan.intent());
+        var captures = sink.snapshot();
+        assertEquals(1, captures.size(), "降级路径同样捕获（与 SSE QUERY_PLAN 事件非空即推契约一致）");
+        assertEquals("思考了一半", captures.get(0).reasoning());
+        assertEquals(
+                "{\"intent\":\"unknown\",\"rewritten\":[\"原始问题\"],\"filters\":{\"courseNames\":[]}}",
+                captures.get(0).text(),
+                "降级时 text = fallback payload JSON");
+    }
+
+    @Test
+    @DisplayName("understand(带 sink) — sink 为 null（非 worker 驱动）时行为与三参版本一致，不捕获不抛错")
+    void understand_withoutSink_noCapture() {
+        stubPrompt();
+        stubReply("{\"intent\": \"chat\", \"rewrittenQueries\": [\"你好\"]}");
+
+        QueryPlan plan = service.understand("你好", List.of(new UserMessage("你好")), null, null);
+
+        assertEquals(IntentType.CHAT, plan.intent());
+        // 无 sink 不得抛错（null 安全），捕获逻辑整体旁路
+    }
+
+    @Test
+    @DisplayName("understand(带 sink) — 空白用户消息直接降级且捕获 fallback payload（与 state 恒写 QueryPlan 一致）")
+    void understand_withSink_blankQuery_capturesFallbackPayload() {
+        AssistantMessageSink sink = new AssistantMessageSink();
+
+        QueryPlan plan = service.understand("   ", List.of(new UserMessage("   ")), null, sink);
+
+        assertEquals(IntentType.UNKNOWN, plan.intent());
+        var captures = sink.snapshot();
+        assertEquals(1, captures.size(), "空白输入也捕获（与现状 query_plan 行语义一致）");
+        assertNull(captures.get(0).reasoning(), "未调 LLM 无思考");
+        assertTrue(captures.get(0).text() != null && captures.get(0).text().contains("\"intent\":\"unknown\""));
     }
 
     @Test

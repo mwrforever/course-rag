@@ -176,7 +176,6 @@ etl:
   max-file-size-mb: 100
   # H-3: embedding 批量调用批次大小（DashScope 一次请求携带多条文本，调用次数 = 分片数/批大小）
   embedding-batch-size: 16
-  caption-model: qwen3.7-flash       # VLM 图片描述模型（spec §4.5 两通道独立配置）
   image-min-size-kb: 10              # 图片过滤：小于该大小的图标跳过（spec §4.2）
   executor:
     core-size: 2
@@ -378,6 +377,8 @@ attachment:
   cache-max-size: 100          # Caffeine 附件处理结果缓存条目数（LRU）
   cache-expire-minutes: 30     # 附件处理结果缓存失效时间
   embedding-batch-size: 16     # P2-1: 文档附件批量向量化批大小（与 etl.embedding-batch-size 同范式）
+  caption-model: qwen3.7-max-2026-06-08   # VLM 图片描述模型（2026-08-29 M-2：自 etl.caption-model 迁入；
+                                          # spec §4.5 名义两通道独立配置，实际 ETL 离线与用户附件共用一值）
   process-timeout-ms: 60000    # P2-2: 附件并行处理总超时（超时丢弃未完成附件，保留已完成结果）
   executor:                    # P2-2: 附件并行池（下载/图片 caption 并行基底，与 ETL/检索/记忆池隔离）
     core-size: 2

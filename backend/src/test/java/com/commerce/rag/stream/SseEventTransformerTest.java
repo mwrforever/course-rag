@@ -12,6 +12,7 @@ import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.LeadAgentGraph;
 import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.bot.rewrite.QueryPlanFilters;
+import com.commerce.rag.record.AssistantMessageSink;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
@@ -358,6 +359,104 @@ class SseEventTransformerTest {
         List<SseEvent> result = transformer.transform(mockOutput, runState);
 
         // Then: THINKING_END 在前，TOOL_CALL 在后
+        assertEquals(2, result.size());
+        assertEquals(SseEventType.THINKING_END, result.get(0).type());
+        assertEquals(SseEventType.TOOL_CALL, result.get(1).type());
+    }
+
+    // ==================== 消息实体化捕获（2026-08-29，spec §3.2 主 agent） ====================
+
+    @Test
+    @DisplayName("FINISHED + sink — 模型输出结束点捕获该次调用完整消息（reasoning/text/toolCalls 三字段）")
+    void transform_finishedWithSink_capturesFullCall() {
+        // Given: FINISHED 消息携带 reasoningContent + 正文 + 工具调用（SAA 1.1.2.0 实证非 null）
+        AssistantMessage.ToolCall mockToolCall = mock(AssistantMessage.ToolCall.class);
+        when(mockToolCall.id()).thenReturn("call-001");
+        when(mockToolCall.name()).thenReturn("searchKnowledge");
+        when(mockToolCall.arguments()).thenReturn("{\"query\":\"课程\"}");
+
+        AssistantMessage mockMsg = mock(AssistantMessage.class);
+        StreamingOutput<?> mockOutput = mock(StreamingOutput.class);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+        when(mockOutput.getOutputType()).thenReturn(OutputType.AGENT_MODEL_FINISHED);
+        when(mockOutput.message()).thenReturn(mockMsg);
+        when(mockMsg.getMetadata()).thenReturn(Map.of("reasoningContent", "完整思考"));
+        when(mockMsg.getText()).thenReturn("最终回答");
+        when(mockMsg.hasToolCalls()).thenReturn(true);
+        when(mockMsg.getToolCalls()).thenReturn(List.of(mockToolCall));
+        AssistantMessageSink sink = new AssistantMessageSink();
+
+        // When
+        transformer.transform(mockOutput, runState, sink);
+
+        // Then: 捕获 stage=generating 的完整调用（reasoning 取 FINISHED metadata、text/toolCalls 取合并消息）
+        var captures = sink.snapshot();
+        assertEquals(1, captures.size(), "每次 FINISHED 恰好捕获一条");
+        var capture = captures.get(0);
+        assertEquals("generating", capture.stage());
+        assertEquals("完整思考", capture.reasoning());
+        assertEquals("最终回答", capture.text());
+        assertEquals(1, capture.toolCalls().size());
+        assertEquals("call-001", capture.toolCalls().get(0).id());
+        assertEquals("searchKnowledge", capture.toolCalls().get(0).name());
+        // 事件转换不受捕获影响（THINKING_END + TOOL_CALL 照常产出）
+    }
+
+    @Test
+    @DisplayName("FINISHED + sink — metadata 无 reasoning 时回退流式累积思考全文（与前端已推送一致）")
+    void transform_finishedWithoutMetadataReasoning_fallsBackToAccumulated() {
+        // Given: 流式阶段推过两段思考（与 THINKING 事件同源），FINISHED 消息 metadata 无 reasoning
+        AssistantMessage streamingMsg1 = mock(AssistantMessage.class);
+        StreamingOutput<?> streamingChunk = mock(StreamingOutput.class);
+        when(streamingChunk.getOutputType()).thenReturn(OutputType.AGENT_MODEL_STREAMING);
+        when(streamingChunk.message()).thenReturn(streamingMsg1);
+        when(streamingMsg1.getMetadata()).thenReturn(Map.of("reasoningContent", "思考片段一。"));
+        AssistantMessage streamingMsg2 = mock(AssistantMessage.class);
+        StreamingOutput<?> streamingChunk2 = mock(StreamingOutput.class);
+        when(streamingChunk2.getOutputType()).thenReturn(OutputType.AGENT_MODEL_STREAMING);
+        when(streamingChunk2.message()).thenReturn(streamingMsg2);
+        when(streamingMsg2.getMetadata()).thenReturn(Map.of("reasoningContent", "思考片段二。"));
+        // 流式转 thinking 事件时同步 appendReasoning；FINISHED metadata 空 reasoning
+        AssistantMessage finishedMsg = mock(AssistantMessage.class);
+        StreamingOutput<?> finishedChunk = mock(StreamingOutput.class);
+        when(finishedChunk.getOutputType()).thenReturn(OutputType.AGENT_MODEL_FINISHED);
+        when(finishedChunk.message()).thenReturn(finishedMsg);
+        when(finishedMsg.getMetadata()).thenReturn(Map.of());
+        when(finishedMsg.getText()).thenReturn("回答正文");
+        lenient().when(finishedMsg.hasToolCalls()).thenReturn(false);
+        AssistantMessageSink sink = new AssistantMessageSink();
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+
+        // When: 流式 chunk → FINISHED chunk（生产时序）
+        transformer.transform(streamingChunk, runState, sink);
+        transformer.transform(streamingChunk2, runState, sink);
+        transformer.transform(finishedChunk, runState, sink);
+
+        // Then: 捕获思考 = 流式累积全文（与前端已推送 THINKING 逐字一致）
+        var captures = sink.snapshot();
+        assertEquals(1, captures.size());
+        assertEquals("思考片段一。思考片段二。", captures.get(0).reasoning(), "FINISHED 无 reasoning 回退累积全文");
+        assertEquals("回答正文", captures.get(0).text());
+    }
+
+    @Test
+    @DisplayName("两参 transform（sink=null）— 不捕获不累积，事件行为与实体化前一致")
+    void transform_withoutSink_noCaptureNoAccumulation() {
+        AssistantMessage.ToolCall mockToolCall = mock(AssistantMessage.ToolCall.class);
+        when(mockToolCall.id()).thenReturn("call-001");
+        AssistantMessage mockMsg = mock(AssistantMessage.class);
+        StreamingOutput<?> mockOutput = mock(StreamingOutput.class);
+        SseEventTransformer.RunState runState = SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max");
+        when(mockOutput.getOutputType()).thenReturn(OutputType.AGENT_MODEL_FINISHED);
+        when(mockOutput.message()).thenReturn(mockMsg);
+        when(mockMsg.getMetadata()).thenReturn(Map.of("reasoningContent", "思考"));
+        lenient().when(mockMsg.hasToolCalls()).thenReturn(true);
+        when(mockMsg.getToolCalls()).thenReturn(List.of(mockToolCall));
+
+        // When: 两参重载（既有调用方/单测路径）
+        List<SseEvent> result = transformer.transform(mockOutput, runState);
+
+        // Then: 事件正常产出（THINKING_END + TOOL_CALL），无捕获副作用
         assertEquals(2, result.size());
         assertEquals(SseEventType.THINKING_END, result.get(0).type());
         assertEquals(SseEventType.TOOL_CALL, result.get(1).type());

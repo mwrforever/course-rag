@@ -149,7 +149,8 @@ public class MemoryStreamBridge {
 
     /**
      * per-run ring buffer。
-     * 正常模式：SseEvent[] 环形数组 + AtomicLong head（= 最后写入事件的 1-based seqId，永不回绕）。
+     * 正常模式：SseEvent[] 环形数组 + AtomicLong head（2026-08-29 收口①后 = 已见最大事件的
+     * 1-based seqId，push 直取产生方事件号经 accumulateAndGet(seq, Math::max) 写入，永不回绕）。
      * slot 坐标系与 seq 对齐：seq 写入 slot (seq-1)%capacity，replay 按同一定位校验 seqId。
      * 降级模式：ConcurrentLinkedQueue（buffer == null, fallback != null）。
      */
@@ -159,8 +160,10 @@ public class MemoryStreamBridge {
         final SseEvent[] buffer; // 降级模式下为 null
         final int capacity;
         /**
-         * 最后一次写入事件的 seqId（生产语义 1-based，初值 0 表示尚未写入）。
-         * 自增永不回绕，与 RunState.nextSeq() 的 seq 保持同一坐标系。
+         * 已见最大事件 seqId（2026-08-29 ring 收口①：push 直取产生方事件号后 head 语义
+         * 收敛为「已见最大号」，作为回放区间上界；初值 0 = 尚无事件 → 回放空）。
+         * accumulateAndGet(seq, Math::max) 写入，对乱序/跳号入队保持 max 语义，
+         * 与生产 seq（RunState.nextSeq 1-based 递增）同一坐标系。
          */
         final AtomicLong head;
 
@@ -262,12 +265,15 @@ public class MemoryStreamBridge {
                 if (fallback != null) {
                     fallback.offer(event);
                 } else {
-                    // head 与生产 seq 同坐标系（RunState.nextSeq 为 incrementAndGet，seq 从 1 起）：
-                    // 先自增得到本事件 seq，seq 写入 slot (seq-1)%capacity，
-                    // 保证 replay 按 (seq-1)%capacity 定位时 slot 内事件 seqId 恒等命中（task-2b 修复）
-                    long seq = head.incrementAndGet();
+                    // 2026-08-29 ring 收口①：直取产生方事件号（event.seqId()，RunState.nextSeq
+                    // 的 incrementAndGet 结果）写入 slot，消除「ring 自增计数器」与生产 seq 的
+                    // 双计数器同步不变式——head 语义随之收敛为「已见最大号」（回放区间上界），
+                    // accumulateAndGet 对乱序/跳号入队同样保持 max 语义；slot 仍按
+                    // (seq-1)%capacity 定位，replay 同位定位 + seqId 校验命中不变
+                    long seq = event.seqId();
                     int slot = (int) ((seq - 1) % capacity);
                     buffer[slot] = event;
+                    head.accumulateAndGet(seq, Math::max);
                 }
                 // 广播入队失败（投递线程被慢客户端卡住、队列积满）→ 摘除全部订阅者，
                 // 客户端经 EventSource 自动重连 + ring 回放补偿（事件在 ring 中不丢）
@@ -325,16 +331,19 @@ public class MemoryStreamBridge {
                         }
                     }
                 } else {
-                    // head = 最后写入事件的 1-based seqId（与 push 同坐标系，初值 0=尚无事件）
+                    // head = 已见最大事件 seqId（2026-08-29 ring 收口①：push 直取产生方事件号，
+                    // 初值 0=尚无事件），回放区间上界
                     long currentHead = head.get();
-                    long oldestSeq = Math.max(0, currentHead - capacity);
-                    if (lastEventId < oldestSeq) {
+                    // evictFloor（驱逐下限，2026-08-29 收口④命名）：ring 内最旧保底序号 - 1——
+                    // lastEventId 小于它即该事件已被环形覆盖驱逐，ring 无法回放需降级 PG
+                    long evictFloor = Math.max(0, currentHead - capacity);
+                    if (lastEventId < evictFloor) {
                         // lastEventId 太旧，ring buffer 已覆盖 → 需降级查 PG
                         log.warn(
-                                "replayAndSubscribe 失败 runId={}: lastEventId={} < oldestSeq={}",
+                                "replayAndSubscribe 失败 runId={}: lastEventId={} < evictFloor={}",
                                 runId,
                                 lastEventId,
-                                oldestSeq);
+                                evictFloor);
                         return false;
                     }
                     if (lastEventId <= currentHead) {

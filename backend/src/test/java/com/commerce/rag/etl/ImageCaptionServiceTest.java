@@ -3,6 +3,7 @@ package com.commerce.rag.etl;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -14,7 +15,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.commerce.rag.bot.graph.PromptLoader;
+import com.commerce.rag.properties.AttachmentProperties;
 import com.commerce.rag.properties.EtlProperties;
+import com.commerce.rag.record.AssistantMessageSink;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.ThinkingPusher;
 import java.util.List;
@@ -44,6 +47,8 @@ class ImageCaptionServiceTest {
     private ChatModel chatModel;
     private PromptLoader promptLoader;
     private ImageCaptionService service;
+    /** 附件配置（M-2 迁移：captionModel 自 etl 迁入 attachment 命名空间，测试固定值 qwen3.7-max-2026-06-08） */
+    private AttachmentProperties attachmentProps;
 
     @BeforeEach
     void setUp() {
@@ -59,11 +64,23 @@ class ImageCaptionServiceTest {
                 new EtlProperties.ImageExecutor(3, 3, 20, "etl-image-", 60),
                 new EtlProperties.Chunk(768, 64),
                 16,
-                "qwen3.7-flash",
                 10,
                 new EtlProperties.Table(25, 30, 2),
                 500);
-        service = new ImageCaptionService(chatModel, promptLoader, props);
+        // M-2 迁移（2026-08-29）：caption 模型配置自 etl 迁入 attachment 命名空间，服务同时注入
+        // EtlProperties（imageExecutor 超时预算）与 AttachmentProperties（captionModel）
+        attachmentProps = new AttachmentProperties(
+                10,
+                50,
+                10,
+                100,
+                100,
+                30,
+                16,
+                60000,
+                new AttachmentProperties.Executor(2, 4, 20, "attachment-"),
+                "qwen3.7-max-2026-06-08");
+        service = new ImageCaptionService(chatModel, promptLoader, props, attachmentProps);
     }
 
     @Test
@@ -87,8 +104,8 @@ class ImageCaptionServiceTest {
         assertEquals(1, user.getMedia().size());
         // 图片字节原样进入 Media.data（SAA 发送时转 base64 data URL，模型侧收到图片内容）
         assertArrayEquals(imageBytes, (byte[]) user.getMedia().get(0).getData());
-        // 模型名按次覆盖：OpenAiChatOptions.model = etl.caption-model（qwen3.7-flash）
-        assertEquals("qwen3.7-flash", ((OpenAiChatOptions) prompt.getOptions()).getModel());
+        // 模型名按次覆盖：OpenAiChatOptions.model = attachment.caption-model（M-2 迁移后键）
+        assertEquals("qwen3.7-max-2026-06-08", ((OpenAiChatOptions) prompt.getOptions()).getModel());
     }
 
     @Test
@@ -111,7 +128,7 @@ class ImageCaptionServiceTest {
                 .thenReturn(
                         Flux.just(chunk("", "图中是一张图表，"), chunk("", "横轴为月份"), chunk("这是一张", null), chunk("销量图表", null)));
 
-        String caption = service.captionStreaming(new byte[] {1, 2, 3}, "image/png", pusher, reasoningSeenAny);
+        String caption = service.captionStreaming(new byte[] {1, 2, 3}, "image/png", pusher, reasoningSeenAny, null);
 
         // 聚合文本 = content 增量拼接（与同步 caption 返回语义一致，不含 reasoning）
         assertEquals("这是一张销量图表", caption);
@@ -125,7 +142,8 @@ class ImageCaptionServiceTest {
         // 流式路径 Prompt 组装与同步一致：视觉 Media + 按次覆盖 caption 模型名
         ArgumentCaptor<Prompt> captor = ArgumentCaptor.forClass(Prompt.class);
         verify(chatModel).stream(captor.capture());
-        assertEquals("qwen3.7-flash", ((OpenAiChatOptions) captor.getValue().getOptions()).getModel());
+        assertEquals(
+                "qwen3.7-max-2026-06-08", ((OpenAiChatOptions) captor.getValue().getOptions()).getModel());
     }
 
     @Test
@@ -135,7 +153,7 @@ class ImageCaptionServiceTest {
         AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
         when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.just(chunk("纯回答文本", null)));
 
-        String caption = service.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny);
+        String caption = service.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny, null);
 
         assertEquals("纯回答文本", caption);
         verifyNoInteractions(pusher);
@@ -149,7 +167,7 @@ class ImageCaptionServiceTest {
         AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
         when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.just(chunk("", "只有思考没有回答")));
 
-        String caption = service.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny);
+        String caption = service.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny, null);
 
         assertEquals("", caption);
         verify(pusher).push(SseEventTransformer.STAGE_ATTACHMENTS, "只有思考没有回答");
@@ -168,7 +186,7 @@ class ImageCaptionServiceTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> service.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny));
+                () -> service.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny, null));
 
         // 评审 I-2：异常路径方法内不再自行 end——批次完成点按标志统一补 end，避免多图交错；
         // 标志已置 true 保证「异常图此前推过思考」不残留思考态
@@ -187,11 +205,11 @@ class ImageCaptionServiceTest {
                 new EtlProperties.ImageExecutor(3, 3, 20, "etl-image-", 1),
                 new EtlProperties.Chunk(768, 64),
                 16,
-                "qwen3.7-flash",
                 10,
                 new EtlProperties.Table(25, 30, 2),
                 500);
-        ImageCaptionService timeoutService = new ImageCaptionService(chatModel, promptLoader, oneSecondProps);
+        ImageCaptionService timeoutService =
+                new ImageCaptionService(chatModel, promptLoader, oneSecondProps, attachmentProps);
         ThinkingPusher pusher = mock(ThinkingPusher.class);
         AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
         when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.never());
@@ -199,11 +217,70 @@ class ImageCaptionServiceTest {
         long start = System.currentTimeMillis();
         assertThrows(
                 RuntimeException.class,
-                () -> timeoutService.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny));
+                () -> timeoutService.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny, null));
         // 约 1s 内返回（有界而非永久阻塞附件池线程），未推过 reasoning 故无思考事件、标志保持 false
         assertTrue(System.currentTimeMillis() - start < 3000, "超时应按全流总时长预算有界触发");
         verifyNoInteractions(pusher);
         assertFalse(reasoningSeenAny.get());
+    }
+
+    // ==================== 消息实体化 caption 捕获（2026-08-29，spec §3.2） ====================
+
+    @Test
+    @DisplayName("captionStreaming(带 sink) — 调用完成点捕获 thinking 全文 + 描述文本（stage=attachments）")
+    void captionStreaming_withSink_capturesThinkingAndText() {
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        // 思考全文经 ThinkingPusher 累加缓冲（与已推送 THINKING 事件逐字一致）
+        when(pusher.accumulated()).thenReturn(Map.of(SseEventTransformer.STAGE_ATTACHMENTS, "识别图中公式与结构"));
+        AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(Flux.just(chunk("", "识别图中公式与结构"), chunk("这是一张函数图像", null)));
+        AssistantMessageSink sink = new AssistantMessageSink();
+
+        String caption = service.captionStreaming(new byte[] {1, 2, 3}, "image/png", pusher, reasoningSeenAny, sink);
+
+        assertEquals("这是一张函数图像", caption);
+        var captures = sink.snapshot();
+        assertEquals(1, captures.size(), "每次 caption 调用恰好捕获一条");
+        var capture = captures.get(0);
+        assertEquals(SseEventTransformer.STAGE_ATTACHMENTS, capture.stage());
+        assertEquals("识别图中公式与结构", capture.reasoning(), "捕获 thinking 全文（与已推送一致）");
+        assertEquals("这是一张函数图像", capture.text(), "捕获描述文本（仅供查看，不渲染为正文）");
+        assertTrue(capture.toolCalls().isEmpty(), "caption 工具调用恒空");
+    }
+
+    @Test
+    @DisplayName("captionStreaming(带 sink) — 流异常路径同样捕获已产出的思考（text 降级 null，不丢行）")
+    void captionStreaming_withSink_streamError_capturesPartialThinking() {
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        when(pusher.accumulated()).thenReturn(Map.of(SseEventTransformer.STAGE_ATTACHMENTS, "思考了一半"));
+        AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(Flux.concat(
+                        Flux.just(chunk("", "思考了一半")), Flux.error(new IllegalStateException("dashscope 断流"))));
+        AssistantMessageSink sink = new AssistantMessageSink();
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> service.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny, sink));
+
+        var captures = sink.snapshot();
+        assertEquals(1, captures.size(), "异常路径同样捕获（与取消路径 attachments thinking 行落库语义一致）");
+        assertEquals("思考了一半", captures.get(0).reasoning());
+        assertNull(captures.get(0).text(), "异常路径 text 降级 null");
+    }
+
+    @Test
+    @DisplayName("captionStreaming(带 sink) — sink 为 null（ETL 离线链路形态）时行为与四参版本一致，不捕获")
+    void captionStreaming_withoutSink_noCapture() {
+        ThinkingPusher pusher = mock(ThinkingPusher.class);
+        AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
+        when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.just(chunk("描述文本", null)));
+
+        String caption = service.captionStreaming(new byte[] {1}, "image/png", pusher, reasoningSeenAny, null);
+
+        assertEquals("描述文本", caption);
+        // 无 sink 不得抛错（null 安全），捕获逻辑整体旁路
     }
 
     /**

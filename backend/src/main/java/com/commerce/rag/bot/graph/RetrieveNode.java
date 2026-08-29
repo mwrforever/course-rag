@@ -147,6 +147,17 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
      */
     public static final String KEY_CANCEL_CHECK = "cancelCheck";
 
+    /**
+     * per-run LLM 调用消息捕获容器 metadata 键（2026-08-29 消息实体化新增）。
+     *
+     * <p>worker 在 run 开始注入 {@link com.commerce.rag.record.AssistantMessageSink} 容器
+     * （容器对象引用经 SAA 派生副本浅拷贝穿透，与 {@link #KEY_SOURCES_SINK} 同构的
+     * 「节点经注入回调」通道），QU 节点在流式聚合完成点经容器捕获该次调用完整消息
+     * （thinking 全文 + query_plan payload JSON），run 终结时 worker persistMessages 快照
+     * 消费落 assistant 实体行。不写 State、不进 checkpoint（瞬时引用，仅本轮 run 生命周期内有效）。
+     */
+    public static final String KEY_ASSISTANT_SINK = "assistantMessageSink";
+
     private final SearchKnowledgeTool searchKnowledgeTool;
     private final CourseNameMapper courseNameMapper;
     private final ContextBuilderService contextBuilderService;

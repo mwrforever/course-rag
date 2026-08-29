@@ -9,10 +9,14 @@ import com.commerce.rag.convert.ChatSessionConverter;
 import com.commerce.rag.convert.StudentConverter;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.mapper.ChatMessageMapper;
+import com.commerce.rag.record.AssistantEntitySplitter;
+import com.commerce.rag.record.AttachmentRecord;
+import com.commerce.rag.record.RetrievalSource;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.vo.ChatMessageVO;
 import com.commerce.rag.vo.StudentMessageVO;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -78,9 +82,13 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
      * confidence/traceId/sessionId 等大字段或内部字段丢弃）。
      * 2026-08-28 时间线改版：投影补 thinking_stage（replayFromPg 降级回放据此重建
      * 带 stage 的 THINKING 事件；历史存量行该列为 null，回放输出 JSON null 不报错）。
+     * 2026-08-29 消息实体化：assistant 实体行经 {@link AssistantEntitySplitter} 拆行还原
+     * 事件序 VO（QU→thinking+query_plan、caption→thinking、主 agent→thinking+TOOL_CALL×N+
+     * 正文，VO 形态与实体化前完全一致），非实体行（增量行/存量行）原样透传——消费面
+     * （replayFromPg / resolveAssistantMessageId）零改动。
      *
      * @param runId Run ID
-     * @return 消息视图对象列表（按 seq 升序，剔除 sessionId/sourcesJson 等内部字段）
+     * @return 消息视图对象列表（按 seq 升序，实体行已拆行还原事件序；剔除 sessionId/sourcesJson 等内部字段）
      */
     public List<ChatMessageVO> findByRunId(Long runId) {
         LambdaQueryWrapper<ChatMessage> wrapper = Wrappers.<ChatMessage>lambdaQuery()
@@ -96,20 +104,28 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
                         ChatMessage::getCreatedAt)
                 .eq(ChatMessage::getRunId, runId)
                 .orderByAsc(ChatMessage::getSeq);
-        // 实体列表 → VO 列表：逐条转换，sessionId/sourcesJson 等内部字段不随 VO 出边界
+        // 实体列表 → VO 列表：assistant 实体行拆行还原事件序（同实体拆出 VO seq 倒推连续，
+        // 原地展开即保持 seq 序；nullsLast 兜底防御），非实体行原样透传
         return messageMapper.selectList(wrapper).stream()
                 .map(chatSessionConverter::toMessageVO)
+                .flatMap(vo -> AssistantEntitySplitter.splitEntity(vo).stream())
+                .sorted(Comparator.comparing(ChatMessageVO::seq, Comparator.nullsLast(Comparator.naturalOrder())))
                 .collect(Collectors.toList());
     }
 
     /**
      * 按 session_id 查询全部消息（按 created_at + seq 升序），用于管理端会话详情
      *
-     * <p>L-2：按需取列——与 findByRunId 同款投影（sourcesJson/tokenCount/confidence/traceId 丢弃）。
+     * <p>L-2：按需取列——2026-08-29 消息实体化投影修订：仅投影实体行所需 7 列
+     * （id/role/content/messageType/runId/seq/createdAt）——正常路径为 assistant 实体行
+     * （content 为 spec §3.1 JSON，一行一次调用全貌，管理端查看体验升级），thinking_stage
+     * 列不再需要（stage 在 content JSON 内）、intentType 亦不投影（不再依赖 thinking_stage
+     * 的「与 findByRunId 同款」失实注释同步修订）；取消/错误路径增量行原样返回（管理端无
+     * M3 过滤保持，看全部含取消 run）。
      * M5 排序修复：created_at 相同（同事务 saveBatch 批内）时按 seq 复合排序，消除排序不稳定。
      *
      * @param sessionId 会话 ID
-     * @return 消息视图对象列表（剔除 sessionId/sourcesJson 等内部字段）
+     * @return 消息视图对象列表（实体行原样返回；剔除 sessionId/sourcesJson 等内部字段）
      */
     public List<ChatMessageVO> findBySessionId(Long sessionId) {
         LambdaQueryWrapper<ChatMessage> wrapper = Wrappers.<ChatMessage>lambdaQuery()
@@ -118,7 +134,6 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
                         ChatMessage::getRole,
                         ChatMessage::getContent,
                         ChatMessage::getMessageType,
-                        ChatMessage::getIntentType,
                         ChatMessage::getRunId,
                         ChatMessage::getSeq,
                         ChatMessage::getCreatedAt)
@@ -126,7 +141,8 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
                 // M5：复合排序（created_at 相同时按 run 内 seq 定序，批内插入顺序稳定）
                 .orderByAsc(ChatMessage::getCreatedAt)
                 .orderByAsc(ChatMessage::getSeq);
-        // 实体列表 → VO 列表：逐条转换，sessionId/sourcesJson 等内部字段不随 VO 出边界
+        // 实体列表 → VO 列表：逐条转换（实体行原样返回，不拆行——B 端一行看全貌），
+        // sessionId/sourcesJson 等内部字段不随 VO 出边界
         return messageMapper.selectList(wrapper).stream()
                 .map(chatSessionConverter::toMessageVO)
                 .collect(Collectors.toList());
@@ -188,13 +204,48 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
                 page,
                 entityPage.getRecords().size(),
                 completedRunIds.size());
-        // entity 分页 → 学生 VO 分页：分页元数据保持，records 经转换器解析 sources/attachments
+        // entity 分页 → 学生 VO 分页：分页元数据保持，records 经拆行/转换产出——
+        // assistant 实体行先拆行还原事件序（消息实体化 2026-08-29），再逐 VO 携带
+        // sources/attachments（解析自实体行 JSONB 列）；非实体行原样转换
         Page<StudentMessageVO> voPage =
                 new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
         voPage.setRecords(entityPage.getRecords().stream()
-                .map(studentConverter::toStudentMessageVO)
+                .flatMap(entity -> toStudentVos(entity).stream())
                 .collect(Collectors.toList()));
         return voPage;
+    }
+
+    /**
+     * 实体行 → 学生历史 VO 列表（消息实体化 2026-08-29，C 端历史消费面）。
+     *
+     * <p>assistant 实体行经 {@link AssistantEntitySplitter} 拆行还原事件序行（thinking /
+     * query_plan / TOOL_CALL / 正文），非实体行（增量行/存量行）原样单条——前端
+     * history-adapter 消费的 VO 行类型与实体化前完全一致（零改动）；检索来源仅正文行
+     * （messageType=null）携带（实体行取自实体行 sources_json、非实体行取自身行值——
+     * 与实体化前「正文行落真实来源、其余行 []」口径一致），附件仅用户行携带。
+     *
+     * @param entity 查询投影行（含 sources_json/attachments_json/thinking_stage）
+     * @return 学生历史 VO 列表（拆行 0 条时为空列表）
+     */
+    private List<StudentMessageVO> toStudentVos(ChatMessage entity) {
+        List<ChatMessageVO> vos = AssistantEntitySplitter.splitEntity(chatSessionConverter.toMessageVO(entity));
+        // sources/attachments 解析复用 StudentConverter 既有 @Named 解析（非法 JSON 兜底空列表）
+        List<RetrievalSource> sources = studentConverter.parseSources(entity.getSourcesJson());
+        List<AttachmentRecord> attachments = studentConverter.parseAttachments(entity.getAttachmentsJson());
+        return vos.stream()
+                .map(vo -> new StudentMessageVO(
+                        vo.id(),
+                        vo.role(),
+                        vo.content(),
+                        vo.messageType(),
+                        vo.thinkingStage(),
+                        vo.intentType(),
+                        vo.runId(),
+                        vo.seq(),
+                        vo.createdAt(),
+                        vo.messageType() == null ? sources : List.of(),
+                        attachments))
+                .toList();
     }
 
     /**

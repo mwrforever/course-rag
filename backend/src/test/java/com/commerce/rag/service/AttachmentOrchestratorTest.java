@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.commerce.rag.properties.AttachmentProperties;
+import com.commerce.rag.record.AssistantMessageSink;
 import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.record.DocumentLocalChunk;
@@ -46,12 +47,30 @@ class AttachmentOrchestratorTest {
 
     /** 默认测试配置：总超时 60s（并行用例自建真实线程池，语义用例同步执行不触发超时） */
     private static final AttachmentProperties PROPS = new AttachmentProperties(
-            10, 50, 10, 100, 100, 30, 16, 60000, new AttachmentProperties.Executor(2, 4, 20, "attachment-test-"));
+            10,
+            50,
+            10,
+            100,
+            100,
+            30,
+            16,
+            60000,
+            new AttachmentProperties.Executor(2, 4, 20, "attachment-test-"),
+            "qwen3.7-max-2026-06-08");
 
     /** 构建指定总超时的测试配置（超时用例用 300ms 触发丢弃） */
     private static AttachmentProperties propsWithTimeout(long timeoutMs) {
         return new AttachmentProperties(
-                10, 50, 10, 100, 100, 30, 16, timeoutMs, new AttachmentProperties.Executor(2, 4, 20, "attachment-"));
+                10,
+                50,
+                10,
+                100,
+                100,
+                30,
+                16,
+                timeoutMs,
+                new AttachmentProperties.Executor(2, 4, 20, "attachment-"),
+                "qwen3.7-max-2026-06-08");
     }
 
     @Mock
@@ -81,16 +100,16 @@ class AttachmentOrchestratorTest {
         // Given: 单张图片附件，download 返回字节，imageProcessor 产出 caption
         byte[] bytes = new byte[] {1, 2, 3};
         when(attachmentService.download("0/a.png")).thenReturn(bytes);
-        when(imageProcessor.processImages(List.of(bytes), List.of("a.png"), null))
+        when(imageProcessor.processImages(List.of(bytes), List.of("a.png"), null, null))
                 .thenReturn(List.of(new ImageCaptionResult("图片1:红色图表", "a.png")));
 
         // When
         AttachmentContext ctx = orchestrator.process(
-                List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1L)), null, NOT_CANCELLED);
+                List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1L)), null, NOT_CANCELLED, null);
 
         // Then: 图片字节交给 imageProcessor，不触发文档处理；captions 组装、documents 为空
         verify(attachmentService).download("0/a.png");
-        verify(imageProcessor).processImages(List.of(bytes), List.of("a.png"), null);
+        verify(imageProcessor).processImages(List.of(bytes), List.of("a.png"), null, null);
         verify(documentProcessor, never()).processDocument(any(), any());
         assertEquals(1, ctx.captions().size());
         assertEquals("图片1:红色图表", ctx.captions().get(0).caption());
@@ -109,11 +128,11 @@ class AttachmentOrchestratorTest {
 
         // When
         AttachmentContext ctx = orchestrator.process(
-                List.of(new AttachmentRecord("document", "0/doc.pdf", "doc.pdf", 2L)), null, NOT_CANCELLED);
+                List.of(new AttachmentRecord("document", "0/doc.pdf", "doc.pdf", 2L)), null, NOT_CANCELLED, null);
 
         // Then: 文档字节交给 documentProcessor，不触发图片处理；documents 以 url 为键
         verify(documentProcessor).processDocument(bytes, "doc.pdf");
-        verify(imageProcessor, never()).processImages(anyList(), anyList(), any());
+        verify(imageProcessor, never()).processImages(anyList(), anyList(), any(), any());
         assertTrue(ctx.documents().containsKey("0/doc.pdf"));
         assertEquals(chunks, ctx.documents().get("0/doc.pdf"));
         assertTrue(ctx.captions().isEmpty());
@@ -128,7 +147,7 @@ class AttachmentOrchestratorTest {
         byte[] docBytes = new byte[] {2};
         when(attachmentService.download("0/a.png")).thenReturn(imgBytes);
         when(attachmentService.download("0/doc.pdf")).thenReturn(docBytes);
-        when(imageProcessor.processImages(List.of(imgBytes), List.of("a.png"), null))
+        when(imageProcessor.processImages(List.of(imgBytes), List.of("a.png"), null, null))
                 .thenReturn(List.of(new ImageCaptionResult("图片1:柱状图", "a.png")));
         List<DocumentLocalChunk> chunks = List.of(new DocumentLocalChunk("课程大纲", new float[] {1f}, 0));
         when(documentProcessor.processDocument(docBytes, "doc.pdf")).thenReturn(chunks);
@@ -139,10 +158,11 @@ class AttachmentOrchestratorTest {
                         new AttachmentRecord("image", "0/a.png", "a.png", 1L),
                         new AttachmentRecord("document", "0/doc.pdf", "doc.pdf", 2L)),
                 null,
-                NOT_CANCELLED);
+                NOT_CANCELLED,
+                null);
 
         // Then: 两个处理器各执行一次，context 两边齐全
-        verify(imageProcessor).processImages(List.of(imgBytes), List.of("a.png"), null);
+        verify(imageProcessor).processImages(List.of(imgBytes), List.of("a.png"), null, null);
         verify(documentProcessor).processDocument(docBytes, "doc.pdf");
         assertEquals(1, ctx.captions().size());
         assertTrue(ctx.documents().containsKey("0/doc.pdf"));
@@ -155,7 +175,7 @@ class AttachmentOrchestratorTest {
         byte[] good = new byte[] {7};
         when(attachmentService.download("0/good.png")).thenReturn(good);
         when(attachmentService.download("0/bad.png")).thenThrow(new RuntimeException("MinIO 不可用"));
-        when(imageProcessor.processImages(List.of(good), List.of("good.png"), null))
+        when(imageProcessor.processImages(List.of(good), List.of("good.png"), null, null))
                 .thenReturn(List.of(new ImageCaptionResult("图片1:正常图", "good.png")));
 
         // When
@@ -164,7 +184,8 @@ class AttachmentOrchestratorTest {
                         new AttachmentRecord("image", "0/good.png", "good.png", 1L),
                         new AttachmentRecord("image", "0/bad.png", "bad.png", 1L)),
                 null,
-                NOT_CANCELLED);
+                NOT_CANCELLED,
+                null);
 
         // Then: 失败项跳过（不抛异常），正常图片仍完成 caption
         assertEquals(1, ctx.captions().size());
@@ -184,13 +205,14 @@ class AttachmentOrchestratorTest {
                         new AttachmentRecord("image", "0/a.png", "a.png", 1L),
                         new AttachmentRecord("document", "0/b.pdf", "b.pdf", 2L)),
                 null,
-                NOT_CANCELLED);
+                NOT_CANCELLED,
+                null);
 
         // Then: 无任何 captions/documents，处理器均不触发
         assertFalse(ctx.hasAny());
         assertTrue(ctx.captions().isEmpty());
         assertTrue(ctx.documents().isEmpty());
-        verify(imageProcessor, never()).processImages(anyList(), anyList(), any());
+        verify(imageProcessor, never()).processImages(anyList(), anyList(), any(), any());
         verify(documentProcessor, never()).processDocument(any(), any());
     }
 
@@ -198,7 +220,7 @@ class AttachmentOrchestratorTest {
     @DisplayName("空附件列表 — 直接返回 empty，不访问服务与处理器")
     void process_emptyAttachments_returnsEmpty() {
         // When
-        AttachmentContext ctx = orchestrator.process(List.of(), null, NOT_CANCELLED);
+        AttachmentContext ctx = orchestrator.process(List.of(), null, NOT_CANCELLED, null);
 
         // Then: empty 且下游零交互（无多余下载/处理）
         assertFalse(ctx.hasAny());
@@ -211,7 +233,7 @@ class AttachmentOrchestratorTest {
     @DisplayName("null 附件列表 — 返回 empty，不抛异常")
     void process_nullAttachments_returnsEmpty() {
         // When
-        AttachmentContext ctx = orchestrator.process(null, null, NOT_CANCELLED);
+        AttachmentContext ctx = orchestrator.process(null, null, NOT_CANCELLED, null);
 
         // Then: null 入参按空处理
         assertFalse(ctx.hasAny());
@@ -247,7 +269,8 @@ class AttachmentOrchestratorTest {
                             new AttachmentRecord("document", "0/doc1.pdf", "doc1.pdf", 1L),
                             new AttachmentRecord("document", "0/doc2.pdf", "doc2.pdf", 1L)),
                     null,
-                    NOT_CANCELLED);
+                    NOT_CANCELLED,
+                    null);
 
             // 两附件均完成 = 两个下载确实并发执行（任一串行等待都会触发总超时被丢弃）
             assertTrue(ctx.documents().containsKey("0/doc1.pdf"), "附件1 应完成处理");
@@ -280,7 +303,8 @@ class AttachmentOrchestratorTest {
                             new AttachmentRecord("document", "0/fast.pdf", "fast.pdf", 1L),
                             new AttachmentRecord("document", "0/slow.pdf", "slow.pdf", 1L)),
                     null,
-                    NOT_CANCELLED);
+                    NOT_CANCELLED,
+                    null);
 
             assertTrue(ctx.documents().containsKey("0/fast.pdf"), "已完成的快附件结果应保留");
             assertFalse(ctx.documents().containsKey("0/slow.pdf"), "超时的慢附件应被丢弃");
@@ -298,7 +322,7 @@ class AttachmentOrchestratorTest {
             return new byte[] {1};
         });
         when(attachmentService.download("0/fast.png")).thenReturn(new byte[] {2});
-        when(imageProcessor.processImages(anyList(), anyList(), isNull()))
+        when(imageProcessor.processImages(anyList(), anyList(), isNull(), nullable(AssistantMessageSink.class)))
                 .thenReturn(List.of(
                         new ImageCaptionResult("图片1:慢图", "slow.png"), new ImageCaptionResult("图片2:快图", "fast.png")));
 
@@ -312,12 +336,18 @@ class AttachmentOrchestratorTest {
                             new AttachmentRecord("image", "0/slow.png", "slow.png", 1L),
                             new AttachmentRecord("image", "0/fast.png", "fast.png", 1L)),
                     null,
-                    NOT_CANCELLED);
+                    NOT_CANCELLED,
+                    null);
 
             // 交给 imageProcessor 的字节/文件名列表必须按原始附件顺序（后完成的慢图在前）
             ArgumentCaptor<List<byte[]>> bytesCaptor = ArgumentCaptor.forClass(List.class);
             ArgumentCaptor<List<String>> namesCaptor = ArgumentCaptor.forClass(List.class);
-            verify(imageProcessor).processImages(bytesCaptor.capture(), namesCaptor.capture(), isNull());
+            verify(imageProcessor)
+                    .processImages(
+                            bytesCaptor.capture(),
+                            namesCaptor.capture(),
+                            isNull(),
+                            nullable(AssistantMessageSink.class));
             assertArrayEquals(
                     new byte[][] {new byte[] {1}, new byte[] {2}},
                     bytesCaptor.getValue().toArray());
@@ -346,7 +376,8 @@ class AttachmentOrchestratorTest {
                         new AttachmentRecord("image", "0/a.png", "a.png", 1L),
                         new AttachmentRecord("document", "0/b.pdf", "b.pdf", 2L)),
                 null,
-                NOT_CANCELLED);
+                NOT_CANCELLED,
+                null);
 
         assertFalse(ctx.hasAny(), "全部提交被拒应返回空上下文");
         verifyNoInteractions(imageProcessor, documentProcessor);
@@ -359,15 +390,15 @@ class AttachmentOrchestratorTest {
         ThinkingPusher pusher = mock(ThinkingPusher.class);
         byte[] bytes = new byte[] {9};
         when(attachmentService.download("0/a.png")).thenReturn(bytes);
-        when(imageProcessor.processImages(List.of(bytes), List.of("a.png"), pusher))
+        when(imageProcessor.processImages(List.of(bytes), List.of("a.png"), pusher, null))
                 .thenReturn(List.of(new ImageCaptionResult("图片1:图", "a.png")));
 
         // When
         AttachmentContext ctx = orchestrator.process(
-                List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1L)), pusher, NOT_CANCELLED);
+                List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1L)), pusher, NOT_CANCELLED, null);
 
         // Then: 同一 pusher 实例交给处理器（流式 VLM 由此推送 attachments 阶段思考），结果语义不变
-        verify(imageProcessor).processImages(List.of(bytes), List.of("a.png"), pusher);
+        verify(imageProcessor).processImages(List.of(bytes), List.of("a.png"), pusher, null);
         assertEquals(1, ctx.captions().size());
         assertEquals("图片1:图", ctx.captions().get(0).caption());
     }
@@ -381,7 +412,8 @@ class AttachmentOrchestratorTest {
                         new AttachmentRecord("image", "0/a.png", "a.png", 1L),
                         new AttachmentRecord("document", "0/b.pdf", "b.pdf", 2L)),
                 null,
-                () -> true);
+                () -> true,
+                null);
 
         // Then: 全部附件跳过——不再为不会再消费的附件耗下载/VLM 配额，空上下文交调用方正常收敛
         assertFalse(ctx.hasAny());
@@ -405,12 +437,13 @@ class AttachmentOrchestratorTest {
                         new AttachmentRecord("image", "0/a.png", "a.png", 1L),
                         new AttachmentRecord("image", "0/b.png", "b.png", 2L)),
                 pusher,
-                cancelAfterFirst);
+                cancelAfterFirst,
+                null);
 
         // Then: 文件2 未下载；已取消 → 批量 caption 整体跳过，pusher 零交互（零 THINKING/END 事件）
         verify(attachmentService).download("0/a.png");
         verify(attachmentService, never()).download("0/b.png");
-        verify(imageProcessor, never()).processImages(anyList(), anyList(), any());
+        verify(imageProcessor, never()).processImages(anyList(), anyList(), any(), any());
         verifyNoInteractions(pusher);
         assertFalse(ctx.hasAny());
     }
@@ -432,7 +465,8 @@ class AttachmentOrchestratorTest {
                         new AttachmentRecord("document", "0/doc1.pdf", "doc1.pdf", 1L),
                         new AttachmentRecord("document", "0/doc2.pdf", "doc2.pdf", 2L)),
                 null,
-                cancelAfterFirst);
+                cancelAfterFirst,
+                null);
 
         // Then: 文件1 正常处理入上下文；文件2 未提交——不下载、不处理（never 断言取消即时性）
         assertTrue(ctx.documents().containsKey("0/doc1.pdf"));

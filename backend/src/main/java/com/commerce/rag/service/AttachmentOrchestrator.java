@@ -1,6 +1,7 @@
 package com.commerce.rag.service;
 
 import com.commerce.rag.properties.AttachmentProperties;
+import com.commerce.rag.record.AssistantMessageSink;
 import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.record.DocumentLocalChunk;
@@ -105,10 +106,15 @@ public class AttachmentOrchestrator {
      *                    保持离线/测试兼容）
      * @param cancelled   取消源（worker 注入 run 级取消标志读取器；不允许为 null，无取消场景传
      *                    {@code () -> false}；批循环每文件提交前调用一次）
+     * @param assistantSink per-run LLM 调用捕获容器（2026-08-29 消息实体化；可为 null——
+     *                    null 时 caption 不捕获调用，保持离线/测试兼容）
      * @return 附件处理结果载体（无附件/全部失败/全部超时/已取消返回 {@link AttachmentContext#empty()}；不抛异常）
      */
     public AttachmentContext process(
-            List<AttachmentRecord> attachments, ThinkingPusher pusher, BooleanSupplier cancelled) {
+            List<AttachmentRecord> attachments,
+            ThinkingPusher pusher,
+            BooleanSupplier cancelled,
+            AssistantMessageSink assistantSink) {
         // 空输入按空上下文处理，不触发任何下载/处理
         if (attachments == null || attachments.isEmpty()) {
             return AttachmentContext.empty();
@@ -158,7 +164,8 @@ public class AttachmentOrchestrator {
             if (cancelled.getAsBoolean()) {
                 log.info("图片批量 caption 前检测到取消，跳过 caption: 图片数={}", imageBytes.size());
             } else {
-                captions = imageProcessor.processImages(imageBytes, imageNames, pusher);
+                // assistantSink 透传：caption 调用完成点捕获 LLM 调用（消息实体化，spec §3.2）
+                captions = imageProcessor.processImages(imageBytes, imageNames, pusher, assistantSink);
             }
         }
         return new AttachmentContext(captions, documents);

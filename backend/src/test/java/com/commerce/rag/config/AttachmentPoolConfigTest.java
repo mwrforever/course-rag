@@ -29,7 +29,16 @@ class AttachmentPoolConfigTest {
     /** 构建附件配置（池参数可变，其余用默认值） */
     private static AttachmentProperties props(int core, int max, int queue, String prefix) {
         return new AttachmentProperties(
-                10, 50, 10, 100, 100, 30, 16, 60000, new AttachmentProperties.Executor(core, max, queue, prefix));
+                10,
+                50,
+                10,
+                100,
+                100,
+                30,
+                16,
+                60000,
+                new AttachmentProperties.Executor(core, max, queue, prefix),
+                "qwen3.7-max-2026-06-08");
     }
 
     @Test

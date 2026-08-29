@@ -8,6 +8,8 @@ import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.LeadAgentGraph;
 import com.commerce.rag.bot.rewrite.QueryPlan;
+import com.commerce.rag.record.AssistantMessageCapture;
+import com.commerce.rag.record.AssistantMessageSink;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
@@ -61,6 +63,31 @@ public class SseEventTransformer {
      * @return 转换后的事件列表，空列表表示该 chunk 不产生事件
      */
     public List<SseEvent> transform(NodeOutput chunk, RunState runState) {
+        return transform(chunk, runState, null);
+    }
+
+    /**
+     * 将 SAA 流式输出的单个 chunk 转换为 0~N 个 {@link SseEvent}（消息实体化重载）。
+     *
+     * <p>与两参版本的区别：sink 非空时在转换点顺带完成主 agent 调用的实体捕获（spec §3.2）——
+     * <ul>
+     *   <li>AGENT_MODEL_STREAMING：chunk 的 reasoningContent 同步累加进
+     *       {@link AssistantMessageSink#appendReasoning}（与推送 THINKING 事件同源，保证
+     *       实体思考全文 ≡ 前端已推送思考序列）</li>
+     *   <li>AGENT_MODEL_FINISHED（模型输出结束点）：捕获该次调用完整
+     *       {@code {thinking全文, content, toolCalls}}——reasoning 优先取 FINISHED 消息
+     *       metadata（DashScope 实证末 chunk 通常无 reasoning，此时回退 sink 累加全文），
+     *       text 与 toolCalls 取 FINISHED 合并消息（SAA 1.1.2.0 实证：流结束时发射的
+     *       FINISHED 事件携带合并后的完整消息，非 null）</li>
+     * </ul>
+     * 事件转换逻辑与两参版本完全一致，捕获是旁路副作用，不改变事件流。
+     *
+     * @param chunk    SAA 图流式输出的单个 chunk
+     * @param runState 当前 run 上下文（用于递增 seqId）
+     * @param sink     per-run LLM 调用捕获容器（可为 null——null 时行为与两参版本一致，不捕获）
+     * @return 转换后的事件列表，空列表表示该 chunk 不产生事件
+     */
+    public List<SseEvent> transform(NodeOutput chunk, RunState runState, AssistantMessageSink sink) {
         if (chunk == null || runState == null) {
             return List.of();
         }
@@ -81,8 +108,8 @@ public class SseEventTransformer {
         // 体内注释的缩进判定随版本漂移（CI 与本地解析到不同 palantir 版本时
         // spotless:check 结果相反，2026-08-24 CI 实证），移出后消除分歧源。
         return switch (type) {
-            case AGENT_MODEL_STREAMING -> transformModelStreaming(streaming, runState);
-            case AGENT_MODEL_FINISHED -> transformModelFinished(streaming, runState);
+            case AGENT_MODEL_STREAMING -> transformModelStreaming(streaming, runState, sink);
+            case AGENT_MODEL_FINISHED -> transformModelFinished(streaming, runState, sink);
             case AGENT_TOOL_FINISHED -> transformToolFinished(streaming, runState);
             default -> List.of();
         };
@@ -103,7 +130,8 @@ public class SseEventTransformer {
      * （shouldOmitMessageOnStreamCompletion 省略 message），因此 TOOL_CALL 只能在
      * STREAMING 分支提取（模型输出工具调用时最后 chunk 携带完整 toolCalls）。
      */
-    private List<SseEvent> transformModelStreaming(StreamingOutput<?> chunk, RunState runState) {
+    private List<SseEvent> transformModelStreaming(
+            StreamingOutput<?> chunk, RunState runState, AssistantMessageSink sink) {
         Message message = chunk.message();
         if (message == null) {
             return List.of();
@@ -115,6 +143,11 @@ public class SseEventTransformer {
         String reasoning = extractReasoningContent(message);
         if (reasoning != null && !reasoning.isEmpty()) {
             runState.markThinkingSent(); // 标记已发 THINKING，text 阶段补 THINKING_END 的前置条件
+            // 消息实体化：reasoning 片段同步累加进 sink（与已推送 THINKING 事件逐字同源，
+            // FINISHED 捕获点的思考全文回退来源，spec §3.2 主 agent 捕获）
+            if (sink != null) {
+                sink.appendReasoning(STAGE_GENERATING, reasoning);
+            }
             Map<String, Object> thinkingPayload = new LinkedHashMap<>();
             thinkingPayload.put("delta", reasoning);
             thinkingPayload.put("stage", STAGE_GENERATING);
@@ -164,6 +197,11 @@ public class SseEventTransformer {
      * THINKING_END 由 STREAMING 的 text 分支补发、TOOL_CALL 已移到 STREAMING 分支，均不受影响。
      * 本方法保留为防御性（SAA 未来版本若恢复 FINISHED message，以下逻辑仍正确）。
      *
+     * <p>⚠️ 2026-08-29 实证勘误：对 1.1.2.0 字节码复核，FINISHED 事件在流结束时由
+     * lambda$transformFluxToGraphResponse$7 发射，携带合并后的完整消息（text 全量累加、
+     * toolCalls 合并去重、metadata 为末 chunk），并非恒 null——本分支既有事件逻辑与
+     * 消息实体化捕获均真实生效。
+     *
      * <p>设计文档 §3.7：FINISHED 携带累积完整 AssistantMessage。文本内容通常已通过
      * AGENT_MODEL_STREAMING 的 DELTA 事件逐步发送。但若本次 run 未发过任何 DELTA
      * （如模型直接返回完整结果无流式 chunk），则在此补发完整 text（§3.7）。
@@ -175,12 +213,31 @@ public class SseEventTransformer {
      *   <li>若存在 toolCalls → 每个工具调用产出独立 TOOL_CALL 事件</li>
      * </ol>
      */
-    private List<SseEvent> transformModelFinished(StreamingOutput<?> chunk, RunState runState) {
+    private List<SseEvent> transformModelFinished(
+            StreamingOutput<?> chunk, RunState runState, AssistantMessageSink sink) {
         List<SseEvent> events = new ArrayList<>();
         Message message = chunk.message();
 
         if (message == null) {
             return events;
+        }
+
+        // 0. 消息实体化捕获（spec §3.2 主 agent：模型输出结束点捕获该次调用完整消息）——
+        //    reasoning 优先取 FINISHED 消息 metadata；为空（DashScope 实证末 chunk 通常
+        //    无 reasoning_content）回退 sink 已累加的 STREAMING 思考全文（与前端已推送一致）
+        if (sink != null) {
+            String reasoning = extractReasoningContent(message);
+            if (reasoning == null || reasoning.isEmpty()) {
+                reasoning = sink.accumulatedReasoning(STAGE_GENERATING);
+            }
+            List<AssistantMessageCapture.AssistantToolCall> toolCalls =
+                    message instanceof AssistantMessage am && am.hasToolCalls()
+                            ? am.getToolCalls().stream()
+                                    .map(tc -> new AssistantMessageCapture.AssistantToolCall(
+                                            tc.id(), tc.name(), tc.arguments()))
+                                    .toList()
+                            : List.of();
+            sink.capture(STAGE_GENERATING, reasoning, message.getText(), toolCalls);
         }
 
         // 1. THINKING_END：FINISHED 累积消息仍带 reasoningContent → 补发一次
