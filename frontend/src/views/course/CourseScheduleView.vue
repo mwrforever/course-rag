@@ -9,9 +9,17 @@
 import { computed, reactive, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
-import { PhCalendarBlank, PhPencilSimple, PhPlus, PhSpinnerGap, PhTrash } from '@phosphor-icons/vue'
+import {
+  PhArrowClockwise,
+  PhCalendarBlank,
+  PhPencilSimple,
+  PhPlus,
+  PhSpinnerGap,
+  PhTrash,
+} from '@phosphor-icons/vue'
 
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui/icon-button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataTable } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -24,7 +32,11 @@ const route = useRoute()
 const courseId = computed(() => String(route.params.id ?? ''))
 
 /** 排期列表（查询键含路由 id，换课程自动重拉；失败 toast 保持原行为） */
-const { data: schedulesData } = useQuery({
+const {
+  data: schedulesData,
+  isFetching: schedulesFetching,
+  refetch: refetchSchedules,
+} = useQuery({
   queryKey: computed(() => ['course-schedules', courseId.value]),
   queryFn: async () => {
     try {
@@ -205,10 +217,21 @@ function confirmDeleteSchedule() {
         排期
         <span class="ml-2 text-sm font-normal text-text-muted">共 {{ schedules.length }} 个</span>
       </h2>
-      <Button size="sm" data-testid="add-schedule" @click="openCreateSchedule">
-        <PhPlus class="h-4 w-4" />
-        新增排期
-      </Button>
+      <div class="flex items-center gap-2">
+        <!-- 手动刷新（T2.3）：refetch 期间禁用防重复 -->
+        <IconButton
+          label="刷新"
+          data-testid="refresh-schedules"
+          :loading="schedulesFetching"
+          @click="refetchSchedules()"
+        >
+          <PhArrowClockwise class="h-4 w-4" />
+        </IconButton>
+        <Button size="sm" data-testid="add-schedule" @click="openCreateSchedule">
+          <PhPlus class="h-4 w-4" />
+          新增排期
+        </Button>
+      </div>
     </div>
 
     <!-- 排期空态 -->

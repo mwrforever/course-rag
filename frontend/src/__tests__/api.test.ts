@@ -580,6 +580,15 @@ describe('api client：接口函数拼装', () => {
     expect(lastCall('/admin/courses/c-9').method).toBe('delete')
   })
 
+  it('courseApi.uploadCover：封面上传 multipart 路径拼装（契约 D.2.2）', async () => {
+    const form = new FormData()
+    form.set('file', new File(['x'], 'cover.png', { type: 'image/png' }))
+    await courseApi.uploadCover(form)
+    const uploadCall = lastCall('/admin/courses/cover')
+    expect(uploadCall.method).toBe('post')
+    expect(uploadCall.headers?.['Content-Type']).toContain('multipart/form-data')
+  })
+
   it('scheduleApi/enrollmentApi：排期与报名的路径拼装', async () => {
     await scheduleApi.listByCourse('c-9')
     expect(lastCall('/admin/courses/c-9/schedules').method).toBe('get')

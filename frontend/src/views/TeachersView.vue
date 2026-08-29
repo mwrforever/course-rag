@@ -12,13 +12,19 @@
 import { computed, reactive, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { z } from 'zod'
-import { PhChalkboardTeacher, PhSpinnerGap, PhUserPlus } from '@phosphor-icons/vue'
+import {
+  PhArrowClockwise,
+  PhChalkboardTeacher,
+  PhSpinnerGap,
+  PhUserPlus,
+} from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataTable } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/ui/empty-state'
+import { IconButton } from '@/components/ui/icon-button'
 import { PageHead } from '@/components/ui/page-head'
 import { vReveal } from '@/directives/reveal'
 import { ApiError, userApi } from '@/lib/api'
@@ -50,6 +56,7 @@ const {
   data,
   isLoading,
   isError,
+  isFetching,
   error: queryError,
   refetch,
 } = useQuery({
@@ -325,6 +332,15 @@ function confirmDelete() {
     <!-- 页头：主标题 + 副题 + 右侧「添加教师」主操作（设计稿 page-head 形态） -->
     <PageHead v-reveal title="教师管理" subtitle="管理教师账号、状态与密码">
       <template #actions>
+        <!-- 手动刷新（T2.3）：refetch 期间禁用防重复 -->
+        <IconButton
+          label="刷新"
+          data-testid="refresh-teachers-list"
+          :loading="isFetching"
+          @click="refetch()"
+        >
+          <PhArrowClockwise class="h-4 w-4" />
+        </IconButton>
         <Button data-testid="add-teacher" @click="openAdd">
           <PhUserPlus class="h-4 w-4" aria-hidden="true" />
           添加教师

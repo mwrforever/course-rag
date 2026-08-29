@@ -78,9 +78,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* 表头：lav 底（设计稿 #f3f1fc 归拢 surface-2 令牌）、首末列 10px 圆角（设计稿 thead th） */
+/* 表头：lav 底（设计稿 #f3f1fc 归拢 surface-2 令牌）、首末列 10px 圆角（设计稿 thead th）；
+   纵距 11px 对齐管理后台密度 7 基线（契约 G.2.1 行高紧凑一致） */
 thead :deep(th) {
-  padding: 14px 16px;
+  padding: 11px 16px;
   text-align: left;
   font-size: 13.5px;
   font-weight: 600;
@@ -95,13 +96,14 @@ thead :deep(th:last-child) {
   border-radius: 0 10px 10px 0;
 }
 
-/* 单元格：紫白细分隔线（设计稿 #f2f1f8 归拢 border 令牌）+ 行悬停整行浅紫高亮（lav） */
+/* 单元格：紫白细分隔线（设计稿 #f2f1f8 归拢 border 令牌）+ 行悬停整行浅紫高亮（lav）；
+   纵距 17px→12px：密度 7 紧凑基线（全站表格统一，hover 250ms→200ms 对齐 150-300ms 反馈窗口） */
 tbody :deep(tr) td {
-  padding: 17px 16px;
+  padding: 12px 16px;
   font-size: 14px;
   color: var(--color-text-muted);
   border-bottom: 1px solid var(--color-border);
-  transition: background 0.25s ease;
+  transition: background 0.2s ease;
 }
 tbody :deep(tr) td:first-child {
   padding-left: 22px;

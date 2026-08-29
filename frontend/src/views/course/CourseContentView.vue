@@ -10,9 +10,10 @@ import { useMutation, useQuery } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { PhSpinnerGap } from '@phosphor-icons/vue'
+import { PhArrowClockwise, PhSpinnerGap } from '@phosphor-icons/vue'
 
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui/icon-button'
 import { ApiError, courseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 
@@ -48,6 +49,7 @@ const {
   data: contentsData,
   isLoading: contentsLoading,
   isError: contentsIsError,
+  isFetching: contentsFetching,
   error: contentsQueryError,
   refetch,
 } = useQuery({
@@ -126,7 +128,18 @@ function saveContent() {
   <section v-reveal class="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs">
     <div class="flex items-center justify-between gap-4 px-6 py-[18px]">
       <h2 class="text-lg font-extrabold tracking-tight text-text">课程内容</h2>
-      <p class="text-xs text-text-subtle">四个 Tab 独立保存，互不影响</p>
+      <div class="flex items-center gap-2">
+        <p class="text-xs text-text-subtle">四个 Tab 独立保存，互不影响</p>
+        <!-- 手动刷新（T2.3）：refetch 期间禁用防重复 -->
+        <IconButton
+          label="刷新"
+          data-testid="refresh-contents"
+          :loading="contentsFetching"
+          @click="refetch()"
+        >
+          <PhArrowClockwise class="h-4 w-4" />
+        </IconButton>
+      </div>
     </div>
 
     <!-- 内容区加载中：与编辑器同形的灰块 -->

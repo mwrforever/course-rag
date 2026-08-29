@@ -1,18 +1,22 @@
 <script setup lang="ts">
 /**
- * 课程教师分配（UI 重构 2026-08-25 从 CourseEditView 拆出；2026-08-27 紫系重制双栏卡壳）
+ * 课程教师分配（2026-08-29 T2.4 重构：remote-select 多选差集保存）
  *
- * 职责：双栏（已分配 / 可选=全量 TEACHER 剔除已分配 + 搜索过滤）+
- * POST [ids] 分配 + 移除 DELETE 带 body（axios data 写法）。
- * 教师用户池经 GET /users?role=TEACHER 一次拉取（后端无 keyword 参数，搜索客户端过滤，
- * 选择器只列 TEACHER 角色兜底 R18）。
+ * 职责：授课教师集经 RemoteSelect 多选承载（防抖 300ms + AbortController，契约 E），
+ * 保存按差集调既有端点——新增 POST / 移除 DELETE /admin/courses/{id}/teachers
+ * （body 均为裸 JSON 数组，契约 E.3）。教师池经 GET /users?role=TEACHER 拉取
+ * （后端无 keyword 参数，fetcher 内客户端过滤；选择器只列 TEACHER 角色兜底 R18）。
+ *
+ * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
-import { computed, ref } from 'vue'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { computed, ref, watch } from 'vue'
+import { useMutation, useQuery } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
-import { PhMagnifyingGlass, PhSpinnerGap, PhUserCircle, PhUsersThree } from '@phosphor-icons/vue'
+import { PhArrowClockwise, PhSpinnerGap } from '@phosphor-icons/vue'
 
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui/icon-button'
+import { RemoteSelect } from '@/components/ui/remote-select'
 import { ApiError, courseApi, userApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import type { UserDTO } from '@/lib/types'
@@ -21,17 +25,12 @@ const route = useRoute()
 /** 课程 id（Long 字符串铁律） */
 const courseId = computed(() => String(route.params.id ?? ''))
 
-/** 待分配勾选的教师 id（复选框 v-model 数组） */
-const teacherSelected = ref<string[]>([])
-const teacherSearch = ref('')
-/** 行内移除进行中的教师 id（原实现语义：仅该行 spinner） */
-const teacherRemovingId = ref('')
-
 /** 页面级加载：课程（teacherIds）+ 教师候选池 并发拉取（整体错误态横幅重试；vue-query 合并单查询） */
 const {
   data,
   isLoading,
   isError,
+  isFetching,
   error: queryError,
   refetch,
 } = useQuery({
@@ -60,23 +59,51 @@ const listError = computed(() =>
 /** 已分配教师 id（课程 teacherIds，Long 字符串铁律） */
 const assignedTeacherIds = computed(() => course.value?.teacherIds ?? [])
 
-const queryClient = useQueryClient()
+/** 草稿选中教师集（remote-select modelValue 承载选项对象；保存时与已分配集做差集） */
+const draftTeachers = ref<UserDTO[]>([])
+/** 草稿初始化标记（数据齐备后只回填一次，避免覆盖用户改动） */
+let draftInitialized = false
+
+/** 已分配教师明细（对象池 ∩ teacherIds；池未就绪时为 null 触发等待） */
+const assignedTeachers = computed(() => {
+  if (!course.value || !data.value) return null
+  return teacherPool.value.filter((t) => assignedTeacherIds.value.includes(t.id))
+})
+
+// 数据齐备（课程 + 教师池）后回填草稿一次（setup 作用域 watch 随组件卸载自动停止）
+watch(assignedTeachers, (list) => {
+  if (list && !draftInitialized) {
+    draftInitialized = true
+    draftTeachers.value = [...list]
+  }
+})
 
 /**
- * 分配/移除成功后的刷新：await 列表查询 refetch（v5 语义：失败也 resolve，不 reject）后
- * 以查询状态判定重拉失败（status 变 error 即 fetch 失败），失败以 toast 提示
- * （恢复原 refreshCourse 的「课程刷新失败」交互），不静默；页面错误横幅由查询错误态兜底。
+ * 保存分配（差集提交：新增 POST / 移除 DELETE，body 裸数组——契约 E.3）
  *
- * 候选池与课程同键合并单查询（['course-teachers', courseId]），低频操作全量重拉可接受——
- * 评估结论见 TASK.md §6（拆双查询需整页四态合并且无性能收益，保持合并）。
+ * 成功后重拉页面查询刷新已分配基线；失败 toast 提示（草稿保留可重试）。
  */
-async function refreshTeachers() {
-  await refetch()
-  const state = queryClient.getQueryState(['course-teachers', courseId.value])
-  if (state?.error) {
-    showToast('课程刷新失败，请重试或刷新页面', 'danger')
-  }
-}
+const { isPending: saving, mutate: saveTeachersMutation } = useMutation({
+  mutationFn: async () => {
+    const current = draftTeachers.value.map((t) => t.id)
+    const added = current.filter((id) => !assignedTeacherIds.value.includes(id))
+    const removed = assignedTeacherIds.value.filter((id) => !current.includes(id))
+    if (added.length > 0) {
+      await courseApi.addTeachers(courseId.value, added)
+    }
+    if (removed.length > 0) {
+      await courseApi.removeTeachers(courseId.value, removed)
+    }
+  },
+  onSuccess: async () => {
+    showToast('教师分配已保存', 'success')
+    // 重建草稿基线：重拉后 watch 会以新数据刷新已分配集（草稿已与提交一致）
+    await refetch()
+  },
+  onError: (err) => {
+    showToast(messageOf(err, '教师分配失败，请稍后重试'), 'danger')
+  },
+})
 
 function messageOf(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
@@ -86,64 +113,43 @@ function messageOf(err: unknown, fallback: string): string {
 }
 
 /**
- * 可选教师过滤：角色 TEACHER 兜底（R18）＋ 剔除已分配 ＋ 搜索关键词
- * （displayName/username 子串命中，后端 /users 无 keyword 参数）
+ * 教师远程搜索 fetcher（remote-select 契约 E：防抖与取消由组件负责）
+ *
+ * 后端 /admin/users 无 keyword 参数：整池拉取后客户端按显示名/用户名过滤；
+ * signal 透传 axios，新输入取消旧请求。
+ *
+ * @param keyword 搜索关键字（空串 = 首屏候选全量）
+ * @param signal 取消信号
+ * @returns 命中的教师列表
  */
-const availableTeachers = computed(() =>
-  teacherPool.value.filter(
-    (t) =>
-      t.role === 'TEACHER' &&
-      !assignedTeacherIds.value.includes(t.id) &&
-      (teacherSearch.value.trim() === '' ||
-        t.displayName.includes(teacherSearch.value.trim()) ||
-        t.username.includes(teacherSearch.value.trim())),
-  ),
-)
-
-/** 已分配教师明细：id → 用户对象（候选池不在场时以 id 兜底展示） */
-const assignedTeachers = computed(() =>
-  assignedTeacherIds.value
-    .map((id) => teacherPool.value.find((t) => t.id === id))
-    .filter((t): t is UserDTO => Boolean(t)),
-)
-
-/** 分配所选教师提交（POST /{id}/teachers 数组 body；成功后重拉双栏，失败以 toast 提示） */
-const { isPending: teacherAssigning, mutate: assignTeachersMutation } = useMutation({
-  mutationFn: (ids: string[]) => courseApi.addTeachers(courseId.value, ids),
-  onSuccess: () => {
-    showToast('教师分配成功', 'success')
-    teacherSelected.value = []
-    void refreshTeachers()
-  },
-  onError: (err) => {
-    showToast(messageOf(err, '教师分配失败，请稍后重试'), 'danger')
-  },
-})
-
-/** 分配所选教师：勾选非空校验 → 走 mutation */
-function assignTeachers() {
-  if (teacherSelected.value.length === 0) return
-  assignTeachersMutation(teacherSelected.value)
+async function fetchTeachers(keyword: string, signal: AbortSignal): Promise<UserDTO[]> {
+  const res = await userApi.list({ role: 'TEACHER', size: 100, signal })
+  const pool = (res.records ?? []).filter((u) => u.role === 'TEACHER')
+  const kw = keyword.trim()
+  if (kw === '') return pool
+  return pool.filter((t) => t.displayName.includes(kw) || t.username.includes(kw))
 }
 
-/** 移除教师提交（DELETE /{id}/teachers 带 body [id]；行内 spinner 由 teacherRemovingId 控制） */
-const { mutate: removeTeacherMutation } = useMutation({
-  mutationFn: (id: string) => courseApi.removeTeachers(courseId.value, [id]),
-  onSuccess: () => {
-    showToast('已移除教师', 'success')
-    teacherRemovingId.value = ''
-    void refreshTeachers()
-  },
-  onError: (err) => {
-    teacherRemovingId.value = ''
-    showToast(messageOf(err, '移除教师失败，请稍后重试'), 'danger')
-  },
+/**
+ * 教师选中集变化（契约 E.3：保存时与已分配集做差集）
+ *
+ * @param value remote-select 回抛的选中集（多选为对象数组；联合类型按数组归一收窄）
+ */
+function onTeachersChange(value: UserDTO | UserDTO[] | null) {
+  draftTeachers.value = Array.isArray(value) ? value : value ? [value] : []
+}
+
+/** 草稿与已分配集存在差异（驱动保存按钮可用态） */
+const hasChanges = computed(() => {
+  const current = new Set(draftTeachers.value.map((t) => t.id))
+  const original = assignedTeacherIds.value
+  return current.size !== original.length || original.some((id) => !current.has(id))
 })
 
-/** 移除教师：仅该行 spinner，完成/失败由 mutation 回调处理 */
-function removeTeacher(t: UserDTO) {
-  teacherRemovingId.value = t.id
-  removeTeacherMutation(t.id)
+/** 保存分配：无差异不发请求 */
+function saveAssignment() {
+  if (!hasChanges.value || saving.value) return
+  saveTeachersMutation()
 }
 </script>
 
@@ -151,13 +157,24 @@ function removeTeacher(t: UserDTO) {
   <section v-reveal class="rounded-2xl border border-border bg-surface shadow-xs">
     <div class="flex items-center justify-between gap-4 px-6 py-[18px]">
       <h2 class="text-lg font-extrabold tracking-tight text-text">教师分配</h2>
-      <p class="text-xs text-text-subtle">勾选后批量分配，移除即时生效</p>
+      <div class="flex items-center gap-2">
+        <p class="text-xs text-text-subtle">选择教师后按增删差集一次保存</p>
+        <!-- 手动刷新（T2.3）：refetch 期间禁用防重复 -->
+        <IconButton
+          label="刷新"
+          data-testid="refresh-teachers"
+          :loading="isFetching"
+          @click="refetch()"
+        >
+          <PhArrowClockwise class="h-4 w-4" />
+        </IconButton>
+      </div>
     </div>
 
     <!-- 加载骨架 -->
     <div v-if="isLoading" data-testid="teachers-skeleton" class="animate-pulse space-y-4 px-6 pb-6">
       <div class="h-9 rounded-xl bg-surface-2" />
-      <div class="h-40 rounded-xl bg-surface-2" />
+      <div class="h-10 rounded-xl bg-surface-2" />
     </div>
 
     <!-- 加载错误：横幅 + 重试 -->
@@ -170,110 +187,35 @@ function removeTeacher(t: UserDTO) {
       <Button variant="outline" size="sm" @click="refetch">重试</Button>
     </div>
 
-    <div v-else class="flex flex-1 flex-col gap-5 px-6 pb-6">
-      <!-- 搜索过滤（后端 /users 无 keyword 参数，客户端过滤） -->
-      <div class="relative">
-        <PhMagnifyingGlass
-          class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-text-subtle"
+    <div v-else class="space-y-4 px-6 pb-6">
+      <!-- 教师多选（remote-select：防抖 300ms + 取消，已分配自动回显为 chips） -->
+      <div>
+        <span class="mb-1.5 block text-sm font-medium text-text">授课教师</span>
+        <RemoteSelect
+          :model-value="draftTeachers"
+          :get-value="(t: UserDTO) => t.id"
+          :get-label="(t: UserDTO) => t.displayName"
+          :fetcher="fetchTeachers"
+          :initial-options="assignedTeachers ?? []"
+          multiple
+          placeholder="搜索教师（显示名/用户名），已分配教师自动回显"
+          empty-text="没有匹配的教师"
+          @update:model-value="onTeachersChange"
         />
-        <input
-          v-model="teacherSearch"
-          type="text"
-          data-testid="teacher-search"
-          aria-label="搜索教师"
-          placeholder="搜索教师（显示名/用户名）"
-          class="h-10 w-full rounded-xl border border-border bg-surface pr-3 pl-9 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-        />
+        <p class="mt-1 text-xs text-text-subtle">
+          当前已分配 {{ assignedTeacherIds.length }} 名；保存后按增删差集更新关联
+        </p>
       </div>
 
-      <!-- 双栏：已分配（含移除）/ 可选（复选框勾选待分配） -->
-      <div class="grid items-start gap-5 lg:grid-cols-2">
-        <div class="rounded-xl bg-brand-light p-4">
-          <p
-            class="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wider text-text-muted"
-          >
-            <PhUserCircle class="h-4 w-4" aria-hidden="true" />
-            已分配 {{ assignedTeachers.length }}
-          </p>
-          <div
-            v-if="assignedTeachers.length === 0"
-            class="rounded-[10px] bg-surface px-3 py-2 text-xs text-text-subtle"
-          >
-            暂无已分配教师
-          </div>
-          <ul v-else class="space-y-1.5">
-            <li
-              v-for="t in assignedTeachers"
-              :key="t.id"
-              :data-testid="`teacher-assigned-${t.id}`"
-              class="flex items-center justify-between gap-2 rounded-[10px] bg-surface px-3 py-2 transition-shadow duration-200 hover:shadow-xs"
-            >
-              <span class="min-w-0 truncate text-sm font-medium text-text">{{
-                t.displayName
-              }}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-6 px-2 text-xs text-danger hover:bg-danger/5"
-                :data-testid="`teacher-remove-${t.id}`"
-                :disabled="teacherRemovingId === t.id"
-                @click="removeTeacher(t)"
-              >
-                <PhSpinnerGap v-if="teacherRemovingId === t.id" class="h-3 w-3 animate-spin" />
-                移除
-              </Button>
-            </li>
-          </ul>
-        </div>
-
-        <div class="rounded-xl bg-brand-light p-4">
-          <p
-            class="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wider text-text-muted"
-          >
-            <PhUsersThree class="h-4 w-4" aria-hidden="true" />
-            可选教师 {{ availableTeachers.length }}
-          </p>
-          <div class="max-h-72 space-y-1.5 overflow-y-auto pr-1">
-            <label
-              v-for="t in availableTeachers"
-              :key="t.id"
-              :data-testid="`teacher-available-${t.id}`"
-              class="flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-transparent bg-surface px-3 py-2 transition-colors duration-150 hover:border-brand/40"
-            >
-              <input
-                v-model="teacherSelected"
-                type="checkbox"
-                :value="t.id"
-                :data-testid="`teacher-check-${t.id}`"
-                class="h-4 w-4 accent-brand"
-              />
-              <span class="min-w-0 truncate text-sm font-medium text-text">{{
-                t.displayName
-              }}</span>
-              <span class="ml-auto shrink-0 truncate text-xs text-text-subtle">{{
-                t.username
-              }}</span>
-            </label>
-            <div
-              v-if="availableTeachers.length === 0"
-              data-testid="teacher-available-empty"
-              class="rounded-[10px] bg-surface px-3 py-2 text-xs text-text-subtle"
-            >
-              没有匹配的教师
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 分配按钮：POST [ids] 数组 -->
+      <!-- 保存行：差集提交（无差异禁用 + spinner 防重复） -->
       <Button
         class="self-start"
         data-testid="teacher-assign"
-        :disabled="teacherSelected.length === 0 || teacherAssigning"
-        @click="assignTeachers"
+        :disabled="!hasChanges || saving"
+        @click="saveAssignment"
       >
-        <PhSpinnerGap v-if="teacherAssigning" class="h-4 w-4 animate-spin" />
-        分配所选（{{ teacherSelected.length }}）
+        <PhSpinnerGap v-if="saving" class="h-4 w-4 animate-spin" />
+        {{ saving ? '保存中' : hasChanges ? `保存分配（${draftTeachers.length}）` : '无变动' }}
       </Button>
     </div>
   </section>

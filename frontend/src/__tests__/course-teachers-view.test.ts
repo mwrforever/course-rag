@@ -55,7 +55,7 @@ function course(over: Partial<CourseDTO> = {}): CourseDTO {
     category: 'AI',
     instructorName: '老王',
     price: 199,
-    duration: '8 课时',
+    duration: '8',
     tags: ['RAG'],
     rating: 0,
     learningCount: 0,
@@ -103,81 +103,55 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('课程教师分配（/courses/:id/teachers）', () => {
-  it('加载双栏：已分配（课程 teacherIds）与可选（全量 TEACHER 剔除已分配）', async () => {
+/**
+ * 课程教师分配测试（2026-08-29 T2.4 重构：remote-select 多选差集保存）
+ *
+ * 覆盖：已分配 chip 回显 / 打开拉取教师池 / 新增 POST 裸数组 / 移除 DELETE 裸数组 /
+ * 保存失败草稿保留 / 加载失败重试 / 页头刷新按钮。
+ */
+describe('课程教师分配（remote-select 多选差集保存）', () => {
+  it('加载：已分配教师以 chip 回显，无变动时保存按钮禁用', async () => {
     apiMock.courseApi.get.mockResolvedValue(course({ teacherIds: ['t-1'] }))
-    apiMock.userApi.list.mockResolvedValue(
-      pageOf([teacher('t-1', '老王'), teacher('t-2', '小李'), teacher('t-3', '小张')]),
-    )
-    const { wrapper } = await mountAt()
-    await flushPromises()
-
-    expect(wrapper.find('[data-testid="teacher-assigned-t-1"]').text()).toContain('老王')
-    expect(wrapper.find('[data-testid="teacher-available-t-2"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="teacher-available-t-3"]').exists()).toBe(true)
-    // 已分配教师不会出现在可选池
-    expect(wrapper.find('[data-testid="teacher-available-t-1"]').exists()).toBe(false)
-    wrapper.unmount()
-  })
-
-  it('搜索过滤：按显示名/用户名子串命中', async () => {
-    apiMock.courseApi.get.mockResolvedValue(course({ teacherIds: [] }))
     apiMock.userApi.list.mockResolvedValue(pageOf([teacher('t-1', '老王'), teacher('t-2', '小李')]))
     const { wrapper } = await mountAt()
     await flushPromises()
 
-    await wrapper.find('[data-testid="teacher-search"]').setValue('李')
-    await flushPromises()
-    expect(wrapper.find('[data-testid="teacher-available-t-2"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="teacher-available-t-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="remote-chip-t-1"]').text()).toContain('老王')
+    expect(wrapper.text()).toContain('当前已分配 1 名')
+    const save = wrapper.find('[data-testid="teacher-assign"]')
+    expect(save.attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 
-  it('分配所选：POST [ids] → toast → 清空勾选 → 重拉课程刷新双栏', async () => {
+  it('打开选择器：拉取教师池渲染选项，选中后保存走 POST 裸数组 + 重拉', async () => {
     apiMock.courseApi.get
       .mockResolvedValueOnce(course({ teacherIds: [] }))
       .mockResolvedValueOnce(course({ teacherIds: ['t-1'] }))
-    apiMock.userApi.list.mockResolvedValue(pageOf([teacher('t-1', '老王')]))
+    apiMock.userApi.list.mockResolvedValue(pageOf([teacher('t-1', '老王'), teacher('t-2', '小李')]))
     apiMock.courseApi.addTeachers.mockResolvedValue(undefined)
     const { wrapper } = await mountAt()
     await flushPromises()
 
-    await wrapper.find('[data-testid="teacher-check-t-1"]').setValue(true)
+    // 打开 remote-select：focus 即以空关键字拉首屏候选（fetcher → userApi.list）
+    await wrapper.find('[data-testid="remote-input"]').trigger('focus')
+    await flushPromises()
+    expect(apiMock.userApi.list).toHaveBeenCalledWith(expect.objectContaining({ role: 'TEACHER' }))
+    expect(wrapper.find('[data-testid="remote-option-t-2"]').exists()).toBe(true)
+
+    // 选中 t-1 → chip 入场，保存按钮解禁
+    await wrapper.find('[data-testid="remote-option-t-1"]').trigger('click')
+    expect(wrapper.find('[data-testid="remote-chip-t-1"]').exists()).toBe(true)
     await wrapper.find('[data-testid="teacher-assign"]').trigger('click')
     await flushPromises()
+
+    // 契约 E.3：body 为裸 JSON 数组（非 {teacherIds:[...]} 包装）
     expect(apiMock.courseApi.addTeachers).toHaveBeenCalledWith('c-1', ['t-1'])
-    expect(showToast).toHaveBeenCalledWith('教师分配成功', 'success')
-    // 失效重拉为异步链：重拉次数与双栏更新以 waitFor 收敛
+    expect(showToast).toHaveBeenCalledWith('教师分配已保存', 'success')
     await vi.waitFor(() => expect(apiMock.courseApi.get).toHaveBeenCalledTimes(2))
-    // 分配后已分配栏出现该教师
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="teacher-assigned-t-1"]').exists()).toBe(true)
-    })
     wrapper.unmount()
   })
 
-  it('分配成功后重拉失败：toast「课程刷新失败」提示（不静默）', async () => {
-    apiMock.courseApi.get
-      .mockResolvedValueOnce(course({ teacherIds: [] }))
-      .mockRejectedValueOnce(new apiMock.ApiError(500, '课程接口异常'))
-    apiMock.userApi.list.mockResolvedValue(pageOf([teacher('t-1', '老王')]))
-    apiMock.courseApi.addTeachers.mockResolvedValue(undefined)
-    const { wrapper } = await mountAt()
-    await flushPromises()
-
-    await wrapper.find('[data-testid="teacher-check-t-1"]').setValue(true)
-    await wrapper.find('[data-testid="teacher-assign"]').trigger('click')
-    await flushPromises()
-
-    expect(showToast).toHaveBeenCalledWith('教师分配成功', 'success')
-    // 重拉失败 → 恢复原 refreshCourse 的失败提示交互
-    await vi.waitFor(() =>
-      expect(showToast).toHaveBeenCalledWith('课程刷新失败，请重试或刷新页面', 'danger'),
-    )
-    wrapper.unmount()
-  })
-
-  it('移除教师：DELETE [id] 带 body → toast → 重拉课程', async () => {
+  it('移除 chip 保存：DELETE 裸数组 body → toast → 重拉刷新基线', async () => {
     apiMock.courseApi.get
       .mockResolvedValueOnce(course({ teacherIds: ['t-1'] }))
       .mockResolvedValueOnce(course({ teacherIds: [] }))
@@ -186,11 +160,34 @@ describe('课程教师分配（/courses/:id/teachers）', () => {
     const { wrapper } = await mountAt()
     await flushPromises()
 
-    await wrapper.find('[data-testid="teacher-remove-t-1"]').trigger('click')
+    await wrapper.find('[data-testid="remote-chip-remove-t-1"]').trigger('click')
+    await wrapper.find('[data-testid="teacher-assign"]').trigger('click')
     await flushPromises()
+
     expect(apiMock.courseApi.removeTeachers).toHaveBeenCalledWith('c-1', ['t-1'])
-    expect(showToast).toHaveBeenCalledWith('已移除教师', 'success')
-    expect(wrapper.find('[data-testid="teacher-assigned-t-1"]').exists()).toBe(false)
+    expect(showToast).toHaveBeenCalledWith('教师分配已保存', 'success')
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="remote-chip-t-1"]').exists()).toBe(false)
+    })
+    wrapper.unmount()
+  })
+
+  it('保存失败：toast 提示且草稿保留可重试', async () => {
+    apiMock.courseApi.get.mockResolvedValue(course({ teacherIds: [] }))
+    apiMock.userApi.list.mockResolvedValue(pageOf([teacher('t-1', '老王')]))
+    apiMock.courseApi.addTeachers.mockRejectedValue(new apiMock.ApiError(500, '分配接口异常'))
+    const { wrapper } = await mountAt()
+    await flushPromises()
+
+    await wrapper.find('[data-testid="remote-input"]').trigger('focus')
+    await flushPromises()
+    await wrapper.find('[data-testid="remote-option-t-1"]').trigger('click')
+    await wrapper.find('[data-testid="teacher-assign"]').trigger('click')
+    await flushPromises()
+
+    expect(showToast).toHaveBeenCalledWith('分配接口异常', 'danger')
+    // 草稿保留：chip 仍在，可修正后重试
+    expect(wrapper.find('[data-testid="remote-chip-t-1"]').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -206,7 +203,19 @@ describe('课程教师分配（/courses/:id/teachers）', () => {
     const retry = wrapper.findAll('button').find((b) => b.text().includes('重试'))
     await retry?.trigger('click')
     await flushPromises()
-    expect(wrapper.find('[data-testid="teacher-available-empty"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="remote-select"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('刷新按钮（T2.3）：点击触发页面查询重拉', async () => {
+    apiMock.courseApi.get.mockResolvedValue(course({ teacherIds: [] }))
+    apiMock.userApi.list.mockResolvedValue(pageOf([]))
+    const { wrapper } = await mountAt()
+    await flushPromises()
+
+    await wrapper.find('[data-testid="refresh-teachers"]').trigger('click')
+    await flushPromises()
+    expect(apiMock.courseApi.get).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 })

@@ -1,4 +1,4 @@
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -127,6 +127,18 @@ async function pickFile(wrapper: VueWrapper, file: File) {
     configurable: true,
   })
   await input.trigger('change')
+}
+
+/**
+ * 上传 Dialog 内选择知识库（remote-select 单选：focus 拉候选 → 点击选项）
+ *
+ * @param dialog upload Dialog 根节点 wrapper
+ */
+async function selectKb(dialog: VueWrapper | DOMWrapper<Element>) {
+  await dialog.find('[data-testid="upload-kb"] [data-testid="remote-input"]').trigger('focus')
+  await flushPromises()
+  await dialog.find('[data-testid="upload-kb"] [data-testid="remote-option-kb-1"]').trigger('click')
+  await flushPromises()
 }
 
 describe('DocumentsView：列表渲染', () => {
@@ -551,7 +563,7 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
     const { wrapper, dialog } = await openUpload()
     const uploadSpy = vi.spyOn(documentApi, 'upload').mockResolvedValue(doc('d-new', 'PENDING'))
 
-    await dialog.find('[data-testid="upload-kb"]').setValue('kb-1')
+    await selectKb(dialog)
     await dialog.find('[data-testid="upload-title"]').setValue('恶意脚本')
     await pickFile(wrapper, new File(['x'], 'virus.exe'))
     await dialog.find('form[data-testid="upload-form"]').trigger('submit')
@@ -573,7 +585,7 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
 
     // 以对象字面量模拟 101MB 文件的 name/size（仅校验字段，不真实分配内存）
     await pickFile(wrapper, { name: 'big.pdf', size: 101 * 1024 * 1024 } as File)
-    await dialog.find('[data-testid="upload-kb"]').setValue('kb-1')
+    await selectKb(dialog)
     await dialog.find('[data-testid="upload-title"]').setValue('大文件课件')
     await dialog.find('form[data-testid="upload-form"]').trigger('submit')
     await flushPromises()
@@ -598,7 +610,7 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
       })
     })
 
-    await dialog.find('[data-testid="upload-kb"]').setValue('kb-1')
+    await selectKb(dialog)
     await dialog.find('[data-testid="upload-title"]').setValue('新课件')
     await pickFile(wrapper, new File(['pdf'], '新课件.pdf', { type: 'application/pdf' }))
     await dialog.find('form[data-testid="upload-form"]').trigger('submit')
@@ -630,7 +642,7 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
     wrapper.unmount()
   })
 
-  it('课程搜索选择器：关键字搜索课程并选中携带 courseId', async () => {
+  it('课程搜索选择器：关键字搜索课程并选中携带 courseId（remote-select）', async () => {
     const { wrapper, dialog } = await openUpload()
     const courseSpy = vi.spyOn(courseApi, 'list').mockResolvedValue(
       // 课程选择器仅消费 id/title，其余字段以断言转换补齐（avoid 全字段工厂噪音）
@@ -638,17 +650,31 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
     )
     const uploadSpy = vi.spyOn(documentApi, 'upload').mockResolvedValue(doc('d-new', 'PENDING'))
 
-    await dialog.find('[data-testid="course-search"]').setValue('RAG')
-    // query 化后搜索为异步调度：收敛目标 = 结果 option 渲染（比 list 被调用更靠后的时序点，
-    // 消除「list-called 先于渲染」的窗口；批 4② reviewer L4）
-    await vi.waitFor(() =>
-      expect(wrapper.find('[data-testid="course-option-c-9"]').exists()).toBe(true),
+    const courseInput = dialog.find('[data-testid="upload-course"] [data-testid="remote-input"]')
+    await courseInput.trigger('focus')
+    await flushPromises()
+    // 输入关键字：防抖 300ms 后发请求，收敛目标 = 结果 option 渲染
+    await courseInput.setValue('RAG')
+    await vi.waitFor(
+      () =>
+        expect(
+          dialog.find('[data-testid="upload-course"] [data-testid="remote-option-c-9"]').exists(),
+        ).toBe(true),
+      { timeout: 5000 },
     )
     expect(courseSpy).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'RAG' }))
-    await wrapper.find('[data-testid="course-option-c-9"]').trigger('click')
-    expect(dialog.find('[data-testid="selected-course"]').text()).toContain('RAG 实战营')
+    await dialog
+      .find('[data-testid="upload-course"] [data-testid="remote-option-c-9"]')
+      .trigger('click')
+    // 单选选中：输入框回显课程标题
+    expect(
+      (
+        dialog.find('[data-testid="upload-course"] [data-testid="remote-input"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('RAG 实战营')
 
-    await dialog.find('[data-testid="upload-kb"]').setValue('kb-1')
+    await selectKb(dialog)
     await dialog.find('[data-testid="upload-title"]').setValue('课件')
     await pickFile(wrapper, new File(['md'], 'note.md', { type: 'text/markdown' }))
     await dialog.find('form[data-testid="upload-form"]').trigger('submit')
@@ -659,30 +685,32 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
     wrapper.unmount()
   })
 
-  it('课程搜索选择器：搜索失败静默清空结果，换词后可恢复（异常场景 + 终态收敛）', async () => {
+  it('课程搜索选择器：搜索失败展示错误态，换词后可恢复（remote-select 异常场景）', async () => {
     const { wrapper, dialog } = await openUpload()
-    // 第一次调用失败（rejectedOnce 被 'RAG' 搜索消费），第二次成功（resolvedOnce 被换词搜索消费）
-    const courseSpy = vi
-      .spyOn(courseApi, 'list')
+    // 首拉失败（focus 触发的空关键字请求），换词成功恢复
+    vi.spyOn(courseApi, 'list')
       .mockRejectedValueOnce(new Error('搜索接口异常'))
       .mockResolvedValueOnce(
         pageOf([{ id: 'c-9', title: 'RAG 实战营' }] as unknown as CourseDTO[], '1'),
       )
 
-    await dialog.find('[data-testid="course-search"]').setValue('RAG')
-    // retry:false 下一次失败即终态：等待搜索结束（list 调用收敛）后结果列表不展示（isError 静默清空）
-    await vi.waitFor(() =>
-      expect(courseApi.list).toHaveBeenCalledWith(expect.objectContaining({ keyword: 'RAG' })),
-    )
+    const courseInput = dialog.find('[data-testid="upload-course"] [data-testid="remote-input"]')
+    await courseInput.trigger('focus')
     await flushPromises()
-    expect(dialog.find('[data-testid="course-results"]').exists()).toBe(false)
-
-    // 失败终态非悬挂：换词触发新查询（queryKey 变化）→ 成功 → 结果渲染（isError 已收敛恢复）
-    await dialog.find('[data-testid="course-search"]').setValue('实战')
-    await vi.waitFor(() =>
-      expect(wrapper.find('[data-testid="course-option-c-9"]').exists()).toBe(true),
+    // 首拉失败：错误态在场（errorText + 点击重试入口），不渲染选项
+    expect(dialog.find('[data-testid="upload-course"] [data-testid="remote-error"]').exists()).toBe(
+      true,
     )
-    expect(courseSpy).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: '实战' }))
+
+    // 换词触发新搜索（防抖 300ms）→ 成功恢复，选项渲染
+    await courseInput.setValue('实战')
+    await vi.waitFor(
+      () =>
+        expect(
+          dialog.find('[data-testid="upload-course"] [data-testid="remote-option-c-9"]').exists(),
+        ).toBe(true),
+      { timeout: 5000 },
+    )
     wrapper.unmount()
   })
 })

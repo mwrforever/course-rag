@@ -1,18 +1,18 @@
 <script setup lang="ts">
 /**
- * 课程学生名单（UI 重构 2026-08-25 从 CourseEditView 拆出；2026-08-27 紫系重制：
- * DataTable 表壳 + EmptyState + 移除确认迁移 ConfirmDialog）
+ * 课程学生名单（2026-08-29 T2.4 重构：添加学生搜索迁移 remote-select 多选 +
+ * Dialog 统一弹窗壳 + 页头刷新按钮）
  *
  * 职责：已选列表（username/displayName/enrolledAt）+ 添加 Dialog
- * （搜索多选 → POST 返回成功数 → 「成功添加 N 名」提示）+ 行移除二次确认。
- * 学生候选走 userApi role=STUDENT 一次拉取，搜索客户端过滤（R18）。
+ * （remote-select 多选 → POST 返回成功数 → 「成功添加 N 名」提示）+ 行移除二次确认。
+ * 学生候选走 userApi role=STUDENT 拉取（后端无 keyword，fetcher 内客户端过滤 +
+ * 剔除已报名；signal 透传取消过期请求，契约 E）。
  */
 import { computed, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
 import {
-  PhCheck,
-  PhMagnifyingGlass,
+  PhArrowClockwise,
   PhSpinnerGap,
   PhTrash,
   PhUserPlus,
@@ -22,7 +22,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataTable } from '@/components/ui/data-table'
+import { Dialog } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
+import { IconButton } from '@/components/ui/icon-button'
+import { RemoteSelect } from '@/components/ui/remote-select'
 import { ApiError, enrollmentApi, userApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime } from '@/lib/utils'
@@ -37,6 +40,7 @@ const {
   data: studentsData,
   isLoading,
   isError,
+  isFetching,
   error: queryError,
   refetch,
 } = useQuery({
@@ -72,29 +76,6 @@ function refreshStudents() {
   queryClient.invalidateQueries({ queryKey: ['course-students'] })
 }
 
-const studentDialogOpen = ref(false)
-/** 学生候选池（Dialog 打开时按需拉取；失败仅 toast 不阻塞交互） */
-const { data: studentCandidatesData, isLoading: studentCandidatesLoading } = useQuery({
-  queryKey: ['student-candidates'],
-  queryFn: async (): Promise<UserDTO[]> => {
-    try {
-      const res = await userApi.list({ role: 'STUDENT', size: 100 })
-      return (res.records ?? []).filter((u) => u.role === 'STUDENT')
-    } catch (err) {
-      showToast(messageOf(err, '学生列表加载失败，请稍后重试'), 'danger')
-      return []
-    }
-  },
-  enabled: studentDialogOpen,
-  retry: false,
-  refetchOnWindowFocus: false,
-})
-const studentCandidates = computed(() => studentCandidatesData.value ?? [])
-const studentSearch = ref('')
-const studentSelected = ref<string[]>([])
-/** 待移除学生：非 null 时展示二次确认 Dialog */
-const studentDeleting = ref<StudentDTO | null>(null)
-
 function messageOf(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
     return err.code === 503 ? '服务暂时不可用，请稍后重试' : err.message
@@ -102,30 +83,41 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-/** 打开添加学生 Dialog：清空勾选与搜索（候选池由 enabled 翻转自动拉取） */
-function openStudentDialog() {
-  studentDialogOpen.value = true
-  studentSearch.value = ''
-  studentSelected.value = []
-}
+// ====================================================================
+// 添加学生 Dialog（remote-select 多选，防抖 300ms + AbortController）
+// ====================================================================
 
-/** 学生候选过滤：角色 STUDENT 兜底 ＋ 剔除已报名 ＋ 搜索关键词（displayName/username） */
-const studentOptions = computed(() => {
-  const kw = studentSearch.value.trim()
-  return studentCandidates.value.filter(
+const studentDialogOpen = ref(false)
+/** 已勾选待添加学生（remote-select modelValue 承载选项对象） */
+const studentSelected = ref<UserDTO[]>([])
+/** 待移除学生：非 null 时展示二次确认 Dialog */
+const studentDeleting = ref<StudentDTO | null>(null)
+
+/**
+ * 学生候选 fetcher（remote-select 契约 E：防抖与取消由组件负责）
+ *
+ * 后端 /admin/users 无 keyword 参数：整池拉取后客户端按显示名/用户名过滤，
+ * 并剔除已报名学生；signal 透传 axios 取消过期请求。
+ *
+ * @param keyword 搜索关键字（空串 = 首屏候选）
+ * @param signal 取消信号
+ * @returns 可添加的学生候选
+ */
+async function fetchStudentOptions(keyword: string, signal: AbortSignal): Promise<UserDTO[]> {
+  const res = await userApi.list({ role: 'STUDENT', size: 100, signal })
+  const pool = (res.records ?? []).filter((u) => u.role === 'STUDENT')
+  const kw = keyword.trim()
+  return pool.filter(
     (u) =>
       !enrolledIds.value.has(u.id) &&
       (kw === '' || u.displayName.includes(kw) || u.username.includes(kw)),
   )
-})
+}
 
-/** 候选行点击切换勾选（多选追加，再次点击取消） */
-function toggleStudent(u: UserDTO) {
-  if (studentSelected.value.includes(u.id)) {
-    studentSelected.value = studentSelected.value.filter((id) => id !== u.id)
-  } else {
-    studentSelected.value.push(u.id)
-  }
+/** 打开添加学生 Dialog：清空勾选（候选由 remote-select 打开时自动拉取） */
+function openStudentDialog() {
+  studentDialogOpen.value = true
+  studentSelected.value = []
 }
 
 /** 关闭添加学生 Dialog：提交期间拦截（防误关丢提交态） */
@@ -147,11 +139,24 @@ const { isPending: studentSubmitting, mutate: submitStudentsMutation } = useMuta
   },
 })
 
+/**
+ * 学生选中集变化（remote-select 回抛联合类型按数组归一收窄）
+ *
+ * @param value 最新选中的学生集
+ */
+function onStudentsChange(value: UserDTO | UserDTO[] | null) {
+  studentSelected.value = Array.isArray(value) ? value : value ? [value] : []
+}
+
 /** 提交批量添加：勾选非空校验 → 走 mutation */
 function submitStudents() {
   if (studentSelected.value.length === 0) return
-  submitStudentsMutation(studentSelected.value)
+  submitStudentsMutation(studentSelected.value.map((u) => u.id))
 }
+
+// ====================================================================
+// 移除学生（二次确认）
+// ====================================================================
 
 /** 打开移除学生二次确认 */
 function requestDeleteStudent(s: StudentDTO) {
@@ -200,10 +205,21 @@ function confirmDeleteStudent() {
         学生名单
         <span class="ml-2 text-sm font-normal text-text-muted">共 {{ students.length }} 名</span>
       </h2>
-      <Button size="sm" data-testid="add-students" @click="openStudentDialog">
-        <PhUserPlus class="h-4 w-4" />
-        添加学生
-      </Button>
+      <div class="flex items-center gap-2">
+        <!-- 手动刷新（T2.3）：refetch 期间禁用防重复 -->
+        <IconButton
+          label="刷新"
+          data-testid="refresh-students"
+          :loading="isFetching"
+          @click="refetch()"
+        >
+          <PhArrowClockwise class="h-4 w-4" />
+        </IconButton>
+        <Button size="sm" data-testid="add-students" @click="openStudentDialog">
+          <PhUserPlus class="h-4 w-4" />
+          添加学生
+        </Button>
+      </div>
     </div>
 
     <!-- 加载骨架 -->
@@ -263,94 +279,49 @@ function confirmDeleteStudent() {
       </tr>
     </DataTable>
 
-    <!-- 添加学生 Dialog（搜索多选；提交期 Esc/遮罩/取消全拦截） -->
-    <div
-      v-if="studentDialogOpen"
+    <!-- 添加学生 Dialog（remote-select 多选；提交期关闭经 canClose 拦截） -->
+    <Dialog
+      :open="studentDialogOpen"
       data-testid="student-dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
-      @keydown.esc="closeStudentDialog"
-      @click.self="closeStudentDialog"
+      title="添加学生"
+      description="搜索并选择学生后批量添加（已报名学生自动过滤）"
+      :can-close="!studentSubmitting"
+      @update:open="(v: boolean) => !v && closeStudentDialog()"
     >
-      <div
-        class="animate-menu-in flex max-h-[560px] w-full max-w-[480px] flex-col rounded-2xl border border-border bg-surface p-6 shadow-lg"
-        role="dialog"
-        aria-modal="true"
-      >
-        <h2 class="text-lg font-extrabold tracking-tight text-text">添加学生</h2>
-        <div class="relative mt-4">
-          <PhMagnifyingGlass
-            class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-text-subtle"
-          />
-          <input
-            v-model="studentSearch"
-            type="text"
-            data-testid="student-search"
-            aria-label="搜索学生"
-            placeholder="搜索学生（显示名/用户名）"
-            class="h-10 w-full rounded-xl border border-border bg-surface pr-3 pl-9 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-        </div>
-        <!-- 候选列表：整行点击切换多选（已报名学生自动剔除） -->
-        <div class="mt-3 min-h-0 flex-1 space-y-1.5 overflow-y-auto border-y border-border py-3">
-          <div v-if="studentCandidatesLoading" class="space-y-1.5">
-            <div
-              v-for="i in 4"
-              :key="`cand-${i}`"
-              class="h-10 animate-pulse rounded bg-surface-2"
-            />
-          </div>
-          <button
-            v-for="u in studentOptions"
-            :key="u.id"
-            type="button"
-            :data-testid="`student-option-${u.id}`"
-            class="flex w-full cursor-pointer items-center justify-between gap-2 rounded-[10px] border px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-2"
-            :class="
-              studentSelected.includes(u.id) ? 'border-brand bg-brand-soft/50' : 'border-border'
-            "
-            @click="toggleStudent(u)"
-          >
-            <span class="min-w-0 truncate text-sm font-medium text-text">{{ u.displayName }}</span>
-            <span class="shrink-0 truncate text-xs text-text-subtle">{{ u.username }}</span>
-            <!-- 勾选态指示（选中 brand 实心勾，未选空心框） -->
-            <span
-              class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border"
-              :class="
-                studentSelected.includes(u.id)
-                  ? 'border-brand bg-brand text-white'
-                  : 'border-border bg-surface'
-              "
-            >
-              <PhCheck v-if="studentSelected.includes(u.id)" class="h-3 w-3" weight="bold" />
-            </span>
-          </button>
-          <div
-            v-if="!studentCandidatesLoading && studentOptions.length === 0"
-            class="py-4 text-center text-xs text-text-subtle"
-          >
-            没有可添加的学生
-          </div>
-        </div>
-        <div class="mt-4 flex justify-end gap-2">
-          <Button
-            variant="outline"
-            data-testid="cancel-students"
-            :disabled="studentSubmitting"
-            @click="closeStudentDialog"
-          >
-            取消
-          </Button>
-          <Button
-            data-testid="submit-students"
-            :disabled="studentSelected.length === 0 || studentSubmitting"
-            @click="submitStudents"
-          >
-            <PhSpinnerGap v-if="studentSubmitting" class="h-4 w-4 animate-spin" />
-            {{ studentSubmitting ? '添加中' : `添加所选（${studentSelected.length}）` }}
-          </Button>
-        </div>
+      <div class="mt-4">
+        <RemoteSelect
+          :model-value="studentSelected"
+          :get-value="(u: UserDTO) => u.id"
+          :get-label="(u: UserDTO) => u.displayName"
+          :fetcher="fetchStudentOptions"
+          multiple
+          placeholder="搜索学生（显示名/用户名）"
+          empty-text="没有可添加的学生"
+          @update:model-value="onStudentsChange"
+        />
+        <p class="mt-1 text-xs text-text-subtle">
+          已选 {{ studentSelected.length }} 名，可继续搜索追加
+        </p>
       </div>
-    </div>
+      <template #footer>
+        <Button
+          variant="outline"
+          data-testid="cancel-students"
+          :disabled="studentSubmitting"
+          @click="closeStudentDialog"
+        >
+          取消
+        </Button>
+        <Button
+          data-testid="submit-students"
+          :disabled="studentSelected.length === 0 || studentSubmitting"
+          @click="submitStudents"
+        >
+          <PhSpinnerGap v-if="studentSubmitting" class="h-4 w-4 animate-spin" />
+          {{ studentSubmitting ? '添加中' : `添加所选（${studentSelected.length}）` }}
+        </Button>
+      </template>
+    </Dialog>
 
     <!-- 移除学生二次确认（ConfirmDialog：danger 实底；提交期关闭经 onDelDialogOpen 拦截） -->
     <ConfirmDialog

@@ -27,6 +27,7 @@ import { useRouter } from 'vue-router'
 import {
   PhBookOpen,
   PhCalendar,
+  PhArrowClockwise,
   PhCaretDown,
   PhChartBar,
   PhEye,
@@ -41,6 +42,7 @@ import type { Component } from 'vue'
 
 import { Badge } from '@/components/ui/badge'
 import { DropdownMenu, DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { IconButton } from '@/components/ui/icon-button'
 import { StatCard } from '@/components/ui/stat-card'
 import IntentDonut from '@/components/charts/IntentDonut.vue'
 import IntentLikeBar from '@/components/charts/IntentLikeBar.vue'
@@ -291,6 +293,17 @@ const quickEntries: QuickEntry[] = [
 
   <!-- 正常态 -->
   <template v-else>
+    <!-- 手动刷新（T2.3）：仪表盘页头 H1 由布局壳渲染，刷新钮置于内容区右上（refetch 期间禁用防重复） -->
+    <div class="flex justify-end" data-testid="dashboard-refresh-row">
+      <IconButton
+        label="刷新"
+        data-testid="refresh-dashboard"
+        :loading="isFetching"
+        @click="refetch()"
+      >
+        <PhArrowClockwise class="h-4 w-4" />
+      </IconButton>
+    </div>
     <!-- KPI 行：StatCard 造型（lav 底 + 白底圆形图标 + count-up），无环比箭头 -->
     <div class="grid grid-cols-2 gap-[22px] xl:grid-cols-4">
       <StatCard
