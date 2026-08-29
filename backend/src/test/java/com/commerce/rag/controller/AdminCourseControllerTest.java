@@ -11,7 +11,10 @@ import com.commerce.rag.dto.*;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
+import com.commerce.rag.service.ICourseCoverService;
 import com.commerce.rag.service.ICourseService;
+import com.commerce.rag.vo.CourseCoverVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.util.List;
@@ -22,12 +25,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockMultipartFile;
 
 /**
- * AdminCourseController 单元测试 —— B 端课程管理端点 E1-E9
+ * AdminCourseController 单元测试 —— B 端课程管理端点 E1-E9 + 封面上传（契约 D.2.2）
  *
  * <p>覆盖：分页列表（超管/教师归属过滤）、创建、详情 404、更新/删除/教师维护、
- * 内容 Tab 查询与更新。
+ * 内容 Tab 查询与更新、封面上传委托。
  *
  * @author commerce-rag
  */
@@ -41,11 +45,14 @@ class AdminCourseControllerTest {
     @Mock
     private CourseConverter courseConverter;
 
+    @Mock
+    private ICourseCoverService courseCoverService;
+
     private AdminCourseController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AdminCourseController(courseService, courseConverter);
+        controller = new AdminCourseController(courseService, courseConverter, courseCoverService);
     }
 
     private HttpServletRequest request(String role, Long userId) {
@@ -204,5 +211,36 @@ class AdminCourseControllerTest {
         controller.batchUpdateContents(request("TEACHER", 7L), 1L, contents);
 
         verify(courseService).batchUpdateContents(1L, contents, 7L, false);
+    }
+
+    @Test
+    @DisplayName("封面 D.2.2 upload → 委托封面服务并原样包装返回（objectKey + 相对 URL）")
+    void uploadCover_delegatesToCoverService() {
+        MockMultipartFile file = new MockMultipartFile("file", "cover.png", "image/png", new byte[8]);
+        CourseCoverVO vo = new CourseCoverVO(
+                "0/3f2b8c6d4e5f6a7b8c9d0e1f2a3b4c9d.png",
+                "/api/v1/public/covers/0/3f2b8c6d4e5f6a7b8c9d0e1f2a3b4c9d.png");
+        when(courseCoverService.uploadCover(file)).thenReturn(vo);
+
+        ApiResponse<CourseCoverVO> result = controller.uploadCover(file);
+
+        // 薄控制器转发契约：校验/落盘逻辑全在 service，controller 仅包装 ApiResponse
+        assertEquals(0, result.code());
+        assertEquals("0/3f2b8c6d4e5f6a7b8c9d0e1f2a3b4c9d.png", result.data().objectKey());
+        assertEquals(
+                "/api/v1/public/covers/0/3f2b8c6d4e5f6a7b8c9d0e1f2a3b4c9d.png",
+                result.data().url());
+        verify(courseCoverService).uploadCover(file);
+    }
+
+    @Test
+    @DisplayName("封面 D.2.2 upload → 非法类型 400 业务异常透出（service 层白名单校验）")
+    void uploadCover_illegalType_throws400() {
+        MockMultipartFile file = new MockMultipartFile("file", "virus.exe", "application/x-msdownload", new byte[8]);
+        when(courseCoverService.uploadCover(file)).thenThrow(new BizException(ErrorCode.BAD_REQUEST, "不支持的封面类型"));
+
+        BizException ex = assertThrows(BizException.class, () -> controller.uploadCover(file));
+
+        assertEquals(400, ex.getCode());
     }
 }

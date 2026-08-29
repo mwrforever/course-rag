@@ -202,6 +202,16 @@ etl:
 chat:
   max-history-rounds: 10
 
+# ── 课程域配置（契约 A.2.1 / D.2.1：报名链接生成基址 + 封面上传限制）──
+course:
+  # C 端报名链接生成基址：createCourse 落库后同事务生成 {base}/courses/{courseId} 写回 enrollment_link
+  enroll-base-url: ${COURSE_ENROLL_BASE_URL:http://localhost:3000}
+  cover:
+    # 封面图片扩展名白名单（小写；上传校验与公开访问白名单正则同源联动）
+    allowed-extensions: jpg,jpeg,png,webp
+    # 封面单文件大小上限（MB）
+    max-size-mb: 5
+
 # ── 模型配置（全链路模型独立配置）──
 model:
   # 主对话模型最大上下文窗口（qwen3.8-max 官方 1M；实际按部署模型调整）

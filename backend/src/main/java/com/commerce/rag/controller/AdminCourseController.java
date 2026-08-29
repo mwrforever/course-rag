@@ -10,12 +10,15 @@ import com.commerce.rag.dto.PageResponse;
 import com.commerce.rag.dto.UpdateCourseRequest;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
+import com.commerce.rag.service.ICourseCoverService;
 import com.commerce.rag.service.ICourseService;
+import com.commerce.rag.vo.CourseCoverVO;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,9 +29,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
- * B 端课程管理 Controller —— CRUD 端点 E1-E9
+ * B 端课程管理 Controller —— CRUD 端点 E1-E9 + 封面上传（契约 D.2.2）
  *
  * <p>权限：SUPER_ADMIN + TEACHER（教师只能操作自己创建的课程）
  *
@@ -43,10 +47,14 @@ public class AdminCourseController {
 
     private final ICourseService courseService;
     private final CourseConverter courseConverter;
+    /** 课程封面服务 —— 上传校验与 MinIO 落盘（契约 D.2.2） */
+    private final ICourseCoverService courseCoverService;
 
-    public AdminCourseController(ICourseService courseService, CourseConverter courseConverter) {
+    public AdminCourseController(
+            ICourseService courseService, CourseConverter courseConverter, ICourseCoverService courseCoverService) {
         this.courseService = courseService;
         this.courseConverter = courseConverter;
+        this.courseCoverService = courseCoverService;
     }
 
     /**
@@ -181,5 +189,21 @@ public class AdminCourseController {
         boolean isAdmin = "SUPER_ADMIN".equals(AuthInterceptor.getCurrentRole(request));
         courseService.batchUpdateContents(id, contents, userId, isAdmin);
         return ApiResponse.ok();
+    }
+
+    /**
+     * 封面上传（契约 D.2.2）
+     *
+     * <p>multipart 字段名 file；MIME/扩展名白名单与大小上限校验（course.cover.* 配置化）、
+     * uuid 预生成落盘均在 ICourseCoverService 内完成。鉴权沿用本类级
+     * SUPER_ADMIN/TEACHER 口径（/api/v1/admin/** 登录保护 + 方法级角色校验）。
+     *
+     * @param file 封面图片文件（用户上传，jpg/jpeg/png/webp 白名单）
+     * @return 上传结果 VO（objectKey + 相对访问 URL，B 端表单将 url 写入 coverImage 字段提交）
+     * @throws BizException 400 文件为空/类型或 MIME 非法/超限；503 MinIO 不可用
+     */
+    @PostMapping(value = "/cover", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<CourseCoverVO> uploadCover(@RequestParam("file") MultipartFile file) {
+        return ApiResponse.ok(courseCoverService.uploadCover(file));
     }
 }

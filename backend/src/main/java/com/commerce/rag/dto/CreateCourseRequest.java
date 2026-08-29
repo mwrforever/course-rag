@@ -14,7 +14,8 @@ import java.util.List;
  * @param price          价格
  * @param duration       课时描述
  * @param tags           标签列表
- * @param enrollmentLink 报名链接
+ * @param enrollmentLink 报名链接（契约 A.2.2：字段保留仅为兼容旧客户端，服务端不读——
+ *                       落库后由服务端生成 {course.enroll-base-url}/courses/{id} 写回）
  */
 public record CreateCourseRequest(
         String title,

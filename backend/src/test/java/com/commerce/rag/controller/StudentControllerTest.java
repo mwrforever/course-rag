@@ -12,6 +12,7 @@ import com.commerce.rag.dto.CreateSessionRequest;
 import com.commerce.rag.dto.PageResponse;
 import com.commerce.rag.dto.SessionRenameRequest;
 import com.commerce.rag.exception.BizException;
+import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.record.RetrievalSource;
 import com.commerce.rag.service.IChatMessageService;
@@ -24,6 +25,7 @@ import com.commerce.rag.vo.ChatSessionVO;
 import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
+import com.commerce.rag.vo.CoursePurchaseVO;
 import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.vo.StudentCourseVO;
 import com.commerce.rag.vo.StudentMessageVO;
@@ -111,6 +113,33 @@ class StudentControllerTest {
     private SessionVO sessionVO(Long id, String title) {
         return new SessionVO(
                 id, title, "ACTIVE", LocalDateTime.of(2026, 8, 15, 10, 0), LocalDateTime.of(2026, 8, 15, 9, 0));
+    }
+
+    // ==================== J1b: 学生自助购买课程 ====================
+
+    @Test
+    @DisplayName("购买 → 认证上下文取 userId 委托 purchaseCourse，返回契约 VO")
+    void purchaseCourse_delegatesWithCurrentUserId() {
+        when(enrollmentService.purchaseCourse(1L, 5L)).thenReturn(new CoursePurchaseVO(1L, "ACTIVE", true));
+
+        ApiResponse<CoursePurchaseVO> result = controller.purchaseCourse(studentRequest(5L), 1L);
+
+        // userId 一律取认证上下文（禁止入参传递），课程 ID 走路径参数
+        verify(enrollmentService).purchaseCourse(1L, 5L);
+        assertEquals(0, result.code());
+        assertEquals(1L, result.data().courseId());
+        assertEquals("ACTIVE", result.data().status());
+        assertTrue(result.data().purchased());
+    }
+
+    @Test
+    @DisplayName("购买 → 课程不存在时 404 业务异常透出（重复购买幂等由 service 保证）")
+    void purchaseCourse_courseMissing_throws404() {
+        when(enrollmentService.purchaseCourse(99L, 5L)).thenThrow(new BizException(ErrorCode.NOT_FOUND, "课程不存在或已下架"));
+
+        BizException ex = assertThrows(BizException.class, () -> controller.purchaseCourse(studentRequest(5L), 99L));
+
+        assertEquals(404, ex.getCode());
     }
 
     // ==================== J1: 我的课程 ====================

@@ -8,6 +8,7 @@ import com.commerce.rag.dto.UpdateCourseRequest;
 import com.commerce.rag.entity.CourseContent;
 import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.CourseSchedule;
+import com.commerce.rag.vo.PublicCourseDetailVO;
 import com.commerce.rag.vo.PublicCourseVO;
 import java.util.List;
 
@@ -19,11 +20,15 @@ import java.util.List;
 public interface ICourseService extends IService<CourseInfo> {
 
     /**
-     * 创建课程
+     * 创建课程（事务内落库 + 服务端生成报名链接写回）
      *
-     * @param request  创建请求
+     * <p>契约 A.2.2：请求体 enrollmentLink 忽略；落库后同事务生成
+     * {@code {course.enroll-base-url}/courses/{id}} 写回 enrollment_link；
+     * 缓存失效挂 afterCommit（提交后失效）。
+     *
+     * @param request  创建请求（enrollmentLink 字段被忽略）
      * @param createdBy 创建者 ID
-     * @return 课程 DTO（含雪花 ID，不含关联数据）
+     * @return 课程 DTO（含雪花 ID 与服务端生成的 enrollmentLink，不含关联数据）
      */
     CourseDTO createCourse(CreateCourseRequest request, Long createdBy);
 
@@ -49,9 +54,18 @@ public interface ICourseService extends IService<CourseInfo> {
     /**
      * 查询公开课程列表（C 端公开接口：仅 ACTIVE 状态，评分降序）
      *
-     * @return 公开课程视图对象列表（不含价格/标签等内部字段）
+     * @return 公开课程视图对象列表（含价格，剔除标签/状态等内部管理字段）
      */
     List<PublicCourseVO> findPublicCourses();
+
+    /**
+     * 查询单个公开课程详情（C 端公开详情端点，仅 ACTIVE 状态可见）
+     *
+     * @param courseId 课程 ID
+     * @return 公开课程详情 VO（含 price，单位元）
+     * @throws com.commerce.rag.exception.BizException 404 课程不存在、已删除或已下架
+     */
+    PublicCourseDetailVO findPublicCourseById(Long courseId);
 
     /**
      * 分页查询课程（支持分类/关键词/创建者过滤）

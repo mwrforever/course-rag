@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.repository.AbstractRepository;
@@ -25,8 +26,10 @@ import com.commerce.rag.mapper.CourseInfoMapper;
 import com.commerce.rag.mapper.CourseScheduleMapper;
 import com.commerce.rag.mapper.CourseTeacherMapper;
 import com.commerce.rag.mapper.DocumentChunkMapper;
+import com.commerce.rag.properties.CourseProperties;
 import com.commerce.rag.service.impl.CourseServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.PublicCourseDetailVO;
 import com.commerce.rag.vo.PublicCourseVO;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -46,6 +49,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionAttribute;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * ICourseService 权限单元测试 —— 课程详情归属校验（P0-2g）
@@ -92,7 +97,15 @@ class CourseServiceTest {
     @Captor
     private ArgumentCaptor<List<CourseTeacher>> batchCaptor;
 
+    /** UPDATE wrapper 捕获器（T1.1：断言更新 SET 子句不含 enrollment_link） */
+    @Captor
+    private ArgumentCaptor<LambdaUpdateWrapper<CourseInfo>> updateWrapperCaptor;
+
     private ICourseService courseService;
+
+    /** 课程域配置（默认基址与 application.yml course 段一致） */
+    private static final CourseProperties COURSE_PROPERTIES = new CourseProperties(
+            "http://localhost:3000", new CourseProperties.Cover(List.of("jpg", "jpeg", "png", "webp"), 5));
 
     @BeforeAll
     static void initMybatisPlus() {
@@ -115,7 +128,8 @@ class CourseServiceTest {
                 etlPipeline,
                 new CourseConverterImpl(),
                 courseQueryService,
-                dashboardCacheEvictor);
+                dashboardCacheEvictor,
+                COURSE_PROPERTIES);
     }
 
     @Test
@@ -196,9 +210,22 @@ class CourseServiceTest {
 
     // ==================== createCourse / 查询 / 教师 / 内容 补充 ====================
 
+    /** stub insert 回填雪花 ID（模拟 ASSIGN_ID 主键回填，供链接生成断言） */
+    private void stubInsertAssignId(long assignedId) {
+        doAnswer(invocation -> {
+                    CourseInfo entity = invocation.getArgument(0);
+                    entity.setId(assignedId);
+                    return 1;
+                })
+                .when(courseInfoMapper)
+                .insert(any(CourseInfo.class));
+    }
+
     @Test
     @DisplayName("createCourse → 组装默认字段并插入，失效搜索缓存（返回 DTO）")
-    void createCourse_buildsAndInserts() {
+    void createCourse_buildsAndInserts() throws Exception {
+        injectChainFields(courseService);
+        stubInsertAssignId(123L);
         CreateCourseRequest request = new CreateCourseRequest(
                 "Java 入门", "描述", "cover.png", "编程", "张老师", new BigDecimal("99"), "10h", List.of("Java", "入门"), "link");
 
@@ -220,12 +247,100 @@ class CourseServiceTest {
 
     @Test
     @DisplayName("createCourse → tags 为空时序列化为 []（返回 DTO）")
-    void createCourse_emptyTags_serializesEmptyArray() {
+    void createCourse_emptyTags_serializesEmptyArray() throws Exception {
+        injectChainFields(courseService);
         CreateCourseRequest request = new CreateCourseRequest("Java", null, null, null, null, null, null, null, null);
 
         CourseDTO dto = courseService.createCourse(request, 7L);
 
         assertTrue(dto.tags().isEmpty());
+    }
+
+    @Test
+    @DisplayName("T1.1: createCourse → 忽略请求体 enrollmentLink，落库后同事务生成服务端链接写回")
+    void createCourse_ignoresRequestLink_generatesServerLink() throws Exception {
+        injectChainFields(courseService);
+        stubInsertAssignId(1948633200000000001L);
+        // 请求体携带恶意/旧值 enrollmentLink，服务端不得采信（契约 A.2.2）
+        CreateCourseRequest request = new CreateCourseRequest(
+                "Java 后端实战", null, null, null, null, null, null, null, "http://evil.example/enroll");
+
+        CourseDTO dto = courseService.createCourse(request, 7L);
+
+        // 插入实体最终 enrollmentLink 为服务端生成值（写回后同一实体引用的内存值同步），
+        // 与请求体恶意值不同——证明请求体 enrollmentLink 未被采信（契约 A.2.2）
+        ArgumentCaptor<CourseInfo> captor = ArgumentCaptor.forClass(CourseInfo.class);
+        verify(courseInfoMapper).insert(captor.capture());
+        assertEquals(
+                "http://localhost:3000/courses/1948633200000000001",
+                captor.getValue().getEnrollmentLink(),
+                "enrollmentLink 应为服务端生成值而非请求体值");
+        assertNotEquals("http://evil.example/enroll", captor.getValue().getEnrollmentLink());
+        // 链接写回走主表链式 UPDATE（insert + update 同事务，契约 A.2.2）
+        verify(courseInfoMapper).update(isNull(), any());
+        // 返回 DTO 携带服务端生成链接：{enrollBaseUrl}/courses/{courseId}
+        assertEquals("http://localhost:3000/courses/1948633200000000001", dto.enrollmentLink());
+    }
+
+    @Test
+    @DisplayName("T1.1: createCourse → 基址含尾部斜杠时归一化（不产生 //courses/ 双斜杠）")
+    void createCourse_baseUrlTrailingSlash_normalized() throws Exception {
+        stubInsertAssignId(9L);
+        CourseServiceImpl service = new CourseServiceImpl(
+                courseInfoMapper,
+                courseContentMapper,
+                courseScheduleMapper,
+                courseTeacherMapper,
+                courseTeacherService,
+                new PublicCourseConverterImpl(),
+                courseEnrollmentMapper,
+                documentChunkMapper,
+                etlPipeline,
+                new CourseConverterImpl(),
+                courseQueryService,
+                dashboardCacheEvictor,
+                new CourseProperties("http://localhost:3000/", new CourseProperties.Cover(List.of("png"), 5)));
+        // 链式字段须注入本测试另行构造的实例（非 setUp 的 courseService）
+        injectChainFields(service);
+
+        CourseDTO dto = service.createCourse(
+                new CreateCourseRequest("Java", null, null, null, null, null, null, null, null), 7L);
+
+        assertEquals("http://localhost:3000/courses/9", dto.enrollmentLink());
+    }
+
+    @Test
+    @DisplayName("T1.1: createCourse → 事务上下文内缓存失效挂 afterCommit（提交后才失效）")
+    void createCourse_evictsCacheAfterCommit() throws Exception {
+        injectChainFields(courseService);
+        stubInsertAssignId(123L);
+        // 模拟活动事务同步上下文（生产由 @Transactional 切面注册）
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            courseService.createCourse(
+                    new CreateCourseRequest("Java", null, null, null, null, null, null, null, null), 7L);
+
+            // 事务提交前：失效未执行（避免「失效后-提交前并发读回填旧值」窗口，契约 A.2.2 实现注记）
+            verify(courseQueryService, never()).evictCourse(anyLong());
+            // 触发 afterCommit 回调（等价事务提交后）
+            for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) {
+                sync.afterCommit();
+            }
+            verify(courseQueryService).evictCourse(123L);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("T1.1: createCourse 标注 @Transactional（insert 与链接写回同 commit 原子性）")
+    void createCourse_isTransactional() throws NoSuchMethodException {
+        Method method = CourseServiceImpl.class.getMethod("createCourse", CreateCourseRequest.class, Long.class);
+        TransactionAttribute attr = TX_SOURCE.getTransactionAttribute(method, CourseServiceImpl.class);
+
+        // 契约 A.2.2：落库 + 同事务二次写回，事务失败整体回滚不留空链接
+        assertNotNull(attr, "createCourse 应标注 @Transactional（insert + 链接写回同事务）");
+        assertTrue(attr.rollbackOn(new RuntimeException("链接写回失败")));
     }
 
     @Test
@@ -253,20 +368,22 @@ class CourseServiceTest {
      * <p>纯 Mockito 下 {@code this.lambdaQuery()} 构建链时会经 getEntityClass →
      * getMapperClass → MybatisUtils.getMapperProxy 内窥真实 Mapper 代理（mock 非代理对象直接失败）；
      * 预置 entityClass 与 baseMapper 两个字段即可绕开内窥（与 ChatRunServiceTest 同款方案）。
+     *
+     * @param target 待注入的 service 实例（courseService 或测试内另行构造的实例）
      */
-    private void injectChainFields() throws Exception {
+    private void injectChainFields(Object target) throws Exception {
         Field baseMapper = CrudRepository.class.getDeclaredField("baseMapper");
         baseMapper.setAccessible(true);
-        baseMapper.set(courseService, courseInfoMapper);
+        baseMapper.set(target, courseInfoMapper);
         Field entityClass = AbstractRepository.class.getDeclaredField("entityClass");
         entityClass.setAccessible(true);
-        entityClass.set(courseService, CourseInfo.class);
+        entityClass.set(target, CourseInfo.class);
     }
 
     @Test
-    @DisplayName("findPublicCourses → 查询 ACTIVE 课程并转换为公开 VO（字段映射完整）")
+    @DisplayName("findPublicCourses → 查询 ACTIVE 课程并转换为公开 VO（字段映射完整，含价格）")
     void findPublicCourses_returnsPublicVO() throws Exception {
-        injectChainFields();
+        injectChainFields(courseService);
         CourseInfo course = new CourseInfo();
         course.setId(1L);
         course.setTitle("Java 入门");
@@ -277,6 +394,7 @@ class CourseServiceTest {
         course.setDuration("10h");
         course.setRating(new BigDecimal("4.5"));
         course.setLearningCount(120);
+        course.setPrice(new BigDecimal("299.00"));
         when(courseInfoMapper.selectList(any())).thenReturn(List.of(course));
 
         List<PublicCourseVO> result = courseService.findPublicCourses();
@@ -292,6 +410,51 @@ class CourseServiceTest {
         assertEquals("10h", vo.duration());
         assertEquals(new BigDecimal("4.5"), vo.rating());
         assertEquals(120, vo.learningCount());
+        // 契约 C.2.1：价格转为 C 端公开展示字段随列表下发（单位元）
+        assertEquals(new BigDecimal("299.00"), vo.price());
+    }
+
+    @Test
+    @DisplayName("T1.3: findPublicCourseById → ACTIVE 课程返回公开详情 VO（含价格）")
+    void findPublicCourseById_active_returnsDetailVO() throws Exception {
+        injectChainFields(courseService);
+        CourseInfo course = new CourseInfo();
+        course.setId(1L);
+        course.setTitle("Java 后端实战");
+        course.setDescription("从零到一掌握 Spring Boot 企业级开发");
+        course.setCoverImage("/api/v1/public/covers/0/abc.png");
+        course.setCategory("后端开发");
+        course.setInstructorName("王老师");
+        course.setDuration("12 weeks");
+        course.setRating(new BigDecimal("4.9"));
+        course.setLearningCount(128);
+        course.setPrice(new BigDecimal("299.00"));
+        when(courseInfoMapper.selectOne(any())).thenReturn(course);
+
+        PublicCourseDetailVO vo = courseService.findPublicCourseById(1L);
+
+        assertEquals(1L, vo.id());
+        assertEquals("Java 后端实战", vo.title());
+        assertEquals("从零到一掌握 Spring Boot 企业级开发", vo.description());
+        assertEquals("/api/v1/public/covers/0/abc.png", vo.coverImage());
+        assertEquals("后端开发", vo.category());
+        assertEquals("王老师", vo.instructorName());
+        assertEquals("12 weeks", vo.duration());
+        assertEquals(new BigDecimal("4.9"), vo.rating());
+        assertEquals(128, vo.learningCount());
+        assertEquals(new BigDecimal("299.00"), vo.price());
+    }
+
+    @Test
+    @DisplayName("T1.3: findPublicCourseById → 课程不存在/非 ACTIVE 统一 404（不泄露存在性）")
+    void findPublicCourseById_missingOrInactive_throws404() throws Exception {
+        injectChainFields(courseService);
+        when(courseInfoMapper.selectOne(any())).thenReturn(null);
+
+        BizException ex = assertThrows(BizException.class, () -> courseService.findPublicCourseById(99L));
+
+        assertEquals(404, ex.getCode());
+        assertTrue(ex.getMessage().contains("课程不存在或已下架"));
     }
 
     @Test
@@ -323,6 +486,55 @@ class CourseServiceTest {
         courseService.updateCourse(1L, request, 7L, false);
 
         verify(courseInfoMapper).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("updateCourse → 全字段更新：各字段分支均写入 SET 子句（enrollmentLink 除外）")
+    void updateCourse_allFields_setAllBranches() {
+        when(courseInfoMapper.selectById(1L)).thenReturn(course(1L, 7L));
+        UpdateCourseRequest request = new UpdateCourseRequest(
+                "新标题",
+                "新描述",
+                "new-cover.png",
+                "新分类",
+                "李老师",
+                new BigDecimal("199"),
+                "30h",
+                List.of("Java"),
+                "http://ignored.example/link",
+                "ACTIVE");
+
+        courseService.updateCourse(1L, request, 7L, false);
+
+        // 全字段（除 enrollmentLink）均进入 SET 子句
+        verify(courseInfoMapper).update(isNull(), updateWrapperCaptor.capture());
+        String sqlSet = updateWrapperCaptor.getValue().getSqlSet();
+        assertNotNull(sqlSet);
+        assertTrue(sqlSet.contains("title"), "title 应更新");
+        assertTrue(sqlSet.contains("description"), "description 应更新");
+        assertTrue(sqlSet.contains("cover_image"), "cover_image 应更新");
+        assertTrue(sqlSet.contains("category"), "category 应更新");
+        assertTrue(sqlSet.contains("instructor_name"), "instructor_name 应更新");
+        assertTrue(sqlSet.contains("price"), "price 应更新");
+        assertTrue(sqlSet.contains("duration"), "duration 应更新");
+        assertTrue(sqlSet.contains("tags"), "tags 应更新");
+        assertFalse(sqlSet.contains("enrollment_link"), "enrollment_link 不应出现在 SET 子句");
+    }
+
+    @Test
+    @DisplayName("T1.1: updateCourse → 传入 enrollmentLink 一律不生效（服务端管理字段）")
+    void updateCourse_ignoresEnrollmentLink() {
+        when(courseInfoMapper.selectById(1L)).thenReturn(course(1L, 7L));
+        UpdateCourseRequest request = new UpdateCourseRequest(
+                null, null, null, null, null, null, null, null, "http://evil.example/overwrite", null);
+
+        courseService.updateCourse(1L, request, 7L, false);
+
+        // 捕获 UPDATE wrapper：SET 子句不得包含 enrollment_link 列（契约 A.2.3 更新分支已删除）
+        verify(courseInfoMapper).update(isNull(), updateWrapperCaptor.capture());
+        String sqlSet = updateWrapperCaptor.getValue().getSqlSet();
+        assertNotNull(sqlSet, "仅 updatedAt 刷新时 SET 子句应存在");
+        assertFalse(sqlSet.contains("enrollment_link"), "SET 子句不应包含 enrollment_link（更新忽略报名链接）");
     }
 
     @Test
