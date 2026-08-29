@@ -217,14 +217,17 @@ export const authApi = {
 
 /** 知识库域（AdminKnowledgeBaseController）：两角色可进，教师限己建 */
 export const knowledgeBaseApi = {
-  list: (params?: { page?: number; size?: number; keyword?: string; signal?: AbortSignal }) =>
-    request<PageResponse<KnowledgeBaseVO>>({
+  list: (params?: { page?: number; size?: number; keyword?: string; signal?: AbortSignal }) => {
+    // 解构剔除 signal：AbortSignal 对象不得进入查询串（会被序列化成垃圾参数），
+    // 仅作为 axios 取消信号透传（契约 E 竞态防护）
+    const { signal, ...query } = params ?? {}
+    return request<PageResponse<KnowledgeBaseVO>>({
       method: 'get',
       url: '/admin/knowledge-bases',
-      params,
-      // signal 透传：remote-select 新输入取消旧请求（契约 E 竞态防护）
-      signal: params?.signal,
-    }),
+      params: query,
+      signal,
+    })
+  },
   get: (id: string) =>
     request<KnowledgeBaseVO>({ method: 'get', url: `/admin/knowledge-bases/${id}` }),
   create: (data: KnowledgeBaseRequest) =>
@@ -311,14 +314,17 @@ export const courseApi = {
     category?: string
     keyword?: string
     signal?: AbortSignal
-  }) =>
-    request<PageResponse<CourseDTO>>({
+  }) => {
+    // 解构剔除 signal：AbortSignal 对象不得进入查询串（会被序列化成垃圾参数），
+    // 仅作为 axios 取消信号透传（契约 E 竞态防护）
+    const { signal, ...query } = params ?? {}
+    return request<PageResponse<CourseDTO>>({
       method: 'get',
       url: '/admin/courses',
-      params,
-      // signal 透传：remote-select 新输入取消旧请求（契约 E 竞态防护）
-      signal: params?.signal,
-    }),
+      params: query,
+      signal,
+    })
+  },
   get: (id: string) => request<CourseDTO>({ method: 'get', url: `/admin/courses/${id}` }),
   create: (data: CreateCourseRequest) =>
     request<CourseDTO>({ method: 'post', url: '/admin/courses', data }),
@@ -401,14 +407,17 @@ export const userApi = {
     role?: UserRole
     status?: UserStatus
     signal?: AbortSignal
-  }) =>
-    request<PageResponse<UserDTO>>({
+  }) => {
+    // 解构剔除 signal：AbortSignal 对象不得进入查询串（会被序列化成垃圾参数），
+    // 仅作为 axios 取消信号透传（契约 E 竞态防护）
+    const { signal, ...query } = params ?? {}
+    return request<PageResponse<UserDTO>>({
       method: 'get',
       url: '/admin/users',
-      params,
-      // signal 透传：remote-select 新输入取消旧请求（契约 E 竞态防护）
-      signal: params?.signal,
-    }),
+      params: query,
+      signal,
+    })
+  },
   create: (data: CreateUserRequest) =>
     request<UserDTO>({ method: 'post', url: '/admin/users', data }),
   get: (id: string) => request<UserDTO>({ method: 'get', url: `/admin/users/${id}` }),
