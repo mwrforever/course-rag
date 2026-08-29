@@ -47,7 +47,16 @@ class AttachmentImageProcessorTest {
 
     /** 测试配置：caption 并行总超时 60s（同步执行器语义用例不触发超时） */
     private static final AttachmentProperties PROPS = new AttachmentProperties(
-            10, 50, 10, 100, 100, 30, 16, 60000, new AttachmentProperties.Executor(2, 4, 20, "attachment-test-"));
+            10,
+            50,
+            10,
+            100,
+            100,
+            30,
+            16,
+            60000,
+            new AttachmentProperties.Executor(2, 4, 20, "attachment-test-"),
+            "qwen3.7-max-2026-06-08");
 
     /** 构造一张不小于 10KB 的正常图片字节（不同 size 内容不同，hash 不同，互不命中缓存） */
     private static byte[] normalImage(int size) {
@@ -413,7 +422,8 @@ class AttachmentImageProcessorTest {
                     30,
                     16,
                     200,
-                    new AttachmentProperties.Executor(2, 4, 20, "attachment-timeout-test-"));
+                    new AttachmentProperties.Executor(2, 4, 20, "attachment-timeout-test-"),
+                    "qwen3.7-max-2026-06-08");
             AttachmentImageProcessor processor =
                     new AttachmentImageProcessor(captionService, cache, realPool, shortTimeoutProps);
 

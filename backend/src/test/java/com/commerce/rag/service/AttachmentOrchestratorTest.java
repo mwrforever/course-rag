@@ -47,12 +47,30 @@ class AttachmentOrchestratorTest {
 
     /** 默认测试配置：总超时 60s（并行用例自建真实线程池，语义用例同步执行不触发超时） */
     private static final AttachmentProperties PROPS = new AttachmentProperties(
-            10, 50, 10, 100, 100, 30, 16, 60000, new AttachmentProperties.Executor(2, 4, 20, "attachment-test-"));
+            10,
+            50,
+            10,
+            100,
+            100,
+            30,
+            16,
+            60000,
+            new AttachmentProperties.Executor(2, 4, 20, "attachment-test-"),
+            "qwen3.7-max-2026-06-08");
 
     /** 构建指定总超时的测试配置（超时用例用 300ms 触发丢弃） */
     private static AttachmentProperties propsWithTimeout(long timeoutMs) {
         return new AttachmentProperties(
-                10, 50, 10, 100, 100, 30, 16, timeoutMs, new AttachmentProperties.Executor(2, 4, 20, "attachment-"));
+                10,
+                50,
+                10,
+                100,
+                100,
+                30,
+                16,
+                timeoutMs,
+                new AttachmentProperties.Executor(2, 4, 20, "attachment-"),
+                "qwen3.7-max-2026-06-08");
     }
 
     @Mock

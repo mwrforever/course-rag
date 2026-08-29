@@ -33,7 +33,16 @@ class AttachmentServiceImplTest {
     private final MinioStorageService minio = mock(MinioStorageService.class);
     /** 限额配置：图片 10MB、文档 50MB、单次最多 10 个、合计 ≤100MB、批大小 16 */
     private final AttachmentProperties props = new AttachmentProperties(
-            10, 50, 10, 100, 100, 30, 16, 60000, new AttachmentProperties.Executor(2, 4, 20, "attachment-"));
+            10,
+            50,
+            10,
+            100,
+            100,
+            30,
+            16,
+            60000,
+            new AttachmentProperties.Executor(2, 4, 20, "attachment-"),
+            "qwen3.7-max-2026-06-08");
 
     private final AttachmentServiceImpl service = new AttachmentServiceImpl(minio, props);
 

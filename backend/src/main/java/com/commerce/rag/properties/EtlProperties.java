@@ -13,7 +13,6 @@ import org.springframework.validation.annotation.Validated;
  * etl:
  *   max-file-size-mb: 100
  *   embedding-batch-size: 16
- *   caption-model: qwen3.7-flash
  *   image-min-size-kb: 10
  *   executor:
  *     core-size: 2
@@ -36,6 +35,9 @@ import org.springframework.validation.annotation.Validated;
  *   chunk-insert-batch-size: 500
  * </pre>
  *
+ * <p>2026-08-29 M-2 迁移：caption-model 键迁出至 {@code attachment.caption-model}
+ * （caption 业务归属附件域，ETL 离线与用户附件两通道共用一值，见 AttachmentProperties）。
+ *
  * @author commerce-rag
  */
 @Validated
@@ -46,7 +48,6 @@ public record EtlProperties(
         ImageExecutor imageExecutor,
         Chunk chunk,
         @Min(1) int embeddingBatchSize,
-        @NotBlank String captionModel,
         @Min(1) int imageMinSizeKb,
         Table table,
         @Min(1) int chunkInsertBatchSize) {

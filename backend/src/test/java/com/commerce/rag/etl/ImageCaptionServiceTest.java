@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.commerce.rag.bot.graph.PromptLoader;
+import com.commerce.rag.properties.AttachmentProperties;
 import com.commerce.rag.properties.EtlProperties;
 import com.commerce.rag.record.AssistantMessageSink;
 import com.commerce.rag.stream.SseEventTransformer;
@@ -46,6 +47,8 @@ class ImageCaptionServiceTest {
     private ChatModel chatModel;
     private PromptLoader promptLoader;
     private ImageCaptionService service;
+    /** 附件配置（M-2 迁移：captionModel 自 etl 迁入 attachment 命名空间，测试固定值 qwen3.7-max-2026-06-08） */
+    private AttachmentProperties attachmentProps;
 
     @BeforeEach
     void setUp() {
@@ -61,11 +64,23 @@ class ImageCaptionServiceTest {
                 new EtlProperties.ImageExecutor(3, 3, 20, "etl-image-", 60),
                 new EtlProperties.Chunk(768, 64),
                 16,
-                "qwen3.7-flash",
                 10,
                 new EtlProperties.Table(25, 30, 2),
                 500);
-        service = new ImageCaptionService(chatModel, promptLoader, props);
+        // M-2 迁移（2026-08-29）：caption 模型配置自 etl 迁入 attachment 命名空间，服务同时注入
+        // EtlProperties（imageExecutor 超时预算）与 AttachmentProperties（captionModel）
+        attachmentProps = new AttachmentProperties(
+                10,
+                50,
+                10,
+                100,
+                100,
+                30,
+                16,
+                60000,
+                new AttachmentProperties.Executor(2, 4, 20, "attachment-"),
+                "qwen3.7-max-2026-06-08");
+        service = new ImageCaptionService(chatModel, promptLoader, props, attachmentProps);
     }
 
     @Test
@@ -89,8 +104,8 @@ class ImageCaptionServiceTest {
         assertEquals(1, user.getMedia().size());
         // 图片字节原样进入 Media.data（SAA 发送时转 base64 data URL，模型侧收到图片内容）
         assertArrayEquals(imageBytes, (byte[]) user.getMedia().get(0).getData());
-        // 模型名按次覆盖：OpenAiChatOptions.model = etl.caption-model（qwen3.7-flash）
-        assertEquals("qwen3.7-flash", ((OpenAiChatOptions) prompt.getOptions()).getModel());
+        // 模型名按次覆盖：OpenAiChatOptions.model = attachment.caption-model（M-2 迁移后键）
+        assertEquals("qwen3.7-max-2026-06-08", ((OpenAiChatOptions) prompt.getOptions()).getModel());
     }
 
     @Test
@@ -127,7 +142,8 @@ class ImageCaptionServiceTest {
         // 流式路径 Prompt 组装与同步一致：视觉 Media + 按次覆盖 caption 模型名
         ArgumentCaptor<Prompt> captor = ArgumentCaptor.forClass(Prompt.class);
         verify(chatModel).stream(captor.capture());
-        assertEquals("qwen3.7-flash", ((OpenAiChatOptions) captor.getValue().getOptions()).getModel());
+        assertEquals(
+                "qwen3.7-max-2026-06-08", ((OpenAiChatOptions) captor.getValue().getOptions()).getModel());
     }
 
     @Test
@@ -189,11 +205,11 @@ class ImageCaptionServiceTest {
                 new EtlProperties.ImageExecutor(3, 3, 20, "etl-image-", 1),
                 new EtlProperties.Chunk(768, 64),
                 16,
-                "qwen3.7-flash",
                 10,
                 new EtlProperties.Table(25, 30, 2),
                 500);
-        ImageCaptionService timeoutService = new ImageCaptionService(chatModel, promptLoader, oneSecondProps);
+        ImageCaptionService timeoutService =
+                new ImageCaptionService(chatModel, promptLoader, oneSecondProps, attachmentProps);
         ThinkingPusher pusher = mock(ThinkingPusher.class);
         AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
         when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.never());
