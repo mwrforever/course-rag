@@ -4,7 +4,7 @@
  * 设计 §1.5.2：本地 category 筛选（Chip 从数据聚合，选中强化）+ 关键词
  * 即时过滤 + 排序（默认评分降序 / 按名称）+ 本地分页（每页 12）+ URL query 浅路由
  * 同步（?category=&q=，关键词写 URL 经 300ms 防抖）。数据源为公开课程接口，
- * 登录用户交叉「我的课程」标记已加入徽章。四态：Loading 骨架 / Empty / Error / 正常态。
+ * 登录用户交叉「我的课程」标记已购徽章（契约 H.2.1）。四态：Loading 骨架 / Empty / Error / 正常态。
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CoursesPage from "./page";
 import type { PublicCourse } from "@/lib/types";
 
-/** 数据层 mock：公开课程源 + 我的课程（已加入交叉） */
+/** 数据层 mock：公开课程源 + 我的课程（已购交叉） */
 const apiMock = vi.hoisted(() => ({ getPublicCourses: vi.fn(), getMyCourses: vi.fn() }));
 /** 导航 mock：searchParams 读当前 URL（pushState 驱动入口态）；replace 记录浅路由同步 */
 const navMock = vi.hoisted(() => ({ replace: vi.fn() }));
@@ -41,6 +41,7 @@ function makeCourse(overrides: Partial<PublicCourse> = {}): PublicCourse {
     duration: "32",
     rating: 4.5,
     learningCount: 256,
+    price: 299,
     ...overrides,
   };
 }
@@ -68,7 +69,7 @@ beforeEach(() => {
   window.history.pushState({}, "", "/courses");
   navMock.replace.mockReset();
   apiMock.getPublicCourses.mockReset();
-  // 已加入交叉查询默认空集（joined 用例按需覆盖）
+  // 已购交叉查询默认空集（已购用例按需覆盖）
   apiMock.getMyCourses.mockReset();
   apiMock.getMyCourses.mockResolvedValue([]);
   authMock.useAuth.mockReset();
@@ -211,16 +212,17 @@ describe("课程列表页筛选/搜索/排序", () => {
     });
   });
 
-  it("登录用户：我的课程交叉 → 已加入徽章", async () => {
+  it("登录用户：我的课程交叉 → 已购徽章（未购卡片展示价格）", async () => {
     apiMock.getPublicCourses.mockResolvedValue([
-      makeCourse({ id: "c1", title: "已加入课程", category: "计算机" }),
-      makeCourse({ id: "c2", title: "未加入课程", category: "计算机" }),
+      makeCourse({ id: "c1", title: "已购课程", category: "计算机" }),
+      makeCourse({ id: "c2", title: "未购课程", category: "计算机" }),
     ]);
-    apiMock.getMyCourses.mockResolvedValue([{ id: "c1" }]);
+    apiMock.getMyCourses.mockResolvedValue([{ id: "c1" }] as never);
     renderList();
-    await screen.findByText("已加入课程");
-    // 仅 c1 标记「已加入」（c2 无徽章）
-    expect(screen.getAllByText("已加入")).toHaveLength(1);
+    await screen.findByText("已购课程");
+    // 仅 c1 标记「已购」（c2 无徽章且展示价格行，契约 H.2.1）
+    expect(screen.getAllByText("已购")).toHaveLength(1);
+    expect(screen.getByText("¥299")).toBeInTheDocument();
   });
 });
 

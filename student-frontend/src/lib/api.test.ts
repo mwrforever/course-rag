@@ -474,6 +474,26 @@ describe("公开课程与会话管理端点（公开化 + 会话管理 2026-08-2
     expect(data).toHaveLength(1);
   });
 
+  it("purchaseCourse → POST /student/courses/{id}/purchase 并解包购买结果（幂等成功结构）", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(
+      res(200, {
+        code: 0,
+        message: "success",
+        data: { courseId: "1948633200000000001", status: "ACTIVE", purchased: true },
+      }),
+    );
+
+    const data = await api.purchaseCourse("1948633200000000001");
+
+    // 购买端点 URL 与方法契约（契约 B：POST，courseId 路径参数）
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "/api/v1/student/courses/1948633200000000001/purchase",
+    );
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe("POST");
+    expect(data).toEqual({ courseId: "1948633200000000001", status: "ACTIVE", purchased: true });
+  });
+
   it("updateSessionTitle → PATCH /student/sessions/{id}，body 含 title", async () => {
     const api = await freshApi();
     fetchMock.mockResolvedValue(

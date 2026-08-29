@@ -35,7 +35,7 @@ export interface LoginResponse {
   displayName: string;
 }
 
-/** J1 学生课程（StudentCourseVO；rating 为 BigDecimal→number，learningCount 为 Integer→number，不受 R0 Long 铁律影响） */
+/** J1 学生课程（StudentCourseVO；rating/price 为 BigDecimal→number，learningCount 为 Integer→number，不受 R0 Long 铁律影响） */
 export interface StudentCourse {
   id: string;
   title: string;
@@ -45,6 +45,8 @@ export interface StudentCourse {
   duration: string | null;
   rating: number | null;
   learningCount: number;
+  /** 课程价格（单位元，≤2 位小数；0/null 为免费——契约 C 2026-08-29） */
+  price: number | null;
 }
 
 /** 公开课程（PublicCourseVO；未登录可浏览，比 StudentCourse 多 description 供详情页展示） */
@@ -58,6 +60,20 @@ export interface PublicCourse {
   duration: string | null;
   rating: number | null;
   learningCount: number;
+  /** 课程价格（单位元，≤2 位小数；0/null 为免费——契约 C 2026-08-29） */
+  price: number | null;
+}
+
+/**
+ * 购买结果（CoursePurchaseVO，契约 B 2026-08-29）
+ *
+ * courseId 为 Long→string（R0 铁律）；status 购买后选课状态（恒 ACTIVE）；
+ * purchased 恒 true（保留字段支撑未来支付态扩展）。
+ */
+export interface CoursePurchaseResult {
+  courseId: string;
+  status: string;
+  purchased: boolean;
 }
 
 /** J2 课程资料分片（ChunkVO；含页码区间 badge 所需 startPage/endPage） */

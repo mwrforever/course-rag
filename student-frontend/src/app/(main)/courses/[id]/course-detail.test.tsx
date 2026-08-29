@@ -1,23 +1,26 @@
 /**
- * 课程工作台测试（Task 9 TDD 先行用例；公开化 2026-08-26 修订）
+ * 课程工作台测试（Task 9 TDD 先行用例；公开化 2026-08-26 修订；购买链路 2026-08-29）
  *
  * 设计 §1.5.3 + 登录门槛（用户拍板：点进详情页才需要登录）：
  * - 课程公开信息经公开接口渲染（未登录可浏览）；未登录自动弹登录窗 + 资料区登录墙
  * - 资料分片列表（面包屑/3 行截断/页码 badge/查看上下文）仅登录后加载
- * - 未选课 403 专属引导页 + 分批渲染（首屏 50 + 加载更多，G10）+ 上下文抽屉（J4）
+ * - 未购买 403 引导态（立即购买）+ 分批渲染（首屏 50 + 加载更多，G10）+ 上下文抽屉（J4）
+ * - Hero 价格与购买状态机（契约 H.2.2 五态：未登录/未购/购买中/已购/失败）+ 幂等防重复
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CourseWorkbenchPage from "./page";
-import { ApiError } from "@/lib/api";
+import { ApiError, NetworkError } from "@/lib/api";
 import type { ChunkContext, MaterialChunk, PublicCourse } from "@/lib/types";
 
-/** 数据层 mock：公开课程 / J2 资料 / J4 上下文按用例注入 */
+/** 数据层 mock：公开课程 / 我的课程（已购交叉）/ J2 资料 / J4 上下文 / 购买按用例注入 */
 const apiMock = vi.hoisted(() => ({
   getPublicCourses: vi.fn(),
+  getMyCourses: vi.fn(),
   getMaterials: vi.fn(),
   getChunkContext: vi.fn(),
+  purchaseCourse: vi.fn(),
 }));
 /** 认证 mock：登录态可切换 + 弹窗操作记录 */
 const authMock = vi.hoisted(() => ({ useAuth: vi.fn() }));
@@ -29,8 +32,10 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     getPublicCourses: apiMock.getPublicCourses,
+    getMyCourses: apiMock.getMyCourses,
     getMaterials: apiMock.getMaterials,
     getChunkContext: apiMock.getChunkContext,
+    purchaseCourse: apiMock.purchaseCourse,
   };
 });
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => authMock.useAuth() }));
@@ -68,6 +73,7 @@ function makeCourse(overrides: Partial<PublicCourse> = {}): PublicCourse {
     duration: "32",
     rating: 4.5,
     learningCount: 256,
+    price: 299,
     ...overrides,
   };
 }
@@ -115,11 +121,11 @@ const CONTEXT: ChunkContext = {
   },
 };
 
-/** 渲染容器：独立 QueryClient（retry 关闭） */
-function renderWorkbench() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+/** 渲染容器：独立 QueryClient（retry 关闭；可注入外部 client 供缓存失效断言） */
+function renderWorkbench(client?: QueryClient) {
+  const queryClient = client ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={client}>
+    <QueryClientProvider client={queryClient}>
       <CourseWorkbenchPage />
     </QueryClientProvider>,
   );
@@ -127,11 +133,16 @@ function renderWorkbench() {
 
 beforeEach(() => {
   apiMock.getPublicCourses.mockReset();
+  apiMock.getMyCourses.mockReset();
   apiMock.getMaterials.mockReset();
   apiMock.getChunkContext.mockReset();
+  apiMock.purchaseCourse.mockReset();
   navMock.push.mockReset();
   authMock.useAuth.mockReset();
   authMock.useAuth.mockReturnValue(defaultAuth());
+  // 默认未购（空我的课程）+ 资料空列表，具体用例按需覆盖
+  apiMock.getMyCourses.mockResolvedValue([]);
+  apiMock.getMaterials.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -235,17 +246,60 @@ describe("课程工作台：未登录登录门槛", () => {
   });
 });
 
-describe("课程工作台：未选课 403 专属引导页（已登录）", () => {
-  it("materials 403 → 渲染「联系老师加入这门课程」引导 + 返回按钮，不渲染课程内容", async () => {
+describe("课程工作台：未购买 403 引导态（已登录，契约 H.2.3）", () => {
+  it("materials 403 → 渲染「还未购买该课程」+「立即购买」按钮，不渲染课程内容", async () => {
     apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
     apiMock.getMaterials.mockRejectedValue(new ApiError(403, "未选此课程，无权查看资料"));
     renderWorkbench();
-    expect(await screen.findByText("还没有加入这门课程，请联系老师开通")).toBeInTheDocument();
-    const back = screen.getByRole("link", { name: "返回课程中心" });
-    expect(back).toHaveAttribute("href", "/courses");
-    // 专属引导态：课程 Hero 与资料列表均不渲染
+    expect(await screen.findByText("还未购买该课程")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /立即购买/ })).toBeInTheDocument();
+    // 未购买引导态：课程 Hero 与资料列表均不渲染
     expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
     expect(screen.queryByText("课程资料")).toBeNull();
+  });
+
+  it("引导态点「立即购买」：购买成功后空态消失，进入已购视图（资料可访问）", async () => {
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
+    // 首次 403（未购）→ 购买成功失效重取后返回资料
+    apiMock.getMaterials
+      .mockRejectedValueOnce(new ApiError(403, "未选此课程，无权查看资料"))
+      .mockResolvedValueOnce([makeChunk(1)]);
+    // 购买成功失效重取：我的课程由空 → 命中当前课程（已购态数据源）
+    apiMock.getMyCourses.mockResolvedValueOnce([]).mockResolvedValueOnce([makeCourse()]);
+    apiMock.purchaseCourse.mockResolvedValue({
+      courseId: "c-1",
+      status: "ACTIVE",
+      purchased: true,
+    });
+    renderWorkbench();
+    fireEvent.click(await screen.findByRole("button", { name: /立即购买/ }));
+    // 成功 toast + 已购徽章 + 资料列表出现（403 空态消失）
+    expect(await screen.findByText("购买成功")).toBeInTheDocument();
+    expect(await screen.findByTestId("purchased-badge")).toBeInTheDocument();
+    expect(await screen.findByText(/分片正文 01/)).toBeInTheDocument();
+    expect(screen.queryByText("还未购买该课程")).toBeNull();
+  });
+
+  it("引导态购买失败：错误横幅反馈且按钮恢复可点，重试成功后空态消失（H.2.2 失败态）", async () => {
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
+    // 首次 403（未购）→ 失败后重试成功时资料重取返回内容（失效重取闭环）
+    apiMock.getMaterials
+      .mockRejectedValueOnce(new ApiError(403, "未选此课程，无权查看资料"))
+      .mockResolvedValueOnce([makeChunk(1)]);
+    // 购买成功失效重取：我的课程由空 → 命中当前课程（已购态数据源）
+    apiMock.getMyCourses.mockResolvedValueOnce([]).mockResolvedValueOnce([makeCourse()]);
+    apiMock.purchaseCourse
+      .mockRejectedValueOnce(new NetworkError())
+      .mockResolvedValueOnce({ courseId: "c-1", status: "ACTIVE", purchased: true });
+    renderWorkbench();
+    fireEvent.click(await screen.findByRole("button", { name: /立即购买/ }));
+    // 失败横幅随引导态渲染（403 引导入口无静默失败，审核修复回归）
+    expect(await screen.findByRole("alert")).toHaveTextContent("网络连接失败，请检查网络后重试");
+    // 按钮恢复可点（失败态），再次点击即重试 → 成功后引导态消失进入已购视图
+    fireEvent.click(screen.getByRole("button", { name: /立即购买/ }));
+    expect(await screen.findByText("购买成功")).toBeInTheDocument();
+    expect(screen.queryByText("还未购买该课程")).toBeNull();
+    expect(await screen.findByText(/分片正文 01/)).toBeInTheDocument();
   });
 
   it("非 403 错误不落入引导页（走通用 Error 横幅）", async () => {
@@ -253,7 +307,140 @@ describe("课程工作台：未选课 403 专属引导页（已登录）", () =>
     apiMock.getMaterials.mockRejectedValue(new ApiError(500, "内部错误"));
     renderWorkbench();
     expect(await screen.findByRole("alert")).toHaveTextContent("服务暂时不可用，请稍后重试");
-    expect(screen.queryByText("还没有加入这门课程，请联系老师开通")).toBeNull();
+    expect(screen.queryByText("还未购买该课程")).toBeNull();
+  });
+});
+
+describe("课程工作台：Hero 价格展示（契约 H.2.1 价格口径）", () => {
+  it("未购课程：Hero 展示价格（单位元、去尾零）", async () => {
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse({ price: 299.5 })]);
+    renderWorkbench();
+    expect(await screen.findByTestId("course-price")).toHaveTextContent("¥299.5");
+  });
+
+  it("免费课程（price=0 / null）：价格位展示「免费」", async () => {
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse({ price: 0 })]);
+    renderWorkbench();
+    expect(await screen.findByTestId("course-price")).toHaveTextContent("免费");
+  });
+});
+
+describe("课程工作台：购买状态机五态（契约 H.2.2）", () => {
+  it("未登录：点「购买课程」弹登录窗登记 afterLogin，登录成功后自动继续购买", async () => {
+    const openLoginDialog = vi.fn();
+    authMock.useAuth.mockReturnValue(
+      defaultAuth({ user: null, isAuthenticated: false, openLoginDialog }),
+    );
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
+    renderWorkbench();
+    fireEvent.click(await screen.findByRole("button", { name: /购买课程/ }));
+    // 未登录不直接发购买请求，先弹登录窗
+    expect(openLoginDialog).toHaveBeenCalled();
+    expect(apiMock.purchaseCourse).not.toHaveBeenCalled();
+    const options = openLoginDialog.mock.calls.at(-1)?.[0];
+    expect(typeof options.afterLogin).toBe("function");
+    // 登录成功回调触发自动续购
+    options.afterLogin();
+    await waitFor(() => {
+      expect(apiMock.purchaseCourse).toHaveBeenCalledWith("c-1");
+    });
+  });
+
+  it("未购·请求中：按钮转「购买中…」并禁用，重复点击不重复发请求", async () => {
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
+    // 悬挂的购买请求：停留 pending 态
+    apiMock.purchaseCourse.mockReturnValue(new Promise(() => {}));
+    renderWorkbench();
+    const button = await screen.findByRole("button", { name: /购买课程/ });
+    fireEvent.click(button);
+    const pendingButton = await screen.findByRole("button", { name: /购买中/ });
+    expect(pendingButton).toBeDisabled();
+    // 防重复提交：请求中再点击不产生第二次调用
+    fireEvent.click(pendingButton);
+    expect(apiMock.purchaseCourse).toHaveBeenCalledTimes(1);
+  });
+
+  it("已购：展示「已购」徽章 + 「进入学习」入口，不渲染购买按钮", async () => {
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
+    apiMock.getMyCourses.mockResolvedValue([makeCourse()]);
+    renderWorkbench();
+    expect(await screen.findByTestId("purchased-badge")).toHaveTextContent("已购");
+    const entry = screen.getByRole("link", { name: /进入学习/ });
+    expect(entry).toHaveAttribute("href", "#materials");
+    expect(screen.queryByRole("button", { name: /购买课程/ })).toBeNull();
+  });
+
+  it("成功：toast「购买成功」+ 失效 my-courses 与资料查询（写后读一致）+ 已购态即时刷新", async () => {
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
+    // 购买前未购（空我的课程 + 资料 403 空态语义不必须，直接给资料），购买后两查询均重取
+    apiMock.getMyCourses.mockResolvedValueOnce([]).mockResolvedValueOnce([makeCourse()]);
+    apiMock.getMaterials.mockResolvedValue([]);
+    apiMock.purchaseCourse.mockResolvedValue({
+      courseId: "c-1",
+      status: "ACTIVE",
+      purchased: true,
+    });
+    // 注入外部 client 断言缓存失效键（契约 H.2.2）
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+    renderWorkbench(client);
+    fireEvent.click(await screen.findByRole("button", { name: /购买课程/ }));
+    expect(await screen.findByText("购买成功")).toBeInTheDocument();
+    // 成功后已购徽章出现（my-courses 重取命中）、购买按钮消失
+    expect(await screen.findByTestId("purchased-badge")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /购买课程/ })).toBeNull();
+    // 写后读一致：按 queryKey 失效 my-courses 与本页资料查询
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["my-courses"] });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["course-materials", "c-1"] });
+    });
+    expect(apiMock.getMyCourses).toHaveBeenCalledTimes(2);
+  });
+
+  it("失败·404：错误横幅提示课程已下架，按钮恢复可点且可重试", async () => {
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
+    apiMock.purchaseCourse
+      .mockRejectedValueOnce(new ApiError(404, "课程不存在或已下架"))
+      .mockResolvedValueOnce({ courseId: "c-1", status: "ACTIVE", purchased: true });
+    renderWorkbench();
+    fireEvent.click(await screen.findByRole("button", { name: /购买课程/ }));
+    const banner = await screen.findByRole("alert");
+    expect(banner).toHaveTextContent("课程已下架或不存在，请刷新页面");
+    // 按钮恢复可点（失败态），再次点击即重试
+    const button = screen.getByRole("button", { name: /购买课程/ });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    await screen.findByText("购买成功");
+    expect(apiMock.purchaseCourse).toHaveBeenCalledTimes(2);
+  });
+
+  it("失败·网络错误：横幅提示检查网络，按钮恢复可点（可重试）", async () => {
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
+    apiMock.purchaseCourse.mockRejectedValue(new NetworkError());
+    renderWorkbench();
+    fireEvent.click(await screen.findByRole("button", { name: /购买课程/ }));
+    const banner = await screen.findByRole("alert");
+    expect(banner).toHaveTextContent("网络连接失败，请检查网络后重试");
+    expect(screen.getByRole("button", { name: /购买课程/ })).toBeEnabled();
+  });
+});
+
+describe("课程工作台：重复购买幂等（契约 B/H.2.2 前端口径）", () => {
+  it("后端幂等成功响应（已购再购返回成功）：前端按成功统一处理，不报错", async () => {
+    apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
+    // 首购与幂等二购均返回相同成功结构；我的课程重取后命中（已购态收敛）
+    apiMock.getMyCourses.mockResolvedValueOnce([]).mockResolvedValueOnce([makeCourse()]);
+    apiMock.purchaseCourse.mockResolvedValue({
+      courseId: "c-1",
+      status: "ACTIVE",
+      purchased: true,
+    });
+    renderWorkbench();
+    fireEvent.click(await screen.findByRole("button", { name: /购买课程/ }));
+    expect(await screen.findByText("购买成功")).toBeInTheDocument();
+    // 已购态呈现后购买入口消失（前端不再重复发起）
+    expect(await screen.findByTestId("purchased-badge")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /购买课程/ })).toBeNull();
   });
 });
 

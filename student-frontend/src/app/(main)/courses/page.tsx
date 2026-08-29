@@ -56,7 +56,7 @@ function FilterEmpty({ onClear }: { onClear: () => void }) {
  * 课程列表页内容组件（设计 §1.5.2，全 CSR；公开化 2026-08-26）
  *
  * 课程数据源为公开接口（未登录可浏览，全部 ACTIVE 课程）；登录用户额外交叉
- * 「我的课程」标记已加入徽章。公开接口无分页：全量拉取后内存筛选
+ * 「我的课程」标记已购徽章（2026-08-29 购买链路：已购/价格双态）。公开接口无分页：全量拉取后内存筛选
  * （category Chip 从数据聚合 + 关键词即时过滤）+ 排序（默认评分降序，可切换按名称）
  * + 本地分页（每页 12）。
  * category 与 q 以 URL query 驱动浅路由同步（入口直接读 URL，交互写回 URL）；
@@ -68,8 +68,8 @@ function CoursesContent() {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const coursesQuery = useQuery({ queryKey: ["public-courses"], queryFn: getPublicCourses });
-  // 已加入集合：仅登录时查询我的课程交叉标记（已加入徽章）
-  const joinedQuery = useQuery({
+  // 已购课程集合：仅登录时查询我的课程交叉标记（已购徽章，契约 H.2.1）
+  const purchasedQuery = useQuery({
     queryKey: ["my-courses"],
     queryFn: getMyCourses,
     enabled: isAuthenticated,
@@ -84,10 +84,10 @@ function CoursesContent() {
 
   // 课程列表：空态兜底用 useMemo 稳定引用，避免空数组字面量每次渲染新建导致依赖变化
   const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
-  // 已加入课程 ID 集合（登录用户；未登录恒空集）
-  const joinedIds = useMemo(
-    () => new Set((joinedQuery.data ?? []).map((course) => course.id)),
-    [joinedQuery.data],
+  // 已购课程 ID 集合（登录用户；未登录恒空集）
+  const purchasedIds = useMemo(
+    () => new Set((purchasedQuery.data ?? []).map((course) => course.id)),
+    [purchasedQuery.data],
   );
 
   // category Chip 集：从 J1 数据聚合去重（null 分类折叠进「全部」）
@@ -302,7 +302,7 @@ function CoursesContent() {
                   <CourseCard
                     key={course.id}
                     course={course}
-                    joined={isAuthenticated ? joinedIds.has(course.id) : undefined}
+                    purchased={isAuthenticated ? purchasedIds.has(course.id) : undefined}
                   />
                 ))}
               </div>

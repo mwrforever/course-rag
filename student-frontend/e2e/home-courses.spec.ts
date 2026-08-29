@@ -2,11 +2,11 @@ import { test, expect } from "@playwright/test";
 import { mockApi, login } from "./helpers/sse-route";
 
 /**
- * 首页与课程页 E2E（公开化 2026-08-26 修订）
+ * 首页与课程页 E2E（公开化 2026-08-26 修订；购买链路 2026-08-29）
  * - 首页/课堂页公开可浏览（public/courses 数据源，未登录不拦截）
  * - 首页无最近会话区块（会话管理归课程助手侧边栏）；快问框入口
  * - 课程详情页为登录门槛：未登录自动弹登录窗 + 资料区登录墙
- * - 登录用户：已加入徽章 + 资料分片/403 引导态（原契约保留）
+ * - 登录用户：已购徽章 + 资料分片/未购买 403 引导态（购买流归 course-purchase.spec）
  */
 
 test.describe("首页与课程", () => {
@@ -43,12 +43,12 @@ test.describe("首页与课程", () => {
     await expect(page.getByText("暂无上架课程，请稍后再来")).toBeVisible();
   });
 
-  test("课程列表本地筛选与关键词过滤（已加入徽章）", async ({ page }) => {
+  test("课程列表本地筛选与关键词过滤（已购徽章）", async ({ page }) => {
     await login(page, "/");
     await page.goto("/courses");
     await expect(page.getByText("数据结构与算法精讲")).toBeVisible();
-    // 登录用户经我的课程交叉：两门课均「已加入」
-    await expect(page.getByText("已加入")).toHaveCount(2);
+    // 登录用户经我的课程交叉：两门课均「已购」（契约 H.2.1 替代原已加入语义）
+    await expect(page.getByText("已购")).toHaveCount(2);
     // 关键词过滤（即时，无 debounce）
     await page.getByRole("searchbox", { name: "搜索课程" }).fill("Java");
     await expect(page.getByText("数据结构与算法精讲")).toBeHidden();
@@ -130,7 +130,7 @@ test.describe("首页与课程", () => {
     await expect(page.getByText("该分片暂无上下文关联")).toBeHidden();
   });
 
-  test("未选课访问课程工作台显示引导态（403）", async ({ page }) => {
+  test("未购买访问课程工作台显示引导态（403）", async ({ page }) => {
     await page.route("**/api/v1/student/courses/1/materials", async (route) => {
       await route.fulfill({
         status: 403,
@@ -140,6 +140,6 @@ test.describe("首页与课程", () => {
     });
     await login(page, "/");
     await page.goto("/courses/1");
-    await expect(page.getByText("还没有加入这门课程，请联系老师开通")).toBeVisible();
+    await expect(page.getByText("还未购买该课程")).toBeVisible();
   });
 });
