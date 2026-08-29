@@ -14,7 +14,8 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # main/dev 双主干 push（含 PR 合入）均触发全量门禁：dev 为合流验证前哨，提前暴露回归
+    branches: [main, dev]
   pull_request:
 
 jobs:
