@@ -9,6 +9,9 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.commerce.rag.properties.StreamProperties;
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -78,6 +81,40 @@ class MemoryStreamBridgeTest {
             Thread.sleep(50);
         }
         fail("等待投递队列排空超时: runId=" + runId);
+    }
+
+    /**
+     * 提取 mock emitter 已送达事件的 seqId 序列（2026-08-29 ring 收口③：逐事件身份+顺序断言用）。
+     *
+     * <p>投递线程经 {@code SseEmitter.event().id(seqId).name(...).data(...)} 发送——Spring
+     * 6.2 SseEventBuilderImpl 把帧拆为多个 DataWithMediaType 部分（id/name/data 各一段），
+     * 从 builder 的 dataToSend 集合中取「id:」前缀段解析出 seqId（SseEventBuilderImpl 为
+     * SseEmitter 私有静态类、DataWithMediaType 为私有静态类，字段/访问器经反射读取，
+     * 仅测试内使用）。
+     *
+     * @param emitter 已投递的 mock emitter（调用前须 awaitSendCount 等待完成）
+     * @return 按送达顺序的 seqId 字符串列表（无 id 段的帧跳过——本链路恒带 id）
+     */
+    private List<String> sentEventIds(SseEmitter emitter) throws Exception {
+        List<String> ids = new ArrayList<>();
+        for (var invocation : Mockito.mockingDetails(emitter).getInvocations()) {
+            if (!invocation.getMethod().getName().equals("send") || invocation.getArguments().length == 0) {
+                continue;
+            }
+            Object builder = invocation.getArguments()[0];
+            Field dataField = builder.getClass().getDeclaredField("dataToSend");
+            dataField.setAccessible(true);
+            for (Object part : (java.util.Set<?>) dataField.get(builder)) {
+                Object data = part.getClass().getMethod("getData").invoke(part);
+                // id 段形如 "id:251\nevent:delta\ndata:"（id/name/data 前缀合段）——取首个 \n 前数字
+                if (data instanceof String text && text.startsWith("id:")) {
+                    int end = text.indexOf('\n');
+                    ids.add(end < 0 ? text.substring(3) : text.substring(3, end));
+                    break;
+                }
+            }
+        }
+        return ids;
     }
 
     // ==================== push 测试 ====================
@@ -278,7 +315,29 @@ class MemoryStreamBridgeTest {
     // ==================== replayAndSubscribe 测试 ====================
 
     @Test
-    @DisplayName("replayAndSubscribe — 回放 (lastEventId, head] 区间并注册订阅者，新事件实时到达")
+    @DisplayName("ring 收口① — push 直取产生方事件号：跳号入队 head=max 语义、slot 定位与回放区间正确")
+    void push_directSeqId_headMaxAndReplayRange() throws Exception {
+        MemoryStreamBridge.Ring ring = bridge.createRing("run1");
+        // 产生方跳号（异常/批处理路径）：seq 1, 3, 5 入队（2/4 未产生事件，非 ring 丢失）
+        bridge.push("run1", event(1));
+        bridge.push("run1", event(3));
+        bridge.push("run1", event(5));
+        awaitOutboxDrained("run1");
+
+        // head 语义 = 已见最大号（直取产生方 seqId 经 accumulateAndGet max，无自增假号）；
+        // slot 定位 (seq-1)%capacity 命中
+        assertEquals(5L, ring.head.get(), "head 应为已见最大号（跳号入队不产生假号）");
+        assertEquals(5L, ring.buffer[(5 - 1) % BUFFER_SIZE].seqId(), "seq=5 应写入 slot (5-1)%capacity");
+
+        // 回放区间 (1, head=5]：seq 3、5 命中送达（seq 2/4 按断口跳过——slot 未命中 warn 观测）
+        SseEmitter reconnected = mock(SseEmitter.class);
+        assertTrue(bridge.replayAndSubscribe("run1", 1, reconnected));
+        awaitSendCount(reconnected, 2);
+        assertEquals(List.of("3", "5"), sentEventIds(reconnected), "回放身份 = 已见事件序列（跳号断口跳过）");
+    }
+
+    @Test
+    @DisplayName("回放逐 seqId 身份+顺序 — replay(lastEventId=1) 断点续传 seq 2,3,4（收口③：单调递增且 = 期望值）")
     void replayAndSubscribe_replaysAndRegisters() throws Exception {
         // Given: 生产语义 1-based seq（RunState.nextSeq 从 1 起）
         SseEmitter mockEmitter = mock(SseEmitter.class);
@@ -291,9 +350,10 @@ class MemoryStreamBridgeTest {
         // When: 客户端已收到 seq=1 → lastEventId=1 回放 seqId=2,3
         boolean result = bridge.replayAndSubscribe("run1", 1, mockEmitter);
 
-        // Then: 回放 2 个事件（投递线程异步送达）
+        // Then: 回放 2 个事件（投递线程异步送达），逐事件身份 = 期望 seq 且顺序单调递增
         assertTrue(result);
         awaitSendCount(mockEmitter, 2);
+        assertEquals(List.of("2", "3"), sentEventIds(mockEmitter), "回放事件 seqId 必须等于期望值且按序送达");
         // 注册后新事件实时推送（第 3 次 send）
         bridge.push("run1", event(4));
         awaitSendCount(mockEmitter, 3);
@@ -315,11 +375,12 @@ class MemoryStreamBridgeTest {
         SseEmitter reconnected = mock(SseEmitter.class);
         assertTrue(bridge.replayAndSubscribe("run1", 6, reconnected), "ring 命中应返回 true（不降级 PG）");
         awaitSendCount(reconnected, 4);
-        verify(reconnected, times(4)).send(any(SseEmitter.SseEventBuilder.class));
+        // 收口③：逐事件身份断言（而非仅计数）——seqId 必须为 7,8,9,10 且顺序单调
+        assertEquals(List.of("7", "8", "9", "10"), sentEventIds(reconnected), "断点续传事件身份与顺序必须正确");
     }
 
     @Test
-    @DisplayName("回归 — lastEventId=0（客户端从未收到事件）：回放 ring 起始全量事件 1..N")
+    @DisplayName("回放逐 seqId 身份+顺序 — lastEventId=0 完整回放 seq 1..5（收口③）")
     void replayAndSubscribe_zeroLastEventId_replaysAll() throws Exception {
         bridge.createRing("run1");
         for (long seq = 1; seq <= 5; seq++) {
@@ -330,11 +391,11 @@ class MemoryStreamBridgeTest {
         SseEmitter reconnected = mock(SseEmitter.class);
         assertTrue(bridge.replayAndSubscribe("run1", 0, reconnected));
         awaitSendCount(reconnected, 5);
-        verify(reconnected, times(5)).send(any(SseEmitter.SseEventBuilder.class));
+        assertEquals(List.of("1", "2", "3", "4", "5"), sentEventIds(reconnected), "完整回放须按 seqId 身份与顺序送达");
     }
 
     @Test
-    @DisplayName("回归 — capacity 驱逐环绕后回放中段：slot 数学跨环绕段仍一致（seq 251..300 完整）")
+    @DisplayName("回放逐 seqId 身份+顺序 — capacity 驱逐环绕后中段：seq 251..300 完整（跨环绕 slot 定位命中）")
     void replayAndSubscribe_afterEvictionWrap_midRange() throws Exception {
         bridge.createRing("run1");
         for (long seq = 1; seq <= 300; seq++) {
@@ -342,12 +403,17 @@ class MemoryStreamBridgeTest {
         }
         awaitOutboxDrained("run1");
 
-        // head=300，oldestSeq=300-256=44，lastEventId=250 在保留区间内 →
+        // head=300，evictFloor=300-256=44，lastEventId=250 在保留区间内 →
         // 回放 seq 251..300 共 50 个事件，其中 seq 257..300 的 slot 已环绕（(seq-1)%256 回卷到 0..43）
         SseEmitter reconnected = mock(SseEmitter.class);
         assertTrue(bridge.replayAndSubscribe("run1", 250, reconnected));
         awaitSendCount(reconnected, 50);
-        verify(reconnected, times(50)).send(any(SseEmitter.SseEventBuilder.class));
+        // 收口③：逐事件身份断言——251..300 单调递增且定位命中（无缺失/错位/重复）
+        List<String> ids = sentEventIds(reconnected);
+        assertEquals(50, ids.size());
+        for (int i = 0; i < ids.size(); i++) {
+            assertEquals(String.valueOf(251 + i), ids.get(i), "环绕段回放 seqId 必须等于期望值");
+        }
     }
 
     @Test
@@ -373,14 +439,14 @@ class MemoryStreamBridgeTest {
     void replayAndSubscribe_tooOld_returnsFalseAndNotRegister() throws Exception {
         SseEmitter mockEmitter = mock(SseEmitter.class);
         bridge.createRing("run1");
-        // 推入 BUFFER_SIZE+1 个事件（seq 1..257）：head=257，最旧可回放 lastEventId=257-256=1，
-        // seq=1 已被 seq=257 环绕覆盖
+        // 推入 BUFFER_SIZE+1 个事件（seq 1..257）：head=257，evictFloor=257-256=1（覆盖边界，
+        // 收口④命名——驱逐下限），seq=1 已被 seq=257 环绕覆盖
         for (int i = 1; i <= BUFFER_SIZE + 1; i++) {
             bridge.push("run1", event(i));
         }
         awaitOutboxDrained("run1");
 
-        // lastEventId=0 需回放 seq=1 起 → 已被驱逐 → false（降级 PG）
+        // lastEventId=0 需回放 seq=1 起 → 小于 evictFloor → 已被驱逐 → false（降级 PG）
         boolean result = bridge.replayAndSubscribe("run1", 0, mockEmitter);
 
         assertFalse(result);
@@ -420,10 +486,11 @@ class MemoryStreamBridgeTest {
             SseEmitter reconnected = mock(SseEmitter.class);
             boolean result = bridge.replayAndSubscribe("run1", 0, reconnected);
 
-            // Then: 回放整体成功但缺失事件被跳过（仅送达 seq 1/3），且缺失以 warn 暴露（含期望 seq）
+            // Then: 回放整体成功但缺失事件被跳过（仅送达 seq 1/3），且缺失以 warn 暴露（含期望 seq）；
+            // 收口③：逐事件身份断言——送达身份 = [1, 3]（seq=2 缺失按断口跳过，顺序保持）
             assertTrue(result, "单事件缺失不构成整体失败（快照继续，客户端按 seqId 断口感知）");
             awaitSendCount(reconnected, 2);
-            verify(reconnected, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+            assertEquals(List.of("1", "3"), sentEventIds(reconnected), "跳号事件缺失须按断口跳过且顺序正确");
             assertTrue(
                     watcher.list.stream()
                             .anyMatch(e -> e.getLevel() == Level.WARN
@@ -600,8 +667,10 @@ class MemoryStreamBridgeTest {
         // lastEventId=1 → 快照非空（seq=2），首个回放事件即发送失败
         assertTrue(bridge.replayAndSubscribe("run1", 1, reconnected));
 
-        // 首个回放事件发送失败 → 中止回放且不再注册（投递线程静默放弃）
-        awaitOutboxDrained("run1");
+        // 首个回放事件发送失败 → 中止回放且不再注册（投递线程静默放弃）。
+        // 时序说明：回放批次出队（outbox 排空）先于实际 send——此处先轮询等待 send 发生
+        // 再断言次数，消除「出队完成但 send 未执行」的竞态窗口（JaCoCo 插桩下窗口放大）
+        awaitSendCount(reconnected, 1);
         verify(reconnected, times(1)).send(any(SseEmitter.SseEventBuilder.class));
         bridge.push("run1", event(3));
         awaitOutboxDrained("run1");
