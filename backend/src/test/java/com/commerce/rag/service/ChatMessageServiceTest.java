@@ -11,6 +11,8 @@ import com.commerce.rag.convert.ChatSessionConverterImpl;
 import com.commerce.rag.convert.StudentConverterImpl;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.mapper.ChatMessageMapper;
+import com.commerce.rag.record.AssistantEntitySplitter;
+import com.commerce.rag.record.AssistantMessageCapture;
 import com.commerce.rag.service.impl.ChatMessageServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.ChatMessageVO;
@@ -109,15 +111,112 @@ class ChatMessageServiceTest {
     }
 
     @Test
-    @DisplayName("findBySessionId → 按会话查询全部消息（返回消息 VO，剔除内部字段）")
+    @DisplayName("findByRunId → assistant 实体行拆行还原事件序 VO（QU→thinking+query_plan，seq 倒推连续）")
+    void findByRunId_splitsAssistantEntityRows() {
+        // Given: 实体行 content = spec §3.1 JSON（QU 形态：reasoning + query_plan payload）
+        ChatMessage entity = new ChatMessage();
+        entity.setId(5L);
+        entity.setRole("ASSISTANT");
+        entity.setMessageType("assistant");
+        entity.setContent(AssistantEntitySplitter.toEntityJson(new AssistantMessageCapture(
+                "understanding",
+                "分析意图\n收窄查询",
+                "{\"intent\":\"chat\",\"rewritten\":[\"你好\"],\"filters\":{\"courseNames\":[]}}",
+                List.of())));
+        entity.setRunId(10L);
+        entity.setSeq(2);
+        when(messageMapper.selectList(any())).thenReturn(List.of(entity));
+
+        List<ChatMessageVO> result = messageService.findByRunId(10L);
+
+        // Then: 拆出 thinking(understanding) + query_plan 两 VO（与实体化前 VO 形态一致，前端零改动）
+        assertEquals(2, result.size(), "实体行应拆成事件序 VO 列表");
+        ChatMessageVO thinking = result.get(0);
+        assertEquals("thinking", thinking.messageType());
+        assertEquals("understanding", thinking.thinkingStage(), "thinking 行 stage 取自实体 JSON（不依赖列）");
+        assertEquals("分析意图\n收窄查询", thinking.content());
+        assertEquals(1, thinking.seq(), "VO.seq 按数组序倒推");
+        assertEquals(5L, thinking.id(), "拆出 VO 继承实体行 id（反馈目标可用）");
+
+        ChatMessageVO queryPlan = result.get(1);
+        assertEquals("query_plan", queryPlan.messageType());
+        assertEquals(
+                "{\"intent\":\"chat\",\"rewritten\":[\"你好\"],\"filters\":{\"courseNames\":[]}}",
+                queryPlan.content(),
+                "query_plan 行 content 与 SSE payload 同构（前端 parse 契约不变）");
+        assertEquals(2, queryPlan.seq());
+    }
+
+    @Test
+    @DisplayName("findByRunId → 主 agent 实体拆 thinking + TOOL_CALL×N + 正文，与增量行混合排序正确")
+    void findByRunId_splitsMainAgentEntityAndInterleavesWithToolResultRows() {
+        // Given: 实体行（主 agent：思考+工具调用+正文，3 个拆行 VO 占 seq 3..5）+ TOOL_RESULT 独立行（seq=6）
+        ChatMessage entity = new ChatMessage();
+        entity.setId(6L);
+        entity.setRole("ASSISTANT");
+        entity.setMessageType("assistant");
+        entity.setContent(AssistantEntitySplitter.toEntityJson(new AssistantMessageCapture(
+                "generating",
+                "生成思考",
+                "最终正文",
+                List.of(new AssistantMessageCapture.AssistantToolCall("call-1", "searchKnowledge", "{}")))));
+        entity.setRunId(10L);
+        entity.setSeq(5);
+        ChatMessage toolResult = new ChatMessage();
+        toolResult.setId(7L);
+        toolResult.setRole("ASSISTANT");
+        toolResult.setMessageType("TOOL_RESULT");
+        toolResult.setContent("{\"toolCallId\":\"call-1\",\"status\":\"success\",\"output\":\"x\"}");
+        toolResult.setRunId(10L);
+        toolResult.setSeq(6);
+        when(messageMapper.selectList(any())).thenReturn(List.of(entity, toolResult));
+
+        List<ChatMessageVO> result = messageService.findByRunId(10L);
+
+        // Then: 事件序 = [thinking(3), TOOL_CALL(4), 正文(5), TOOL_RESULT(6)]（实体拆行与增量行混合排序正确）
+        assertEquals(4, result.size());
+        assertEquals("thinking", result.get(0).messageType());
+        assertEquals(3, result.get(0).seq(), "VO.seq 按数组序倒推：实体 seq=5、3 个 VO 占 3..5");
+        assertEquals("TOOL_CALL", result.get(1).messageType());
+        assertTrue(result.get(1).content().contains("\"toolCallId\":\"call-1\""));
+        assertEquals(4, result.get(1).seq());
+        assertEquals(null, result.get(2).messageType(), "正文行为末位拆行 VO（seq=实体 seq）");
+        assertEquals("最终正文", result.get(2).content());
+        assertEquals(5, result.get(2).seq());
+        assertEquals("TOOL_RESULT", result.get(3).messageType());
+        assertEquals(6, result.get(3).seq());
+    }
+
+    @Test
+    @DisplayName("findByRunId → 实体行 JSON 损坏降级为正文行输出（spec 3.6-5，不回滚查询）")
+    void findByRunId_corruptEntity_degradesToBodyRow() {
+        ChatMessage corrupt = new ChatMessage();
+        corrupt.setId(8L);
+        corrupt.setRole("ASSISTANT");
+        corrupt.setMessageType("assistant");
+        corrupt.setContent("{损坏的 JSON");
+        corrupt.setRunId(10L);
+        corrupt.setSeq(1);
+        when(messageMapper.selectList(any())).thenReturn(List.of(corrupt));
+
+        List<ChatMessageVO> result = messageService.findByRunId(10L);
+
+        assertEquals(1, result.size());
+        assertEquals(null, result.get(0).messageType(), "损坏实体降级为正文行");
+        assertEquals("{损坏的 JSON", result.get(0).content(), "正文行 content = 原文");
+        assertEquals(1, result.get(0).seq());
+    }
+
+    @Test
+    @DisplayName("findBySessionId → 按会话查询全部消息（实体行原样返回，投影仅实体行所需 7 列）")
+    @SuppressWarnings("unchecked")
     void findBySessionId_returnsMessages() {
         ChatMessage msg = new ChatMessage();
         msg.setId(1L);
         msg.setSessionId(8L);
-        msg.setRole("user");
-        msg.setContent("问题1");
-        msg.setMessageType("TEXT");
-        msg.setIntentType("knowledge_question");
+        msg.setRole("ASSISTANT");
+        msg.setContent("{\"schema\":\"assistant-v1\",\"stage\":\"generating\"}");
+        msg.setMessageType("assistant");
         msg.setSourcesJson("[1]");
         msg.setTokenCount(10);
         msg.setRunId(10L);
@@ -128,14 +227,21 @@ class ChatMessageServiceTest {
 
         List<ChatMessageVO> result = messageService.findBySessionId(1L);
 
+        // Then: 实体行原样返回（B 端一行看全貌，不拆行）
         assertEquals(1, result.size());
         ChatMessageVO vo = result.get(0);
         assertEquals(1L, vo.id());
-        assertEquals("user", vo.role());
-        assertEquals("问题1", vo.content());
-        assertEquals("knowledge_question", vo.intentType());
+        assertEquals("ASSISTANT", vo.role());
+        assertEquals("{\"schema\":\"assistant-v1\",\"stage\":\"generating\"}", vo.content());
+        assertEquals("assistant", vo.messageType());
         assertEquals(10L, vo.runId());
-        verify(messageMapper).selectList(any());
+        // 投影修订（2026-08-29）：SQL 不再投影 thinking_stage/intent_type（stage 在 content JSON 内）
+        ArgumentCaptor<LambdaQueryWrapper<ChatMessage>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(messageMapper).selectList(captor.capture());
+        String sqlSelect = captor.getValue().getSqlSelect();
+        assertTrue(sqlSelect.contains("content"), "投影应含 content: " + sqlSelect);
+        assertFalse(sqlSelect.contains("thinking_stage"), "投影不得含 thinking_stage: " + sqlSelect);
+        assertFalse(sqlSelect.contains("intent_type"), "投影不得含 intent_type: " + sqlSelect);
     }
 
     @Test
@@ -281,5 +387,68 @@ class ChatMessageServiceTest {
         String sqlSegment = captor.getValue().getSqlSegment();
         assertFalse(sqlSegment.contains("IN"), "空 runId 列表不应生成 IN 条件: " + sqlSegment);
         assertTrue(captor.getValue().getParamNameValuePairs().containsValue("USER"));
+    }
+
+    // ==================== 消息实体化：学生历史拆行（2026-08-29，C 端历史消费面） ====================
+
+    /** 构造 assistant 实体行（spec §3.1 JSON 内容，sources 携带真实来源；seq 传实体行序号） */
+    private ChatMessage entityRow(Long id, Long runId, int seq, String stage, String reasoning, String text) {
+        ChatMessage entity = studentRow(id, "ASSISTANT", runId);
+        entity.setMessageType("assistant");
+        entity.setContent(
+                AssistantEntitySplitter.toEntityJson(new AssistantMessageCapture(stage, reasoning, text, List.of())));
+        entity.setSeq(seq);
+        return entity;
+    }
+
+    @Test
+    @DisplayName("findStudentMessagesBySession → assistant 实体行拆行还原事件序 VO（前端 history-adapter 零改动）")
+    void findStudentMessagesBySession_splitsAssistantEntityRows() {
+        // Given: COMPLETED run 含 QU 实体行（拆 thinking+query_plan，实体 seq=2）与主 agent 实体行
+        // （拆 thinking+正文，实体 seq=4——seq 按拆行末位倒推，与 persistMessages 赋位同源）
+        when(chatRunService.findCompletedRunIds(1L)).thenReturn(List.of(10L));
+        ChatMessage quEntity = entityRow(
+                2L,
+                10L,
+                2,
+                "understanding",
+                "QU 思考",
+                "{\"intent\":\"chat\",\"rewritten\":[\"你好\"],\"filters\":{\"courseNames\":[]}}");
+        ChatMessage mainEntity = entityRow(3L, 10L, 4, "generating", "生成思考", "最终回答");
+        Page<ChatMessage> returned = new Page<>(1, 200);
+        returned.setRecords(List.of(studentRow(1L, "USER", null), quEntity, mainEntity));
+        returned.setTotal(3);
+        when(messageMapper.selectPage(any(), any())).thenReturn(returned);
+
+        // When
+        IPage<StudentMessageVO> result = messageService.findStudentMessagesBySession(1L, 1, 200);
+
+        // Then: 实体行拆成事件序 VO——QU 实体→thinking+query_plan、主 agent 实体→thinking+正文，
+        // 行类型与实体化前完全一致（前端零改动）；正文行携带实体行 sources（来源卡不回归）
+        List<StudentMessageVO> records = result.getRecords();
+        assertEquals(5, records.size(), "USER + QU 拆 2 + 主 agent 拆 2");
+        assertEquals("USER", records.get(0).role());
+        StudentMessageVO quThinking = records.get(1);
+        assertEquals("thinking", quThinking.messageType());
+        assertEquals("understanding", quThinking.thinkingStage());
+        assertEquals("QU 思考", quThinking.content());
+        assertEquals(1, quThinking.seq(), "QU 实体拆 2 VO，thinking 在前占 seq-1");
+        assertTrue(quThinking.sources().isEmpty(), "thinking 行 sources 恒空");
+        StudentMessageVO queryPlan = records.get(2);
+        assertEquals("query_plan", queryPlan.messageType());
+        assertEquals(
+                "{\"intent\":\"chat\",\"rewritten\":[\"你好\"],\"filters\":{\"courseNames\":[]}}",
+                queryPlan.content(),
+                "query_plan 行 content 与 SSE payload 同构（前端 parse 契约不变）");
+        assertEquals(2, queryPlan.seq());
+        StudentMessageVO mainThinking = records.get(3);
+        assertEquals("thinking", mainThinking.messageType());
+        assertEquals("generating", mainThinking.thinkingStage());
+        assertEquals(3, mainThinking.seq(), "主 agent 实体拆 2 VO，thinking 在前占 seq-1");
+        StudentMessageVO body = records.get(4);
+        assertEquals(null, body.messageType(), "末位为正文行");
+        assertEquals("最终回答", body.content());
+        assertEquals(4, body.seq(), "正文行占实体 seq 末位");
+        assertEquals("RAG 讲义", body.sources().get(0).docTitle(), "正文行 sources 取实体行 sources_json（来源卡不回归）");
     }
 }

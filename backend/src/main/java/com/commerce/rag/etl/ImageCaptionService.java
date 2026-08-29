@@ -2,6 +2,7 @@ package com.commerce.rag.etl;
 
 import com.commerce.rag.bot.graph.PromptLoader;
 import com.commerce.rag.properties.EtlProperties;
+import com.commerce.rag.record.AssistantMessageSink;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.ThinkingPusher;
 import java.time.Duration;
@@ -80,6 +81,10 @@ public class ImageCaptionService {
      *   <li>流式硬超时自界（etl.image-executor.process-timeout-seconds）：blockLast 为全流
      *       总时长上限，超限/流异常直接上抛（关态交批次完成点统一收口），由调用方
      *       （captionOne 兜底）走既有「该图跳过」降级，不阻断对话</li>
+     *   <li><b>消息实体化捕获（2026-08-29，spec §3.2 caption）</b>：调用完成点（成功/异常均）
+     *       经 sink 捕获 {thinking全文, content}——思考全文取 pusher 累加缓冲
+     *       （sink 内部按 stage 截增量，多图各实体仅含本图增量思考，拆行不重复），
+     *       text 为聚合的 caption 描述文本（异常路径为 null）</li>
      * </ol>
      *
      * <p>并发说明：多图并行 caption 时多线程可并发调用同一 pusher——ThinkingPusher 内部
@@ -91,10 +96,15 @@ public class ImageCaptionService {
      * @param pusher          per-run 思考推送通道（非空——空指针场景调用方应走同步 {@link #caption}）
      * @param reasoningSeenAny 批次共享标志（非空）：本方法推过任一 reasoning 片段即置 true，
      *                         供批次完成点判断「确有新推送思考 → 统一补 end」；多图共用同一实例
+     * @param sink            per-run LLM 调用捕获容器（可为 null——null 时行为与四参版本一致，不捕获）
      * @return 聚合后的完整 caption 文本（100~200 字中文描述，不含 reasoning）
      */
     public String captionStreaming(
-            byte[] imageBytes, String mimeType, ThinkingPusher pusher, AtomicBoolean reasoningSeenAny) {
+            byte[] imageBytes,
+            String mimeType,
+            ThinkingPusher pusher,
+            AtomicBoolean reasoningSeenAny,
+            AssistantMessageSink sink) {
         Prompt prompt = buildCaptionPrompt(imageBytes, mimeType);
         StringBuilder contentBuf = new StringBuilder();
         // 硬超时复用 ETL 单图 caption 超时配置（会话附件场景经调用方传入的同款秒级预算）
@@ -125,9 +135,31 @@ public class ImageCaptionService {
             // 流异常/全流总时长超限：直接上抛走既有「该图跳过」降级；已推过 reasoning 的关态
             // 由批次完成点（processImages 全部在途完成后）统一补 end，本方法不再自行关思考态
             log.warn("VLM caption 流式调用失败（上抛由调用方按图跳过降级）: mimeType={}, error={}", mimeType, e.getMessage());
+            // 消息实体化：异常路径同样捕获（思考全文已累积、text 降级 null——与取消路径
+            // attachments thinking 行落库语义一致，run 终态仍由 persistMessages 双路径分流）
+            captureCaptionCall(pusher, sink, null);
             throw e;
         }
+        // 消息实体化：调用完成点捕获（spec §3.2 caption）
+        captureCaptionCall(pusher, sink, contentBuf.toString());
         return contentBuf.toString();
+    }
+
+    /**
+     * 捕获一次 caption 调用到 sink（thinking 全文 + 描述文本，spec §3.2）。
+     *
+     * @param pusher 思考推送通道（可为 null——null 时思考全文为 null）
+     * @param sink   捕获容器（可为 null——null 时不捕获）
+     * @param text   聚合的 caption 文本（异常路径为 null）
+     */
+    private void captureCaptionCall(ThinkingPusher pusher, AssistantMessageSink sink, String text) {
+        if (sink == null) {
+            return;
+        }
+        // 思考全文 = ThinkingPusher 按阶段累加缓冲（与已推送 THINKING 事件逐字一致；
+        // sink 内部按 stage 截增量，多图各实体仅含本图增量，拆行出的 thinking VO 不重复）
+        String reasoning = pusher == null ? null : pusher.accumulated().get(SseEventTransformer.STAGE_ATTACHMENTS);
+        sink.capture(SseEventTransformer.STAGE_ATTACHMENTS, reasoning, text, List.of());
     }
 
     /**

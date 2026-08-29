@@ -21,6 +21,7 @@ import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.bot.rewrite.QueryUnderstandingService;
 import com.commerce.rag.bot.tool.CourseApiTool;
+import com.commerce.rag.record.AssistantMessageSink;
 import com.commerce.rag.stream.ThinkingPusher;
 import java.util.List;
 import java.util.Map;
@@ -207,8 +208,17 @@ public class LeadAgentGraph {
                     .map(ThinkingPusher.class::cast)
                     .orElse(null);
 
+            // 3.1 取 per-run LLM 调用捕获容器（2026-08-29 消息实体化）：QU 流式聚合完成点经
+            //     sink 捕获该次调用完整消息（thinking 全文 + query_plan payload JSON），run 终结
+            //     时 worker 落 assistant 实体行；缺失（非 worker 驱动）传 null 不捕获
+            AssistantMessageSink assistantSink = config.metadata()
+                    .map(m -> m.get(RetrieveNode.KEY_ASSISTANT_SINK))
+                    .filter(AssistantMessageSink.class::isInstance)
+                    .map(AssistantMessageSink.class::cast)
+                    .orElse(null);
+
             // 4. 调用 QueryUnderstandingService（含降级：失败 → unknown + 原始查询，不拒答）
-            QueryPlan plan = queryUnderstandingService.understand(userQuery, messages, pusher);
+            QueryPlan plan = queryUnderstandingService.understand(userQuery, messages, pusher, assistantSink);
 
             // 5. 返回增量更新 Map（只写入 queryPlan，不返回完整 state）
             log.info(

@@ -830,6 +830,56 @@ class ChatStreamEntryTest {
     }
 
     @Test
+    @DisplayName("replayFromPg 实体行拆行链路 — 实体行经拆行还原 thinking/query_plan/tool_call/delta 事件序列（事件协议不变）")
+    void reconnect_replayFromPg_entitySplitChain_emitsEventSequence() throws Exception {
+        // Given: findByRunId（服务层拆行后）返回实体行拆出的事件序 VO——QU 实体拆
+        // thinking(understanding)+query_plan、主 agent 实体拆 thinking(generating)+TOOL_CALL+正文
+        // （与 spec §3.4b「replayFromPg 复用拆行/拆事件逻辑」一致，实体行→事件流）
+        String planJson = "{\"intent\":\"chat\",\"rewritten\":[\"你好\"],\"filters\":{\"courseNames\":[]}}";
+        ChatMessageVO quThinking =
+                new ChatMessageVO(1L, "ASSISTANT", "QU 思考", "thinking", "understanding", null, 123L, 1, null);
+        ChatMessageVO queryPlan = new ChatMessageVO(1L, "ASSISTANT", planJson, "query_plan", null, null, 123L, 2, null);
+        ChatMessageVO mainThinking =
+                new ChatMessageVO(2L, "ASSISTANT", "生成思考", "thinking", "generating", null, 123L, 3, null);
+        ChatMessageVO toolCall = new ChatMessageVO(
+                2L,
+                "ASSISTANT",
+                "{\"toolCallId\":\"c1\",\"toolName\":\"searchKnowledge\",\"input\":{}}",
+                "TOOL_CALL",
+                null,
+                null,
+                123L,
+                4,
+                null);
+        ChatMessageVO body = new ChatMessageVO(2L, "ASSISTANT", "最终回答", null, null, null, 123L, 5, null);
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(quThinking, queryPlan, mainThinking, toolCall, body));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+
+        // Then: 事件序列与实时一致——thinking(understanding) → query_plan → thinking(generating)
+        // → tool_call → delta（payload 均与实时事件 schema 同构；Spring SSE builder 把帧拆为
+        // 多段元素，payload 恒为独立元素——按 payload 过滤断言身份与顺序，与既有用例同口径）
+        List<String> sent = sentDataStrings(emitter);
+        List<String> payloads = sent.stream().filter(s -> s.startsWith("{")).toList();
+        assertEquals(5, payloads.size(), "实体行拆 5 VO 应回放 5 个事件，实际=" + sent);
+        assertTrue(
+                payloads.get(0).contains("\"delta\":\"QU 思考\"")
+                        && payloads.get(0).contains("\"stage\":\"understanding\""),
+                "thinking 事件应携带 delta+stage: " + payloads.get(0));
+        assertEquals(planJson, payloads.get(1), "query_plan 事件原样透传 payload");
+        assertTrue(payloads.get(2).contains("\"stage\":\"generating\""), "主 agent 思考事件 stage=generating");
+        assertTrue(payloads.get(3).contains("\"toolCallId\":\"c1\""), "tool_call 事件与实时 schema 同构");
+        assertEquals("{\"text\":\"最终回答\"}", payloads.get(4), "正文回放为 DELTA {text}");
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+    }
+
+    @Test
     @DisplayName("replayFromPg findByRunId 抛异常 → 返回 -1 降级为仅订阅实时事件")
     void reconnect_replayFromPg_findByRunIdThrows_returnsMinusOne() {
         // Given: PG 查询抛异常 → replayFromPg 捕获后返回 -1；run 活跃则仅订阅实时事件

@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import com.commerce.rag.etl.ImageCaptionService;
 import com.commerce.rag.etl.ImageFilter;
 import com.commerce.rag.properties.AttachmentProperties;
+import com.commerce.rag.record.AssistantMessageSink;
 import com.commerce.rag.record.ImageCaptionResult;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.ThinkingPusher;
@@ -95,9 +96,12 @@ public class AttachmentImageProcessor {
      * @param images 图片字节列表（与上传顺序一致）
      * @param names  原始文件名列表（同序，MIME 识别用）
      * @param pusher per-run 思考推送通道（可为 null——null 时走原同步 caption，行为零变化）
+     * @param sink   per-run LLM 调用捕获容器（2026-08-29 消息实体化；可为 null——null 时
+     *               走原四参行为，不捕获 caption 调用）
      * @return caption 结果列表（"图片N:描述"；被过滤/失败/超时的图片不产生结果；全部失败返回空列表）
      */
-    public List<ImageCaptionResult> processImages(List<byte[]> images, List<String> names, ThinkingPusher pusher) {
+    public List<ImageCaptionResult> processImages(
+            List<byte[]> images, List<String> names, ThinkingPusher pusher, AssistantMessageSink sink) {
         // 批次共享标志：任一单图 captionStreaming 推过 reasoning 即置 true，决定批完成点是否补 end
         AtomicBoolean reasoningSeenAny = new AtomicBoolean(false);
         // 每图一个 caption 任务（序号按位置预分配），池满拒绝按该图失败降级（快速跳过不抛出）
@@ -108,7 +112,7 @@ public class AttachmentImageProcessor {
             final String name = names.get(i);
             try {
                 futures.add(CompletableFuture.supplyAsync(
-                        () -> captionOne(bytes, name, position + 1, pusher, reasoningSeenAny), attachmentPool));
+                        () -> captionOne(bytes, name, position + 1, pusher, reasoningSeenAny, sink), attachmentPool));
             } catch (RejectedExecutionException e) {
                 // 池满快速失败：该图跳过（completedFuture(null) 占位保持位置对应），不影响其它图
                 log.warn("图片 caption 提交被拒（池满），跳过: name={}", name);
@@ -184,13 +188,18 @@ public class AttachmentImageProcessor {
      * @return caption 结果；被过滤/失败返回 null（不产生结果但序号已按位置占位）
      */
     private ImageCaptionResult captionOne(
-            byte[] bytes, String name, int index, ThinkingPusher pusher, AtomicBoolean reasoningSeenAny) {
+            byte[] bytes,
+            String name,
+            int index,
+            ThinkingPusher pusher,
+            AtomicBoolean reasoningSeenAny,
+            AssistantMessageSink sink) {
         try {
             String hash = cacheService.computeHash(bytes);
             // 同图只 caption 一次（Caffeine 按字节 hash 缓存，spec §5.1；原子单次计算并行安全；
-            // 缓存命中直接复用 caption 文本，无 VLM 调用亦无 reasoning 推送）
-            String caption =
-                    cacheService.getOrProcess(hash, b -> captionInternal(b, name, pusher, reasoningSeenAny), bytes);
+            // 缓存命中直接复用 caption 文本，无 VLM 调用亦无 reasoning 推送、不捕获实体）
+            String caption = cacheService.getOrProcess(
+                    hash, b -> captionInternal(b, name, pusher, reasoningSeenAny, sink), bytes);
             if (caption == null) {
                 return null;
             }
@@ -215,14 +224,20 @@ public class AttachmentImageProcessor {
      * @param reasoningSeenAny 批次共享标志（流式路径推过 reasoning 即置 true）
      * @return caption 文本；被过滤返回 null
      */
-    private String captionInternal(byte[] bytes, String name, ThinkingPusher pusher, AtomicBoolean reasoningSeenAny) {
+    private String captionInternal(
+            byte[] bytes,
+            String name,
+            ThinkingPusher pusher,
+            AtomicBoolean reasoningSeenAny,
+            AssistantMessageSink sink) {
         if (ImageFilter.isSmallIcon(bytes, IMAGE_MIN_SIZE_KB) || ImageFilter.isDecorative(bytes)) {
             log.info("图片过滤（小图标/装饰图）: name={}", name);
             return null;
         }
         if (pusher != null) {
-            // SSE 链路：VLM 流式聚合，reasoning 片段实时推送（Task 4；end 由批完成点统一调用）
-            return imageCaptionService.captionStreaming(bytes, mimeOf(name), pusher, reasoningSeenAny);
+            // SSE 链路：VLM 流式聚合，reasoning 片段实时推送（Task 4；end 由批完成点统一调用），
+            // 调用完成点经 sink 捕获该次调用（消息实体化，spec §3.2）
+            return imageCaptionService.captionStreaming(bytes, mimeOf(name), pusher, reasoningSeenAny, sink);
         }
         return imageCaptionService.caption(bytes, mimeOf(name));
     }

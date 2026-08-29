@@ -393,6 +393,10 @@ public class ChatStreamEntry {
      *
      * <p>当 ring buffer 已覆盖（lastEventId 太旧）或 ring 不存在时，查 PG chat_message 表
      * 按 runId 获取历史消息，转换为 SSE 事件推送到 emitter。
+     * 2026-08-29 消息实体化：assistant 实体行由
+     * {@code IChatMessageService#findByRunId} 统一拆行还原事件序行（thinking/query_plan/
+     * TOOL_CALL/正文），本方法消费的 VO 形态与实体化前一致——thinking/query_plan 事件由
+     * 拆出的行重建，事件协议不变（前端零改动）。
      * 降级不终止，记 warn。
      *
      * @param runId       Run 唯一标识（字符串）

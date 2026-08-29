@@ -3,8 +3,10 @@ package com.commerce.rag.bot.rewrite;
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.PromptLoader;
 import com.commerce.rag.properties.QueryUnderstandingProperties;
+import com.commerce.rag.record.AssistantMessageSink;
 import com.commerce.rag.stream.SseEventTransformer;
 import com.commerce.rag.stream.ThinkingPusher;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
@@ -137,10 +139,36 @@ public class QueryUnderstandingService {
      * @return QueryPlan（失败降级 fallback，never null）
      */
     public QueryPlan understand(String userQuery, List<Message> messages, ThinkingPusher pusher) {
+        return understand(userQuery, messages, pusher, null);
+    }
+
+    /**
+     * 理解用户查询并实时推送思考片段，签出完整 QueryPlan（消息实体化重载，spec §3.2 QU 捕获点）。
+     *
+     * <p>与三参版本的区别：sink 非空时在流式聚合完成点捕获本次 LLM 调用的完整消息
+     * （thinking 全文 + query_plan payload JSON）——LLM 成功/降级（fallback）均捕获：
+     * 思考全文取 ThinkingPusher 按阶段累加缓冲（与已推送 THINKING 事件逐字一致），text 取
+     * {@code buildQueryPlanPayload(plan)} payload JSON（与 SSE query_plan 事件、现状 query_plan
+     * 行同一构造点，前端 parse 契约 intent/rewritten/filters.courseNames 不变）；run 终结时
+     * worker 经 sink 落 {@code message_type='assistant'} 实体行。
+     *
+     * @param userQuery 当前用户消息原文（含图片 caption 文本；可空白，空白直接降级不调 LLM）
+     * @param messages  会话完整消息列表（自 state 读取；摘要 SM 与历史轮次从中提取）
+     * @param pusher    per-run 思考推送通道（可为 null——null 时走原同步路径不推思考）
+     * @param sink      per-run LLM 调用捕获容器（可为 null——null 时行为与三参版本一致，不捕获）
+     * @return QueryPlan（失败降级 fallback，never null）
+     */
+    public QueryPlan understand(
+            String userQuery, List<Message> messages, ThinkingPusher pusher, AssistantMessageSink sink) {
         if (userQuery == null || userQuery.isBlank()) {
             log.debug("Query Understanding: 空白用户消息，直接降级");
-            return QueryPlan.fallback(userQuery);
+            // 消息实体化：空白输入同样签出 fallback 计划（与 state 恒写 QueryPlan 一致），
+            // 捕获 fallback payload JSON 供实体行落库（与现状 query_plan 行语义一致）
+            QueryPlan fallback = QueryPlan.fallback(userQuery);
+            captureQuCall(pusher, sink, fallback);
+            return fallback;
         }
+        QueryPlan result = QueryPlan.fallback(userQuery);
         try {
             Map<String, String> sections = promptLoader.loadSections("query-understanding.yml");
             String system = sections.getOrDefault("query-understanding.system", "");
@@ -157,20 +185,46 @@ public class QueryUnderstandingService {
             if (content != null && !content.isBlank()) {
                 QueryPlan plan = parse(content);
                 if (plan != null) {
-                    QueryPlan capped = capQueries(plan);
+                    result = capQueries(plan);
                     log.info(
                             "Query Understanding 完成: intent={}, 重写={}条, filters={}, recall_history={}",
-                            capped.intent().name(),
-                            capped.rewrittenQueries().size(),
-                            capped.filters().courseNames(),
-                            capped.recallHistory());
-                    return capped;
+                            result.intent().name(),
+                            result.rewrittenQueries().size(),
+                            result.filters().courseNames(),
+                            result.recallHistory());
                 }
             }
         } catch (Exception e) {
             log.warn("Query Understanding 失败，降级 unknown（不拒答）: {}", e.getMessage());
         }
-        return QueryPlan.fallback(userQuery);
+        // 消息实体化：流式聚合完成点捕获（spec §3.2 QU）——LLM 成功/降级均捕获已产出的
+        // 思考与计划 JSON（失败时 plan=fallback，与 SSE QUERY_PLAN 事件非空即推的契约一致）
+        captureQuCall(pusher, sink, result);
+        return result;
+    }
+
+    /**
+     * 捕获 QU 调用完整消息到 sink（thinking 全文 + query_plan payload JSON）。
+     *
+     * @param pusher 思考推送通道（可为 null——null 时思考全文为 null）
+     * @param sink   捕获容器（可为 null——null 时不捕获）
+     * @param plan   签出的查询计划（恒非 null：成功结果或 fallback）
+     */
+    private void captureQuCall(ThinkingPusher pusher, AssistantMessageSink sink, QueryPlan plan) {
+        if (sink == null) {
+            return;
+        }
+        // 思考全文 = ThinkingPusher 按阶段累加缓冲（与已推送 THINKING 事件逐字一致）
+        String reasoning = pusher == null ? null : pusher.accumulated().get(SseEventTransformer.STAGE_UNDERSTANDING);
+        // text = query_plan payload JSON（与 SSE 事件/现状 query_plan 行同一构造点，序列化失败降级 null）
+        String planJson;
+        try {
+            planJson = objectMapper.writeValueAsString(SseEventTransformer.buildQueryPlanPayload(plan));
+        } catch (JsonProcessingException e) {
+            log.warn("QU 实体捕获 query_plan JSON 序列化失败，text 降级 null: {}", e.getMessage());
+            planJson = null;
+        }
+        sink.capture(SseEventTransformer.STAGE_UNDERSTANDING, reasoning, planJson, List.of());
     }
 
     /**
