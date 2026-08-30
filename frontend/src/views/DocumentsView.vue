@@ -19,8 +19,8 @@
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
 
-/** 上传文件类型白名单（设计 §2.4.2：B 端白名单，禁与 C 端附件白名单混用） */
-export const UPLOAD_FILE_TYPES = ['pdf', 'docx', 'pptx', 'md', 'txt'] as const
+/** 上传文件类型白名单（设计 §2.4.2：B 端白名单，禁与 C 端附件白名单混用；2026-08-30 扩展 Excel XLSX/XLS） */
+export const UPLOAD_FILE_TYPES = ['pdf', 'docx', 'pptx', 'md', 'txt', 'xlsx', 'xls'] as const
 
 /** 上传大小上限（MB，设计 §2.4.2 ≤100MB；与后端 etl.max-file-size-mb 配置同值） */
 export const UPLOAD_MAX_SIZE_MB = 100

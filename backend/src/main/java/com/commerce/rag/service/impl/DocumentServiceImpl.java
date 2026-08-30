@@ -76,7 +76,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
      * @param kbId        知识库 ID
      * @param title       文档标题
      * @param inputStream 文件输入流
-     * @param fileType    文件类型（pdf/docx/pptx/md）
+     * @param fileType    文件类型（pdf/docx/pptx/md/txt/xlsx/xls）
      * @param fileSize    文件大小（字节）
      * @param courseId    课程 ID（可空，空则 DEFAULT=通用资料库；分片继承该值写入 Milvus course_id）
      * @param createdBy   创建者 ID

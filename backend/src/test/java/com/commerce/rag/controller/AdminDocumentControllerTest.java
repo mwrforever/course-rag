@@ -96,6 +96,20 @@ class AdminDocumentControllerTest {
     }
 
     @Test
+    @DisplayName("upload 合法类型（.xlsx/.xls Excel）→ 放行，调用 service")
+    void upload_validExcelType_succeeds() throws Exception {
+        MockMultipartFile xlsx = new MockMultipartFile(
+                "file", "成绩表.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", new byte[8]);
+        assertDoesNotThrow(() -> controller.upload(adminRequest(), 1L, "doc", null, xlsx));
+        verify(documentService).upload(eq(1L), eq("doc"), any(), eq("xlsx"), eq(8L), isNull(), eq(1L), eq(true));
+
+        // xls 旧格式同样放行（Tika OLE2 解析）
+        MockMultipartFile xls = new MockMultipartFile("file", "成绩表.xls", "application/vnd.ms-excel", new byte[5]);
+        assertDoesNotThrow(() -> controller.upload(adminRequest(), 1L, "doc", null, xls));
+        verify(documentService).upload(eq(1L), eq("doc"), any(), eq("xls"), eq(5L), isNull(), eq(1L), eq(true));
+    }
+
+    @Test
     @DisplayName("upload 无扩展名文件 → 按 bin 拒绝（400）")
     void upload_noExtension_throws400() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "noext", "application/octet-stream", new byte[10]);

@@ -559,7 +559,7 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
     wrapper.unmount()
   })
 
-  it('类型白名单：exe 文件拒绝（仅 pdf/docx/pptx/md/txt）', async () => {
+  it('类型白名单：exe 文件拒绝（仅 pdf/docx/pptx/md/txt/xlsx/xls）', async () => {
     const { wrapper, dialog } = await openUpload()
     const uploadSpy = vi.spyOn(documentApi, 'upload').mockResolvedValue(doc('d-new', 'PENDING'))
 
@@ -571,6 +571,21 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
 
     expect(dialog.find('[data-testid="upload-error"]').text()).toContain('不支持的文件类型')
     expect(uploadSpy).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('类型白名单：xlsx 文件放行（Excel 电子表格）', async () => {
+    const { wrapper, dialog } = await openUpload()
+    const uploadSpy = vi.spyOn(documentApi, 'upload').mockResolvedValue(doc('d-new', 'PENDING'))
+
+    await selectKb(dialog)
+    await dialog.find('[data-testid="upload-title"]').setValue('成绩表')
+    await pickFile(wrapper, new File(['x'], '成绩表.xlsx'))
+    await dialog.find('form[data-testid="upload-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(dialog.find('[data-testid="upload-error"]').exists()).toBe(false)
+    expect(uploadSpy).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 
