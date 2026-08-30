@@ -5,11 +5,12 @@
  *
  * 查询工具（CourseApiTool）的执行结果经 TOOL_RESULT 事件到达（SSE 与历史行同构），
  * 完成态工具步骤点击后在右侧抽屉结构化展示：
- * - 深色头部条：标题「查询到的课程资料」+ 工具名人话 + 调用参数摘要 + 关闭按钮
+ * - 浅色头部条：标题「查询到的课程资料」+ 工具名人话 + 调用参数摘要 + 关闭按钮
  * - 结果卡片列表：数组元素（如课程列表 courses[]）逐元素一张卡——标题优先取
  *   title/courseName/name 等字段，其余标量字段按中文标签逐行展示（嵌套对象/数组
  *   以 JSON 预览截断兜底）；对象（详情/报名）单卡展示
- * - 底部「查看原始 JSON」折叠：完整输出原文（mono 可滚动），便于排查
+ * - 底部「查看原始 JSON」折叠：完整输出（mono 可滚动），便于排查——字符串形态
+ *   parse 成功显示 pretty JSON、parse 失败（后端截断）显示原始截断文本
  * - 交互：Esc / 遮罩点击 / 关闭按钮三种关闭路径（与召回抽屉同构）
  */
 import { Wrench, X } from "@phosphor-icons/react";
@@ -114,22 +115,45 @@ function objectToCard(value: Record<string, unknown>): ResultCard {
   return { title: pickTitle(value) ?? "条目", lines };
 }
 
-/** 工具输出 → 结果卡片列表（数组逐元素成卡；对象取 courses[] 数组或单卡；标量单卡） */
+/**
+ * 容错解析字符串形态的工具输出
+ *
+ * 后端 responseData() 为 JSON 字符串（SAA MessageToolCallResultConverter
+ * JsonParser.toJson 产物），且可能被 4000 截断（截断在 JSON 中间导致 parse 失败）——
+ * 此处容错解析：parse 失败回退原字符串，由标量兜底分支展示，不允许渲染抛错。
+ *
+ * @param output 工具输出（后端真实契约为字符串；历史/单测也可能直接传对象）
+ * @returns 字符串 parse 成功得结构化值（对象/数组/标量）；parse 失败回退原字符串；非字符串原样返回
+ */
+function parseToolOutput(output: unknown): unknown {
+  if (typeof output !== "string") {
+    return output;
+  }
+  try {
+    return JSON.parse(output) as unknown;
+  } catch {
+    // 截断的 JSON / 纯文本输出：回退原字符串走标量兜底
+    return output;
+  }
+}
+
+/** 工具输出 → 结果卡片列表（字符串先容错 parse；数组逐元素成卡；对象取 courses[] 数组或单卡；标量单卡） */
 function toResultCards(output: unknown): ResultCard[] {
-  if (output === null || output === undefined) {
+  const parsed = parseToolOutput(output);
+  if (parsed === null || parsed === undefined) {
     return [];
   }
-  if (Array.isArray(output)) {
-    return output.length === 0
+  if (Array.isArray(parsed)) {
+    return parsed.length === 0
       ? []
-      : output.map((item, index) =>
+      : parsed.map((item, index) =>
           item !== null && typeof item === "object"
             ? objectToCard(item as Record<string, unknown>)
             : { title: `条目 ${index + 1}`, lines: [valueText(item)] },
         );
   }
-  if (typeof output === "object") {
-    const obj = output as Record<string, unknown>;
+  if (typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
     // 分页课程列表：courses 数组逐课程成卡（设计稿「查询到的课程资料」文件卡语义）
     if (Array.isArray(obj["courses"]) && (obj["courses"] as unknown[]).length > 0) {
       return (obj["courses"] as unknown[]).map((course) =>
@@ -138,7 +162,27 @@ function toResultCards(output: unknown): ResultCard[] {
     }
     return [objectToCard(obj)];
   }
-  return [{ title: "结果", lines: [valueText(output)] }];
+  return [{ title: "结果", lines: [valueText(parsed)] }];
+}
+
+/**
+ * 「查看原始 JSON」区块展示文本
+ *
+ * 字符串形态（后端真实契约）：parse 成功显示 pretty JSON；失败（后端 4000 截断）
+ * 显示原始截断文本。对象/数组等已结构化形态：直接 pretty JSON。
+ *
+ * @param output 工具输出原文
+ * @returns mono 区块渲染文本
+ */
+function rawOutputText(output: unknown): string {
+  if (typeof output === "string") {
+    try {
+      return JSON.stringify(JSON.parse(output) as unknown, null, 2);
+    } catch {
+      return output;
+    }
+  }
+  return JSON.stringify(output, null, 2);
 }
 
 /**
@@ -255,7 +299,7 @@ export function ToolResultDrawer({ tool, onClose }: ToolResultDrawerProps) {
               data-testid="tool-drawer-raw"
               className="mt-2 max-h-52 overflow-auto rounded-lg border border-line bg-cream/40 p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap break-all text-muted"
             >
-              {JSON.stringify(tool.output, null, 2)}
+              {rawOutputText(tool.output)}
             </pre>
           ) : null}
         </div>

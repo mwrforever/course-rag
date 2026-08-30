@@ -73,6 +73,7 @@ import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
 /**
@@ -1409,7 +1410,7 @@ public class ChatRequestWorker {
 
     /** 提取 LLM 网关异常响应体摘要（WebClientResponseException 携带业务错误详情；非网关异常返回空串） */
     private static String responseBodyOf(Throwable e) {
-        if (e instanceof org.springframework.web.reactive.function.client.WebClientResponseException wcre) {
+        if (e instanceof WebClientResponseException wcre) {
             String body = wcre.getResponseBodyAsString();
             if (body == null || body.isBlank()) {
                 return "";

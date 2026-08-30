@@ -12,7 +12,8 @@
  *   来源步骤点击开召回抽屉、工具步骤点击开工具结果抽屉）→
  *   答案块（左渐变竖线 + 光标）→ 操作栏；召回片段经右侧 RetrievalDrawer 展示
  * - 流式空窗占位：最后一条 AI 消息流式中且时间轴/正文皆空时渲染三点脉冲
- *   （METADATA 已到、首个阶段事件未到的极短窗口；后端 METADATA 已前移至附件处理前）
+ *   （METADATA 已到、首个内容事件 thinking/sources/tool/delta 未到的极短窗口；
+ *   后端 METADATA 已前移至附件处理前）
  * - 流式打字光标（1s 循环，仅最后一条 AI 消息且 streaming 时挂载）
  * - 「已停止生成」后缀：hook 已在 text 追加（Task 11 契约），本组件直接渲染唯一一份；
  *   复制时由 FeedbackBar 剥离后缀（carry2）
@@ -105,7 +106,7 @@ function UserAttachmentChips({
 }
 
 /**
- * 流式空窗三点脉冲（METADATA 已到、STAGE/思考/正文未到的极短窗口占位）
+ * 流式空窗三点脉冲（METADATA 已到、首个内容事件 thinking/sources/tool/delta 未到的极短窗口占位）
  */
 function StreamingDots() {
   return (
@@ -220,7 +221,8 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
             </span>
           </div>
         ) : null}
-        {/* 流式空窗三点脉冲（阶段事件未到的极短窗口；STAGE 到达后由链式时间轴接管） */}
+        {/* 流式空窗三点脉冲（首个内容事件未到的极短窗口；thinking/sources/tool 到达后
+            由链式时间轴接管、delta 到达后由正文渲染接管） */}
         {awaitingFirstSignal ? <StreamingDots /> : null}
         {/* 链式时间轴：思考/检索/工具按到达序挂链（2026-08-30 对齐设计稿：无阶段/查询
             计划步骤；来源步骤点击开召回抽屉、工具步骤点击开工具结果抽屉） */}

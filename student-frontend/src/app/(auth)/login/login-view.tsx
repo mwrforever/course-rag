@@ -42,10 +42,10 @@ export function LoginView() {
     }
   }, [searchParams]);
 
-  // 2026-08-30 登录态保持修复：middleware 仅查 AT cookie（15 分钟过期），AT 过期后访问
-  // 受保护路由被重定向到 /login——但 RT 在 localStorage（服务端不可见），AuthProvider 挂载
-  // 静默续期已恢复登录态。此处检测续期完成且已登录 → 自动回跳 ?next，用户无感续期，
-  // 不再被强制手动重新登录。
+  // 2026-08-30 登录态保持修复：middleware 查 commerce_token（AT）或 c_rt_live 任一
+  // cookie 存在即放行，仅两者皆无（真匿名/清空凭据）才重定向 /login。本页静默续期回跳
+  // 覆盖该兜底路径——AuthProvider 挂载后用 localStorage 的 RT 静默续期恢复登录态，
+  // 检测续期完成且已登录 → 自动回跳 ?next，用户无感续期，不被强制手动重新登录。
   useEffect(() => {
     if (autoResumeRef.current || isLoading || !isAuthenticated) {
       return;

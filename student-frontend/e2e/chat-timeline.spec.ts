@@ -167,11 +167,13 @@ test.describe("链式时间轴", () => {
         {
           toolCallId: "t-1",
           status: "success",
-          output: {
+          // 后端真实契约：output 为 JSON 字符串（SseEventTransformer/ChatRequestWorker
+          // 直取 responseData()，且可能被 4000 截断——前端容错 parse 后结构化成卡）
+          output: JSON.stringify({
             page: 1,
             total: 1,
             courses: [{ courseId: "2", title: "Java 从入门到进阶", price: "¥0", category: "编程" }],
-          },
+          }),
         },
         3,
       ) +

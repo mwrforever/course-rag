@@ -28,6 +28,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
  * 查询理解服务 —— 单次 LLM 调用签出完整 QueryPlan（spec §2）
@@ -459,7 +460,7 @@ public class QueryUnderstandingService {
 
     /** 提取 LLM 网关异常响应体摘要（WebClientResponseException 携带业务错误详情；非网关异常返回空串） */
     private static String responseBodyOf(Throwable e) {
-        if (e instanceof org.springframework.web.reactive.function.client.WebClientResponseException wcre) {
+        if (e instanceof WebClientResponseException wcre) {
             String body = wcre.getResponseBodyAsString();
             if (body == null || body.isBlank()) {
                 return "";
