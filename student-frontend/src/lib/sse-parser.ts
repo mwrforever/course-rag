@@ -11,6 +11,7 @@
  * - 心跳保活：注释行 `:heartbeat\n\n`（SseEmitter.event().comment("heartbeat") 产生）
  * - 事件名 11 种：metadata / thinking / thinking_end / delta / query_plan /
  *   tool_call / tool_result / sources / stage / error / end；id 行每条事件可有可无
+ *   （2026-08-30 对齐设计稿：query_plan/stage 由消费侧忽略，解析器原样透传）
  *
  * 解析规则（对齐 SSE 规范）：
  * - 空行终止一帧：出现过 data 行 → onEvent（event: 缺省取规范默认 "message"）；

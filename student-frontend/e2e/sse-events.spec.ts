@@ -2,8 +2,10 @@ import { test, expect } from "@playwright/test";
 import { mockApi, login, mockChatStream, frame, heartbeat } from "./helpers/sse-route";
 
 /**
- * SSE 11 事件逐类断言（整合 spec §3.2 SSE-事件逐类 组，TASK.md §2 硬性要求；
- * 2026-08-28 时间线改版：thinking/query_plan/stage 断言对齐链式时间轴 testid）
+ * SSE 事件逐类断言（整合 spec §3.2 SSE-事件逐类 组，TASK.md §2 硬性要求；
+ * 2026-08-28 时间线改版：thinking/query_plan/stage 断言对齐链式时间轴 testid；
+ * 2026-08-30 对齐设计稿：query_plan/stage 帧前端忽略——「未识别意图」「正在生成回答」
+ * 不再渲染，断言改为「不渲染」负向校验）
  *
  * 原则：每类事件一个最小用例：先推目标事件帧，再以 end 收尾
  * （避免 EOF 未终态触发重连退避链，保证用例独立可并行）。
@@ -68,7 +70,7 @@ test.describe("SSE 事件逐类", () => {
     await expect(page.getByTestId("thinking-status")).toHaveText("思考已完成");
   });
 
-  test("query_plan：查询计划步骤渲染意图标签与改写查询（2026-08-28 时间线改版）", async ({
+  test("query_plan（2026-08-30 对齐设计稿）：帧被忽略，不渲染查询计划步骤，正文正常", async ({
     page,
   }) => {
     await mockChatStream(
@@ -90,14 +92,14 @@ test.describe("SSE 事件逐类", () => {
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    // 查询计划步骤：意图标签（人话映射）+ 首条改写查询
-    await expect(page.getByTestId("query-plan-step")).toBeVisible();
-    await expect(page.getByTestId("query-plan-intent")).toHaveText("知识问答");
-    await expect(page.getByTestId("query-plan-rewritten-first")).toContainText("什么是倒排索引");
+    // 2026-08-30：重写正文/意图胶囊不回前端（数据仍落库供审计），查询计划步骤不渲染
+    await expect(page.getByTestId("query-plan-step")).toHaveCount(0);
     await expect(page.getByText("改写后的回答正文。")).toBeVisible();
   });
 
-  test("stage-thinking：阶段步骤与思考步骤按到达序挂链（stage → thinking）", async ({ page }) => {
+  test("stage+thinking（2026-08-30 对齐设计稿）：stage 帧被忽略，思考步骤照常渲染", async ({
+    page,
+  }) => {
     await mockChatStream(
       page,
       frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
@@ -110,14 +112,10 @@ test.describe("SSE 事件逐类", () => {
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    // 阶段步骤（OpStep）与思考步骤同链：阶段在前、思考在后（到达序）
-    const stageText = page.getByTestId("op-step-text").filter({ hasText: "正在理解你的问题" });
-    await expect(stageText).toBeVisible();
+    // 2026-08-30：阶段文案（「正在理解你的问题」等）不再渲染；思考步骤照常
+    await expect(page.getByText("正在理解你的问题")).toHaveCount(0);
     const thinking = page.getByTestId("thinking-step");
     await expect(thinking).toBeVisible();
-    const stageBox = await stageText.boundingBox();
-    const thinkingBox = await thinking.boundingBox();
-    expect(stageBox && thinkingBox && stageBox.y < thinkingBox.y).toBeTruthy();
     await expect(page.getByTestId("thinking-status")).toHaveText("思考已完成");
   });
 
@@ -207,7 +205,7 @@ test.describe("SSE 事件逐类", () => {
     await expect(page.getByText("课程讲义第1章")).toBeVisible();
   });
 
-  test("stage：时间轴阶段步骤显示「知识库查询中」等文案（2026-08-28 时间线改版）", async ({
+  test("stage（2026-08-30 对齐设计稿）：阶段帧被忽略，「知识库查询中」等文案不再渲染", async ({
     page,
   }) => {
     await mockChatStream(
@@ -222,18 +220,10 @@ test.describe("SSE 事件逐类", () => {
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    // 2026-08-28 时间线改版：阶段经链式时间轴 OpStep 直接平铺（推理卡已删，
-    // 无展开交互）；两个阶段按到达序挂链且位于正文之前
-    const first = page.getByTestId("op-step-text").filter({ hasText: "正在理解你的问题" });
-    const second = page.getByTestId("op-step-text").filter({ hasText: "知识库查询中" });
-    await expect(first).toBeVisible();
-    await expect(second).toBeVisible();
-    const body = page.getByText("阶段之后的正文。");
-    const firstBox = await first.boundingBox();
-    const secondBox = await second.boundingBox();
-    const bodyBox = await body.boundingBox();
-    expect(firstBox && secondBox && firstBox.y < secondBox.y).toBeTruthy();
-    expect(secondBox && bodyBox && secondBox.y < bodyBox.y).toBeTruthy();
+    // 2026-08-30 对齐设计稿：阶段步骤（含「正在生成回答」文案）不再渲染，正文照常
+    await expect(page.getByText("正在理解你的问题")).toHaveCount(0);
+    await expect(page.getByText("知识库查询中")).toHaveCount(0);
+    await expect(page.getByText("阶段之后的正文。")).toBeVisible();
   });
 
   test("error：run 级错误横幅 + 重试按钮", async ({ page }) => {

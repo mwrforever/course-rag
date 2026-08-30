@@ -12,19 +12,20 @@
  *     与时间轴来源节点（原位替换，保持首现位置）；messageId = 最后一条正文行 id
  *     （J5 反馈唯一来源）；intentType 原样透传
  *   - messageType=thinking → 时间轴思考节点：按 thinkingStage 归组（存量行 null/非法值
- *     降级 generating），同 stage 多行合并 lines，恒 ended=true（持久化即完成态）
- *   - messageType=query_plan → content JSON.parse + zod 校验建查询计划节点
- *     （坏 JSON/结构非法静默跳过，不阻断回显）
+ *     降级 generating），同 stage 同次 LLM 调用多行合并 lines（2026-08-30 按调用拆分：
+ *     上一张同 stage 思考卡之后已有工具节点则另起新卡——主 agent 每次模型调用一块思考卡），
+ *     恒 ended=true（持久化即完成态）
  *   - messageType=TOOL_CALL → 时间轴 pending 工具节点（content 为 JSON 串，与实时事件
  *     格式一致；坏 JSON 防御兜底）
  *   - messageType=TOOL_RESULT → 按 toolCallId 配对本 run 首个 pending 工具节点原位更新
  *     （空串同一谓词按到达顺序配对，与实时 chatReducer 语义一致）；无配对忽略
+ *   - 2026-08-30 对齐设计稿：query_plan 行不再建节点（重写正文/意图胶囊不回前端展示；
+ *     数据仍落库供审计）
  * - 历史消息一律落 endStatus=COMPLETED（持久化即完成态；取消/异常 run 的 assistant
  *   行由服务端过滤不下发，前端天然只见完整 run）
  */
 import type { StreamMessage } from "@/hooks/use-chat-stream";
 import {
-  queryPlanPayloadSchema,
   type ChatStageKey,
   type RetrievalSource,
   type StudentMessage,
@@ -126,7 +127,11 @@ function pairTimelineToolResult(timeline: TimelineNode[], result: ToolResultPayl
  * 时间轴 upsert 思考节点：同 stage 既有节点合并（倒序找最近一个），否则新建
  * ended=true 节点（历史行齐备 = 思考已完成）。行内容按增量并入（与实时 reducer
  * mergeThinkingLines 同语义：首段续接末行、其余各起新行）——存量数据同 stage
- * 多行（逐 delta 落库的旧行）拼接后与实时累积渲染一致；空白行过滤（终态数据）
+ * 多行（逐 delta 落库的旧行）拼接后与实时累积渲染一致；空白行过滤（终态数据）。
+ *
+ * 2026-08-30 思考卡按 LLM 调用拆分（与实时 reducer upsertThinkingNode 同规则）：
+ * 最近一张同 stage 思考卡之后已出现工具节点 → 视为新一次模型调用的思考，另起新卡
+ * （主 agent 每次调用之间必隔工具调用，TOOL_CALL 行即调用边界）
  */
 function upsertHistoryThinkingNode(
   timeline: TimelineNode[],
@@ -142,7 +147,11 @@ function upsertHistoryThinkingNode(
   for (let i = timeline.length - 1; i >= 0; i -= 1) {
     const node = timeline[i];
     if (node.kind === "thinking" && node.stage === stage) {
-      // 首段续接末行（同 stage 多行拼接），其余各起新行；
+      // 上一张同 stage 卡之后已有工具节点 → 新一次 LLM 调用的思考，另起新卡
+      if (hasToolNodeAfter(timeline, i)) {
+        break;
+      }
+      // 首段续接末行（同 stage 同次调用多行拼接），其余各起新行；
       // 既有节点恒有 ≥1 行（空内容在上方守卫已拦截，无空行节点入轴）
       node.lines[node.lines.length - 1] += parts[0];
       node.lines.push(...parts.slice(1));
@@ -152,12 +161,20 @@ function upsertHistoryThinkingNode(
   timeline.push({ kind: "thinking", stage, lines: parts, ended: true });
 }
 
+/** 时间轴中 index 之后是否存在工具节点（主 agent LLM 调用边界标记；与实时 reducer 同规则） */
+function hasToolNodeAfter(timeline: TimelineNode[], index: number): boolean {
+  for (let i = index + 1; i < timeline.length; i += 1) {
+    if (timeline[i].kind === "tool") return true;
+  }
+  return false;
+}
+
 /** 单条 ASSISTANT 行的 run 归并草稿（跨行累积，run 结束时写入 StreamMessage） */
 interface RunDraft {
   runId: string;
   /** 正文行内容（messageType=null）按序拼接 */
   textParts: string[];
-  /** 时间轴节点（按行序到达序重建；thinking/query_plan/tool/sources 各建节点） */
+  /** 时间轴节点（按行序到达序重建；thinking/tool/sources 各建节点，query_plan 不回显） */
   timeline: TimelineNode[];
   /** 来源卡数据（取最后一组非空数组） */
   sources: RetrievalSource[];
@@ -231,7 +248,7 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
         text: "",
         sources: [],
         // 历史消息无 STAGE 事件可回放（阶段是瞬时进度，不落库）——时间轴由
-        // thinking/query_plan/tool/sources 行重建，阶段节点天然缺席
+        // thinking/tool/sources 行重建，阶段节点天然缺席（query_plan 行对齐设计稿不回显）
         timeline: [],
         endStatus: "COMPLETED",
         messageId: null,
@@ -245,34 +262,18 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
 
     switch (row.messageType) {
       case "thinking":
-        // thinking 行：时间轴同 stage 合并节点（持久化行齐备 → 恒 ended=true）
+        // thinking 行：时间轴同 stage 同次调用合并节点（持久化行齐备 → 恒 ended=true；
+        // 2026-08-30 按 LLM 调用拆分：上一张同 stage 卡之后有工具节点则另起新卡）
         upsertHistoryThinkingNode(
           draft.timeline,
           normalizeThinkingStage(row.thinkingStage),
           row.content,
         );
         break;
-      case "query_plan": {
-        // query_plan 行：content 原样 JSON 由前端 parse + zod 校验（坏数据静默跳过）
-        const payload = parseJsonPayload(row.content);
-        const parsed = payload === null ? null : queryPlanPayloadSchema.safeParse(payload);
-        if (parsed !== null && parsed.success) {
-          // 每 run 语义唯一：二现原位替换（与实时 reducer replaceOrPush 语义一致）
-          const node: TimelineNode = {
-            kind: "queryPlan",
-            intent: parsed.data.intent,
-            rewritten: parsed.data.rewritten,
-            courseNames: parsed.data.filters.courseNames,
-          };
-          const index = draft.timeline.findIndex((item) => item.kind === "queryPlan");
-          if (index >= 0) {
-            draft.timeline[index] = node;
-          } else {
-            draft.timeline.push(node);
-          }
-        }
+      case "query_plan":
+        // 2026-08-30 对齐设计稿：query_plan 行不再建节点不回显（重写正文/意图胶囊
+        // 不回前端；数据仍落库供审计），显式跳过避免落入 default 正文拼接分支
         break;
-      }
       case "TOOL_CALL": {
         // 工具调用行：时间轴插入 pending 工具节点（后续 TOOL_RESULT 按 toolCallId 配对）
         const call = parseToolCall(row.content);

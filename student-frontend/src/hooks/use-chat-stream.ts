@@ -1,13 +1,17 @@
 /**
- * useChatStream：对话页 SSE 11 事件状态机（Task 11 核心；2026-08-28 时间线改版）
+ * useChatStream：对话页 SSE 状态机（Task 11 核心；2026-08-28 时间线改版；2026-08-30 对齐设计稿）
  *
  * 职责（设计文档 §1.5.4 + 契约 §5/§6）：
- * - chatReducer：纯函数状态机，消费 12 种 SSE 事件（metadata/thinking/thinking_end/
- *   delta/query_plan/tool_call/tool_result/sources/stage/error/end + :heartbeat 心跳
- *   仅重置计时，不落状态）与 send/reconnect/reset 三个生命周期动作，产出组件消费的
- *   渲染视图模型；时间轴（StreamMessage.timeline）按事件到达序 push/merge——
- *   stage/query_plan/sources/tool_call 各建节点、thinking 同 stage 合并行、
- *   tool_result 原位更新、delta 正文不入时间轴
+ * - chatReducer：纯函数状态机，消费 SSE 事件（metadata/thinking/thinking_end/
+ *   delta/tool_call/tool_result/sources/error/end + :heartbeat 心跳仅重置计时，不落状态）
+ *   与 send/reconnect/reset 三个生命周期动作，产出组件消费的渲染视图模型；时间轴
+ *   （StreamMessage.timeline）按事件到达序 push/merge——
+ *   sources/tool_call 各建节点、thinking 同 stage 合并行（按 LLM 调用拆分：上一张同
+ *   stage 思考卡之后出现工具节点即另起新卡，每次模型调用一块思考卡）、tool_result 原位
+ *   更新、delta 正文不入时间轴
+ * - 2026-08-30 对齐设计稿：stage 阶段事件与 query_plan 查询计划事件不再消费
+ *   （「正在生成回答」等阶段文案与「未识别意图」/重写查询清单不再展示；后端事件照发、
+ *   落库照旧，前端忽略）
  * - useChatStream：fetch + ReadableStream + TextDecoder 手写 SSE 解析喂入；
  *   409 发送冲突语义、cancel 竞态静默、30s 断流心跳计时、重连指数退避（1s/2s 封顶 3 次）
  *
@@ -30,10 +34,8 @@ import { useEffect, useReducer, useRef } from "react";
 import { ApiError, cancelRun, postChat, reconnectChat } from "../lib/api";
 import { createSseParser } from "../lib/sse-parser";
 import {
-  queryPlanPayloadSchema,
   type AttachmentRecord,
   type ChatStageKey,
-  type QueryPlanPayload,
   type RetrievalSource,
   type TimelineNode,
 } from "../lib/types";
@@ -112,14 +114,14 @@ export interface ChatStreamState {
   endedStatus: EndStatus | null;
 }
 
-/** reducer 动作：11 种 SSE 事件（携带 seq 锚点）+ 生命周期动作（send/reconnect/reset） */
+/** reducer 动作：SSE 事件（携带 seq 锚点）+ 生命周期动作（send/reconnect/reset）。
+ *  2026-08-30 对齐设计稿：stage/query_plan 事件不再消费（前端忽略） */
 export type ChatAction =
   | { type: "send"; id: string; query: string; attachments: AttachmentRecord[] }
   | { type: "metadata"; runId: string; sessionId: string; model: string; seq?: number | null }
   | { type: "thinking"; delta: string; stage: ChatStageKey; seq?: number | null }
   | { type: "thinking_end"; stage: ChatStageKey; seq?: number | null }
   | { type: "delta"; text: string; seq?: number | null }
-  | { type: "query_plan"; plan: QueryPlanPayload; seq?: number | null }
   | {
       type: "tool_call";
       toolCallId: string;
@@ -135,7 +137,6 @@ export type ChatAction =
       seq?: number | null;
     }
   | { type: "sources"; sources: RetrievalSource[]; seq?: number | null }
-  | { type: "stage"; stage: ChatStageKey; label: string; seq?: number | null }
   | { type: "error"; kind: ErrorKind; message: string; seq?: number | null }
   | {
       type: "end";
@@ -191,8 +192,12 @@ function mergeThinkingLines(lines: string[], delta: string): string[] {
 }
 
 /**
- * 时间轴 upsert 思考节点：倒序找同 stage 的 thinking 节点合并行（同 stage 多 delta
- * 一节点多行）；不存在则新建节点。空 delta 且无既有节点时不产生空节点（噪声防御）
+ * 时间轴 upsert 思考节点：倒序找同 stage 的 thinking 节点合并行（同 stage 同次 LLM 调用
+ * 多 delta 一节点多行）；不存在则新建节点。空 delta 且无既有节点时不产生空节点（噪声防御）。
+ *
+ * 2026-08-30 思考卡按 LLM 调用拆分：主 agent 循环每次模型调用都会产生思考内容——若最近
+ * 一张同 stage 思考卡之后已出现工具节点（每次调用之间必隔工具调用，TOOL_CALL 即调用边界），
+ * 则视为新一次调用的思考，另起新卡而不合并（每调用一块思考卡，与设计稿一致）
  */
 function upsertThinkingNode(
   timeline: TimelineNode[],
@@ -202,6 +207,10 @@ function upsertThinkingNode(
   for (let i = timeline.length - 1; i >= 0; i -= 1) {
     const node = timeline[i];
     if (node.kind === "thinking" && node.stage === stage) {
+      // 上一张同 stage 卡之后已有工具节点 → 新一次 LLM 调用的思考，跳出合并循环另起新卡
+      if (hasToolNodeAfter(timeline, i)) {
+        break;
+      }
       const next = timeline.slice();
       next[i] = { ...node, lines: mergeThinkingLines(node.lines, delta) };
       return next;
@@ -213,6 +222,14 @@ function upsertThinkingNode(
     ...timeline,
     { kind: "thinking", stage, lines: mergeThinkingLines([], delta), ended: false },
   ];
+}
+
+/** 时间轴中 index 之后是否存在工具节点（主 agent LLM 调用边界标记；每次调用之间必隔工具调用） */
+function hasToolNodeAfter(timeline: TimelineNode[], index: number): boolean {
+  for (let i = index + 1; i < timeline.length; i += 1) {
+    if (timeline[i].kind === "tool") return true;
+  }
+  return false;
 }
 
 /** 时间轴标记思考结束：倒序找同 stage 的 thinking 节点置 ended（幂等：已 ended 原引用返回） */
@@ -403,19 +420,6 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
         text: msg.text + action.text,
       }));
     }
-    case "query_plan": {
-      // query_plan：时间轴建查询计划节点（每 run 语义唯一，二推原位替换保幂等）
-      if (isTerminal(state)) return state;
-      return updateLastAssistant(applySeq(state, action.seq), (msg) => ({
-        ...msg,
-        timeline: replaceOrPushNode(msg.timeline, "queryPlan", {
-          kind: "queryPlan",
-          intent: action.plan.intent,
-          rewritten: action.plan.rewritten,
-          courseNames: action.plan.filters.courseNames,
-        }),
-      }));
-    }
     case "tool_call": {
       // tool_call：时间轴建 pending 工具节点（动画环/跳动点）
       if (isTerminal(state)) return state;
@@ -463,22 +467,6 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
         }),
       }));
     }
-    case "stage": {
-      // stage：时间轴按到达序建阶段节点（知识库查询中/正在生成回答等可见化）；
-      // ring 全量回放（锚点丢失）可能重发已消费阶段——按阶段键去重保证幂等
-      if (isTerminal(state)) return state;
-      return updateLastAssistant(applySeq(state, action.seq), (msg) =>
-        msg.timeline.some((node) => node.kind === "stage" && node.stage === action.stage)
-          ? msg
-          : {
-              ...msg,
-              timeline: [
-                ...msg.timeline,
-                { kind: "stage", stage: action.stage, label: action.label },
-              ],
-            },
-      );
-    }
     case "error": {
       // error：错误分级落位 + 解除流式（run 级错误/重连失败/认证失效统一入口）
       if (isTerminal(state)) return state;
@@ -523,6 +511,11 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
       // reset：清消息/流式/错误/终态/事件锚点；clearSession=true 时连会话归属一并
       // 清空（Task 13 新建对话干净态：下一次 send 的 sessionId=null → 后端建新会话）
       return createInitialState(action.clearSession ? null : state.sessionId);
+    }
+    default: {
+      // 未知/已废弃动作（如对齐设计稿后不再消费的 stage/query_plan）：原样返回不落状态
+      // （2026-08-30 防御：sseEventToAction 已过滤，此处兜底防未来事件类型误入）
+      return state;
     }
   }
 }
@@ -583,12 +576,6 @@ export function sseEventToAction(
       return { type: "thinking_end", stage: normalizeThinkingStage(payload["stage"]), seq };
     case "delta":
       return { type: "delta", text: strField(payload, "text"), seq };
-    case "query_plan": {
-      // query_plan 载荷 zod 边界校验：结构非法（缺 intent/rewritten/filters 等）整体忽略
-      const parsed = queryPlanPayloadSchema.safeParse(payload);
-      if (!parsed.success) return null;
-      return { type: "query_plan", plan: parsed.data, seq };
-    }
     case "tool_call":
       return {
         type: "tool_call",
@@ -610,17 +597,6 @@ export function sseEventToAction(
       return {
         type: "sources",
         sources: Array.isArray(sources) ? (sources as RetrievalSource[]) : [],
-        seq,
-      };
-    }
-    case "stage": {
-      // STAGE 阶段事件（2026-08-27）：stage 键合法才转发，label 缺省回退键名（不阻断）
-      const stage = strField(payload, "stage");
-      if (!STAGE_KEYS.has(stage)) return null;
-      return {
-        type: "stage",
-        stage: stage as ChatStageKey,
-        label: strField(payload, "label", stage),
         seq,
       };
     }

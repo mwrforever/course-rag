@@ -225,8 +225,8 @@ context:
   threshold: 0.7
   # 压缩后保留的最近消息条数
   keep-recent: 6
-  # 摘要用小模型（qwen3.7-flash；旧 qwen-turbo 已下线）
-  summary-model: qwen3.7-flash
+  # 摘要模型（qwen3.7-max-2026-06-08 接替 qwen3.7-flash：2026-08-28 flash 配额耗尽拍板；旧 qwen-turbo 已下线）
+  summary-model: qwen3.7-max-2026-06-08
 
 # ── SSE 流式 + Worker Queue 配置 ──
 stream:
@@ -263,8 +263,8 @@ rag:
 
   # ── S1 Query Understanding（spec §2.2/§6：独立轻量模型 + 重写上限）──
   query-understanding:
-    # QU 独立模型（不复用主对话模型，独立配置 qwen3.7-flash）
-    model: qwen3.7-flash
+    # QU 独立模型（不复用主对话模型，独立配置；2026-08-28 flash 配额耗尽拍板 qwen3.7-max-2026-06-08 接替）
+    model: qwen3.7-max-2026-06-08
     # 单次签出最大重写查询条数（spec §2.2 上限 3）
     max-queries: 3
     # QU 流式思考聚合硬超时（chunk 间静默累计上限）：响应式栈无 transport idle 保护，
@@ -399,7 +399,7 @@ attachment:
 # ── S1 记忆体系（spec §7.8/§8.3：阈值/权重/预算/曲线全配置化）──
 memory:
   extraction:
-    model: qwen3.7-flash        # 偏好/记忆提取模型（spec §7.6 独立配置）
+    model: qwen3.7-max-2026-06-08   # 偏好/记忆提取模型（spec §7.6 独立配置；2026-08-28 flash 配额耗尽拍板接替）
     debounce-window-seconds: 30 # run 完成后的防抖窗口，同用户窗口内消息合并
     timeout-ms: 10000           # 提取 LLM 调用超时，超时丢弃本批不重试
     threads: 2                  # 防抖调度线程数（偏好/经历各独立小线程池）

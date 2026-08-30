@@ -202,6 +202,31 @@ export async function mockApi(page: Page) {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON_OK(null) });
     }
 
+    // 分片上下文（J4）：召回抽屉懒加载按 chunkId 回查 PG（2026-08-30 懒加载改版——
+    // 检索内容不再随 SOURCES 一次性下发，展开卡片时按 id 拉全文）
+    if (method === "GET" && /\/student\/chunks\/\d+\/context$/.test(path)) {
+      const chunkId = path.split("/").at(-2) ?? "101";
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON_OK({
+          id: chunkId,
+          docId: "d-1",
+          kbId: "kb-1",
+          content: "倒排索引是信息检索的核心数据结构，通过词项到文档列表的映射实现快速查找……",
+          headingPath: "第3章 > 3.2",
+          chunkIndex: 1,
+          courseId: null,
+          parentChunkId: null,
+          prevChunkId: null,
+          nextChunkId: null,
+          parent: null,
+          prev: null,
+          next: null,
+        }),
+      });
+    }
+
     // 其余请求：统一 200 空数据兜底（若用例需覆盖的接口缺失，会由具体断言暴露）
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON_OK(null) });
   });

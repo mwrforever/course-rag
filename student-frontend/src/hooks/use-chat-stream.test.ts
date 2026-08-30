@@ -1,11 +1,12 @@
 /**
- * useChatStream 测试（Task 11 核心 100%：对话页 SSE 11 事件状态机 + 到达序时间轴模型）
+ * useChatStream 测试（Task 11 核心 100%：对话页 SSE 状态机 + 到达序时间轴模型；
+ * 2026-08-30 对齐设计稿：stage/query_plan 事件忽略、思考卡按 LLM 调用拆分）
  *
  * 覆盖层次：
  * 1. chatReducer 纯函数逐事件（brief Step 1 的 9 组 + 幂等/防御/纯函数边界；
  *    2026-08-28 时间线改版：断言以 StreamMessage.timeline 节点序与合并语义为准）
  * 2. sseEventToAction 事件映射（payload → action 的 JSON 解析、thinking stage 归一化、
- *    query_plan zod 边界校验分流）
+ *    stage/query_plan 忽略返回 null）
  * 3. useChatStream 集成（mock fetch 返回可读流逐帧喂入；409/cancel 竞态；
  *    心跳重置与 30s 断流 fake timers；reconnect 指数退避；REPLAY_FAILED 分流；
  *    M10 降级续流不回放 metadata/sources 的等价锚点）
@@ -265,13 +266,16 @@ describe("chatReducer 纯函数", () => {
     expect(s.messages[0].timeline).toEqual([]);
   });
 
-  it("用例3b query_plan：建查询计划节点；二推原位替换（重放幂等，位置稳定）", () => {
+  it("用例3b 对齐设计稿（2026-08-30）：stage/query_plan 事件不再消费（前端忽略，不落时间轴）", () => {
     let s = streamingWithAi({ messages: [aiMsg()] });
+    // stage 事件：忽略（「正在生成回答」等阶段文案不再展示）
     s = chatReducer(s, {
       type: "stage",
       stage: "understanding",
       label: "正在理解你的问题",
-    });
+    } as never);
+    expect(s.messages[0].timeline).toEqual([]);
+    // query_plan 事件：忽略（「未识别意图」/重写查询清单不再展示；数据仍落库供审计）
     s = chatReducer(s, {
       type: "query_plan",
       plan: {
@@ -279,32 +283,8 @@ describe("chatReducer 纯函数", () => {
         rewritten: ["RAG 检索增强生成"],
         filters: { courseNames: [] },
       },
-    });
-    expect(s.messages[0].timeline).toEqual([
-      { kind: "stage", stage: "understanding", label: "正在理解你的问题" },
-      {
-        kind: "queryPlan",
-        intent: "knowledge_question",
-        rewritten: ["RAG 检索增强生成"],
-        courseNames: [],
-      },
-    ]);
-    // 二推（ring 回放重发）：原位替换不追加，节点序稳定
-    s = chatReducer(s, {
-      type: "query_plan",
-      plan: {
-        intent: "chat",
-        rewritten: ["闲聊"],
-        filters: { courseNames: ["高等数学"] },
-      },
-    });
-    expect(s.messages[0].timeline).toHaveLength(2);
-    expect(s.messages[0].timeline[1]).toEqual({
-      kind: "queryPlan",
-      intent: "chat",
-      rewritten: ["闲聊"],
-      courseNames: ["高等数学"],
-    });
+    } as never);
+    expect(s.messages[0].timeline).toEqual([]);
   });
 
   it("用例4 tool_call 建节点 pending；tool_result 按 toolCallId 原位更新为 success + output", () => {
@@ -393,85 +373,82 @@ describe("chatReducer 纯函数", () => {
     expect(s.messages[0].timeline).toEqual([{ kind: "sources", sources: [src3] }]);
   });
 
-  it("用例5 扩展 stage（2026-08-27）：时间轴建阶段节点；同键去重（ring 回放幂等）；终态后忽略", () => {
+  it("用例5 扩展（2026-08-30）：思考卡按 LLM 调用拆分——同 stage 思考在上一张卡之后出现工具节点则另起新卡（主 agent 每次模型调用一块思考卡）", () => {
+    // 主 agent 工具循环：调用1 思考 → 工具调用 → 工具结果 → 调用2 思考（同 stage）
     let s = streamingWithAi({ messages: [aiMsg()] });
-    s = chatReducer(s, {
-      type: "stage",
-      stage: "understanding",
-      label: "正在理解你的问题",
-      seq: 2,
+    s = chatReducer(s, { type: "thinking", delta: "第一轮思考", stage: "generating" });
+    s = chatReducer(s, { type: "tool_call", toolCallId: "t-1", toolName: "a", input: null });
+    s = chatReducer(s, { type: "tool_result", toolCallId: "t-1", status: "success", output: {} });
+    // 调用2 思考：上一张 generating 卡之后已有工具节点 → 另起新卡（不合并）
+    s = chatReducer(s, { type: "thinking", delta: "第二轮思考", stage: "generating" });
+    expect(s.messages[0].timeline.map((n) => n.kind)).toEqual(["thinking", "tool", "thinking"]);
+    expect(s.messages[0].timeline[0]).toMatchObject({
+      kind: "thinking",
+      stage: "generating",
+      lines: ["第一轮思考"],
     });
-    s = chatReducer(s, { type: "stage", stage: "retrieving", label: "知识库查询中", seq: 3 });
-    expect(s.messages[0].timeline).toEqual([
-      { kind: "stage", stage: "understanding", label: "正在理解你的问题" },
-      { kind: "stage", stage: "retrieving", label: "知识库查询中" },
-    ]);
-    // 同键重发（ring 全量回放）不追加
-    s = chatReducer(s, { type: "stage", stage: "retrieving", label: "知识库查询中", seq: 4 });
-    expect(s.messages[0].timeline).toHaveLength(2);
-    // 锚点随 seq 前进
-    expect(s.lastEventId).toBe(4);
-    // 终态后 stage 忽略
-    s = chatReducer(s, { type: "end", status: "COMPLETED", messageId: "m-1", seq: 5 });
-    s = chatReducer(s, { type: "stage", stage: "generating", label: "正在生成回答", seq: 6 });
-    expect(s.messages[0].timeline).toHaveLength(2);
+    expect(s.messages[0].timeline[2]).toMatchObject({
+      kind: "thinking",
+      stage: "generating",
+      lines: ["第二轮思考"],
+    });
+    // 同一轮调用内的多 delta 仍合并（无工具边界）
+    s = chatReducer(s, { type: "thinking", delta: "，补充", stage: "generating" });
+    const cards = s.messages[0].timeline.filter((n) => n.kind === "thinking");
+    expect(cards).toHaveLength(2);
+    expect(cards[1]).toMatchObject({ lines: ["第二轮思考，补充"] });
+    // 跨调用思考不互并（工具边界后新卡不受后续 delta 影响）
+    s = chatReducer(s, { type: "thinking", delta: "新一行", stage: "generating" });
+    expect(s.messages[0].timeline.filter((n) => n.kind === "thinking")).toHaveLength(2);
   });
 
-  it("时间线改版主链路：[thinking(u), query_plan, stage, thinking(g), tool_call, tool_result, sources, delta] 节点序与合并语义", () => {
-    // brief Task 8 Steps 锚定事件序列：断言到达序节点排列（不按事件类型重排）
+  it("时间线改版主链路（2026-08-30 对齐设计稿）：[thinking(u), thinking(g)调用1, tool, thinking(g)调用2, sources, delta] 节点序与思考卡拆分语义", () => {
+    // 事件序列锚定：QU 思考 → 主 agent 思考（调用1）→ 工具调用/结果 → 主 agent 思考（调用2，
+    // 工具边界后另起新卡）→ 检索来源 → 正文（不入时间轴）
     let s = streamingWithAi({ messages: [aiMsg()] });
     s = chatReducer(s, { type: "thinking", delta: "理解中…", stage: "understanding", seq: 1 });
-    s = chatReducer(s, {
-      type: "query_plan",
-      plan: {
-        intent: "knowledge_question",
-        rewritten: ["RAG 的概念"],
-        filters: { courseNames: [] },
-      },
-      seq: 2,
-    });
-    s = chatReducer(s, { type: "stage", stage: "retrieving", label: "知识库查询中", seq: 3 });
     s = chatReducer(s, {
       type: "thinking",
       delta: "基于检索结果组织",
       stage: "generating",
-      seq: 4,
+      seq: 2,
     });
     s = chatReducer(s, {
       type: "tool_call",
       toolCallId: "t-1",
       toolName: "searchKnowledge",
       input: null,
-      seq: 5,
+      seq: 3,
     });
     s = chatReducer(s, {
       type: "tool_result",
       toolCallId: "t-1",
       status: "success",
       output: { hits: 3 },
-      seq: 6,
+      seq: 4,
     });
+    s = chatReducer(s, { type: "thinking", delta: "补充引用", stage: "generating", seq: 5 });
     const src: RetrievalSource = { chunkId: "c-9", docTitle: "讲义", headingPath: "", score: 0.5 };
-    s = chatReducer(s, { type: "sources", sources: [src], seq: 7 });
-    s = chatReducer(s, { type: "delta", text: "正文", seq: 8 });
+    s = chatReducer(s, { type: "sources", sources: [src], seq: 6 });
+    s = chatReducer(s, { type: "delta", text: "正文", seq: 7 });
 
     const ai = s.messages[0];
-    // 节点序严格按到达序；delta 正文不入时间轴
+    // 节点序严格按到达序；delta 正文不入时间轴；stage/query_plan 不建节点
     expect(ai.timeline.map((node) => node.kind)).toEqual([
       "thinking",
-      "queryPlan",
-      "stage",
       "thinking",
       "tool",
+      "thinking",
       "sources",
     ]);
-    // 合并语义：两个 thinking 节点分属 understanding/generating（未跨 stage 合并）
+    // 思考卡归属：understanding 单卡；generating 按工具边界拆为两张卡
     expect(ai.timeline[0]).toMatchObject({ kind: "thinking", stage: "understanding" });
+    expect(ai.timeline[1]).toMatchObject({ kind: "thinking", stage: "generating" });
     expect(ai.timeline[3]).toMatchObject({ kind: "thinking", stage: "generating" });
     // tool_result 原位更新（不追加第二节点）
-    expect(ai.timeline[4]).toMatchObject({ kind: "tool", status: "success", output: { hits: 3 } });
+    expect(ai.timeline[2]).toMatchObject({ kind: "tool", status: "success", output: { hits: 3 } });
     expect(ai.text).toBe("回答一部分正文");
-    expect(s.lastEventId).toBe(8);
+    expect(s.lastEventId).toBe(7);
   });
 
   it("用例6 error：run 级 retryable 分流（streaming false、endStatus 交由 end 落位）", () => {
@@ -798,7 +775,7 @@ describe("chatReducer 纯函数", () => {
 // ===== 2. sseEventToAction 事件映射 =====
 
 describe("sseEventToAction 事件映射（payload → action）", () => {
-  it("11 类事件全映射：字段透传 + seq 携带（metadata/thinking/thinking_end/delta/query_plan/tool_call/tool_result/sources/end）", () => {
+  it("事件全映射：字段透传 + seq 携带（metadata/thinking/thinking_end/delta/tool_call/tool_result/sources/end）", () => {
     expect(sseEventToAction("metadata", J({ runId: "r", sessionId: "s", model: "m" }), 1)).toEqual({
       type: "metadata",
       runId: "r",
@@ -821,25 +798,6 @@ describe("sseEventToAction 事件映射（payload → action）", () => {
       type: "delta",
       text: "文",
       seq: 1,
-    });
-    expect(
-      sseEventToAction(
-        "query_plan",
-        J({
-          intent: "knowledge_question",
-          rewritten: ["RAG 检索增强生成"],
-          filters: { courseNames: [] },
-        }),
-        2,
-      ),
-    ).toEqual({
-      type: "query_plan",
-      plan: {
-        intent: "knowledge_question",
-        rewritten: ["RAG 检索增强生成"],
-        filters: { courseNames: [] },
-      },
-      seq: 2,
     });
     expect(
       sseEventToAction("tool_call", J({ toolCallId: "t", toolName: "n", input: { q: 1 } }), 1),
@@ -873,6 +831,25 @@ describe("sseEventToAction 事件映射（payload → action）", () => {
     });
   });
 
+  it("对齐设计稿（2026-08-30）：query_plan/stage 事件忽略返回 null（后端照发、前端不消费）", () => {
+    // query_plan：结构合法也忽略（重写正文/意图胶囊不再渲染）
+    expect(
+      sseEventToAction(
+        "query_plan",
+        J({ intent: "knowledge_question", rewritten: ["RAG"], filters: { courseNames: [] } }),
+        2,
+      ),
+    ).toBeNull();
+    // stage：合法阶段键同样忽略（「正在生成回答」等阶段文案不再渲染）
+    expect(
+      sseEventToAction("stage", J({ stage: "retrieving", label: "知识库查询中" }), 4),
+    ).toBeNull();
+    expect(sseEventToAction("stage", J({ stage: "generating" }), 5)).toBeNull();
+    // 坏 JSON / 未知键维持既有忽略语义
+    expect(sseEventToAction("query_plan", "not-json{{{", 1)).toBeNull();
+    expect(sseEventToAction("stage", J({ stage: "hacking", label: "x" }), 6)).toBeNull();
+  });
+
   it("thinking stage 归一化（时间线改版）：缺失/null/未知值降级 generating（历史回放与脏数据契约）", () => {
     // 后端真机实证：PG 回放的 thinking 行 stage 输出 JSON null
     expect(sseEventToAction("thinking", J({ delta: "思", stage: null }), 1)).toEqual({
@@ -896,44 +873,6 @@ describe("sseEventToAction 事件映射（payload → action）", () => {
     expect(sseEventToAction("thinking", J({ delta: "", stage: "attachments" }), 1)).toMatchObject({
       stage: "attachments",
     });
-  });
-
-  it("query_plan zod 边界校验：结构非法（缺字段/类型错）整体忽略返回 null", () => {
-    // 缺 filters
-    expect(sseEventToAction("query_plan", J({ intent: "chat", rewritten: [] }), 1)).toBeNull();
-    // rewritten 非字符串数组
-    expect(
-      sseEventToAction(
-        "query_plan",
-        J({ intent: "chat", rewritten: "不是数组", filters: { courseNames: [] } }),
-        1,
-      ),
-    ).toBeNull();
-    // courseNames 混入非字符串
-    expect(
-      sseEventToAction(
-        "query_plan",
-        J({ intent: "chat", rewritten: [], filters: { courseNames: [1] } }),
-        1,
-      ),
-    ).toBeNull();
-    // 非对象载荷
-    expect(sseEventToAction("query_plan", "not-json{{{", 1)).toBeNull();
-  });
-
-  it("stage 事件映射（2026-08-27）：合法阶段键透传 + label 缺省回退键名；未知键/坏 JSON 忽略", () => {
-    expect(sseEventToAction("stage", J({ stage: "retrieving", label: "知识库查询中" }), 4)).toEqual(
-      { type: "stage", stage: "retrieving", label: "知识库查询中", seq: 4 },
-    );
-    // label 缺失回退键名（不阻断）
-    expect(sseEventToAction("stage", J({ stage: "generating" }), 5)).toEqual({
-      type: "stage",
-      stage: "generating",
-      label: "generating",
-      seq: 5,
-    });
-    // 未知阶段键整体忽略（防脏数据）
-    expect(sseEventToAction("stage", J({ stage: "hacking", label: "x" }), 6)).toBeNull();
   });
 
   it("error 双形态分流：code=REPLAY_FAILED → replay_failed；run 级 → retryable；缺 message 兜底文案", () => {
@@ -984,10 +923,11 @@ describe("sseEventToAction 事件映射（payload → action）", () => {
 // ===== 3. useChatStream 集成 =====
 
 describe("useChatStream 集成", () => {
-  it("send 全链路：11 事件逐帧喂入还原完整消息状态机（时间轴节点序 + lastEventId 链路锚点）", async () => {
+  it("send 全链路：事件逐帧喂入还原完整消息状态机（时间轴节点序 + lastEventId 链路锚点；stage/query_plan 帧被忽略）", async () => {
     fetchMock.mockResolvedValue(
       sseResponse([
         md(),
+        // 2026-08-30 对齐设计稿：stage/query_plan 帧后端照发、前端忽略（不落时间轴）
         frame(2, "stage", J({ stage: "understanding", label: "正在理解你的问题" })),
         frame(3, "thinking", J({ delta: "先检索课程知识库", stage: "understanding" })),
         frame(4, "thinking", J({ delta: "，再组织回答", stage: "understanding" })),
@@ -1047,20 +987,13 @@ describe("useChatStream 集成", () => {
     expect(state.messages).toHaveLength(2);
     expect(state.messages[0]).toMatchObject({ role: "user", content: "你好", attachments: [] });
     const ai = state.messages[1];
-    // 时间轴按到达序建节点：stage → thinking(u) → queryPlan → thinking(g) → tool → sources
+    // 时间轴按到达序建节点：stage/query_plan 忽略 → thinking(u) → thinking(g) → tool → sources
     expect(ai.timeline).toEqual([
-      { kind: "stage", stage: "understanding", label: "正在理解你的问题" },
       {
         kind: "thinking",
         stage: "understanding",
         lines: ["先检索课程知识库，再组织回答"],
         ended: true,
-      },
-      {
-        kind: "queryPlan",
-        intent: "knowledge_question",
-        rewritten: ["哈希表课程资料检索"],
-        courseNames: [],
       },
       { kind: "thinking", stage: "generating", lines: ["组织回答"], ended: true },
       {

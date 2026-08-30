@@ -8,7 +8,8 @@
  * - 用户消息：右对齐 bubble 气泡，rounded-[18px] rounded-br-[8px]
  *   （形状锁唯一例外）；附件缩略 chips（图片 blob 缩略 / 文档图标），纯文本防 XSS
  * - AI 消息：无气泡整栏（阅读友好），AI 徽标头像 → 模型徽标 → ChainTimeline
- *   （阶段/思考/查询计划/检索/工具按到达序挂链，工具卡并入时间轴）→
+ *   （思考/检索/工具按到达序挂链，2026-08-30 对齐设计稿：无阶段/查询计划步骤；
+ *   来源步骤点击开召回抽屉、工具步骤点击开工具结果抽屉）→
  *   答案块（左渐变竖线 + 光标）→ 操作栏；召回片段经右侧 RetrievalDrawer 展示
  * - 流式空窗占位：最后一条 AI 消息流式中且时间轴/正文皆空时渲染三点脉冲
  *   （METADATA 已到、首个阶段事件未到的极短窗口；后端 METADATA 已前移至附件处理前）
@@ -28,8 +29,9 @@ import { ChainTimeline } from "./chain-timeline";
 import { FeedbackBar } from "./feedback-bar";
 import { MarkdownView } from "./markdown-view";
 import { RetrievalDrawer } from "./retrieval-drawer";
+import { ToolResultDrawer } from "./tool-result-drawer";
 import type { StreamMessage } from "@/hooks/use-chat-stream";
-import type { AttachmentRecord } from "@/lib/types";
+import type { AttachmentRecord, TimelineToolNode } from "@/lib/types";
 
 /** 消息流组件 props */
 export interface MessageListProps {
@@ -167,6 +169,8 @@ interface AssistantMessageRowProps {
   onNotify(message: string): void;
   /** 打开召回抽屉（稳定引用：行内构造来源闭包，避免逐帧新闭包击穿 memo） */
   onOpenSources(sources: StreamMessage["sources"]): void;
+  /** 打开工具结果抽屉（稳定引用；2026-08-30 工具结果侧栏展示） */
+  onOpenTool(tool: TimelineToolNode): void;
 }
 
 /**
@@ -182,6 +186,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   sessionId,
   onNotify,
   onOpenSources,
+  onOpenTool,
 }: AssistantMessageRowProps) {
   const bodyText = message.text;
   // 本条消息是否为流式中的最后一条（时间轴末步骤 running 态判定）
@@ -217,13 +222,14 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         ) : null}
         {/* 流式空窗三点脉冲（阶段事件未到的极短窗口；STAGE 到达后由链式时间轴接管） */}
         {awaitingFirstSignal ? <StreamingDots /> : null}
-        {/* 链式时间轴：阶段/思考/查询计划/检索/工具按到达序挂链
-            （工具卡并入时间轴，来源步骤点击开召回抽屉） */}
+        {/* 链式时间轴：思考/检索/工具按到达序挂链（2026-08-30 对齐设计稿：无阶段/查询
+            计划步骤；来源步骤点击开召回抽屉、工具步骤点击开工具结果抽屉） */}
         {message.timeline.length > 0 ? (
           <ChainTimeline
             timeline={message.timeline}
             active={isStreamingMessage}
             onOpenSources={() => onOpenSources(message.sources)}
+            onOpenTool={onOpenTool}
           />
         ) : null}
         {/* 答案块：左渐变竖线引导 + Markdown 正文 + 流式光标 */}
@@ -272,12 +278,16 @@ export function MessageList({
 }: MessageListProps) {
   // 召回抽屉状态：打开时持有该消息的来源列表（一次只开一条消息的抽屉）
   const [drawerSources, setDrawerSources] = useState<StreamMessage["sources"] | null>(null);
+  // 工具结果抽屉状态：打开时持有该工具节点（2026-08-30 工具结果侧栏展示）
+  const [drawerTool, setDrawerTool] = useState<TimelineToolNode | null>(null);
   // 抽屉开关稳定引用（Task 14：逐帧新闭包会击穿消息行 memo）
   const openDrawer = useCallback(
     (sources: StreamMessage["sources"]) => setDrawerSources(sources),
     [],
   );
   const closeDrawer = useCallback(() => setDrawerSources(null), []);
+  const openToolDrawer = useCallback((tool: TimelineToolNode) => setDrawerTool(tool), []);
+  const closeToolDrawer = useCallback(() => setDrawerTool(null), []);
 
   // 末条消息定位（打字光标与 running 态判定；身份比对，引用稳定）
   const last = messages.at(-1);
@@ -296,11 +306,14 @@ export function MessageList({
             sessionId={sessionId}
             onNotify={onNotify}
             onOpenSources={openDrawer}
+            onOpenTool={openToolDrawer}
           />
         ),
       )}
       {/* 知识库召回抽屉（打开时挂载；来源列表快照传入） */}
       <RetrievalDrawer sources={drawerSources} onClose={closeDrawer} />
+      {/* 工具结果抽屉（打开时挂载；工具节点快照传入，2026-08-30 工具结果侧栏展示） */}
+      <ToolResultDrawer tool={drawerTool} onClose={closeToolDrawer} />
     </div>
   );
 }

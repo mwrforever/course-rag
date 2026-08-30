@@ -461,7 +461,7 @@ describe("ChatSidebar 折叠与快捷键", () => {
 
     act(() => setStreaming(true));
     expect(newChat).toBeDisabled();
-    expect(newChat).toHaveAttribute("title", "正在生成回答，结束后再新建对话");
+    expect(newChat).toHaveAttribute("title", "回答生成中，结束后再新建对话");
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(navMock.push).not.toHaveBeenCalled();
     // 流式中信号不发出（seq 恒为初始 0）

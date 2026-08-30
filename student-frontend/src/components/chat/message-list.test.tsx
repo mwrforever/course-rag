@@ -1,20 +1,34 @@
 /**
- * 消息流测试（2026-08-28 时间线改版：链式时间轴挂链 + 答案块）
+ * 消息流测试（2026-08-28 时间线改版：链式时间轴挂链 + 答案块；
+ * 2026-08-30 对齐设计稿：无 stage/query_plan 步骤、工具步骤开结果抽屉）
  *
  * 覆盖（设计 §1.5.4 消息流 + §1.6 动效）：
  * - 用户消息：右对齐 bubble 气泡（rounded-br 形状锁例外）+ 附件缩略 chips
- * - AI 消息：模型徽标 → 链式时间轴（阶段/思考/查询计划/检索/工具挂链）→
- *   答案块（左渐变竖线）→ 操作栏的组合顺序；来源步骤点击开召回抽屉
+ * - AI 消息：模型徽标 → 链式时间轴（思考/检索/工具挂链）→
+ *   答案块（左渐变竖线）→ 操作栏的组合顺序；来源步骤点击开召回抽屉、
+ *   工具步骤点击开工具结果抽屉
  * - 流式空窗三点脉冲（时间轴与正文皆空）
  * - 流式打字光标（streaming 时存在）
  * - 「已停止生成」后缀由 hook 追加，UI 按 endedStatus 渲染（不重复）
  * - 智能吸底滚动判定纯函数（仅底部 80px 内跟随）
  */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const apiMock = vi.hoisted(() => ({ postFeedback: vi.fn() }));
-vi.mock("@/lib/api", () => ({ postFeedback: apiMock.postFeedback }));
+const apiMock = vi.hoisted(() => ({
+  postFeedback: vi.fn(),
+  getChunkContext: vi.fn(),
+}));
+vi.mock("@/lib/api", async (importOriginal) => {
+  // 保留真实模块其余导出（召回抽屉懒加载 + ApiError instanceof 判断用），仅替换业务调用为可控 mock
+  const actual = await importOriginal<typeof import("@/lib/api")>();
+  return {
+    ...actual,
+    postFeedback: apiMock.postFeedback,
+    getChunkContext: apiMock.getChunkContext,
+  };
+});
 
 import { MessageList, shouldStickToBottom } from "./message-list";
 import type { StreamMessage } from "@/hooks/use-chat-stream";
@@ -61,19 +75,11 @@ const SOURCE: RetrievalSource = {
   docTitle: "RAG 白皮书",
   headingPath: "第三章",
   score: 0.9,
-  content: "检索式生成（RAG）的核心是先召回后生成……",
 };
 
-/** 标准时间轴样本：阶段 → 思考 → 查询计划 → 检索 → 工具 */
+/** 标准时间轴样本：思考 → 检索 → 工具（2026-08-30：无阶段/查询计划节点） */
 const TIMELINE: TimelineNode[] = [
-  { kind: "stage", stage: "understanding", label: "正在理解你的问题" },
   { kind: "thinking", stage: "understanding", lines: ["先检索。"], ended: true },
-  {
-    kind: "queryPlan",
-    intent: "knowledge_question",
-    rewritten: ["RAG 检索增强生成"],
-    courseNames: [],
-  },
   { kind: "sources", sources: [SOURCE] },
   {
     kind: "tool",
@@ -89,14 +95,18 @@ function renderList(
   messages: StreamMessage[],
   overrides: { streaming?: boolean; blobUrls?: Record<string, string> } = {},
 ) {
+  // 独立 QueryClient（retry 关闭）：召回抽屉懒加载 useQuery 需要 Provider，用例间不共享缓存
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MessageList
-      messages={messages}
-      streaming={overrides.streaming ?? false}
-      sessionId="s-1"
-      attachmentBlobUrls={overrides.blobUrls ?? {}}
-      onNotify={onNotify}
-    />,
+    <QueryClientProvider client={client}>
+      <MessageList
+        messages={messages}
+        streaming={overrides.streaming ?? false}
+        sessionId="s-1"
+        attachmentBlobUrls={overrides.blobUrls ?? {}}
+        onNotify={onNotify}
+      />
+    </QueryClientProvider>,
   );
 }
 
@@ -146,7 +156,7 @@ describe("MessageList 用户消息", () => {
 });
 
 describe("MessageList AI 消息组合与顺序", () => {
-  it("链式时间轴置于答案块之前；时间轴内含思考/查询计划/检索/工具步骤", () => {
+  it("链式时间轴置于答案块之前；时间轴内含思考/检索/工具步骤（2026-08-30 无查询计划步骤）", () => {
     const assistant = makeAssistant({
       timeline: TIMELINE,
       sources: [SOURCE],
@@ -160,7 +170,7 @@ describe("MessageList AI 消息组合与顺序", () => {
     expect(chain.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // 时间轴步骤族齐备（工具卡并入时间轴，不再独立成卡）
     expect(screen.getByTestId("thinking-step")).toBeInTheDocument();
-    expect(screen.getByTestId("query-plan-step")).toBeInTheDocument();
+    expect(screen.queryByTestId("query-plan-step")).not.toBeInTheDocument();
     expect(screen.getByTestId("sources-step")).toHaveTextContent("已检索");
     expect(screen.getByTestId("tool-step")).toBeInTheDocument();
     // 答案块挂左渐变竖线类
@@ -182,6 +192,31 @@ describe("MessageList AI 消息组合与顺序", () => {
     expect(screen.getByTestId("retrieval-drawer-list").children).toHaveLength(1);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByTestId("retrieval-drawer")).not.toBeInTheDocument();
+  });
+
+  it("点击工具步骤打开工具结果抽屉，Esc 关闭（2026-08-30 工具结果侧栏展示）", () => {
+    const assistant = makeAssistant({
+      timeline: [
+        {
+          kind: "tool",
+          toolCallId: "tc-1",
+          toolName: "listCourses",
+          input: { keyword: "Java" },
+          status: "success",
+          output: { total: 1, courses: [{ title: "Java 进阶", price: "¥199" }] },
+        },
+      ],
+      text: "正文",
+      endStatus: "COMPLETED",
+      messageId: "msg-1",
+    });
+    renderList([assistant]);
+    expect(screen.queryByTestId("tool-drawer")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("tool-step"));
+    expect(screen.getByTestId("tool-drawer")).toBeInTheDocument();
+    expect(screen.getByTestId("tool-drawer-list").children).toHaveLength(1);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("tool-drawer")).not.toBeInTheDocument();
   });
 
   it("流式空窗：streaming 且时间轴/正文皆空时渲染三点脉冲占位", () => {

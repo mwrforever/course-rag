@@ -179,13 +179,22 @@ public class SearchKnowledgeTool {
         List<KnowledgeChunk> reranked = rerankService.rerank(anchorQuery, deduped);
 
         log.info(
-                "检索完成: 原始={}, 融合后={}, 内容去重后={}, 精排后={}",
+                "检索完成: 原始={}, 融合后={}, 内容去重后={}, 精排后={}, Top命中={}",
                 rawResults.values().stream().mapToInt(List::size).sum(),
                 fused.size(),
                 deduped.size(),
-                reranked.size());
+                reranked.size(),
+                summarizeTop(reranked));
 
         return new KnowledgeSearchResult(reranked);
+    }
+
+    /** 检索命中明细日志摘要：标题/章节/分数（前 10 条，截断防刷屏——dev 定位检索效果用） */
+    private static String summarizeTop(List<KnowledgeChunk> chunks) {
+        return chunks.stream()
+                .limit(10)
+                .map(c -> String.format("%s[%s] %.2f", truncate(c.docTitle(), 20), c.headingPath(), c.score()))
+                .collect(Collectors.joining(" | "));
     }
 
     /**

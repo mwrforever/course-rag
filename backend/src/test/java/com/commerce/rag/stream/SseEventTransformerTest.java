@@ -508,10 +508,10 @@ class SseEventTransformerTest {
     }
 
     @Test
-    @DisplayName("AGENT_TOOL_FINISHED + 长输出截断到 200 字符")
+    @DisplayName("AGENT_TOOL_FINISHED + 超长输出截断到 4000 字符（2026-08-30 工具结果抽屉改版放宽）")
     void transform_toolFinishedLongOutput_truncated() {
         // Given
-        String longOutput = "x".repeat(300);
+        String longOutput = "x".repeat(5000);
         ToolResponseMessage.ToolResponse mockResponse = mock(ToolResponseMessage.ToolResponse.class);
         when(mockResponse.id()).thenReturn("call-001");
         when(mockResponse.responseData()).thenReturn(longOutput);
@@ -528,9 +528,9 @@ class SseEventTransformerTest {
         // When
         List<SseEvent> result = transformer.transform(mockOutput, runState);
 
-        // Then: 输出被截断到 200 字符
-        assertTrue(result.get(0).payload().contains("x".repeat(200)));
-        assertFalse(result.get(0).payload().contains("x".repeat(201)));
+        // Then: 输出被截断到 4000 字符（有界——工具结果抽屉侧栏展示需完整课程列表，防大输出撑爆事件）
+        assertTrue(result.get(0).payload().contains("x".repeat(4000)));
+        assertFalse(result.get(0).payload().contains("x".repeat(4001)));
     }
 
     // ==================== createMetadataEvent ====================

@@ -1051,7 +1051,7 @@ class ChatRequestWorkerTest {
                 cfg.metadata()
                         .ifPresent(m -> m.put(
                                 RetrieveNode.KEY_RETRIEVAL_SOURCES,
-                                List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9, "片段正文预览"))));
+                                List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9))));
                 sink.next(after);
                 sink.complete();
             });
@@ -1146,7 +1146,7 @@ class ChatRequestWorkerTest {
                 sink.next(before);
                 // 模拟 SAA 派生副本：metadata 容器独立拷贝，值（sink 容器对象）引用共享
                 RunnableConfig derived = RunnableConfig.builder(workerConfig).build();
-                List<RetrievalSource> sources = List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9, "片段正文预览"));
+                List<RetrievalSource> sources = List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9));
                 // 模拟 RetrieveNode 双写：① KEY_RETRIEVAL_SOURCES 写副本 metadata（worker 原实例
                 // 读不到——写隔离）；② sink 容器 set（引用穿透派生副本，worker 原实例可读——T7 修复通道）
                 derived.metadata().ifPresent(m -> m.put(RetrieveNode.KEY_RETRIEVAL_SOURCES, sources));
@@ -1186,7 +1186,7 @@ class ChatRequestWorkerTest {
         // 生产链路形态：worker 注册的 sink 容器被节点跨派生副本写回；KEY_RETRIEVAL_SOURCES
         // 只在副本上、worker 原实例 metadata 无该键——仅 sink 通道可得来源
         AtomicReference<List<RetrievalSource>> sink = new AtomicReference<>();
-        sink.set(List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9, "片段正文预览")));
+        sink.set(List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9)));
         RunnableConfig config = RunnableConfig.builder()
                 .threadId("200")
                 .addMetadata(RetrieveNode.KEY_SOURCES_SINK, sink)
@@ -1208,8 +1208,7 @@ class ChatRequestWorkerTest {
                 .threadId("200")
                 .addMetadata(RetrieveNode.KEY_SOURCES_SINK, emptySink)
                 .addMetadata(
-                        RetrieveNode.KEY_RETRIEVAL_SOURCES,
-                        List.of(new RetrievalSource("c2", "学习方法FAQ", "第二节", 0.8, "片段预览")))
+                        RetrieveNode.KEY_RETRIEVAL_SOURCES, List.of(new RetrievalSource("c2", "学习方法FAQ", "第二节", 0.8)))
                 .build();
 
         String json = invokeReadSourcesJson(config);

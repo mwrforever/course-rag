@@ -84,8 +84,22 @@ public class ContextBuilderService {
         }
         sb.append("</system-document>\n</document>");
 
-        log.info("document 组装完成: 原问题={}, 重写={}条, 注入={}条", truncate(originalQuery, 30), top.size(), index - 1);
+        log.info(
+                "document 组装完成: 原问题={}, 重写={}条, 注入={}条, 注入明细={}",
+                truncate(originalQuery, 30),
+                top.size(),
+                index - 1,
+                summarizeChunks(top));
         return sb.toString();
+    }
+
+    /** 注入片段明细日志摘要：标题/章节/分数（前 10 条，截断防刷屏——dev 定位检索效果用） */
+    private static String summarizeChunks(List<KnowledgeChunk> chunks) {
+        return chunks.stream()
+                .limit(10)
+                .map(c -> String.format(
+                        "%s[%s] %.2f", truncate(c.docTitle(), 20), blankTo(c.headingPath(), "未知"), c.score()))
+                .collect(Collectors.joining(" | "));
     }
 
     /**

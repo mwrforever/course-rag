@@ -165,7 +165,7 @@ public class MemoryExtractionPipeline {
             prev.cancel(false);
         }
         futures.put(userId, scheduler.schedule(() -> execute(userId), windowSeconds, TimeUnit.SECONDS));
-        log.debug("偏好提取已投递，防抖窗口 {}s: userId={}", windowSeconds, userId);
+        log.info("偏好提取已投递，防抖窗口 {}s: userId={}, 消息={}条", windowSeconds, userId, messages.size());
     }
 
     /**
@@ -272,7 +272,7 @@ public class MemoryExtractionPipeline {
         futuresEpisodic.put(
                 userId,
                 schedulerEpisodic.schedule(() -> executeEpisodic(userId, sessionId), windowSeconds, TimeUnit.SECONDS));
-        log.debug("经历记忆提取已投递，防抖窗口 {}s: userId={}", windowSeconds, userId);
+        log.info("经历记忆提取已投递，防抖窗口 {}s: userId={}, 消息={}条", windowSeconds, userId, messages.size());
     }
 
     /**
