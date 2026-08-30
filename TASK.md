@@ -77,3 +77,24 @@
       `model`/`max-queries` 两项仍经 `@Value` 散注而其余键走属性类强类型绑定，违反宪法
       A.2.2（禁止散落 `@Value` 逐条注入）。收口方式：并入既有属性类补两字段 + 启动期校验，
       改动局限 QueryUnderstanding 相关配置消费点。
+
+---
+
+## 6. 对话链路打通轮遗留（2026-08-30 登记）
+
+> 2026-08-30「对话链路打通与流式修复」任务（PR 见 CHANGELOG 同日记录）验收与审核中的建议级发现，
+> 不阻塞合入、待用户决策或后续批次处理。
+
+- [ ] **记忆提取超时阈值与模型实测延迟失配**（N3 验收 A-1）：S1 设计定稿「提取超时 10s 失败丢弃」，
+      晚间提取位点（qwen3.7-max-2026-06-08）实测延迟 14~22s，验收窗 8 次目标提取 5 次超时丢弃（3 次成功均 <8s）；
+      写入/召回/注入链路本身已全链路实证无缺陷。**需用户拍板**：将
+      `memory.extraction.timeout-ms` 提至 ≥30000，或为提取位点换低延迟模型。**注意（N3 审核 F4）**：
+      设计权威源 `docs/superpowers/specs/2026-08-12-multimodal-rag-design.md` 文件实际缺失（docs/ 不入库，
+      specs/ 仅存 2026-08-24 一份），timeout=10s 的设计出处实证于 `.superpowers/sdd/2026-08-19-s1-plan4/5`
+      计划与 application.yml 注释；修订前需先回补/确认权威源（见终验报告升级项）。登记日期 2026-08-30。
+- [ ] **c_rt_live 提示 cookie 清理不对称收口**（N2 审核 Finding 1，cosmetic 级）：「localStorage 无 RT
+      但 c_rt_live cookie 残留」路径（用户手清存储/ITP 分区）不触发 clearCredentials，cookie 残留至
+      7 天自然过期；影响仅为该浏览器后续访问受保护页「骨架→弹窗」而非直接 307，终态等价无安全影响。
+      可选收口点：auth-context 挂载时检测无 RT 顺手清提示 cookie。登记日期 2026-08-30。
+- [ ] **c_rt_live 生产 Secure 属性评估**（N2 审核 Finding 2）：值恒 `=1` 无敏感信息，dev http 无法
+      无条件追加；生产 https 部署时条件性补 `Secure`。登记日期 2026-08-30。

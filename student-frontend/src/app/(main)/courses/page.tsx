@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AiBadge } from "@/components/ai-badge";
+import { AuthGate } from "@/components/auth/auth-gate";
 import { CourseCard } from "@/components/course-card";
 import { EmptyState } from "@/components/empty-state";
 import { SectionError } from "@/components/section-error";
@@ -344,11 +345,21 @@ function CoursesContent() {
  *
  * useSearchParams 依赖路由器上下文，包一层 Suspense 满足 App Router 预渲染要求；
  * 骨架即 Suspense fallback，与加载态同形。
+ * AuthGate 客户端守卫（2026-08-30 认证刷新链路修复）：受保护路由在静默续期窗口
+ * 渲染同形骨架（不闪登录页），续期失败开登录弹窗兜底。
  */
 export default function CoursesPage() {
   return (
-    <Suspense fallback={<CoursesSkeleton />}>
-      <CoursesContent />
-    </Suspense>
+    <AuthGate
+      fallback={
+        <div className="mx-auto w-full max-w-6xl px-6 pb-20">
+          <CoursesSkeleton />
+        </div>
+      }
+    >
+      <Suspense fallback={<CoursesSkeleton />}>
+        <CoursesContent />
+      </Suspense>
+    </AuthGate>
   );
 }

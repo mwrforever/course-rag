@@ -19,6 +19,7 @@ import com.google.gson.Gson;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -111,7 +112,8 @@ public class ChatStreamEntry {
      *   <li>从 AuthInterceptor 注入的 request attribute 获取 userId</li>
      *   <li>如果 sessionId 为 null → 创建新会话</li>
      *   <li>chatRunService.createRun — 并发守卫（ConcurrentRunException → 全局 409）</li>
-     *   <li>创建 SseEmitter + bridge.createRing + bridge.subscribe（先订阅再入队，确保不丢事件）</li>
+     *   <li>创建 SseEmitter + 设置防代理缓冲响应头（Cache-Control: no-cache, no-transform /
+     *       X-Accel-Buffering: no，宪法 C.1.9）+ bridge.createRing + bridge.subscribe（先订阅再入队，确保不丢事件）</li>
      *   <li>XADD 消息到 Redis Stream：{runId, sessionId, userId, query}</li>
      *   <li>启动心跳定时器（每 heartbeatInterval 秒发 heartbeat 事件）</li>
      * </ol>
@@ -120,7 +122,7 @@ public class ChatStreamEntry {
      * 先创建 ring 确保 subscribe 不失败，先 subscribe 再 XADD 确保不丢事件。
      * Worker 的 createRing 用 computeIfAbsent，幂等。
      */
-    public SseEmitter chat(HttpServletRequest httpRequest, ChatRequest request) {
+    public SseEmitter chat(HttpServletRequest httpRequest, HttpServletResponse httpResponse, ChatRequest request) {
 
         Long userId = AuthInterceptor.getCurrentUserId(httpRequest);
 
@@ -146,8 +148,11 @@ public class ChatStreamEntry {
         ChatRunVO run = chatRunService.createRun(sessionId, userId);
         String runId = run.id().toString();
 
-        // 3. 创建 SseEmitter（30 分钟超时）
+        // 3. 创建 SseEmitter（30 分钟超时）；创建即设置防代理缓冲响应头——必须在 emitter
+        //    首次写出前（本方法返回前）经原始 HttpServletResponse 设置，SseEmitter 自身
+        //    不提供设置 HTTP 头的入口（宪法 C.1.9：流式端点必须禁代理缓冲）
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT);
+        applyNoProxyBufferHeaders(httpResponse);
 
         // 4. 创建 ring + 订阅（先创建 ring 再订阅，确保不丢事件）
         //    Worker 的 createRing 用 computeIfAbsent，ChatStreamEntry 先创建是幂等操作
@@ -237,12 +242,16 @@ public class ChatStreamEntry {
      *   <li>PG 回放成功 + run 仍活跃 → 继续 subscribe 接收后续事件 + 启动心跳</li>
      * </ol>
      */
-    public SseEmitter reconnect(String runId, long lastEventId, HttpServletRequest httpRequest) {
+    public SseEmitter reconnect(
+            String runId, long lastEventId, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
 
         Long userId = AuthInterceptor.getCurrentUserId(httpRequest);
         checkRunOwnership(runId, userId);
 
+        // 创建新 SseEmitter 并设置防代理缓冲响应头（归属校验已通过，即将进入流式回放；
+        // 404 校验失败路径不会走到这里，错误 JSON 响应不携带流式专用头）
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT);
+        applyNoProxyBufferHeaders(httpResponse);
 
         // P1-2: 原子「回放 + 订阅」——回放 lastEventId 之后的事件并注册 emitter，
         // 与 Worker 推送并发下不丢不重（消除旧 replay→subscribe 两步之间的窗口竞态）
@@ -351,6 +360,35 @@ public class ChatStreamEntry {
     // ========================================================================
     // 辅助方法
     // ========================================================================
+
+    /**
+     * 为 SSE 流式响应设置防代理缓冲响应头（宪法 C.1.9：流式端点必须禁代理缓冲）。
+     *
+     * <p>背景（2026-08-30 流式链路根因调研，docs/progress/2026-08-30-流式链路根因调研.md）：
+     * SSE 响应经反向代理转发时，gzip 压缩中间人（如 Next dev 默认开启的 compression 中间件）
+     * 会把无 Content-Length 的几十字节小帧攒进 zlib 缓冲直到流结束才 flush，浏览器表现为
+     * 「长时间空白→最终一次性全量渲染」；nginx 类反代默认也会聚合缓冲响应。以下两个头从
+     * 协议层声明「本响应不可压缩、不可缓冲」，使后端在任何中间代理前不再裸奔：
+     * <ul>
+     *   <li>Cache-Control: no-cache, no-transform —— no-transform 为 HTTP/1.1 标准指令
+     *       （RFC 9111），任何中间代理不得压缩/变换响应体，compression 中间件遇之跳过 gzip</li>
+     *   <li>X-Accel-Buffering: no —— nginx 及兼容反代禁用响应缓冲，事件帧到达即转发</li>
+     * </ul>
+     *
+     * <p>调用时序：必须在 emitter 首次写出前（controller 返回 emitter 之前）经原始
+     * {@link HttpServletResponse} 设置——SseEmitter 不提供设置 HTTP 头的入口，故由
+     * controller 透传响应对象，在本类创建 emitter 处统一调用；且仅在参数校验/归属校验
+     * 通过后调用，避免 4xx 错误 JSON 响应携带流式专用头。
+     *
+     * @param httpResponse 当前请求的原始响应（由 controller 透传，非 null）
+     */
+    private void applyNoProxyBufferHeaders(HttpServletResponse httpResponse) {
+        // no-transform：禁止中间代理压缩/变换 SSE 响应体——gzip 中间人遇此指令跳过压缩，
+        // 小帧实时透传而不再滞留 zlib 缓冲到流结束（no-cache 兼防客户端缓存事件流）
+        httpResponse.setHeader("Cache-Control", "no-cache, no-transform");
+        // 禁用 nginx 类反向代理的响应缓冲，帧到即转发（宪法 C.1.9 部署面要求）
+        httpResponse.setHeader("X-Accel-Buffering", "no");
+    }
 
     /**
      * 启动心跳定时器。

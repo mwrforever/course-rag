@@ -293,6 +293,27 @@ describe("认证端点", () => {
     expect(localStorage.getItem("c_rt")).toBeNull();
   });
 
+  it("setRefreshToken 写 RT 时同步写 c_rt_live 提示 cookie（有效期与 RT 对齐 7 天）；置 null 时清除", async () => {
+    const api = await freshApi();
+    // 监听 cookie 写入串以断言有效期属性（jsdom 的 document.cookie 不回读属性）
+    const cookieSetter = vi.spyOn(document, "cookie", "set");
+    api.setRefreshToken("rt-1");
+    // middleware 存在性放行依据：AT cookie 过期但 RT 有效的窗口由该提示 cookie 放行
+    expect(document.cookie).toContain("c_rt_live=1");
+    expect(cookieSetter).toHaveBeenLastCalledWith(expect.stringContaining("Max-Age=604800"));
+    api.setRefreshToken(null);
+    expect(document.cookie).not.toContain("c_rt_live");
+    cookieSetter.mockRestore();
+  });
+
+  it("clearCredentials 清 RT 时同步清 c_rt_live 提示 cookie（刷新失败/登出收口）", async () => {
+    const api = await freshApi();
+    api.setRefreshToken("rt-1");
+    expect(document.cookie).toContain("c_rt_live=1");
+    api.clearCredentials();
+    expect(document.cookie).not.toContain("c_rt_live");
+  });
+
   it("refresh(rt) 显式传参成功：新令牌落存储", async () => {
     const api = await freshApi();
     fetchMock.mockResolvedValue(

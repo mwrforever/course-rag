@@ -33,6 +33,12 @@ import type {
 const BASE_URL = "/api/v1";
 /** RT 的 localStorage 键（c_ 前缀区分 B 端 sessionStorage 方案，设计 §3.1） */
 const REFRESH_TOKEN_KEY = "c_rt";
+/** RT 存在性提示 cookie 名：RT 落 localStorage 服务端不可见，以此非 httpOnly cookie 向
+ *  middleware 提供「持有凭证」迹象——AT cookie 过期但 RT 有效的窗口由它放行走静默续期 */
+const RT_LIVE_COOKIE = "c_rt_live";
+/** RT 提示 cookie 有效期（秒）：与后端 RT 有效期对齐（7 天，application.yml refresh-token-expiry） */
+const RT_LIVE_COOKIE_MAX_AGE = 604800;
+
 /** 自身即认证语义的端点：401 不触发单飞刷新（防递归） */
 const SELF_AUTH_PATHS = ["/auth/login", "/auth/refresh", "/auth/logout"];
 
@@ -74,12 +80,21 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
-/** 写入 RT 到 localStorage（传 null 移除） */
+/** 同步 RT 存在性提示 cookie（有 RT 写入 7 天有效期，无 RT 即刻清除） */
+function syncRtLiveCookie(hasRt: boolean): void {
+  document.cookie = hasRt
+    ? `${RT_LIVE_COOKIE}=1; Path=/; Max-Age=${RT_LIVE_COOKIE_MAX_AGE}; SameSite=Lax`
+    : `${RT_LIVE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+/** 写入 RT 到 localStorage（传 null 移除），并同步 c_rt_live 提示 cookie（middleware 放行依据） */
 export function setRefreshToken(token: string | null): void {
   if (token === null) {
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+    syncRtLiveCookie(false);
   } else {
     localStorage.setItem(REFRESH_TOKEN_KEY, token);
+    syncRtLiveCookie(true);
   }
 }
 
@@ -88,10 +103,11 @@ export function getRefreshToken(): string | null {
   return localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
-/** 清空全部本地凭据（内存 AT + localStorage RT），登出与刷新失败时调用 */
+/** 清空全部本地凭据（内存 AT + localStorage RT + c_rt_live 提示 cookie），登出与刷新失败时调用 */
 export function clearCredentials(): void {
   accessToken = null;
   localStorage.removeItem(REFRESH_TOKEN_KEY);
+  syncRtLiveCookie(false);
 }
 
 /** 注册/注销 401 刷新失败的登出回调（AuthProvider 用；传 null 注销） */

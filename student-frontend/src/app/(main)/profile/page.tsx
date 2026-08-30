@@ -6,6 +6,8 @@
  * 结构：用户卡（AI 徽标头像 [displayName 首字母] + displayName + 账号 [登录响应缓存
  * 的 userId，登录响应无 username 字段] + role 徽章）→ 我的课程（复用 CourseCard，
  * J1 getMyCourses，四态全覆盖）→ 退出登录（danger 文字按钮，ConfirmDialog 二次确认）。
+ * AuthGate 客户端守卫（2026-08-30 认证刷新链路修复）：静默续期窗口渲染同形课程骨架
+ * （不闪登录页），续期失败开登录弹窗兜底（原认证加载期 !user 骨架分支由守卫承接）。
  *
  * 退出登录契约：确认 → POST /auth/logout（尽力而为）→ 清本地凭据（AuthProvider.logout）
  * → 清 react-query 缓存（防下一账号读到上一账号缓存）→ 跳首页（登录经全局弹窗）。
@@ -14,6 +16,7 @@ import { SignOut } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { AuthGate } from "@/components/auth/auth-gate";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CourseCard } from "@/components/course-card";
 import { EmptyState } from "@/components/empty-state";
@@ -37,9 +40,9 @@ function CoursesSkeleton() {
 }
 
 /**
- * 个人中心内容组件（设计 §1.5.6）
+ * 个人中心内容组件（设计 §1.5.6；认证加载期骨架由外层 AuthGate 承接）
  */
-export default function ProfilePage() {
+function ProfileContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, logout } = useAuth();
@@ -49,6 +52,11 @@ export default function ProfilePage() {
   const [loggingOut, setLoggingOut] = useState(false);
   // 登出二次确认（用户拍板：登出必须确认）
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+
+  // 类型收窄：AuthGate 守卫内渲染时 isAuthenticated 恒真（user 恒非 null），运行时不可达
+  if (!user) {
+    return null;
+  }
 
   /** 退出登录：二次确认后登出清凭据 → 清查询缓存（防账号间串数据）→ 跳首页（登录经全局弹窗） */
   async function handleLogout() {
@@ -62,15 +70,6 @@ export default function ProfilePage() {
     } finally {
       setLoggingOut(false);
     }
-  }
-
-  // 认证加载期（挂载静默续期窗口）不渲染用户卡内容，避免空白闪烁
-  if (!user) {
-    return (
-      <div className="mx-auto w-full max-w-6xl px-6 pb-20">
-        <CoursesSkeleton />
-      </div>
-    );
   }
 
   const roleLabel = user.role === "STUDENT" ? "学生" : user.role;
@@ -142,5 +141,22 @@ export default function ProfilePage() {
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * 个人中心路由组件：外层 AuthGate 客户端守卫（受保护路由三态承接，见文件头注释）
+ */
+export default function ProfilePage() {
+  return (
+    <AuthGate
+      fallback={
+        <div className="mx-auto w-full max-w-6xl px-6 pb-20">
+          <CoursesSkeleton />
+        </div>
+      }
+    >
+      <ProfileContent />
+    </AuthGate>
   );
 }
