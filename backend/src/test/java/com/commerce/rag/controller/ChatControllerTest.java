@@ -7,6 +7,7 @@ import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.service.IAttachmentService;
 import com.commerce.rag.stream.ChatStreamEntry;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,19 +47,20 @@ class ChatControllerTest {
     // ==================== chat() 转发测试 ====================
 
     @Test
-    @DisplayName("chat → 原样转发 request 与 ChatRequest 给 ChatStreamEntry，返回同一 emitter")
+    @DisplayName("chat → 原样转发 request/response 与 ChatRequest 给 ChatStreamEntry，返回同一 emitter")
     void chat_forwardsToChatStreamEntry() {
         // Given
         HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
         ChatRequest chatRequest = new ChatRequest(1L, "什么是 RAG？");
         SseEmitter emitter = mock(SseEmitter.class);
-        when(chatStreamEntry.chat(req, chatRequest)).thenReturn(emitter);
+        when(chatStreamEntry.chat(req, resp, chatRequest)).thenReturn(emitter);
 
         // When
-        SseEmitter result = controller.chat(req, chatRequest);
+        SseEmitter result = controller.chat(req, resp, chatRequest);
 
-        // Then: 转发参数一致 + 返回同一个 emitter 实例
-        verify(chatStreamEntry).chat(req, chatRequest);
+        // Then: 转发参数一致（response 一并透传供 SSE 防代理缓冲头设置）+ 返回同一个 emitter 实例
+        verify(chatStreamEntry).chat(req, resp, chatRequest);
         assertSame(emitter, result);
     }
 
@@ -84,18 +86,19 @@ class ChatControllerTest {
     // ==================== reconnect() 转发测试 ====================
 
     @Test
-    @DisplayName("reconnect → 原样转发 runId/lastEventId 给 ChatStreamEntry，返回同一 emitter")
+    @DisplayName("reconnect → 原样转发 runId/lastEventId 与 request/response 给 ChatStreamEntry，返回同一 emitter")
     void reconnect_forwardsToChatStreamEntry() {
         // Given
         HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
         SseEmitter emitter = mock(SseEmitter.class);
-        when(chatStreamEntry.reconnect("123", 5L, req)).thenReturn(emitter);
+        when(chatStreamEntry.reconnect("123", 5L, req, resp)).thenReturn(emitter);
 
         // When
-        SseEmitter result = controller.reconnect("123", 5L, req);
+        SseEmitter result = controller.reconnect("123", 5L, req, resp);
 
         // Then: 转发 runId/lastEventId 一致 + 返回同一个 emitter 实例
-        verify(chatStreamEntry).reconnect("123", 5L, req);
+        verify(chatStreamEntry).reconnect("123", 5L, req, resp);
         assertSame(emitter, result);
     }
 

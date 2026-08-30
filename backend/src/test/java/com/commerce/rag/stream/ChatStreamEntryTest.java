@@ -21,6 +21,7 @@ import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -91,6 +92,12 @@ class ChatStreamEntryTest {
     @SuppressWarnings("unchecked")
     private StreamOperations<String, Object, Object> streamOps;
 
+    /**
+     * SSE 响应 mock——chat()/reconnect() 透传 HttpServletResponse 后，
+     * 防代理缓冲响应头（宪法 C.1.9）经该响应设置，新用例在其上 verify
+     */
+    private final HttpServletResponse mockResponse = mock(HttpServletResponse.class);
+
     /** 创建模拟 HttpServletRequest，getAttribute("currentUserId") 返回 123L */
     private HttpServletRequest mockRequestWithUserId(Long userId) {
         HttpServletRequest mockRequest = mock(HttpServletRequest.class);
@@ -130,7 +137,7 @@ class ChatStreamEntryTest {
         when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
 
         // When
-        SseEmitter emitter = entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好"));
+        SseEmitter emitter = entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, "你好"));
 
         // Then: 验证完整流程
         verify(chatSessionService).createSession(eq(123L), anyString());
@@ -152,7 +159,7 @@ class ChatStreamEntryTest {
         List<AttachmentRecord> attachments = List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1L));
 
         // When: 三参构造携带附件
-        entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "这张图是什么意思", attachments));
+        entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, "这张图是什么意思", attachments));
 
         // Then: XADD body 含 attachments 键，值为 Gson 序列化的 JSON 数组字符串
         ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
@@ -171,7 +178,7 @@ class ChatStreamEntryTest {
         when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
 
         // When: 既有两参构造（attachments=null → 空数组）
-        entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好"));
+        entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, "你好"));
 
         // Then: attachments 键默认空数组
         ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
@@ -189,7 +196,7 @@ class ChatStreamEntryTest {
         when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(789L, 456L, 123L, "QUEUED", null));
 
         // When
-        SseEmitter emitter = entry.chat(mockRequestWithUserId(123L), new ChatRequest(456L, "你好"));
+        SseEmitter emitter = entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(456L, "你好"));
 
         // Then: 不调用 createSession
         verify(chatSessionService, never()).createSession(anyLong(), anyString());
@@ -202,7 +209,8 @@ class ChatStreamEntryTest {
     @DisplayName("chat 空查询 → 抛出 400 BizException")
     void chat_blankQuery_throws400() {
         BizException ex = assertThrows(
-                BizException.class, () -> entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "")));
+                BizException.class,
+                () -> entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, "")));
         assertEquals(400, ex.getCode());
     }
 
@@ -210,7 +218,8 @@ class ChatStreamEntryTest {
     @DisplayName("chat null 查询 → 抛出 400 BizException")
     void chat_nullQuery_throws400() {
         BizException ex = assertThrows(
-                BizException.class, () -> entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, null)));
+                BizException.class,
+                () -> entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, null)));
         assertEquals(400, ex.getCode());
     }
 
@@ -223,7 +232,8 @@ class ChatStreamEntryTest {
 
         ChatRequest request = new ChatRequest(99L, "你好");
 
-        BizException ex = assertThrows(BizException.class, () -> entry.chat(mockRequestWithUserId(123L), request));
+        BizException ex =
+                assertThrows(BizException.class, () -> entry.chat(mockRequestWithUserId(123L), mockResponse, request));
         assertEquals(403, ex.getCode());
         verify(chatRunService, never()).createRun(any(), any());
     }
@@ -234,7 +244,8 @@ class ChatStreamEntryTest {
         when(chatSessionService.findById(99L)).thenReturn(null);
 
         BizException ex = assertThrows(
-                BizException.class, () -> entry.chat(mockRequestWithUserId(123L), new ChatRequest(99L, "你好")));
+                BizException.class,
+                () -> entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(99L, "你好")));
         assertEquals(403, ex.getCode());
         verify(chatRunService, never()).createRun(any(), any());
     }
@@ -246,7 +257,8 @@ class ChatStreamEntryTest {
         ChatRequest request = new ChatRequest(null, "   ");
 
         // When / Then: 参数校验拒绝空白查询，不进入创建会话流程
-        BizException ex = assertThrows(BizException.class, () -> entry.chat(mockRequestWithUserId(123L), request));
+        BizException ex =
+                assertThrows(BizException.class, () -> entry.chat(mockRequestWithUserId(123L), mockResponse, request));
         assertEquals(400, ex.getCode());
         verify(chatSessionService, never()).createSession(anyLong(), anyString());
     }
@@ -261,7 +273,7 @@ class ChatStreamEntryTest {
         when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
 
         // When
-        entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, longQuery));
+        entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, longQuery));
 
         // Then: 标题 = 前 30 字符 + 省略号（truncateTitle 截断分支）
         ArgumentCaptor<String> titleCaptor = ArgumentCaptor.forClass(String.class);
@@ -282,7 +294,8 @@ class ChatStreamEntryTest {
 
         // When / Then: chat() 抛 503，run 状态回滚为 ERROR + 清理 ring
         BizException ex = assertThrows(
-                BizException.class, () -> entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好")));
+                BizException.class,
+                () -> entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, "你好")));
 
         assertEquals(503, ex.getCode());
         verify(chatRunService).updateStatus(123L, "ERROR");
@@ -303,11 +316,74 @@ class ChatStreamEntryTest {
 
         // When / Then: 仍抛 503（不因回滚失败变 500），且 ring 必清理
         BizException ex = assertThrows(
-                BizException.class, () -> entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好")));
+                BizException.class,
+                () -> entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, "你好")));
 
         assertEquals(503, ex.getCode());
         verify(chatRunService).updateStatus(123L, "ERROR");
         verify(bridge).removeRing("123");
+    }
+
+    // ==================== SSE 防代理缓冲响应头（宪法 C.1.9）====================
+
+    @Test
+    @DisplayName("chat 成功 → SSE 响应必须携带防代理缓冲头（Cache-Control: no-cache, no-transform + X-Accel-Buffering: no）")
+    void chat_success_setsNoProxyBufferHeaders() {
+        // Given: 正常创建会话与 run（走到创建 SseEmitter 的流式编排路径）
+        when(chatSessionService.createSession(eq(123L), anyString()))
+                .thenReturn(new SessionVO(456L, "新对话", "ACTIVE", null, null));
+        when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
+
+        // When
+        entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, "你好"));
+
+        // Then: no-transform 是 HTTP/1.1 标准指令——任何 gzip 中间代理（如 Next dev 默认
+        // compression）遇之必须跳过压缩，SSE 小帧得以实时透传；X-Accel-Buffering: no
+        // 让 nginx 类反向代理禁用响应缓冲（宪法 C.1.9：流式端点必须禁代理缓冲）
+        verify(mockResponse).setHeader("Cache-Control", "no-cache, no-transform");
+        verify(mockResponse).setHeader("X-Accel-Buffering", "no");
+    }
+
+    @Test
+    @DisplayName("chat 参数校验失败（400）→ 非流式错误响应不携带 SSE 防缓冲头")
+    void chat_validationFailure_doesNotSetSseHeaders() {
+        // Given: 空查询在进入流式编排前即被拒绝（全局异常处理器返回 JSON 错误响应）
+
+        // When
+        assertThrows(
+                BizException.class,
+                () -> entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, " ")));
+
+        // Then: 错误响应不是 SSE 流，不得携带流式专用头
+        verify(mockResponse, never()).setHeader(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("reconnect 归属校验通过 → SSE 响应必须携带防代理缓冲头（回放流同样禁压缩/禁缓冲）")
+    void reconnect_success_setsNoProxyBufferHeaders() {
+        // Given: run 123 属于当前用户 + ring 回放成功
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "QUEUED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(5L), any(SseEmitter.class)))
+                .thenReturn(true);
+
+        // When
+        entry.reconnect("123", 5L, mockRequestWithUserId(123L), mockResponse);
+
+        // Then: 重连回放流与首发流同样实时，防代理缓冲头契约一致
+        verify(mockResponse).setHeader("Cache-Control", "no-cache, no-transform");
+        verify(mockResponse).setHeader("X-Accel-Buffering", "no");
+    }
+
+    @Test
+    @DisplayName("reconnect 归属校验失败（404）→ 非流式错误响应不携带 SSE 防缓冲头")
+    void reconnect_ownershipFailure_doesNotSetSseHeaders() {
+        // Given: run 1 属于用户 2，当前用户 123 重连被拒（不泄露存在性）
+
+        // When
+        assertThrows(BizException.class, () -> entry.reconnect("1", 0, mockRequestWithUserId(123L), mockResponse));
+
+        // Then: 404 错误响应不携带流式专用头
+        verify(mockResponse, never()).setHeader(anyString(), anyString());
     }
 
     // ==================== cancel() 测试 ====================
@@ -382,7 +458,7 @@ class ChatStreamEntryTest {
                 .thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 5L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 5L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 原子回放+订阅已注册，不单独 subscribe；启动心跳
         verify(bridge).replayAndSubscribe(eq("123"), eq(5L), any(SseEmitter.class));
@@ -400,7 +476,7 @@ class ChatStreamEntryTest {
         when(chatMessageService.findByRunId(123L)).thenReturn(null);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 不调用 subscribe（run 已结束，历史不可恢复是真失败）
         verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
@@ -418,7 +494,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 订阅实时事件（不报错不 complete）
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
@@ -438,7 +514,7 @@ class ChatStreamEntryTest {
                         List.of(new ChatMessageVO(1L, "ASSISTANT", "历史思考内容", "thinking", null, null, 123L, 1, null)));
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 终态分支——不 subscribe、不启动心跳（无额外 push）；PG 回放已执行
         verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
@@ -460,7 +536,7 @@ class ChatStreamEntryTest {
                         List.of(new ChatMessageVO(1L, "ASSISTANT", "历史思考内容", "thinking", null, null, 123L, 1, null)));
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 非终态分支——继续订阅接收后续事件
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
@@ -472,7 +548,8 @@ class ChatStreamEntryTest {
     void reconnect_withOthersRun_returns404() {
         when(chatRunService.findById(1L)).thenReturn(new ChatRunVO(1L, 1L, 2L, "QUEUED", null));
 
-        BizException ex = assertThrows(BizException.class, () -> entry.reconnect("1", 0, mockRequestWithUserId(123L)));
+        BizException ex = assertThrows(
+                BizException.class, () -> entry.reconnect("1", 0, mockRequestWithUserId(123L), mockResponse));
         assertEquals(404, ex.getCode());
         verify(bridge, never()).replayAndSubscribe(anyString(), anyLong(), any(SseEmitter.class));
     }
@@ -494,7 +571,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 订阅尝试失败一次，随后按 closedRun 终态补发 end 并 complete
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
@@ -515,7 +592,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 订阅尝试失败且 closedRun 非终态 → 直接 complete 收尾
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
@@ -534,7 +611,7 @@ class ChatStreamEntryTest {
         when(chatMessageService.findByRunId(123L)).thenReturn(null);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 历史不可恢复视为真失败——不 subscribe、补发 REPLAY_FAILED error 事件
         verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
@@ -555,7 +632,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: run 状态不可判时仍继续订阅实时事件并启动心跳
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
@@ -577,7 +654,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 订阅失败 → 按 closedRun 终态补发 end（id=lastSeq+1）并 complete 收尾
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
@@ -599,7 +676,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 订阅失败且 closedRun 不存在 → 直接 complete 收尾
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
@@ -625,7 +702,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: USER 被跳过，thinking/DELTA 均完成回放并继续订阅实时事件
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
@@ -653,7 +730,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 两条 THINKING 回放分别携带各自 stage（前端按 stage 分段归组渲染）
         List<String> sent = sentDataStrings(emitter);
@@ -690,7 +767,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 新格式透传（writeValueAsString 不被调用），回放后继续订阅
         verify(objectMapper, never()).writeValueAsString(any());
@@ -723,7 +800,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 旧格式 TOOL_CALL 被重建（writeValueAsString 被调用），回放后继续订阅
         verify(objectMapper).writeValueAsString(any());
@@ -756,7 +833,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: TOOL_RESULT 旧格式重建（path("result").asText 取值），回放后继续订阅
         verify(objectMapper).writeValueAsString(any());
@@ -778,7 +855,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 解析失败原样返回，回放继续不中断
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
@@ -797,7 +874,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 空白内容不触达 readTree，回放后继续订阅
         verify(objectMapper, never()).readTree(anyString());
@@ -820,7 +897,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: payload 原样透传回放，且不产生 {"text":...} 正文 DELTA（防止 JSON 泄漏成正文）
         List<String> sent = sentDataStrings(emitter);
@@ -860,7 +937,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 事件序列与实时一致——thinking(understanding) → query_plan → thinking(generating)
         // → tool_call → delta（payload 均与实时事件 schema 同构；Spring SSE builder 把帧拆为
@@ -890,7 +967,7 @@ class ChatStreamEntryTest {
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
 
         // When
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // Then: 查询异常不中断重连，降级为仅订阅实时事件
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
@@ -979,7 +1056,7 @@ class ChatStreamEntryTest {
                         new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, null, 123L, 1, null),
                         new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, null, 123L, 2, null)));
 
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // end payload 的 messageId 恒字符串（与 runId 字符串风格一致）
         String endPayload = endPayloadOf(emitter);
@@ -997,7 +1074,7 @@ class ChatStreamEntryTest {
         when(chatMessageService.findByRunId(123L))
                 .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "半截回答", null, null, null, 123L, 2, null)));
 
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         // CANCELLED 终态 payload 与既有格式一致（仅 runId/status），不带 messageId 键
         assertEquals("{\"runId\":\"123\",\"status\":\"CANCELLED\"}", endPayloadOf(emitter));
@@ -1013,7 +1090,7 @@ class ChatStreamEntryTest {
         when(chatMessageService.findByRunId(123L))
                 .thenReturn(List.of(new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, null, 123L, 1, null)));
 
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         assertTrue(endPayloadOf(emitter).contains("\"messageId\":null"), "无法解析 assistant 正文行时 messageId 应显式 null");
     }
@@ -1035,7 +1112,7 @@ class ChatStreamEntryTest {
                 .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, null, 123L, 2, null)));
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
 
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         assertTrue(endPayloadOf(emitter).contains("\"messageId\":\"777\""), "ring 关闭竞态补发 end 应含 messageId");
     }
@@ -1054,7 +1131,7 @@ class ChatStreamEntryTest {
                 .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "最终回答", null, null, null, 123L, 1, null)));
         when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
 
-        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L));
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         assertTrue(endPayloadOf(emitter).contains("\"messageId\":\"777\""), "订阅关闭竞态补发 end 应含 messageId");
     }
@@ -1078,7 +1155,7 @@ class ChatStreamEntryTest {
         when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
 
         // When: 发起对话（内部 startHeartbeat 调度 1s 周期心跳任务）
-        entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好"));
+        entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, "你好"));
 
         // Then: 首个心跳 tick 已成功发送（无异常），周期任务仍在调度队列中（未被取消）
         Thread.sleep(1500);
@@ -1095,7 +1172,7 @@ class ChatStreamEntryTest {
         when(chatRunService.createRun(456L, 123L)).thenReturn(new ChatRunVO(123L, 456L, 123L, "QUEUED", null));
 
         // When: 发起对话后立即关闭 emitter（模拟连接断开，心跳 send 抛异常）
-        entry.chat(mockRequestWithUserId(123L), new ChatRequest(null, "你好"));
+        entry.chat(mockRequestWithUserId(123L), mockResponse, new ChatRequest(null, "你好"));
         ArgumentCaptor<SseEmitter> emitterCaptor = ArgumentCaptor.forClass(SseEmitter.class);
         verify(bridge).subscribe(eq("123"), emitterCaptor.capture());
         emitterCaptor.getValue().complete();

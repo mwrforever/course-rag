@@ -30,6 +30,7 @@ import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.vo.StudentCourseVO;
 import com.commerce.rag.vo.StudentMessageVO;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -446,7 +447,7 @@ class StudentControllerTest {
                 10L,
                 1,
                 LocalDateTime.of(2026, 8, 15, 9, 1),
-                List.of(new RetrievalSource("101", "RAG 讲义", "Ch3 > 3.2", 0.87, "片段正文预览")),
+                List.of(new RetrievalSource("101", "RAG 讲义", "Ch3 > 3.2", 0.87)),
                 List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1024L)));
     }
 
@@ -608,10 +609,11 @@ class StudentControllerTest {
         ChatRequest chatRequest = new ChatRequest(1L, "什么是 RAG？");
         // 转发端点不读取请求属性，直接用裸 mock
         HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
         SseEmitter emitter = mock(SseEmitter.class);
-        when(chatStreamEntry.chat(req, chatRequest)).thenReturn(emitter);
+        when(chatStreamEntry.chat(req, resp, chatRequest)).thenReturn(emitter);
 
-        var result = controller.chatStream(req, chatRequest);
+        var result = controller.chatStream(req, resp, chatRequest);
 
         assertSame(emitter, result);
     }

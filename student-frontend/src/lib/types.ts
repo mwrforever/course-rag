@@ -9,7 +9,6 @@
  * - 可空对象字段恒输出 null（契约 §2），集合字段恒输出 []
  * - LocalDateTime → ISO-8601 无时区字符串（"2026-08-24T10:15:30"）
  */
-import { z } from "zod";
 
 /** 后端统一响应包装：code 与 HTTP 状态同值，成功码为 0（非 200）；401 特例响应无 data 键，故 data 可选 */
 export interface ApiResponse<T> {
@@ -114,63 +113,19 @@ export interface ChunkContext {
 }
 
 /** 检索来源（SSE SOURCES 事件与历史 sources 数组同构；score 为 double→number 不受 R0 影响；
- *  content 为片段正文截断预览（2026-08-27 召回抽屉），存量 sources_json 无该字段按可缺省容错） */
+ *  2026-08-30 懒加载改版移除 content——检索内容不再一次性下发前端，抽屉展开时按 chunkId
+ *  调 /chunks/{id}/context 回查 PG；存量 sources_json 携带的 content 字段前端不再消费） */
 export interface RetrievalSource {
   chunkId: string;
   docTitle: string;
   headingPath: string;
   score: number;
-  content?: string;
 }
 
-/** STAGE 阶段事件键（后端 SseEventTransformer.STAGE_* 同值契约）：附件解析→意图理解→知识库检索→生成回答 */
+/** 思考阶段键（后端 SseEventTransformer.STAGE_* 同值契约；thinking 事件按此归组渲染） */
 export type ChatStageKey = "attachments" | "understanding" | "retrieving" | "generating";
 
-/** STAGE 阶段条目（SSE stage 事件载荷；label 为后端中文文案直接展示） */
-export interface ChatStage {
-  stage: ChatStageKey;
-  label: string;
-}
-
 // ===== 时间轴节点体系（2026-08-28 时间线改版：SSE 事件按到达序归组的渲染模型） =====
-
-/**
- * 查询计划载荷 zod 边界校验 schema（QUERY_PLAN SSE 事件 data 与历史 query_plan 行
- * content 同构，后端单一构造点保证一致）：intent 为意图 code 小写规范名
- * （knowledge_question / chat / unknown，QU 失败降级为 unknown + 原问题），
- * rewritten 为改写查询列表，filters.courseNames 为课程名收窄过滤（空数组 = 无过滤）。
- * 校验失败的事件整体忽略（脏数据不落时间轴）。
- */
-export const queryPlanPayloadSchema = z.object({
-  intent: z.string(),
-  rewritten: z.array(z.string()),
-  filters: z.object({
-    courseNames: z.array(z.string()),
-  }),
-});
-
-/** 查询计划载荷（zod 推导类型；SSE 事件与历史行共用） */
-export type QueryPlanPayload = z.infer<typeof queryPlanPayloadSchema>;
-
-/** 阶段节点（stage 事件按到达序建节点；同 stage 键去重保证 ring 回放幂等） */
-export interface TimelineStageNode {
-  kind: "stage";
-  /** 阶段键（与 ChatStage.stage 同源） */
-  stage: ChatStageKey;
-  /** 后端中文文案（如「正在理解你的问题」） */
-  label: string;
-}
-
-/** 查询计划节点（query_plan 事件建节点；每 run 语义唯一，二推原位替换） */
-export interface TimelineQueryPlanNode {
-  kind: "queryPlan";
-  /** 意图 code 小写规范名（knowledge_question / chat / unknown） */
-  intent: string;
-  /** 改写查询列表（降级时为原问题） */
-  rewritten: string[];
-  /** 课程名收窄过滤（空数组 = 无过滤） */
-  courseNames: string[];
-}
 
 /**
  * 思考节点（thinking 事件按 stage 归组：同 stage 多 delta 合并一节点，
@@ -211,14 +166,11 @@ export interface TimelineToolNode {
 /**
  * 时间轴节点判别联合：SSE 事件按到达序 push/merge 进 StreamMessage.timeline，
  * 链式时间轴组件（ChainTimeline）逐节点渲染为链上步骤；delta 正文不入时间轴
- * （仍累积 StreamMessage.text，由答案区渲染）
+ * （仍累积 StreamMessage.text，由答案区渲染）。
+ * 2026-08-30 对齐设计稿：移除 stage 阶段节点（「正在生成回答」等阶段文案不再展示）与
+ * queryPlan 查询计划节点（重写正文/意图胶囊不回前端；query_plan 数据仍落库供审计）。
  */
-export type TimelineNode =
-  | TimelineStageNode
-  | TimelineQueryPlanNode
-  | TimelineThinkingNode
-  | TimelineSourcesNode
-  | TimelineToolNode;
+export type TimelineNode = TimelineThinkingNode | TimelineSourcesNode | TimelineToolNode;
 
 /** 附件记录（上传返回/历史回显统一载体；url 为 MinIO objectKey 非可直接访问 URL；size 为 Long→string） */
 export interface AttachmentRecord {

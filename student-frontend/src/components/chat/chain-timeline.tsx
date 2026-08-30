@@ -1,27 +1,26 @@
 "use client";
 
 /**
- * 链式时间轴容器（2026-08-28 时间线改版，设计稿 .chain 复刻）
+ * 链式时间轴容器（2026-08-28 时间线改版，设计稿 .chain 复刻；2026-08-30 对齐设计稿）
  *
  * 一根渐变竖线串联全部步骤：StreamMessage.timeline 按到达序逐节点渲染——
- * - stage 节点 → 阶段步骤（OpStep：运行态 shimmer 阶段文案 + 跳动点 + 光带；
- *   图标按阶段键映射：附件 Paperclip / 理解 Lightbulb / 检索 MagnifyingGlass / 生成 PenNib）
- * - queryPlan 节点 → QueryPlanStep（意图标签 + 改写查询清单，静态信息）
- * - thinking 节点 → ThinkingStep（Brain → 绿勾，mask 收起展开）
+ * - thinking 节点 → ThinkingStep（Brain → 绿勾，mask 收起展开；按 LLM 调用拆分，
+ *   主 agent 每次模型调用一块思考卡）
  * - sources 节点 → 检索步骤（MagnifyingGlass + 虚线雷达环；完成文案「已检索 N 篇相关资料」，
  *   点击打开召回抽屉——来源事件即检索完成事实，到达即为 done 态）
  * - tool 节点 → 工具步骤（Wrench + 弧线 conic 环；pending 跳动点、success 摘要 +
- *   点击展开完整 JSON 详情，工具卡能力并入时间轴）
+ *   完成态点击打开工具结果抽屉——2026-08-30 工具结果侧栏展示，替代原内嵌 JSON）
  *
  * 运行态推导：末节点且消息流式中视为进行中（thinking 以 ended、tool 以 status
  * 各自内聚判定完成）；历史消息（active=false）全部呈现完成态。
+ * 2026-08-30 移除：stage 阶段节点（「正在生成回答」等阶段文案）与 queryPlan 查询计划
+ * 节点（「未识别意图」/重写查询清单）——设计稿无对应元素，前端不再渲染。
  */
-import { Lightbulb, MagnifyingGlass, Paperclip, PenNib, Wrench } from "@phosphor-icons/react";
-import { memo, type ReactNode } from "react";
+import { MagnifyingGlass, Wrench } from "@phosphor-icons/react";
+import { memo } from "react";
 import { OpStep, summarizeOutput, toolNameLabel } from "./op-step";
-import { QueryPlanStep } from "./query-plan-step";
 import { ThinkingStep } from "./thinking-step";
-import type { ChatStageKey, TimelineNode } from "@/lib/types";
+import type { TimelineNode, TimelineToolNode } from "@/lib/types";
 
 /** 链式时间轴 props */
 export interface ChainTimelineProps {
@@ -31,15 +30,9 @@ export interface ChainTimelineProps {
   active: boolean;
   /** 打开召回抽屉回调（sources 步骤完成态点击） */
   onOpenSources: () => void;
+  /** 打开工具结果抽屉回调（tool 步骤完成态点击，2026-08-30 工具结果侧栏展示） */
+  onOpenTool: (tool: TimelineToolNode) => void;
 }
-
-/** 阶段键 → 图标映射（阶段步骤静态图标；检索阶段与来源步骤共用 MagnifyingGlass 语言） */
-const STAGE_ICONS: Record<ChatStageKey, ReactNode> = {
-  attachments: <Paperclip weight="fill" />,
-  understanding: <Lightbulb weight="fill" />,
-  retrieving: <MagnifyingGlass weight="bold" />,
-  generating: <PenNib weight="fill" />,
-};
 
 /**
  * 节点步骤运行态推导：末节点且消息流式中视为进行中；
@@ -55,7 +48,6 @@ export function isNodeRunning(node: TimelineNode, isLast: boolean, active: boole
   if (!active || !isLast) return false;
   if (node.kind === "thinking") return !node.ended;
   if (node.kind === "tool") return node.status === "pending";
-  if (node.kind === "queryPlan") return false;
   return true;
 }
 
@@ -69,6 +61,7 @@ export const ChainTimeline = memo(function ChainTimeline({
   timeline,
   active,
   onOpenSources,
+  onOpenTool,
 }: ChainTimelineProps) {
   const lastIndex = timeline.length - 1;
   return (
@@ -76,20 +69,6 @@ export const ChainTimeline = memo(function ChainTimeline({
       {timeline.map((node, index) => {
         const running = isNodeRunning(node, index === lastIndex, active);
         switch (node.kind) {
-          case "stage":
-            // 阶段步骤：运行态 = 后端中文文案 shimmer；完成态文案原样（阶段推进回顾）
-            return (
-              <OpStep
-                key={`stage-${node.stage}-${index}`}
-                running={running}
-                icon={STAGE_ICONS[node.stage]}
-                ring="none"
-                loadingText={node.label}
-                doneContent={node.label}
-              />
-            );
-          case "queryPlan":
-            return <QueryPlanStep key={`plan-${index}`} node={node} />;
           case "thinking":
             return (
               <ThinkingStep key={`think-${node.stage}-${index}`} node={node} running={running} />
@@ -133,12 +112,8 @@ export const ChainTimeline = memo(function ChainTimeline({
                     </>
                   )
                 }
-              >
-                {/* 工具详情：完整 JSON（mono 13px；完成态点击切换展开） */}
-                <pre className="max-h-40 overflow-auto rounded-lg border-t border-border px-3 py-2 font-mono text-[13px] leading-5 whitespace-pre-wrap break-all">
-                  {JSON.stringify(node.output, null, 2)}
-                </pre>
-              </OpStep>
+                onClick={() => onOpenTool(node)}
+              />
             );
           }
         }

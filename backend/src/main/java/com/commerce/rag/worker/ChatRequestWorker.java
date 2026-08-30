@@ -73,6 +73,7 @@ import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
 /**
@@ -545,6 +546,13 @@ public class ChatRequestWorker {
             //    的 transformStages 按节点完成 chunk 驱动）
             bridge.push(runIdStr, transformer.createStageEvent(runState, SseEventTransformer.STAGE_UNDERSTANDING));
 
+            // 图执行可观测性（dev 定位）：输入问题/附件摘要（截断），完成汇总在 doOnComplete
+            log.info(
+                    "图执行开始: runId={}, 问题预览={}, 附件预览={}",
+                    runIdStr,
+                    truncateText(userQuery, 50),
+                    truncateText(attachmentsJson, 80));
+
             // 4. 执行 SAA 图流
             compiledGraph.stream(inputs, config)
                     .doOnNext(chunk -> {
@@ -622,6 +630,13 @@ public class ChatRequestWorker {
                                 assistantSink,
                                 false);
                         persisted.set(outcome.persisted());
+                        // 图执行完成可观测性（dev 定位）：最终回答正文摘要（截断，禁打完整响应体）
+                        String finalAnswer = deltaAccumulator.text();
+                        log.info(
+                                "图执行完成: runId={}, 回答={}字, 预览={}",
+                                runIdStr,
+                                finalAnswer.length(),
+                                truncateText(finalAnswer, 200));
                         // B2-4: 先占位终态标记再调 handleCompleted——其推 END 后 updateStatusWithRetry
                         // 若耗尽上抛，catch 分支据此跳过第二个终态事件（客户端只认首个终态）
                         terminalPushed.set(true);
@@ -1388,7 +1403,21 @@ public class ChatRequestWorker {
                 runIdStr,
                 new SseEvent(SseEventType.ERROR, runState.nextSeq(), toJson(payload), System.currentTimeMillis()));
         updateStatusWithRetry(runId, "ERROR");
-        log.error("Run 执行异常: runId={}", runId, e);
+        // 响应体摘要（WebClientResponseException 携带 LLM 网关 400/429 详情——如 DashScope 欠费
+        // Arrearage，2026-08-30 实证仅有状态码无法定位根因，补打响应体截断）
+        log.error("Run 执行异常: runId={}, 网关响应体={}", runId, responseBodyOf(e), e);
+    }
+
+    /** 提取 LLM 网关异常响应体摘要（WebClientResponseException 携带业务错误详情；非网关异常返回空串） */
+    private static String responseBodyOf(Throwable e) {
+        if (e instanceof WebClientResponseException wcre) {
+            String body = wcre.getResponseBodyAsString();
+            if (body == null || body.isBlank()) {
+                return "";
+            }
+            return body.length() <= 300 ? body : body.substring(0, 300) + "...";
+        }
+        return "";
     }
 
     // ========================================================================
@@ -1691,5 +1720,13 @@ public class ChatRequestWorker {
         } catch (JsonProcessingException e) {
             return "{\"toolCallId\":\"" + toolCallId + "\",\"status\":\"success\",\"output\":\"\"}";
         }
+    }
+
+    /** 日志文本摘要（超长截断加省略号，dev 定位用，禁止完整响应体入日志） */
+    private static String truncateText(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= max ? text : text.substring(0, max) + "...";
     }
 }

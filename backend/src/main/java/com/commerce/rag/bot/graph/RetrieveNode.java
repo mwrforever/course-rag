@@ -37,6 +37,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
@@ -319,12 +320,21 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         final String mergedDocument = mergeUserDocument(document, userDocument);
         config.metadata().ifPresent(m -> m.put(DocumentAssemblerInterceptor.KEY_DOCUMENT_CONTEXT, mergedDocument));
         log.info(
-                "retrieveNode 完成: intent={}, 候选={}条, 注入 document（{} 字符）",
+                "retrieveNode 完成: intent={}, 候选={}条, 注入 document（{} 字符）, 来源明细={}",
                 plan.intent().name(),
                 chunks.size(),
-                mergedDocument.length());
+                mergedDocument.length(),
+                summarizeSources(sources));
 
         return CompletableFuture.completedFuture(Map.of());
+    }
+
+    /** 来源明细日志摘要：标题/章节/分数（前 10 条，截断防刷屏——dev 定位检索效果用） */
+    private static String summarizeSources(List<RetrievalSource> sources) {
+        return sources.stream()
+                .limit(10)
+                .map(s -> String.format("%s[%s] %.2f", truncateQuery(s.docTitle()), s.headingPath(), s.score()))
+                .collect(Collectors.joining(" | "));
     }
 
     /**
@@ -411,36 +421,17 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
     /**
      * 组装检索来源列表（B3-5：SOURCES 事件与 sourcesJson 的载荷）
      *
-     * <p>按精排顺序映射为 {@link RetrievalSource}（chunkId/docTitle/headingPath/score/content，
-     * 2026-08-27 C 端改版补充 content 片段正文截断预览——前端召回文档抽屉直接展示，
-     * 免二次回查；截断上限 {@link #SOURCE_CONTENT_MAX_CHARS}）。
+     * <p>按精排顺序映射为 {@link RetrievalSource}（chunkId/docTitle/headingPath/score，
+     * 2026-08-30 懒加载改版移除 content——检索内容较大不再一次性下发前端，抽屉展开时
+     * 前端按 chunkId 调 /chunks/{id}/context 回查 PG）。
      *
      * @param chunks 精排后的检索命中（非空）
      * @return 来源列表（与入参同序）
      */
     private static List<RetrievalSource> buildSources(List<KnowledgeChunk> chunks) {
         return chunks.stream()
-                .map(c -> new RetrievalSource(
-                        c.chunkId(), c.docTitle(), c.headingPath(), c.score(), truncateContent(c.content())))
+                .map(c -> new RetrievalSource(c.chunkId(), c.docTitle(), c.headingPath(), c.score()))
                 .toList();
-    }
-
-    /** 来源片段正文截断上限（字符）——SOURCES 事件与 sources_json 落库共用，防大 chunk 撑爆事件与行宽 */
-    private static final int SOURCE_CONTENT_MAX_CHARS = 800;
-
-    /**
-     * 截断来源片段正文（超长截断加省略号标记；null 归一为空串——record 契约 content 非 null）
-     *
-     * @param content 分片正文（可为 null）
-     * @return 截断后的正文预览
-     */
-    private static String truncateContent(String content) {
-        if (content == null || content.isEmpty()) {
-            return "";
-        }
-        return content.length() <= SOURCE_CONTENT_MAX_CHARS
-                ? content
-                : content.substring(0, SOURCE_CONTENT_MAX_CHARS) + "…";
     }
 
     /**

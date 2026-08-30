@@ -24,6 +24,7 @@ import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.vo.StudentCourseVO;
 import com.commerce.rag.vo.StudentMessageVO;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.slf4j.Logger;
@@ -218,8 +219,9 @@ public class StudentController {
      * J8: SSE 流式对话（经 ChatStreamEntry，不再依赖 ChatController）
      */
     @PostMapping("/chat/stream")
-    public SseEmitter chatStream(HttpServletRequest request, @RequestBody ChatRequest chatRequest) {
-        return chatStreamEntry.chat(request, chatRequest);
+    public SseEmitter chatStream(
+            HttpServletRequest request, HttpServletResponse response, @RequestBody ChatRequest chatRequest) {
+        return chatStreamEntry.chat(request, response, chatRequest);
     }
 
     // ==================== 历史消息（R1 补口 A） ====================

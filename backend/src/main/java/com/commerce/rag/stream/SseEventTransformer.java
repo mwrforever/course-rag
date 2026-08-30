@@ -42,8 +42,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class SseEventTransformer {
 
-    /** 工具输出摘要截断长度 */
-    private static final int TOOL_OUTPUT_MAX_LENGTH = 200;
+    /**
+     * 工具输出摘要截断长度（200→4000，2026-08-30 工具结果抽屉改版：侧栏抽屉需展示完整
+     * 课程列表数据；历史 TOOL_RESULT 行本存全量，实时事件同步放宽对齐）
+     */
+    private static final int TOOL_OUTPUT_MAX_LENGTH = 4000;
 
     private final ObjectMapper objectMapper;
 

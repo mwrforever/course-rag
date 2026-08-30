@@ -292,7 +292,7 @@ export function ChatSidebar() {
           aria-label="新建对话"
           onClick={handleNewChat}
           disabled={isStreaming}
-          title={isStreaming ? "正在生成回答，结束后再新建对话" : undefined}
+          title={isStreaming ? "回答生成中，结束后再新建对话" : undefined}
           className="mx-auto grid size-9 place-items-center rounded-xl border border-border bg-surface text-brand transition-colors hover:border-brand/40 hover:bg-brand-light focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus size={16} weight="bold" aria-hidden />
@@ -302,7 +302,7 @@ export function ChatSidebar() {
           type="button"
           onClick={handleNewChat}
           disabled={isStreaming}
-          title={isStreaming ? "正在生成回答，结束后再新建对话" : undefined}
+          title={isStreaming ? "回答生成中，结束后再新建对话" : undefined}
           className="mx-2 flex h-10 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-sm text-text transition-colors hover:border-brand/40 hover:bg-brand-light hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus size={15} weight="bold" aria-hidden className="text-brand" />
@@ -371,7 +371,7 @@ export function ChatSidebar() {
                         <>
                           <span
                             data-testid="session-generating-dot"
-                            aria-label="正在生成回答"
+                            aria-label="回答生成中"
                             className="size-1.5 shrink-0 animate-pulse rounded-full bg-brand motion-reduce:animate-none"
                           />
                           <ChatCircleText

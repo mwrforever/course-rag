@@ -66,6 +66,13 @@ public class EpisodicExtractionService {
                     .replace("{current}", input.currentText())
                     .replace("{existing}", existingMemoriesText == null ? "无" : existingMemoriesText);
 
+            // LLM 调用可观测性（dev 定位）：输入上下文与当前对话字符数摘要，输出截断预览（禁打完整响应体）
+            log.info(
+                    "经历提取 LLM 输入: 上下文={}字, 当前对话={}字, 已有记忆={}字, 模型={}",
+                    input.contextText() == null ? 0 : input.contextText().length(),
+                    input.currentText().length(),
+                    existingMemoriesText == null ? 0 : existingMemoriesText.length(),
+                    model);
             String content = chatClient
                     .prompt()
                     .system(system)
@@ -77,6 +84,7 @@ public class EpisodicExtractionService {
             if (content == null || content.isBlank()) {
                 return EpisodicExtractionResult.empty();
             }
+            log.info("经历提取 LLM 输出: {}", truncate(content, 300));
             EpisodicExtractionResult result = parse(content);
             log.info("经历记忆提取完成: 条目={}条", result.memories().size());
             return result;
@@ -153,5 +161,13 @@ public class EpisodicExtractionService {
     /** 夹取分数到 [0,1]（防 LLM 越界输出） */
     private static double clamp(double v) {
         return Math.max(0.0, Math.min(1.0, v));
+    }
+
+    /** 日志文本摘要（超长截断加省略号，dev 定位用，禁止完整响应体入日志） */
+    private static String truncate(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= max ? text : text.substring(0, max) + "...";
     }
 }

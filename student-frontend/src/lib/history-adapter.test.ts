@@ -4,7 +4,8 @@
  * 覆盖设计文档 §六.6 R1 历史回显映射规则：
  * - USER 行 → 用户消息（正文 + 附件 chips；G8 历史态无缩略图，由 MessageList 降级图标）
  * - ASSISTANT 行按 runId 归并为一条 AI 消息：正文→text、thinking→时间轴思考节点
- *   （按 thinkingStage 归组，存量 null 降级 generating）、query_plan 行 JSON parse + zod、
+ *   （按 thinkingStage 归组、存量 null 降级 generating；2026-08-30 按 LLM 调用拆分：
+ *   上一张同 stage 卡之后有工具行则另起新卡）、query_plan 行不再建节点（对齐设计稿）、
  *   TOOL_CALL/TOOL_RESULT→时间轴工具节点（run 内按 toolCallId 配对，空串按到达顺序兜底）、
  *   sources→来源卡与时间轴来源节点（取最后一组非空，原位替换）、
  *   intentType 透传、messageId=正文行 id（J5 反馈来源）
@@ -101,7 +102,7 @@ describe("historyAdapter：基础映射", () => {
     expect(message.intentType).toBe("chat");
   });
 
-  it("thinking 行 → 时间轴思考节点（同 stage 合并行、恒 ended=true）", () => {
+  it("thinking 行 → 时间轴思考节点（同 stage 同次调用合并行、恒 ended=true）", () => {
     const rows = [
       makeRow({
         id: "r1",
@@ -120,14 +121,57 @@ describe("historyAdapter：基础映射", () => {
       makeRow({ id: "r3", seq: 4, messageType: null, content: "最终回答" }),
     ];
     const [message] = historyAdapter(rows);
-    // 同 stage 多行合并一节点（持久化即完成态：ended=true）
+    // 同 stage 同次调用多行合并一节点（持久化即完成态：ended=true）
     expect(message.timeline).toEqual([
       { kind: "thinking", stage: "understanding", lines: ["第一步分析，第二步检索"], ended: true },
     ]);
     expect(message.text).toBe("最终回答");
   });
 
-  it("query_plan 行 → JSON parse + zod 校验建查询计划节点；坏 JSON/结构非法静默跳过", () => {
+  it("思考卡按 LLM 调用拆分（2026-08-30）：上一张同 stage 思考卡之后有工具行则另起新卡（主 agent 每次模型调用一块思考卡）", () => {
+    const rows = [
+      // 调用1 思考（generating）
+      makeRow({
+        seq: 2,
+        messageType: "thinking",
+        content: "第一轮组织",
+        thinkingStage: "generating",
+      }),
+      // 工具调用/结果（调用边界）
+      makeRow({
+        seq: 3,
+        messageType: "TOOL_CALL",
+        content: JSON.stringify({ toolCallId: "t1", toolName: "searchKnowledge", input: {} }),
+      }),
+      makeRow({
+        seq: 4,
+        messageType: "TOOL_RESULT",
+        content: JSON.stringify({ toolCallId: "t1", status: "success", output: {} }),
+      }),
+      // 调用2 思考（同 stage，工具边界后 → 另起新卡）
+      makeRow({
+        seq: 5,
+        messageType: "thinking",
+        content: "第二轮组织",
+        thinkingStage: "generating",
+      }),
+      makeRow({ seq: 6, messageType: null, content: "回答" }),
+    ];
+    const [message] = historyAdapter(rows);
+    expect(message.timeline.map((node) => node.kind)).toEqual(["thinking", "tool", "thinking"]);
+    expect(message.timeline[0]).toMatchObject({
+      kind: "thinking",
+      stage: "generating",
+      lines: ["第一轮组织"],
+    });
+    expect(message.timeline[2]).toMatchObject({
+      kind: "thinking",
+      stage: "generating",
+      lines: ["第二轮组织"],
+    });
+  });
+
+  it("query_plan 行（2026-08-30 对齐设计稿）：不再建节点（重写正文/意图胶囊不回前端），正文正常回显", () => {
     const plan = {
       intent: "knowledge_question",
       rewritten: ["RAG 检索增强生成的概念"],
@@ -138,27 +182,9 @@ describe("historyAdapter：基础映射", () => {
       makeRow({ id: "q2", seq: 3, messageType: null, content: "回答" }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.timeline).toEqual([
-      {
-        kind: "queryPlan",
-        intent: "knowledge_question",
-        rewritten: ["RAG 检索增强生成的概念"],
-        courseNames: ["高等数学"],
-      },
-    ]);
-    // 坏 JSON / 结构非法（缺 filters）：不建节点不崩溃，正文正常回显
-    const bad = historyAdapter([
-      makeRow({ id: "q3", seq: 2, messageType: "query_plan", content: "not-json" }),
-      makeRow({
-        id: "q4",
-        seq: 3,
-        messageType: "query_plan",
-        content: JSON.stringify({ intent: "chat", rewritten: [] }),
-      }),
-      makeRow({ id: "q5", seq: 4, messageType: null, content: "回答" }),
-    ]);
-    expect(bad[0].timeline).toEqual([]);
-    expect(bad[0].text).toBe("回答");
+    // query_plan 行静默跳过（数据仍落库供审计），不建节点不崩溃
+    expect(message.timeline).toEqual([]);
+    expect(message.text).toBe("回答");
   });
 });
 
@@ -381,8 +407,9 @@ describe("historyAdapter：顺序与归并", () => {
 });
 
 describe("historyAdapter：时间轴重建三场景（Task 9 验收）", () => {
-  it("场景一 完整 run：thinking/query_plan/tool/sources 行按 seq 重建与实时 SSE 同构的时间轴", () => {
-    // 模拟真机落库行序：thinking(u) → query_plan → TOOL_CALL → TOOL_RESULT → thinking(g) → 正文(带 sources)
+  it("场景一 完整 run：thinking/tool/sources 行按 seq 重建与实时 SSE 同构的时间轴（query_plan 行不回显）", () => {
+    // 模拟真机落库行序：thinking(u) → query_plan（不回显）→ TOOL_CALL → TOOL_RESULT →
+    // thinking(g) → 正文(带 sources)
     const plan = {
       intent: "knowledge_question",
       rewritten: ["RAG检索增强生成技术的概念与原理"],
@@ -448,12 +475,6 @@ describe("historyAdapter：时间轴重建三场景（Task 9 验收）", () => {
         stage: "understanding",
         lines: ["用户想了解 RAG 概念", "需要检索课程资料"],
         ended: true,
-      },
-      {
-        kind: "queryPlan",
-        intent: "knowledge_question",
-        rewritten: ["RAG检索增强生成技术的概念与原理"],
-        courseNames: [],
       },
       {
         kind: "tool",
@@ -524,7 +545,7 @@ describe("historyAdapter：时间轴重建三场景（Task 9 验收）", () => {
     expect(message.text).toBe("回答");
   });
 
-  it("query_plan 行二现：原位替换（与实时 reducer replaceOrPush 语义一致）", () => {
+  it("query_plan 行二现（2026-08-30 对齐设计稿）：不建节点不回显，正文正常拼接", () => {
     const rows = [
       makeRow({
         id: "q1",
@@ -549,8 +570,9 @@ describe("historyAdapter：时间轴重建三场景（Task 9 验收）", () => {
       makeRow({ id: "a1", seq: 4, messageType: null, content: "回答" }),
     ];
     const [message] = historyAdapter(rows);
-    expect(message.timeline).toHaveLength(1);
-    expect(message.timeline[0]).toMatchObject({ kind: "queryPlan", intent: "knowledge_question" });
+    // query_plan 行整体跳过（重写正文/意图胶囊不回前端），时间轴仅空；正文不受污染
+    expect(message.timeline).toEqual([]);
+    expect(message.text).toBe("回答");
   });
 
   it("不同 stage 的 thinking 行各自归组（understanding 与 generating 不合并）", () => {

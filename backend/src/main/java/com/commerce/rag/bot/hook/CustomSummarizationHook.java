@@ -49,6 +49,14 @@ public class CustomSummarizationHook extends MessagesModelHook {
     /** 降级时返回的占位摘要 */
     private static final String FALLBACK_SUMMARY = "(摘要生成失败，请参考最近消息)";
 
+    /** 日志文本摘要（超长截断加省略号，dev 定位用，禁止完整响应体入日志） */
+    private static String truncate(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= max ? text : text.substring(0, max) + "...";
+    }
+
     private final ChatModel chatModel;
     private final long maxContextTokens;
     private final double windowRatio;
@@ -216,6 +224,8 @@ public class CustomSummarizationHook extends MessagesModelHook {
             }
             promptMessages.add(new UserMessage(userContent.toString()));
 
+            // LLM 调用可观测性（dev 定位）：输入消息数/待摘要字符数摘要，输出截断预览（禁打完整响应体）
+            log.info("摘要 LLM 输入: 消息={}条, 待摘要内容={}字, 模型={}", messages.size(), userContent.length(), summaryModel);
             // 3. 调用 LLM 生成摘要
             Prompt prompt = new Prompt(promptMessages, options);
             ChatResponse response = chatModel.call(prompt);
@@ -226,7 +236,7 @@ public class CustomSummarizationHook extends MessagesModelHook {
                 return SUMMARY_PREFIX + FALLBACK_SUMMARY;
             }
 
-            log.info("摘要生成成功: 模型={}, 长度={}", summaryModel, summaryText.length());
+            log.info("摘要生成成功: 模型={}, 长度={}, 输出预览={}", summaryModel, summaryText.length(), truncate(summaryText, 200));
             return SUMMARY_PREFIX + summaryText.trim();
 
         } catch (Exception e) {

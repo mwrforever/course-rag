@@ -61,11 +61,15 @@ public class ImageCaptionService {
      * @return 100~200 字中文描述
      */
     public String caption(byte[] imageBytes, String mimeType) {
-        return chatModel
+        // LLM 调用可观测性（dev 定位）：输入图片字节数与 MIME，输出截断预览（禁打完整响应体）
+        log.info("caption LLM 输入: mime={}, 字节={}", mimeType, imageBytes == null ? 0 : imageBytes.length);
+        String captionText = chatModel
                 .call(buildCaptionPrompt(imageBytes, mimeType))
                 .getResult()
                 .getOutput()
                 .getText();
+        log.info("caption LLM 输出: {}", truncate(captionText, 200));
+        return captionText;
     }
 
     /**
@@ -147,6 +151,8 @@ public class ImageCaptionService {
         }
         // 消息实体化：调用完成点捕获（spec §3.2 caption）
         captureCaptionCall(pusher, sink, contentBuf.toString());
+        // LLM 调用可观测性（dev 定位）：输出截断预览（禁打完整响应体）
+        log.info("caption 流式 LLM 输出: {}", truncate(contentBuf.toString(), 200));
         return contentBuf.toString();
     }
 
@@ -207,5 +213,13 @@ public class ImageCaptionService {
         }
         Object value = metadata.get("reasoningContent");
         return value instanceof String s ? s : null;
+    }
+
+    /** 日志文本摘要（超长截断加省略号，dev 定位用，禁止完整响应体入日志） */
+    private static String truncate(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= max ? text : text.substring(0, max) + "...";
     }
 }

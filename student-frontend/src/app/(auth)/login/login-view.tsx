@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LoginPanel } from "@/components/auth/login-panel";
 import { RegisterPanel } from "@/components/auth/register-panel";
+import { useAuth } from "@/lib/auth-context";
 
 /** 表单面板入场延迟阶梯（秒，fade-up 逐层错峰） */
 const FADE_STEPS = [0.05, 0.12, 0.2, 0.26, 0.34] as const;
@@ -30,12 +31,29 @@ export function LoginView() {
   const [isSignIn, setIsSignIn] = useState(true);
   const [toast, setToast] = useState<Toast>(null);
   const toastTimerRef = useRef<number | null>(null);
+  // 自动续期回跳已尝试标记（防重复跳转与用户在表单输入时被跳走）
+  const autoResumeRef = useRef(false);
+  // 登录态（AuthProvider 根布局挂载：挂载静默续期——localStorage 有 RT 即恢复登录态）
+  const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
     if (searchParams.get("tab") === "register") {
       setIsSignIn(false);
     }
   }, [searchParams]);
+
+  // 2026-08-30 登录态保持修复：middleware 查 commerce_token（AT）或 c_rt_live 任一
+  // cookie 存在即放行，仅两者皆无（真匿名/清空凭据）才重定向 /login。本页静默续期回跳
+  // 覆盖该兜底路径——AuthProvider 挂载后用 localStorage 的 RT 静默续期恢复登录态，
+  // 检测续期完成且已登录 → 自动回跳 ?next，用户无感续期，不被强制手动重新登录。
+  useEffect(() => {
+    if (autoResumeRef.current || isLoading || !isAuthenticated) {
+      return;
+    }
+    autoResumeRef.current = true;
+    const raw = searchParams.get("next");
+    router.replace(raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/");
+  }, [isAuthenticated, isLoading, router, searchParams]);
 
   /** 切换 Tab 并同步 URL（replace 不产生历史噪音） */
   function switchTab(toSignIn: boolean) {

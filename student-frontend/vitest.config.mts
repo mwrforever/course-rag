@@ -26,11 +26,14 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html", "lcov"],
       // 覆盖率圈定已实现文件（Task 7 三文件 + Task 8 首页与组件 + Task 9 课程列表/工作台
-      // + Task 10 SSE 解析器 + 登录弹窗化/会话管理 2026-08-26 组件）。
-      // 暂不计入的文件与原因：site-header/middleware（middleware 跑在 edge runtime，
-      // 无法在 jsdom 单测环境加载 next/server；site-header 导航激活态随导航任务落地后补测）；
+      // + Task 10 SSE 解析器 + 登录弹窗化/会话管理 2026-08-26 组件 + 2026-08-30
+      // 认证刷新链路修复的 middleware 矩阵与 AuthGate 守卫）。
+      // 暂不计入的文件与原因：site-header（导航激活态随导航任务落地后补测）；
+      // middleware 的 next/server 依赖标准 Web Request/Response，jsdom 可直接构造
+      // （2026-08-30 实证），已纳入圈定。
       // 后续任务交付各自测试后逐步放宽 include 至 src 全量。
       include: [
+        "src/middleware.ts",
         "src/lib/api.ts",
         "src/lib/auth-context.tsx",
         "src/lib/query-provider.tsx",

@@ -6,6 +6,7 @@ import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.service.IAttachmentService;
 import com.commerce.rag.stream.ChatStreamEntry;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -61,8 +62,9 @@ public class ChatController {
      * 发起对话，返回 SseEmitter（编排逻辑见 ChatStreamEntry.chat）。
      */
     @PostMapping
-    public SseEmitter chat(HttpServletRequest httpRequest, @RequestBody ChatRequest request) {
-        return chatStreamEntry.chat(httpRequest, request);
+    public SseEmitter chat(
+            HttpServletRequest httpRequest, HttpServletResponse httpResponse, @RequestBody ChatRequest request) {
+        return chatStreamEntry.chat(httpRequest, httpResponse, request);
     }
 
     // ========================================================================
@@ -88,8 +90,9 @@ public class ChatController {
     public SseEmitter reconnect(
             @PathVariable String runId,
             @RequestParam(defaultValue = "0") long lastEventId,
-            HttpServletRequest httpRequest) {
-        return chatStreamEntry.reconnect(runId, lastEventId, httpRequest);
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
+        return chatStreamEntry.reconnect(runId, lastEventId, httpRequest, httpResponse);
     }
 
     // ========================================================================
