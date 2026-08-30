@@ -74,7 +74,8 @@ export async function mockApi(page: Page) {
       });
     }
 
-    // 公开课程列表（未登录可浏览：首页/课堂页数据源，2026-08-26 公开化）
+    // 公开课程列表（未登录可浏览：首页/课堂页数据源，2026-08-26 公开化；
+    // price 单位元——契约 C/H.2.1，课程 1 付费、课程 2 免费覆盖两种价签形态）
     if (method === "GET" && path.endsWith("/public/courses")) {
       return route.fulfill({
         status: 200,
@@ -90,6 +91,7 @@ export async function mockApi(page: Page) {
             duration: 12,
             rating: 4.8,
             learningCount: 236,
+            price: 299,
           },
           {
             id: "2",
@@ -101,12 +103,13 @@ export async function mockApi(page: Page) {
             duration: 20,
             rating: 4.5,
             learningCount: 89,
+            price: 0,
           },
         ]),
       });
     }
 
-    // 我的课程（J1，个人中心/已加入徽章交叉用）
+    // 我的课程（J1，个人中心/已购徽章交叉用；购买流用例按需覆盖返回集）
     if (method === "GET" && path.endsWith("/student/courses")) {
       return route.fulfill({
         status: 200,
@@ -121,6 +124,7 @@ export async function mockApi(page: Page) {
             duration: 12,
             rating: 4.8,
             learningCount: 236,
+            price: 299,
           },
           {
             id: "2",
@@ -131,8 +135,19 @@ export async function mockApi(page: Page) {
             duration: 20,
             rating: 4.5,
             learningCount: 89,
+            price: 0,
           },
         ]),
+      });
+    }
+
+    // 学生购买课程（契约 B 2026-08-29：幂等，已购再购返回相同成功结构）
+    if (method === "POST" && /\/student\/courses\/\d+\/purchase$/.test(path)) {
+      const courseId = path.split("/").at(-2) ?? "";
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON_OK({ courseId, status: "ACTIVE", purchased: true }),
       });
     }
 

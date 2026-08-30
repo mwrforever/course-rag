@@ -19,6 +19,7 @@ import com.commerce.rag.vo.ChatSessionVO;
 import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
+import com.commerce.rag.vo.CoursePurchaseVO;
 import com.commerce.rag.vo.SessionVO;
 import com.commerce.rag.vo.StudentCourseVO;
 import com.commerce.rag.vo.StudentMessageVO;
@@ -91,6 +92,26 @@ public class StudentController {
     public ApiResponse<List<StudentCourseVO>> myCourses(HttpServletRequest request) {
         Long userId = AuthInterceptor.getCurrentUserId(request);
         return ApiResponse.ok(enrollmentService.findStudentCoursesAsVO(userId));
+    }
+
+    // ==================== J1b: 学生自助购买课程 ====================
+
+    /**
+     * 学生自助购买课程（契约 B.2，幂等）
+     *
+     * <p>执行流程：认证上下文取 userId（禁止入参传递）→ 委托 enrollmentService.purchaseCourse
+     * （课程 404 校验 / 已购幂等返回 / 退课重激活 / 并发撞唯一索引按已购返回）。
+     * 重复调用幂等不重复插行、不报 409；不递增 learning_count（契约 D2）。
+     *
+     * @param request   请求（AuthInterceptor 注入的用户属性）
+     * @param courseId  课程 ID（路径参数）
+     * @return 购买结果 VO（courseId/status=ACTIVE/purchased=true）
+     * @throws BizException 404 课程不存在、已删除或已下架
+     */
+    @PostMapping("/courses/{courseId}/purchase")
+    public ApiResponse<CoursePurchaseVO> purchaseCourse(HttpServletRequest request, @PathVariable Long courseId) {
+        Long userId = AuthInterceptor.getCurrentUserId(request);
+        return ApiResponse.ok(enrollmentService.purchaseCourse(courseId, userId));
     }
 
     // ==================== J2: 课程专属资料 ====================

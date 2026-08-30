@@ -2,7 +2,7 @@
  * 首页测试（问渠学堂重构 2026-08-27：设计稿一区块化还原）
  *
  * 覆盖：品牌与结构冒烟（Hero 巨字 / 能力手风琴四项 / 上手指引六卡 / 快捷宫格 /
- * AI 助教 FAB）；精选课程四态（Loading / 正常含已加入徽章交叉 / Empty / Error 重试）；
+ * AI 助教 FAB）；精选课程四态（Loading / 正常含已购徽章交叉与价签位价格 / Empty / Error 重试）；
  * 公开浏览契约（未登录无徽章、my-courses 不请求）。
  * 数据层以 vi.mock 注入（react-query 用 QueryClient 包裹并关闭 retry）。
  */
@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import HomePage from "./page";
 import type { PublicCourse } from "@/lib/types";
 
-/** 数据层 mock：getPublicCourses（公开源）/ getMyCourses（已加入交叉） */
+/** 数据层 mock：getPublicCourses（公开源）/ getMyCourses（已购交叉） */
 const apiMock = vi.hoisted(() => ({ getPublicCourses: vi.fn(), getMyCourses: vi.fn() }));
 /** 认证 mock：登录态可切换 + 弹窗操作记录 */
 const authMock = vi.hoisted(() => ({ useAuth: vi.fn() }));
@@ -38,6 +38,7 @@ function makeCourse(overrides: Partial<PublicCourse> = {}): PublicCourse {
     duration: "32",
     rating: 4.5,
     learningCount: 256,
+    price: 299,
     ...overrides,
   };
 }
@@ -125,7 +126,7 @@ describe("精选课程四态", () => {
     expect(screen.queryByTestId("wenqu-course-card")).toBeNull();
   });
 
-  it("正常态：公开课程大卡渲染，登录用户显示「已加入」交叉标记", async () => {
+  it("正常态：公开课程大卡渲染，登录用户显示「已购」交叉标记（未购卡价签位展示价格）", async () => {
     apiMock.getPublicCourses.mockResolvedValue([
       makeCourse({ id: "c-1" }),
       makeCourse({ id: "c-2", title: "信号与系统", category: null }),
@@ -133,18 +134,19 @@ describe("精选课程四态", () => {
     apiMock.getMyCourses.mockResolvedValue([{ ...makeCourse({ id: "c-1" }) }] as never);
     renderHome();
     await waitFor(() => expect(screen.getAllByTestId("wenqu-course-card").length).toBe(2));
-    // 已加入徽章仅对 c-1 显示
-    expect(screen.getAllByText("已加入").length).toBe(1);
+    // 已购徽章仅对 c-1 显示；未购的 c-2 价签位展示价格（契约 H.2.1）
+    expect(screen.getAllByText("已购").length).toBe(1);
+    expect(screen.getByText("¥299")).toBeInTheDocument();
     expect(await screen.findByText("信号与系统")).toBeInTheDocument();
   });
 
-  it("未登录：不请求我的课程且无已加入徽章（公开浏览契约）", async () => {
+  it("未登录：不请求我的课程且无已购徽章（公开浏览契约）", async () => {
     authMock.useAuth.mockReturnValue(defaultAuth({ user: null, isAuthenticated: false }));
     apiMock.getPublicCourses.mockResolvedValue([makeCourse()]);
     renderHome();
     expect(await screen.findByTestId("wenqu-course-card")).toBeInTheDocument();
     expect(apiMock.getMyCourses).not.toHaveBeenCalled();
-    expect(screen.queryByText("已加入")).toBeNull();
+    expect(screen.queryByText("已购")).toBeNull();
   });
 
   it("Empty：空态引导去和 AI 助教聊聊", async () => {

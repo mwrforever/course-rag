@@ -4,16 +4,18 @@
  * 精选课程区（设计稿一 Featured Programmes 还原）
  *
  * 业务替换：Lionheart 课程营 → 问渠学堂公开课程库（GET /api/v1/public/courses，
- * 未登录可浏览）；登录用户交叉标记「已加入」徽章。
+ * 未登录可浏览）；登录用户交叉标记「已购」徽章，未购卡片价签位展示价格
+ * （契约 H.2.1，2026-08-29 购买链路）。
  * 四态契约保留：骨架（Loading）／空态／错误重试／正常网格；
  * 布局改为设计稿三列大卡（sepia 封面 hover 复原、时长徽章、分类 pill、衬线标题、
- * 元信息圆点行、讲师头像 + 学习人数「价签位」替换语义），reduced-motion 全静态。
+ * 元信息圆点行、讲师头像 + 价签位），reduced-motion 全静态。
  */
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Reveal, Stagger } from "@/components/motion/reveal";
 import { EmptyState } from "@/components/empty-state";
 import { SectionError } from "@/components/section-error";
+import { formatCoursePrice } from "@/components/course-card";
 import { getMyCourses, getPublicCourses } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { PublicCourse } from "@/lib/types";
@@ -21,11 +23,11 @@ import type { PublicCourse } from "@/lib/types";
 /** 课程卡片（设计稿 cc-* 结构对应业务字段） */
 function WenquCourseCard({
   course,
-  joined,
+  purchased,
 }: {
   course: PublicCourse;
-  /** 已加入标记（未登录恒为 undefined 不显示） */
-  joined?: boolean;
+  /** 已购标记（未登录恒为 undefined 不显示） */
+  purchased?: boolean;
 }) {
   const instructorInitial = course.instructorName?.charAt(0) || "教";
   return (
@@ -54,9 +56,9 @@ function WenquCourseCard({
         <span className="absolute top-4 left-4 rounded-full bg-bg/90 px-3.5 py-[7px] text-[9.5px] tracking-[0.16em] text-ink uppercase">
           {course.duration || "随堂"}
         </span>
-        {joined ? (
+        {purchased ? (
           <span className="absolute top-4 right-4 rounded-full bg-brand px-3 py-1 text-[10px] font-medium tracking-wider text-bg">
-            已加入
+            已购
           </span>
         ) : null}
       </div>
@@ -91,11 +93,27 @@ function WenquCourseCard({
               </small>
             </span>
           </div>
+          {/* 价签位：未购课程展示价格（元，去尾零）/「免费」；已购课程保留学习人数（契约 H.2.1） */}
           <div className="text-right">
-            <b className="font-serif-display block text-xl font-medium">{course.learningCount}</b>
-            <small className="block text-[9.5px] tracking-[0.12em] text-subtle uppercase">
-              人已加入
-            </small>
+            {purchased ? (
+              <>
+                <b className="font-serif-display block text-xl font-medium">
+                  {course.learningCount}
+                </b>
+                <small className="block text-[9.5px] tracking-[0.12em] text-subtle uppercase">
+                  人已加入
+                </small>
+              </>
+            ) : (
+              <>
+                <b className="font-serif-display block text-xl font-medium">
+                  {formatCoursePrice(course.price) ?? "免费"}
+                </b>
+                <small className="block text-[9.5px] tracking-[0.12em] text-subtle uppercase">
+                  课程价格
+                </small>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -109,8 +127,8 @@ function WenquCourseCard({
 export function FeaturedCourses() {
   const { isAuthenticated } = useAuth();
   const coursesQuery = useQuery({ queryKey: ["public-courses"], queryFn: getPublicCourses });
-  // 已加入集合：仅登录时查询我的课程交叉标记
-  const joinedQuery = useQuery({
+  // 已购集合：仅登录时查询我的课程交叉标记（已购徽章，契约 H.2.1）
+  const purchasedQuery = useQuery({
     queryKey: ["my-courses"],
     queryFn: getMyCourses,
     enabled: isAuthenticated,
@@ -142,7 +160,7 @@ export function FeaturedCourses() {
 
   const courses = coursesQuery.data ?? [];
   const featured = courses.slice(0, 6);
-  const joinedIds = new Set((joinedQuery.data ?? []).map((course) => course.id));
+  const purchasedIds = new Set((purchasedQuery.data ?? []).map((course) => course.id));
 
   return (
     <section id="featured-courses" className="py-[130px]">
@@ -177,7 +195,7 @@ export function FeaturedCourses() {
               <Reveal key={course.id} once className="reveal !transition-shadow duration-500">
                 <WenquCourseCard
                   course={course}
-                  joined={isAuthenticated ? joinedIds.has(course.id) : undefined}
+                  purchased={isAuthenticated ? purchasedIds.has(course.id) : undefined}
                 />
               </Reveal>
             ))}

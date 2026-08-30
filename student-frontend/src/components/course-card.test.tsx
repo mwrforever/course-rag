@@ -1,9 +1,10 @@
 /**
- * CourseCard 课程卡测试（Task 8 TDD 先行用例）
+ * CourseCard 课程卡测试（Task 8 TDD 先行用例；购买链路 2026-08-29）
  *
  * 覆盖：字段渲染（标题/讲师/课时/星级/学习人数 + 课程跳转链接）、无封面学科渐变兜底
  * （category 映射与 null 默认渐变）、封面加载失败（onErrorCapture 捕获底层 img error 切换兜底）、
- * 标题 2 行截断 class、meta 行按需渲染（可空字段缺失时对应项省略）。
+ * 标题 2 行截断 class、meta 行按需渲染（可空字段缺失时对应项省略）、
+ * 已购徽章与价格展示（契约 H.2.1：已购=brand 徽章；未购=价格/免费）。
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -21,6 +22,7 @@ function makeCourse(overrides: Partial<StudentCourse> = {}): StudentCourse {
     duration: "32",
     rating: 4.5,
     learningCount: 256,
+    price: 299,
     ...overrides,
   };
 }
@@ -91,5 +93,39 @@ describe("CourseCard 课程卡", () => {
     fireEvent.error(cover);
     expect(screen.queryByAltText("数据结构与算法")).not.toBeInTheDocument();
     expect(screen.getByTestId("cover-fallback")).toBeInTheDocument();
+  });
+});
+
+describe("CourseCard 已购徽章与价格展示（契约 H.2.1）", () => {
+  it("未购：价格行展示价格（单位元、两位小数去尾零）", () => {
+    render(<CourseCard course={makeCourse({ price: 299 })} />);
+    expect(screen.getByText("¥299")).toBeInTheDocument();
+    // 299.50 → ¥299.5（去尾零）；299.55 保留两位
+    render(<CourseCard course={makeCourse({ id: "c-2", price: 299.5 })} />);
+    expect(screen.getByText("¥299.5")).toBeInTheDocument();
+    render(<CourseCard course={makeCourse({ id: "c-3", price: 299.55 })} />);
+    expect(screen.getByText("¥299.55")).toBeInTheDocument();
+  });
+
+  it("未购·免费（price=0 / null）：价格位展示「免费」", () => {
+    const { rerender } = render(<CourseCard course={makeCourse({ price: 0 })} />);
+    expect(screen.getByText("免费")).toBeInTheDocument();
+    rerender(<CourseCard course={makeCourse({ price: null })} />);
+    expect(screen.getByText("免费")).toBeInTheDocument();
+  });
+
+  it("已购：brand 色「已购」徽章替代价格行（不重复展示价格）", () => {
+    render(<CourseCard course={makeCourse({ price: 299 })} purchased />);
+    const badge = screen.getByText("已购");
+    // brand 色徽章（bg-brand 系），样式沿用原已加入徽章位
+    expect(badge.className).toContain("bg-brand");
+    // 已购卡片不再展示价格行（价格信息让位于状态标记）
+    expect(screen.queryByText("¥299")).not.toBeInTheDocument();
+  });
+
+  it("默认（未传 purchased）：不渲染已购徽章（未登录/未购不标记）", () => {
+    render(<CourseCard course={makeCourse()} />);
+    expect(screen.queryByText("已购")).not.toBeInTheDocument();
+    expect(screen.getByText("¥299")).toBeInTheDocument();
   });
 });

@@ -51,8 +51,9 @@ export function validateUploadFile(name: string, size: number): string {
  */
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
+  PhArrowClockwise,
   PhArrowDown,
   PhDotsThreeVertical,
   PhDownloadSimple,
@@ -71,13 +72,15 @@ import { Button } from '@/components/ui/button'
 import { DataTable } from '@/components/ui/data-table'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
+import { IconButton } from '@/components/ui/icon-button'
 import { PageHead } from '@/components/ui/page-head'
+import { RemoteSelect } from '@/components/ui/remote-select'
 import { useEtlPolling } from '@/composables/use-etl-polling'
 import { ApiError, courseApi, documentApi, knowledgeBaseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime, formatRelativeTime } from '@/lib/utils'
 
-import type { CourseDTO, DocumentParseStatus, DocumentVO } from '@/lib/types'
+import type { CourseDTO, DocumentParseStatus, DocumentVO, KnowledgeBaseVO } from '@/lib/types'
 
 /** 每页条数（设计 §2.6 分页器） */
 const PAGE_SIZE = 10
@@ -139,6 +142,7 @@ const {
   data,
   isLoading,
   isError,
+  isFetching,
   error: queryError,
   refetch,
 } = useQuery({
@@ -455,7 +459,8 @@ function confirmDelete() {
 // ====================================================================
 
 const uploadOpen = ref(false)
-const uploadKbId = ref('')
+/** 已选知识库（remote-select 单选，modelValue 承载选项对象；null = 未选） */
+const uploadKb = ref<KnowledgeBaseVO | null>(null)
 const uploadTitle = ref('')
 const uploadFile = ref<File | null>(null)
 const uploadCourse = ref<CourseDTO | null>(null)
@@ -465,26 +470,46 @@ const progress = ref(0)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 /**
- * 课程搜索：输入即查（size 10）；queryKey 收敛竞态（快速输入时旧请求不覆盖新结果），空关键字不查询。
- * 语义变化说明：失败后重试须改词或重开 Dialog——同词不重复发请求（queryKey 收敛设计使然）。
- * 批 4 打磨（reviewer L1/L2）：placeholderData 保留上一关键词结果（打字过程结果区不闪空）；
- * refetchOnWindowFocus=false——搜索词驱动的快照结果，窗口焦点回切不重拉（消除后台刷新失败
- * 清空已展示结果）。
+ * 知识库远程搜索 fetcher（remote-select 契约 E：防抖 300ms + AbortController 取消）
+ *
+ * @param keyword 搜索关键字（空串 = 首屏候选）
+ * @param signal 取消信号（透传 api 层，新输入取消旧请求）
+ * @returns 命中的知识库列表
  */
-const courseQuery = ref('')
-const courseResultsQuery = useQuery({
-  queryKey: computed(() => ['admin-course-search', courseQuery.value.trim()]),
-  queryFn: () => courseApi.list({ keyword: courseQuery.value.trim(), size: 10 }),
-  enabled: computed(() => courseQuery.value.trim().length > 0),
-  placeholderData: keepPreviousData,
-  refetchOnWindowFocus: false,
-})
-/** 搜索结果展示：空关键字 / 查询失败不展示（对齐原手动实现静默清空语义） */
-const courseResults = computed(() =>
-  courseQuery.value.trim() && !courseResultsQuery.isError.value
-    ? (courseResultsQuery.data.value?.records ?? [])
-    : [],
-)
+async function fetchKbs(keyword: string, signal: AbortSignal): Promise<KnowledgeBaseVO[]> {
+  const res = await knowledgeBaseApi.list({ page: 1, size: 100, keyword, signal })
+  return res.records ?? []
+}
+
+/**
+ * 课程远程搜索 fetcher（可选关联课程；契约 E：防抖 + 取消由组件负责）
+ *
+ * @param keyword 搜索关键字（空串 = 首屏候选）
+ * @param signal 取消信号
+ * @returns 命中的课程列表（size 10）
+ */
+async function fetchCourses(keyword: string, signal: AbortSignal): Promise<CourseDTO[]> {
+  const res = await courseApi.list({ keyword, size: 10, signal })
+  return res.records ?? []
+}
+
+/**
+ * 知识库选中变化（单选；联合类型按首元素归一收窄）
+ *
+ * @param value remote-select 回抛的选中值
+ */
+function onUploadKbSelect(value: KnowledgeBaseVO | KnowledgeBaseVO[] | null) {
+  uploadKb.value = Array.isArray(value) ? (value[0] ?? null) : value
+}
+
+/**
+ * 课程选中变化（单选，null = 不关联）
+ *
+ * @param value remote-select 回抛的选中值
+ */
+function onUploadCourseSelect(value: CourseDTO | CourseDTO[] | null) {
+  uploadCourse.value = Array.isArray(value) ? (value[0] ?? null) : value
+}
 
 function openUpload() {
   uploadOpen.value = true
@@ -499,19 +524,12 @@ function closeUpload() {
 
 /** 重置上传表单（关闭 / 成功后清理，避免残留上次选择） */
 function resetUpload() {
-  uploadKbId.value = ''
+  uploadKb.value = null
   uploadTitle.value = ''
   uploadFile.value = null
   uploadCourse.value = null
-  courseQuery.value = ''
   uploadError.value = ''
   progress.value = 0
-}
-
-/** 选中课程：填入 chip（可清除）并清空搜索词（结果随 enabled 关闭收起） */
-function pickCourse(c: CourseDTO) {
-  uploadCourse.value = c
-  courseQuery.value = ''
 }
 
 /** 拖拽区点击 → 唤起文件选择 */
@@ -537,7 +555,7 @@ function onDrop(e: DragEvent) {
 
 /** 上传表单校验：kbId 必选 → 标题必填 → 文件必选 → 类型/大小白名单 */
 function validateUpload(): string {
-  if (!uploadKbId.value) return '请选择知识库'
+  if (!uploadKb.value) return '请选择知识库'
   if (!uploadTitle.value.trim()) return '请输入标题'
   if (!uploadFile.value) return '请选择文件'
   return validateUploadFile(uploadFile.value.name, uploadFile.value.size)
@@ -572,15 +590,19 @@ function submitUpload() {
     uploadError.value = invalid
     return
   }
+  // validateUpload 已保证非空，此处局部收窄供 FormData 取值（跨函数调用 TS 无法保持收窄）
+  const kb = uploadKb.value
+  const file = uploadFile.value
+  if (!kb || !file) return
   uploadError.value = ''
   progress.value = 0
   const form = new FormData()
-  form.set('kbId', uploadKbId.value)
+  form.set('kbId', kb.id)
   form.set('title', uploadTitle.value.trim())
   if (uploadCourse.value) {
     form.set('courseId', uploadCourse.value.id)
   }
-  form.set('file', uploadFile.value as File)
+  form.set('file', file)
   submitUploadMutation(form)
 }
 </script>
@@ -589,6 +611,10 @@ function submitUpload() {
   <!-- 页头（设计稿 .page-head）：主标题 + 副题 + 右侧动作区（知识库入口 / 批量删除 / 上传） -->
   <PageHead title="文档管理" subtitle="管理知识库文档与解析状态">
     <template #actions>
+      <!-- 手动刷新（T2.3）：refetch 期间禁用防重复 -->
+      <IconButton label="刷新" data-testid="refresh-docs" :loading="isFetching" @click="refetch()">
+        <PhArrowClockwise class="h-4 w-4" />
+      </IconButton>
       <router-link
         to="/knowledge-bases"
         data-testid="manage-kbs"
@@ -683,7 +709,7 @@ function submitUpload() {
     <div
       v-for="i in 5"
       :key="`row-${i}`"
-      class="h-14 animate-pulse border-b border-border bg-slate-50 last:border-b-0"
+      class="h-12 animate-pulse border-b border-border bg-slate-50 last:border-b-0"
     />
   </div>
 
@@ -930,20 +956,20 @@ function submitUpload() {
         @submit.prevent="submitUpload"
       >
         <div>
-          <label for="upload-kb" class="mb-1.5 block text-sm font-medium text-text">
+          <span class="mb-1.5 block text-sm font-medium text-text">
             所属知识库 <span class="text-danger">*</span>
-          </label>
-          <select
-            id="upload-kb"
-            v-model="uploadKbId"
+          </span>
+          <!-- 知识库选择：remote-select 单选（防抖 300ms + 取消，契约 E） -->
+          <RemoteSelect
+            :model-value="uploadKb"
+            :get-value="(k: KnowledgeBaseVO) => k.id"
+            :get-label="(k: KnowledgeBaseVO) => k.name"
+            :fetcher="fetchKbs"
+            placeholder="搜索知识库名称"
+            empty-text="没有匹配的知识库"
             data-testid="upload-kb"
-            class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
-          >
-            <option value="">请选择知识库</option>
-            <option v-for="kbItem in kbs" :key="kbItem.id" :value="kbItem.id">
-              {{ kbItem.name }}
-            </option>
-          </select>
+            @update:model-value="onUploadKbSelect"
+          />
         </div>
         <div>
           <label for="upload-title" class="mb-1.5 block text-sm font-medium text-text">
@@ -960,52 +986,18 @@ function submitUpload() {
           />
         </div>
         <div>
-          <label for="course-search" class="mb-1.5 block text-sm font-medium text-text">
-            关联课程（可选）
-          </label>
-          <div v-if="!uploadCourse" class="relative">
-            <input
-              id="course-search"
-              v-model="courseQuery"
-              data-testid="course-search"
-              type="text"
-              aria-label="搜索课程"
-              placeholder="输入课程名搜索（不选则归属通用资料）"
-              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-            <ul
-              v-if="courseResults.length > 0"
-              data-testid="course-results"
-              class="mt-1 max-h-48 w-full overflow-auto rounded-xl border border-border bg-surface p-1 shadow-md"
-            >
-              <li v-for="c in courseResults" :key="c.id">
-                <button
-                  type="button"
-                  :data-testid="`course-option-${c.id}`"
-                  class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-brand-soft hover:text-brand"
-                  @click="pickCourse(c)"
-                >
-                  {{ c.title }}
-                </button>
-              </li>
-            </ul>
-          </div>
-          <div
-            v-else
-            data-testid="selected-course"
-            class="flex items-center justify-between rounded-xl border border-border bg-brand-light px-3 py-2 text-sm text-text"
-          >
-            <span>已选：{{ uploadCourse.title }}</span>
-            <button
-              type="button"
-              data-testid="clear-course"
-              aria-label="清除课程选择"
-              class="text-text-muted transition-colors duration-150 hover:text-danger"
-              @click="uploadCourse = null"
-            >
-              <PhTrash class="h-4 w-4" />
-            </button>
-          </div>
+          <span class="mb-1.5 block text-sm font-medium text-text"> 关联课程（可选） </span>
+          <!-- 课程选择：remote-select 单选（防抖 300ms + 取消，不选则归属通用资料） -->
+          <RemoteSelect
+            :model-value="uploadCourse"
+            :get-value="(c: CourseDTO) => c.id"
+            :get-label="(c: CourseDTO) => c.title"
+            :fetcher="fetchCourses"
+            placeholder="输入课程名搜索（不选则归属通用资料）"
+            empty-text="没有匹配的课程"
+            data-testid="upload-course"
+            @update:model-value="onUploadCourseSelect"
+          />
         </div>
         <div>
           <!-- 拖拽区：dragover/drop 拦截浏览器默认行为，点击唤起文件选择 -->

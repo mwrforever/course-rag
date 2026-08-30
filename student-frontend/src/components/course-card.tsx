@@ -81,14 +81,31 @@ export function coverFallback(category: string | null): { icon: Icon; gradient: 
   return DEFAULT_FALLBACK;
 }
 
+/**
+ * 课程价格格式化（契约 H.2.1：单位元、直接展示、≤2 位小数去尾零）
+ *
+ * 导出供课程工作台 Hero 价格区复用（与 coverFallback 同一导出复用惯例）。
+ * @param price 课程价格（元，BigDecimal→number；0/null 为免费）
+ * @returns 「¥299」/「¥299.5」/「¥299.55」形态文本；免费（0/null）返回 null 由调用方渲染「免费」
+ */
+export function formatCoursePrice(price: number | null): string | null {
+  // 免费：0 或后端未下发（null）——契约 H.2.1 免费判定口径
+  if (price == null || price === 0) {
+    return null;
+  }
+  // 两位小数定精度后去尾零：299.00→299 / 299.50→299.5 / 299.55→299.55
+  const fixed = price.toFixed(2).replace(/\.?0+$/, "");
+  return `¥${fixed}`;
+}
+
 /** 课程卡 props */
 export interface CourseCardProps {
   /** 课程数据：公开课程（首页/课堂页）/ 我的课程（个人中心），字段子集兼容 */
   course: PublicCourse | StudentCourse;
   /** 首屏 LCP 优化：首卡封面高优先级加载 */
   priority?: boolean;
-  /** 已加入标记（登录用户经我的课程交叉判定；未登录不传） */
-  joined?: boolean;
+  /** 已购标记（登录用户经我的课程交叉判定；未登录不传不显示——契约 H.2.1） */
+  purchased?: boolean;
 }
 
 /**
@@ -107,7 +124,7 @@ export interface CourseCardProps {
  * 封面错误兜底实现：next/image 不支持 onError，error 事件不冒泡但走捕获阶段，
  * 由封面容器 onErrorCapture 接住底层 img 的 error 后切换兜底渐变。
  */
-export function CourseCard({ course, priority = false, joined = false }: CourseCardProps) {
+export function CourseCard({ course, priority = false, purchased = false }: CourseCardProps) {
   // 检测不可用（null）按静态处理，与 AiBadge 一致的可访问性优先策略
   const reduceMotion = useReducedMotion() ?? true;
   // 封面加载失败标记：置真后渲染学科渐变兜底
@@ -155,13 +172,13 @@ export function CourseCard({ course, priority = false, joined = false }: CourseC
             {course.category}
           </span>
         ) : null}
-        {/* 已加入徽章：登录用户已选课标记（与分类徽章对角呼应，避免遮挡封面信息） */}
-        {joined ? (
+        {/* 已购徽章：登录用户已购课程标记（与分类徽章对角呼应，契约 H.2.1 替代原「已加入」语义） */}
+        {purchased ? (
           <span
             aria-hidden
             className="absolute top-2.5 right-2.5 rounded-full bg-brand/90 px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm"
           >
-            已加入
+            已购
           </span>
         ) : null}
         {/* hover CTA 滑入（纯装饰提示，整卡即链接，aria-hidden 避免重复读屏）；
@@ -203,6 +220,12 @@ export function CourseCard({ course, priority = false, joined = false }: CourseC
             {course.learningCount} 人学习
           </span>
         </div>
+        {/* 价格行：未购课程展示价格（元，去尾零），免费显示「免费」；已购课程由封面徽章标记（契约 H.2.1） */}
+        {!purchased ? (
+          <p className="text-[15px] font-semibold text-brand-strong tabular-nums">
+            {formatCoursePrice(course.price) ?? "免费"}
+          </p>
+        ) : null}
       </div>
     </Link>
   );

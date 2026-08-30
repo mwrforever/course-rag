@@ -132,11 +132,11 @@ export default function ProfilePage() {
             <SectionError onRetry={() => void coursesQuery.refetch()} />
           </div>
         ) : courses.length === 0 ? (
-          <EmptyState title="还没有加入课程，请联系老师开通" />
+          <EmptyState title="还没有购买课程" actionLabel="去课程中心看看" actionHref="/courses" />
         ) : (
           <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
             {courses.map((course) => (
-              <CourseCard key={course.id} course={course} />
+              <CourseCard key={course.id} course={course} purchased />
             ))}
           </div>
         )}

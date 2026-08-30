@@ -580,6 +580,44 @@ describe('api client：接口函数拼装', () => {
     expect(lastCall('/admin/courses/c-9').method).toBe('delete')
   })
 
+  it('courseApi.uploadCover：封面上传 multipart 路径拼装（契约 D.2.2）', async () => {
+    const form = new FormData()
+    form.set('file', new File(['x'], 'cover.png', { type: 'image/png' }))
+    await courseApi.uploadCover(form)
+    const uploadCall = lastCall('/admin/courses/cover')
+    expect(uploadCall.method).toBe('post')
+    expect(uploadCall.headers?.['Content-Type']).toContain('multipart/form-data')
+  })
+
+  it('list 系接口 signal 剔除出查询串并透传取消信号（契约 E 竞态防护）', async () => {
+    // O-1 修复防回归：signal 若混入 params 会被 axios 序列化成垃圾查询参数
+    // （&signal=[object AbortSignal]），必须解构剔除且仅经 config.signal 透传
+    const controller = new AbortController()
+    const cases = [
+      {
+        invoke: () => courseApi.list({ page: 1, keyword: 'AI', signal: controller.signal }),
+        url: '/admin/courses',
+      },
+      {
+        invoke: () => knowledgeBaseApi.list({ page: 2, keyword: 'kb', signal: controller.signal }),
+        url: '/admin/knowledge-bases',
+      },
+      {
+        invoke: () => userApi.list({ page: 3, signal: controller.signal }),
+        url: '/admin/users',
+      },
+    ]
+    for (const { invoke, url } of cases) {
+      await invoke()
+      const config = lastCall(url)
+      // 查询参数不含 signal 键（业务参数原样保留）
+      expect(config.params).not.toHaveProperty('signal')
+      expect(JSON.stringify(config.params)).not.toContain('signal')
+      // 取消信号原实例透传（remote-select 竞态取消依赖此通道）
+      expect(config.signal).toBe(controller.signal)
+    }
+  })
+
   it('scheduleApi/enrollmentApi：排期与报名的路径拼装', async () => {
     await scheduleApi.listByCourse('c-9')
     expect(lastCall('/admin/courses/c-9/schedules').method).toBe('get')

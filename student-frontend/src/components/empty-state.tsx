@@ -21,7 +21,7 @@ export interface EmptyStateProps {
  * 通用空态组件（设计 §1.7 Empty）
  *
  * 徽标 + 一句话 + 一个行动入口；禁止裸「暂无数据」。
- * 首页「还没有加入课程，请联系老师开通」与后续页空态（会话/课程）共用。
+ * 首页「暂无上架课程」与后续页空态（会话/课程/个人中心）共用。
  */
 export function EmptyState({
   title,

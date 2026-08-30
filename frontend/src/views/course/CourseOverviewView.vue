@@ -1,34 +1,63 @@
 <script setup lang="ts">
 /**
- * 课程概览（基础信息，UI 重构 2026-08-25 从 CourseEditView 拆出；
- * 2026-08-27 紫系重制：编辑态补 StatCard 统计区 + 表单拆三张分区卡）
+ * 课程概览（基础信息表单，2026-08-29 T2.2 重构：封面上传文件化 + 报名链接只读 +
+ * 分类预置下拉 + 授课教师 remote-select 多选 + zod 全字段校验）
  *
- * 职责：封面 URL + 实时预览 / 标题* zod 前置校验 / 简述 / 分类 / 讲师名 / 价格 /
- * 课时 / 标签 chips / 报名链接 / 状态。新建模式（/courses/new 独立路由）create 后
- * 跳转详情；编辑模式（/courses/:id 概览子路由）update 保存。
+ * 职责：
+ * - 封面走 image-upload（POST /admin/courses/cover 契约 D，上传回传相对 URL 随课程提交）；
+ * - 报名链接服务端自动生成（契约 A）：编辑态只读展示 + 一键复制，新建态提示「保存后自动生成」；
+ * - 分类为预置选项下拉（datalist，允许输入自定义值）；
+ * - 授课教师 remote-select 多选（防抖 300ms + AbortController，契约 E）；保存按差集调
+ *   POST/DELETE /admin/courses/{id}/teachers（body 裸数组，契约 E.3）；
+ * - instructorName 在为空时自动预填第一位教师姓名（仍可手改，契约 E.3）；
+ * - zod 全字段校验（标题必填、价格数字、封面 URL 格式、课时数字），错误内联字段下方；
+ * - 提交 loading 防重复；成功后按 queryKey 失效（admin-courses / course-form / course-teachers）。
+ *
+ * 线程安全注意：全部状态为组件私有 ref；复制成功的 1.5s 复位定时器在卸载时清理。
  */
-import { computed, reactive, ref, watch } from 'vue'
-import { useMutation, useQuery } from '@tanstack/vue-query'
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRoute, useRouter } from 'vue-router'
 import { z } from 'zod'
 import {
   PhArticle,
   PhCalendarBlank,
   PhChalkboardTeacher,
-  PhImageSquare,
+  PhCheck,
+  PhCopy,
   PhSpinnerGap,
   PhUsers,
   PhX,
 } from '@phosphor-icons/vue'
 
 import { Button } from '@/components/ui/button'
+import { ImageUpload } from '@/components/ui/image-upload'
+import { Input } from '@/components/ui/input'
+import { RemoteSelect } from '@/components/ui/remote-select'
+import { Select } from '@/components/ui/select'
 import { StatCard } from '@/components/ui/stat-card'
-import { ApiError, courseApi } from '@/lib/api'
+import { Textarea } from '@/components/ui/textarea'
+import { ApiError, courseApi, userApi } from '@/lib/api'
+import { COURSE_CATEGORY_PRESETS } from '@/lib/constants'
 import { showToast } from '@/lib/toast'
-import type { CourseDTO, UpdateCourseRequest } from '@/lib/types'
+import type { CourseDTO, UpdateCourseRequest, UserDTO } from '@/lib/types'
 
-/** 标题必填校验（标题*，错误红字 input 下方） */
-const titleSchema = z.object({ title: z.string().min(1, '请输入课程标题') })
+/**
+ * 课程表单 zod 校验（契约 T2.2 全字段）
+ *
+ * - 标题必填；价格/课时允许留空，填写时必须为非负数字；
+ * - 封面 URL 允许留空或 http(s) 绝对地址 / 斜杠开头相对路径（上传端点回传相对路径）。
+ */
+const courseFormSchema = z.object({
+  title: z.string().min(1, '请输入课程标题'),
+  coverImage: z
+    .string()
+    .refine((v) => v === '' || /^https?:\/\//.test(v) || v.startsWith('/'), '封面地址格式不正确'),
+  price: z
+    .string()
+    .refine((v) => v === '' || (!Number.isNaN(Number(v)) && Number(v) >= 0), '价格须为非负数字'),
+  duration: z.string().refine((v) => v === '' || /^\d+(\.\d+)?$/.test(v.trim()), '课时须为数字'),
+})
 
 /** 基础表单承载：价格以字符串承载，提交时数值化（避免输入过程 Number 精度抖动） */
 const form = reactive({
@@ -39,20 +68,18 @@ const form = reactive({
   instructorName: '',
   price: '',
   duration: '',
-  enrollmentLink: '',
   status: 'ACTIVE' as 'ACTIVE' | 'ARCHIVED',
 })
 
 /** 标签 chips：回车添加、X 删除（提交体为字符串数组） */
 const tags = ref<string[]>([])
 const tagInput = ref('')
-/** 标题就地错误（zod 校验失败展示，校验通过清空） */
-const fieldError = ref('')
-/** 封面图加载失败标记：onError 兜底切占位（无上传接口 G11），URL 变更自动复位 */
-const coverBroken = ref(false)
+/** 字段级错误（zod 校验失败按字段名内联展示，key 与表单字段同名） */
+const fieldErrors = reactive<Record<string, string>>({})
 
 const route = useRoute()
 const router = useRouter()
+const queryClient = useQueryClient()
 
 /** 新建模式：路由名 course-new；编辑模式 course-detail（带 :id） */
 const isNew = route.name === 'course-new'
@@ -73,6 +100,82 @@ const {
   // 表单回填后不随后台 refetch 覆盖未保存编辑：禁用窗口聚焦重拉
   refetchOnWindowFocus: false,
 })
+
+// ====================================================================
+// 授课教师（remote-select 多选，契约 E / E.3）
+// ====================================================================
+
+/** 教师池（编辑态：teacherIds → 教师对象回显；后端 /users 无 keyword，fetcher 内客户端过滤） */
+const { data: teacherPoolData } = useQuery({
+  queryKey: ['teacher-pool'],
+  queryFn: async () => {
+    const res = await userApi.list({ role: 'TEACHER', size: 100 })
+    return (res.records ?? []).filter((u) => u.role === 'TEACHER')
+  },
+  enabled: !isNew,
+})
+const teacherPool = computed(() => teacherPoolData.value ?? [])
+
+/** 当前选中的授课教师（remote-select modelValue 承载选项对象本身） */
+const selectedTeachers = ref<UserDTO[]>([])
+/** 打开表单时的原始教师 id 集（保存时计算差集） */
+const originalTeacherIds = ref<string[]>([])
+/** 教师回显初始化标记（课程与教师池双数据齐备后只回填一次，避免覆盖用户改动） */
+let teachersInitialized = false
+
+/** 编辑态教师回显数据：teacherIds ∩ 教师池（课程与教师池双数据齐备前为 null，齐备后触发回填） */
+const initialTeachers = computed(() => {
+  const ids = courseData.value?.teacherIds
+  if (!ids || !teacherPoolData.value) return null
+  return teacherPool.value.filter((t) => ids.includes(t.id))
+})
+
+watch(initialTeachers, (list) => {
+  if (list && !teachersInitialized) {
+    teachersInitialized = true
+    selectedTeachers.value = [...list]
+    originalTeacherIds.value = [...(courseData.value?.teacherIds ?? [])]
+    // 契约 E.3：讲师名为空时以第一位教师姓名预填（回显与交互两条路径同一规则，仍可手改）
+    if (list.length > 0 && form.instructorName.trim() === '') {
+      form.instructorName = list[0].displayName
+    }
+  }
+})
+
+/**
+ * 教师远程搜索 fetcher（remote-select 契约 E：防抖与取消由组件负责）
+ *
+ * 后端 /admin/users 仅支持 page/size/role/status（无 keyword），此处整池拉取后
+ * 客户端按显示名/用户名过滤；signal 透传 axios，新输入取消旧请求。
+ *
+ * @param keyword 搜索关键字（空串 = 首屏候选全量）
+ * @param signal 取消信号（透传 api 层）
+ * @returns 命中的教师列表
+ */
+async function fetchTeachers(keyword: string, signal: AbortSignal): Promise<UserDTO[]> {
+  const res = await userApi.list({ role: 'TEACHER', size: 100, signal })
+  const pool = (res.records ?? []).filter((u) => u.role === 'TEACHER')
+  const kw = keyword.trim()
+  if (kw === '') return pool
+  return pool.filter((t) => t.displayName.includes(kw) || t.username.includes(kw))
+}
+
+/**
+ * 教师选中集变化（契约 E.3：instructorName 为空时自动预填第一位教师姓名，仍可手改）
+ *
+ * @param value remote-select 回抛的选中集（联合类型按数组归一收窄）
+ */
+function onTeachersChange(value: UserDTO | UserDTO[] | null) {
+  const list = Array.isArray(value) ? value : value ? [value] : []
+  selectedTeachers.value = list
+  if (list.length > 0 && form.instructorName.trim() === '') {
+    form.instructorName = list[0].displayName
+  }
+}
+
+// ====================================================================
+// 表单回填与辅助
+// ====================================================================
 
 /** 加载完成回填表单（本查询无自动刷新，表单编辑不受缓存覆盖；重进页面命中 30s 缓存即回填） */
 watch(courseData, (c) => {
@@ -117,7 +220,7 @@ function removeTag(tag: string) {
   tags.value = tags.value.filter((t) => t !== tag)
 }
 
-/** 课程回填基础表单（价格数值 → 字符串承载；标签数组化；封面错误态复位） */
+/** 课程回填基础表单（价格数值 → 字符串承载；标签数组化） */
 function applyCourseToForm(c: CourseDTO) {
   form.title = c.title
   form.description = c.description ?? ''
@@ -126,25 +229,53 @@ function applyCourseToForm(c: CourseDTO) {
   form.instructorName = c.instructorName ?? ''
   form.price = c.price === 0 ? '' : String(c.price)
   form.duration = c.duration ?? ''
-  form.enrollmentLink = c.enrollmentLink ?? ''
   form.status = c.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE'
   tags.value = [...(c.tags ?? [])]
-  coverBroken.value = false
 }
 
-/** 封面 URL 变更：错误预览态复位 */
-watch(
-  () => form.coverImage,
-  () => {
-    coverBroken.value = false
-  },
-)
+// ====================================================================
+// 报名链接只读复制（契约 A.2.4：服务端生成，编辑态只读展示 + 一键复制）
+// ====================================================================
+
+/** 复制成功标记（1.5s 内图标切换为对勾后自动复位） */
+const linkCopied = ref(false)
+/** 复位定时器句柄（卸载清理防泄漏） */
+let copyResetTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 一键复制报名链接（clipboard API；失败 toast 提示手动复制） */
+async function copyEnrollmentLink() {
+  const link = courseData.value?.enrollmentLink ?? ''
+  if (!link) return
+  try {
+    if (!navigator.clipboard?.writeText) {
+      throw new Error('clipboard unavailable')
+    }
+    await navigator.clipboard.writeText(link)
+    linkCopied.value = true
+    if (copyResetTimer) clearTimeout(copyResetTimer)
+    // 1.5s 后对勾复位回复制图标（契约 A.2.4）
+    copyResetTimer = setTimeout(() => {
+      linkCopied.value = false
+    }, 1500)
+  } catch {
+    showToast('复制失败，请手动复制链接', 'danger')
+  }
+}
+
+onUnmounted(() => {
+  if (copyResetTimer) clearTimeout(copyResetTimer)
+})
+
+// ====================================================================
+// 保存（新建 create + 教师落库 / 编辑 update + 教师差集）
+// ====================================================================
 
 /**
  * 基础信息保存（新建/编辑分派；isPending 驱动按钮禁用与文案）
  *
- * 新建：create（CreateCourseRequest 不含 status，新建默认 ACTIVE）→ toast →
- * 跳转 /courses/{id} 继续编辑；编辑：update（UpdateCourseRequest 全字段含 status）。
+ * 新建：create（enrollmentLink 服务端生成不传）→ 有选中教师时 POST 裸数组落库 →
+ * 跳转 /courses/{id} 继续编辑；编辑：update + 教师差集（新增 POST / 移除 DELETE，
+ * body 均为裸 JSON 数组，契约 E.3）。
  */
 const { isPending: saving, mutate: saveBasicMutation } = useMutation({
   mutationFn: async (): Promise<CourseDTO | undefined> => {
@@ -157,21 +288,46 @@ const { isPending: saving, mutate: saveBasicMutation } = useMutation({
       price: form.price === '' ? undefined : Number(form.price),
       duration: form.duration,
       tags: tags.value.length > 0 ? tags.value : null,
-      enrollmentLink: form.enrollmentLink,
     }
     if (isNew) {
-      return courseApi.create(common)
+      const created = await courseApi.create(common)
+      // 新建后教师落库（E.3：差集调用既有端点，body 裸数组）
+      if (selectedTeachers.value.length > 0) {
+        await courseApi.addTeachers(
+          created.id,
+          selectedTeachers.value.map((t) => t.id),
+        )
+      }
+      return created
     }
     const payload: UpdateCourseRequest = { ...common, status: form.status }
     await courseApi.update(courseId.value, payload)
+    // 编辑态教师差集：新增 POST / 移除 DELETE（端点幂等 + 409 兜底由后端承载）。
+    // 教师池加载失败（未完成回显）时跳过差集——避免误判全量移除造成教师关联丢失
+    if (teachersInitialized) {
+      const current = selectedTeachers.value.map((t) => t.id)
+      const added = current.filter((id) => !originalTeacherIds.value.includes(id))
+      const removed = originalTeacherIds.value.filter((id) => !current.includes(id))
+      if (added.length > 0) {
+        await courseApi.addTeachers(courseId.value, added)
+      }
+      if (removed.length > 0) {
+        await courseApi.removeTeachers(courseId.value, removed)
+      }
+      originalTeacherIds.value = current
+    }
     return undefined
   },
   onSuccess: async (created) => {
+    // 写后读一致：课程列表 / 表单缓存 / 教师分配页统一失效
+    void queryClient.invalidateQueries({ queryKey: ['admin-courses'] })
     if (isNew) {
       showToast('课程创建成功', 'success')
       if (created) await router.push({ name: 'course-detail', params: { id: created.id } })
     } else {
       showToast('课程信息已保存', 'success')
+      void queryClient.invalidateQueries({ queryKey: ['course-form'] })
+      void queryClient.invalidateQueries({ queryKey: ['course-teachers'] })
     }
   },
   onError: (err) => {
@@ -179,14 +335,29 @@ const { isPending: saving, mutate: saveBasicMutation } = useMutation({
   },
 })
 
-/** 基础信息保存：zod 前置校验（失败就地报错不发请求）→ 走 mutation */
+/**
+ * 基础信息保存入口：zod 全字段校验（失败按字段内联报错不发请求）→ 走 mutation
+ */
 function saveBasic() {
-  const parsed = titleSchema.safeParse({ title: form.title })
+  const parsed = courseFormSchema.safeParse({
+    title: form.title,
+    coverImage: form.coverImage,
+    price: form.price,
+    duration: form.duration,
+  })
+  // 清空旧错误后按本次校验结果回填（字段下方内联展示）
+  for (const key of Object.keys(fieldErrors)) {
+    delete fieldErrors[key]
+  }
   if (!parsed.success) {
-    fieldError.value = parsed.error.issues[0]?.message ?? '请输入课程标题'
+    for (const issue of parsed.error.issues) {
+      const key = String(issue.path[0] ?? '')
+      if (key && !fieldErrors[key]) {
+        fieldErrors[key] = issue.message
+      }
+    }
     return
   }
-  fieldError.value = ''
   saveBasicMutation()
 }
 </script>
@@ -235,7 +406,7 @@ function saveBasic() {
         </div>
       </div>
 
-      <!-- 分区卡一：基本信息（封面/标题/分类/简述） -->
+      <!-- 分区卡一：基本信息（封面上传/标题/分类/简述） -->
       <section v-reveal class="rounded-2xl border border-border bg-surface p-6 shadow-xs">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
           <h2 class="text-lg font-extrabold tracking-tight text-text">基本信息</h2>
@@ -244,61 +415,23 @@ function saveBasic() {
           </p>
         </div>
         <div class="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
-          <!-- 封面 URL + 实时预览（无上传接口 G11，onError 兜底占位） -->
+          <!-- 封面：image-upload（点击/拖拽上传 + 预览 + 重传删除，契约 D/F） -->
           <div class="col-span-2">
-            <label for="course-cover-url" class="mb-1.5 block text-sm font-medium text-text">
-              封面图 URL
-            </label>
-            <div class="flex items-start gap-4">
-              <input
-                id="course-cover-url"
-                v-model="form.coverImage"
-                type="text"
-                data-testid="field-cover"
-                aria-label="封面图 URL"
-                placeholder="https://cdn.example.com/cover.jpg（无上传接口，直接填图片地址）"
-                class="h-10 w-full max-w-[520px] rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
-              <img
-                v-if="form.coverImage && !coverBroken"
-                :key="form.coverImage"
-                data-testid="cover-preview"
-                :src="form.coverImage"
-                alt="封面预览"
-                class="h-16 w-28 shrink-0 rounded-[10px] border border-border bg-surface-2 object-cover"
-                @error="coverBroken = true"
-              />
-              <div
-                v-else-if="form.coverImage && coverBroken"
-                data-testid="cover-fallback"
-                class="flex h-16 w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-[10px] border border-border bg-surface-2 text-text-subtle"
-              >
-                <PhImageSquare class="h-5 w-5" />
-                <span class="text-xs">封面预览</span>
-              </div>
-            </div>
+            <span class="mb-1.5 block text-sm font-medium text-text">封面图</span>
+            <ImageUpload v-model="form.coverImage" data-testid="field-cover" />
           </div>
 
-          <!-- 标题*：zod 前置校验，错误红字 input 下方 -->
-          <div>
-            <label for="course-title" class="mb-1.5 block text-sm font-medium text-text">
-              标题 <span class="text-danger">*</span>
-            </label>
-            <input
-              id="course-title"
-              v-model="form.title"
-              type="text"
-              data-testid="field-title"
-              aria-label="课程标题"
-              placeholder="请输入课程标题"
-              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-            <p v-if="fieldError" data-testid="field-error" class="mt-1 text-xs text-danger">
-              {{ fieldError }}
-            </p>
-          </div>
+          <!-- 标题*：zod 校验，错误红字字段下方 -->
+          <Input
+            v-model="form.title"
+            data-testid="field-title"
+            label="标题"
+            required
+            :error="fieldErrors.title"
+            placeholder="请输入课程标题"
+          />
 
-          <!-- 分类 -->
+          <!-- 分类：预置选项下拉（datalist 允许输入自定义值） -->
           <div>
             <label for="course-category" class="mb-1.5 block text-sm font-medium text-text"
               >分类</label
@@ -307,101 +440,89 @@ function saveBasic() {
               id="course-category"
               v-model="form.category"
               type="text"
+              list="course-category-presets"
               data-testid="field-category"
               aria-label="课程分类"
-              placeholder="如 AI / LLM / RAG"
+              placeholder="从预置分类选择或输入自定义值"
               class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
+            <datalist id="course-category-presets">
+              <option v-for="preset in COURSE_CATEGORY_PRESETS" :key="preset" :value="preset" />
+            </datalist>
           </div>
 
           <!-- 简述 -->
-          <div class="col-span-2">
-            <label for="course-description" class="mb-1.5 block text-sm font-medium text-text"
-              >简述</label
-            >
-            <textarea
-              id="course-description"
-              v-model="form.description"
-              rows="2"
-              data-testid="field-description"
-              aria-label="课程简述"
-              placeholder="一句话介绍课程内容"
-              class="w-full resize-none rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </div>
+          <Textarea
+            v-model="form.description"
+            data-testid="field-description"
+            label="简述"
+            :rows="2"
+            class="col-span-2"
+            placeholder="一句话介绍课程内容"
+          />
         </div>
       </section>
 
-      <!-- 分区卡二：授课与定价（讲师/价格/课时/状态） -->
+      <!-- 分区卡二：授课与定价（教师多选/讲师/价格/课时/状态） -->
       <section v-reveal="80" class="rounded-2xl border border-border bg-surface p-6 shadow-xs">
         <h2 class="text-lg font-extrabold tracking-tight text-text">授课与定价</h2>
         <div class="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
-          <!-- 讲师名 -->
-          <div>
-            <label for="course-instructor" class="mb-1.5 block text-sm font-medium text-text"
-              >讲师名</label
-            >
-            <input
-              id="course-instructor"
-              v-model="form.instructorName"
-              type="text"
-              data-testid="field-instructor"
-              aria-label="讲师名"
-              placeholder="主讲老师姓名"
-              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
+          <!-- 授课教师：remote-select 多选（防抖 300ms + 取消，契约 E） -->
+          <div class="col-span-2">
+            <span class="mb-1.5 block text-sm font-medium text-text">授课教师</span>
+            <RemoteSelect
+              :model-value="selectedTeachers"
+              :get-value="(t: UserDTO) => t.id"
+              :get-label="(t: UserDTO) => t.displayName"
+              :fetcher="fetchTeachers"
+              :initial-options="initialTeachers ?? []"
+              multiple
+              placeholder="搜索教师姓名/用户名，选中后可继续添加"
+              empty-text="没有匹配的教师"
+              data-testid="field-teachers"
+              @update:model-value="onTeachersChange"
             />
+            <p class="mt-1 text-xs text-text-subtle">保存后按增删差集更新课程教师关联</p>
           </div>
+
+          <!-- 讲师名（教师预填第一位，仍可手改） -->
+          <Input
+            v-model="form.instructorName"
+            data-testid="field-instructor"
+            label="讲师名"
+            placeholder="主讲老师姓名"
+          />
 
           <!-- 价格（数字域 tabular-nums，提交时数值化） -->
-          <div>
-            <label for="course-price" class="mb-1.5 block text-sm font-medium text-text"
-              >价格（元）</label
-            >
-            <input
-              id="course-price"
-              v-model="form.price"
-              type="number"
-              min="0"
-              step="0.01"
-              data-testid="field-price"
-              aria-label="课程价格"
-              placeholder="如 199"
-              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm tabular-nums text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </div>
+          <Input
+            v-model="form.price"
+            data-testid="field-price"
+            label="价格（元）"
+            type="number"
+            :error="fieldErrors.price"
+            placeholder="如 199"
+          />
 
-          <!-- 课时 -->
-          <div>
-            <label for="course-duration" class="mb-1.5 block text-sm font-medium text-text"
-              >课时</label
-            >
-            <input
-              id="course-duration"
-              v-model="form.duration"
-              type="text"
-              data-testid="field-duration"
-              aria-label="课时"
-              placeholder="如 8 课时"
-              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-          </div>
+          <!-- 课时（数字校验，允许留空） -->
+          <Input
+            v-model="form.duration"
+            data-testid="field-duration"
+            label="课时"
+            :error="fieldErrors.duration"
+            placeholder="如 8"
+          />
 
           <!-- 状态（仅编辑态；新建默认 ACTIVE 由后端落库） -->
-          <div v-if="!isNew">
-            <label for="course-status" class="mb-1.5 block text-sm font-medium text-text"
-              >状态</label
-            >
-            <select
-              id="course-status"
-              v-model="form.status"
-              data-testid="field-status"
-              aria-label="课程状态"
-              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 focus:border-brand focus:ring-2 focus:ring-brand/20"
-            >
-              <option value="ACTIVE">ACTIVE（上架）</option>
-              <option value="ARCHIVED">ARCHIVED（归档）</option>
-            </select>
-          </div>
+          <Select
+            v-if="!isNew"
+            v-model="form.status"
+            data-testid="field-status"
+            label="状态"
+            :options="[
+              { value: 'ACTIVE', label: 'ACTIVE（上架）' },
+              { value: 'ARCHIVED', label: 'ARCHIVED（归档）' },
+            ]"
+          />
           <div v-else>
             <p class="mb-1.5 text-sm font-medium text-text">状态</p>
             <p class="rounded-xl bg-surface-2 px-3 py-2.5 text-xs text-text-muted">
@@ -415,20 +536,43 @@ function saveBasic() {
       <section v-reveal="160" class="rounded-2xl border border-border bg-surface p-6 shadow-xs">
         <h2 class="text-lg font-extrabold tracking-tight text-text">报名与标签</h2>
         <div class="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
-          <!-- 报名链接 -->
+          <!-- 报名链接：服务端自动生成（契约 A）——编辑态只读 + 复制；新建态提示 -->
           <div class="col-span-2">
-            <label for="course-link" class="mb-1.5 block text-sm font-medium text-text"
-              >报名链接</label
+            <span class="mb-1.5 block text-sm font-medium text-text">报名链接</span>
+            <!-- 编辑态：只读展示 + 一键复制（对勾 1.5s 复位） -->
+            <div
+              v-if="!isNew"
+              class="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2"
+              data-testid="enrollment-link-box"
             >
-            <input
-              id="course-link"
-              v-model="form.enrollmentLink"
-              type="text"
-              data-testid="field-enrollment-link"
-              aria-label="报名链接"
-              placeholder="https://apply.example.com/xxx（可选）"
-              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
+              <p
+                data-testid="field-enrollment-link"
+                class="min-w-0 flex-1 truncate text-sm text-text-muted"
+                :title="courseData?.enrollmentLink ?? ''"
+              >
+                {{ courseData?.enrollmentLink || '暂未生成' }}
+              </p>
+              <Button
+                v-if="courseData?.enrollmentLink"
+                variant="outline"
+                size="sm"
+                data-testid="copy-link"
+                :disabled="linkCopied"
+                @click="copyEnrollmentLink"
+              >
+                <PhCheck v-if="linkCopied" class="h-3.5 w-3.5 text-success" />
+                <PhCopy v-else class="h-3.5 w-3.5" />
+                {{ linkCopied ? '已复制' : '复制' }}
+              </Button>
+            </div>
+            <!-- 新建态：不出输入框，占位提示保存后生成 -->
+            <p
+              v-else
+              data-testid="enrollment-link-hint"
+              class="rounded-xl bg-surface-2 px-3 py-2.5 text-xs text-text-muted"
+            >
+              保存后自动生成
+            </p>
           </div>
 
           <!-- 标签 chips：回车添加 + X 删除 -->

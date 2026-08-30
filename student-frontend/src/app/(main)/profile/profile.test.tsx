@@ -45,6 +45,7 @@ function makeCourse(overrides: Partial<StudentCourse> = {}): StudentCourse {
     duration: "32",
     rating: 4.5,
     learningCount: 256,
+    price: 299,
     ...overrides,
   };
 }
@@ -138,10 +139,14 @@ describe("个人中心：我的课程", () => {
     expect(screen.getByTestId("courses-skeleton")).toBeInTheDocument();
   });
 
-  it("空态：还没有加入课程，请联系老师开通", async () => {
+  it("空态：还没有购买课程 + 去课程中心看看入口（契约 H.2.3）", async () => {
     apiMock.getMyCourses.mockResolvedValue([]);
     renderPage();
-    expect(await screen.findByText("还没有加入课程，请联系老师开通")).toBeInTheDocument();
+    expect(await screen.findByText("还没有购买课程")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "去课程中心看看" })).toHaveAttribute(
+      "href",
+      "/courses",
+    );
   });
 
   it("Error：横幅 + 重试闭环恢复", async () => {
@@ -154,7 +159,7 @@ describe("个人中心：我的课程", () => {
     expect(await screen.findByText("数据结构与算法")).toBeInTheDocument();
   });
 
-  it("正常态：复用 CourseCard 渲染已选课程", async () => {
+  it("正常态：复用 CourseCard 渲染已购课程（已购徽章 + 不再展示价格行）", async () => {
     apiMock.getMyCourses.mockResolvedValue([
       makeCourse(),
       makeCourse({ id: "c-2", title: "线性代数" }),
@@ -162,6 +167,9 @@ describe("个人中心：我的课程", () => {
     renderPage();
     expect(await screen.findByText("数据结构与算法")).toBeInTheDocument();
     expect(screen.getByText("线性代数")).toBeInTheDocument();
+    // 我的课程恒为已购：每张卡带「已购」徽章（契约 T3.3），且不展示价格行
+    expect(screen.getAllByText("已购")).toHaveLength(2);
+    expect(screen.queryByText("¥299")).not.toBeInTheDocument();
     // 整卡为 Link → 各自的课程工作台
     expect(screen.getByRole("link", { name: /数据结构与算法/ })).toHaveAttribute(
       "href",

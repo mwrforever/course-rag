@@ -163,6 +163,14 @@ export interface DocumentChunkVO {
 /** 课程状态（ACTIVE emerald / ARCHIVED slate，设计 §2.5） */
 export type CourseStatus = 'ACTIVE' | 'ARCHIVED'
 
+/** 封面上传结果（后端 vo/CourseCoverVO，契约 D.2.2）：url 为相对路径，可直作 <img src> */
+export interface CourseCoverVO {
+  /** MinIO 对象键（0/{32 位 hex}.{ext}，前端仅透传展示，不拼 URL） */
+  objectKey: string
+  /** 可访问相对路径（/api/v1/public/covers/...，dev 经 vite 代理同源加载） */
+  url: string
+}
+
 /** 课程内容 Tab（后端 dto/CourseDTO.CourseContentDTO）：intro/syllabus/instructor/faq 四 Tab */
 export interface CourseContentDTO {
   contentType: string

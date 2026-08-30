@@ -20,7 +20,14 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { PhDotsThree, PhImageSquare, PhPencilSimple, PhPlus, PhTrash } from '@phosphor-icons/vue'
+import {
+  PhArrowClockwise,
+  PhDotsThree,
+  PhImageSquare,
+  PhPencilSimple,
+  PhPlus,
+  PhTrash,
+} from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,6 +35,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataTable } from '@/components/ui/data-table'
 import { DropdownMenu, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
+import { IconButton } from '@/components/ui/icon-button'
 import { PageHead } from '@/components/ui/page-head'
 import { ApiError, courseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
@@ -47,6 +55,7 @@ const {
   data,
   isLoading,
   isError,
+  isFetching,
   error: queryError,
   refetch,
 } = useQuery({
@@ -188,6 +197,15 @@ function confirmDelete() {
     <!-- 页头：主标题 + 副题 + 右侧新建入口（列表态/空态共用同一跳转方法） -->
     <PageHead title="课程管理" subtitle="课程列表：编辑页涵盖内容 4 Tab、排期、教师分配与学生名单">
       <template #actions>
+        <!-- 手动刷新（T2.3）：refetch 期间禁用防重复 -->
+        <IconButton
+          label="刷新"
+          data-testid="refresh-courses"
+          :loading="isFetching"
+          @click="refetch()"
+        >
+          <PhArrowClockwise class="h-4 w-4" />
+        </IconButton>
         <Button data-testid="create-course" @click="goCreate">
           <PhPlus class="h-4 w-4" />
           新建课程
@@ -219,7 +237,7 @@ function confirmDelete() {
           class="h-3 w-20 animate-pulse rounded bg-slate-200"
         />
       </div>
-      <div v-for="i in 5" :key="`row-${i}`" class="h-14 animate-pulse bg-slate-50" />
+      <div v-for="i in 5" :key="`row-${i}`" class="h-12 animate-pulse bg-slate-50" />
     </div>
 
     <!-- 空态：EmptyState + 新建入口（禁裸「暂无数据」） -->

@@ -17,6 +17,7 @@ import com.commerce.rag.mapper.CourseEnrollmentMapper;
 import com.commerce.rag.mapper.SysUserMapper;
 import com.commerce.rag.service.ICourseService;
 import com.commerce.rag.service.IEnrollmentService;
+import com.commerce.rag.vo.CoursePurchaseVO;
 import com.commerce.rag.vo.StudentCourseVO;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -25,16 +26,18 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 选课管理服务 —— 封装 course_enrollment 表的 CRUD 操作
+ * 选课管理服务 —— 封装 course_enrollment 表的 CRUD 与学生自助购买操作
  *
  * <p>核心功能：
  * <ul>
  *   <li>查询课程已选学生列表</li>
  *   <li>批量添加学生选课</li>
+ *   <li>学生自助购买课程（幂等：已购直接成功 / 退课重激活 / 并发撞唯一索引按已购返回）</li>
  *   <li>移除学生（软删选课记录）</li>
  *   <li>查询学生已选课程列表</li>
  * </ul>
@@ -194,6 +197,82 @@ public class EnrollmentServiceImpl extends ServiceImpl<CourseEnrollmentMapper, C
         return findStudentCourses(studentId).stream()
                 .map(studentConverter::toCourseVO)
                 .toList();
+    }
+
+    /**
+     * 学生自助购买课程（C 端购买端点，契约 B.2）
+     *
+     * <p>执行流程（@Transactional 事务内）：
+     * <ol>
+     *   <li>查课程（仅取 id/status 投影，限定 ACTIVE）：不存在/已软删/非 ACTIVE → 404
+     *       （统一文案「课程不存在或已下架」，不泄露存在性）；</li>
+     *   <li>查选课记录（course_id + student_id，@TableLogic 自动过滤已删，部分唯一索引保证至多一条）：
+     *       无记录 → 插入 ACTIVE 记录（对齐 addStudents 构造语义）；DROPPED → 重激活
+     *       （置 ACTIVE + enrolledAt=now）；ACTIVE → 幂等直接返回成功，不产生任何写；</li>
+     *   <li>并发兜底：check-then-insert 撞 uniq_course_enrollment(course_id, student_id)
+     *       WHERE deleted=0 部分唯一索引时捕获 DataIntegrityViolationException——
+     *       <b>契约 B.2.3 实现注记</b>：DIVE 抛出时当前事务已 rollback-only，
+     *       <b>禁止在原事务内重查</b>（会触发 UnexpectedRollbackException）；撞索引必然意味着
+     *       (course_id, student_id, deleted=0) 记录已存在且购买/addStudents 写入路径只会写
+     *       ACTIVE，故直接构造成功 VO 返回（不再重查），事务自然回滚（无任何有效写丢失）。</li>
+     * </ol>
+     *
+     * <p>契约 D2：不递增 learning_count（与 addStudents 行为一致，该列当前无任何业务写路径）。
+     *
+     * @param courseId  课程 ID（路径参数，来自用户输入）
+     * @param studentId 学生 ID（认证上下文取，禁止入参传递）
+     * @return 购买结果 VO（status 恒 ACTIVE、purchased 恒 true）
+     * @throws BizException 404 课程不存在、已删除或已下架
+     */
+    @Transactional
+    public CoursePurchaseVO purchaseCourse(Long courseId, Long studentId) {
+        // TODO(purchase-business): 开发环境购买直接通过（不校验支付），补全支付/审批业务时移除（用户 2026-08-29 拍板）
+        log.info("学生购买课程: courseId={}, userId={}", courseId, studentId);
+        // 查课程（跨 service 链式查询 + 精确投影，仅取存在性与状态）：非 ACTIVE/已删/不存在统一 404
+        CourseInfo course = courseService
+                .lambdaQuery()
+                .select(CourseInfo::getId, CourseInfo::getStatus)
+                .eq(CourseInfo::getId, courseId)
+                .eq(CourseInfo::getStatus, "ACTIVE")
+                .one();
+        if (course == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "课程不存在或已下架");
+        }
+        // 查选课记录（本 service 主表链式查询；部分唯一索引保证 (course_id, student_id, deleted=0) 至多一条）
+        CourseEnrollment existing = this.lambdaQuery()
+                .select(CourseEnrollment::getId, CourseEnrollment::getStatus)
+                .eq(CourseEnrollment::getCourseId, courseId)
+                .eq(CourseEnrollment::getStudentId, studentId)
+                .one();
+        if (existing == null) {
+            // 无记录 → 插入 ACTIVE（对齐 addStudents 构造语义：enrolledAt=now、status=ACTIVE）
+            CourseEnrollment enrollment = new CourseEnrollment();
+            enrollment.setCourseId(courseId);
+            enrollment.setStudentId(studentId);
+            enrollment.setEnrolledAt(LocalDateTime.now());
+            enrollment.setStatus("ACTIVE");
+            try {
+                this.save(enrollment);
+                log.info("学生购买课程成功（新插入选课记录）: courseId={}, userId={}", courseId, studentId);
+            } catch (DataIntegrityViolationException e) {
+                // 契约 B.2.3：并发撞部分唯一索引——购买幂等语义优先（区别于 addTeachers 的 409 策略，
+                // 购买重试是用户合理行为）；事务已 rollback-only，禁止重查，直接构造成功 VO
+                log.warn("学生购买课程并发冲突（按已购幂等返回成功）: courseId={}, userId={}", courseId, studentId);
+                return new CoursePurchaseVO(courseId, "ACTIVE", true);
+            }
+        } else if ("DROPPED".equals(existing.getStatus())) {
+            // 已退课 → 重激活（置 ACTIVE + enrolledAt=now，对齐 addStudents 重激活语义；UPDATE 不受唯一索引影响）
+            this.lambdaUpdate()
+                    .eq(CourseEnrollment::getId, existing.getId())
+                    .set(CourseEnrollment::getStatus, "ACTIVE")
+                    .set(CourseEnrollment::getEnrolledAt, LocalDateTime.now())
+                    .update();
+            log.info("学生购买课程成功（重激活退课记录）: courseId={}, userId={}", courseId, studentId);
+        } else {
+            // 已 ACTIVE → 幂等直接返回成功，不产生任何写（重复调用不重复插行）
+            log.info("学生购买课程幂等命中（已购）: courseId={}, userId={}", courseId, studentId);
+        }
+        return new CoursePurchaseVO(courseId, "ACTIVE", true);
     }
 
     /**

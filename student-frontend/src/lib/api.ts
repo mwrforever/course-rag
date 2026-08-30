@@ -18,6 +18,7 @@ import type {
   ChatRequest,
   ChunkBrief,
   ChunkContext,
+  CoursePurchaseResult,
   FeedbackRequest,
   LoginResponse,
   MaterialChunk,
@@ -320,6 +321,19 @@ export function getPublicCourses(): Promise<PublicCourse[]> {
 /** J2: 课程专属资料分片列表（未选课 403 → 课程页专属引导态） */
 export function getMaterials(courseId: string): Promise<MaterialChunk[]> {
   return apiFetch<MaterialChunk[]>(`/student/courses/${courseId}/materials`);
+}
+
+/**
+ * 学生自助购买课程（契约 B 2026-08-29：POST /student/courses/{courseId}/purchase）
+ *
+ * 幂等语义：已购（ACTIVE）再购返回与首次相同的成功结构，不报 409；
+ * DROPPED 记录后端重激活；购买为 dev 直通（无支付校验）。
+ * 失败抛 ApiError：404 课程不存在或已下架 / 403 非 STUDENT 角色。
+ */
+export function purchaseCourse(courseId: string): Promise<CoursePurchaseResult> {
+  return apiFetch<CoursePurchaseResult>(`/student/courses/${courseId}/purchase`, {
+    method: "POST",
+  });
 }
 
 /** J3: 通用资料库分片分页（courseId=DEFAULT） */

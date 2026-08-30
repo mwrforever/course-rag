@@ -365,17 +365,31 @@ describe('ChunksView：批量修正 Dialog（表单校验 + 提交体 + loading 
     )
 
     await dialog.find('[data-testid="batch-collection-type"]').setValue('TECHNICAL_QA')
-    await dialog.find('[data-testid="batch-course-search"]').setValue('实战')
-    // query 化后搜索为异步调度：收敛目标 = 结果 option 渲染（比 list 被调用更靠后的时序点，
-    // 消除「list-called 先于渲染」的窗口；批 4② reviewer L4）
-    await vi.waitFor(() =>
-      expect(wrapper.find('[data-testid="batch-course-option-c-9"]').exists()).toBe(true),
+    const courseInput = dialog.find('[data-testid="batch-course"] [data-testid="remote-input"]')
+    await courseInput.trigger('focus')
+    await flushPromises()
+    // 输入关键字：防抖 300ms 后发请求，收敛目标 = 结果 option 渲染
+    await courseInput.setValue('实战')
+    await vi.waitFor(
+      () =>
+        expect(
+          dialog.find('[data-testid="batch-course"] [data-testid="remote-option-c-9"]').exists(),
+        ).toBe(true),
+      { timeout: 5000 },
     )
     expect(courseApi.list).toHaveBeenCalledWith(
       expect.objectContaining({ keyword: '实战', size: 10 }),
     )
-    await wrapper.find('[data-testid="batch-course-option-c-9"]').trigger('click')
-    expect(dialog.find('[data-testid="batch-course-picked"]').text()).toContain('RAG 实战营')
+    await dialog
+      .find('[data-testid="batch-course"] [data-testid="remote-option-c-9"]')
+      .trigger('click')
+    // 单选选中：输入框回显课程标题
+    expect(
+      (
+        dialog.find('[data-testid="batch-course"] [data-testid="remote-input"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('RAG 实战营')
 
     await dialog.find('[data-testid="submit-batch"]').trigger('click')
     await flushPromises()
@@ -392,9 +406,8 @@ describe('ChunksView：批量修正 Dialog（表单校验 + 提交体 + loading 
     const batchSpy = vi.spyOn(chunkApi, 'batchUpdate').mockResolvedValue()
     vi.spyOn(courseApi, 'list').mockResolvedValue(pageOf<CourseDTO>([], '0'))
 
-    await dialog.find('[data-testid="batch-course-search"]').setValue('x')
-    await flushPromises()
-    await wrapper.find('[data-testid="batch-course-default"]').trigger('click')
+    // 「设为通用」入口在「不改」态直接可用（remote-select 未选课程）
+    await dialog.find('[data-testid="batch-course-default"]').trigger('click')
 
     await dialog.find('[data-testid="submit-batch"]').trigger('click')
     await flushPromises()

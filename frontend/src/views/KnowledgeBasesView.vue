@@ -23,6 +23,7 @@
 import { computed, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
+  PhArrowClockwise,
   PhDotsThreeVertical,
   PhNotePencil,
   PhPlus,
@@ -38,6 +39,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DataTable } from '@/components/ui/data-table'
 import { DropdownMenu, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
+import { IconButton } from '@/components/ui/icon-button'
 import { PageHead } from '@/components/ui/page-head'
 import { ApiError, knowledgeBaseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
@@ -58,6 +60,7 @@ const {
   data,
   isLoading,
   isError,
+  isFetching,
   error: queryError,
   refetch,
 } = useQuery({
@@ -243,6 +246,10 @@ function statusVariant(status: string) {
   <!-- 页头：PageHead 统一形态（h1 22px/800 + 副题 13px muted + 右侧动作区），v-reveal 滚动入场 -->
   <PageHead v-reveal title="知识库管理" subtitle="仅展示 ACTIVE 状态知识库">
     <template #actions>
+      <!-- 手动刷新（T2.3）：refetch 期间禁用防重复 -->
+      <IconButton label="刷新" data-testid="refresh-kbs" :loading="isFetching" @click="refetch()">
+        <PhArrowClockwise class="h-4 w-4" />
+      </IconButton>
       <!-- 新建入口常驻页头（列表态/空态共用同一方法） -->
       <Button data-testid="create-kb" @click="openCreate">
         <PhPlus class="h-4 w-4" aria-hidden="true" />

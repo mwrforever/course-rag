@@ -60,7 +60,7 @@ test.describe('课程管理', () => {
     await expect(page.getByText('数据结构与算法精讲')).toBeVisible()
     await page.getByRole('button', { name: /新建课程/ }).click()
     await expect(page).toHaveURL(/\/courses\/new$/)
-    await page.locator('#course-title').fill('新课程')
+    await page.getByTestId('field-title').fill('新课程')
     await page.getByTestId('save-basic').click()
     await expect.poll(() => createBody).toMatchObject({ title: '新课程' })
     // 新建成功后跳转编辑页
@@ -109,7 +109,7 @@ test.describe('课程管理', () => {
     await page.getByRole('menuitem', { name: '编辑' }).click()
     await expect(page).toHaveURL(/\/courses\/co1$/)
     // 基础信息回显
-    await expect(page.locator('#course-title')).toHaveValue('数据结构与算法精讲')
+    await expect(page.getByTestId('field-title')).toHaveValue('数据结构与算法精讲')
     // 内容子页（职责拆分）：点击子导航进入 4 Tab 回显（intro 默认）
     await page.getByRole('link', { name: '内容', exact: true }).click()
     await expect(page).toHaveURL(/\/courses\/co1\/content$/)

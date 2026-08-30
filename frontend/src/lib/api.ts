@@ -32,6 +32,7 @@ import type {
   ChunkCollectionTypeRequest,
   ChunkContentUpdateRequest,
   CourseContentDTO,
+  CourseCoverVO,
   CourseDTO,
   CourseScheduleVO,
   CreateCourseRequest,
@@ -216,12 +217,17 @@ export const authApi = {
 
 /** 知识库域（AdminKnowledgeBaseController）：两角色可进，教师限己建 */
 export const knowledgeBaseApi = {
-  list: (params?: { page?: number; size?: number; keyword?: string }) =>
-    request<PageResponse<KnowledgeBaseVO>>({
+  list: (params?: { page?: number; size?: number; keyword?: string; signal?: AbortSignal }) => {
+    // 解构剔除 signal：AbortSignal 对象不得进入查询串（会被序列化成垃圾参数），
+    // 仅作为 axios 取消信号透传（契约 E 竞态防护）
+    const { signal, ...query } = params ?? {}
+    return request<PageResponse<KnowledgeBaseVO>>({
       method: 'get',
       url: '/admin/knowledge-bases',
-      params,
-    }),
+      params: query,
+      signal,
+    })
+  },
   get: (id: string) =>
     request<KnowledgeBaseVO>({ method: 'get', url: `/admin/knowledge-bases/${id}` }),
   create: (data: KnowledgeBaseRequest) =>
@@ -302,14 +308,42 @@ export const chunkApi = {
 
 /** 课程域（AdminCourseController + AdminScheduleController + AdminEnrollmentController 的课程侧） */
 export const courseApi = {
-  list: (params?: { page?: number; size?: number; category?: string; keyword?: string }) =>
-    request<PageResponse<CourseDTO>>({ method: 'get', url: '/admin/courses', params }),
+  list: (params?: {
+    page?: number
+    size?: number
+    category?: string
+    keyword?: string
+    signal?: AbortSignal
+  }) => {
+    // 解构剔除 signal：AbortSignal 对象不得进入查询串（会被序列化成垃圾参数），
+    // 仅作为 axios 取消信号透传（契约 E 竞态防护）
+    const { signal, ...query } = params ?? {}
+    return request<PageResponse<CourseDTO>>({
+      method: 'get',
+      url: '/admin/courses',
+      params: query,
+      signal,
+    })
+  },
   get: (id: string) => request<CourseDTO>({ method: 'get', url: `/admin/courses/${id}` }),
   create: (data: CreateCourseRequest) =>
     request<CourseDTO>({ method: 'post', url: '/admin/courses', data }),
   update: (id: string, data: UpdateCourseRequest) =>
     request<void>({ method: 'put', url: `/admin/courses/${id}`, data }),
   remove: (id: string) => request<void>({ method: 'delete', url: `/admin/courses/${id}` }),
+  /**
+   * 上传课程封面（契约 D.2.2：POST /admin/courses/cover，multipart 字段名 file）
+   *
+   * @param form 仅含 file 字段的 FormData（类型/大小白名单由后端二次校验）
+   * @returns CourseCoverVO（objectKey + 相对 url，url 整串写入 coverImage 字段随课程提交）
+   */
+  uploadCover: (form: FormData) =>
+    request<CourseCoverVO>({
+      method: 'post',
+      url: '/admin/courses/cover',
+      data: form,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
   /** 教师分配（POST body 为 ID 数组，仅超管全量可选教师） */
   addTeachers: (id: string, teacherIds: string[]) =>
     request<void>({ method: 'post', url: `/admin/courses/${id}/teachers`, data: teacherIds }),
@@ -367,8 +401,23 @@ export const enrollmentApi = {
 export const userApi = {
   // 注：后端 AdminUserController.list 仅支持 page/size/role/status 四参（无 keyword，
   // 审核 Important-1 删除防静默失效）
-  list: (params?: { page?: number; size?: number; role?: UserRole; status?: UserStatus }) =>
-    request<PageResponse<UserDTO>>({ method: 'get', url: '/admin/users', params }),
+  list: (params?: {
+    page?: number
+    size?: number
+    role?: UserRole
+    status?: UserStatus
+    signal?: AbortSignal
+  }) => {
+    // 解构剔除 signal：AbortSignal 对象不得进入查询串（会被序列化成垃圾参数），
+    // 仅作为 axios 取消信号透传（契约 E 竞态防护）
+    const { signal, ...query } = params ?? {}
+    return request<PageResponse<UserDTO>>({
+      method: 'get',
+      url: '/admin/users',
+      params: query,
+      signal,
+    })
+  },
   create: (data: CreateUserRequest) =>
     request<UserDTO>({ method: 'post', url: '/admin/users', data }),
   get: (id: string) => request<UserDTO>({ method: 'get', url: `/admin/users/${id}` }),

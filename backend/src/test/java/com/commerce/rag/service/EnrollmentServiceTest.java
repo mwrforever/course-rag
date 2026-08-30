@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
+import com.baomidou.mybatisplus.extension.repository.AbstractRepository;
+import com.baomidou.mybatisplus.extension.repository.CrudRepository;
 import com.commerce.rag.convert.EnrollmentConverter;
 import com.commerce.rag.convert.EnrollmentConverterImpl;
 import com.commerce.rag.convert.StudentConverter;
@@ -15,10 +18,14 @@ import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.entity.SysUser;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.mapper.CourseEnrollmentMapper;
+import com.commerce.rag.mapper.CourseInfoMapper;
 import com.commerce.rag.mapper.SysUserMapper;
 import com.commerce.rag.service.impl.EnrollmentServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.CoursePurchaseVO;
 import com.commerce.rag.vo.StudentCourseVO;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,7 +38,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionAttribute;
 
 /**
  * IEnrollmentService 单元测试 —— 选课管理（列表/批量添加/移除/学生课程/选课校验）
@@ -55,6 +65,10 @@ class EnrollmentServiceTest {
 
     @Mock
     private SysUserMapper sysUserMapper;
+
+    /** 课程主表 mapper（purchaseCourse 跨 service 链式查询载体，真实链式 wrapper 绑定此 mock） */
+    @Mock
+    private CourseInfoMapper courseInfoMapper;
 
     @Spy
     private EnrollmentConverter enrollmentConverter = new EnrollmentConverterImpl();
@@ -299,5 +313,150 @@ class EnrollmentServiceTest {
         when(enrollmentMapper.selectCount(any())).thenReturn(0L);
 
         assertFalse(enrollmentService.isEnrolled(1L, 5L));
+    }
+
+    // ==================== purchaseCourse（契约 B.2，C 端自助购买） ====================
+
+    /** Spring 事务元数据解析器 —— 与生产事务切面同一解析路径，验证注解会被识别且异常触发回滚 */
+    private static final AnnotationTransactionAttributeSource TX_SOURCE = new AnnotationTransactionAttributeSource();
+
+    /**
+     * 注入链式查询依赖的继承字段（baseMapper/entityClass）
+     *
+     * <p>纯 Mockito 下 {@code this.lambdaQuery()/this.lambdaUpdate()} 构建链时需预置
+     * baseMapper 与 entityClass（与 CourseServiceTest 同款方案）。
+     */
+    private void injectChainFields() throws Exception {
+        Field baseMapper = CrudRepository.class.getDeclaredField("baseMapper");
+        baseMapper.setAccessible(true);
+        baseMapper.set(enrollmentService, enrollmentMapper);
+        Field entityClass = AbstractRepository.class.getDeclaredField("entityClass");
+        entityClass.setAccessible(true);
+        entityClass.set(enrollmentService, CourseEnrollment.class);
+    }
+
+    /** stub 课程查询链（跨 service 链式查询走真实 LambdaQueryChainWrapper 绑定 mock mapper） */
+    private void stubCourseQuery(CourseInfo course) {
+        when(courseService.lambdaQuery()).thenReturn(new LambdaQueryChainWrapper<>(courseInfoMapper));
+        when(courseInfoMapper.selectOne(any())).thenReturn(course);
+    }
+
+    /** 构造 ACTIVE 课程实体（purchaseCourse 仅取 id/status 投影） */
+    private CourseInfo activeCourse(Long id) {
+        CourseInfo course = new CourseInfo();
+        course.setId(id);
+        course.setStatus("ACTIVE");
+        return course;
+    }
+
+    @Test
+    @DisplayName("T1.2: purchaseCourse → 课程不存在（含非 ACTIVE/已软删）统一 404，不泄露存在性")
+    void purchaseCourse_courseMissing_throws404() throws Exception {
+        injectChainFields();
+        stubCourseQuery(null);
+
+        BizException ex = assertThrows(BizException.class, () -> enrollmentService.purchaseCourse(99L, 5L));
+
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
+        assertTrue(ex.getMessage().contains("课程不存在或已下架"));
+        // 404 短路：不触发任何选课查询与写入
+        verify(enrollmentMapper, never()).selectOne(any());
+        verify(enrollmentService, never()).save(any(CourseEnrollment.class));
+    }
+
+    @Test
+    @DisplayName("T1.2: purchaseCourse → 无选课记录时插入 ACTIVE 记录（对齐 addStudents 构造语义）")
+    void purchaseCourse_noRecord_insertsActive() throws Exception {
+        injectChainFields();
+        stubCourseQuery(activeCourse(1L));
+        // 选课记录查询（主表链式 one()）→ 无记录
+        when(enrollmentMapper.selectOne(any())).thenReturn(null);
+        // save 走 spy 桩（内部 this.save 调用被拦截，不触真实 baseMapper）
+        doReturn(true).when(enrollmentService).save(any(CourseEnrollment.class));
+
+        CoursePurchaseVO vo = enrollmentService.purchaseCourse(1L, 5L);
+
+        assertEquals(1L, vo.courseId());
+        assertEquals("ACTIVE", vo.status());
+        assertTrue(vo.purchased());
+        // 插入实体语义：ACTIVE + enrolledAt=now + 归属 courseId/studentId
+        ArgumentCaptor<CourseEnrollment> captor = ArgumentCaptor.forClass(CourseEnrollment.class);
+        verify(enrollmentService).save(captor.capture());
+        CourseEnrollment inserted = captor.getValue();
+        assertEquals(1L, inserted.getCourseId());
+        assertEquals(5L, inserted.getStudentId());
+        assertEquals("ACTIVE", inserted.getStatus());
+        assertNotNull(inserted.getEnrolledAt(), "插入记录应携带 enrolledAt=now");
+    }
+
+    @Test
+    @DisplayName("T1.2: purchaseCourse → DROPPED 记录重激活（置 ACTIVE + enrolledAt=now）")
+    void purchaseCourse_dropped_reactivates() throws Exception {
+        injectChainFields();
+        stubCourseQuery(activeCourse(1L));
+        CourseEnrollment dropped = enrollment(1L, 5L, "DROPPED");
+        dropped.setId(10L);
+        when(enrollmentMapper.selectOne(any())).thenReturn(dropped);
+        when(enrollmentMapper.update(isNull(), any())).thenReturn(1);
+
+        CoursePurchaseVO vo = enrollmentService.purchaseCourse(1L, 5L);
+
+        assertEquals("ACTIVE", vo.status());
+        assertTrue(vo.purchased());
+        // 重激活走主表链式 UPDATE，不产生新插入
+        verify(enrollmentMapper).update(isNull(), any());
+        verify(enrollmentService, never()).save(any(CourseEnrollment.class));
+    }
+
+    @Test
+    @DisplayName("T1.2: purchaseCourse → 已 ACTIVE 幂等直接返回成功，不产生任何写")
+    void purchaseCourse_active_idempotentNoWrite() throws Exception {
+        injectChainFields();
+        stubCourseQuery(activeCourse(1L));
+        CourseEnrollment active = enrollment(1L, 5L, "ACTIVE");
+        active.setId(11L);
+        when(enrollmentMapper.selectOne(any())).thenReturn(active);
+
+        CoursePurchaseVO vo = enrollmentService.purchaseCourse(1L, 5L);
+
+        assertEquals(1L, vo.courseId());
+        assertEquals("ACTIVE", vo.status());
+        assertTrue(vo.purchased());
+        // 幂等：无插入、无更新（重复调用不重复插行）
+        verify(enrollmentService, never()).save(any(CourseEnrollment.class));
+        verify(enrollmentMapper, never()).update(isNull(), any());
+        verify(enrollmentMapper, never()).insert(any(CourseEnrollment.class));
+    }
+
+    @Test
+    @DisplayName("T1.2: purchaseCourse → 并发撞唯一索引（DIVE）按已购幂等返回成功，禁止重查（B.2.3）")
+    void purchaseCourse_uniqueViolation_returnsSuccessWithoutRequery() throws Exception {
+        injectChainFields();
+        stubCourseQuery(activeCourse(1L));
+        when(enrollmentMapper.selectOne(any())).thenReturn(null);
+        // 并发竞态：check 落空后插入撞 uniq_course_enrollment 部分唯一索引
+        doThrow(new DataIntegrityViolationException("uniq_course_enrollment 冲突"))
+                .when(enrollmentService)
+                .save(any(CourseEnrollment.class));
+
+        CoursePurchaseVO vo = enrollmentService.purchaseCourse(1L, 5L);
+
+        // 契约 B.2.3：事务已 rollback-only，catch 后直接构造成功 VO（不报 409、不重查）
+        assertEquals(1L, vo.courseId());
+        assertEquals("ACTIVE", vo.status());
+        assertTrue(vo.purchased());
+        // 禁止在原事务内重查（会触发 UnexpectedRollbackException）——selectOne 仅课程查询后的首次选课查询
+        verify(enrollmentMapper, times(1)).selectOne(any());
+    }
+
+    @Test
+    @DisplayName("T1.2: purchaseCourse 标注 @Transactional（选课写入原子性）")
+    void purchaseCourse_isTransactional() throws NoSuchMethodException {
+        Method method = EnrollmentServiceImpl.class.getMethod("purchaseCourse", Long.class, Long.class);
+        TransactionAttribute attr = TX_SOURCE.getTransactionAttribute(method, EnrollmentServiceImpl.class);
+
+        // 契约 B.2：check-then-insert 事务内执行（DIVE 兜底依赖事务回滚语义）
+        assertNotNull(attr, "purchaseCourse 应标注 @Transactional");
+        assertTrue(attr.rollbackOn(new RuntimeException("选课写入失败")));
     }
 }

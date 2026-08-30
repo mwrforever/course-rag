@@ -25,8 +25,9 @@
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
 import { computed, reactive, ref } from 'vue'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
+  PhArrowClockwise,
   PhCheckCircle,
   PhListDashes,
   PhMagnifyingGlass,
@@ -41,7 +42,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DataTable } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/ui/empty-state'
+import { IconButton } from '@/components/ui/icon-button'
 import { PageHead } from '@/components/ui/page-head'
+import { RemoteSelect } from '@/components/ui/remote-select'
 import { ApiError, chunkApi, courseApi, knowledgeBaseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 
@@ -131,6 +134,7 @@ const {
   data,
   isLoading,
   isError,
+  isFetching,
   error: queryError,
   refetch,
 } = useQuery({
@@ -209,30 +213,31 @@ const allSelected = computed(
 const batchDialogOpen = ref(false)
 const batchCollectionType = ref<'' | CollectionType>('')
 
-/** 课程选择三态（默认「不改」）；远程搜索 query 化与上传 Dialog 同构 */
+/** 课程选择三态（默认「不改」）；remote-select 单选承载 keep/course 两态，default 独立入口 */
 const batchCourseChoice = ref<CourseChoice>({ kind: 'keep' })
-const batchCourseQuery = ref('')
+
 /**
- * 课程搜索：输入即查（size 10）；queryKey 收敛竞态（快速输入时旧请求不覆盖新结果），空关键字不查询。
- * 语义变化说明：失败后重试须改词或重开 Dialog——同词不重复发请求（queryKey 收敛设计使然）。
- * 批 4 打磨（reviewer L1/L2）：placeholderData 保留上一关键词结果（打字过程结果区不闪空）；
- * refetchOnWindowFocus=false——搜索词驱动的快照结果，窗口焦点回切不重拉（消除焦点回切引发的
- * 「搜索中…」闪现与后台刷新失败清空已展示结果）。
+ * 课程远程搜索 fetcher（remote-select 契约 E：防抖 300ms + AbortController 取消，
+ * 过期响应禁止回写——替代原 queryKey 收敛竞态方案）
+ *
+ * @param keyword 搜索关键字（空串 = 首屏候选）
+ * @param signal 取消信号（透传 api 层）
+ * @returns 命中的课程列表（size 10）
  */
-const batchCourseResultsQuery = useQuery({
-  queryKey: computed(() => ['admin-course-search', batchCourseQuery.value.trim()]),
-  queryFn: () => courseApi.list({ keyword: batchCourseQuery.value.trim(), size: 10 }),
-  enabled: computed(() => batchCourseQuery.value.trim().length > 0),
-  placeholderData: keepPreviousData,
-  refetchOnWindowFocus: false,
-})
-/** 搜索结果展示：空关键字 / 查询失败不展示（对齐原手动实现静默清空语义） */
-const batchCourseResults = computed(() =>
-  batchCourseQuery.value.trim() && !batchCourseResultsQuery.isError.value
-    ? (batchCourseResultsQuery.data.value?.records ?? [])
-    : [],
-)
-const batchCourseSearching = computed(() => batchCourseResultsQuery.isFetching.value)
+async function fetchBatchCourses(keyword: string, signal: AbortSignal): Promise<CourseDTO[]> {
+  const res = await courseApi.list({ keyword, size: 10, signal })
+  return res.records ?? []
+}
+
+/**
+ * remote-select 选中集回抛：null = 「不改」（keep），对象 = 指定课程（course）
+ *
+ * @param value 最新选中课程（联合类型按首元素归一收窄）
+ */
+function onBatchCourseSelect(value: CourseDTO | CourseDTO[] | null) {
+  const course = Array.isArray(value) ? (value[0] ?? null) : value
+  batchCourseChoice.value = course ? { kind: 'course', course } : { kind: 'keep' }
+}
 
 /** 表单校验：collectionType 与 courseId 均为「不改」时无实际改动，禁用提交 */
 const batchSubmitDisabled = computed(
@@ -243,18 +248,11 @@ function openBatchDialog() {
   batchDialogOpen.value = true
   batchCollectionType.value = ''
   batchCourseChoice.value = { kind: 'keep' }
-  batchCourseQuery.value = ''
 }
 
 function closeBatchDialog() {
   if (batchSubmitting.value) return
   batchDialogOpen.value = false
-}
-
-/** 选中课程（三态之一）：chip 展示或「不改」，清空搜索词（结果随 enabled 关闭收起） */
-function pickBatchCourse(choice: CourseChoice) {
-  batchCourseChoice.value = choice
-  batchCourseQuery.value = ''
 }
 
 /**
@@ -452,6 +450,15 @@ function closeContext() {
   <!-- 页头（设计稿 .page-head）：主标题 + 副题 + 右侧批量动作区（勾选后出现） -->
   <PageHead title="分片修正工作台" subtitle="修正内容分类后标记已修正，批量修正按文档级同步向量化">
     <template #actions>
+      <!-- 手动刷新（T2.3）：refetch 期间禁用防重复 -->
+      <IconButton
+        label="刷新"
+        data-testid="refresh-chunks"
+        :loading="isFetching"
+        @click="refetch()"
+      >
+        <PhArrowClockwise class="h-4 w-4" />
+      </IconButton>
       <Button
         v-if="selected.size > 0"
         data-testid="batch-update"
@@ -531,7 +538,7 @@ function closeContext() {
     <div
       v-for="i in 5"
       :key="`row-${i}`"
-      class="h-14 animate-pulse border-b border-border bg-slate-50 last:border-b-0"
+      class="h-12 animate-pulse border-b border-border bg-slate-50 last:border-b-0"
     />
   </div>
 
@@ -727,77 +734,14 @@ function closeContext() {
           </select>
         </div>
         <div>
-          <label for="batch-course-search" class="mb-1.5 block text-sm font-medium text-text">
-            关联课程
-          </label>
-          <!-- 未选择时：输入框 + 固定「不改/通用(DEFAULT)」选项 + 远程搜索结果 -->
-          <div v-if="batchCourseChoice.kind === 'keep'" class="relative">
-            <input
-              id="batch-course-search"
-              v-model="batchCourseQuery"
-              data-testid="batch-course-search"
-              type="text"
-              aria-label="搜索课程"
-              placeholder="输入课程名搜索，或不改保持现状"
-              class="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text outline-none transition-colors duration-150 placeholder:text-text-subtle focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
-            <ul
-              data-testid="batch-course-results"
-              class="mt-1 max-h-52 w-full overflow-auto rounded-xl border border-border bg-surface p-1 shadow-md"
-            >
-              <li>
-                <button
-                  type="button"
-                  data-testid="batch-course-keep"
-                  class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-brand-soft hover:text-brand"
-                  @click="pickBatchCourse({ kind: 'keep' })"
-                >
-                  不改（保持现有课程）
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  data-testid="batch-course-default"
-                  class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-brand-soft hover:text-brand"
-                  @click="pickBatchCourse({ kind: 'default' })"
-                >
-                  通用（DEFAULT）
-                </button>
-              </li>
-              <li v-for="c in batchCourseResults" :key="c.id">
-                <button
-                  type="button"
-                  :data-testid="`batch-course-option-${c.id}`"
-                  class="w-full rounded-lg px-3 py-1.5 text-left text-sm text-text transition-colors duration-150 hover:bg-brand-soft hover:text-brand"
-                  @click="pickBatchCourse({ kind: 'course', course: c })"
-                >
-                  {{ c.title }}
-                </button>
-              </li>
-              <li v-if="batchCourseSearching" class="px-3 py-1.5 text-xs text-text-subtle">
-                搜索中…
-              </li>
-            </ul>
-          </div>
-          <!-- 已选择：chip 展示 + 清除回「不改」 -->
+          <span class="mb-1.5 block text-sm font-medium text-text"> 关联课程 </span>
+          <!-- 「通用(DEFAULT)」态：提示卡 + 清除回「不改」 -->
           <div
-            v-else
-            :data-testid="
-              batchCourseChoice.kind === 'default'
-                ? 'batch-course-picked-default'
-                : 'batch-course-picked'
-            "
+            v-if="batchCourseChoice.kind === 'default'"
+            data-testid="batch-course-picked-default"
             class="flex items-center justify-between rounded-xl border border-border bg-brand-light px-3 py-2 text-sm text-text"
           >
-            <span>
-              已选：
-              {{
-                batchCourseChoice.kind === 'course'
-                  ? batchCourseChoice.course.title
-                  : '通用（DEFAULT）'
-              }}
-            </span>
+            <span>已选：通用（DEFAULT）</span>
             <button
               type="button"
               data-testid="batch-course-clear"
@@ -808,6 +752,29 @@ function closeContext() {
               <PhX class="h-4 w-4" />
             </button>
           </div>
+          <!-- keep/course 态：remote-select 单选（防抖 300ms + 取消；不选 = 不改）+ 通用入口 -->
+          <template v-else>
+            <RemoteSelect
+              :model-value="batchCourseChoice.kind === 'course' ? batchCourseChoice.course : null"
+              :get-value="(c: CourseDTO) => c.id"
+              :get-label="(c: CourseDTO) => c.title"
+              :fetcher="fetchBatchCourses"
+              placeholder="输入课程名搜索，或不选保持现状"
+              empty-text="没有匹配的课程"
+              data-testid="batch-course"
+              @update:model-value="onBatchCourseSelect"
+            />
+            <!-- 通用入口：仅「不改」态展示（选中具体课程后需先清除再设通用） -->
+            <button
+              v-if="batchCourseChoice.kind === 'keep'"
+              type="button"
+              data-testid="batch-course-default"
+              class="mt-1.5 text-xs text-text-muted transition-colors duration-150 hover:text-brand"
+              @click="batchCourseChoice = { kind: 'default' }"
+            >
+              设为通用（DEFAULT）
+            </button>
+          </template>
         </div>
         <div class="flex justify-end gap-2 pt-2">
           <Button variant="outline" :disabled="batchSubmitting" @click="closeBatchDialog">

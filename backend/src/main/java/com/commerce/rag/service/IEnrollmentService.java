@@ -5,11 +5,12 @@ import com.commerce.rag.dto.CourseDTO;
 import com.commerce.rag.dto.StudentDTO;
 import com.commerce.rag.entity.CourseEnrollment;
 import com.commerce.rag.entity.CourseInfo;
+import com.commerce.rag.vo.CoursePurchaseVO;
 import com.commerce.rag.vo.StudentCourseVO;
 import java.util.List;
 
 /**
- * 选课管理服务接口 —— 封装 course_enrollment 的选课/退课/查询（主表 CourseEnrollment）
+ * 选课管理服务接口 —— 封装 course_enrollment 的选课/退课/查询/学生自助购买（主表 CourseEnrollment）
  *
  * @author commerce-rag
  */
@@ -26,6 +27,22 @@ public interface IEnrollmentService extends IService<CourseEnrollment> {
      * @return 实际新增选课数
      */
     int addStudents(Long courseId, List<Long> studentIds, Long currentUserId, boolean isAdmin);
+
+    /**
+     * 学生自助购买课程（C 端 POST /api/v1/student/courses/{courseId}/purchase）
+     *
+     * <p>契约 B.2 幂等语义：已 ACTIVE 直接返回成功（无任何写）；DROPPED 重激活
+     * （置 ACTIVE + enrolledAt=now）；无记录插入 ACTIVE 记录；并发撞
+     * uniq_course_enrollment(course_id, student_id) 部分唯一索引按已购成功返回
+     * （catch 后直接构造成功 VO，禁止在 rollback-only 事务内重查）。
+     * 不递增 learning_count（契约 D2：与 addStudents 行为一致，该列无业务写路径）。
+     *
+     * @param courseId  课程 ID（路径参数）
+     * @param studentId 学生 ID（认证上下文取，禁止入参传递）
+     * @return 购买结果 VO（courseId/status=ACTIVE/purchased=true）
+     * @throws com.commerce.rag.exception.BizException 404 课程不存在、已删除或已下架
+     */
+    CoursePurchaseVO purchaseCourse(Long courseId, Long studentId);
 
     /**
      * 移除学生（软删选课记录，status → DROPPED）

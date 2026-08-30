@@ -109,7 +109,7 @@ describe('课程学生名单（/courses/:id/students）', () => {
     wrapper.unmount()
   })
 
-  it('添加学生：搜索多选 → POST {studentIds} → 成功数 toast → 名单刷新', async () => {
+  it('添加学生：remote-select 多选 → POST {studentIds} → 成功数 toast → 名单刷新', async () => {
     apiMock.enrollmentApi.students
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([student('s-1', '小明')])
@@ -124,10 +124,12 @@ describe('课程学生名单（/courses/:id/students）', () => {
     await flushPromises()
     expect(wrapper.find('[data-testid="student-dialog"]').exists()).toBe(true)
 
-    await wrapper.find('[data-testid="student-search"]').setValue('小')
+    // remote-select：focus 即拉取候选（fetcher → userApi.list），点击选项入 chips
+    await wrapper.find('[data-testid="remote-input"]').trigger('focus')
     await flushPromises()
-    // 整行点击切换勾选
-    await wrapper.find('[data-testid="student-option-s-1"]').trigger('click')
+    expect(wrapper.find('[data-testid="remote-option-s-1"]').exists()).toBe(true)
+    await wrapper.find('[data-testid="remote-option-s-1"]').trigger('click')
+    expect(wrapper.find('[data-testid="remote-chip-s-1"]').exists()).toBe(true)
     await wrapper.find('[data-testid="submit-students"]').trigger('click')
     await flushPromises()
     expect(apiMock.enrollmentApi.addStudents).toHaveBeenCalledWith('c-1', {
@@ -137,6 +139,17 @@ describe('课程学生名单（/courses/:id/students）', () => {
     expect(wrapper.find('[data-testid="student-dialog"]').exists()).toBe(false)
     // 失效重拉为异步链，重拉次数以 waitFor 收敛
     await vi.waitFor(() => expect(apiMock.enrollmentApi.students).toHaveBeenCalledTimes(2))
+    wrapper.unmount()
+  })
+
+  it('刷新按钮（T2.3）：点击触发名单查询重拉', async () => {
+    apiMock.enrollmentApi.students.mockResolvedValue([student('s-1', '小明')])
+    const { wrapper } = await mountAt()
+    await flushPromises()
+
+    await wrapper.find('[data-testid="refresh-students"]').trigger('click')
+    await flushPromises()
+    expect(apiMock.enrollmentApi.students).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 

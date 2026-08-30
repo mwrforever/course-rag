@@ -27,9 +27,11 @@ import com.commerce.rag.mapper.CourseInfoMapper;
 import com.commerce.rag.mapper.CourseScheduleMapper;
 import com.commerce.rag.mapper.CourseTeacherMapper;
 import com.commerce.rag.mapper.DocumentChunkMapper;
+import com.commerce.rag.properties.CourseProperties;
 import com.commerce.rag.service.ICourseQueryService;
 import com.commerce.rag.service.ICourseService;
 import com.commerce.rag.service.ICourseTeacherService;
+import com.commerce.rag.vo.PublicCourseDetailVO;
 import com.commerce.rag.vo.PublicCourseVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -43,6 +45,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 /**
@@ -50,7 +54,8 @@ import org.springframework.util.StringUtils;
  *
  * <p>核心功能：
  * <ul>
- *   <li>课程基本信息 CRUD（course_info）</li>
+ *   <li>课程基本信息 CRUD（course_info；创建时同事务生成报名链接写回，更新忽略前端传入 enrollmentLink）</li>
+ *   <li>公开课程列表/详情查询（C 端免登录，含 price 公开字段）</li>
  *   <li>课程内容 4 Tab 管理（course_content）</li>
  *   <li>授课教师多对多管理（course_teacher）</li>
  *   <li>级联软删：course_content + course_schedule + course_teacher + course_enrollment + document_chunk</li>
@@ -94,15 +99,33 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
     /** Dashboard 统计缓存失效（Spring Cache 注解化的写方统一出口，先写 DB 后失效——一致性铁律） */
     private final DashboardCacheEvictor dashboardCacheEvictor;
 
+    /** 课程域配置（报名链接生成基址 course.enroll-base-url） */
+    private final CourseProperties courseProperties;
+
     // ==================== 课程基本信息 CRUD ====================
 
     /**
-     * 创建课程
+     * 创建课程（落库 + 同事务生成报名链接写回）
      *
-     * @param request   创建请求
-     * @param createdBy 创建者 ID
-     * @return 课程 DTO（含雪花 ID，不含关联数据）
+     * <p>执行流程：insert 落库拿到雪花 ID → 同事务 {@code UPDATE course_info SET enrollment_link =
+     * '{enrollBaseUrl}/courses/{id}'}（主表链式 this.lambdaUpdate()）→ 返回 DTO（enrollmentLink
+     * 为服务端生成值）。
+     *
+     * <p>契约 A.2.2 行为变更：
+     * <ul>
+     *   <li>请求体中的 enrollmentLink 一律忽略（服务端管理字段，CreateCourseRequest 字段保留仅为
+     *       兼容旧客户端，服务端不读）；</li>
+     *   <li>方法加 {@code @Transactional}：insert 与链接写回同 commit，事务失败整体回滚不留空链接；</li>
+     *   <li>缓存失效 evictCourse 挂 {@code TransactionSynchronization#afterCommit}（提交后失效）——
+     *       避免加事务后同步调用发生在 commit 之前、出现「失效后-提交前并发读回填旧值」窗口
+     *       （宪法 A.5.4 先写 DB 后失效的竞态边界）；无事务上下文时退化为直接失效（保持既有语义）。</li>
+     * </ul>
+     *
+     * @param request   创建请求（enrollmentLink 字段被忽略）
+     * @param createdBy 创建者 ID（来自认证上下文，不可空）
+     * @return 课程 DTO（含雪花 ID 与服务端生成的 enrollmentLink，不含关联数据）
      */
+    @Transactional
     public CourseDTO createCourse(CreateCourseRequest request, Long createdBy) {
         CourseInfo course = new CourseInfo();
         course.setTitle(request.title());
@@ -113,16 +136,65 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
         course.setPrice(request.price());
         course.setDuration(request.duration());
         course.setTags(tagsToJson(request.tags()));
-        course.setEnrollmentLink(request.enrollmentLink());
+        // 契约 A.2.2：请求体 enrollmentLink 不再采信（落库留空，落库后由服务端生成写回）
         course.setStatus("ACTIVE");
         course.setCreatedBy(createdBy);
         course.setRating(BigDecimal.ZERO);
         course.setLearningCount(0);
         courseInfoMapper.insert(course);
-        // 新建课程影响搜索列表可见性，失效该课程相关缓存键（先写 DB 后失效）
-        courseQueryService.evictCourse(course.getId());
-        log.info("创建课程: courseId={}, title={}, createdBy={}", course.getId(), course.getTitle(), createdBy);
+        // 落库拿到雪花 ID 后，同事务生成报名链接写回（insert + update 同 commit，失败整体回滚）
+        String enrollmentLink = buildEnrollmentLink(course.getId());
+        this.lambdaUpdate()
+                .eq(CourseInfo::getId, course.getId())
+                .set(CourseInfo::getEnrollmentLink, enrollmentLink)
+                .update();
+        // 内存实体同步生成值，保证返回 DTO 与库内一致
+        course.setEnrollmentLink(enrollmentLink);
+        // 新建课程影响搜索列表可见性，失效该课程相关缓存键——afterCommit（提交后失效，见方法注释）
+        evictCourseCacheAfterCommit(course.getId());
+        log.info(
+                "创建课程: courseId={}, title={}, createdBy={}, enrollmentLink={}",
+                course.getId(),
+                course.getTitle(),
+                createdBy,
+                enrollmentLink);
         return toDTO(course, false);
+    }
+
+    /**
+     * 生成报名链接：{enrollBaseUrl}/courses/{courseId}
+     *
+     * <p>基址尾部斜杠归一化剥离（配置 {@code http://host/} 不产生 {@code //courses/} 双斜杠）。
+     *
+     * @param courseId 课程 ID（insert 后的雪花 ID，不可空）
+     * @return 报名链接（如 {@code http://localhost:3000/courses/1948633200000000001}）
+     */
+    private String buildEnrollmentLink(Long courseId) {
+        String base = courseProperties.enrollBaseUrl();
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + "/courses/" + courseId;
+    }
+
+    /**
+     * 注册课程查询缓存失效：事务提交后执行（afterCommit），无事务时直接执行
+     *
+     * @param courseId 课程 ID
+     */
+    private void evictCourseCacheAfterCommit(Long courseId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            // 事务内：挂 afterCommit 回调，提交后失效（避免失效后-提交前并发读回填旧值窗口）
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    courseQueryService.evictCourse(courseId);
+                }
+            });
+        } else {
+            // 无事务上下文（如直接调用/单测）：保持既有同步失效语义
+            courseQueryService.evictCourse(courseId);
+        }
     }
 
     /**
@@ -181,7 +253,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
      * 课程数据量小且低频，不做缓存——避免引入写路径失效链路
      * （课程增删改后前端重新拉取即得最新值）。
      *
-     * @return 公开课程视图对象列表（仅对外信息字段）
+     * <p>契约 C.2.1：投影补 price 列（价格转为 C 端公开展示字段，列表卡片展示）。
+     *
+     * @return 公开课程视图对象列表（仅对外信息字段，含价格）
      */
     public List<PublicCourseVO> findPublicCourses() {
         log.info("查询公开课程列表");
@@ -196,11 +270,46 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
                         CourseInfo::getInstructorName,
                         CourseInfo::getDuration,
                         CourseInfo::getRating,
-                        CourseInfo::getLearningCount)
+                        CourseInfo::getLearningCount,
+                        CourseInfo::getPrice)
                 .eq(CourseInfo::getStatus, "ACTIVE")
                 .orderByDesc(CourseInfo::getRating)
                 .list();
         return courses.stream().map(publicCourseConverter::toVO).toList();
+    }
+
+    /**
+     * 查询单个公开课程详情（C 端公开详情端点 GET /api/v1/public/courses/{id}）
+     *
+     * <p>执行流程：主表链式查询 + 精确投影（全详情字段），限定 id + status=ACTIVE
+     * （@TableLogic 自动过滤已删除）→ 不存在即 404（课程不存在/已下架/已删除统一文案，不泄露存在性）
+     * → MapStruct 转公开详情 VO。
+     *
+     * @param courseId 课程 ID（路径参数，不可空）
+     * @return 公开课程详情 VO（含 price，单位元）
+     * @throws BizException 404 课程不存在、已逻辑删除或 status 非 ACTIVE
+     */
+    public PublicCourseDetailVO findPublicCourseById(Long courseId) {
+        log.info("查询公开课程详情: courseId={}", courseId);
+        CourseInfo course = this.lambdaQuery()
+                .select(
+                        CourseInfo::getId,
+                        CourseInfo::getTitle,
+                        CourseInfo::getDescription,
+                        CourseInfo::getCoverImage,
+                        CourseInfo::getCategory,
+                        CourseInfo::getInstructorName,
+                        CourseInfo::getDuration,
+                        CourseInfo::getRating,
+                        CourseInfo::getLearningCount,
+                        CourseInfo::getPrice)
+                .eq(CourseInfo::getId, courseId)
+                .eq(CourseInfo::getStatus, "ACTIVE")
+                .one();
+        if (course == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "课程不存在或已下架");
+        }
+        return publicCourseConverter.toDetailVO(course);
     }
 
     /**
@@ -248,7 +357,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
         if (request.price() != null) wrapper.set(CourseInfo::getPrice, request.price());
         if (request.duration() != null) wrapper.set(CourseInfo::getDuration, request.duration());
         if (request.tags() != null) wrapper.set(CourseInfo::getTags, tagsToJson(request.tags()));
-        if (request.enrollmentLink() != null) wrapper.set(CourseInfo::getEnrollmentLink, request.enrollmentLink());
+        // 契约 A.2.3：enrollmentLink 更新分支已删除——报名链接为服务端管理字段（创建时生成），
+        // 更新接口传入 enrollmentLink 一律不生效
         if (request.status() != null) wrapper.set(CourseInfo::getStatus, request.status());
         wrapper.set(CourseInfo::getUpdatedAt, LocalDateTime.now());
         courseInfoMapper.update(null, wrapper);

@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { vReveal } from '@/directives/reveal'
 import CourseOverviewView from '@/views/course/CourseOverviewView.vue'
 
-/** api mock：courseApi 增删改查 + ApiError */
+/** api mock：courseApi/userApi + apiClient（image-upload 上传通道）+ ApiError */
 const apiMock = vi.hoisted(() => ({
   courseApi: {
     get: vi.fn(),
@@ -19,6 +19,10 @@ const apiMock = vi.hoisted(() => ({
     addTeachers: vi.fn(),
     removeTeachers: vi.fn(),
   },
+  userApi: {
+    list: vi.fn(),
+  },
+  apiClient: { post: vi.fn() },
   ApiError: class ApiError extends Error {
     code: number
     constructor(code: number, message: string) {
@@ -31,9 +35,25 @@ vi.mock('@/lib/api', () => apiMock)
 vi.mock('@/lib/toast', () => ({ showToast: vi.fn() }))
 
 import { showToast } from '@/lib/toast'
-import type { CourseDTO } from '@/lib/types'
+import type { CourseDTO, PageResponse, UserDTO } from '@/lib/types'
 
-/** 课程工厂 */
+function pageOf<T>(records: T[]): PageResponse<T> {
+  return { records, total: String(records.length), page: 1, size: 100 }
+}
+
+/** 教师工厂（remote-select 选项载体） */
+function teacher(id: string, displayName: string): UserDTO {
+  return {
+    id,
+    username: `u-${id}`,
+    displayName,
+    role: 'TEACHER',
+    status: 'ACTIVE',
+    createdAt: '2026-08-01T00:00:00Z',
+  }
+}
+
+/** 课程工厂（时长为数字形态：表单 zod 校验要求课时数字或留空） */
 function course(over: Partial<CourseDTO> = {}): CourseDTO {
   return {
     id: 'c-1',
@@ -43,7 +63,7 @@ function course(over: Partial<CourseDTO> = {}): CourseDTO {
     category: 'AI',
     instructorName: '老王',
     price: 199,
-    duration: '8 课时',
+    duration: '8',
     tags: ['RAG'],
     rating: 0,
     learningCount: 0,
@@ -89,6 +109,8 @@ async function mountAt(path: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // 教师池缺省空（页面查询 + remote-select fetcher 共用）
+  apiMock.userApi.list.mockResolvedValue(pageOf([]))
 })
 
 describe('课程概览（编辑模式 /courses/:id）', () => {
@@ -130,12 +152,30 @@ describe('课程概览（编辑模式 /courses/:id）', () => {
     await flushPromises()
     await wrapper.find('[data-testid="save-basic"]').trigger('click')
     await flushPromises()
-    expect(wrapper.find('[data-testid="field-error"]').text()).toBe('请输入课程标题')
+    // 错误内联于标题字段下方（Input 的 aria-describedby 关联红字）
+    const titleInput = wrapper.find('[data-testid="field-title"]')
+    const descId = titleInput.attributes('aria-describedby')
+    expect(wrapper.find(`#${descId}`).text()).toBe('请输入课程标题')
     expect(apiMock.courseApi.update).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
-  it('保存编辑：update 全字段 + toast + 不跳转', async () => {
+  it('价格校验：负数就地报错不发请求', async () => {
+    apiMock.courseApi.get.mockResolvedValue(course())
+    const { wrapper } = await mountAt('/courses/c-1')
+    await flushPromises()
+    // number 输入域非法字符由浏览器吞掉（值归空），此处以负数覆盖校验分支
+    await wrapper.find('[data-testid="field-price"]').setValue('-5')
+    await wrapper.find('[data-testid="save-basic"]').trigger('click')
+    await flushPromises()
+    const priceInput = wrapper.find('[data-testid="field-price"]')
+    const descId = priceInput.attributes('aria-describedby')
+    expect(wrapper.find(`#${descId}`).text()).toBe('价格须为非负数字')
+    expect(apiMock.courseApi.update).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('保存编辑：update 全字段 + toast + 不跳转（无教师变动不调教师端点）', async () => {
     apiMock.courseApi.get.mockResolvedValue(course())
     apiMock.courseApi.update.mockResolvedValue(undefined)
     const { wrapper } = await mountAt('/courses/c-1')
@@ -146,7 +186,88 @@ describe('课程概览（编辑模式 /courses/:id）', () => {
       'c-1',
       expect.objectContaining({ title: 'RAG 实战营', status: 'ACTIVE', price: 199 }),
     )
+    // 报名链接服务端管理：提交体不含 enrollmentLink（契约 A.2.3）
+    expect(apiMock.courseApi.update.mock.calls[0][1]).not.toHaveProperty('enrollmentLink')
+    expect(apiMock.courseApi.addTeachers).not.toHaveBeenCalled()
+    expect(apiMock.courseApi.removeTeachers).not.toHaveBeenCalled()
     expect(showToast).toHaveBeenCalledWith('课程信息已保存', 'success')
+    wrapper.unmount()
+  })
+
+  it('报名链接：只读展示 + 一键复制（clipboard）', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    apiMock.courseApi.get.mockResolvedValue(course())
+    const { wrapper } = await mountAt('/courses/c-1')
+    await flushPromises()
+
+    const box = wrapper.find('[data-testid="enrollment-link-box"]')
+    expect(box.exists()).toBe(true)
+    const linkInput = wrapper.find('[data-testid="field-enrollment-link"]')
+    // 只读展示：无 input 元素承载链接（p 文本展示）
+    expect(linkInput.text()).toBe('https://apply.example.com')
+    await wrapper.find('[data-testid="copy-link"]').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith('https://apply.example.com')
+    wrapper.unmount()
+  })
+
+  it('封面：image-upload 组件承载（回显已有 URL）', async () => {
+    apiMock.courseApi.get.mockResolvedValue(course())
+    const { wrapper } = await mountAt('/courses/c-1')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="upload-preview"]').attributes('src')).toBe(
+      'https://cdn.example.com/cover.jpg',
+    )
+    wrapper.unmount()
+  })
+
+  it('分类：datalist 预置选项在场（允许自定义输入）', async () => {
+    apiMock.courseApi.get.mockResolvedValue(course())
+    const { wrapper } = await mountAt('/courses/c-1')
+    await flushPromises()
+    const category = wrapper.find('[data-testid="field-category"]')
+    expect(category.attributes('list')).toBe('course-category-presets')
+    expect(wrapper.findAll('#course-category-presets option').length).toBeGreaterThan(0)
+    wrapper.unmount()
+  })
+
+  it('授课教师：编辑态回显 chip + 保存按差集调裸数组端点', async () => {
+    apiMock.courseApi.get.mockResolvedValue(course({ teacherIds: ['t1', 't2'] }))
+    apiMock.userApi.list.mockResolvedValue(
+      pageOf([teacher('t1', '张老师'), teacher('t2', '李老师')]),
+    )
+    apiMock.courseApi.update.mockResolvedValue(undefined)
+    apiMock.courseApi.addTeachers.mockResolvedValue(undefined)
+    apiMock.courseApi.removeTeachers.mockResolvedValue(undefined)
+    const { wrapper } = await mountAt('/courses/c-1')
+    await flushPromises()
+
+    // 回显：已分配教师以 chip 展示
+    expect(wrapper.find('[data-testid="remote-chip-t1"]').text()).toContain('张老师')
+    expect(wrapper.find('[data-testid="remote-chip-t2"]').text()).toContain('李老师')
+
+    // 变更：移除 t1 → 保存时 DELETE [t1]（裸数组）
+    await wrapper.find('[data-testid="remote-chip-remove-t1"]').trigger('click')
+    await wrapper.find('[data-testid="save-basic"]').trigger('click')
+    await flushPromises()
+    expect(apiMock.courseApi.removeTeachers).toHaveBeenCalledWith('c-1', ['t1'])
+    expect(apiMock.courseApi.addTeachers).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('授课教师：讲师名为空时自动预填第一位教师姓名', async () => {
+    apiMock.courseApi.get.mockResolvedValue(
+      course({ instructorName: '', teacherIds: ['t1', 't2'] }),
+    )
+    apiMock.userApi.list.mockResolvedValue(
+      pageOf([teacher('t1', '张老师'), teacher('t2', '李老师')]),
+    )
+    const { wrapper } = await mountAt('/courses/c-1')
+    await flushPromises()
+    expect(
+      (wrapper.find('[data-testid="field-instructor"]').element as HTMLInputElement).value,
+    ).toBe('张老师')
     wrapper.unmount()
   })
 
@@ -174,12 +295,16 @@ describe('课程概览（编辑模式 /courses/:id）', () => {
 })
 
 describe('课程概览（新建模式 /courses/new）', () => {
-  it('新建：零加载请求，create 后跳转详情', async () => {
+  it('新建：零加载请求，create 后跳转详情；报名链接提示保存后生成', async () => {
     apiMock.courseApi.create.mockResolvedValue(course({ id: 'c-9' }))
     const { wrapper, router } = await mountAt('/courses/new')
     await flushPromises()
     expect(apiMock.courseApi.get).not.toHaveBeenCalled()
+    expect(apiMock.userApi.list).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('创建课程')
+    // 新建态：报名链接只提示不出输入框
+    expect(wrapper.find('[data-testid="enrollment-link-hint"]').text()).toBe('保存后自动生成')
+    expect(wrapper.find('[data-testid="enrollment-link-box"]').exists()).toBe(false)
 
     await wrapper.find('[data-testid="field-title"]').setValue('新课程')
     await wrapper.find('[data-testid="save-basic"]').trigger('click')
@@ -191,6 +316,30 @@ describe('课程概览（新建模式 /courses/new）', () => {
     await flushPromises()
     expect(router.currentRoute.value.name).toBe('course-detail')
     expect(router.currentRoute.value.params.id).toBe('c-9')
+    wrapper.unmount()
+  })
+
+  it('新建含教师：create 后 POST 教师裸数组落库（契约 E.3）', async () => {
+    const selected = [teacher('t1', '张老师'), teacher('t2', '李老师')]
+    apiMock.courseApi.create.mockResolvedValue(course({ id: 'c-9' }))
+    apiMock.courseApi.addTeachers.mockResolvedValue(undefined)
+    const { wrapper } = await mountAt('/courses/new')
+    await flushPromises()
+
+    // 模拟 remote-select 回抛选中集（组件内部由用户交互触发，这里直调事件入口）
+    const remote = wrapper.findComponent({ name: 'RemoteSelect' })
+    expect(remote.exists()).toBe(true)
+    remote.vm.$emit('update:modelValue', selected)
+    await flushPromises()
+    // 讲师名自动预填第一位教师
+    expect(
+      (wrapper.find('[data-testid="field-instructor"]').element as HTMLInputElement).value,
+    ).toBe('张老师')
+
+    await wrapper.find('[data-testid="field-title"]').setValue('新课程')
+    await wrapper.find('[data-testid="save-basic"]').trigger('click')
+    await flushPromises()
+    expect(apiMock.courseApi.addTeachers).toHaveBeenCalledWith('c-9', ['t1', 't2'])
     wrapper.unmount()
   })
 })
