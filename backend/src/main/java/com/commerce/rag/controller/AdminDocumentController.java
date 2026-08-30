@@ -48,10 +48,11 @@ public class AdminDocumentController {
     private static final Logger log = LoggerFactory.getLogger(AdminDocumentController.class);
 
     /**
-     * 文件类型白名单（前端设计文档 2.6.2 限定：PDF/PPTX/DOCX/MD/TXT），
+     * 文件类型白名单（设计文档 2.6.2 限定 PDF/PPTX/DOCX/MD/TXT；2026-08-30 扩展 Excel
+     * XLSX/XLS——Tika AutoDetectParser 原生解析 OOXML/OLE2 表格），
      * 防止 .exe/.zip 等任意类型文件堆积 FAILED 文档
      */
-    private static final Set<String> ALLOWED_FILE_TYPES = Set.of("pdf", "docx", "pptx", "md", "txt");
+    private static final Set<String> ALLOWED_FILE_TYPES = Set.of("pdf", "docx", "pptx", "md", "txt", "xlsx", "xls");
 
     private final IDocumentService documentService;
 
@@ -73,7 +74,7 @@ public class AdminDocumentController {
         String fileType = extractFileExtension(originalFilename);
         Long fileSize = file.getSize();
 
-        // P2-1: 文件类型白名单（前端文档限定 PDF/PPTX/DOCX/MD/TXT，防 .exe/.zip 等任意类型堆积 FAILED）
+        // P2-1: 文件类型白名单（限定 PDF/PPTX/DOCX/MD/TXT/XLSX/XLS，防 .exe/.zip 等任意类型堆积 FAILED）
         if (!ALLOWED_FILE_TYPES.contains(fileType)) {
             throw new BizException(ErrorCode.BAD_REQUEST, "不支持的文件类型: " + fileType);
         }
