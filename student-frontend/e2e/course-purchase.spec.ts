@@ -2,17 +2,16 @@ import { test, expect, type Page } from "@playwright/test";
 import { mockApi, login } from "./helpers/sse-route";
 
 /**
- * 课程购买链路 E2E（契约 B/H.2.2/H.2.3，2026-08-29；route-mock 模式不依赖真实后端）
+ * 课程购买链路 E2E（契约 B/H.2.2；2026-08-31 详情页改版后重写：Hero 直购，无 403 引导态）
  *
  * 覆盖：
- * - 完整购买流：未购 403 引导态（还未购买该课程）→ 立即购买 → 成功 toast →
- *   已购徽章 + 进入学习入口 + 资料区由不可访问变为可访问（失效重取闭环）
- * - 未登录引导：middleware 拦截携带 next 跳登录（D1 方案 B：购买自然要求登录；
+ * - 完整购买流：详情页 Hero「购买课程」→ 成功 toast → 已购徽章（购买按钮消失）
+ * - 未登录引导：middleware 拦截携带 next 跳登录（购买自然要求登录；
  *   登录弹窗 afterLogin 自动续购交互由 Vitest 单测覆盖——middleware 使游客无法抵达详情页）
  * - 重复购买幂等：后端对已购课程再次购买返回相同成功结构，前端不预拦截、无错误横幅
  *
  * mock 时序约定：mockApi 先注册（beforeEach），用例内后注册的同路径 handler 优先生效
- * （Playwright 路由匹配后注册者优先），以 purchased 标记驱动 403→可访问、未购→已购翻转。
+ * （Playwright 路由匹配后注册者优先），以 purchased 标记驱动 未购→已购 翻转。
  */
 
 /** 我的课程条目 mock（课程 1：已购基线；课程 2：购买流目标课程） */
@@ -47,23 +46,11 @@ const PURCHASE_OK = (courseId: string) =>
     data: { courseId, status: "ACTIVE", purchased: true },
   });
 
-/** 资料 mock 数据（购买成功后资料区渲染的分片） */
-const MATERIAL_CHUNK = {
-  id: "201",
-  content: "Java 面向对象的第一课：类与对象的系统讲解。",
-  headingPath: "第1章 > 1.1 类与对象",
-  chunkIndex: 1,
-  parentTitle: "第1章 面向对象基础",
-  startPage: 2,
-  endPage: 4,
-};
-
 /**
- * 注册课程 2 购买流的三端点 mock（在 mockApi 之后调用以获得路由优先权）
+ * 注册课程 2 购买流的两端点 mock（在 mockApi 之后调用以获得路由优先权）
  *
  * @param page 页面对象
  * @param options.purchasedRef 可变的已购标记引用（购买端点命中后置真）
- * @param options.materialsBefore 购买前资料响应（"forbidden"=403 引导态；"ok"=直接可访问）
  * @param options.myCoursesAlwaysStale 我的课程恒不含课程 2（幂等用例模拟刷新滞后，按钮不消失）
  * @param options.purchaseCallsRef 记录购买请求次数的引用（幂等断言用）
  */
@@ -71,12 +58,11 @@ function mockPurchaseFlow(
   page: Page,
   options: {
     purchasedRef: { value: boolean };
-    materialsBefore: "forbidden" | "ok";
     myCoursesAlwaysStale?: boolean;
     purchaseCallsRef?: { value: number };
   },
 ) {
-  const { purchasedRef, materialsBefore, myCoursesAlwaysStale, purchaseCallsRef } = options;
+  const { purchasedRef, myCoursesAlwaysStale, purchaseCallsRef } = options;
 
   // 我的课程：purchased 翻转后包含课程 2（invalidate 重取命中已购态）；
   // 幂等用例恒不含（刷新滞后）以保留购买入口供二次点击
@@ -87,23 +73,6 @@ function mockPurchaseFlow(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ code: 0, message: "success", data }),
-    });
-  });
-
-  // 课程 2 资料：购买前 403（未购无权限）或直接可访问（幂等用例走 Hero 购买路径）
-  void page.route("**/api/v1/student/courses/2/materials", async (route) => {
-    if (!purchasedRef.value && materialsBefore === "forbidden") {
-      await route.fulfill({
-        status: 403,
-        contentType: "application/json",
-        body: JSON.stringify({ code: 403, message: "未选修该课程" }),
-      });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ code: 0, message: "success", data: [MATERIAL_CHUNK] }),
     });
   });
 
@@ -126,29 +95,28 @@ test.describe("课程购买链路", () => {
     await mockApi(page);
   });
 
-  test("完整购买流：403 引导态立即购买 → 成功 toast → 已购视图 + 资料可访问", async ({ page }) => {
+  test("完整购买流：Hero 购买 → 成功 toast → 已购徽章（详情页改版后直购，无 403 引导态）", async ({
+    page,
+  }) => {
     const purchasedRef = { value: false };
-    mockPurchaseFlow(page, { purchasedRef, materialsBefore: "forbidden" });
+    mockPurchaseFlow(page, { purchasedRef });
     await login(page, "/");
     await page.goto("/courses/2");
 
-    // 未购买 403 引导态：新文案 + 立即购买入口（契约 H.2.3）
-    await expect(page.getByText("还未购买该课程")).toBeVisible();
-    await expect(page.getByRole("button", { name: /立即购买/ })).toBeVisible();
+    // 改版详情页：未购 = 价格（课程 2 免费）+ 购买课程主按钮（不再有「还未购买该课程」引导态）
+    await expect(page.getByTestId("course-price")).toHaveText("免费");
+    const buyButton = page.getByRole("button", { name: "购买课程" });
+    await expect(buyButton).toBeVisible();
+    await expect(page.getByText("还未购买该课程")).toHaveCount(0);
 
-    // 立即购买：成功 toast + 已购徽章 + 进入学习入口（H.2.2 状态机已购态）
-    await page.getByRole("button", { name: /立即购买/ }).click();
+    // 购买：成功 toast + 已购徽章（H.2.2 状态机已购态，购买按钮消失）
+    await buyButton.click();
     await expect(page.getByText("购买成功")).toBeVisible();
     await expect(page.getByTestId("purchased-badge")).toBeVisible();
-    await expect(page.getByRole("link", { name: /进入学习/ })).toBeVisible();
-
-    // 资料区由不可访问（403 空态）变为可访问：分片渲染 + 空态消失
-    await expect(page.getByText("Java 面向对象的第一课：类与对象的系统讲解。")).toBeVisible();
-    await expect(page.getByText("还未购买该课程")).toHaveCount(0);
+    await expect(buyButton).toHaveCount(0);
   });
 
   test("未登录访问详情页：middleware 拦截并携带 next 跳登录（购买要求登录）", async ({ page }) => {
-    // D1 方案 B：/courses/[id] 登录可见，游客购买入口即登录引导（afterLogin 自动续购由单测覆盖）
     await page.goto("/courses/2");
     await expect(page).toHaveURL(/\/login\?next=%2Fcourses%2F2$/);
   });
@@ -156,10 +124,9 @@ test.describe("课程购买链路", () => {
   test("重复购买幂等：再次购买返回相同成功结构，无错误横幅（前端不预拦截）", async ({ page }) => {
     const purchasedRef = { value: false };
     const purchaseCallsRef = { value: 0 };
-    // 资料 mock 直接可访问（走 Hero 购买路径）；我的课程恒滞后（不含课程 2）保留二次购买入口
+    // 我的课程恒滞后（不含课程 2）保留购买入口供二次点击
     mockPurchaseFlow(page, {
       purchasedRef,
-      materialsBefore: "ok",
       myCoursesAlwaysStale: true,
       purchaseCallsRef,
     });

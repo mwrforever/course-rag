@@ -57,12 +57,15 @@ beforeEach(() => {
 });
 
 describe("SiteHeader：登录态切换", () => {
-  it("已登录：头像首字母 + 下拉含身份信息/个人中心/退出登录，无登录按钮", () => {
+  it("已登录：头像首字母 + 下拉含身份信息/我的课程/个人中心/退出登录，无登录按钮", () => {
     renderHeader();
     expect(screen.getByTestId("header-avatar")).toHaveTextContent("同");
     fireEvent.click(screen.getByRole("button", { name: "用户菜单" }));
     expect(screen.getByTestId("user-menu")).toBeInTheDocument();
     expect(screen.getByText("同学A")).toBeInTheDocument();
+    // 我的课程入口（2026-08-31 用户拍板新增）：点击跳转已购列表页
+    expect(screen.getAllByRole("link", { name: "我的课程" }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: "我的课程" })).toHaveAttribute("href", "/my-courses");
     // jsdom 无媒体查询：移动/桌面「个人中心」入口并存，按出现断言
     expect(screen.getAllByRole("link", { name: "个人中心" }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();

@@ -2,6 +2,7 @@
 
 import { MagnifyingGlass, Star, TextAa } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
+import { motion, useReducedMotion } from "motion/react";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AiBadge } from "@/components/ai-badge";
@@ -15,6 +16,9 @@ import { useAuth } from "@/lib/auth-context";
 
 /** 本地分页每页课程数（设计 §1.5.2） */
 const PAGE_SIZE = 12;
+
+/** 卡片入场缓动（easeOutQuint 风格：快起缓停，低饱和位移不抢内容注意） */
+const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as [number, number, number, number];
 
 /** 排序方式：rating=评分降序（默认）/ name=按名称 */
 type SortMode = "rating" | "name";
@@ -68,6 +72,8 @@ function CoursesContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { isAuthenticated } = useAuth();
+  // 动效降级：prefers-reduced-motion 下关闭滑动指示/交错入场（只保留瞬时态切换）
+  const reduceMotion = useReducedMotion() ?? true;
   const coursesQuery = useQuery({ queryKey: ["public-courses"], queryFn: getPublicCourses });
   // 已购课程集合：仅登录时查询我的课程交叉标记（已购徽章，契约 H.2.1）
   const purchasedQuery = useQuery({
@@ -199,29 +205,18 @@ function CoursesContent() {
         />
       ) : (
         <>
-          {/* 学科 Tab 栏（2026-08-27 用户拍板：筛选改 tab 栏样式；下划线式、横向滚动） */}
+          {/* 学科 Tab 栏（2026-08-31 改版：等宽栅格 + 选中才显示下划线，切换时下划线
+              layoutId 弹簧滑动到目标 tab；关键词过滤不触发动效重放） */}
           <div
             role="tablist"
             aria-label="学科筛选"
             data-testid="category-tabs"
-            className="flex items-center gap-1 overflow-x-auto border-b border-border"
+            className="grid border-b border-border"
+            style={{ gridTemplateColumns: `repeat(${categories.length + 1}, minmax(0, 1fr))` }}
           >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={category === ""}
-              data-testid="category-tab"
-              onClick={() => handleCategory("")}
-              className={`relative shrink-0 px-4 py-2.5 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-brand after:absolute after:inset-x-3 after:bottom-0 after:h-[2px] after:rounded-full after:bg-brand after:transition-transform after:duration-300 ${
-                category === ""
-                  ? "font-medium text-brand-strong after:scale-x-100"
-                  : "text-muted hover:text-text"
-              }`}
-            >
-              全部
-            </button>
-            {categories.map((cat) => {
+            {["", ...categories].map((cat) => {
               const active = category === cat;
+              const label = cat === "" ? "全部" : cat;
               return (
                 <button
                   key={cat}
@@ -230,26 +225,44 @@ function CoursesContent() {
                   aria-selected={active}
                   data-testid="category-tab"
                   onClick={() => handleCategory(cat)}
-                  className={`relative shrink-0 px-4 py-2.5 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-brand after:absolute after:inset-x-3 after:bottom-0 after:h-[2px] after:rounded-full after:bg-brand after:transition-transform after:duration-300 ${
-                    active
-                      ? "font-medium text-brand-strong after:scale-x-100"
-                      : "text-muted hover:text-text"
+                  className={`relative min-w-0 px-3 py-2.5 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-brand ${
+                    active ? "font-medium text-brand-strong" : "text-muted hover:text-text"
                   }`}
                 >
-                  {cat}
+                  {/* 等宽下划线指示：仅选中项渲染；layoutId 共享元素驱动跨 tab 滑动
+                      （reduced-motion 下为静态 span 无过渡） */}
+                  {active ? (
+                    reduceMotion ? (
+                      <span
+                        aria-hidden
+                        data-testid="category-tab-underline"
+                        className="absolute inset-x-3 bottom-0 h-[2px] rounded-full bg-brand"
+                      />
+                    ) : (
+                      <motion.span
+                        aria-hidden
+                        data-testid="category-tab-underline"
+                        layoutId="category-tab-underline"
+                        transition={{ type: "spring", stiffness: 460, damping: 42 }}
+                        className="absolute inset-x-3 bottom-0 h-[2px] rounded-full bg-brand"
+                      />
+                    )
+                  ) : null}
+                  <span className="block truncate">{label}</span>
                 </button>
               );
             })}
           </div>
 
-          {/* 工具行：结果计数 + 排序分段控件（2026-08-27 样式优化：select → 胶囊分段切换） */}
+          {/* 工具行：结果计数 + 排序分段控件（2026-08-31：激活胶囊改为 layoutId 滑动指示，
+              与 tab 下划线同一动效语言；仅排序切换触发动效） */}
           <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
             <p className="text-sm text-muted tabular-nums">共 {sorted.length} 门课程</p>
             <div
               role="radiogroup"
               aria-label="排序方式"
               data-testid="sort-segment"
-              className="flex shrink-0 rounded-full border border-border bg-surface p-1 shadow-xs"
+              className="relative flex shrink-0 rounded-full border border-border bg-surface p-1 shadow-xs"
             >
               <button
                 type="button"
@@ -257,19 +270,38 @@ function CoursesContent() {
                 aria-checked={sortMode === "rating"}
                 data-testid="sort-option-rating"
                 onClick={() => setSortMode("rating")}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-brand ${
+                className={`relative rounded-full px-4 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-brand ${
                   sortMode === "rating"
-                    ? "bg-brand-soft font-medium text-brand-strong"
+                    ? "font-medium text-brand-strong"
                     : "text-muted hover:text-text"
                 }`}
               >
-                <Star
-                  size={13}
-                  weight="fill"
-                  aria-hidden
-                  className={sortMode === "rating" ? "text-brand" : "text-subtle"}
-                />
-                评分优先
+                {sortMode === "rating" ? (
+                  reduceMotion ? (
+                    <span
+                      aria-hidden
+                      data-testid="sort-segment-pill"
+                      className="absolute inset-0 rounded-full bg-brand-soft"
+                    />
+                  ) : (
+                    <motion.span
+                      aria-hidden
+                      data-testid="sort-segment-pill"
+                      layoutId="sort-segment-pill"
+                      transition={{ type: "spring", stiffness: 460, damping: 42 }}
+                      className="absolute inset-0 rounded-full bg-brand-soft"
+                    />
+                  )
+                ) : null}
+                <span className="relative inline-flex items-center gap-1.5">
+                  <Star
+                    size={13}
+                    weight="fill"
+                    aria-hidden
+                    className={sortMode === "rating" ? "text-brand" : "text-subtle"}
+                  />
+                  评分优先
+                </span>
               </button>
               <button
                 type="button"
@@ -277,18 +309,37 @@ function CoursesContent() {
                 aria-checked={sortMode === "name"}
                 data-testid="sort-option-name"
                 onClick={() => setSortMode("name")}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-brand ${
+                className={`relative rounded-full px-4 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-brand ${
                   sortMode === "name"
-                    ? "bg-brand-soft font-medium text-brand-strong"
+                    ? "font-medium text-brand-strong"
                     : "text-muted hover:text-text"
                 }`}
               >
-                <TextAa
-                  size={13}
-                  aria-hidden
-                  className={sortMode === "name" ? "text-brand" : "text-subtle"}
-                />
-                名称排序
+                {sortMode === "name" ? (
+                  reduceMotion ? (
+                    <span
+                      aria-hidden
+                      data-testid="sort-segment-pill"
+                      className="absolute inset-0 rounded-full bg-brand-soft"
+                    />
+                  ) : (
+                    <motion.span
+                      aria-hidden
+                      data-testid="sort-segment-pill"
+                      layoutId="sort-segment-pill"
+                      transition={{ type: "spring", stiffness: 460, damping: 42 }}
+                      className="absolute inset-0 rounded-full bg-brand-soft"
+                    />
+                  )
+                ) : null}
+                <span className="relative inline-flex items-center gap-1.5">
+                  <TextAa
+                    size={13}
+                    aria-hidden
+                    className={sortMode === "name" ? "text-brand" : "text-subtle"}
+                  />
+                  名称排序
+                </span>
               </button>
             </div>
           </div>
@@ -297,16 +348,38 @@ function CoursesContent() {
             <FilterEmpty onClear={clearFilters} />
           ) : (
             <>
-              {/* 网格 3 列（电商风格），卡片 hover 动效由 CourseCard 承载 */}
-              <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {/* 网格 3 列（电商风格），卡片 hover 动效由 CourseCard 承载；
+                  切 tab/排序时按键重挂载交错入场（关键词输入不重放——不换 key），
+                  reduced-motion 下跳过入场动效 */}
+              <motion.div
+                key={`${category}|${sortMode}`}
+                initial={reduceMotion ? false : "hidden"}
+                animate="show"
+                variants={{
+                  hidden: {},
+                  show: { transition: { staggerChildren: 0.04, delayChildren: 0.04 } },
+                }}
+                className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+              >
                 {visible.map((course) => (
-                  <CourseCard
+                  <motion.div
                     key={course.id}
-                    course={course}
-                    purchased={isAuthenticated ? purchasedIds.has(course.id) : undefined}
-                  />
+                    variants={{
+                      hidden: { opacity: 0, y: 14 },
+                      show: {
+                        opacity: 1,
+                        y: 0,
+                        transition: { duration: 0.42, ease: EASE_OUT_QUINT },
+                      },
+                    }}
+                  >
+                    <CourseCard
+                      course={course}
+                      purchased={isAuthenticated ? purchasedIds.has(course.id) : undefined}
+                    />
+                  </motion.div>
                 ))}
-              </div>
+              </motion.div>
 
               {/* 本地分页（≤1 页不展示） */}
               {pageCount > 1 ? (

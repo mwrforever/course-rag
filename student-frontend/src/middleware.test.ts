@@ -55,4 +55,16 @@ describe("middleware 路由门卫矩阵", () => {
     const response = middleware(makeRequest("/login", {}));
     expect(response.headers.get("x-middleware-next")).toBe("1");
   });
+
+  it("两者皆无访问 /my-courses：307 重定向 /login?next=/my-courses（2026-08-31 新增受保护前缀）", () => {
+    const response = middleware(makeRequest("/my-courses", {}));
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("http://localhost:5000/login?next=%2Fmy-courses");
+  });
+
+  it("有 AT cookie 访问 /my-courses：放行（登录用户直达已购列表）", () => {
+    const response = middleware(makeRequest("/my-courses", { commerce_token: "at-1" }));
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.status).toBe(200);
+  });
 });

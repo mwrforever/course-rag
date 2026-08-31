@@ -63,6 +63,26 @@ export interface PublicCourse {
   price: number | null;
 }
 
+/** 公开课程排期（PublicScheduleVO；course_schedule 对外字段，开课日期升序）
+ *  startDate/endDate 为 "2026-09-01" 形态（LocalDate 序列化）；scheduleType 枚举
+ *  ONLINE/OFFLINE/HYBRID，status 枚举 UPCOMING/IN_PROGRESS/COMPLETED，文案映射由前端承担 */
+export interface PublicSchedule {
+  id: string;
+  startDate: string | null;
+  endDate: string | null;
+  scheduleType: string | null;
+  location: string | null;
+  status: string | null;
+  capacity: number | null;
+  enrolled: number | null;
+}
+
+/** 公开课程详情（PublicCourseDetailVO，GET /api/v1/public/courses/{id}；比列表多排期列表） */
+export interface PublicCourseDetail extends PublicCourse {
+  /** 排期列表（开课日期升序；管理端未录入时为空数组） */
+  schedules: PublicSchedule[];
+}
+
 /**
  * 购买结果（CoursePurchaseVO，契约 B 2026-08-29）
  *
@@ -73,17 +93,6 @@ export interface CoursePurchaseResult {
   courseId: string;
   status: string;
   purchased: boolean;
-}
-
-/** J2 课程资料分片（ChunkVO；含页码区间 badge 所需 startPage/endPage） */
-export interface MaterialChunk {
-  id: string;
-  content: string;
-  headingPath: string | null;
-  chunkIndex: number;
-  parentTitle: string | null;
-  startPage: number | null;
-  endPage: number | null;
 }
 
 /** J3/J4 资料分片简报（ChunkBriefVO） */
