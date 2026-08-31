@@ -26,7 +26,6 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
@@ -87,8 +86,6 @@ public class QueryUnderstandingService {
             ChatModel chatModel,
             PromptLoader promptLoader,
             ObjectMapper objectMapper,
-            @Value("${rag.query-understanding.model:qwen3.7-max-2026-06-08}") String model,
-            @Value("${rag.query-understanding.max-queries:3}") int maxQueries,
             QueryUnderstandingProperties properties) {
         // chatModel 直引用于流式路径（chatModel.stream 可读到每 chunk 的 reasoningContent metadata，
         // ChatClient .stream().content() 只暴露文本丢 metadata）；chatClient 保留同步 .call 路径
@@ -96,8 +93,10 @@ public class QueryUnderstandingService {
         this.chatClient = ChatClient.builder(chatModel).build();
         this.promptLoader = promptLoader;
         this.objectMapper = objectMapper;
-        this.model = model;
-        this.maxQueries = maxQueries;
+        // BUG-12 @Value 收敛：QU 模型与重写上限并入 QueryUnderstandingProperties
+        // （rag.query-understanding.model / max-queries）强类型注入，取值与原 @Value 相同
+        this.model = properties.model();
+        this.maxQueries = properties.maxQueries();
         this.streamTimeout = properties.streamTimeout();
     }
 

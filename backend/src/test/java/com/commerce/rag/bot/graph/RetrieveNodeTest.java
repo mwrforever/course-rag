@@ -32,6 +32,7 @@ import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
 import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.MemoryProperties;
+import com.commerce.rag.properties.RetrievalProperties;
 import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.DocumentLocalChunk;
 import com.commerce.rag.record.EpisodicMemoryRef;
@@ -110,7 +111,8 @@ class RetrieveNodeTest {
                 embeddingModel,
                 episodicMemoryService,
                 memoryProperties,
-                2);
+                // 并行线程数=2（原测试语义）经属性类注入
+                new RetrievalProperties(60, 0.30, 20, false, 2));
     }
 
     @Test

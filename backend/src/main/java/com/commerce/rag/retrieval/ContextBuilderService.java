@@ -1,13 +1,13 @@
 package com.commerce.rag.retrieval;
 
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.properties.ContextBuilderProperties;
 import com.commerce.rag.record.ImageCaptionResult;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -41,8 +41,8 @@ public class ContextBuilderService {
     /** 系统资料注入条数上限（spec §3.2 "rag.context-builder.top-k" 默认 5） */
     private final int topK;
 
-    public ContextBuilderService(@Value("${rag.context-builder.top-k:5}") int topK) {
-        this.topK = topK;
+    public ContextBuilderService(ContextBuilderProperties properties) {
+        this.topK = properties.topK();
     }
 
     /**

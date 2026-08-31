@@ -8,6 +8,8 @@ import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
 import com.commerce.rag.config.MilvusCollectionInitializer;
+import com.commerce.rag.properties.MilvusProperties;
+import com.commerce.rag.properties.RetrievalProperties;
 import com.commerce.rag.retrieval.FusionService;
 import com.commerce.rag.retrieval.RerankService;
 import com.commerce.rag.service.IDocumentService;
@@ -64,8 +66,21 @@ class SearchKnowledgeToolTest {
 
     @BeforeEach
     void setUp() {
+        // rrfK=60 / prefetchTopK=20 / sparse=false（与原 @Value 兜底值一致）经属性类注入
         tool = new SearchKnowledgeTool(
-                fusionService, rerankService, embeddingModel, milvusClientV2, documentService, 60, 20, false);
+                fusionService,
+                rerankService,
+                embeddingModel,
+                milvusClientV2,
+                documentService,
+                milvusProperties(60),
+                new RetrievalProperties(60, 0.30, 20, false, 3));
+    }
+
+    /** 被测 Milvus 属性快照（仅 sparseBm25K 随用例变化，其余为 @DefaultValue 兜底值） */
+    private MilvusProperties milvusProperties(int sparseBm25K) {
+        return new MilvusProperties(
+                30000L, "localhost", 19530, "knowledge_chunks", 1024, 16, 200, 64, sparseBm25K, true);
     }
 
     /**
@@ -422,7 +437,14 @@ class SearchKnowledgeToolTest {
     @DisplayName("searchSingle 混合检索请求 — sparse 开关开启时 dense + sparse 双路 + RRF 融合")
     void searchSingle_hybridRequest_denseAndSparse() {
         tool = new SearchKnowledgeTool(
-                fusionService, rerankService, embeddingModel, milvusClientV2, documentService, 60, 20, true);
+                fusionService,
+                rerankService,
+                embeddingModel,
+                milvusClientV2,
+                documentService,
+                milvusProperties(60),
+                // sparse 开关开启（原测试语义）触发 dense + sparse 双路
+                new RetrievalProperties(60, 0.30, 20, true, 3));
         TypedQuery query = new TypedQuery(IntentType.KNOWLEDGE_QUESTION, "如何配置Redis", null);
         when(embeddingModel.embed("如何配置Redis")).thenReturn(new float[] {0.1f, 0.2f});
         SearchResp searchResp = mockSearchResp();

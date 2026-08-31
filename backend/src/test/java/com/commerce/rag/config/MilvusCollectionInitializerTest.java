@@ -9,6 +9,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.commerce.rag.properties.MilvusProperties;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.DataType;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
@@ -38,8 +39,15 @@ class MilvusCollectionInitializerTest {
     @Mock
     private MilvusClientV2 milvusClientV2;
 
+    /** 构造被测初始化器（collection/embedding 维度/HNSW 参数与 application.yml 显式值一致，经属性类注入） */
     private MilvusCollectionInitializer initializer() {
-        return new MilvusCollectionInitializer(milvusClientV2, "knowledge_chunks", 1024, 16, 200, true);
+        return new MilvusCollectionInitializer(milvusClientV2, milvusProperties(true));
+    }
+
+    /** 被测属性快照：collection=knowledge_chunks、dim=1024、hnswM=16、efConstruction=200，自动创建开关随用例 */
+    private MilvusProperties milvusProperties(boolean autoCreateCollection) {
+        return new MilvusProperties(
+                30000L, "localhost", 19530, "knowledge_chunks", 1024, 16, 200, 64, 60, autoCreateCollection);
     }
 
     @Test
@@ -239,7 +247,7 @@ class MilvusCollectionInitializerTest {
     void autoCreateDisabled_skipsEntirely() {
         // Given: 自动创建开关关闭（run() 入口分支本次改动未涉及，回归保护）
         MilvusCollectionInitializer disabledInitializer =
-                new MilvusCollectionInitializer(milvusClientV2, "knowledge_chunks", 1024, 16, 200, false);
+                new MilvusCollectionInitializer(milvusClientV2, milvusProperties(false));
 
         // When: 执行初始化
         disabledInitializer.run(null);

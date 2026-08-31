@@ -24,6 +24,7 @@ import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.commerce.rag.bot.rewrite.QueryUnderstandingService;
 import com.commerce.rag.bot.tool.CourseApiTool;
 import com.commerce.rag.config.GraphConfig;
+import com.commerce.rag.properties.AgentProperties;
 import com.commerce.rag.record.AssistantMessageSink;
 import com.commerce.rag.stream.ThinkingPusher;
 import java.lang.reflect.Field;
@@ -124,7 +125,8 @@ class LeadAgentGraphTest {
                 warningHook,
                 keyStrategyFactory,
                 compileConfig,
-                15);
+                // runLimit=15（与原 @Value 兜底值一致）经属性类注入
+                new AgentProperties(15, "qwen3.8-max"));
 
         CompiledGraph compiled = graph.build();
 
@@ -151,7 +153,8 @@ class LeadAgentGraphTest {
                 warningHook,
                 keyStrategyFactory,
                 compileConfig,
-                5);
+                // 自定义 runLimit=5 验证上限可配（经属性类注入）
+                new AgentProperties(5, "qwen3.8-max"));
 
         assertNotNull(graph.build());
     }
@@ -175,7 +178,8 @@ class LeadAgentGraphTest {
                 warningHook,
                 new GraphConfig().keyStrategyFactory(),
                 CompileConfig.builder().build(),
-                15);
+                // runLimit=15（与原 @Value 兜底值一致）经属性类注入
+                new AgentProperties(15, "qwen3.8-max"));
     }
 
     /** 编译图并取出 queryUnderstandingNode 节点动作（CompiledGraph 公开 API，验证拓扑接线） */

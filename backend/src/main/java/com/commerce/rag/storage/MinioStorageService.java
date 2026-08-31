@@ -1,5 +1,6 @@
 package com.commerce.rag.storage;
 
+import com.commerce.rag.properties.MinioProperties;
 import io.minio.BucketExistsArgs;
 import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
@@ -16,7 +17,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -39,11 +39,12 @@ public class MinioStorageService {
 
     private final MinioClient minioClient;
 
-    @Value("${minio.bucket}")
-    private String bucket;
+    /** 业务桶名称（BUG-12 @Value 收敛：经 MinioProperties 强类型注入，取值与原 @Value 相同） */
+    private final String bucket;
 
-    public MinioStorageService(MinioClient minioClient) {
+    public MinioStorageService(MinioClient minioClient, MinioProperties minioProperties) {
         this.minioClient = minioClient;
+        this.bucket = minioProperties.bucket();
     }
 
     /**

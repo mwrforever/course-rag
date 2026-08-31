@@ -68,10 +68,9 @@ class QueryUnderstandingServiceTest {
                 chatModel,
                 promptLoader,
                 new ObjectMapper(),
-                "qwen3.7-flash",
-                3,
-                // 默认生产同量级超时；超时降级用例单独构造短超时实例
-                new QueryUnderstandingProperties(Duration.ofSeconds(60)));
+                // model/maxQueries/超时并入属性类注入（值保持原测试语义：qwen3.7-flash、3 条、60s；
+                // 超时降级用例单独构造短超时实例）
+                new QueryUnderstandingProperties("qwen3.7-flash", 3, Duration.ofSeconds(60)));
     }
 
     private void stubPrompt() {
@@ -336,9 +335,7 @@ class QueryUnderstandingServiceTest {
                 chatModel,
                 promptLoader,
                 new ObjectMapper(),
-                "qwen3.7-flash",
-                3,
-                new QueryUnderstandingProperties(Duration.ofMillis(50)));
+                new QueryUnderstandingProperties("qwen3.7-flash", 3, Duration.ofMillis(50)));
 
         QueryPlan plan = fastTimeoutService.understand("原始问题", List.of(new UserMessage("原始问题")), pusher);
 

@@ -12,6 +12,7 @@ import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
+import com.commerce.rag.properties.AgentProperties;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.record.AssistantEntitySplitter;
@@ -67,7 +68,6 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
@@ -147,7 +147,7 @@ public class ChatRequestWorker {
             AttachmentOrchestrator orchestrator,
             MemoryExtractionPipeline memoryExtractionPipeline,
             ObjectMapper objectMapper,
-            @Value("${rag.agent.model:qwen3.8-max}") String agentModel) {
+            AgentProperties agentProperties) {
         this.redisTemplate = redisTemplate;
         this.compiledGraph = compiledGraph;
         this.saver = saver;
@@ -162,7 +162,9 @@ public class ChatRequestWorker {
         this.orchestrator = orchestrator;
         this.memoryExtractionPipeline = memoryExtractionPipeline;
         this.objectMapper = objectMapper;
-        this.agentModel = agentModel;
+        // BUG-12 @Value 收敛：主对话模型名经 AgentProperties（rag.agent.model）强类型注入，
+        // 取值与原 @Value 相同
+        this.agentModel = agentProperties.model();
     }
 
     // ========================================================================

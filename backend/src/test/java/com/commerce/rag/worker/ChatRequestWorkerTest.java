@@ -20,6 +20,7 @@ import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
+import com.commerce.rag.properties.AgentProperties;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.record.AssistantMessageCapture;
@@ -153,7 +154,8 @@ class ChatRequestWorkerTest {
                 orchestrator,
                 memoryExtractionPipeline,
                 new ObjectMapper(),
-                "qwen3.8-max");
+                // 主对话模型 qwen3.8-max（原测试语义，runLimit 取兜底值 15）经属性类注入
+                new AgentProperties(15, "qwen3.8-max"));
 
         // 公共 stub：saver.get 返回空 Optional（无历史 checkpoint）
         lenient().when(saver.get(any(RunnableConfig.class))).thenReturn(Optional.empty());
@@ -2452,7 +2454,7 @@ class ChatRequestWorkerTest {
                 orchestrator,
                 memoryExtractionPipeline,
                 mapper,
-                "qwen3.8-max");
+                new AgentProperties(15, "qwen3.8-max"));
     }
 
     @Test

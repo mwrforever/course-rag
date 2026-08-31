@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.tool.TypedQuery;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.properties.RetrievalProperties;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +20,8 @@ import org.junit.jupiter.api.Test;
 @DisplayName("FusionService RRF 融合测试")
 class FusionServiceTest {
 
-    private final FusionService fusionService = new FusionService(60);
+    /** rrfK=60（与 application.yml 显式值一致）经属性类注入 */
+    private final FusionService fusionService = new FusionService(new RetrievalProperties(60, 0.30, 20, false, 3));
 
     private KnowledgeChunk chunk(String chunkId) {
         return new KnowledgeChunk(

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.properties.ContextBuilderProperties;
 import com.commerce.rag.record.ImageCaptionResult;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +22,8 @@ import org.junit.jupiter.api.Test;
 @DisplayName("ContextBuilderService document 组装测试")
 class ContextBuilderServiceTest {
 
-    private final ContextBuilderService service = new ContextBuilderService(5);
+    /** topK=5（与 application.yml 显式值一致）经属性类注入 */
+    private final ContextBuilderService service = new ContextBuilderService(new ContextBuilderProperties(5));
 
     private static KnowledgeChunk chunk(String id, String content, String docTitle, String headingPath) {
         return new KnowledgeChunk(
@@ -49,7 +51,8 @@ class ContextBuilderServiceTest {
     @Test
     @DisplayName("buildDocument — 候选超过 topK 只取前 N 条（未消费的候选不进 document）")
     void buildDocument_exceedsTopK_truncates() {
-        ContextBuilderService small = new ContextBuilderService(2);
+        // topK=2 边界：验证超过注入上限的候选被截断
+        ContextBuilderService small = new ContextBuilderService(new ContextBuilderProperties(2));
         List<KnowledgeChunk> chunks =
                 List.of(chunk("c1", "一", "doc", "h1"), chunk("c2", "二", "doc", "h2"), chunk("c3", "三", "doc", "h3"));
 

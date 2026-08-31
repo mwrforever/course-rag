@@ -1,5 +1,6 @@
 package com.commerce.rag.config;
 
+import com.commerce.rag.properties.MilvusProperties;
 import io.milvus.common.clientenum.FunctionType;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.DataType;
@@ -20,7 +21,6 @@ import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -170,28 +170,18 @@ public class MilvusCollectionInitializer implements ApplicationRunner {
     private final boolean autoCreateCollection;
 
     /**
-     * 构造函数 —— 通过 {@code @Value} 注入所有配置参数
+     * 构造函数 —— 配置参数经 {@link MilvusProperties} 强类型注入（BUG-12 @Value 收敛，宪法 A.2.2）
      *
-     * @param milvusClientV2       Milvus v2 客户端（由 {@link MilvusConfig} 创建）
-     * @param collectionName       Collection 名称（默认 knowledge_chunks）
-     * @param embeddingDim         向量维度（text-embedding-v4 输出 1024）
-     * @param hnswM                HNSW 索引 M 参数
-     * @param hnswEfConstruction   HNSW 索引 efConstruction 参数
-     * @param autoCreateCollection 是否启用自动创建（默认 true）
+     * @param milvusClientV2  Milvus v2 客户端（由 {@link MilvusConfig} 创建）
+     * @param milvusProperties Milvus 全量配置（collection/embedding 维度/HNSW 参数/自动创建开关）
      */
-    public MilvusCollectionInitializer(
-            MilvusClientV2 milvusClientV2,
-            @Value("${milvus.collection-name:knowledge_chunks}") String collectionName,
-            @Value("${milvus.embedding-dim:1024}") int embeddingDim,
-            @Value("${milvus.hnsw-m:16}") int hnswM,
-            @Value("${milvus.hnsw-ef-construction:200}") int hnswEfConstruction,
-            @Value("${milvus.auto-create-collection:true}") boolean autoCreateCollection) {
+    public MilvusCollectionInitializer(MilvusClientV2 milvusClientV2, MilvusProperties milvusProperties) {
         this.milvusClientV2 = milvusClientV2;
-        this.collectionName = collectionName;
-        this.embeddingDim = embeddingDim;
-        this.hnswM = hnswM;
-        this.hnswEfConstruction = hnswEfConstruction;
-        this.autoCreateCollection = autoCreateCollection;
+        this.collectionName = milvusProperties.collectionName();
+        this.embeddingDim = milvusProperties.embeddingDim();
+        this.hnswM = milvusProperties.hnswM();
+        this.hnswEfConstruction = milvusProperties.hnswEfConstruction();
+        this.autoCreateCollection = milvusProperties.autoCreateCollection();
     }
 
     /**

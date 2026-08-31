@@ -62,7 +62,8 @@ class QueryUnderstandingPropertiesTest {
     @Test
     @DisplayName("非法构造 — null 时长经紧凑构造器抛 IllegalArgumentException fail-fast")
     void nullStreamTimeout_rejectedByConstructor() {
-        assertThatThrownBy(() -> new QueryUnderstandingProperties(null))
+        // model/maxQueries 传默认兜底值，被测目标仅 null 时长
+        assertThatThrownBy(() -> new QueryUnderstandingProperties("qwen3.7-max-2026-06-08", 3, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("rag.query-understanding.stream-timeout");
     }
@@ -70,8 +71,10 @@ class QueryUnderstandingPropertiesTest {
     @Test
     @DisplayName("值语义 — 相同超时时长的实例相等且 toString 含配置值（record 值对象契约）")
     void valueSemantics() {
-        QueryUnderstandingProperties a = new QueryUnderstandingProperties(Duration.ofSeconds(60));
-        QueryUnderstandingProperties b = new QueryUnderstandingProperties(Duration.ofSeconds(60));
+        QueryUnderstandingProperties a =
+                new QueryUnderstandingProperties("qwen3.7-max-2026-06-08", 3, Duration.ofSeconds(60));
+        QueryUnderstandingProperties b =
+                new QueryUnderstandingProperties("qwen3.7-max-2026-06-08", 3, Duration.ofSeconds(60));
         assertThat(a).isEqualTo(b);
         assertThat(a).hasSameHashCodeAs(b);
         assertThat(a.toString()).contains("PT1M").contains("streamTimeout");
