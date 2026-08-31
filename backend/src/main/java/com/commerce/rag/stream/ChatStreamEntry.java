@@ -170,6 +170,10 @@ public class ChatStreamEntry {
         message.put("attachments", attachmentsJson);
         try {
             redisTemplate.opsForStream().add(streamProperties.requestStream(), message);
+            // BUG-14：XADD 成功后注册取消条目（生命周期「入队 → processRequest.finally 清理」），
+            // 使 worker.cancel 的 computeIfPresent 在排队期与执行期均能命中；runPool 拒绝路径
+            // 与 finally 均负责清理，注册不引入残留
+            worker.registerPendingRun(runId);
         } catch (Exception e) {
             // P0-4c 修复：入队失败回滚 run 状态（解除 uniq_active_run_per_session 唯一索引锁死）
             // + 清理 ring。复合故障（Redis+DB 双挂）下 updateStatus 抛异常也必须清理 ring，
@@ -205,8 +209,9 @@ public class ChatStreamEntry {
      * <p>归属校验：run 必须属于当前用户（P0-3，不匹配 404 不泄露存在性）。
      *
      * <p>B2-7 终态校验：已终态（COMPLETED/CANCELLED/ERROR）的 run 无可取消对象，
-     * 直接 409 拒绝——否则 worker.cancel 会在 cancelFlags 无条件新建条目，而其唯一
-     * 清理路径（processRequest.finally）早已执行，条目将永久残留（内存泄漏）。
+     * 直接 409 拒绝。BUG-14 后 worker.cancel 改 computeIfPresent 仅对已注册条目置位
+     * （条目生命周期「入队注册 → processRequest.finally 清理」），即使本校验与置位
+     * 之间 run 恰好完成（条目已被 finally 清理），置位也为 no-op，不再产生残留条目。
      */
     public ResponseEntity<Void> cancel(String runId, HttpServletRequest httpRequest) {
         Long userId = AuthInterceptor.getCurrentUserId(httpRequest);

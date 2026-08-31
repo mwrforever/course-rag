@@ -335,6 +335,9 @@ public class ChatRequestWorker {
                             } catch (Exception removeEx) {
                                 log.error("runPool 拒绝后清理 ring 失败: runId={}", rejectedRunIdStr, removeEx);
                             }
+                            // ②.5 BUG-14：清理入队注册的取消条目——被拒 run 不经过 processRequest
+                            // （其 finally 是条目唯一常规清理点），不清理则条目永久残留
+                            cancelFlags.remove(rejectedRunIdStr);
                         }
                         // ③ run 状态回写 ERROR（解锁会话，失败可见可重试）
                         if (rejectedRunId != null) {
@@ -750,12 +753,40 @@ public class ChatRequestWorker {
     }
 
     /**
+     * 注册待执行 run 的取消条目（由入口 ChatStreamEntry 在 XADD 成功后调用）。
+     *
+     * <p>BUG-14 生命周期修正：cancelFlags 条目原由 cancel() 自身 computeIfAbsent 创建，
+     * 唯一清理路径是 processRequest.finally——对已完成 run 取消会在 TOCTOU 窗口内
+     * 重建永不清除的残留条目。现改为「入队注册 → finally 清理」的完整生命周期：
+     * 条目在 run 入队时即存在（排队期取消同样生效），run 终止时由 finally 清理。
+     *
+     * <p>putIfAbsent 幂等且不覆盖已有值：已置位的取消标记（入队后即被取消）不会被重置。
+     *
+     * @param runId Run 唯一标识（字符串形态，与 cancelFlags 键一致）
+     */
+    public void registerPendingRun(String runId) {
+        cancelFlags.putIfAbsent(runId, new AtomicBoolean(false));
+    }
+
+    /**
      * 取消指定 run（由 Controller 调用）。
-     * 设置取消标记后，下次 doOnNext 检查时抛出 CancelledException。
+     *
+     * <p>BUG-14：改用 computeIfPresent 仅对已注册（排队/执行中）的 run 置位——
+     * 条目不存在说明 run 未在执行或已完成（其 finally 已清理），置位是 no-op，
+     * 消除原 computeIfAbsent 对已完成 run 重建残留条目的 TOCTOU 泄漏。
+     * 置位后下次取消检查点（doOnNext/检索 join 前/附件批循环）抛出 CancelledException。
      */
     public void cancel(String runId) {
-        cancelFlags.computeIfAbsent(runId, k -> new AtomicBoolean()).set(true);
-        log.info("请求取消 run: runId={}", runId);
+        // 仅当条目已存在（run 排队/执行中）时原子置位；run 不在执行中则记录后忽略
+        AtomicBoolean flag = cancelFlags.computeIfPresent(runId, (k, f) -> {
+            f.set(true);
+            return f;
+        });
+        if (flag != null) {
+            log.info("请求取消 run: runId={}", runId);
+        } else {
+            log.info("取消请求忽略（run 不在执行中）: runId={}", runId);
+        }
     }
 
     // ========================================================================

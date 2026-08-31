@@ -343,11 +343,24 @@ class ChatRequestWorkerTest {
                 abnormalPath);
     }
 
-    // ==================== cancel() 测试 ====================
+    // ==================== cancel() 测试（BUG-14：条目生命周期 = 入队注册 → processRequest.finally 清理） ====================
 
     @Test
-    @DisplayName("cancel 设置取消标记 — cancelFlags 包含 runId=true")
-    void cancel_setsFlag() throws Exception {
+    @DisplayName("cancel 未注册的 runId — 不创建条目（BUG-14：取消已完成 run 不再残留）")
+    void cancel_unregisteredRun_doesNotCreateEntry() throws Exception {
+        // run 不在排队/执行中（无入队注册条目）：cancel 必须是 no-op，
+        // 原实现 computeIfAbsent 无条件建条目，而唯一清理路径（processRequest.finally）
+        // 已执行完毕 → 条目永久残留（TOCTOU 窗口泄漏）
+        worker.cancel("run123");
+
+        ConcurrentHashMap<String, AtomicBoolean> flags = getCancelFlags();
+        assertFalse(flags.containsKey("run123"), "run 不在执行中时 cancel 不得创建残留条目");
+    }
+
+    @Test
+    @DisplayName("registerPendingRun + cancel — 标记置位为 true（排队/执行中 run 可取消）")
+    void cancel_afterRegister_setsFlag() throws Exception {
+        worker.registerPendingRun("run123");
         worker.cancel("run123");
 
         ConcurrentHashMap<String, AtomicBoolean> flags = getCancelFlags();
@@ -356,8 +369,9 @@ class ChatRequestWorkerTest {
     }
 
     @Test
-    @DisplayName("cancel 多次调用同一 runId — 标记仍为 true")
+    @DisplayName("registerPendingRun + 多次 cancel 同一 runId — 标记仍为 true")
     void cancel_multipleCalls_flagRemainsTrue() throws Exception {
+        worker.registerPendingRun("run123");
         worker.cancel("run123");
         worker.cancel("run123");
 
@@ -366,14 +380,31 @@ class ChatRequestWorkerTest {
     }
 
     @Test
-    @DisplayName("cancel 不同 runId — 各自独立设置")
+    @DisplayName("registerPendingRun + 不同 runId cancel — 各自独立设置")
     void cancel_differentRunIds_independentFlags() throws Exception {
+        worker.registerPendingRun("run1");
+        worker.registerPendingRun("run2");
         worker.cancel("run1");
         worker.cancel("run2");
 
         ConcurrentHashMap<String, AtomicBoolean> flags = getCancelFlags();
         assertTrue(flags.get("run1").get());
         assertTrue(flags.get("run2").get());
+    }
+
+    @Test
+    @DisplayName("registerPendingRun 后 run 正常完成 — finally 清理取消条目（生命周期闭合）")
+    void processRequest_normalCompletion_removesRegisteredCancelFlag() throws Exception {
+        // 入队注册的条目在 run 终止（正常完成）时由 processRequest.finally 清理，
+        // 保证「注册 → 执行 → 清理」生命周期闭合，注册本身不成为泄漏源
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+        worker.registerPendingRun("100");
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        assertFalse(getCancelFlags().containsKey("100"), "run 完成后取消条目应被 finally 清理");
     }
 
     // ==================== processRequest 正常完成流程 ====================
@@ -462,7 +493,8 @@ class ChatRequestWorkerTest {
     @Test
     @DisplayName("取消流程 — cancel 后 stream 触发 CancelledException → updateStatus(CANCELLED)")
     void processRequest_cancelled_updatesStatusCancelled() throws Exception {
-        // Given: 先设置取消标记
+        // Given: 先注册（模拟 BUG-14 入队注册）再设置取消标记
+        worker.registerPendingRun("100");
         worker.cancel("100");
 
         NodeOutput mockChunk = mock(NodeOutput.class);
@@ -851,10 +883,12 @@ class ChatRequestWorkerTest {
         when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.create(sink -> {
             sink.next(c1);
             // chunk1 已推送后置取消标记：chunk2 检查点即抛取消异常（中断点前事件已到前端）
+            // （条目已在外部 registerPendingRun 注册，模拟 BUG-14 入队注册生命周期）
             worker.cancel("100");
             sink.next(c2);
             sink.complete();
         }));
+        worker.registerPendingRun("100");
 
         // When
         invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
@@ -1008,7 +1042,8 @@ class ChatRequestWorkerTest {
                 .build();
         when(saver.get(any(RunnableConfig.class))).thenReturn(Optional.of(cp));
 
-        // 取消路径：执行前设置取消标记，首个 chunk 触发 CancelledException
+        // 取消路径：执行前注册（模拟入队）并置取消标记，首个 chunk 触发 CancelledException
+        worker.registerPendingRun("100");
         worker.cancel("100");
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1637,7 +1672,8 @@ class ChatRequestWorkerTest {
     @Test
     @DisplayName("R2 取消路径 → END(CANCELLED) 事件不含 messageId 键（半截内容不作反馈目标）")
     void 取消路径END事件不含messageId() throws Exception {
-        // Given: run 起步前设置取消标记，首个 chunk 触发 CancelledException
+        // Given: run 起步前注册（模拟入队）并置取消标记，首个 chunk 触发 CancelledException
+        worker.registerPendingRun("100");
         worker.cancel("100");
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -2320,6 +2356,8 @@ class ChatRequestWorkerTest {
                 .when(saver)
                 .put(any(RunnableConfig.class), any(Checkpoint.class));
 
+        // 取消前先注册条目（模拟 BUG-14 入队注册生命周期）
+        worker.registerPendingRun("100");
         worker.cancel("100");
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
