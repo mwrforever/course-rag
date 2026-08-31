@@ -32,8 +32,11 @@ public class MemoryProperties {
         private String model = "qwen3.7-flash";
         /** run 完成后投递的防抖窗口（秒），同用户窗口内消息合并 */
         private int debounceWindowSeconds = 30;
-        /** 提取 LLM 调用超时（毫秒），超时丢弃本批不重试 */
-        private long timeoutMs = 10_000L;
+        /**
+         * 提取 LLM 调用超时（毫秒），超时丢弃本批不重试；
+         * 2026-08-31 用户拍板 5 分钟——提取模型晚间实测延迟 14~22s（日间 2.3~8s），原 10s 致 5/8 批次超时丢弃
+         */
+        private long timeoutMs = 300_000L;
         /** 防抖调度线程数（独立小线程池，不占主链路线程） */
         private int threads = 2;
         /** 提取执行器队列容量（有界队列：极端故障时任务不无限堆积，拒绝即按失败降级丢弃本批） */

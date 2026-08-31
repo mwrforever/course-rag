@@ -80,11 +80,28 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
-/** 同步 RT 存在性提示 cookie（有 RT 写入 7 天有效期，无 RT 即刻清除） */
+/**
+ * 同步 RT 存在性提示 cookie（有 RT 写入 7 天有效期，无 RT 即刻清除）
+ *
+ * 生产 https 环境追加 Secure 属性（提示 cookie 无法 httpOnly，Secure 防明文传输被劫持；
+ * dev http 不追加，否则本地无法落盘——2026-08-31 N2 审核 Finding 1 收口）。
+ */
 function syncRtLiveCookie(hasRt: boolean): void {
+  // Secure 仅在生产 https 协议下追加（window 存在性守卫防 SSR 环境无 location 报错）
+  const secure =
+    typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
   document.cookie = hasRt
-    ? `${RT_LIVE_COOKIE}=1; Path=/; Max-Age=${RT_LIVE_COOKIE_MAX_AGE}; SameSite=Lax`
-    : `${RT_LIVE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+    ? `${RT_LIVE_COOKIE}=1; Path=/; Max-Age=${RT_LIVE_COOKIE_MAX_AGE}; SameSite=Lax${secure}`
+    : `${RT_LIVE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+}
+
+/**
+ * 清理可能残留的 RT 提示 cookie（收口场景：localStorage 无 RT 但 c_rt_live 残留——
+ * 用户手清存储/ITP 分区隔离时常规清理路径不触发，AuthProvider 挂载无 RT 分支兜底调用，
+ * 防 middleware 按残留 cookie 放行真匿名者；语义与 syncRtLiveCookie(false) 等价）
+ */
+export function clearRtLiveCookie(): void {
+  syncRtLiveCookie(false);
 }
 
 /** 写入 RT 到 localStorage（传 null 移除），并同步 c_rt_live 提示 cookie（middleware 放行依据） */

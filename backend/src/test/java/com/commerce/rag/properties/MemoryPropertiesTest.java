@@ -17,11 +17,11 @@ class MemoryPropertiesTest {
     private final MemoryProperties props = new MemoryProperties();
 
     @Test
-    @DisplayName("extraction 默认 — 模型 qwen3.7-flash/防抖 30s/超时 10s/线程 2")
+    @DisplayName("extraction 默认 — 模型 qwen3.7-flash/防抖 30s/超时 5 分钟/线程 2")
     void extractionDefaults() {
         assertEquals("qwen3.7-flash", props.getExtraction().getModel());
         assertEquals(30, props.getExtraction().getDebounceWindowSeconds());
-        assertEquals(10_000L, props.getExtraction().getTimeoutMs());
+        assertEquals(300_000L, props.getExtraction().getTimeoutMs());
         assertEquals(2, props.getExtraction().getThreads());
     }
 

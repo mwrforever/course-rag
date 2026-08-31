@@ -301,6 +301,8 @@ describe("认证端点", () => {
     // middleware 存在性放行依据：AT cookie 过期但 RT 有效的窗口由该提示 cookie 放行
     expect(document.cookie).toContain("c_rt_live=1");
     expect(cookieSetter).toHaveBeenLastCalledWith(expect.stringContaining("Max-Age=604800"));
+    // http（dev）环境不追加 Secure（回归：仅生产 https 追加，见 c_rt_live describe 的 https 用例）
+    expect(cookieSetter).toHaveBeenLastCalledWith(expect.not.stringContaining("Secure"));
     api.setRefreshToken(null);
     expect(document.cookie).not.toContain("c_rt_live");
     cookieSetter.mockRestore();
@@ -365,6 +367,38 @@ describe("认证端点", () => {
     await expect(api.logout()).resolves.toBeUndefined();
     expect(api.getAccessToken()).toBeNull();
     expect(localStorage.getItem("c_rt")).toBeNull();
+  });
+});
+
+describe("c_rt_live 提示 cookie 加固（Secure 追加 + 残留清理收口，2026-08-31 N2 审核）", () => {
+  it("https 环境 setRefreshToken 写入串追加 Secure（生产 https 防明文传输劫持）", async () => {
+    const api = await freshApi();
+    // 模拟生产 https 协议（dev http 不追加，见认证端点 describe 的 http 回归用例）
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      value: { ...originalLocation, protocol: "https:" },
+      configurable: true,
+    });
+    const cookieSetter = vi.spyOn(document, "cookie", "set");
+    try {
+      api.setRefreshToken("rt-1");
+      expect(cookieSetter).toHaveBeenLastCalledWith(expect.stringContaining("c_rt_live=1"));
+      expect(cookieSetter).toHaveBeenLastCalledWith(expect.stringContaining("Secure"));
+    } finally {
+      cookieSetter.mockRestore();
+      Object.defineProperty(window, "location", { value: originalLocation, configurable: true });
+    }
+  });
+
+  it("clearRtLiveCookie：写清除串（Max-Age=0），兜底清理残留提示 cookie", async () => {
+    const api = await freshApi();
+    // 残留场景预置：localStorage 无 RT 但 c_rt_live 残留（用户手清存储/ITP 分区，不触发常规清理路径）
+    document.cookie = "c_rt_live=1; Path=/; Max-Age=604800; SameSite=Lax";
+    const cookieSetter = vi.spyOn(document, "cookie", "set");
+    api.clearRtLiveCookie();
+    expect(cookieSetter).toHaveBeenCalledWith(expect.stringContaining("c_rt_live=;"));
+    expect(cookieSetter).toHaveBeenCalledWith(expect.stringContaining("Max-Age=0"));
+    cookieSetter.mockRestore();
   });
 });
 
