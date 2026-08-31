@@ -46,7 +46,10 @@ spring:
 
   # ── PostgreSQL 数据源 ──
   datasource:
-    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:commerce_rag}
+    # PERF-01（宪法 A.4.12）：开启 pgJDBC 批插重写——saveBatch 多条 INSERT 合并为
+    # multi-values 单语句下发，批插吞吐提升 2~3 倍；含 ON CONFLICT/RETURNING 等语句
+    # pgJDBC 自动跳过重写，无兼容风险
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:commerce_rag}?reWriteBatchedInserts=true
     username: ${PG_USER:postgres}
     password: ${PG_PASSWORD:rag_pg_2024}
     hikari:
