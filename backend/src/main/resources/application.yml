@@ -43,6 +43,18 @@ spring:
         options:
           model: qwen3.8-max          # spec §6 主对话旗舰
           temperature: 0.7
+    # N3-3（宪法 B.4.4）：模型调用阻塞路径重试收紧——Spring AI 默认 max-attempts=10 ×
+    # 指数退避（initial 2s、multiplier 5），最坏退避累计 20+ 分钟，会话链路多模型调用叠加
+    # 会显著放大端到端延迟。收紧为 3 次（1 次原始 + 2 次重试）+ 2s 起步 ×2 退避、上限 30s，
+    # 最坏退避累计仅 6s。on-client-errors=false（默认语义显式化）：4xx 客户端错误抛
+    # NonTransientAiException 不重试，仅 5xx/429 等瞬时故障进入重试。
+    retry:
+      max-attempts: 3
+      on-client-errors: false
+      backoff:
+        initial-interval: 2s
+        multiplier: 2
+        max-interval: 30s
 
   # ── PostgreSQL 数据源 ──
   datasource:
