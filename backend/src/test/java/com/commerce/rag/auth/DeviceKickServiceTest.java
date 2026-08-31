@@ -232,6 +232,13 @@ class DeviceKickServiceTest {
         // PG 审计：记录置 REVOKED（仅 ACTIVE 幂等）+ 双 jti 黑名单
         verify(loginRecordMapper).updateStatusByIdIfActive(1L);
         verify(tokenBlacklistMapper, times(2)).insert(any(SysTokenBlacklist.class));
+        // BUG-13：复用检测驱动的全量吊销 reason=USER_DISABLED——与正常旋转的 ROTATED
+        // 在黑名单审计层语义可区分（refresh 复用路径经 disableUser 走本方法落审计）
+        ArgumentCaptor<SysTokenBlacklist> blacklistCaptor = ArgumentCaptor.forClass(SysTokenBlacklist.class);
+        verify(tokenBlacklistMapper, times(2)).insert(blacklistCaptor.capture());
+        assertTrue(
+                blacklistCaptor.getAllValues().stream().allMatch(b -> "USER_DISABLED".equals(b.getReason())),
+                "复用检测/禁用路径的黑名单 reason 应为 USER_DISABLED，与旋转 ROTATED 区分");
     }
 
     @Test

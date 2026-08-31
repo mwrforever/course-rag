@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
  * @param tokenType    Token 类型：ACCESS / REFRESH
  * @param userId       所属用户 ID
  * @param blacklistedBy 操作人 ID（SUPER_ADMIN / TEACHER）
- * @param reason       禁用原因：DEVICE_KICKED / USER_DISABLED / MANUAL_REVOKE / TOKEN_REUSE
+ * @param reason       禁用原因：DEVICE_KICKED / USER_DISABLED / MANUAL_REVOKE / ROTATED（历史行可能为 TOKEN_REUSE）
  * @param expiresAt    该 jti 对应 Token 的原始过期时间
  * @param createdAt    创建时间
  */

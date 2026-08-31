@@ -237,13 +237,15 @@ public class AuthController {
         String newAccessToken = tokenService.generateAccessToken(userId, role, newJtiAt);
         String newRefreshToken = tokenService.generateRefreshToken(userId, newJtiRt);
 
-        // 8. 旧 RT jti 入黑名单
+        // 8. 旧 RT jti 入黑名单（BUG-13：正常旋转写 ROTATED，与真实复用检测区分——
+        //    复用路径走 disableUser 全量吊销写 USER_DISABLED；原恒写 TOKEN_REUSE 导致
+        //    所有正常刷新在黑名单审计中呈现为「复用」，按 TOKEN_REUSE 告警会全量误报）
         deviceKickService.addToBlacklist(
                 oldJtiRt,
                 "REFRESH",
                 userId,
                 userId,
-                "TOKEN_REUSE",
+                "ROTATED",
                 LocalDateTime.ofInstant(claims.getExpiration().toInstant(), ZoneId.systemDefault()));
 
         // 9. 更新 login_record（下沉 AuthSessionService）

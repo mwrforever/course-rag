@@ -42,7 +42,7 @@ public class SysTokenBlacklist implements Serializable {
     @TableField("blacklisted_by")
     private Long blacklistedBy;
 
-    /** 禁用原因：DEVICE_KICKED / USER_DISABLED / MANUAL_REVOKE / TOKEN_REUSE */
+    /** 禁用原因：DEVICE_KICKED / USER_DISABLED / MANUAL_REVOKE / ROTATED（正常旋转，历史行可能为 TOKEN_REUSE） */
     private String reason;
 
     /** 该 jti 对应 Token 的原始过期时间（过期后可清理此条记录） */

@@ -299,10 +299,11 @@ class AuthControllerTest {
         verify(deviceKickService).markRefreshTokenUsedAtomic("old-jti-rt");
         // 步骤 4：黑名单检查保留在原子标记之后
         verify(deviceKickService).isBlacklisted("old-jti-rt");
-        // 步骤 8：旧 RT 入黑名单
+        // 步骤 8：旧 RT 入黑名单（BUG-13：正常旋转 reason 语义化写 ROTATED，
+        // 与真实复用检测（disableUser 全量吊销写 USER_DISABLED）在审计层区分）
         verify(deviceKickService)
                 .addToBlacklist(
-                        eq("old-jti-rt"), eq("REFRESH"), eq(1L), eq(1L), eq("TOKEN_REUSE"), any(LocalDateTime.class));
+                        eq("old-jti-rt"), eq("REFRESH"), eq(1L), eq(1L), eq("ROTATED"), any(LocalDateTime.class));
         // 步骤 9：登录记录更新下沉 AuthSessionService
         verify(authSessionService)
                 .updateLoginRecordOnRefresh(eq(1L), eq("old-jti-rt"), eq("new-jti-at"), eq("new-jti-rt"));
