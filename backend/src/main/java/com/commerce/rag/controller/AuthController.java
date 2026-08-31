@@ -350,6 +350,10 @@ public class AuthController {
     private void clearCookie(HttpServletResponse response) {
         Cookie cookie = new Cookie(authProperties.cookieName(), "");
         cookie.setHttpOnly(true);
+        // BUG-10: Secure 标记与 setCookie 对称——Secure cookie 的覆盖/删除须同样带 Secure
+        // 属性（RFC 6265bis），否则生产 HTTPS（cookie-secure=true）登出时清除指令可能与
+        // 已写 cookie 属性不匹配，浏览器残留已黑名单的 AT cookie
+        cookie.setSecure(authProperties.cookieSecure());
         cookie.setPath("/");
         if (authProperties.cookieDomain() != null
                 && !authProperties.cookieDomain().isEmpty()) {
