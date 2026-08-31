@@ -400,6 +400,15 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
     public IPage<ChunkBriefVO> findByCourseIdDefaultAsVO(int page, int size) {
         Page<DocumentChunk> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
         LambdaQueryWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaQuery()
+                // PERF-03（宪法 A.4.4 按需取列）：分片列表仅消费 ChunkBriefVO 5 字段，投影收窄
+                // 5 列（与 J4 相邻分片查询同范式）——原全列取回含 dense_vector BYTEA（~80KB/行），
+                // 每次翻页全量传输与反序列化后丢弃；列表页无向量检索诉求，禁回退全列
+                .select(
+                        DocumentChunk::getId,
+                        DocumentChunk::getContent,
+                        DocumentChunk::getHeadingPath,
+                        DocumentChunk::getChunkIndex,
+                        DocumentChunk::getParentTitle)
                 .eq(DocumentChunk::getCourseId, "DEFAULT")
                 .orderByAsc(DocumentChunk::getChunkIndex);
         IPage<DocumentChunk> entityPage = chunkMapper.selectPage(pageObj, wrapper);

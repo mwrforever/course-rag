@@ -1043,6 +1043,29 @@ class DocumentChunkServiceTest {
         assertEquals(VO_COLUMNS, captureSelectColumns(captor.getValue()), "findPending 投影列集应与 DocumentChunkVO 组件一一对应");
     }
 
+    /** ChunkBriefVO 组件列集（PERF-03：J3 通用资料库分片列表按需取列，仅 5 列） */
+    private static final Set<String> BRIEF_VO_COLUMNS =
+            Set.of("id", "content", "heading_path", "chunk_index", "parent_title");
+
+    @Test
+    @DisplayName("PERF-03 findByCourseIdDefaultAsVO 投影 — SELECT 仅 ChunkBriefVO 5 列、不含 dense_vector")
+    void findByCourseIdDefaultAsVO_projectsBriefColumnsOnly() {
+        Page<DocumentChunk> page = new Page<>(1, 20);
+        page.setRecords(List.of(chunk(1L, "10")));
+        when(chunkMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        // J3 通用资料库分片列表（C 端）：分页查询仅消费 ChunkBriefVO 5 字段，
+        // 修复前全列取回（含 dense_vector BYTEA ~80KB/行，翻页全量传输后丢弃）
+        chunkService.findByCourseIdDefaultAsVO(1, 0);
+
+        ArgumentCaptor<LambdaQueryWrapper<DocumentChunk>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(chunkMapper).selectPage(any(Page.class), captor.capture());
+        assertEquals(
+                BRIEF_VO_COLUMNS,
+                captureSelectColumns(captor.getValue()),
+                "J3 分片列表投影列集应与 ChunkBriefVO 一一对应（不含 dense_vector）");
+    }
+
     @Test
     @DisplayName("P1-3 投影后 VO 字段完整映射 — 关键字段（含 metadataJson）非空")
     void findPage_projectedColumns_stillMapAllVoFields() {
