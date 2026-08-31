@@ -264,8 +264,8 @@ public class ChatStreamEntry {
         if (!success) {
             // F2-9: ring buffer 已覆盖/不存在 → 降级查 PG chat_message 表，replay 历史消息（§3.6）
             log.warn("ring 回放失败，降级查 PG: runId={}, lastEventId={}", runId, lastEventId);
-            long lastSeq = replayFromPg(runId, lastEventId, emitter);
-            if (lastSeq < 0) {
+            PgReplayOutcome replay = replayFromPg(runId, lastEventId, emitter);
+            if (replay.lastSeq() < 0) {
                 // P2-10 修复: run 仍在执行时（ring 覆盖、PG 尚无消息——持久化在 run 结束）
                 // 不得误报 REPLAY_FAILED 终态——仅订阅继续收实时事件，历史缺失可接受
                 ChatRunVO run = chatRunService.findById(Long.parseLong(runId));
@@ -275,9 +275,11 @@ public class ChatStreamEntry {
                         ChatRunVO closedRun = chatRunService.findById(Long.parseLong(runId));
                         if (closedRun != null && isTerminalStatus(closedRun.status())) {
                             // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（M2：解析方法复查
-                            // run 状态）；CANCELLED/ERROR 不带 messageId（半截内容不作反馈目标）
+                            // run 状态——PERF-13 复用已查 closedRun，免重复查询）；CANCELLED/ERROR
+                            // 不带 messageId（半截内容不作反馈目标）
                             String payload = "COMPLETED".equals(closedRun.status())
-                                    ? buildEndPayload(runId, closedRun.status(), resolveAssistantMessageId(runId))
+                                    ? buildEndPayload(
+                                            runId, closedRun.status(), resolveAssistantMessageId(runId, closedRun))
                                     : buildEndPayload(runId, closedRun.status());
                             try {
                                 emitter.send(SseEmitter.event()
@@ -309,14 +311,15 @@ public class ChatStreamEntry {
             // 否则新 emitter 收不到 end，前端状态机永久停在"生成中"
             ChatRunVO run = chatRunService.findById(Long.parseLong(runId));
             if (run != null && isTerminalStatus(run.status())) {
-                // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（resolveAssistantMessageId
-                // 内部复查 M2 状态过滤）；CANCELLED/ERROR 不带 messageId 键
+                // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（PERF-13：M2 状态过滤
+                // 与正文行扫描均在已查 run + PG 回放消息上比对，免重复查询）；CANCELLED/ERROR
+                // 不带 messageId 键
                 String payload = "COMPLETED".equals(run.status())
-                        ? buildEndPayload(runId, run.status(), resolveAssistantMessageId(runId))
+                        ? buildEndPayload(runId, run.status(), resolveAssistantMessageId(run, replay.messages()))
                         : buildEndPayload(runId, run.status());
                 try {
                     emitter.send(SseEmitter.event()
-                            .id(String.valueOf(lastSeq + 1))
+                            .id(String.valueOf(replay.lastSeq() + 1))
                             .name(SseEventType.END.getEventName())
                             .data(payload));
                     emitter.complete();
@@ -332,14 +335,14 @@ public class ChatStreamEntry {
             if (!bridge.subscribe(runId, emitter)) {
                 ChatRunVO closedRun = chatRunService.findById(Long.parseLong(runId));
                 if (closedRun != null && isTerminalStatus(closedRun.status())) {
-                    // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（M2 状态过滤）；
-                    // CANCELLED/ERROR 不带 messageId 键
+                    // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（M2 状态过滤——
+                    // PERF-13 复用已查 closedRun）；CANCELLED/ERROR 不带 messageId 键
                     String payload = "COMPLETED".equals(closedRun.status())
-                            ? buildEndPayload(runId, closedRun.status(), resolveAssistantMessageId(runId))
+                            ? buildEndPayload(runId, closedRun.status(), resolveAssistantMessageId(runId, closedRun))
                             : buildEndPayload(runId, closedRun.status());
                     try {
                         emitter.send(SseEmitter.event()
-                                .id(String.valueOf(lastSeq + 1))
+                                .id(String.valueOf(replay.lastSeq() + 1))
                                 .name(SseEventType.END.getEventName())
                                 .data(payload));
                     } catch (IOException ex) {
@@ -458,15 +461,16 @@ public class ChatStreamEntry {
      * @param runId       Run 唯一标识（字符串）
      * @param lastEventId 客户端最后收到的 eventId（用于 seq 续编号）
      * @param emitter     SSE 订阅者
-     * @return 最后回放的 seq（回放成功）；-1=PG 无数据或回放失败
+     * @return 回放结果（PERF-13）：lastSeq=最后回放的 seq（-1=PG 无数据或回放失败）；
+     *         messages=本次已查消息列表（供终态 messageId 解析复用，免二次查询）
      */
-    private long replayFromPg(String runId, long lastEventId, SseEmitter emitter) {
+    private PgReplayOutcome replayFromPg(String runId, long lastEventId, SseEmitter emitter) {
         try {
             Long runIdLong = Long.parseLong(runId);
             List<ChatMessageVO> messages = chatMessageService.findByRunId(runIdLong);
             if (messages == null || messages.isEmpty()) {
                 log.warn("PG 降级回放: runId={} 无历史消息", runId);
-                return -1;
+                return new PgReplayOutcome(-1, List.of());
             }
 
             long seq = lastEventId;
@@ -521,15 +525,18 @@ public class ChatStreamEntry {
             }
 
             log.info("PG 降级回放完成: runId={}, 消息数={}", runId, messages.size());
-            return seq;
+            return new PgReplayOutcome(seq, messages);
         } catch (NumberFormatException e) {
             log.warn("PG 降级回放: runId 解析失败 runId={}", runId);
-            return -1;
+            return new PgReplayOutcome(-1, List.of());
         } catch (Exception e) {
             log.warn("PG 降级回放失败: runId={}", runId, e);
-            return -1;
+            return new PgReplayOutcome(-1, List.of());
         }
     }
+
+    /** PG 降级回放结果（PERF-13）：seq 游标 + 已查消息列表（复用给终态 messageId 解析，消重复查询） */
+    private record PgReplayOutcome(long lastSeq, List<ChatMessageVO> messages) {}
 
     /**
      * 判断 run 是否已处于终态（COMPLETED/CANCELLED/ERROR）。
@@ -551,34 +558,55 @@ public class ChatStreamEntry {
      * 半截 assistant 正文行虽已落库，但不得作为反馈目标（与实时路径「CANCELLED/ERROR 终态
      * 不带 messageId」语义对齐）。异常/未落库窗口返回 null（正常降级，前端 {@code messageId?} 可空容忍）。
      *
-     * @param runId Run 唯一标识（字符串，归属校验已通过）
+     * <p>PERF-13（2026-08-31）：降级路径 run 已在手时复用传入（免 run 复查），messages 仍自查
+     * （无既有可复用列表的调用点）；run/messages 均在手时直接走纯比对重载，全程零额外查询
+     * （降级路径 4 次 DB 往返收敛为 2 次）。
+     *
+     * @param runId    Run 唯一标识（字符串，归属校验已通过）
+     * @param knownRun 调用方已查询的 run（非 null 时复用，M2 状态过滤在该对象上比对；null 时自查）
      * @return assistant 正文行消息 ID 字符串；run 非 COMPLETED / 无正文行 / 查询异常时返回 null
      */
-    private String resolveAssistantMessageId(String runId) {
+    private String resolveAssistantMessageId(String runId, ChatRunVO knownRun) {
         try {
             Long runIdLong = Long.parseLong(runId);
-            // M2 状态过滤：仅 COMPLETED run 的 assistant 正文行可作反馈目标
-            ChatRunVO run = chatRunService.findById(runIdLong);
+            // M2 状态过滤：仅 COMPLETED run 的 assistant 正文行可作反馈目标（knownRun 非空时免查）
+            ChatRunVO run = knownRun != null ? knownRun : chatRunService.findById(runIdLong);
             if (run == null || !"COMPLETED".equals(run.status())) {
                 return null;
             }
             List<ChatMessageVO> messages = chatMessageService.findByRunId(runIdLong);
-            if (messages == null || messages.isEmpty()) {
-                return null;
-            }
-            // 反向扫描：消息按 seq 升序返回，取最后一条正文行即「最终回答」
-            for (int i = messages.size() - 1; i >= 0; i--) {
-                ChatMessageVO msg = messages.get(i);
-                if ("ASSISTANT".equals(msg.role()) && msg.messageType() == null && msg.id() != null) {
-                    return msg.id().toString();
-                }
-            }
-            return null;
+            return resolveAssistantMessageId(run, messages);
         } catch (Exception e) {
             // 解析/查询失败不得阻断 end 补发——messageId 降级 null
             log.warn("解析 assistant 消息 ID 失败，end 事件 messageId 降级为 null: runId={}", runId, e);
             return null;
         }
+    }
+
+    /**
+     * 解析 assistant 正文行消息 ID 的纯比对重载（PERF-13）——在既有 run/messages 上完成
+     * M2 状态过滤与反向扫描，不产生任何 DB 查询；调用方保证对象新鲜度
+     * （同一降级流程内已查数据，run 终态为最终态无并发漂移）。
+     *
+     * @param run      已查询的 run（M2 过滤对象；null 或非 COMPLETED 返回 null）
+     * @param messages 已查询的消息列表（按 seq 升序；null/空返回 null）
+     * @return assistant 正文行消息 ID 字符串；无正文行时返回 null
+     */
+    private String resolveAssistantMessageId(ChatRunVO run, List<ChatMessageVO> messages) {
+        if (run == null || !"COMPLETED".equals(run.status())) {
+            return null;
+        }
+        if (messages == null || messages.isEmpty()) {
+            return null;
+        }
+        // 反向扫描：消息按 seq 升序返回，取最后一条正文行即「最终回答」
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessageVO msg = messages.get(i);
+            if ("ASSISTANT".equals(msg.role()) && msg.messageType() == null && msg.id() != null) {
+                return msg.id().toString();
+            }
+        }
+        return null;
     }
 
     /**

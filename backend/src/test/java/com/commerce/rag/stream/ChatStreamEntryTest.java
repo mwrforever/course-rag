@@ -521,9 +521,33 @@ class ChatStreamEntryTest {
 
         // Then: 终态分支——不 subscribe、不启动心跳（无额外 push）；PG 回放已执行
         verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
-        // R2 改造适配：COMPLETED 终态补 messageId——findByRunId 由 PG 回放 + messageId 解析各查一次
-        verify(chatMessageService, times(2)).findByRunId(123L);
+        // R2 改造适配（PERF-13 收敛后）：COMPLETED 终态补 messageId——messageId 解析复用
+        // PG 回放已查消息列表，findByRunId 全程仅 1 次
+        verify(chatMessageService, times(1)).findByRunId(123L);
         assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("reconnect PG 回放成功 + COMPLETED 终态 → 降级路径 DB 查询收敛（PERF-13：run/messages 各查 1 次）")
+    void reconnect_terminalRun_degradePathQueriesConverge() {
+        // Given: 归属校验 + 终态判定共用 run 查桩（COMPLETED）；PG 历史含正文行（messageId 目标）
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(
+                        new ChatMessageVO(1L, "ASSISTANT", "历史思考内容", "thinking", null, null, 123L, 1, null),
+                        new ChatMessageVO(2L, "ASSISTANT", "最终回答", null, null, null, 123L, 2, null)));
+
+        // When: 降级路径（ring 失效 → PG 回放成功 → run 已终态补发 end）
+        entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
+
+        // Then: PERF-13——messageId 解析复用 PG 回放消息 + 已查 run，findByRunId 全程仅 1 次、
+        // findById 仅归属校验 + 终态判定 2 次（修复前 resolveAssistantMessageId 内部再查
+        // run + messages 各 1 次，降级路径 4 次往返）
+        verify(chatRunService, times(2)).findById(123L);
+        verify(chatMessageService, times(1)).findByRunId(123L);
+        verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
     }
 
     @Test
@@ -1043,11 +1067,13 @@ class ChatStreamEntryTest {
                 .orElseThrow(() -> new AssertionError("应补发 end 事件 payload"));
     }
 
-    /** 反射调用 private resolveAssistantMessageId（M2：仅 COMPLETED run 的 assistant 正文行可作反馈目标） */
+    /** 反射调用 private resolveAssistantMessageId（M2：仅 COMPLETED run 的 assistant 正文行可作反馈目标；
+     * PERF-13 后签名为 (runId, knownRun)，传 null 走 run 自查路径——与原单参语义一致） */
     private String invokeResolveAssistantMessageId(String runId) throws Exception {
-        Method method = ChatStreamEntry.class.getDeclaredMethod("resolveAssistantMessageId", String.class);
+        Method method =
+                ChatStreamEntry.class.getDeclaredMethod("resolveAssistantMessageId", String.class, ChatRunVO.class);
         method.setAccessible(true);
-        return (String) method.invoke(entry, runId);
+        return (String) method.invoke(entry, runId, null);
     }
 
     @Test
