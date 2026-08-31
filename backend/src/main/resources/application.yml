@@ -138,6 +138,9 @@ minio:
 milvus:
   host: ${MILVUS_HOST:localhost}
   port: ${MILVUS_PORT:19530}
+  # PERF-04（宪法 D.5.10）：单次 RPC 截止时间（毫秒）——SDK 默认 0=无截止，
+  # gRPC 挂起会永久占用检索/ETL 线程；30s 起步防误杀大 batch，按部署环境调整
+  rpc-deadline-ms: 30000
   collection-name: knowledge_chunks
   # text-embedding-v4 输出维度
   embedding-dim: 1024
