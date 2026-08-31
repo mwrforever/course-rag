@@ -203,11 +203,40 @@ class CourseServiceTest {
         course.setCreatedBy(100L);
         when(courseInfoMapper.selectById(1L)).thenReturn(course);
 
-        // When
+        // When（无事务上下文：直接失效的既有语义保持）
         courseService.deleteCourse(1L, 100L, false);
 
         // Then: 软删完成后触发缓存失效（先写 DB 后失效）
         verify(courseQueryService).evictCourse(1L);
+    }
+
+    @Test
+    @DisplayName("BUG-05+PERF-02: deleteCourse → 事务上下文内缓存失效挂 afterCommit（提交后才失效）")
+    void deleteCourse_evictsCacheAfterCommit() {
+        // Given: 课程 1 属于创建者 100；模拟活动事务同步上下文（生产由 @Transactional 切面注册）
+        CourseInfo course = new CourseInfo();
+        course.setId(1L);
+        course.setCreatedBy(100L);
+        when(courseInfoMapper.selectById(1L)).thenReturn(course);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            // When
+            courseService.deleteCourse(1L, 100L, false);
+
+            // Then: 事务提交前课程缓存与 dashboard 缓存均未失效——
+            // 消除「失效后-提交前并发读 miss 回填未删除旧值」的脏读窗口（与 createCourse 先例一致）
+            verify(courseQueryService, never()).evictCourse(anyLong());
+            verify(dashboardCacheEvictor, never()).evictAll();
+            // 触发 afterCommit 回调（等价事务提交后）
+            for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) {
+                sync.afterCommit();
+            }
+            // Then: 提交后课程键 + dashboard 统计区均失效（失效内容不变仅时机后移，TTL 兜底不变）
+            verify(courseQueryService).evictCourse(1L);
+            verify(dashboardCacheEvictor).evictAll();
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     // ==================== createCourse / 查询 / 教师 / 内容 补充 ====================

@@ -178,23 +178,36 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
     }
 
     /**
-     * 注册课程查询缓存失效：事务提交后执行（afterCommit），无事务时直接执行
+     * 注册缓存失效动作：事务提交后执行（afterCommit），无事务上下文时直接执行
      *
-     * @param courseId 课程 ID
+     * <p>一致性铁律（宪法 A.5.4：先写 DB → 后失效缓存）的时机收敛——失效必须发生在事务
+     * commit 之后，否则存在「失效后-提交前并发读 miss 回填旧值」的脏读窗口（TTL 到期前
+     * 旧数据持续命中）。createCourse（77751c4 先例）与 deleteCourse（BUG-05+PERF-02）共用本挂点。
+     *
+     * @param action 缓存失效动作（课程键失效 / dashboard 区失效等）
      */
-    private void evictCourseCacheAfterCommit(Long courseId) {
+    private void evictCacheAfterCommit(Runnable action) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             // 事务内：挂 afterCommit 回调，提交后失效（避免失效后-提交前并发读回填旧值窗口）
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    courseQueryService.evictCourse(courseId);
+                    action.run();
                 }
             });
         } else {
             // 无事务上下文（如直接调用/单测）：保持既有同步失效语义
-            courseQueryService.evictCourse(courseId);
+            action.run();
         }
+    }
+
+    /**
+     * 注册课程查询缓存失效：事务提交后执行（afterCommit），无事务时直接执行
+     *
+     * @param courseId 课程 ID
+     */
+    private void evictCourseCacheAfterCommit(Long courseId) {
+        evictCacheAfterCommit(() -> courseQueryService.evictCourse(courseId));
     }
 
     /**
@@ -442,10 +455,14 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
                 .set(CourseInfo::getDeleted, ts)
                 .set(CourseInfo::getUpdatedAt, LocalDateTime.now());
         courseInfoMapper.update(null, wrapper);
-        // 级联软删后课程详情/内容/排期均不可见，失效该课程相关缓存键（先写 DB 后失效）
-        courseQueryService.evictCourse(courseId);
-        // 统计失效：课程专属 PENDING 分片已软删，影响 pendingChunkCount（先写 DB 后失效——M-2 新增项）
-        dashboardCacheEvictor.evictAll();
+        // 级联软删后课程详情/内容/排期均不可见，失效该课程相关缓存键 + dashboard 统计缓存
+        // （BUG-05+PERF-02：失效挂 afterCommit——提交后失效，消除「失效后-提交前并发读 miss
+        // 回填未删除旧值」的脏读窗口；失效内容不变仅时机后移，TTL 兜底不变）
+        evictCacheAfterCommit(() -> {
+            courseQueryService.evictCourse(courseId);
+            // 统计失效：课程专属 PENDING 分片已软删，影响 pendingChunkCount（M-2 新增项）
+            dashboardCacheEvictor.evictAll();
+        });
         log.info("级联软删课程: courseId={}, operator={}", courseId, currentUserId);
     }
 
