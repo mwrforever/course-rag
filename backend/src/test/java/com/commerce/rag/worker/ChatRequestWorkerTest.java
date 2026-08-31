@@ -737,6 +737,72 @@ class ChatRequestWorkerTest {
     }
 
     @Test
+    @DisplayName("persistMessages 正常路径 — 多工具调用时 TOOL_RESULT 行 seq 穿插于对应实体行之间（BUG-11 回放时序与实时一致）")
+    @SuppressWarnings("unchecked")
+    void persistMessages_toolResultSeq_interleavedBetweenEntityRows() throws Exception {
+        // Given: 多工具调用场景（捕获顺序 = 调用结束序）——
+        // QU（thinking+query_plan，2 VO）→ 主agent第1轮（thinking+2×TOOL_CALL，3 VO，无正文）
+        // → 工具执行返回 2 个结果 → 主agent第2轮（thinking+正文，2 VO）
+        // 实时事件序：... TOOL_CALL(call-1/call-2) → TOOL_RESULT(call-1) → TOOL_RESULT(call-2)
+        // → 第2轮思考/正文；回放（按 seq 重建时间轴）必须与此一致，而非 TOOL_RESULT 集中排在末尾
+        AssistantMessageSink sink = new AssistantMessageSink();
+        sink.capture("understanding", "先理解问题", "{\"intent\":\"knowledge_question\",\"rewritten\":[\"大纲\"]}", List.of());
+        sink.capture(
+                "generating",
+                "第1轮思考",
+                null,
+                List.of(
+                        new AssistantMessageCapture.AssistantToolCall("call-1", "searchKnowledge", "{}"),
+                        new AssistantMessageCapture.AssistantToolCall("call-2", "getCourseOutline", "{}")));
+        // 第2轮思考全文须长于第1轮（sink 按全文差截增量），否则捕获为空思考
+        sink.capture("generating", "第1轮思考继续第2轮思考", "最终回答", List.of());
+
+        ToolResponseMessage trm = mock(ToolResponseMessage.class);
+        when(trm.getResponses())
+                .thenReturn(List.of(
+                        new ToolResponseMessage.ToolResponse("call-1", "searchKnowledge", "结果1"),
+                        new ToolResponseMessage.ToolResponse("call-2", "getCourseOutline", "结果2")));
+        OverAllState state = new OverAllState(Map.of("messages", List.of(trm)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        // When
+        invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, null, sink, false);
+
+        // Then: 期望 seq 分配（事件序）——user(0) → QU 实体(block 1-2) → 主1实体(block 3-5)
+        // → TOOL_RESULT(6,7) → 主2实体(block 8-9)；TOOL_RESULT 穿插于两轮主 agent 实体行之间
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> rows = captor.getValue();
+        assertEquals(6, rows.size(), "USER + QU实体 + 主1实体 + 2×TOOL_RESULT + 主2实体");
+
+        ChatMessage mainRound1 = rows.stream()
+                .filter(r -> r.getContent().contains("call-1") && r.getContent().contains("toolCalls"))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(5, mainRound1.getSeq().intValue(), "主1实体拆 3 VO（thinking+2×TOOL_CALL），seq 取末位 5");
+
+        List<ChatMessage> toolResults = rows.stream()
+                .filter(r -> "TOOL_RESULT".equals(r.getMessageType()))
+                .toList();
+        assertEquals(2, toolResults.size(), "2 个工具结果各落独立 TOOL_RESULT 行");
+        ChatMessage result1 = toolResults.get(0);
+        ChatMessage result2 = toolResults.get(1);
+        assertTrue(result1.getContent().contains("\"toolCallId\":\"call-1\""), "到达序在前的结果先落: " + result1.getContent());
+        assertTrue(result2.getContent().contains("\"toolCallId\":\"call-2\""), "到达序在后的结果后落: " + result2.getContent());
+        assertEquals(6, result1.getSeq().intValue(), "BUG-11：TOOL_RESULT(call-1) seq 应紧随主1实体行（末位5）之后");
+        assertEquals(7, result2.getSeq().intValue(), "BUG-11：TOOL_RESULT(call-2) seq 应紧随 call-1 之后");
+
+        ChatMessage mainRound2 = rows.stream()
+                .filter(r ->
+                        "assistant".equals(r.getMessageType()) && r.getContent().contains("最终回答"))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(9, mainRound2.getSeq().intValue(), "主2实体拆 2 VO（thinking+正文），block 起于 TOOL_RESULT 之后（8-9）");
+        assertTrue(mainRound2.getSeq() > result2.getSeq(), "回放时序：第2轮主 agent 实体行必须排在 TOOL_RESULT 之后（与实时事件序一致）");
+    }
+
+    @Test
     @DisplayName("persistMessages 正常路径 — 主 agent 实体行携带真实检索来源（sources 独立非模型事件不丢）")
     @SuppressWarnings("unchecked")
     void persistMessages_entityRow_mainAgentCarriesSources() throws Exception {

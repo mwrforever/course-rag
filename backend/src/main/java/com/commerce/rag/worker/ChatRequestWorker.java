@@ -1057,20 +1057,67 @@ public class ChatRequestWorker {
             // 正常完成路径（消息实体化，spec §3.3）：每次 LLM 调用一条 assistant 实体行
             // ====================================================================
 
+            List<AssistantMessageCapture> captures = assistantSink == null ? List.of() : assistantSink.snapshot();
+
+            // 3. TOOL_RESULT 行预收集（BUG-11）：按 toolCallId 把工具结果配对到「发起该调用的
+            //    捕获」——实时事件序为 TOOL_CALL（实体行内）→ TOOL_RESULT → 下一实体行，
+            //    落库 seq 必须穿插在对应实体行之后，回放（前端按行 seq 重建时间轴）才与实时
+            //    一致；修复前集中排在全部实体行之后，多轮工具调用回放时序错乱。
+            //    游标语义与取消路径一致：仅取本轮新增（index >= historyCursor）；
+            //    未配对结果（理论兜底：实体序列化失败跳行）按到达序收敛到全部实体行之后。
+            Map<String, Integer> toolCallCaptureIndex = new HashMap<>();
+            for (int i = 0; i < captures.size(); i++) {
+                for (AssistantMessageCapture.AssistantToolCall toolCall :
+                        captures.get(i).toolCalls()) {
+                    if (toolCall.id() != null && !toolCall.id().isEmpty()) {
+                        // putIfAbsent：同一 id 重复出现时锚定首次捕获（toolCallId 模型侧唯一）
+                        toolCallCaptureIndex.putIfAbsent(toolCall.id(), i);
+                    }
+                }
+            }
+            List<List<ToolResponseMessage.ToolResponse>> resultsByCapture = new ArrayList<>(captures.size());
+            for (int i = 0; i < captures.size(); i++) {
+                resultsByCapture.add(new ArrayList<>());
+            }
+            List<ToolResponseMessage.ToolResponse> tailResults = new ArrayList<>();
+            if (lastOutput != null && lastOutput.state() != null) {
+                Optional<Object> messagesOpt = lastOutput.state().value("messages");
+                if (messagesOpt.isPresent() && messagesOpt.get() instanceof List<?> rawList) {
+                    int start = Math.max(0, Math.min(historyCursor, rawList.size()));
+                    for (int i = start; i < rawList.size(); i++) {
+                        Object item = rawList.get(i);
+                        if (item instanceof ToolResponseMessage trm) {
+                            for (ToolResponseMessage.ToolResponse tr : trm.getResponses()) {
+                                Integer captureIdx = tr.id() == null ? null : toolCallCaptureIndex.get(tr.id());
+                                if (captureIdx == null) {
+                                    tailResults.add(tr);
+                                } else {
+                                    resultsByCapture.get(captureIdx).add(tr);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 2. assistant 实体行：QU / caption / 主 agent 各一次调用一条（捕获顺序 = 调用结束序）。
             //    seq = 拆行末位 VO 序号——n 个拆行 VO 占 [seq, seq+n-1]（虚拟位，无实际行），
             //    实体行取末位；消费面拆行函数按「实体seq-(n-1)…实体seq」倒推，读写两侧同源一致
-            //    （(run_id,seq) 唯一索引无冲突、跨实体/TOOL_RESULT 混合排序正确）
-            List<AssistantMessageCapture> captures = assistantSink == null ? List.of() : assistantSink.snapshot();
-            for (AssistantMessageCapture capture : captures) {
+            //    （(run_id,seq) 唯一索引无冲突、跨实体/TOOL_RESULT 混合排序正确）。
+            //    每条实体行落位后紧随其挂载的 TOOL_RESULT 行（BUG-11 事件序穿插）
+            for (int ci = 0; ci < captures.size(); ci++) {
+                AssistantMessageCapture capture = captures.get(ci);
                 String entityJson = AssistantEntitySplitter.toEntityJson(capture);
                 if (entityJson == null) {
-                    // 序列化失败（理论不可达：纯 LinkedHashMap 结构），跳过该调用不落行
+                    // 序列化失败（理论不可达：纯 LinkedHashMap 结构），跳过该调用不落行——
+                    // 其挂载的工具结果行仍须落库（挂在当前位置，不丢行）
+                    seq = appendToolResultRows(messages, resultsByCapture.get(ci), runId, sessionId, seq);
                     continue;
                 }
                 int voCount = AssistantEntitySplitter.voCount(entityJson);
                 if (voCount == 0) {
                     // 空调用（无思考/正文/工具调用）：与实体化前「空消息不落行」语义一致
+                    seq = appendToolResultRows(messages, resultsByCapture.get(ci), runId, sessionId, seq);
                     continue;
                 }
                 ChatMessage row = new ChatMessage();
@@ -1093,33 +1140,14 @@ public class ChatRequestWorker {
                 row.setSeq(seq + voCount - 1);
                 seq += voCount;
                 messages.add(row);
+
+                // BUG-11：该调用发起的工具结果行紧随其实体行分配 seq（实时事件序），保持独立
+                // 事件行（非模型消息，spec §3.3），与实时 TOOL_RESULT 事件 schema 一致
+                seq = appendToolResultRows(messages, resultsByCapture.get(ci), runId, sessionId, seq);
             }
 
-            // 3. TOOL_RESULT 行：state 中 ToolResponseMessage 保持独立事件行（非模型消息，
-            //    spec §3.3）；与实时 TOOL_RESULT 事件 schema 一致（toolCallId/status/output）。
-            //    游标语义与取消路径一致：仅取本轮新增（index >= historyCursor）
-            if (lastOutput != null && lastOutput.state() != null) {
-                Optional<Object> messagesOpt = lastOutput.state().value("messages");
-                if (messagesOpt.isPresent() && messagesOpt.get() instanceof List<?> rawList) {
-                    int start = Math.max(0, Math.min(historyCursor, rawList.size()));
-                    for (int i = start; i < rawList.size(); i++) {
-                        Object item = rawList.get(i);
-                        if (item instanceof ToolResponseMessage trm) {
-                            for (ToolResponseMessage.ToolResponse tr : trm.getResponses()) {
-                                ChatMessage cm = new ChatMessage();
-                                cm.setSessionId(sessionId);
-                                cm.setRunId(runId);
-                                cm.setRole("ASSISTANT");
-                                cm.setMessageType("TOOL_RESULT");
-                                cm.setContent(buildToolResultContent(tr.id(), tr.responseData()));
-                                cm.setSourcesJson("[]");
-                                cm.setSeq(seq++);
-                                messages.add(cm);
-                            }
-                        }
-                    }
-                }
-            }
+            // 未配对工具结果兜底：按到达序排全部实体行之后（与修复前集中末尾行为一致）
+            seq = appendToolResultRows(messages, tailResults, runId, sessionId, seq);
         }
 
         // 6. 批量插入
@@ -1819,6 +1847,40 @@ public class ChatRequestWorker {
         } catch (JsonProcessingException e) {
             return "{\"toolCallId\":\"" + toolCallId + "\",\"toolName\":\"" + toolName + "\",\"input\":{}}";
         }
+    }
+
+    /**
+     * 追加一批 TOOL_RESULT 落库行（BUG-11：正常路径事件序穿插的唯一落行点）。
+     *
+     * <p>每条工具结果落一条独立事件行（非模型消息，spec §3.3），content 与实时 TOOL_RESULT
+     * 事件 schema 一致（toolCallId/status/output）；seq 在调用方当前位置顺序分配——
+     * 调用方保证传入位置与实时事件序一致（实体行之后 / 全部实体行之后兜底）。
+     *
+     * @param messages 落库行累计列表（原地追加）
+     * @param results  本批工具结果（到达序，可为空列表）
+     * @param runId    Run 唯一标识
+     * @param sessionId 会话 ID
+     * @param seq      当前 seq 游标
+     * @return 消费后的新 seq 游标（消费 n 条结果则 +n）
+     */
+    private int appendToolResultRows(
+            List<ChatMessage> messages,
+            List<ToolResponseMessage.ToolResponse> results,
+            Long runId,
+            Long sessionId,
+            int seq) {
+        for (ToolResponseMessage.ToolResponse tr : results) {
+            ChatMessage cm = new ChatMessage();
+            cm.setSessionId(sessionId);
+            cm.setRunId(runId);
+            cm.setRole("ASSISTANT");
+            cm.setMessageType("TOOL_RESULT");
+            cm.setContent(buildToolResultContent(tr.id(), tr.responseData()));
+            cm.setSourcesJson("[]");
+            cm.setSeq(seq++);
+            messages.add(cm);
+        }
+        return seq;
     }
 
     /**
