@@ -10,8 +10,10 @@ import com.commerce.rag.service.ICourseCoverService;
 import com.commerce.rag.service.ICourseService;
 import com.commerce.rag.vo.PublicCourseDetailVO;
 import com.commerce.rag.vo.PublicCourseVO;
+import com.commerce.rag.vo.PublicScheduleVO;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -97,7 +99,7 @@ class PublicControllerTest {
     }
 
     @Test
-    @DisplayName("公开课程详情 → 转发 service 并返回详情 VO（含价格）")
+    @DisplayName("公开课程详情 → 转发 service 并返回详情 VO（含价格与排期列表）")
     void courseDetail_returnsDetailVO() {
         PublicCourseDetailVO detail = new PublicCourseDetailVO(
                 1L,
@@ -109,7 +111,16 @@ class PublicControllerTest {
                 "12 weeks",
                 new BigDecimal("4.9"),
                 128,
-                new BigDecimal("299.00"));
+                new BigDecimal("299.00"),
+                List.of(new PublicScheduleVO(
+                        11L,
+                        LocalDate.of(2026, 9, 1),
+                        LocalDate.of(2026, 12, 20),
+                        "ONLINE",
+                        "线上直播",
+                        "UPCOMING",
+                        200,
+                        35)));
         when(courseService.findPublicCourseById(1L)).thenReturn(detail);
 
         ApiResponse<PublicCourseDetailVO> result = controller.courseDetail(1L);
@@ -119,6 +130,10 @@ class PublicControllerTest {
         assertEquals("Java 后端实战", result.data().title());
         assertEquals("王老师", result.data().instructorName());
         assertEquals(new BigDecimal("299.00"), result.data().price());
+        // 排期列表随详情 VO 透传（开课日期等对外信息）
+        assertEquals(1, result.data().schedules().size());
+        assertEquals(LocalDate.of(2026, 9, 1), result.data().schedules().get(0).startDate());
+        assertEquals("线上直播", result.data().schedules().get(0).location());
         verify(courseService).findPublicCourseById(1L);
     }
 

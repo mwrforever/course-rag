@@ -32,6 +32,57 @@ const E2E_USER = {
 
 const JSON_OK = (data: unknown) => JSON.stringify({ code: 0, message: "success", data });
 
+/** 公开课程数据（首页/课堂/详情共用：课程 1 付费、课程 2 免费覆盖两种价签形态） */
+const PUBLIC_COURSES = [
+  {
+    id: "1",
+    title: "数据结构与算法精讲",
+    description: "从线性表到图论的系统课程",
+    coverImage: null,
+    category: "编程",
+    instructorName: "张老师",
+    duration: 12,
+    rating: 4.8,
+    learningCount: 236,
+    price: 299,
+  },
+  {
+    id: "2",
+    title: "Java 从入门到进阶",
+    description: "面向对象的 Java 系统课程",
+    coverImage: null,
+    category: "编程",
+    instructorName: "李老师",
+    duration: 20,
+    rating: 4.5,
+    learningCount: 89,
+    price: 0,
+  },
+] as const;
+
+/** 公开课程详情（列表字段 + 排期；开课时间等排期信息，改版 2026-08-31 详情页数据源） */
+const COURSE_DETAILS = {
+  "1": {
+    ...PUBLIC_COURSES[0],
+    schedules: [
+      {
+        id: "101",
+        startDate: "2026-09-01",
+        endDate: "2026-12-20",
+        scheduleType: "ONLINE",
+        location: "线上直播",
+        status: "UPCOMING",
+        capacity: 200,
+        enrolled: 35,
+      },
+    ],
+  },
+  "2": {
+    ...PUBLIC_COURSES[1],
+    schedules: [],
+  },
+} as const;
+
 /** 公共 mock：认证三端点 + 首页/课程/会话/反馈相关 GET 接口 */
 export async function mockApi(page: Page) {
   await page.route("**/api/v1/**", async (route) => {
@@ -80,32 +131,17 @@ export async function mockApi(page: Page) {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON_OK([
-          {
-            id: "1",
-            title: "数据结构与算法精讲",
-            description: "从线性表到图论的系统课程",
-            coverImage: null,
-            category: "编程",
-            instructorName: "张老师",
-            duration: 12,
-            rating: 4.8,
-            learningCount: 236,
-            price: 299,
-          },
-          {
-            id: "2",
-            title: "Java 从入门到进阶",
-            description: "面向对象的 Java 系统课程",
-            coverImage: null,
-            category: "编程",
-            instructorName: "李老师",
-            duration: 20,
-            rating: 4.5,
-            learningCount: 89,
-            price: 0,
-          },
-        ]),
+        body: JSON_OK(PUBLIC_COURSES),
+      });
+    }
+
+    // 公开课程详情（契约 C.2.2，改版 2026-08-31 详情页数据源：含排期列表）
+    if (method === "GET" && /\/public\/courses\/\d+$/.test(path)) {
+      const courseId = path.split("/").pop() ?? "1";
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON_OK(COURSE_DETAILS[courseId as keyof typeof COURSE_DETAILS] ?? null),
       });
     }
 
@@ -114,30 +150,7 @@ export async function mockApi(page: Page) {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON_OK([
-          {
-            id: "1",
-            title: "数据结构与算法精讲",
-            coverImage: null,
-            category: "编程",
-            instructorName: "张老师",
-            duration: 12,
-            rating: 4.8,
-            learningCount: 236,
-            price: 299,
-          },
-          {
-            id: "2",
-            title: "Java 从入门到进阶",
-            coverImage: null,
-            category: "编程",
-            instructorName: "李老师",
-            duration: 20,
-            rating: 4.5,
-            learningCount: 89,
-            price: 0,
-          },
-        ]),
+        body: JSON_OK(PUBLIC_COURSES),
       });
     }
 

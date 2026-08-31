@@ -283,10 +283,10 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
      *
      * <p>执行流程：主表链式查询 + 精确投影（全详情字段），限定 id + status=ACTIVE
      * （@TableLogic 自动过滤已删除）→ 不存在即 404（课程不存在/已下架/已删除统一文案，不泄露存在性）
-     * → MapStruct 转公开详情 VO。
+     * → 查询课程排期（course_schedule，开课日期升序，可为空列表）→ MapStruct 转公开详情 VO。
      *
      * @param courseId 课程 ID（路径参数，不可空）
-     * @return 公开课程详情 VO（含 price，单位元）
+     * @return 公开课程详情 VO（含 price 与 schedules 排期列表）
      * @throws BizException 404 课程不存在、已逻辑删除或 status 非 ACTIVE
      */
     public PublicCourseDetailVO findPublicCourseById(Long courseId) {
@@ -309,7 +309,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
         if (course == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "课程不存在或已下架");
         }
-        return publicCourseConverter.toDetailVO(course);
+        // 排期列表：副表 course_schedule 按开课日期升序（可为空，C 端详情页按空态展示）
+        List<CourseSchedule> schedules = findSchedules(courseId);
+        return publicCourseConverter.toDetailVO(course, schedules);
     }
 
     /**

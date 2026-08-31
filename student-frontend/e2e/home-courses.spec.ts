@@ -2,11 +2,12 @@ import { test, expect } from "@playwright/test";
 import { mockApi, login } from "./helpers/sse-route";
 
 /**
- * 首页与课程页 E2E（公开化 2026-08-26 修订；购买链路 2026-08-29）
+ * 首页与课程页 E2E（公开化 2026-08-26 修订；详情页改版 2026-08-31）
  * - 首页/课堂页公开可浏览（public/courses 数据源，未登录不拦截）
  * - 首页无最近会话区块（会话管理归课程助手侧边栏）；快问框入口
- * - 课程详情页为登录门槛：未登录自动弹登录窗 + 资料区登录墙
- * - 登录用户：已购徽章 + 资料分片/未购买 403 引导态（购买流归 course-purchase.spec）
+ * - 课程详情页为登录门槛：middleware 门控游客（未登录直引登录页，无自动弹窗）
+ * - 登录用户：详情页完整课程信息（介绍 + 开课时间 + 课时）+ 已购徽章
+ *   （资料分片/403 引导态已随改版移除，购买流归 course-purchase.spec）
  */
 
 test.describe("首页与课程", () => {
@@ -66,80 +67,36 @@ test.describe("首页与课程", () => {
     await expect(page).toHaveURL(/\/login\?next=%2Fcourses%2F1$/);
   });
 
-  test("登录后课程详情页：无自动登录弹窗（门控由 middleware 承担）", async ({ page }) => {
+  test("登录后课程详情页：完整课程信息（介绍 + 开课时间 + 课时），无自动登录弹窗", async ({
+    page,
+  }) => {
     await login(page, "/");
     await page.goto("/courses/1");
-    // 公开课程信息即时可见（Hero 标题 + 简介）
+    // 公开课程信息即时可见（Hero 标题 + 元信息行）
     await expect(page.getByRole("heading", { name: "数据结构与算法精讲" })).toBeVisible();
-    await expect(page.getByText("从线性表到图论的系统课程")).toBeVisible();
+    await expect(page.getByText("张老师")).toBeVisible();
+    await expect(page.getByText("12 课时")).toBeVisible();
     // 已登录：不再弹出登录窗
     await expect(page.getByRole("dialog", { name: "登录课程助手" })).toBeHidden();
+    // 课程介绍：完整描述渲染（改版后详情页主体）
+    await expect(page.getByRole("heading", { name: "课程介绍" })).toBeVisible();
+    await expect(page.getByText("从线性表到图论的系统课程")).toBeVisible();
+    // 开课信息：排期卡片（课程 1 预置一期排期，开课/结课日期中文展示）
+    await expect(page.getByRole("heading", { name: "开课信息" })).toBeVisible();
+    await expect(page.getByText("2026 年 9 月 1 日")).toBeVisible();
+    await expect(page.getByText("未开课")).toBeVisible();
+    // 改版回归：被移除的按钮与资料分片区不再渲染
+    await expect(page.getByRole("button", { name: /问 AI 助教/ })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /进入学习/ })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /浏览资料/ })).toHaveCount(0);
+    await expect(page.getByText("课程资料")).toHaveCount(0);
   });
 
-  test("课程工作台渲染资料分片与上下文抽屉（已登录）", async ({ page }) => {
-    // 材料与上下文 mock
-    await page.route("**/api/v1/student/courses/1/materials", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          code: 0,
-          message: "success",
-          data: [
-            {
-              id: "101",
-              content: "本章介绍线性表的基本概念与顺序存储实现。",
-              headingPath: "第1章 > 1.2 顺序表",
-              chunkIndex: 3,
-              parentTitle: "第1章 线性表",
-              startPage: 12,
-              endPage: 15,
-            },
-          ],
-        }),
-      });
-    });
-    await page.route("**/api/v1/student/chunks/101/context", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          code: 0,
-          message: "success",
-          data: {
-            parent: {
-              id: "100",
-              content: "线性表是数据结构的基础。",
-              headingPath: "第1章",
-              chunkIndex: 1,
-              parentTitle: null,
-            },
-            prev: null,
-            next: null,
-          },
-        }),
-      });
-    });
+  test("详情页无排期：展示「暂无排期信息」空态（课程 2 未录入排期）", async ({ page }) => {
     await login(page, "/");
-    await page.goto("/courses/1");
-    // headingPath 拆分渲染（段间以「 / 」分隔，design §1.5.3 面包屑），按末段精确断言
-    await expect(page.getByText("1.2 顺序表")).toBeVisible();
-    // 打开上下文抽屉：父章节卡渲染、null 节点不渲染
-    await page.getByRole("button", { name: /查看上下文/ }).click();
-    await expect(page.getByText("线性表是数据结构的基础。")).toBeVisible();
-    await expect(page.getByText("该分片暂无上下文关联")).toBeHidden();
-  });
-
-  test("未购买访问课程工作台显示引导态（403）", async ({ page }) => {
-    await page.route("**/api/v1/student/courses/1/materials", async (route) => {
-      await route.fulfill({
-        status: 403,
-        contentType: "application/json",
-        body: JSON.stringify({ code: 403, message: "未选修该课程" }),
-      });
-    });
-    await login(page, "/");
-    await page.goto("/courses/1");
-    await expect(page.getByText("还未购买该课程")).toBeVisible();
+    await page.goto("/courses/2");
+    await expect(page.getByRole("heading", { name: "Java 从入门到进阶" })).toBeVisible();
+    await expect(page.getByTestId("schedule-empty")).toBeVisible();
+    await expect(page.getByText("暂无排期信息，敬请期待")).toBeVisible();
   });
 });

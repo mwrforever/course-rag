@@ -21,9 +21,9 @@ import type {
   CoursePurchaseResult,
   FeedbackRequest,
   LoginResponse,
-  MaterialChunk,
   PageResponse,
   PublicCourse,
+  PublicCourseDetail,
   SessionItem,
   StudentCourse,
   StudentMessage,
@@ -351,9 +351,13 @@ export function getPublicCourses(): Promise<PublicCourse[]> {
   return apiFetch<PublicCourse[]>("/public/courses");
 }
 
-/** J2: 课程专属资料分片列表（未选课 403 → 课程页专属引导态） */
-export function getMaterials(courseId: string): Promise<MaterialChunk[]> {
-  return apiFetch<MaterialChunk[]>(`/student/courses/${courseId}/materials`);
+/**
+ * 公开课程详情（未登录可访问：课程详情页数据源，含排期列表）
+ *
+ * 失败抛 ApiError：404 课程不存在或已下架 / 网络失败抛 NetworkError。
+ */
+export function getPublicCourseDetail(courseId: string): Promise<PublicCourseDetail> {
+  return apiFetch<PublicCourseDetail>(`/public/courses/${courseId}`);
 }
 
 /**

@@ -422,7 +422,7 @@ describe("SSE 重连端点", () => {
 });
 
 describe("业务端点契约", () => {
-  it("课程资料/资料库/分片上下文/会话系列端点 URL 与方法正确", async () => {
+  it("公开课程详情/资料库/分片上下文/会话系列端点 URL 与方法正确", async () => {
     const api = await freshApi();
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -433,7 +433,7 @@ describe("业务端点契约", () => {
         message: "ok",
         data: { records: [], total: "0", page: 1, size: 20 },
       });
-      if (url.includes("/student/courses/9/materials")) return okList;
+      if (url.includes("/public/courses/c-9")) return okList;
       if (url.includes("/student/knowledge-bases")) return okPage;
       if (url.includes("/student/chunks/7/context")) return ok;
       if (url.includes("/student/sessions/3/messages")) return okPage;
@@ -443,7 +443,7 @@ describe("业务端点契约", () => {
       throw new Error(`未预期的请求: ${url}`);
     });
 
-    await api.getMaterials("9");
+    await api.getPublicCourseDetail("c-9");
     await api.getKbChunks(1, 20);
     await api.getChunkContext("7");
     await api.createSession("标题");
@@ -452,7 +452,7 @@ describe("业务端点契约", () => {
     await api.postFeedback({ sessionId: "1", messageId: "2", isLiked: true });
 
     const urls = fetchMock.mock.calls.map((c) => String(c[0]));
-    expect(urls).toContain("/api/v1/student/courses/9/materials");
+    expect(urls).toContain("/api/v1/public/courses/c-9");
     expect(urls).toContain("/api/v1/student/knowledge-bases?page=1&size=20");
     expect(urls).toContain("/api/v1/student/chunks/7/context");
     expect(urls).toContain("/api/v1/student/sessions/3/messages?page=1&size=200");
@@ -527,6 +527,57 @@ describe("公开课程与会话管理端点（公开化 + 会话管理 2026-08-2
 
     expect(String(fetchMock.mock.calls[0][0])).toBe("/api/v1/public/courses");
     expect(data).toHaveLength(1);
+  });
+
+  it("getPublicCourseDetail → GET /public/courses/{id} 并解包详情（含排期列表）", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(
+      res(200, {
+        code: 0,
+        message: "ok",
+        data: {
+          id: "c1",
+          title: "Java 入门",
+          description: "简介",
+          schedules: [
+            {
+              id: "11",
+              startDate: "2026-09-01",
+              endDate: "2026-12-20",
+              scheduleType: "ONLINE",
+              location: "线上直播",
+              status: "UPCOMING",
+              capacity: 200,
+              enrolled: 35,
+            },
+          ],
+        },
+      }),
+    );
+
+    const data = await api.getPublicCourseDetail("c1");
+
+    // 详情端点 URL 契约（契约 C.2.2：GET，courseId 路径参数）
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/v1/public/courses/c1");
+    expect(data.title).toBe("Java 入门");
+    expect(data.schedules).toHaveLength(1);
+    expect(data.schedules[0]).toEqual({
+      id: "11",
+      startDate: "2026-09-01",
+      endDate: "2026-12-20",
+      scheduleType: "ONLINE",
+      location: "线上直播",
+      status: "UPCOMING",
+      capacity: 200,
+      enrolled: 35,
+    });
+  });
+
+  it("getPublicCourseDetail → 404 抛 ApiError(404)（课程不存在/已下架）", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(res(404, { code: 404, message: "课程不存在或已下架" }));
+
+    await expect(api.getPublicCourseDetail("missing")).rejects.toMatchObject({ code: 404 });
   });
 
   it("purchaseCourse → POST /student/courses/{id}/purchase 并解包购买结果（幂等成功结构）", async () => {

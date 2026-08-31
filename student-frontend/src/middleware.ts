@@ -19,8 +19,9 @@ import type { NextRequest } from "next/server";
 const AUTH_COOKIE = "commerce_token";
 /** RT 存在性提示 cookie（api 层写/清；真匿名者无此 cookie，仍走登录页） */
 const RT_LIVE_COOKIE = "c_rt_live";
-/** 受保护路由前缀（课程中心/课程对话/个人中心——仅首页公开，2026-08-27 用户拍板） */
-const PROTECTED_PREFIXES = ["/courses", "/chat", "/profile"];
+/** 受保护路由前缀（课程中心/课程对话/个人中心/我的课程——仅首页公开，2026-08-27 用户拍板；
+ *  /my-courses 2026-08-31 随「我的课程」导航新增纳入） */
+const PROTECTED_PREFIXES = ["/courses", "/chat", "/profile", "/my-courses"];
 
 /** 判定是否受保护路由（前缀匹配） */
 function isProtected(pathname: string): boolean {

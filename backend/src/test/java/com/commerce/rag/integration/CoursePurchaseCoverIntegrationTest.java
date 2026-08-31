@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.commerce.rag.test.IntegrationTestBase;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.time.LocalDate;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -145,7 +146,8 @@ class CoursePurchaseCoverIntegrationTest extends IntegrationTestBase {
 
     @BeforeEach
     void setUpCourseTables() {
-        // 课程域数据隔离（基类清理 chat/sys 表，此处补 course 两表；先子表后主表）
+        // 课程域数据隔离（基类清理 chat/sys 表，此处补 course 三表；先子表后主表）
+        jdbcTemplate.update("DELETE FROM course_schedule");
         jdbcTemplate.update("DELETE FROM course_enrollment");
         jdbcTemplate.update("DELETE FROM course_info");
     }
@@ -289,6 +291,22 @@ class CoursePurchaseCoverIntegrationTest extends IntegrationTestBase {
         String teacher = teacherToken();
         Long courseId = createCourse(teacher, courseBody("Java 后端实战"));
 
+        // 预置一期排期（开课时间等对外信息；created_by 取教师主键）
+        Long teacherId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE username = ?", Long.class, TEACHER);
+        jdbcTemplate.update(
+                "INSERT INTO course_schedule (id, course_id, start_date, end_date, schedule_type, location, capacity, enrolled, status, created_by) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                900000000000000001L,
+                courseId,
+                java.sql.Date.valueOf(LocalDate.of(2026, 9, 1)),
+                java.sql.Date.valueOf(LocalDate.of(2026, 12, 20)),
+                "ONLINE",
+                "线上直播",
+                200,
+                35,
+                "UPCOMING",
+                teacherId);
+
         // 免登录（无 Authorization 头）访问公开详情
         ResponseEntity<String> response = getWithToken("/api/v1/public/courses/" + courseId, null);
         assertEquals(200, response.getStatusCode().value());
@@ -296,6 +314,13 @@ class CoursePurchaseCoverIntegrationTest extends IntegrationTestBase {
         assertEquals(String.valueOf(courseId), data.get("id").asText());
         assertEquals("Java 后端实战", data.get("title").asText());
         assertEquals(299.00, data.get("price").asDouble(), 0.001, "公开详情应含价格（单位元）");
+        // 排期列表（2026-08-31 增强）：开课时间等对外信息随详情下发
+        JsonNode schedules = data.get("schedules");
+        assertTrue(schedules.isArray() && schedules.size() == 1, "公开详情应含预置排期");
+        assertEquals("2026-09-01", schedules.get(0).get("startDate").asText());
+        assertEquals("2026-12-20", schedules.get(0).get("endDate").asText());
+        assertEquals("ONLINE", schedules.get(0).get("scheduleType").asText());
+        assertEquals("线上直播", schedules.get(0).get("location").asText());
 
         // 公开列表同样下发价格字段
         ResponseEntity<String> listResp = getWithToken("/api/v1/public/courses", null);

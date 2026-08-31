@@ -14,8 +14,9 @@
  * 本组件用于 (main) 路由组（首页/课程中心/个人中心）；课程助手对话页使用独立侧栏壳
  * （侧栏品牌区提供回首页入口，导航三项在此栏承载）。
  */
-import { SignOut } from "@phosphor-icons/react";
+import { BookOpen, SignOut, User } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
+import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -45,6 +46,8 @@ export function SiteHeader() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, logout, isLoading } = useAuth();
+  // 下拉入场动效降级：prefers-reduced-motion 下浮层直接呈现
+  const reduceMotion = useReducedMotion() ?? true;
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -186,8 +189,12 @@ export function SiteHeader() {
                 </button>
 
                 {userMenuOpen ? (
-                  <div
+                  <motion.div
                     data-testid="user-menu"
+                    initial={reduceMotion ? false : { opacity: 0, y: -6, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    style={{ transformOrigin: "top right" }}
                     className="absolute right-0 top-12 z-50 w-60 overflow-hidden rounded-lg border border-border bg-surface p-1.5 shadow-lg"
                   >
                     <div className="border-b border-border px-3 py-2.5 text-text">
@@ -199,10 +206,19 @@ export function SiteHeader() {
                     </div>
                     <div className="border-t border-border pt-1">
                       <Link
+                        href="/my-courses"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:ring-2 focus-visible:ring-brand"
+                      >
+                        <BookOpen size={15} aria-hidden />
+                        我的课程
+                      </Link>
+                      <Link
                         href="/profile"
                         onClick={() => setUserMenuOpen(false)}
-                        className="rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text"
+                        className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:ring-2 focus-visible:ring-brand"
                       >
+                        <User size={15} aria-hidden />
                         个人中心
                       </Link>
                       <button
@@ -210,13 +226,13 @@ export function SiteHeader() {
                         aria-label="退出登录"
                         onClick={() => setLogoutConfirmOpen(true)}
                         disabled={loggingOut}
-                        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-danger"
                       >
                         <SignOut size={15} aria-hidden />
                         {loggingOut ? "退出中…" : "退出登录"}
                       </button>
                     </div>
-                  </div>
+                  </motion.div>
                 ) : null}
               </div>
             ) : isLoading ? (
