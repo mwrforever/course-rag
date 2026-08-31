@@ -28,7 +28,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -1215,5 +1218,65 @@ class ChatStreamEntryTest {
         // Then: 首个心跳 tick 触发 send 异常后任务被取消，调度队列清空（心跳停止）
         Thread.sleep(2200);
         assertEquals(0, heartbeatScheduler().getQueue().size());
+    }
+
+    @Test
+    @DisplayName("startHeartbeat emitter 已完成 → send 抛 IllegalStateException 时心跳任务经显式取消停跳（BUG-37 防静默取消）")
+    void chat_startHeartbeat_completedEmitterSendThrows_cancelsExplicitlyNotSilently() throws Exception {
+        // Given: 心跳间隔 1 秒；emitter 已完成（send 抛 IllegalStateException——SseEmitter
+        // 完成后再 send 的标准行为），且生命周期回调未生效（隔离复现 BUG-37 场景：完成与
+        // onCompletion 回调执行之间的竞态窗口内心跳 tick 先行触发 send）
+        when(streamProperties.heartbeatInterval()).thenReturn(1);
+        SseEmitter completedEmitter = mock(SseEmitter.class);
+        doThrow(new IllegalStateException("SseEmitter has already completed"))
+                .when(completedEmitter)
+                .send(any(SseEmitter.SseEventBuilder.class));
+
+        // 反射替换调度器为可记录 future 的实现（取回 startHeartbeat 内部创建的周期任务，
+        // 用于断言停止方式：显式 cancel vs 未捕获异常静默取消）
+        FutureRecordingScheduler recorder = new FutureRecordingScheduler();
+        Field schedulerField = ChatStreamEntry.class.getDeclaredField("scheduler");
+        schedulerField.setAccessible(true);
+        ScheduledExecutorService original = (ScheduledExecutorService) schedulerField.get(entry);
+        schedulerField.set(entry, recorder);
+
+        // 直接调用私有 startHeartbeat（不经 chat 流程，避免真实 emitter 生命周期干扰）
+        Method startHeartbeat = ChatStreamEntry.class.getDeclaredMethod("startHeartbeat", SseEmitter.class);
+        startHeartbeat.setAccessible(true);
+        startHeartbeat.invoke(entry, completedEmitter);
+
+        // When: 等待 2 个心跳周期（修复前：未捕获 RuntimeException → scheduleAtFixedRate
+        // 周期任务被调度器静默取消且异常被吞进 Future——心跳无任何日志停跳，连接假死难定位）
+        Thread.sleep(2200);
+        original.shutdownNow();
+
+        // Then: 心跳任务已停止（连接不可用不再发心跳），且经显式 cancel 停止——
+        // 修复前静默取消表现为 isDone=true 但 isCancelled=false（异常终止非取消）
+        ScheduledFuture<?> task = recorder.lastFixedRateTask;
+        assertNotNull(task, "startHeartbeat 应已创建周期心跳任务");
+        assertTrue(task.isDone(), "send 失败后心跳任务应停止（不再发心跳）");
+        assertTrue(task.isCancelled(), "BUG-37：停跳必须经显式取消，禁止未捕获异常静默取消");
+    }
+
+    /** 记录 scheduleAtFixedRate 创建的周期任务 future 的调度器（BUG-37 测试专用） */
+    private static final class FutureRecordingScheduler extends ScheduledThreadPoolExecutor {
+
+        /** 最近一次经 scheduleAtFixedRate 提交的周期任务（测试断言对象） */
+        volatile ScheduledFuture<?> lastFixedRateTask;
+
+        FutureRecordingScheduler() {
+            super(1, r -> {
+                Thread t = new Thread(r, "test-heartbeat");
+                t.setDaemon(true);
+                return t;
+            });
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
+            ScheduledFuture<?> future = super.scheduleAtFixedRate(command, initialDelay, period, unit);
+            lastFixedRateTask = future;
+            return future;
+        }
     }
 }

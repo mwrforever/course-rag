@@ -405,18 +405,31 @@ public class ChatStreamEntry {
      * 因此 bridge.subscribe 注册的回调与这里的 heartbeat.cancel 回调可共存。
      */
     private void startHeartbeat(SseEmitter emitter) {
-        ScheduledFuture<?> heartbeat = scheduler.scheduleAtFixedRate(
+        // BUG-37（2026-08-31）：心跳 future 先落 holder 再供任务体引用——send 失败时在任务内
+        // <b>显式取消</b>，不依赖未捕获异常的隐式取消：scheduleAtFixedRate 对未捕获
+        // RuntimeException 会静默取消后续所有执行且异常被吞进 Future 无人消费（心跳无任何
+        // 日志停跳，连接假死难定位）；对齐 sendEvent 投递侧防御风格（MemoryStreamBridge
+        // 单条投递异常不外抛）。任务首跑在 ≥1 个周期之后，holder 赋值先行，无竞态。
+        ScheduledFuture<?>[] heartbeatHolder = new ScheduledFuture<?>[1];
+        heartbeatHolder[0] = scheduler.scheduleAtFixedRate(
                 () -> {
                     try {
                         // 发送 SSE 注释行 :heartbeat（非命名事件），符合 SSE 协议保活规范
                         emitter.send(SseEmitter.event().comment("heartbeat"));
-                    } catch (IOException e) {
-                        // emitter 已关闭，取消定时器
+                    } catch (IOException | RuntimeException e) {
+                        // emitter 已关闭（IOException）/ 已完成（complete 并发导致的
+                        // IllegalStateException）：连接不可用，显式取消心跳任务停跳
+                        log.debug("心跳发送失败，显式取消心跳任务: {}", e.getMessage());
+                        ScheduledFuture<?> task = heartbeatHolder[0];
+                        if (task != null) {
+                            task.cancel(false);
+                        }
                     }
                 },
                 streamProperties.heartbeatInterval(),
                 streamProperties.heartbeatInterval(),
                 TimeUnit.SECONDS);
+        ScheduledFuture<?> heartbeat = heartbeatHolder[0];
 
         emitter.onCompletion(() -> heartbeat.cancel(false));
         emitter.onTimeout(() -> heartbeat.cancel(false));
