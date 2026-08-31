@@ -379,7 +379,10 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
                         DocumentChunk::getStartPage,
                         DocumentChunk::getEndPage)
                 .eq(DocumentChunk::getCourseId, String.valueOf(courseId))
-                .orderByAsc(DocumentChunk::getChunkIndex);
+                .orderByAsc(DocumentChunk::getChunkIndex)
+                // PERF-16（宪法 A.4.7 第一阶段兜底）：课程分片查询原本无界，大课程全量返回有
+                // 响应体/内存风险；LIMIT 500 有界兜底不改接口契约，分页化（第二阶段）待前端协同
+                .last("LIMIT 500");
         // 实体列表 → VO 列表：逐条转换，docId/kbId/courseId 等内部字段不随 VO 出边界
         // M-5：投影仅取 ChunkVO 所需 7 列（原全列含 dense_vector BYTEA / 长文本 content 重复传输）
         return chunkMapper.selectList(wrapper).stream()

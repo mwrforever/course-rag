@@ -304,7 +304,7 @@ class DocumentChunkServiceTest {
     }
 
     @Test
-    @DisplayName("findByCourseIdAsVO → 按课程 ID 查询分片（chunk_index 升序，VO 出参）")
+    @DisplayName("findByCourseIdAsVO → 按课程 ID 查询分片（chunk_index 升序，VO 出参，LIMIT 500 有界兜底）")
     void findByCourseIdAsVO_returnsChunks() {
         when(chunkMapper.selectList(any())).thenReturn(List.of(chunk(1L, "10"), chunk(2L, "10")));
 
@@ -319,7 +319,12 @@ class DocumentChunkServiceTest {
         assertEquals("小节", vo.parentTitle());
         assertEquals(1, vo.startPage());
         assertEquals(2, vo.endPage());
-        verify(chunkMapper).selectList(any());
+        ArgumentCaptor<LambdaQueryWrapper<DocumentChunk>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(chunkMapper).selectList(captor.capture());
+        // PERF-16（宪法 A.4.7）：无界 selectList 必须有界——大课程分片全量返回有响应体/内存风险
+        assertTrue(
+                captor.getValue().getSqlSegment().endsWith("LIMIT 500"),
+                "课程分片查询应携带 LIMIT 500 有界兜底，实际 SQL 片段: " + captor.getValue().getSqlSegment());
     }
 
     @Test
