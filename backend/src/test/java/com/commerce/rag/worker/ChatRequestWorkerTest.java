@@ -1803,6 +1803,53 @@ class ChatRequestWorkerTest {
         verify(chatRunService, never()).updateStatus(anyLong(), anyString());
     }
 
+    // ==================== N3-1 SSE 错误文案中文映射（原始异常不透传前端） ====================
+
+    /** 断言 ERROR 事件 message 为期望中文文案，且原始英文异常消息不外发 */
+    private void assertErrorEventMessageMapped(String expectedChinese, String rawFragment) throws Exception {
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        SseEvent errorEvent = pushed.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.ERROR)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("异常路径必须推送 ERROR 终态事件"));
+        assertTrue(errorEvent.payload().contains(expectedChinese), "ERROR 文案应为中文映射: " + errorEvent.payload());
+        assertFalse(errorEvent.payload().contains(rawFragment), "原始英文异常消息不得透传前端: " + errorEvent.payload());
+    }
+
+    @Test
+    @DisplayName("N3-1: 网络断连类异常 → ERROR 文案「网络连接中断，请重试」（原文 Connection reset 不外发）")
+    void processRequest_networkError_messageMappedToChinese() throws Exception {
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new java.io.IOException("Connection reset by peer")));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        assertErrorEventMessageMapped("网络连接中断，请重试", "Connection reset");
+    }
+
+    @Test
+    @DisplayName("N3-1: 超时类异常 → ERROR 文案「模型服务响应超时，请稍后重试」（原文 timed out 不外发）")
+    void processRequest_timeoutError_messageMappedToChinese() throws Exception {
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new java.net.SocketTimeoutException("Read timed out")));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        assertErrorEventMessageMapped("模型服务响应超时，请稍后重试", "timed out");
+    }
+
+    @Test
+    @DisplayName("N3-1: 其它异常 → ERROR 文案「服务暂时不可用，请稍后重试」（原文不外发）")
+    void processRequest_genericError_messageMappedToChinese() throws Exception {
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new RuntimeException("Internal engine failure")));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        assertErrorEventMessageMapped("服务暂时不可用，请稍后重试", "Internal engine failure");
+    }
+
     // ==================== processRequest 边界分支 ====================
 
     @Test

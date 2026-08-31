@@ -38,12 +38,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -53,6 +55,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
@@ -1436,22 +1439,63 @@ public class ChatRequestWorker {
     }
 
     /**
-     * 处理异常：ERROR 事件 + 状态 ERROR + 错误信息。
+     * 处理异常：ERROR 事件（中文文案）+ 状态 ERROR + 错误信息。
+     *
+     * <p>N3-1：SSE error 事件的 message 按异常类型映射中文用户文案
+     * （{@link #userFacingErrorMessage}），原始英文异常消息仅入日志（下方 error 日志含
+     * 异常类名与网关响应体摘要），不透传前端。
      */
     private void handleError(String runIdStr, Long runId, SseEventTransformer.RunState runState, Throwable e) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("runId", runIdStr);
         payload.put("status", "ERROR");
-        payload.put(
-                "message",
-                e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        payload.put("message", userFacingErrorMessage(e));
         bridge.push(
                 runIdStr,
                 new SseEvent(SseEventType.ERROR, runState.nextSeq(), toJson(payload), System.currentTimeMillis()));
         updateStatusWithRetry(runId, "ERROR");
         // 响应体摘要（WebClientResponseException 携带 LLM 网关 400/429 详情——如 DashScope 欠费
-        // Arrearage，2026-08-30 实证仅有状态码无法定位根因，补打响应体截断）
-        log.error("Run 执行异常: runId={}, 网关响应体={}", runId, responseBodyOf(e), e);
+        // Arrearage，2026-08-30 实证仅有状态码无法定位根因，补打响应体截断）；
+        // N3-1：异常类名与原始消息显式入日志（前端只见中文文案，技术细节留服务端排查）
+        log.error(
+                "Run 执行异常: runId={}, 异常类={}, 原始消息={}, 网关响应体={}",
+                runId,
+                e.getClass().getName(),
+                e.getMessage(),
+                responseBodyOf(e),
+                e);
+    }
+
+    /**
+     * 按异常类型映射面向用户的中文错误文案（N3-1：原始英文异常消息不透传前端）
+     *
+     * <p>映射保持简单（3 类，instanceof + 消息关键词判定）：
+     * <ol>
+     *   <li>超时类（TimeoutException 及消息含 timeout/timed out）→「模型服务响应超时，请稍后重试」；
+     *       判定先于网络断连——SocketTimeoutException 属 IOException 子类，先按超时归类避免误报</li>
+     *   <li>网络断连类（IOException 及消息含 connection reset/refused、broken pipe）→「网络连接中断，请重试」</li>
+     *   <li>其它 →「服务暂时不可用，请稍后重试」</li>
+     * </ol>
+     *
+     * @param e 图执行抛出的异常（消息可为 null）
+     * @return 中文用户文案（恒非空）
+     */
+    static String userFacingErrorMessage(Throwable e) {
+        String message = e.getMessage();
+        String lower = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        // 超时类：类型或消息命中（reactor blockLast 超时为 IllegalStateException("Timeout on ...")，靠消息命中）
+        if (e instanceof TimeoutException || lower.contains("timeout") || lower.contains("timed out")) {
+            return "模型服务响应超时，请稍后重试";
+        }
+        // 网络断连类：IO 异常类型或典型断连关键词
+        if (e instanceof IOException
+                || lower.contains("connection reset")
+                || lower.contains("connection refused")
+                || lower.contains("broken pipe")) {
+            return "网络连接中断，请重试";
+        }
+        // 兜底：不暴露内部技术细节
+        return "服务暂时不可用，请稍后重试";
     }
 
     /** 提取 LLM 网关异常响应体摘要（WebClientResponseException 携带业务错误详情；非网关异常返回空串） */
