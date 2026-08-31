@@ -1,6 +1,8 @@
 package com.commerce.rag.stream;
 
 import com.commerce.rag.properties.StreamProperties;
+import com.commerce.rag.service.IChatRunService;
+import com.commerce.rag.vo.ChatRunVO;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,6 +12,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -53,11 +56,22 @@ public class MemoryStreamBridge {
     /** ring buffer 大小（默认 256，从 StreamProperties 注入） */
     private final int bufferSize;
 
+    /** Run 生命周期服务（BUG-04：closed ring 回放收尾查 run 终态用，构造器注入） */
+    private final IChatRunService chatRunService;
+
+    /**
+     * BUG-04：closed ring 回放收尾的终态 end payload 解析器（runId → payload JSON；
+     * null=run 非终态/不存在/查询失败，调用方仅 complete）——由 {@link #resolveTerminalEndPayload} 提供
+     */
+    private final Function<String, String> terminalEndPayloadResolver;
+
     /** per-run ring buffer 存储 */
     private final ConcurrentHashMap<String, Ring> rings = new ConcurrentHashMap<>();
 
-    public MemoryStreamBridge(StreamProperties streamProperties) {
+    public MemoryStreamBridge(StreamProperties streamProperties, IChatRunService chatRunService) {
         this.bufferSize = streamProperties.ringBufferSize();
+        this.chatRunService = chatRunService;
+        this.terminalEndPayloadResolver = this::resolveTerminalEndPayload;
     }
 
     // ── 公共 API ──
@@ -67,7 +81,7 @@ public class MemoryStreamBridge {
      * 若 ring buffer 数组分配失败（OOM），降级为 ConcurrentLinkedQueue。
      */
     public Ring createRing(String runId) {
-        return rings.computeIfAbsent(runId, id -> Ring.create(id, bufferSize));
+        return rings.computeIfAbsent(runId, id -> Ring.create(id, bufferSize, terminalEndPayloadResolver));
     }
 
     /**
@@ -145,6 +159,36 @@ public class MemoryStreamBridge {
         return ring == null ? -1 : ring.outbox.size();
     }
 
+    /**
+     * 查 run 终态并构建 end 事件 payload（BUG-04：deliverReplay closed 分支补发终态用）。
+     *
+     * <p>payload 格式对齐 ChatStreamEntry subscribe-false 补发分支：COMPLETED 显式携带
+     * {@code messageId:null}（R2 契约可空容忍——本竞态窗口即时收尾，反馈目标可经刷新回放获取）；
+     * CANCELLED/ERROR 不带 messageId 键（半截内容不作反馈目标）；run 非终态（终态回写失败的
+     * 极端窗口）返回 null——调用方仅 complete，客户端重连后经 PG/降级路径补偿。
+     *
+     * @param runId Run 唯一标识（字符串）
+     * @return end 事件 payload JSON；run 不存在/非终态/查询异常返回 null
+     */
+    private String resolveTerminalEndPayload(String runId) {
+        try {
+            ChatRunVO run = chatRunService.findById(Long.parseLong(runId));
+            if (run == null) {
+                return null;
+            }
+            // runId/status 均为服务端白名单值（数字 ID + 枚举状态），手工拼接安全（与 ChatStreamEntry 同款）
+            return switch (run.status()) {
+                case "COMPLETED" -> "{\"runId\":\"" + runId + "\",\"status\":\"COMPLETED\",\"messageId\":null}";
+                case "CANCELLED", "ERROR" -> "{\"runId\":\"" + runId + "\",\"status\":\"" + run.status() + "\"}";
+                default -> null;
+            };
+        } catch (Exception e) {
+            // 查询失败不阻断 complete 收尾（客户端重连可补偿）
+            log.warn("closed ring 回放收尾查 run 终态失败: runId={}", runId, e);
+            return null;
+        }
+    }
+
     // ── 内部类 ──
 
     /**
@@ -167,6 +211,12 @@ public class MemoryStreamBridge {
          */
         final AtomicLong head;
 
+        /**
+         * BUG-04：终态 end payload 解析器（bridge 注入——查 run 终态构建 end 事件 payload；
+         * null=run 非终态/不可用），closed ring 回放收尾时补发终态用
+         */
+        final Function<String, String> terminalEndPayload;
+
         final List<SseEmitter> subscribers;
         volatile boolean closed;
 
@@ -185,7 +235,7 @@ public class MemoryStreamBridge {
         /** H-1: 独立投递线程（每 run 一个，daemon，阻塞网络 IO 不触碰生成线程） */
         private volatile Thread deliveryThread;
 
-        private Ring(String runId, int capacity, boolean useFallback) {
+        private Ring(String runId, int capacity, boolean useFallback, Function<String, String> terminalEndPayload) {
             this.runId = runId;
             this.capacity = capacity;
             this.buffer = useFallback ? null : new SseEvent[capacity];
@@ -193,18 +243,19 @@ public class MemoryStreamBridge {
             this.subscribers = new CopyOnWriteArrayList<>();
             this.fallback = useFallback ? new ConcurrentLinkedQueue<>() : null;
             this.outbox = new LinkedBlockingQueue<>(capacity);
+            this.terminalEndPayload = terminalEndPayload;
         }
 
         /**
          * 工厂方法：尝试创建正常 ring buffer，OOM 时降级；随后启动投递线程。
          */
-        static Ring create(String runId, int capacity) {
+        static Ring create(String runId, int capacity, Function<String, String> terminalEndPayload) {
             Ring ring;
             try {
-                ring = new Ring(runId, capacity, false);
+                ring = new Ring(runId, capacity, false, terminalEndPayload);
             } catch (OutOfMemoryError e) {
                 log.warn("ring buffer 分配失败 runId={}, 降级 ConcurrentLinkedQueue", runId, e);
-                ring = new Ring(runId, capacity, true);
+                ring = new Ring(runId, capacity, true, terminalEndPayload);
             }
             ring.startDeliveryThread();
             return ring;
@@ -379,6 +430,11 @@ public class MemoryStreamBridge {
 
         /**
          * 回放批次投递（投递线程执行）：逐条发送成功后注册 emitter。
+         *
+         * <p>BUG-04：回放发送完毕时 ring 可能已被 close（重连恰逢 run 完成收尾的竞态窗口）——
+         * 原实现 closed 分支既不注册也不 complete，emitter 悬挂到 30 分钟超时；现改为补发终态
+         * end 事件后 complete（与 ChatStreamEntry subscribe-false 分支语义对齐，见
+         * {@link #completeAfterClose}）。
          */
         private void deliverReplay(SseEmitter emitter, List<SseEvent> events) {
             for (SseEvent event : events) {
@@ -388,14 +444,63 @@ public class MemoryStreamBridge {
                 }
             }
             // 回放全部成功后再注册：注册后 push 的实时事件才送达该 emitter（顺序保证）
+            boolean registered;
             synchronized (stateLock) {
-                if (closed) {
-                    return;
+                // closed 判定与注册同锁（close 置位后不再注册，改走终态收尾）
+                registered = !closed;
+                if (registered) {
+                    subscribers.add(emitter);
+                    emitter.onCompletion(() -> subscribers.remove(emitter));
+                    emitter.onTimeout(() -> subscribers.remove(emitter));
+                    emitter.onError(e -> subscribers.remove(emitter));
                 }
-                subscribers.add(emitter);
-                emitter.onCompletion(() -> subscribers.remove(emitter));
-                emitter.onTimeout(() -> subscribers.remove(emitter));
-                emitter.onError(e -> subscribers.remove(emitter));
+            }
+            if (!registered) {
+                // IO（查库/发送）移到锁外执行，避免拖住 close() 的临界区
+                completeAfterClose(emitter, events);
+            }
+        }
+
+        /**
+         * BUG-04: 回放投递时 ring 已 closed 的终态收尾——补发终态 end 事件并 complete emitter。
+         *
+         * <p>窗口语义：{@code replayAndSubscribe} 已入队回放批次（返回 true，ChatStreamEntry
+         * 不再查终态直接 startHeartbeat），但投递线程处理该批次时 run 已完成、ring 已 close——
+         * emitter 未注册收不到 close() 的 complete，客户端将永久"生成中"。本方法保证该 emitter
+         * 必有终态：回放批次已含终态事件（END/ERROR）则不重复补发（B2-4 双终态防线），否则经
+         * bridge 解析器查 run 终态补发 end（携带终态，格式对齐 ChatStreamEntry 补发分支）；
+         * 最终一律 complete 关闭连接（run 非终态/查询失败时不补发 end，客户端重连可补偿）。
+         *
+         * @param emitter 回放目标 emitter（未注册成功）
+         * @param events  已完成投递的回放快照事件（时序在终态之前）
+         */
+        private void completeAfterClose(SseEmitter emitter, List<SseEvent> events) {
+            try {
+                // 回放批次已含终态事件（END/ERROR）→ 客户端已收到终态，不重复补发（双终态防线）
+                boolean terminalDelivered =
+                        events.stream().anyMatch(e -> e.type() == SseEventType.END || e.type() == SseEventType.ERROR);
+                if (!terminalDelivered) {
+                    // 查 run 终态构建 end payload（null=非终态/不可用，不补发）
+                    String payload = terminalEndPayload.apply(runId);
+                    if (payload != null) {
+                        // seq 承接快照末尾（空快照承接 head），客户端 Last-Event-ID 连续
+                        long lastSeq = events.isEmpty()
+                                ? head.get()
+                                : events.get(events.size() - 1).seqId();
+                        sendEvent(
+                                emitter,
+                                new SseEvent(SseEventType.END, lastSeq + 1, payload, System.currentTimeMillis()));
+                    } else {
+                        log.warn("closed ring 回放收尾：run 非终态或终态查询失败，仅 complete: runId={}", runId);
+                    }
+                }
+            } finally {
+                // 无论是否补发 end，必须 complete 关闭连接（消除悬挂的最终保证）
+                try {
+                    emitter.complete();
+                } catch (Exception ignored) {
+                    // 忽略关闭异常（客户端已断开场景）
+                }
             }
         }
 
