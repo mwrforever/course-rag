@@ -225,7 +225,8 @@ public class ChatRequestWorker {
      * B2-3——附件处理发生在转 ACTIVE 之前，该窗口内进程崩溃/停机丢任务的 run 全程
      * 停留 QUEUED，且同样占据 uniq_active_run_per_session 锁死会话）。
      *
-     * <p>巡检将滞留 run 置 ERROR（endedAt 由 updateStatus 自动设置），
+     * <p>巡检将滞留 run 置 ERROR（endedAt 由 markErrorIfCurrent 自动设置；BUG-01 后以 SELECT
+     * 观察状态为前提 CAS 原子判定，窗口内已迁移的 run 跳过不误杀），
      * 失败可见可手动重试。与 P1-5 的完成时刻短重试互补（覆盖执行期崩溃场景）。
      */
     private void sweepStaleRuns() {
@@ -235,12 +236,20 @@ public class ChatRequestWorker {
             List<ChatRunVO> stale = chatRunService.findStaleActive(startedBefore, queuedBefore);
             for (ChatRunVO run : stale) {
                 try {
-                    chatRunService.updateStatus(run.id(), "ERROR");
-                    log.warn(
-                            "巡检发现滞留 run（ACTIVE/QUEUED 超时），置 ERROR 解锁会话: runId={}, sessionId={}, status={}",
-                            run.id(),
-                            run.sessionId(),
-                            run.status());
+                    // BUG-01 巡检 TOCTOU：以 SELECT 时观察到的状态为前提做 CAS 条件 UPDATE 原子判定——
+                    // SELECT→UPDATE 窗口内刚被 worker 取出转 ACTIVE 的 run 不被误杀（误杀会解锁会话，
+                    // 新 run 与仍在执行的旧 run 同 thread_id 真并发）；主路径（滞留 run 置 ERROR 解锁
+                    // 会话）行为不变，仍受 uniq_active_run_per_session 唯一索引保护
+                    int updated = chatRunService.markErrorIfCurrent(run.id(), run.status());
+                    if (updated > 0) {
+                        log.warn(
+                                "巡检发现滞留 run（ACTIVE/QUEUED 超时），置 ERROR 解锁会话: runId={}, sessionId={}, status={}",
+                                run.id(),
+                                run.sessionId(),
+                                run.status());
+                    } else {
+                        log.info("巡检置 ERROR 未命中（run 状态已在扫描后迁移，跳过不误杀）: runId={}, 观察状态={}", run.id(), run.status());
+                    }
                 } catch (Exception e) {
                     log.error("巡检置 ERROR 失败: runId={}", run.id(), e);
                 }
@@ -535,8 +544,14 @@ public class ChatRequestWorker {
         //    且 catch 分支持久化时可直接读取游标）
         RunSnapshot snapshot = captureSnapshot(runIdStr, config);
         try {
-            // 2. 状态 → ACTIVE
-            chatRunService.updateStatus(runId, "ACTIVE");
+            // 2. 状态 → ACTIVE（BUG-01 状态机守卫：仅 QUEUED 可迁移；0 行=run 已被巡检置 ERROR 等
+            //    终态，迟到队列任务直接跳过图执行，避免复活终态 run 后同 thread_id 与用户新 run
+            //    并发跑图——checkpoint 并发写、SSE 双流互踩）
+            int activated = chatRunService.updateStatus(runId, "ACTIVE");
+            if (activated == 0) {
+                skipExecutionForGuardRejectedRun(runId, runIdStr, runState);
+                return;
+            }
 
             // 2.1 落库本次输入附件（业务入口表，spec §5.1 双存决策；紧随 ACTIVE 写入，保证入口数据不丢）
             chatRunService.updateAttachments(runId, attachmentsJson);
@@ -699,6 +714,37 @@ public class ChatRequestWorker {
     // ========================================================================
     // 取消
     // ========================================================================
+
+    /**
+     * BUG-01 守卫拒绝后的收尾：跳过图执行并为仍在等待的客户端补推终态事件。
+     *
+     * <p>触发场景：高峰积压下巡检已把滞留 QUEUED 的 run 置 ERROR 解锁会话（用户可能已重发新 run），
+     * 迟到队列任务此时才被取出执行——updateStatus(ACTIVE) 被「仅 QUEUED 可迁移」守卫拒绝（0 行）。
+     * 本方法补查 run 实际终态并推送终态事件（客户端状态机收到终态而非悬挂到 emitter 超时），
+     * 事件经 ring 入队后由 finally 的 removeRing 按 drain 语义送达；run 非终态（重复投递被并发
+     * 任务接管的极端窗口）时不推事件，避免污染执行中流。
+     *
+     * @param runId    Run ID（Long）
+     * @param runIdStr Run 唯一标识（字符串，ring 键）
+     * @param runState SSE 事件序列状态（seqId 递增）
+     */
+    private void skipExecutionForGuardRejectedRun(Long runId, String runIdStr, SseEventTransformer.RunState runState) {
+        ChatRunVO current = chatRunService.findById(runId);
+        String status = current == null ? null : current.status();
+        log.warn("run 迁移 ACTIVE 被状态机守卫拒绝，跳过图执行: runId={}, 当前状态={}", runId, status);
+        // 非终态（重复投递/状态异常窗口）：不推终态事件，仅记日志跳过
+        if (!"COMPLETED".equals(status) && !"CANCELLED".equals(status) && !"ERROR".equals(status)) {
+            return;
+        }
+        // 补推终态事件（携带实际终态；ERROR 类型事件对客户端状态机即终态信号）
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("runId", runIdStr);
+        payload.put("status", status);
+        payload.put("message", "请求排队超时已被结束，请重新发送");
+        bridge.push(
+                runIdStr,
+                new SseEvent(SseEventType.ERROR, runState.nextSeq(), toJson(payload), System.currentTimeMillis()));
+    }
 
     /**
      * 取消指定 run（由 Controller 调用）。

@@ -183,6 +183,10 @@ class ChatRequestWorkerTest {
         lenient()
                 .when(streamOps.acknowledge(anyString(), anyString(), anyString()))
                 .thenReturn(0L);
+
+        // 公共 stub：updateStatus 默认命中 1 行（BUG-01 后返回影响行数，0 行=状态机守卫拒绝迁移；
+        // 正常流程用例均期望迁移成功，个别用例自行覆盖为 0 验证短路）
+        lenient().when(chatRunService.updateStatus(anyLong(), anyString())).thenReturn(1);
     }
 
     @AfterEach
@@ -1482,8 +1486,9 @@ class ChatRequestWorkerTest {
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
         when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
-        // ACTIVE 转换显式放行（严格桩模式下未匹配的调用会抛 PotentialStubbingProblem）
-        doNothing().when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
+        // ACTIVE 转换显式放行（严格桩模式下未匹配的调用会抛 PotentialStubbingProblem；
+        // BUG-01 后 updateStatus 返回影响行数，doNothing 不适用于非 void 方法）
+        doReturn(1).when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
         doThrow(new RuntimeException("数据库不可用")).when(chatRunService).updateStatus(anyLong(), eq("COMPLETED"));
 
         MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
@@ -1701,11 +1706,13 @@ class ChatRequestWorkerTest {
         when(chatRunService.findStaleActive(any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(List.of(new ChatRunVO(
                         101L, 1L, 1L, "QUEUED", LocalDateTime.now().minusMinutes(30))));
+        // BUG-01: CAS 命中 1 行（run 仍处 SELECT 观察到的 QUEUED 状态）
+        when(chatRunService.markErrorIfCurrent(101L, "QUEUED")).thenReturn(1);
 
         invokeSweepStaleRuns();
 
-        // Then: 滞留 QUEUED run 被置 ERROR（解除 uniq_active_run_per_session 会话锁死）
-        verify(chatRunService).updateStatus(101L, "ERROR");
+        // Then: 滞留 QUEUED run 经 CAS 置 ERROR（以观察状态为前提，解除 uniq_active_run_per_session 会话锁死）
+        verify(chatRunService).markErrorIfCurrent(101L, "QUEUED");
         // Then: QUEUED 阈值按 stale-queued-timeout-minutes 计算（created_at < now-5min）
         ArgumentCaptor<LocalDateTime> queuedBefore = ArgumentCaptor.forClass(LocalDateTime.class);
         verify(chatRunService).findStaleActive(any(LocalDateTime.class), queuedBefore.capture());
@@ -1726,6 +1733,7 @@ class ChatRequestWorkerTest {
 
         // Then: 无滞留 run 时不得误置任何状态
         verify(chatRunService, never()).updateStatus(anyLong(), anyString());
+        verify(chatRunService, never()).markErrorIfCurrent(anyLong(), anyString());
     }
 
     @Test
@@ -1742,13 +1750,67 @@ class ChatRequestWorkerTest {
         Thread.sleep(100);
     }
 
+    // ==================== BUG-01 守卫拒绝 / 巡检 TOCTOU ====================
+
+    @Test
+    @DisplayName("BUG-01: updateStatus(ACTIVE) 0 行命中（run 已被巡检置 ERROR）→ 跳过图执行 + 补推终态事件")
+    void processRequest_guardRejected_skipsGraphAndPushesTerminal() throws Exception {
+        // Given: 迟到队列任务——run 已被巡检置 ERROR（QUEUED→ACTIVE 迁移 0 行命中），
+        // 即使图流可执行也不得复活该 run（否则同 thread_id 与用户新 run 并发跑图）
+        when(chatRunService.updateStatus(100L, "ACTIVE")).thenReturn(0);
+        when(chatRunService.findById(100L)).thenReturn(new ChatRunVO(100L, 200L, 300L, "ERROR", LocalDateTime.now()));
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        // 图流桩仅用于证明「可执行也不被执行」（never 断言），lenient 规避严格桩误报
+        lenient().when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 图流未执行（复活被阻断），不落任何后续状态迁移
+        verify(compiledGraph, never()).stream(any(), any(RunnableConfig.class));
+        verify(chatRunService, never()).updateStatus(100L, "COMPLETED");
+        verify(chatRunService, never()).updateStatus(100L, "ERROR");
+        // Then: 补推终态事件（携带实际终态），客户端状态机收到终态而非悬挂到 emitter 超时
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        assertTrue(
+                pushed.getAllValues().stream()
+                        .anyMatch(e ->
+                                e.type() == SseEventType.ERROR && e.payload().contains("ERROR")),
+                "守卫拒绝后必须补推携带终态的 ERROR 终态事件");
+        // Then: finally 清理仍执行（ring/取消标记不泄漏）
+        verify(bridge).removeRing("100");
+    }
+
+    @Test
+    @DisplayName("BUG-01: 巡检 SELECT→UPDATE 窗口内 run 刚转 ACTIVE → CAS 未命中跳过（不误杀执行中 run）")
+    void sweepStaleRuns_casMiss_skipsRun() throws Exception {
+        // Given: 巡检查回滞留 QUEUED run，但 CAS 置 ERROR 时窗口内状态已迁移（返回 0 行）
+        when(workerProperties.staleRunTimeoutMinutes()).thenReturn(10);
+        when(workerProperties.staleQueuedTimeoutMinutes()).thenReturn(5);
+        when(chatRunService.findStaleActive(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of(new ChatRunVO(
+                        101L, 1L, 1L, "QUEUED", LocalDateTime.now().minusMinutes(30))));
+        when(chatRunService.markErrorIfCurrent(101L, "QUEUED")).thenReturn(0);
+
+        invokeSweepStaleRuns();
+
+        // Then: CAS 以 SELECT 观察状态为前提（TOCTOU 原子判定），未命中即跳过不重试不误杀
+        verify(chatRunService).markErrorIfCurrent(101L, "QUEUED");
+        verify(chatRunService, never()).updateStatus(anyLong(), anyString());
+    }
+
     // ==================== processRequest 边界分支 ====================
 
     @Test
     @DisplayName("onErrorResume → handleError 内部失败被吞并，消息仍持久化")
     void processRequest_onErrorResumeHandleErrorFails_stillPersists() throws Exception {
-        // Flux.error 进入 onErrorResume 分支；ACTIVE 更新正常、ERROR 终态更新三次失败后抛 IllegalStateException
-        doNothing().when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
+        // Flux.error 进入 onErrorResume 分支；ACTIVE 更新正常（BUG-01 后返回影响行数，doNothing 不适用非 void）、
+        // ERROR 终态更新三次失败后抛 IllegalStateException
+        doReturn(1).when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
         when(compiledGraph.stream(any(), any(RunnableConfig.class)))
                 .thenReturn(Flux.error(new RuntimeException("模型超时")));
         doThrow(new RuntimeException("数据库不可用")).when(chatRunService).updateStatus(anyLong(), eq("ERROR"));
@@ -2329,8 +2391,9 @@ class ChatRequestWorkerTest {
     @Test
     @DisplayName("updateStatusWithRetry → 重试休眠被中断时立即返回（不重抛）")
     void updateStatusWithRetry_interruptedDuringRetry_returnsQuietly() throws Exception {
-        // ACTIVE 更新正常（避免 strict stubbing 误判）、COMPLETED 更新持续失败 → 第 1 次重试休眠期间被中断
-        doNothing().when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
+        // ACTIVE 更新正常（避免 strict stubbing 误判；BUG-01 后返回影响行数，doNothing 不适用非 void）、
+        // COMPLETED 更新持续失败 → 第 1 次重试休眠期间被中断
+        doReturn(1).when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
         doThrow(new RuntimeException("DB 瞬时故障")).when(chatRunService).updateStatus(anyLong(), eq("COMPLETED"));
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);

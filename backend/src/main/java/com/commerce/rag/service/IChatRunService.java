@@ -28,12 +28,36 @@ public interface IChatRunService extends IService<ChatRun> {
     ChatRunVO createRun(Long sessionId, Long userId);
 
     /**
-     * 更新 Run 状态，自动设置 startedAt / endedAt
+     * 更新 Run 状态（BUG-01 状态机条件守卫），自动设置 startedAt / endedAt
+     *
+     * <p>守卫语义（UPDATE WHERE 条件原子判定）：
+     * <ul>
+     *   <li>目标 ACTIVE：仅允许自 QUEUED 迁移——迟到队列任务不得复活已被巡检置 ERROR 等终态的 run</li>
+     *   <li>目标终态（COMPLETED/CANCELLED/ERROR）：仅允许自 QUEUED/ACTIVE 迁移——终态 run 不可再被改写</li>
+     * </ul>
      *
      * @param runId  Run ID
      * @param status 新状态：ACTIVE / COMPLETED / CANCELLED / ERROR
+     * @return 影响行数：1=迁移成功；0=守卫拒绝（run 已离开迁移前提状态）或 run 不存在，
+     *         调用方据此短路（如 worker 跳过图执行）
+     * @throws IllegalArgumentException status 非状态机已知状态
      */
-    void updateStatus(Long runId, String status);
+    int updateStatus(Long runId, String status);
+
+    /**
+     * 以期望状态为前提的 CAS 式置 ERROR（BUG-01 巡检 TOCTOU 修复）
+     *
+     * <p>巡检路径 SELECT→UPDATE 窗口内 run 状态可能已迁移（如滞留 QUEUED 的 run 恰被 worker
+     * 取出转 ACTIVE 开始执行）：无条件 UPDATE 会误杀执行中的 run（置 ERROR 解锁会话 → 新 run
+     * 与仍在执行的旧 run 同 thread_id 真并发）。本方法把 SELECT 时观察到的状态作为 UPDATE 前提
+     * 原子判定，窗口内已迁移的 run 不受影响（返回 0 行，调用方跳过）；主路径（滞留 QUEUED/ACTIVE
+     * 置 ERROR 解锁会话）行为不变，仍受 uniq_active_run_per_session 唯一索引保护。
+     *
+     * @param runId          Run ID
+     * @param expectedStatus 期望当前状态（调用方 SELECT 时观察到的值：QUEUED / ACTIVE）
+     * @return 影响行数：1=置 ERROR 成功；0=run 已不在期望状态（或不存在），调用方应跳过
+     */
+    int markErrorIfCurrent(Long runId, String expectedStatus);
 
     /**
      * 根据 ID 查询 Run
