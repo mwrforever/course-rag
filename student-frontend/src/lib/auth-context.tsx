@@ -24,6 +24,7 @@ import {
   useState,
 } from "react";
 import {
+  clearRtLiveCookie,
   getRefreshToken,
   login as apiLogin,
   logout as apiLogout,
@@ -87,6 +88,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // 挂载静默续期：有 RT 才尝试恢复（无 RT 直接就绪，不发无效请求）
   useEffect(() => {
     if (!getRefreshToken()) {
+      // 收口残留提示 cookie：localStorage 无 RT 但 c_rt_live 残留（用户手清存储/ITP 分区）时，
+      // 常规清理路径（setRefreshToken/clearCredentials）不触发；不清会让 middleware 放行真匿名者
+      //（受保护页渲染骨架→登录弹窗），清掉后下次导航回归真匿名 307 语义
+      clearRtLiveCookie();
       setIsLoading(false);
       return;
     }

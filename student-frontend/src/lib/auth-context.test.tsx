@@ -119,6 +119,42 @@ describe("挂载静默续期（bootstrap）", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("无 RT 挂载：兜底清理残留 c_rt_live 提示 cookie（localStorage 无 RT 但 cookie 残留收口）", async () => {
+    // 残留场景预置：localStorage 无 RT，但 c_rt_live 提示 cookie 残留（用户手清存储/ITP 分区）
+    document.cookie = "c_rt_live=1; Path=/; Max-Age=604800; SameSite=Lax";
+    const cookieSetter = vi.spyOn(document, "cookie", "set");
+    const { mod, Probe } = await fresh();
+    render(
+      <mod.AuthProvider>
+        <Probe />
+      </mod.AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("就绪"));
+    // 残留提示 cookie 必须被写清除串：不清理会让 middleware 放行真匿名者（页面骨架→登录弹窗），
+    // 清掉后下次导航回归真匿名 307 语义
+    expect(cookieSetter).toHaveBeenCalledWith(expect.stringContaining("c_rt_live=;"));
+    expect(cookieSetter).toHaveBeenCalledWith(expect.stringContaining("Max-Age=0"));
+    expect(screen.getByTestId("state")).toHaveTextContent("未登录");
+    cookieSetter.mockRestore();
+  });
+
+  it("有 RT 挂载：不触发残留清理（走正常静默续期，凭据链路不受影响）", async () => {
+    localStorage.setItem("c_rt", "rt-old");
+    fetchMock.mockResolvedValue(res(200, loginBody("at-new", "rt-new")));
+    const cookieSetter = vi.spyOn(document, "cookie", "set");
+    const { mod, Probe } = await fresh();
+    render(
+      <mod.AuthProvider>
+        <Probe />
+      </mod.AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("已登录"));
+    // 有 RT 分支只走正常续期：refresh 成功回写存在性提示 cookie，但绝不写清除串
+    expect(cookieSetter.mock.calls.some(([s]) => String(s).includes("Max-Age=0"))).toBe(false);
+    expect(cookieSetter).toHaveBeenCalledWith(expect.stringContaining("c_rt_live=1"));
+    cookieSetter.mockRestore();
+  });
+
   it("有 RT 且 refresh 成功：恢复登录态", async () => {
     localStorage.setItem("c_rt", "rt-old");
     fetchMock.mockResolvedValue(res(200, loginBody("at-new", "rt-new")));
