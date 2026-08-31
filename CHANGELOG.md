@@ -4,6 +4,10 @@
 
 ---
 
+- 2026-08-31（二改）· 记忆提取超时改判 5 分钟→1 分钟（用户当日再拍板，dev 直合不走门控）：`memory.extraction.timeout-ms` 300000→60000，MemoryProperties.timeoutMs 默认值与 MemoryPropertiesTest 断言同步；注释记录两改定稿——先拍板 5 分钟（覆盖晚间实测延迟 14~22s），当日改判收紧至 1 分钟（仍覆盖实测延迟并约束挂起线程占用上限）。原因：用户指示「改成 1min，不走门控直接合并」。
+
+---
+
 - 2026-08-31 · 对话链路任务遗留三项收口（用户 2026-08-31 拍板，fix/2026-08-31-memory-timeout-cookie-cleanup）：①记忆提取超时 10s→5 分钟——提取模型 qwen3.7-max-2026-06-08 晚间实测延迟 14~22s（日间 2.3~8s），原 10s 致验收窗 8 次目标提取 5 次超时丢弃（N3 验收 A-1）；MemoryProperties.timeoutMs 默认值与 application.yml `memory.extraction.timeout-ms` 同步 300000ms，注释记录拍板背景。②c_rt_live 收口（N2 审核 Finding 1/2）——新增导出 clearRtLiveCookie()，AuthProvider 挂载静默续期无 RT 分支兜底清除残留提示 cookie（用户手清存储/ITP 分区路径，原清理收口 setRefreshToken/clearCredentials 不触发；不清会让 middleware 放行真匿名者→骨架→弹窗，清后下次导航回归真匿名 307 语义）；syncRtLiveCookie 写入/清除串在 https 环境（protocol === "https:"）条件追加 `Secure`（dev http 不追加，值恒 =1 无敏感面）。③TASK.md §6 三项完成删除；S1 spec 文件缺失（F4）用户裁定中间产物不回补。测试（TDD）：后端 MemoryProperties/MemoryExtractionPipeline 17 测试绿（Pipeline 超时用例显式 setTimeoutMs(50L) 不依赖默认值）；前端 api/auth-context 新增 4 用例 + 1 既有用例增断言（https 写入含 Secure / http 回归不含 / clearRtLiveCookie 写 Max-Age=0 清除串 / 无 RT 挂载兜底清除+isLoading 终态 / 有 RT 挂载不触发清除）全量 506 绿；E2E auth 9/9（AT 过期静默续期/RT 无效弹窗直接覆盖 c_rt_live 链路）。原因：用户对 A-1 与 N2 审核 Finding 1/2 拍板（①超时改 5 分钟；②spec 缺失不管属中间产物；③收口可做）。
 
 ---

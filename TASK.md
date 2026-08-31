@@ -84,7 +84,7 @@
 
 > 2026-08-30「对话链路打通与流式修复」任务（见 CHANGELOG）验收与审核中的建议级发现。
 > **2026-08-31 用户对三项全部拍板并实施**（PR 见 CHANGELOG 同日记录）：
-> - 记忆提取超时 10s→5 分钟（A-1）——MemoryProperties 默认值与 application.yml 同步 300000ms
+> - 记忆提取超时 10s→1 分钟（A-1，用户两改定稿：先拍板 5 分钟当日改判 1 分钟）——MemoryProperties 默认值与 application.yml 同步 60000ms
 > - c_rt_live 清理不对称收口（Finding 1）——auth-context 挂载无 RT 分支兜底清除残留提示 cookie
 > - c_rt_live 生产 Secure 属性（Finding 2）——写入串 https 环境条件追加
 > 原三项待办行已删除；S1 spec 文件缺失（F4）用户裁定为中间产物不回补（docs/ 不入库所致）。
