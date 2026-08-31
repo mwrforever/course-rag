@@ -660,13 +660,37 @@ public class ChatStreamEntry {
 
     /**
      * 简单 JSON 字符串转义（用于 PG 降级回放时构造 payload）。
+     *
+     * <p>BUG-15：补齐 C0 控制字符（U+0000-U+001F）转义——RFC 8259 禁止 JSON 字符串内
+     * 出现裸控制字符，原实现仅覆盖反斜杠/引号与换行/回车/制表五种，正文/思考含其余
+     * 控制字符（如换页、退格、垂直制表）时产出非法 JSON，前端 JSON.parse 抛错导致
+     * 回放中断。现逐字符转义：常用短转义保留（与实时事件构造口径一致），其余控制
+     * 字符统一十六进制转义（"u" + 四位小写十六进制），保证转义后恒为合法 JSON 且
+     * 解析还原原文。
      */
     private String escapeJson(String text) {
-        if (text == null) return "";
-        return text.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
+        if (text == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            switch (c) {
+                case '\\' -> sb.append("\\\\");
+                case '"' -> sb.append("\\\"");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                // 非常用短转义的 C0 控制字符统一十六进制转义（换页→u000c、退格→u0008 等）
+                default -> {
+                    if (c < 0x20) {
+                        sb.append('\\').append('u').append(String.format("%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        return sb.toString();
     }
 }

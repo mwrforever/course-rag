@@ -745,6 +745,41 @@ class ChatStreamEntryTest {
     }
 
     @Test
+    @DisplayName("replayFromPg 正文含 C0 控制字符 → 十六进制转义且 payload 可解析还原原文（BUG-15）")
+    void reconnect_replayFromPg_controlChars_escapedAndParseable() throws Exception {
+        // Given: 正文含 \n \t 与 \u0000 \u001f \f \b 等 C0 控制字符——原 escapeJson 只覆盖
+        // \\ " \n \r \t 五种，其余控制字符裸输出产出非法 JSON（RFC 8259 禁止字符串内裸
+        // 控制字符），前端 JSON.parse 抛错导致回放中断。
+        // 注：断言文本经 "\\" + "uXXXX" 拼接构造——源码字面 "\\u0000" 会被 Java 词法层
+        // Unicode 转义预处理成「反斜杠 + 真实 NUL 字符」，不是六字符文本
+        String content = "前\u0000中\f换\b页\u001f后\n制\t表\"引\\斜";
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", content, null, null, null, 123L, 1, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
+
+        // Then: DELTA payload 中既有短转义（\n/\t）保留，其余控制字符统一十六进制转义
+        List<String> sent = sentDataStrings(emitter);
+        String payload = sent.stream()
+                .filter(s -> s.startsWith("{\"text\":\""))
+                .findFirst()
+                .orElse("");
+        assertTrue(payload.contains("\\n"), "换行应保留短转义: " + payload);
+        assertTrue(payload.contains("\\t"), "制表应保留短转义: " + payload);
+        assertTrue(payload.contains("\\" + "u0000"), "NUL 应转义: " + payload);
+        assertTrue(payload.contains("\\" + "u001f"), "US 应转义: " + payload);
+        assertTrue(payload.contains("\\f") || payload.contains("\\" + "u000c"), "换页应转义（短转义或十六进制均合法）: " + payload);
+        assertTrue(payload.contains("\\b") || payload.contains("\\" + "u0008"), "退格应转义（短转义或十六进制均合法）: " + payload);
+        // 业务等价断言：payload 必须是合法 JSON 且解析后还原原文（= 前端 JSON.parse 不中断）
+        assertEquals(content, new ObjectMapper().readTree(payload).path("text").asText(), "payload 解析应还原原文");
+    }
+
+    @Test
     @DisplayName("replayFromPg TOOL_CALL 新格式（含 toolCallId）直接透传")
     void reconnect_replayFromPg_toolCallNewFormat_passthrough() throws Exception {
         // Given: 新格式 content 含 toolCallId → normalizeToolPayload 直接透传（不重建）
