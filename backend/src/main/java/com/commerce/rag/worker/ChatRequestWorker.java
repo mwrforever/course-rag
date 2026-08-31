@@ -1888,16 +1888,19 @@ public class ChatRequestWorker {
      * {@code {"toolCallId":"...","status":"success","output":"..."}}
      *
      * <p>P1-2：与 {@link #buildToolCallContent} 同理，统一落库格式与实时事件。
+     * BUG-16（2026-08-31）：output 经 {@link SseEventTransformer#truncateToolOutput} 与实时事件
+     * 统一截断到 4000 字符——修复前落库存全量、实时截 4000，前端实时与回放口径分叉；正常/取消
+     * 两路径的 TOOL_RESULT 行均经本方法落库，单点收敛截断口径。
      *
      * @param toolCallId   工具调用 ID（模型生成）
      * @param responseData 工具返回数据字符串
-     * @return 符合实时事件 schema 的 JSON 字符串
+     * @return 符合实时事件 schema 的 JSON 字符串（output 已按统一口径截断）
      */
     private String buildToolResultContent(String toolCallId, String responseData) {
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("toolCallId", toolCallId != null ? toolCallId : "");
         content.put("status", "success");
-        content.put("output", responseData != null ? responseData : "");
+        content.put("output", SseEventTransformer.truncateToolOutput(responseData));
         try {
             return objectMapper.writeValueAsString(content);
         } catch (JsonProcessingException e) {

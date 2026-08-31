@@ -11,6 +11,8 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
+import com.alibaba.cloud.ai.graph.streaming.OutputType;
+import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.RetrieveNode;
 import com.commerce.rag.bot.hook.WarningHook;
@@ -800,6 +802,52 @@ class ChatRequestWorkerTest {
                 .orElseThrow();
         assertEquals(9, mainRound2.getSeq().intValue(), "主2实体拆 2 VO（thinking+正文），block 起于 TOOL_RESULT 之后（8-9）");
         assertTrue(mainRound2.getSeq() > result2.getSeq(), "回放时序：第2轮主 agent 实体行必须排在 TOOL_RESULT 之后（与实时事件序一致）");
+    }
+
+    @Test
+    @DisplayName("persistMessages TOOL_RESULT 落库截断与实时 SSE 事件口径一致（BUG-16 统一 4000）")
+    @SuppressWarnings("unchecked")
+    void persistMessages_toolResultTruncation_alignedWithRealtimeEvent() throws Exception {
+        // Given: 5000 字符工具输出（超 4000 截断阈值）——实时事件侧截断（SseEventTransformer），
+        // 落库侧修复前存全量，前端实时看 4000 截断、回放看全量，口径分叉（BUG-16）
+        String longOutput = "y".repeat(5000);
+        AssistantMessageSink sink = new AssistantMessageSink();
+        sink.capture("generating", "思考", "回答", List.of());
+        ToolResponseMessage trm = mock(ToolResponseMessage.class);
+        when(trm.getResponses())
+                .thenReturn(List.of(new ToolResponseMessage.ToolResponse("call-1", "searchKnowledge", longOutput)));
+        OverAllState state = new OverAllState(Map.of("messages", List.of(trm)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        // When: 落库侧（正常完成路径，结果未配对实体行走兜底位）
+        invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, null, sink, false);
+
+        // 落库 TOOL_RESULT 行 output 字段
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        ChatMessage toolResultRow = captor.getValue().stream()
+                .filter(r -> "TOOL_RESULT".equals(r.getMessageType()))
+                .findFirst()
+                .orElseThrow();
+        ObjectMapper mapper = new ObjectMapper();
+        String persistedOutput =
+                mapper.readTree(toolResultRow.getContent()).get("output").asText();
+
+        // 实时侧：同一输出经真实 SseEventTransformer 转 TOOL_RESULT 事件的 output 字段
+        StreamingOutput<?> chunk = mock(StreamingOutput.class);
+        when(chunk.getOutputType()).thenReturn(OutputType.AGENT_TOOL_FINISHED);
+        when(chunk.message()).thenReturn(trm);
+        SseEventTransformer realTransformer = new SseEventTransformer(mapper);
+        SseEvent event = realTransformer
+                .transform(chunk, SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max"))
+                .get(0);
+        String realtimeOutput = mapper.readTree(event.payload()).get("output").asText();
+
+        // Then: 两侧截断口径一致（统一 4000，实时与回放所见相同，且截断保留前缀）
+        assertEquals(4000, persistedOutput.length(), "BUG-16：落库 TOOL_RESULT output 应截断到 4000（与实时一致）");
+        assertEquals(longOutput.substring(0, 4000), persistedOutput, "截断保留前 4000 字符前缀");
+        assertEquals(realtimeOutput, persistedOutput, "BUG-16：落库与实时事件 output 必须同口径");
     }
 
     @Test
