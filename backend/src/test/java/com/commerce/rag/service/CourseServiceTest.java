@@ -31,9 +31,11 @@ import com.commerce.rag.service.impl.CourseServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.PublicCourseDetailVO;
 import com.commerce.rag.vo.PublicCourseVO;
+import com.commerce.rag.vo.PublicScheduleVO;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeAll;
@@ -415,7 +417,7 @@ class CourseServiceTest {
     }
 
     @Test
-    @DisplayName("T1.3: findPublicCourseById → ACTIVE 课程返回公开详情 VO（含价格）")
+    @DisplayName("T1.3: findPublicCourseById → ACTIVE 课程返回公开详情 VO（含价格与排期列表）")
     void findPublicCourseById_active_returnsDetailVO() throws Exception {
         injectChainFields(courseService);
         CourseInfo course = new CourseInfo();
@@ -430,6 +432,25 @@ class CourseServiceTest {
         course.setLearningCount(128);
         course.setPrice(new BigDecimal("299.00"));
         when(courseInfoMapper.selectOne(any())).thenReturn(course);
+        // 排期：一门课两期（开课日期升序由 service 查询排序保证，此处模拟已排序结果）
+        CourseSchedule upcoming = new CourseSchedule();
+        upcoming.setId(11L);
+        upcoming.setCourseId(1L);
+        upcoming.setStartDate(LocalDate.of(2026, 9, 1));
+        upcoming.setEndDate(LocalDate.of(2026, 12, 20));
+        upcoming.setScheduleType("ONLINE");
+        upcoming.setLocation("线上直播");
+        upcoming.setStatus("UPCOMING");
+        upcoming.setCapacity(200);
+        upcoming.setEnrolled(35);
+        CourseSchedule completed = new CourseSchedule();
+        completed.setId(12L);
+        completed.setCourseId(1L);
+        completed.setStartDate(LocalDate.of(2026, 3, 1));
+        completed.setScheduleType("OFFLINE");
+        completed.setLocation("北京校区");
+        completed.setStatus("COMPLETED");
+        when(courseScheduleMapper.selectList(any())).thenReturn(List.of(upcoming, completed));
 
         PublicCourseDetailVO vo = courseService.findPublicCourseById(1L);
 
@@ -443,6 +464,39 @@ class CourseServiceTest {
         assertEquals(new BigDecimal("4.9"), vo.rating());
         assertEquals(128, vo.learningCount());
         assertEquals(new BigDecimal("299.00"), vo.price());
+        // 排期列表映射（对外字段齐全；createdBy 等内部字段不下发）
+        assertEquals(2, vo.schedules().size());
+        PublicScheduleVO first = vo.schedules().get(0);
+        assertEquals(11L, first.id());
+        assertEquals(LocalDate.of(2026, 9, 1), first.startDate());
+        assertEquals(LocalDate.of(2026, 12, 20), first.endDate());
+        assertEquals("ONLINE", first.scheduleType());
+        assertEquals("线上直播", first.location());
+        assertEquals("UPCOMING", first.status());
+        assertEquals(200, first.capacity());
+        assertEquals(35, first.enrolled());
+        // 可空字段（endDate 未设置）映射保持 null，不凭空填充
+        assertEquals("OFFLINE", vo.schedules().get(1).scheduleType());
+        assertNull(vo.schedules().get(1).endDate());
+        // 排期查询经 course_schedule 副表（开课日期升序筛选条件下沉 mapper wrapper）
+        verify(courseScheduleMapper).selectList(any());
+    }
+
+    @Test
+    @DisplayName("T1.3: findPublicCourseById → 无排期课程返回空排期列表（详情页空态数据源）")
+    void findPublicCourseById_withoutSchedules_returnsEmptyList() throws Exception {
+        injectChainFields(courseService);
+        CourseInfo course = new CourseInfo();
+        course.setId(1L);
+        course.setTitle("Java 后端实战");
+        course.setDuration("12 weeks");
+        when(courseInfoMapper.selectOne(any())).thenReturn(course);
+        when(courseScheduleMapper.selectList(any())).thenReturn(List.of());
+
+        PublicCourseDetailVO vo = courseService.findPublicCourseById(1L);
+
+        assertNotNull(vo.schedules());
+        assertTrue(vo.schedules().isEmpty());
     }
 
     @Test
