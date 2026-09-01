@@ -1090,7 +1090,9 @@ public class ChatRequestWorker {
                         Object item = rawList.get(i);
                         if (item instanceof ToolResponseMessage trm) {
                             for (ToolResponseMessage.ToolResponse tr : trm.getResponses()) {
-                                Integer captureIdx = tr.id() == null ? null : toolCallCaptureIndex.get(tr.id());
+                                // ToolResponse.id() 契约非空（Spring AI 框架保证），直接查表配对；
+                                // 未命中（含 get 返回 null）走 tailResults 兜底，与原判空分支行为一致
+                                Integer captureIdx = toolCallCaptureIndex.get(tr.id());
                                 if (captureIdx == null) {
                                     tailResults.add(tr);
                                 } else {
