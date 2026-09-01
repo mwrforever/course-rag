@@ -408,6 +408,68 @@ describe("新对话页：附件全链路", () => {
     // 消息内仍以 blob 预览（记录 url → blob 映射保留）
     expect(screen.getByRole("img", { name: /图\.png/ })).toBeInTheDocument();
   });
+
+  it("发送成功：上传失败的 chips 清理并 revoke blob（BUG-20 不泄漏）", async () => {
+    apiMock.uploadAttachments.mockRejectedValueOnce(new Error("上传失败"));
+    renderPage();
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
+    // 上传失败 toast 出现即 chips 进入失败态
+    await screen.findByRole("status");
+    expect(screen.getByTestId("attachment-chip")).toBeInTheDocument();
+    // 失败态不阻塞发送（sendDisabled 仅拦上传中）：直接文本发送
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "不带附件提问" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await waitFor(() => {
+      expect(chatMock.send).toHaveBeenCalledWith("不带附件提问", []);
+    });
+    // 发送成功后：失败 chip 随清理移除且 blob 已 revoke（不泄漏至页面卸载）
+    await waitFor(() => {
+      expect(screen.queryByTestId("attachment-chip")).not.toBeInTheDocument();
+    });
+    expect(urlMock.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
+  });
+
+  it("发送成功：await 期间新增的 chips 保留不连带清空（BUG-20）", async () => {
+    // blob URL 递增编号：区分发送时 chips 与 await 期间新增 chips
+    let blobSeq = 0;
+    urlMock.createObjectURL.mockImplementation(() => `blob:mock-${(blobSeq += 1)}`);
+    const RECORD2: AttachmentRecord = {
+      type: "image",
+      url: "obj/2.png",
+      name: "追问图.png",
+      size: "1024",
+    };
+    const PNG2 = new File([new Uint8Array(1024)], "追问图.png", { type: "image/png" });
+    apiMock.uploadAttachments.mockResolvedValueOnce([RECORD]).mockResolvedValueOnce([RECORD2]);
+    // 挂起 send：模拟网络慢，制造 await 窗口
+    let resolveSend!: () => void;
+    chatMock.send.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (resolveSend = resolve)),
+    );
+    renderPage();
+    // 发送前：第一个附件已上传完成
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
+    await screen.findByRole("img", { name: /图\.png/ });
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "带附件提问" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await waitFor(() => {
+      expect(chatMock.send).toHaveBeenCalledWith("带附件提问", [RECORD]);
+    });
+    // await 窗口内：用户新选第二个附件（上传完成）
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG2]);
+    await screen.findByRole("img", { name: /追问图\.png/ });
+    expect(screen.getAllByTestId("attachment-chip").length).toBe(2);
+    // 完成发送：仅清理本次提交的第一个 chip，新增第二个 chip 保留
+    await act(async () => {
+      resolveSend();
+    });
+    await waitFor(() => {
+      expect(screen.getAllByTestId("attachment-chip").length).toBe(1);
+    });
+    expect(screen.getByRole("img", { name: /追问图\.png/ })).toBeInTheDocument();
+    // 新增 chip 的 blob 未被 revoke（仍挂在 chips 上供预览/后续发送）
+    expect(urlMock.revokeObjectURL).not.toHaveBeenCalledWith("blob:mock-2");
+  });
 });
 
 describe("新对话页：拖拽上传与附件预览（Task 12 扩容）", () => {

@@ -17,7 +17,7 @@
  * - 409/503/网络错误分级 toast（§3.2）；建议提问 chip 点击即发送
  * - 附件全链路：前置校验（超限即拒无网络请求）→ 选中即传（chips 进度环）→
  *   图片 blob URL 预览；blob 生命周期：移除即 revoke、发送后保留供消息内预览、
- *   页面卸载统一 revoke（D12）
+ *   发送成功的失败 chips 随清理 revoke、页面卸载统一 revoke（D12；BUG-20）
  * - 空态：AI 徽标 + 问候（新对话）/「继续提问」（历史会话占位，Task 13 接回显）
  */
 import { ArrowLeft, Paperclip } from "@phosphor-icons/react";
@@ -163,6 +163,12 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
 
   // ── 附件状态：pending chips + record.url → blob URL 映射（D12 本地预览）──
   const [pendings, setPendings] = useState<PendingAttachment[]>([]);
+  // 最新 pendings 镜像（ref）：sendQuery 的 await 结算须读最新快照——闭包中的
+  // pendings 是发送时的旧值，await 期间用户新选的附件会丢失（BUG-20）
+  const pendingsRef = useRef(pendings);
+  useEffect(() => {
+    pendingsRef.current = pendings;
+  }, [pendings]);
   const [blobUrls, setBlobUrls] = useState<Record<string, string>>({});
   // ── 附件预览弹窗（Task 12）：chip 点击打开，Esc/遮罩关闭（null=关闭）──
   const [previewItem, setPreviewItem] = useState<PendingAttachment | null>(null);
@@ -319,19 +325,36 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
     }
   }
 
-  /** 发送统一入口（输入区与建议 chip 共用）：成功清空 chips，失败向上抛分级 */
+  /** 发送统一入口（输入区与建议 chip 共用）：成功后按发送时快照结算 chips，失败向上抛分级 */
   async function sendQuery(query: string, attachmentsRecord: AttachmentRecord[]) {
+    // 发送时在场快照与已提交记录集合：await 期间新增的 chips 不属于本次发送（BUG-20）
+    const sentIds = new Set(pendings.map((item) => item.id));
+    const sentUrls = new Set(attachmentsRecord.map((record) => record.url));
     await send(query, attachmentsRecord);
-    // 发送成功：chips 清空；blob 保留供消息内附件预览（卸载时统一 revoke）
+    // 发送成功：以最新快照结算（闭包 pendings 在 await 期间已过期）——
+    // - 已随消息提交的 chips：blob 迁入消息预览映射后移除（卸载时统一 revoke）
+    // - 发送时已失败的 chips：revoke blob 后移除（不随清理泄漏）
+    // - await 期间新增的 chips 与发送时仍在传中的 chips：保留，不连带清空
+    const latest = pendingsRef.current;
     const kept: Record<string, string> = {};
-    for (const item of pendings) {
-      if (item.record && item.status === "done") kept[item.record.url] = item.blobUrl;
+    for (const item of latest) {
+      if (item.record && sentUrls.has(item.record.url)) {
+        kept[item.record.url] = item.blobUrl;
+      } else if (sentIds.has(item.id) && item.status === "error") {
+        URL.revokeObjectURL(item.blobUrl);
+      }
     }
     if (Object.keys(kept).length > 0) {
       blobUrlsRef.current = { ...blobUrlsRef.current, ...kept };
       setBlobUrls({ ...blobUrlsRef.current });
     }
-    setPendings([]);
+    setPendings(
+      latest.filter(
+        (item) =>
+          !(item.record && sentUrls.has(item.record.url)) &&
+          !(sentIds.has(item.id) && item.status === "error"),
+      ),
+    );
   }
 
   /** 输入区发送（带 chips 附件记录；异常由 ChatInput 分级 toast） */
