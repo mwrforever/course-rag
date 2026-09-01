@@ -12,10 +12,12 @@
  *    + 标题 + XHR 进度条；完成关闭并刷新
  * 5. 批量删除：无后端批量端点（设计 D10）→ 前端循环单条 + Promise.allSettled
  *    聚合 toast「成功 n / 失败 m」
- * 6. ETL 轮询：vue-query refetchInterval 由 useEtlPolling 决策（非终态 5s / 全终态停）
+ * 6. ETL 轮询：vue-query refetchInterval 由 useEtlPolling 决策（非终态 5s / 全终态停；
+ *    刷新失败退避 15s——error 态不再 5s 高频重试，BUG-33）
  *
  * 契约要点：id/total 为 Long 字符串铁律；page/size 为 number；时间 ISO-8601。
- * 四态：loading 骨架 / empty 含行动入口 / error 横幅重试 / 正常。
+ * 四态：loading 骨架 / empty 含行动入口 / error 横幅重试 / 正常；
+ * 后台刷新失败（已有数据）为非阻断轻提示（保留表格，BUG-33）。
  *
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
@@ -25,6 +27,9 @@ export const UPLOAD_FILE_TYPES = ['pdf', 'docx', 'pptx', 'md', 'txt', 'xlsx', 'x
 
 /** 上传大小上限（MB，设计 §2.4.2 ≤100MB；与后端 etl.max-file-size-mb 配置同值） */
 export const UPLOAD_MAX_SIZE_MB = 100
+
+/** ETL 轮询失败退避间隔（毫秒，BUG-33）：查询 error 态下拉长轮询间隔，失败请求不再 5s 高频重试 */
+export const ETL_REFRESH_ERROR_BACKOFF_MS = 15_000
 
 /**
  * 上传文件合法性校验（类型白名单 + 大小上限）
@@ -119,6 +124,13 @@ const sort = ref<'created' | 'updated'>('created')
  */
 const records = ref<DocumentVO[]>([])
 
+/**
+ * 最近一次拉取失败镜像：queryFn 成功置 false、抛错前置 true。
+ * isError 来自 useQuery 解构（声明在其后），轮询退避 computed 若直接引用会 TDZ，
+ * 故与 records 同思路以镜像 ref 提前解耦（BUG-33）。
+ */
+const lastFetchFailed = ref(false)
+
 /** 查询参数构造：空筛选值不携带（axios 端 undefined 参数同样会被忽略） */
 function buildListParams() {
   return {
@@ -139,6 +151,21 @@ const queryKey = computed(() => [
   sort.value,
 ])
 
+/** ETL 轮询基础决策（纯函数 composable）：存在非终态行 → 5000ms；全终态 → false 停止 */
+const pollingInterval = useEtlPolling(records)
+
+/**
+ * 实际轮询间隔（BUG-33 失败退避）：
+ * - 基础值随「列表是否存在非终态行」决策（useEtlPolling）；
+ * - 最近一次拉取失败 → 拉长到退避间隔，失败请求不再按 5s 高频轰炸后端；
+ * - 轮询本应停止（全终态）时即使失败也保持 false，不因失败重启轮询。
+ */
+const refetchInterval = computed(() => {
+  const base = pollingInterval.value
+  if (base === false) return false
+  return lastFetchFailed.value ? ETL_REFRESH_ERROR_BACKOFF_MS : base
+})
+
 const {
   data,
   isLoading,
@@ -149,12 +176,20 @@ const {
 } = useQuery({
   queryKey,
   queryFn: async () => {
-    const res = await documentApi.list(buildListParams())
-    records.value = res.records ?? []
-    return res
+    try {
+      const res = await documentApi.list(buildListParams())
+      // 成功：回写轮询决策镜像并清除失败标记
+      records.value = res.records ?? []
+      lastFetchFailed.value = false
+      return res
+    } catch (err) {
+      // 失败：records 不回写（旧数据继续驱动轮询决策），仅置失败标记驱动退避，异常照常上抛
+      lastFetchFailed.value = true
+      throw err
+    }
   },
-  // ETL 轮询：列表存在非终态行 → 5000ms 自动刷新；全终态 → false 停止
-  refetchInterval: useEtlPolling(records),
+  // ETL 轮询（含失败退避）：非终态行 5s / 全终态停 / error 态退避 15s
+  refetchInterval,
 })
 
 const docs = computed(() => data.value?.records ?? [])
@@ -169,9 +204,24 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
+/**
+ * 整表错误横幅文案（仅首次加载失败：尚无缓存数据时才置真）。
+ * BUG-33：后台刷新失败（已有数据）不进此分支——保留表格，走顶部轻提示。
+ */
 const listError = computed(() =>
-  isError.value ? messageOf(queryError.value, '文档列表加载失败，请稍后重试') : '',
+  isError.value && !data.value ? messageOf(queryError.value, '文档列表加载失败，请稍后重试') : '',
 )
+
+/**
+ * 后台刷新失败轻提示（BUG-33）：已有数据 + isError → 非阻断条幅，已加载表格保留。
+ * 轮询仍在进行（存在非终态行）时按退避间隔自动重试，文案如实区分两种场景。
+ */
+const refreshNotice = computed(() => {
+  if (!isError.value || !data.value) return ''
+  return pollingInterval.value === false
+    ? '刷新失败，已加载内容不受影响，可稍后重试'
+    : '刷新失败，正在自动重试，已加载内容不受影响'
+})
 
 /** 知识库选项（筛选下拉 + 所属库小字映射 + 上传下拉），加载失败不阻塞列表（查询错误仅空数组） */
 const { data: kbsData } = useQuery({
@@ -687,7 +737,18 @@ function submitUpload() {
     </div>
   </div>
 
-  <!-- 错误态：页内横幅 + 重试（设计 §1.7） -->
+  <!-- 后台刷新失败轻提示（BUG-33）：已有数据时非阻断——保留已加载表格，轮询按退避间隔自动重试 -->
+  <div
+    v-if="refreshNotice"
+    data-testid="refresh-notice"
+    role="status"
+    class="mb-4 flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/5 px-4 py-2.5"
+  >
+    <PhWarningCircle class="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+    <span class="text-sm text-text-muted">{{ refreshNotice }}</span>
+  </div>
+
+  <!-- 错误态：页内横幅 + 重试（设计 §1.7；仅首次加载失败无数据时，BUG-33 后台失败走轻提示） -->
   <div
     v-if="listError"
     role="alert"
