@@ -6,7 +6,9 @@
  * 登录弹窗 API（openLoginDialog 登记动作 / submitLogin 成功后关闭并执行 / 失败保持打开）、
  * Provider 外使用 useAuth 的防护、卸载清理。
  */
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /** 构造 fetch 假响应（与 api.test 同手法，仅实现消费的形状） */
@@ -34,6 +36,29 @@ function loginBody(at: string, rt: string) {
 }
 
 const fetchMock = vi.fn();
+
+/**
+ * 缓存探针持有器：测试侧读取 QueryProvider 内部的 QueryClient（探针挂载时捕获）
+ *
+ * 说明：直接持有客户端引用使断言可轮询（clear 不触发探针重渲染，经 waitFor 轮询读取）
+ */
+const clientHolder: { current: QueryClient | null } = { current: null };
+
+/**
+ * 缓存探针：捕获上下文 QueryClient + 「写入缓存」按钮模拟旧账号缓存数据
+ * （BUG-06 断言载体：账号切换事件到达后缓存条目应被清空）
+ */
+function CacheProbe() {
+  const client = useQueryClient();
+  useEffect(() => {
+    clientHolder.current = client;
+  });
+  return (
+    <button type="button" onClick={() => client.setQueryData(["bug06-probe"], "旧账号数据")}>
+      写入缓存
+    </button>
+  );
+}
 
 /** 动态 import 拿全新模块实例（auth-context 与 api 共享同一次重置），并生成探针组件 */
 async function fresh() {
@@ -399,5 +424,91 @@ describe("useAuth 防护", () => {
     }
     expect(() => render(<Naked />)).toThrow(/AuthProvider/);
     consoleSpy.mockRestore();
+  });
+});
+
+describe("账号切换缓存清理（BUG-06：401 换登/登录成功后清空 React Query 缓存）", () => {
+  it("api 层 401 且 refresh 失败：全局登出回调触发时 QueryClient 缓存被清空", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/auth/login")) return res(200, loginBody("at-1", "rt-1"));
+      // 登录后所有请求 401（AT 过期且 RT 失效场景）：业务请求与单飞 refresh 均失败
+      return res(401, { code: 401, message: "令牌无效或已过期" });
+    });
+    const { mod, api, Probe } = await fresh();
+    const { QueryProvider } = await import("./query-provider");
+    render(
+      <mod.AuthProvider>
+        <QueryProvider>
+          <Probe />
+          <CacheProbe />
+        </QueryProvider>
+      </mod.AuthProvider>,
+    );
+    fireEvent.click(await screen.findByText("触发登录"));
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("已登录"));
+    // 预置旧账号缓存数据（模拟用户 A 的会话/课程缓存）
+    fireEvent.click(screen.getByText("写入缓存"));
+    expect(clientHolder.current?.getQueryCache().getAll().length).toBe(1);
+
+    // 业务请求 401 → 单飞 refresh 也 401 → 全局登出回调 → 缓存随账号切换清空
+    await act(async () => {
+      await expect(api.getMyCourses()).rejects.toThrow();
+    });
+    await waitFor(() => expect(clientHolder.current?.getQueryCache().getAll().length).toBe(0));
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("未登录"));
+  });
+
+  it("登录成功（含未过期主动换登）：旧账号缓存被清空、新登录态正常建立", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/auth/login")) return res(200, loginBody("at-2", "rt-2"));
+      throw new Error(`未预期的请求: ${url}`);
+    });
+    const { mod, Probe } = await fresh();
+    const { QueryProvider } = await import("./query-provider");
+    render(
+      <mod.AuthProvider>
+        <QueryProvider>
+          <Probe />
+          <CacheProbe />
+        </QueryProvider>
+      </mod.AuthProvider>,
+    );
+    // 用户 A 已登录（未过期主动换登场景：无 401，直接经弹窗换成用户 B）
+    fireEvent.click(await screen.findByText("触发登录"));
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("已登录"));
+    fireEvent.click(screen.getByText("写入缓存"));
+    expect(clientHolder.current?.getQueryCache().getAll().length).toBe(1);
+
+    // 弹窗提交登录（用户 B）成功：旧账号缓存必须清空，防 B 读到 A 的会话/课程
+    fireEvent.click(screen.getByText("弹窗提交登录"));
+    await waitFor(() => expect(clientHolder.current?.getQueryCache().getAll().length).toBe(0));
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("已登录"));
+  });
+
+  it("QueryProvider 卸载后退订事件（无泄漏）：再次广播不触碰已卸载客户端", async () => {
+    fetchMock.mockImplementation(async () => {
+      throw new Error("本用例不应发起任何请求");
+    });
+    const { QueryProvider } = await import("./query-provider");
+    const events = await import("./auth-cache-events");
+    const { unmount } = render(
+      <QueryProvider>
+        <CacheProbe />
+      </QueryProvider>,
+    );
+    fireEvent.click(await screen.findByText("写入缓存"));
+    expect(clientHolder.current?.getQueryCache().getAll().length).toBe(1);
+    // 挂载期间广播：缓存清空生效（订阅链路正常路径）
+    events.emitAuthCacheReset();
+    await waitFor(() => expect(clientHolder.current?.getQueryCache().getAll().length).toBe(0));
+
+    // 卸载后退订：再次广播不再调用已卸载客户端的 clear（悬空回调泄漏防护）
+    const clearSpy = vi.spyOn(clientHolder.current as QueryClient, "clear");
+    unmount();
+    events.emitAuthCacheReset();
+    expect(clearSpy).not.toHaveBeenCalled();
+    clearSpy.mockRestore();
   });
 });

@@ -11,6 +11,8 @@
  *   /login，登录弹窗全路由可触发）+ 展示轻量自制 toast「登录已失效，请重新登录」
  * - 登录弹窗全局状态：openLoginDialog({ afterLogin }) 供任意组件登记登录成功后的后续动作
  *   （如继续提问/进入详情页），submitLogin 成功后自动关闭弹窗并执行登记动作
+ * - 账号切换广播（BUG-06）：401 全局登出回调与登录成功两处 emit 账号切换事件，
+ *   QueryProvider 订阅后清空 React Query 缓存（本层层级取不到 QueryClient）
  *
  * 线程安全说明：React 单向数据流内使用，无共享可变状态并发问题。
  */
@@ -31,6 +33,7 @@ import {
   refresh as apiRefresh,
   setUnauthorizedHandler,
 } from "./api";
+import { emitAuthCacheReset } from "./auth-cache-events";
 import type { LoginResponse } from "./types";
 
 /** 登录用户信息（登录/刷新响应缓存，设计 §1.5.6 个人中心展示用） */
@@ -124,6 +127,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUnauthorizedHandler(() => {
       setUser(null);
       setToken(null);
+      // BUG-06：广播账号切换清空 React Query 缓存（QueryProvider 侧订阅执行）——
+      // 本层取不到 QueryClient（挂载层级隔离），不清则换登后新账号持续读到旧账号缓存
+      emitAuthCacheReset();
       // 登录失效闭环：toast 提示 + 打开登录弹窗
       setSessionExpired(true);
       setLoginDialogOpen(true);
@@ -143,6 +149,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /** 登录：经 api client 落存凭据后置登录态（失败向上抛由登录弹窗分级展示） */
   const login = useCallback(async (username: string, password: string) => {
     const response = await apiLogin(username, password);
+    // BUG-06：登录成功即广播账号切换——清空旧账号缓存（含未过期主动换登场景）；
+    // 弹窗换登（submitLogin）与登录页共用本链路，无 QueryProvider 挂载时为空操作
+    emitAuthCacheReset();
     setUser(toUser(response));
     setToken(response.accessToken);
   }, []);
