@@ -12,9 +12,12 @@
  * 4. 底部行（2.15fr : 1fr）：最近上传文档表（eye 按钮跳文档详情）+
  *    反馈意图 donut（三意图占比，SVG 描边生长 + hover 高亮）。
  *
- * 数据源（后端实测契约）：dashboard/stats + feedback/stats?period=today +
- * feedback/trend?days={7|30} + documents?sort=created&size=5 + feedbacks/stats，
- * 五接口并行拉取，任一失败整页 error 横幅 + 重试（时间范围切换经 queryKey 带 days 重拉全量）。
+ * 数据源（后端实测契约，PERF-12 拆 core/trend 双查询）：
+ * - core 键 = dashboard/stats + feedback/stats?period=today +
+ *   documents?sort=created&size=5 + feedbacks/stats 四接口并行（与时间范围无关），
+ *   任一失败整页 error 横幅 + 全量重试（页面级错误契约不变）；
+ * - trend 键 = feedback/trend?days={7|30} 单独成键，范围切换仅重拉趋势序列
+ *   （keepPreviousData 平滑过渡），失败仅趋势区报错重试，不影响其余区块。
  *
  * 设计稿丢弃项（无后端支撑，禁止假数据）：KPI 环比箭头 / Revenue 收入图 /
  * Best Selling 销量表 / 讲师占比环形图原语义（donut 机制复用为意图占比）。
@@ -22,7 +25,7 @@
  * 线程安全注意：全部状态为组件私有 ref/computed，无跨实例共享可变状态。
  */
 import { computed, ref } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
+import { keepPreviousData, useQuery } from '@tanstack/vue-query'
 import { useRouter } from 'vue-router'
 import {
   PhBookOpen,
@@ -55,7 +58,8 @@ import type { DocumentParseStatus } from '@/lib/types'
 const router = useRouter()
 
 // ====================================================================
-// 数据加载（五接口并行，成功/错误/加载三态页面级收敛；趋势天数入 queryKey 支持范围切换重拉）
+// 数据加载（PERF-12 拆 core/trend 双查询：core 四接口并行承载页面级三态；
+// trend 单独成键随天数换键重拉，分区错误分区重试，互不牵连）
 // ====================================================================
 
 /** 趋势时间范围（天）：设计稿 A17 三档裁剪为项目后端实际支撑的两档 */
@@ -71,7 +75,7 @@ const rangeOptions: Array<{ days: 7 | 30; label: string }> = [
 const rangeLabel = computed(() => (trendDays.value === 7 ? '近 7 天' : '近 30 天'))
 
 /**
- * 切换时间范围：queryKey 变化自动重拉全量（趋势序列按新 days 取数）
+ * 切换时间范围：trendDays 变更仅使 trend 查询键变化重拉趋势序列（core 查询零重拉）
  *
  * @param days 目标天数（7 或 30，用户点击下拉选项触发）
  * @param close 下拉菜单关闭回调（DropdownMenu 作用域插槽下发）
@@ -90,33 +94,31 @@ function messageOf(err: unknown): string {
 }
 
 /**
- * 仪表盘全量数据（五接口并行，全部成功才进入正常态；失败任一条目即整页 error 横幅）
+ * 仪表盘核心数据查询（core 键，PERF-12 拆键）
  *
- * 查询键带趋势天数（既有 queryKey 惯例：参数对象入键），范围切换即重拉；
- * 挂载即拉取；分区块空态（无文档/无趋势/无意图）在成功后按区块收敛。
+ * KPI / 意图统计 / 最近文档四接口均与时间范围无关，合并为单一 core 查询：
+ * 全部成功才进入正常态，任一失败即整页 error 横幅 + 全量重试（页面级错误契约保留）。
+ * 查询键不含天数——范围切换时本查询零重拉，KPI count-up 与文档表不再闪重载。
  */
 const {
-  data,
+  data: coreData,
   isLoading,
-  isFetching,
+  isFetching: coreFetching,
   isError,
   error: queryError,
-  refetch,
+  refetch: refetchCore,
 } = useQuery({
-  queryKey: computed(() => ['admin-dashboard-stats', { days: trendDays.value }]),
+  queryKey: ['dashboard-core'],
   queryFn: async () => {
-    const [s, f, t, docs, intents] = await Promise.all([
+    const [s, f, docs, intents] = await Promise.all([
       dashboardApi.stats(),
       dashboardApi.feedbackStats('today'),
-      dashboardApi.feedbackTrend(trendDays.value),
       documentApi.list({ sort: 'created', size: 5 }),
       feedbackApi.stats(),
     ])
     return {
       stats: s,
       feedback: f,
-      // count 为 Long 字符串，图表组件内转 number（排序保持接口升序）
-      trend: t ?? [],
       recentDocs: docs.records ?? [],
       // 意图统计（donut 与堆叠条共用，likedCount/dislikedCount 为 Long 字符串）
       intents: intents ?? [],
@@ -124,15 +126,53 @@ const {
   },
 })
 
-/** KPI 与图表数据源：全部由查询结果派生 */
-const stats = computed(() => data.value?.stats ?? null)
-const feedback = computed(() => data.value?.feedback ?? null)
-const trend = computed(() => data.value?.trend ?? [])
-const recentDocs = computed(() => data.value?.recentDocs ?? [])
-const intents = computed(() => data.value?.intents ?? [])
+/**
+ * 反馈趋势查询（trend 键，PERF-12 拆键：唯一随时间范围变化的接口单独成键）
+ *
+ * queryKey 带 days（7/30 切换即换键重拉，与 core 查询互不影响）；
+ * placeholderData 取 keepPreviousData——换键重拉期间沿用上一档序列，
+ * 图表不闪空、切换观感平滑。
+ * 失败不升页面级横幅，仅在趋势卡内分区报错（见 trendError / trend-retry）。
+ */
+const {
+  data: trendData,
+  isLoading: trendLoading,
+  isFetching: trendFetching,
+  isError: trendIsError,
+  error: trendQueryError,
+  refetch: refetchTrend,
+} = useQuery({
+  queryKey: computed(() => ['dashboard-trend', trendDays.value]),
+  queryFn: () => dashboardApi.feedbackTrend(trendDays.value),
+  placeholderData: keepPreviousData,
+})
 
-/** 整页加载失败横幅文案（queryError 非空时透出） */
+/** KPI 与图表数据源：全部由查询结果派生（core 四区块 + 趋势各取各的查询） */
+const stats = computed(() => coreData.value?.stats ?? null)
+const feedback = computed(() => coreData.value?.feedback ?? null)
+const recentDocs = computed(() => coreData.value?.recentDocs ?? [])
+const intents = computed(() => coreData.value?.intents ?? [])
+// count 为 Long 字符串，图表组件内转 number（排序保持接口升序）
+const trend = computed(() => trendData.value ?? [])
+
+/** 整页加载失败横幅文案（仅由 core 查询错误驱动；趋势失败分区收敛不升整页） */
 const listError = computed(() => (isError.value ? messageOf(queryError.value) : ''))
+
+/** 趋势分区错误文案（仅趋势卡内透出，KPI/文档/意图区块不受影响） */
+const trendError = computed(() => (trendIsError.value ? messageOf(trendQueryError.value) : ''))
+
+/** 页头刷新钮加载态：任一分区在拉即反馈（core 或 trend 任一 isFetching） */
+const anyFetching = computed(() => coreFetching.value || trendFetching.value)
+
+/**
+ * 整页重试/手动刷新：core 与 trend 双查询并行重拉
+ *
+ * 页面级错误横幅的「重试重新拉取全量数据」语义与页头刷新钮共用本入口；
+ * 趋势分区自己的重试走 refetchTrend（不牵动 core）。
+ */
+function refetchAll() {
+  void Promise.all([refetchCore(), refetchTrend()])
+}
 
 // ====================================================================
 // KPI 数值（count-up 目标；计数全为 Long 字符串转 number，缺数据回退占位 '-'）
@@ -285,7 +325,7 @@ const quickEntries: QuickEntry[] = [
       type="button"
       data-testid="retry"
       class="shrink-0 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text transition-colors duration-150 hover:bg-surface-2"
-      @click="() => refetch()"
+      @click="refetchAll"
     >
       重试
     </button>
@@ -293,13 +333,13 @@ const quickEntries: QuickEntry[] = [
 
   <!-- 正常态 -->
   <template v-else>
-    <!-- 手动刷新（T2.3）：仪表盘页头 H1 由布局壳渲染，刷新钮置于内容区右上（refetch 期间禁用防重复） -->
+    <!-- 手动刷新（T2.3）：仪表盘页头 H1 由布局壳渲染，刷新钮置于内容区右上（refetchAll 期间禁用防重复） -->
     <div class="flex justify-end" data-testid="dashboard-refresh-row">
       <IconButton
         label="刷新"
         data-testid="refresh-dashboard"
-        :loading="isFetching"
-        @click="refetch()"
+        :loading="anyFetching"
+        @click="refetchAll"
       >
         <PhArrowClockwise class="h-4 w-4" />
       </IconButton>
@@ -375,7 +415,7 @@ const quickEntries: QuickEntry[] = [
 
     <!-- 图表行（1.8fr : 1fr，设计稿 charts-grid）：反馈趋势柱状 + 意图×赞踩堆叠条 -->
     <div class="mt-6 grid gap-6 xl:grid-cols-[1.8fr_1fr]">
-      <!-- 反馈趋势卡：7/30 天范围切换（queryKey 带 days 重拉），柱形 CSS 自绘 -->
+      <!-- 反馈趋势卡：7/30 天范围切换仅 trend 查询换键重拉（core 区零感知），柱形 CSS 自绘 -->
       <section class="dash-card rounded-2xl border border-border bg-surface p-6 shadow-xs">
         <div class="flex flex-wrap items-center gap-4">
           <h2 class="mr-auto text-lg font-extrabold text-text">反馈趋势</h2>
@@ -404,12 +444,36 @@ const quickEntries: QuickEntry[] = [
             </template>
           </DropdownMenu>
         </div>
-        <!-- 柱状图：范围切换重拉期间降透明度提示刷新（isFetching） -->
+        <!-- 柱状图分区四态：错误（仅本区报错重试，不升整页横幅）/ 初次加载脉冲占位 /
+             序列渲染（换键重拉期间降透明度提示刷新）/ 空态 -->
         <div
           class="mt-5 h-[240px] transition-opacity duration-200"
-          :class="isFetching ? 'opacity-60' : ''"
+          :class="trendFetching ? 'opacity-60' : ''"
         >
-          <TrendBarChart v-if="trend.length > 0" :items="trend" />
+          <!-- 趋势分区错误：danger-soft 内联横幅 + 分区重试（refetchTrend 不牵动 core） -->
+          <div
+            v-if="trendError"
+            data-testid="trend-error"
+            role="alert"
+            class="flex h-full flex-col items-center justify-center gap-3"
+          >
+            <p class="text-sm text-danger">{{ trendError }}</p>
+            <button
+              type="button"
+              data-testid="trend-retry"
+              class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text transition-colors duration-150 hover:bg-surface-2"
+              @click="() => refetchTrend()"
+            >
+              重试
+            </button>
+          </div>
+          <!-- 初次加载（尚无序列可展示）：脉冲占位，避免误显「暂无反馈记录」空态 -->
+          <div
+            v-else-if="trendLoading"
+            data-testid="trend-loading"
+            class="h-full animate-pulse rounded-xl bg-surface-2"
+          />
+          <TrendBarChart v-else-if="trend.length > 0" :items="trend" />
           <div v-else class="flex h-full items-center justify-center">
             <p class="text-sm text-text-muted">近 {{ trendDays }} 日暂无反馈记录</p>
           </div>
