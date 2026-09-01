@@ -22,7 +22,8 @@
  * 渲染性能契约（Task 14）：消息行拆 memo——reducer 不可变更新只改变末条消息对象
  * 身份，历史行 message 引用稳定 → memo 跳过重渲染（含昂贵的 MarkdownView）；
  * 仅末条流式行随 delta 逐帧更新。抽屉开关经 useCallback 稳定引用（避免逐帧新闭包
- * 击穿 memo）。
+ * 击穿 memo）。PERF-05 补齐：末条流式行内部 ChainTimeline 的 sources 亦以独立
+ * props 传入（不再行内闭包捕获），delta 期间时间轴子树整轴跳过重渲染。
  */
 import { FileText, Sparkle } from "@phosphor-icons/react";
 import { memo, useCallback, useState } from "react";
@@ -168,7 +169,7 @@ interface AssistantMessageRowProps {
   sessionId: string;
   /** 提示回调（复制/反馈 toast，页面统一呈现；useCallback 稳定引用） */
   onNotify(message: string): void;
-  /** 打开召回抽屉（稳定引用：行内构造来源闭包，避免逐帧新闭包击穿 memo） */
+  /** 打开召回抽屉（稳定引用：连同 sources 数组原样透传给 ChainTimeline，PERF-05） */
   onOpenSources(sources: StreamMessage["sources"]): void;
   /** 打开工具结果抽屉（稳定引用；2026-08-30 工具结果侧栏展示） */
   onOpenTool(tool: TimelineToolNode): void;
@@ -225,12 +226,15 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
             由链式时间轴接管、delta 到达后由正文渲染接管） */}
         {awaitingFirstSignal ? <StreamingDots /> : null}
         {/* 链式时间轴：思考/检索/工具按到达序挂链（2026-08-30 对齐设计稿：无阶段/查询
-            计划步骤；来源步骤点击开召回抽屉、工具步骤点击开工具结果抽屉） */}
+            计划步骤；来源步骤点击开召回抽屉、工具步骤点击开工具结果抽屉；
+            PERF-05：sources 以独立 props 传入——reducer delta 分支保留其引用，
+            全部 props 在正文 delta 期间稳定，时间轴 memo 不被内联闭包击穿） */}
         {message.timeline.length > 0 ? (
           <ChainTimeline
             timeline={message.timeline}
             active={isStreamingMessage}
-            onOpenSources={() => onOpenSources(message.sources)}
+            sources={message.sources}
+            onOpenSources={onOpenSources}
             onOpenTool={onOpenTool}
           />
         ) : null}
