@@ -198,20 +198,20 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
     class="space-y-4"
   >
     <div class="animate-pulse rounded-2xl border border-border bg-surface px-6 py-5">
-      <div class="h-5 w-56 rounded bg-slate-200" />
+      <div class="h-5 w-56 rounded bg-border" />
       <div class="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <div v-for="i in 4" :key="`meta-${i}`" class="h-4 w-24 rounded bg-slate-200" />
+        <div v-for="i in 4" :key="`meta-${i}`" class="h-4 w-24 rounded bg-border" />
       </div>
     </div>
     <div class="animate-pulse rounded-2xl border border-border bg-surface px-6 py-5">
-      <div class="h-4 w-24 rounded bg-slate-200" />
+      <div class="h-4 w-24 rounded bg-border" />
       <div class="mt-4 flex gap-2">
-        <div v-for="i in 7" :key="`step-${i}`" class="h-10 w-20 rounded bg-slate-200" />
+        <div v-for="i in 7" :key="`step-${i}`" class="h-10 w-20 rounded bg-border" />
       </div>
     </div>
     <div class="animate-pulse rounded-2xl border border-border bg-surface px-6 py-5">
-      <div class="h-4 w-28 rounded bg-slate-200" />
-      <div v-for="i in 4" :key="`chunk-${i}`" class="mt-3 h-9 rounded bg-slate-50" />
+      <div class="h-4 w-28 rounded bg-border" />
+      <div v-for="i in 4" :key="`chunk-${i}`" class="mt-3 h-9 rounded bg-surface-2" />
     </div>
   </div>
 
@@ -220,7 +220,7 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
     v-else-if="docErrorText"
     data-testid="detail-error"
     role="alert"
-    class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
+    class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
   >
     <span class="text-sm text-danger">{{ docErrorText }}</span>
     <Button variant="outline" size="sm" data-testid="retry-detail" @click="refetchDoc">重试</Button>
@@ -281,7 +281,7 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
       <!-- FAILED 错误信息固定展示（mono 13px，与设计 §2.5 错误展开区同规格） -->
       <p
         v-if="doc?.parseStatus === 'FAILED' && doc.errorMessage"
-        class="mt-4 break-all rounded-lg border border-danger/30 bg-red-50 px-3 py-2 font-mono text-[13px] leading-relaxed text-danger"
+        class="mt-4 break-all rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 font-mono text-[13px] leading-relaxed text-danger"
       >
         {{ doc.errorMessage }}
       </p>
@@ -305,9 +305,9 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
             <span
               :class="[
                 'flex h-8 w-8 items-center justify-center rounded-full border-2',
-                stepState(step) === 'done' && 'border-emerald-500 bg-emerald-50 text-emerald-600',
+                stepState(step) === 'done' && 'border-success bg-success/5 text-success',
                 stepState(step) === 'current' && 'border-brand bg-brand-soft text-brand-strong',
-                stepState(step) === 'pending' && 'border-slate-200 bg-surface text-slate-400',
+                stepState(step) === 'pending' && 'border-border bg-surface text-text-subtle',
               ]"
             >
               <PhCheck v-if="stepState(step) === 'done'" class="h-4 w-4" aria-hidden="true" />
@@ -332,7 +332,7 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
             aria-hidden="true"
             :class="[
               'h-px w-6',
-              stepState(STEP_ORDER[i + 1]) === 'pending' ? 'bg-slate-200' : 'bg-emerald-400',
+              stepState(STEP_ORDER[i + 1]) === 'pending' ? 'bg-border' : 'bg-success',
             ]"
           />
         </template>
@@ -341,7 +341,7 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
       <div
         v-else
         data-testid="timeline-failed"
-        class="failed mt-4 rounded-xl border border-danger/30 bg-red-50 p-4"
+        class="failed mt-4 rounded-xl border border-danger/30 bg-danger/5 p-4"
       >
         <div class="flex items-center gap-2 text-danger">
           <PhX class="h-4 w-4" aria-hidden="true" />
@@ -378,7 +378,7 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
         <div
           v-for="i in 4"
           :key="`chunk-row-${i}`"
-          class="h-[58px] animate-pulse border-b border-border bg-slate-50 last:border-b-0"
+          class="h-[58px] animate-pulse border-b border-border bg-surface-2 last:border-b-0"
         />
       </div>
 
@@ -387,7 +387,7 @@ const { isPending: reparseLoading, mutate: handleReparse } = useMutation({
         v-else-if="chunkErrorText"
         data-testid="chunk-error"
         role="alert"
-        class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
+        class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
       >
         <span class="text-sm text-danger">{{ chunkErrorText }}</span>
         <Button variant="outline" size="sm" data-testid="retry-chunks" @click="refetchChunks">

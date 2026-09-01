@@ -217,7 +217,7 @@ function confirmDelete() {
     <div
       v-if="listError"
       role="alert"
-      class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
+      class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
     >
       <span class="text-sm text-danger">{{ listError }}</span>
       <Button variant="outline" size="sm" data-testid="retry-courses" @click="refetch">重试</Button>
@@ -231,13 +231,9 @@ function confirmDelete() {
       aria-label="课程列表加载中"
     >
       <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-6 py-3.5">
-        <div
-          v-for="i in 7"
-          :key="`head-${i}`"
-          class="h-3 w-20 animate-pulse rounded bg-slate-200"
-        />
+        <div v-for="i in 7" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-border" />
       </div>
-      <div v-for="i in 5" :key="`row-${i}`" class="h-12 animate-pulse bg-slate-50" />
+      <div v-for="i in 5" :key="`row-${i}`" class="h-12 animate-pulse bg-surface-2" />
     </div>
 
     <!-- 空态：EmptyState + 新建入口（禁裸「暂无数据」） -->

@@ -278,7 +278,7 @@ const quickEntries: QuickEntry[] = [
   <div
     v-else-if="listError"
     role="alert"
-    class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
+    class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
   >
     <span class="text-sm text-danger">{{ listError }}</span>
     <button

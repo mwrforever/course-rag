@@ -541,7 +541,7 @@ function closeContext() {
   <div
     v-if="listError"
     role="alert"
-    class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
+    class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
   >
     <span class="text-sm text-danger">{{ listError }}</span>
     <Button variant="outline" size="sm" data-testid="retry-chunks" @click="refetch">重试</Button>
@@ -555,12 +555,12 @@ function closeContext() {
     aria-label="分片列表加载中"
   >
     <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-5 py-3.5">
-      <div v-for="i in 6" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-slate-200" />
+      <div v-for="i in 6" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-border" />
     </div>
     <div
       v-for="i in 5"
       :key="`row-${i}`"
-      class="h-12 animate-pulse border-b border-border bg-slate-50 last:border-b-0"
+      class="h-12 animate-pulse border-b border-border bg-surface-2 last:border-b-0"
     />
   </div>
 
@@ -832,7 +832,7 @@ function closeContext() {
       @click.stop
     >
       <div class="flex items-start gap-3">
-        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
+        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger/5">
           <PhWarningCircle class="h-5 w-5 text-danger" />
         </div>
         <div>
