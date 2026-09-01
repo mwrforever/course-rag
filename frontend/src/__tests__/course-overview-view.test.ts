@@ -375,4 +375,42 @@ describe('课程概览（新建模式 /courses/new）', () => {
     expect(apiMock.courseApi.addTeachers).toHaveBeenCalledWith('c-9', ['t1', 't2'])
     wrapper.unmount()
   })
+
+  it('新建教师落库失败：区分提示「课程已创建」并仍跳转编辑页（BUG-07，防重复创建）', async () => {
+    apiMock.courseApi.create.mockResolvedValue(course({ id: 'c-9' }))
+    apiMock.courseApi.addTeachers.mockRejectedValue(new apiMock.ApiError(429, '请求过于频繁'))
+    const { wrapper, router } = await mountAt('/courses/new')
+    await flushPromises()
+
+    const remote = wrapper.findComponent({ name: 'RemoteSelect' })
+    remote.vm.$emit('update:modelValue', [teacher('t1', '张老师')])
+    await flushPromises()
+    await wrapper.find('[data-testid="field-title"]').setValue('新课程')
+    await wrapper.find('[data-testid="save-basic"]').trigger('click')
+    await flushPromises()
+
+    expect(apiMock.courseApi.addTeachers).toHaveBeenCalledWith('c-9', ['t1'])
+    // 课程已落库：区分提示（统一「保存失败」会诱导用户重试 create 产生重复课程）
+    expect(showToast).toHaveBeenCalledWith('课程已创建，教师分配失败，可在编辑页重试分配', 'danger')
+    expect(showToast).not.toHaveBeenCalledWith('课程创建成功', 'success')
+    // 仍跳转编辑页：教师差集语义自然重试分配
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe('course-detail')
+    expect(router.currentRoute.value.params.id).toBe('c-9')
+    wrapper.unmount()
+  })
+
+  it('新建 create 本身失败：维持「保存失败」提示且不跳转', async () => {
+    apiMock.courseApi.create.mockRejectedValue(new Error('网络抖动'))
+    const { wrapper, router } = await mountAt('/courses/new')
+    await flushPromises()
+
+    await wrapper.find('[data-testid="field-title"]').setValue('新课程')
+    await wrapper.find('[data-testid="save-basic"]').trigger('click')
+    await flushPromises()
+
+    expect(showToast).toHaveBeenCalledWith('保存失败，请稍后重试', 'danger')
+    expect(router.currentRoute.value.name).toBe('course-new')
+    wrapper.unmount()
+  })
 })

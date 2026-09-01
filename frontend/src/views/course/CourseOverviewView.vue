@@ -291,14 +291,27 @@ onUnmounted(() => {
 // ====================================================================
 
 /**
+ * 新建保存结果（两步流「create → addTeachers」的部分成功标记）
+ *
+ * @param course 已落库的课程实体（create 成功即存在，教师落库成败不影响）
+ * @param teacherAssignFailed 教师落库是否失败（true 时 onSuccess 区分提示并仍跳转）
+ */
+interface CreateResult {
+  course: CourseDTO
+  teacherAssignFailed: boolean
+}
+
+/**
  * 基础信息保存（新建/编辑分派；isPending 驱动按钮禁用与文案）
  *
  * 新建：create（enrollmentLink 服务端生成不传）→ 有选中教师时 POST 裸数组落库 →
- * 跳转 /courses/{id} 继续编辑；编辑：update + 教师差集（新增 POST / 移除 DELETE，
- * body 均为裸 JSON 数组，契约 E.3）。
+ * 跳转 /courses/{id} 继续编辑。教师落库失败不回滚课程（无补偿端点）：携带
+ * teacherAssignFailed 走 onSuccess 区分提示并仍跳转——统一走 onError「保存失败」
+ * 不跳转会诱导用户重试 create 产生重复课程（BUG-07），编辑页差集语义可自然重试分配。
+ * 编辑：update + 教师差集（新增 POST / 移除 DELETE，body 均为裸 JSON 数组，契约 E.3）。
  */
 const { isPending: saving, mutate: saveBasicMutation } = useMutation({
-  mutationFn: async (): Promise<CourseDTO | undefined> => {
+  mutationFn: async (): Promise<CreateResult | undefined> => {
     const common = {
       title: form.title,
       description: form.description,
@@ -311,14 +324,18 @@ const { isPending: saving, mutate: saveBasicMutation } = useMutation({
     }
     if (isNew) {
       const created = await courseApi.create(common)
-      // 新建后教师落库（E.3：差集调用既有端点，body 裸数组）
+      // 新建后教师落库（E.3：差集调用既有端点，body 裸数组）；失败吞错转部分成功标记
       if (selectedTeachers.value.length > 0) {
-        await courseApi.addTeachers(
-          created.id,
-          selectedTeachers.value.map((t) => t.id),
-        )
+        try {
+          await courseApi.addTeachers(
+            created.id,
+            selectedTeachers.value.map((t) => t.id),
+          )
+        } catch {
+          return { course: created, teacherAssignFailed: true }
+        }
       }
-      return created
+      return { course: created, teacherAssignFailed: false }
     }
     const payload: UpdateCourseRequest = { ...common, status: form.status }
     await courseApi.update(courseId.value, payload)
@@ -338,12 +355,17 @@ const { isPending: saving, mutate: saveBasicMutation } = useMutation({
     }
     return undefined
   },
-  onSuccess: async (created) => {
+  onSuccess: async (result) => {
     // 写后读一致：课程列表 / 表单缓存 / 教师分配页统一失效
     void queryClient.invalidateQueries({ queryKey: ['admin-courses'] })
     if (isNew) {
-      showToast('课程创建成功', 'success')
-      if (created) await router.push({ name: 'course-detail', params: { id: created.id } })
+      if (result?.teacherAssignFailed) {
+        // 部分成功：课程已落库，区分提示并仍跳转编辑页（教师差集语义自然重试，BUG-07）
+        showToast('课程已创建，教师分配失败，可在编辑页重试分配', 'danger')
+      } else {
+        showToast('课程创建成功', 'success')
+      }
+      if (result) await router.push({ name: 'course-detail', params: { id: result.course.id } })
     } else {
       showToast('课程信息已保存', 'success')
       void queryClient.invalidateQueries({ queryKey: ['course-form'] })
