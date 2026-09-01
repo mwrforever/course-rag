@@ -10,10 +10,11 @@
  *   max-height .55s 过渡（reduced-motion 全局开关降级为瞬时）
  * - 交互契约（用户拍板沿用）：默认收起，头部点击切换展开；收起时滚动体锚定底部
  *   （最新一行可见，逐行上滚观感）
- * - a11y：头部按钮 aria-expanded + 状态文字 aria-live=polite（思考中 → 已完成播报）
+ * - a11y：头部按钮 aria-expanded + 状态文字 aria-live=polite（思考中 → 已完成播报）；
+ *   内容体 id 经 useId 生成（多卡同文档唯一，aria-controls 同源引用，BUG-21）
  */
 import { Brain, CaretDown, Check } from "@phosphor-icons/react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useId, useRef, useState } from "react";
 import { ChainNode } from "./chain-node";
 import type { TimelineThinkingNode } from "@/lib/types";
 
@@ -47,6 +48,10 @@ export const ThinkingStep = memo(function ThinkingStep({ node, running }: Thinki
   const [open, setOpen] = useState(false);
   // 内容体引用：收起态锚定底部（露最新一行，设计稿 sticky-scroll 语义）
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  // 内容体唯一 id：一条消息可同时渲染多张思考卡（按 LLM 调用拆分），固定 id
+  // 违反 HTML 唯一性且多卡按钮的 aria-controls 全指向第一张卡（BUG-21）；
+  // useId 同文档唯一且 SSR 安全，aria-controls 与内容体同源引用同一值
+  const bodyId = `chain-think-body-${useId()}`;
   const lines = visibleThinkingLines(node.lines);
   const done = !running;
 
@@ -75,7 +80,7 @@ export const ThinkingStep = memo(function ThinkingStep({ node, running }: Thinki
           type="button"
           className="chain-head"
           aria-expanded={open}
-          aria-controls="chain-think-body"
+          aria-controls={bodyId}
           data-testid="thinking-toggle"
           onClick={() => setOpen(!open)}
         >
@@ -86,12 +91,7 @@ export const ThinkingStep = memo(function ThinkingStep({ node, running }: Thinki
         </button>
         {/* 思考内容体：收起 26px + mask 渐隐露最新一行；展开 300px 滚动
             （展开态由步骤级 chain-step--open 类驱动 max-height/mask 过渡） */}
-        <div
-          id="chain-think-body"
-          ref={bodyRef}
-          data-testid="thinking-body"
-          className="chain-think-body"
-        >
+        <div id={bodyId} ref={bodyRef} data-testid="thinking-body" className="chain-think-body">
           <div className="chain-think-lines">
             {lines.map((line, index) => (
               <p
