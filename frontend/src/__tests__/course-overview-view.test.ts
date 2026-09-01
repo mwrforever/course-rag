@@ -23,6 +23,8 @@ const apiMock = vi.hoisted(() => ({
     list: vi.fn(),
   },
   apiClient: { post: vi.fn() },
+  // 上传超时预算（与真实模块同值）：image-upload 引用，保持 mock 契约完整（BUG-03）
+  UPLOAD_TIMEOUT_MS: 300_000,
   ApiError: class ApiError extends Error {
     code: number
     constructor(code: number, message: string) {

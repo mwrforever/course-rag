@@ -18,6 +18,8 @@ function imageFile(name: string, size = 1024): File {
 /** api mock：apiClient.post 承载上传（统一解包后 data 即业务数据） */
 const apiMock = vi.hoisted(() => ({
   apiClient: { post: vi.fn() },
+  // 上传超时预算（与真实模块同值）：封面上传 per-request 放宽（BUG-03）
+  UPLOAD_TIMEOUT_MS: 300_000,
   ApiError: class ApiError extends Error {
     code: number
     constructor(code: number, message: string) {
@@ -100,6 +102,8 @@ describe('ImageUpload 封面上传', () => {
     expect(apiMock.apiClient.post).toHaveBeenCalledWith(
       '/admin/courses/cover',
       expect.any(FormData),
+      // 上传类请求 per-request 放宽超时（BUG-03：慢网络下 5MB 也会超实例级 20s）
+      { timeout: apiMock.UPLOAD_TIMEOUT_MS },
     )
     expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toBe('/api/v1/public/covers/0/abc.png')
     expect(wrapper.find('[data-testid="upload-error"]').exists()).toBe(false)
