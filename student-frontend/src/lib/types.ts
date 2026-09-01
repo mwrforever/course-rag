@@ -142,7 +142,7 @@ export type ChatStageKey = "attachments" | "understanding" | "retrieving" | "gen
  */
 export interface TimelineThinkingNode {
   kind: "thinking";
-  /** 思考来源阶段（understanding / attachments / generating；回放 null 降级 generating） */
+  /** 思考来源阶段（understanding / retrieving / attachments / generating；回放 null 降级 generating） */
   stage: ChatStageKey;
   /** 思考行列表（delta 按换行并入：首段续接末行，其余各起新行） */
   lines: string[];
@@ -211,7 +211,7 @@ export interface StudentMessage {
   role: string;
   content: string;
   messageType: string | null;
-  /** thinking 行的阶段键（understanding/attachments/generating）；非 thinking 行与存量旧行为 null */
+  /** thinking 行的阶段键（understanding/retrieving/attachments/generating）；非 thinking 行与存量旧行为 null */
   thinkingStage: string | null;
   intentType: string | null;
   runId: string;

@@ -24,20 +24,13 @@
  * - 历史消息一律落 endStatus=COMPLETED（持久化即完成态；取消/异常 run 的 assistant
  *   行由服务端过滤不下发，前端天然只见完整 run）
  */
-import type { StreamMessage } from "@/hooks/use-chat-stream";
+import { STAGE_KEYS, type StreamMessage } from "@/hooks/use-chat-stream";
 import {
   type ChatStageKey,
   type RetrievalSource,
   type StudentMessage,
   type TimelineNode,
 } from "./types";
-
-/** 合法思考阶段键集合（与 use-chat-stream STAGE_KEYS 同源契约；本模块独立判定不跨层引用） */
-const THINKING_STAGES: ReadonlySet<string> = new Set([
-  "attachments",
-  "understanding",
-  "generating",
-]);
 
 /** TOOL_CALL 行 JSON 内容解析结果（字段缺省按实时事件同形兜底） */
 interface ToolCallPayload {
@@ -61,10 +54,12 @@ function strField(payload: Record<string, unknown>, key: string, fallback = ""):
 
 /**
  * 思考阶段键归一化：合法集合内原样透传；null/缺失/非法值降级 generating
- * （契约：存量 thinking 行无 thinking_stage 列值时按 generating 渲染，接口不报错）
+ * （契约：存量 thinking 行无 thinking_stage 列值时按 generating 渲染，接口不报错）。
+ * 合法集合复用实时流 STAGE_KEYS 单一事实源（BUG-22：曾因独立维护缺 retrieving，
+ * 致 stage=retrieving 的历史思考行被降级归并为 generating 卡）
  */
 function normalizeThinkingStage(stage: string | null): ChatStageKey {
-  return stage !== null && THINKING_STAGES.has(stage) ? (stage as ChatStageKey) : "generating";
+  return stage !== null && STAGE_KEYS.has(stage) ? (stage as ChatStageKey) : "generating";
 }
 
 /** 解析行内容为 JSON 对象（坏 JSON / 非对象值返回 null） */

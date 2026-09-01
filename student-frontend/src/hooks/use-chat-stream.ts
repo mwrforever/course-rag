@@ -41,8 +41,13 @@ import {
   type TimelineNode,
 } from "../lib/types";
 
-/** 合法阶段键集合（后端 STAGE_* 契约同值；未知阶段事件整体忽略，防脏数据进状态机） */
-const STAGE_KEYS: ReadonlySet<string> = new Set([
+/**
+ * 合法阶段键集合（后端 STAGE_* 契约同值；未知阶段事件整体忽略，防脏数据进状态机）
+ *
+ * 单一事实源（BUG-22）：历史回显 history-adapter 的思考阶段归一化导入同一集合，
+ * 实时流与历史回显口径不再各自维护分叉
+ */
+export const STAGE_KEYS: ReadonlySet<string> = new Set([
   "attachments",
   "understanding",
   "retrieving",
