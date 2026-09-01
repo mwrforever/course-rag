@@ -18,8 +18,10 @@ import org.springframework.validation.annotation.Validated;
  * @param cookieDomain        Cookie 域名
  * @param cookieSecure        Cookie 是否仅 HTTPS 传输（Secure 标记，默认 false；生产 HTTPS 应配 true，防中间人窃取 AT）
  * @param deviceTypes         支持的设备类型列表
- * @param strictSecret        JWT 密钥严格模式（BUG-7，默认 false）：true 时启动校验
- *                            JWT_SECRET 已配置且非内置默认值，否则拒绝启动（防生产漏配导致可伪造任意身份）
+ * @param strictSecret        敏感环境变量严格模式（BUG-7 引入，默认 false；BUG-17 扩展覆盖范围）：
+ *                            true 时启动校验 JWT_SECRET / PG_PASSWORD / REDIS_PASSWORD /
+ *                            AUTH_ADMIN_SEED_PASSWORD 均已注入且非内置默认值，任一命中缺失
+ *                            即汇总抛异常拒绝启动（防生产漏配导致弱口令/可伪造身份）
  */
 @Validated
 @ConfigurationProperties(prefix = "auth")

@@ -63,6 +63,8 @@ spring:
     # pgJDBC 自动跳过重写，无兼容风险
     url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:commerce_rag}?reWriteBatchedInserts=true
     username: ${PG_USER:postgres}
+    # BUG-17: dev 兜底默认口令仅供本地/CI（无 .env 也能跑）；生产须注入 PG_PASSWORD 真实值
+    # 并设 auth.strict-secret=true——启动校验发现仍为默认值即拒绝启动
     password: ${PG_PASSWORD:rag_pg_2024}
     hikari:
       maximum-pool-size: 20
@@ -102,6 +104,8 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # BUG-17: dev 兜底默认口令仅供本地/CI；生产须注入 REDIS_PASSWORD 真实值
+      # 并设 auth.strict-secret=true——启动校验发现仍为默认值即拒绝启动
       password: ${REDIS_PASSWORD:rag_redis_2024}
       lettuce:
         pool:
@@ -332,6 +336,8 @@ auth:
   secret: ${JWT_SECRET:commerce-rag-secret-key-2026-must-be-at-least-256-bits-long-for-hs256}
   # BUG-7: JWT 密钥严格模式（默认 false 不拦截，开发可用默认值）——生产设 true 时启动校验
   # JWT_SECRET 已配置且非默认值，否则拒绝启动（防漏配导致可伪造任意身份 Token）
+  # BUG-17: 严格模式扩展覆盖全部敏感 env——JWT_SECRET / PG_PASSWORD / REDIS_PASSWORD /
+  # AUTH_ADMIN_SEED_PASSWORD 任一未注入（为空或仍为内置默认值）即拒绝启动，缺失项汇总一次性抛出
   strict-secret: false
   # AT 有效期（秒，默认 900=15min）
   access-token-expiry: 900
@@ -353,11 +359,12 @@ auth:
     cleanup-interval-seconds: 3600
   # 默认管理员账户种子（AdminSeedInitializer 启动时幂等写入系统唯一超管）
   # username/display-name 可用 AUTH_ADMIN_SEED_USERNAME / AUTH_ADMIN_SEED_DISPLAY_NAME 覆盖；
-  # password 默认 admin123（与 V6 迁移出厂种子一致），生产必须用 AUTH_ADMIN_SEED_PASSWORD 覆盖真实值
-  # 或首次登录后立即改密——已管理员自行改密后，启动不再覆盖该密码
+  # BUG-17: password 由明文改环境变量注入（dev 兜底默认 admin123 与 V6 迁移出厂种子一致，
+  # 零行为变化）；生产必须用 AUTH_ADMIN_SEED_PASSWORD 覆盖真实值（strict-secret=true 时
+  # 仍为默认值即拒绝启动），或首次登录后立即改密——已管理员自行改密后，启动不再覆盖该密码
   admin-seed:
     username: admin
-    password: admin123
+    password: ${AUTH_ADMIN_SEED_PASSWORD:admin123}
     display-name: 系统管理员
 
 # ── 学员邮箱注册（验证码生命周期 / 防爆破阈值 / 邮件文案，详见 RegisterProperties）──
