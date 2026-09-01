@@ -92,7 +92,7 @@ export function KnowledgeHub() {
                 key={post.title}
                 href={post.href}
                 data-testid="hub-post"
-                className="group hover:bg-brand/70 flex min-h-[520px] flex-none basis-[86vw] bg-[#F9E8D8] transition-colors duration-500 ease-out sm:basis-[72vw] lg:basis-[calc(33%-22px)] lg:min-w-0 xl:basis-[33vw]"
+                className="group hover:bg-brand/70 flex min-h-[520px] flex-none basis-[86vw] bg-peach-100 transition-colors duration-500 ease-out sm:basis-[72vw] lg:basis-[calc(33%-22px)] lg:min-w-0 xl:basis-[33vw]"
               >
                 {/* 竖排元信息栏 */}
                 <div className="flex w-16 shrink-0 flex-col items-center justify-between border-r border-ink/25 py-6 max-lg:hidden">
@@ -112,7 +112,7 @@ export function KnowledgeHub() {
                   <span className="self-start rounded-full border border-ink/40 px-4 py-2 text-[9.5px] tracking-[0.16em] uppercase">
                     {post.label}
                   </span>
-                  <h3 className="font-serif-display mt-[54px] text-[clamp(24px,2.15vw,38px)] leading-[1.22] font-medium text-[#2A231D]">
+                  <h3 className="font-serif-display mt-[54px] text-[clamp(24px,2.15vw,38px)] leading-[1.22] font-medium text-ink-warm">
                     {post.title}
                   </h3>
                   <span className="read-link mt-auto self-end pt-[13px] text-right text-[10.5px] tracking-[0.16em] uppercase">

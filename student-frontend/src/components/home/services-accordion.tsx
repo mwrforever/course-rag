@@ -65,7 +65,7 @@ export function ServicesAccordion() {
         <Reveal variant="blur">
           <p
             className="text-accent-italic text-[clamp(22px,2vw,30px)]"
-            style={{ color: "#E8DFCE" }}
+            style={{ color: "var(--color-cream-300)" }}
           >
             平台能力
           </p>

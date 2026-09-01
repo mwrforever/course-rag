@@ -64,7 +64,7 @@ export function Testimonials() {
               data-testid="testimonial-slide"
               style={{ animation: "pane-in .7s cubic-bezier(.22,.61,.36,1)" }}
             >
-              <blockquote className="font-serif-display text-[clamp(24px,3.1vw,42px)] leading-[1.4] font-medium text-[#2A231D]">
+              <blockquote className="font-serif-display text-[clamp(24px,3.1vw,42px)] leading-[1.4] font-medium text-ink-warm">
                 「{active.quote}」
               </blockquote>
               <div className="mt-11 text-sm text-muted">
