@@ -12,8 +12,9 @@
  * - 白名单外类型（非图片/文档扩展名）拒绝
  * 边界语义：恰等于上限放行（≤）。
  *
- * chips 三态：上传中（不确定进度环，后端无进度事件）/ 完成（图片 blob 缩略图
- * 或格式图标 + 字节大小）/ 失败（可移除）。
+ * chips 三态：上传中（确定进度环 + 百分比文案，PERF-10a：XHR onUploadProgress 驱动；
+ * 进度未知时回退不确定进度环）/ 完成（图片 blob 缩略图或格式图标 + 字节大小）/
+ * 失败（可移除）。
  * 交互（Task 12）：chip 主体点击 → onPreview 打开预览弹窗（图片 Zoom / pdf iframe /
  * 其他图标卡）；移除钮独立于预览触发器（嵌套按钮拆平级）。
  * 线程安全：纯展示组件 + 纯函数校验，无共享可变状态。
@@ -60,10 +61,20 @@ export interface PendingAttachment {
   file: File;
   /** 上传成功后的附件记录；null=上传中/失败 */
   record: AttachmentRecord | null;
-  /** uploading=上传中（进度环）/ done=完成 / error=失败 */
+  /** uploading=上传中（确定/不确定进度环）/ done=完成 / error=失败 */
   status: "uploading" | "done" | "error";
-  /** 本地 blob URL（图片缩略图预览；文档仅图标）；过期时由页面 revoke */
+  /**
+   * 上传进度百分比（0-100 整数；PERF-10a XHR onUploadProgress 驱动）。
+   * undefined=进度未知（total 缺省等防御场景），chips 回退不确定进度环。
+   */
+  progress?: number;
+  /** 本地原图 blob URL（预览弹窗大图用；缩略生成期间亦作 chips 瞬时占位）；过期时由页面 revoke */
   blobUrl: string;
+  /**
+   * 缩略 blob URL（PERF-18：createImageBitmap 异步生成的 ~96px 小图，chips 36px/
+   * 消息行 28px 渲染用，避免原图整图驻留解码）；undefined=未生成/降级，以 blobUrl 兜底
+   */
+  thumbUrl?: string;
 }
 
 /**
@@ -227,17 +238,40 @@ export function AttachmentChips({ items, onRemove, onPreview }: AttachmentChipsP
               className="flex min-w-0 items-center gap-2 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-brand"
             >
               {item.status === "uploading" ? (
-                // 上传中：不确定进度环（后端无进度事件，环形旋转表示进行中）
-                <span
-                  data-testid="attachment-ring"
-                  aria-label="上传中"
-                  className="size-4 shrink-0 animate-spin rounded-full border-2 border-brand/25 border-t-brand motion-reduce:animate-none"
-                />
+                item.progress != null ? (
+                  // 上传中（进度已知）：确定进度环（PERF-10a：XHR 进度驱动 conic 环）
+                  <span
+                    data-testid="attachment-progress"
+                    role="progressbar"
+                    aria-valuenow={item.progress}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`上传进度 ${item.progress}%`}
+                    className="relative grid size-4 shrink-0 place-items-center"
+                  >
+                    {/* conic 渐变按百分比画弧（--color-brand 为 @theme 令牌；内圆遮出环形） */}
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 rounded-full"
+                      style={{
+                        background: `conic-gradient(var(--color-brand) ${item.progress * 3.6}deg, color-mix(in srgb, var(--color-brand) 25%, transparent) 0deg)`,
+                      }}
+                    />
+                    <span aria-hidden className="absolute inset-[2.5px] rounded-full bg-surface" />
+                  </span>
+                ) : (
+                  // 上传中（进度未知）：不确定进度环（total 缺省等防御场景兜底）
+                  <span
+                    data-testid="attachment-ring"
+                    aria-label="上传中"
+                    className="size-4 shrink-0 animate-spin rounded-full border-2 border-brand/25 border-t-brand motion-reduce:animate-none"
+                  />
+                )
               ) : item.status === "done" && item.record?.type === "image" ? (
-                // 完成图片：本地 blob 缩略图（记录 url 为 objectKey 不可直接访问，D12）
+                // 完成图片：缩略 blob（PERF-18；未生成时原图兜底。记录 url 为 objectKey 不可直接访问，D12）
                 // eslint-disable-next-line @next/next/no-img-element -- blob: URL 无法走 next/image 优化器，本地预览用原生 img
                 <img
-                  src={item.blobUrl}
+                  src={item.thumbUrl ?? item.blobUrl}
                   alt={`缩略图：${item.file.name}`}
                   className="size-9 shrink-0 rounded-lg border border-border object-cover"
                 />
@@ -253,9 +287,11 @@ export function AttachmentChips({ items, onRemove, onPreview }: AttachmentChipsP
                   {item.file.name}
                 </span>
                 <span className="block text-xs text-subtle tabular-nums">
-                  {/* 三态释义：上传中 / 失败 / 大小 */}
+                  {/* 三态释义：上传中（含百分比）/ 失败 / 大小 */}
                   {item.status === "uploading"
-                    ? "上传中"
+                    ? item.progress != null
+                      ? `上传中 ${item.progress}%`
+                      : "上传中"
                     : item.status === "error"
                       ? "上传失败"
                       : formatBytes(item.file.size)}

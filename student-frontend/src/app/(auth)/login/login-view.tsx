@@ -267,7 +267,7 @@ function LoginVisual() {
 
   return (
     <div
-      className="relative hidden overflow-hidden bg-[#1B140E] lg:block"
+      className="relative hidden overflow-hidden bg-surface-deep lg:block"
       data-testid="login-visual"
     >
       <img
@@ -312,7 +312,7 @@ function LoginVisual() {
               fill="none"
               stroke="currentColor"
               aria-hidden
-              className="w-[52px] shrink-0 text-[#E9E2D3]"
+              className="w-[52px] shrink-0 text-cream-200"
             >
               <path
                 d="M70 6 L130 24 V84 c0 40 -28 62 -60 74 C38 146 10 124 10 84 V24 Z"

@@ -6,6 +6,7 @@ import com.alibaba.cloud.ai.model.RerankRequest;
 import com.alibaba.cloud.ai.model.RerankResponse;
 import com.commerce.rag.bot.graph.PromptLoader;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.properties.RetrievalProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -15,7 +16,6 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -25,6 +25,9 @@ import org.springframework.stereotype.Service;
  * → 返回重新排序后的 chunk 列表
  *
  * <p>降级策略：RerankModel 调用异常时返回原列表前 10 条，不中断主流程。
+ *
+ * <p>过滤阈值经 {@link RetrievalProperties}（retrieval.rerank-threshold）强类型注入
+ * （BUG-12 @Value 收敛，宪法 A.2.2）。
  *
  * @author commerce-rag
  */
@@ -40,12 +43,9 @@ public class RerankService {
     private final double rerankThreshold;
     private final String rerankInstruct;
 
-    public RerankService(
-            RerankModel rerankModel,
-            @Value("${retrieval.rerank-threshold:0.30}") double rerankThreshold,
-            PromptLoader promptLoader) {
+    public RerankService(RerankModel rerankModel, RetrievalProperties retrievalProperties, PromptLoader promptLoader) {
         this.rerankModel = rerankModel;
-        this.rerankThreshold = rerankThreshold;
+        this.rerankThreshold = retrievalProperties.rerankThreshold();
         // 加载 rerank-instruct.yml 中的 instruct 指令文本
         String instruct = promptLoader.load("rerank-instruct.yml");
         // 从加载结果中提取 instruct 值（格式为 "rerank: instruct: <content>"）

@@ -2,8 +2,9 @@
 /**
  * 会话回放抽屉（公共组件，FeedbackView 与 SessionsAdminView 共用）
  *
- * 700px 只读消息抽屉：打开时调 sessionApi.detail 拉取会话完整消息流
- * （role 徽章 + seq 序号 + intentType + content），消息仅展示不编辑。
+ * 700px 只读消息抽屉：打开时经 useQuery（['session-detail', id]，enabled=open）拉取
+ * 会话完整消息流（role 徽章 + seq 序号 + intentType + content），消息仅展示不编辑；
+ * 30s staleTime 窗口内重开同一会话命中缓存 0 请求（PERF-08，props/emit 契约不变）。
  * 视觉形态（2026-08-27 紫系换肤 N8b）：紫黑遮罩 + 2px 毛玻璃 + 面板右滑入
  * （设计稿 backdrop / A26 参数）+ 消息气泡列表（角色头像圆 + 差异化气泡底色）。
  *
@@ -12,21 +13,22 @@
  *
  * props/emit 契约冻结（N8a FeedbackView 依赖）：open/sessionId/title/initialStatus + close。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 
+import { useQuery } from '@tanstack/vue-query'
 import { PhChatCircleDots, PhRobot, PhSpinnerGap, PhUser, PhX } from '@phosphor-icons/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ApiError, sessionApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
-import type { ChatSessionDetailVO, SessionStatus } from '@/lib/types'
+import type { SessionStatus } from '@/lib/types'
 
 const props = withDefaults(
   defineProps<{
-    /** 抽屉显隐：由调用方（回放入口按钮）控制，打开时自动拉取会话明细 */
+    /** 抽屉显隐：由调用方（回放入口按钮）控制，作为查询 enabled 开关（打开才拉取/命中缓存） */
     open: boolean
-    /** 会话 id：detail 拉取与「会话 #id」头部展示 */
+    /** 会话 id：detail 拉取与「会话 #id」头部展示，作为查询键维度 */
     sessionId: string
     /** 头部主标题（Sessions 传入会话标题；Feedback 缺省「会话回放」） */
     title?: string
@@ -38,8 +40,19 @@ const props = withDefaults(
 
 const emit = defineEmits<{ close: [] }>()
 
-const detail = ref<ChatSessionDetailVO | null>(null)
-const loading = ref(false)
+// 会话明细查询：键=会话 id 维度、enabled=抽屉打开；staleTime 继承全局 30s——
+// 关闭不清缓存（query 卸载仅断观察，缓存留 QueryClient），30s 内重开同会话 0 请求；
+// retry 关闭保持原手动 fetch「单次失败立即 toast+收合」契约，避免重试期间抽屉悬停
+const {
+  data: detail,
+  isPending: loading,
+  error,
+} = useQuery({
+  queryKey: computed(() => ['session-detail', props.sessionId]),
+  queryFn: () => sessionApi.detail(props.sessionId),
+  enabled: computed(() => props.open),
+  retry: false,
+})
 
 /** 展示状态：详情加载后以明细为准（列表行可能滞后，如刚被外部关闭）；initialStatus 允许 '' 占位 */
 const status = computed<SessionStatus | ''>(() => detail.value?.status ?? props.initialStatus)
@@ -57,35 +70,19 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-/** 关闭抽屉：加载中拦截（防丢加载态） */
+/** 关闭抽屉：加载中拦截（防丢加载态）；命中缓存秒开时 data 已在场不拦截 */
 function close() {
   if (loading.value) return
   emit('close')
 }
 
-watch(
-  () => props.open,
-  (open) => {
-    // 每次打开重置明细并拉取最新消息；失败关抽屉 + toast（与两视图原行为一致）；
-    // immediate：初始 open=true 挂载（如父组件条件渲染）同样拉取
-    if (!open) return
-    detail.value = null
-    loading.value = true
-    sessionApi
-      .detail(props.sessionId)
-      .then((res) => {
-        detail.value = res
-      })
-      .catch((err) => {
-        showToast(messageOf(err, '会话详情加载失败，请稍后重试'), 'danger')
-        emit('close')
-      })
-      .finally(() => {
-        loading.value = false
-      })
-  },
-  { immediate: true },
-)
+// 拉取失败：danger toast + 通知父组件收合（与原手动 fetch 的 catch 行为一致；
+// 错误不缓存为数据，重开同一会话会重新拉取）
+watch(error, (err) => {
+  if (!err) return
+  showToast(messageOf(err, '会话详情加载失败，请稍后重试'), 'danger')
+  emit('close')
+})
 </script>
 
 <template>

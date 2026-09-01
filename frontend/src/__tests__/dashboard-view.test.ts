@@ -29,6 +29,9 @@ import type {
  * 6. 快捷入口 5 项跳转 + 待修正 KPI 卡点击跳分片页
  * 7. 四态：loading skeleton / empty 分区块空态 / error 横幅重试 / 正常
  * 8. 无环比：断言「↗/↑/环比」类元素不存在（后端无历史对比，禁止假数据）
+ * 9. core/trend 查询拆键（PERF-12）：范围切换仅重拉趋势接口（core 四接口零重拉）；
+ *    趋势失败仅趋势区报错（页面其余区块正常、无整页横幅）；
+ *    keepPreviousData 保证切换期间旧趋势序列不闪空。
  *
  * 图表策略（图表库移除后）：图表为 CSS/SVG 自绘组件，jsdom 直接渲染真实 DOM
  * （柱 div/--h 变量/SVG circle/tooltip div），无需 canvas 桩。
@@ -549,6 +552,101 @@ describe('DashboardView：四态', () => {
     const { wrapper } = await mountDashboard()
 
     expect(wrapper.find('[role="alert"]').text()).toContain('仪表盘加载失败，请稍后重试')
+    wrapper.unmount()
+  })
+})
+
+describe('DashboardView：core/trend 查询拆键（PERF-12）', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  it('切换 7 → 30 天仅重拉趋势接口，core 四接口零重拉', async () => {
+    mockResolvedData()
+    const { wrapper } = await mountDashboard()
+
+    // 初始挂载：五接口各拉取一次
+    expect(dashboardApi.stats).toHaveBeenCalledTimes(1)
+    expect(dashboardApi.feedbackStats).toHaveBeenCalledTimes(1)
+    expect(documentApi.list).toHaveBeenCalledTimes(1)
+    expect(feedbackApi.stats).toHaveBeenCalledTimes(1)
+    expect(dashboardApi.feedbackTrend).toHaveBeenCalledTimes(1)
+
+    // 打开范围下拉 → 选择「近 30 天」
+    await wrapper.find('[data-testid="trend-range"]').trigger('click')
+    await wrapper.find('[data-testid="range-opt-30"]').trigger('click')
+
+    // 拆键断言：仅趋势接口以 30 重拉一次，core 四接口调用次数保持不变（KPI/文档/意图不闪重载）
+    await vi.waitFor(() => expect(dashboardApi.feedbackTrend).toHaveBeenCalledWith(30))
+    await flushPromises()
+    expect(dashboardApi.feedbackTrend).toHaveBeenCalledTimes(2)
+    expect(dashboardApi.stats).toHaveBeenCalledTimes(1)
+    expect(dashboardApi.feedbackStats).toHaveBeenCalledTimes(1)
+    expect(documentApi.list).toHaveBeenCalledTimes(1)
+    expect(feedbackApi.stats).toHaveBeenCalledTimes(1)
+    // 30 天档序列渲染 30 柱
+    await vi.waitFor(() => expect(wrapper.findAll('[data-testid^="trend-bar-"]')).toHaveLength(30))
+    wrapper.unmount()
+  })
+
+  it('趋势失败仅趋势区报错：KPI/文档表正常渲染，无整页错误横幅；分区重试恢复', async () => {
+    // 趋势首拉 503 失败（重试后成功），core 四接口正常
+    vi.spyOn(dashboardApi, 'stats').mockResolvedValue(KPIS)
+    vi.spyOn(dashboardApi, 'feedbackStats').mockResolvedValue(FEEDBACK)
+    vi.spyOn(dashboardApi, 'feedbackTrend')
+      .mockRejectedValueOnce(new ApiError(503, '服务暂时不可用', 503))
+      .mockResolvedValue(TREND_7)
+    vi.spyOn(documentApi, 'list').mockResolvedValue({ records: DOCS, total: '4', page: 1, size: 5 })
+    vi.spyOn(feedbackApi, 'stats').mockResolvedValue(INTENTS)
+    const { wrapper } = await mountDashboard()
+
+    // core 区不受趋势失败影响：KPI 与最近文档表正常渲染
+    expect(wrapper.find('[data-testid="kpi-documents"]').text()).toContain('128')
+    expect(wrapper.text()).toContain('Q3 大模型课程课件.pdf')
+    // 趋势分区错误（503 降级文案）+ 分区重试钮在场
+    const trendError = wrapper.find('[data-testid="trend-error"]')
+    expect(trendError.exists()).toBe(true)
+    expect(trendError.text()).toContain('服务暂时不可用，请稍后重试')
+    expect(wrapper.find('[data-testid="trend-retry"]').exists()).toBe(true)
+    // 无整页错误横幅（core 成功即不透出页面级 retry 契约）
+    expect(wrapper.find('[data-testid="retry"]').exists()).toBe(false)
+
+    // 分区重试：仅趋势恢复柱状图，无需整页刷新
+    await wrapper.find('[data-testid="trend-retry"]').trigger('click')
+    await vi.waitFor(() => expect(wrapper.findAll('[data-testid^="trend-bar-"]')).toHaveLength(7))
+    wrapper.unmount()
+  })
+
+  it('keepPreviousData：切换期间保留旧趋势序列，30 天数据返回前不闪空', async () => {
+    // 30 天档挂起（手动 resolve），锁定切换中间态
+    let resolveTrend30: (v: FeedbackTrendItem[]) => void = () => {}
+    vi.spyOn(dashboardApi, 'stats').mockResolvedValue(KPIS)
+    vi.spyOn(dashboardApi, 'feedbackStats').mockResolvedValue(FEEDBACK)
+    vi.spyOn(dashboardApi, 'feedbackTrend').mockImplementation(async (days = 7) => {
+      if (days === 30) {
+        return new Promise<FeedbackTrendItem[]>((resolve) => {
+          resolveTrend30 = resolve
+        })
+      }
+      return TREND_7
+    })
+    vi.spyOn(documentApi, 'list').mockResolvedValue({ records: DOCS, total: '4', page: 1, size: 5 })
+    vi.spyOn(feedbackApi, 'stats').mockResolvedValue(INTENTS)
+    const { wrapper } = await mountDashboard()
+    expect(wrapper.findAll('[data-testid^="trend-bar-"]')).toHaveLength(7)
+
+    // 切至 30 天：新序列未返回前仍渲染旧 7 柱（placeholderData 保留上次数据）
+    await wrapper.find('[data-testid="trend-range"]').trigger('click')
+    await wrapper.find('[data-testid="range-opt-30"]').trigger('click')
+    await vi.waitFor(() => expect(dashboardApi.feedbackTrend).toHaveBeenCalledWith(30))
+    await flushPromises()
+    expect(wrapper.findAll('[data-testid^="trend-bar-"]')).toHaveLength(7)
+
+    // 30 天序列返回后替换为 30 柱
+    resolveTrend30(TREND_30)
+    await flushPromises()
+    await vi.waitFor(() => expect(wrapper.findAll('[data-testid^="trend-bar-"]')).toHaveLength(30))
     wrapper.unmount()
   })
 })

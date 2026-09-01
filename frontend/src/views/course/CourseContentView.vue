@@ -64,23 +64,32 @@ const contentsError = computed(() =>
   contentsIsError.value ? messageOf(contentsQueryError.value, '内容加载失败，请稍后重试') : '',
 )
 
-/** 加载完成回写编辑器本地状态：按 sortOrder 排序建索引（缺失 body 兜底空串） */
-watch(contentsData, (list) => {
-  if (!list) return
-  const map: Record<string, string> = {}
-  for (const item of list) {
-    map[item.contentType] = item.content ?? ''
-  }
-  contentMap.value = map
-  tabOrder.value =
-    list.length > 0
-      ? list
-          .slice()
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((item) => ({ type: item.contentType, label: labelOf(item.contentType) }))
-      : CANONICAL_TABS.map((t) => ({ type: t.type, label: t.label }))
-  activeTab.value = tabOrder.value[0]?.type ?? 'intro'
-})
+/**
+ * 数据就位即回写编辑器本地状态：按 sortOrder 排序建索引（缺失 body 兜底空串）。
+ * immediate 消费 warm cache 初始值（BUG-02：无 immediate 时 30s 内重进内容页四编辑器
+ * 空白，此时保存会以空串覆盖清空服务端已有内容）；再次触发仅剩显式刷新按钮与
+ * 过期重拉两条路径，重写编辑器属用户主动重载语义，不设一次化守卫。
+ */
+watch(
+  contentsData,
+  (list) => {
+    if (!list) return
+    const map: Record<string, string> = {}
+    for (const item of list) {
+      map[item.contentType] = item.content ?? ''
+    }
+    contentMap.value = map
+    tabOrder.value =
+      list.length > 0
+        ? list
+            .slice()
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((item) => ({ type: item.contentType, label: labelOf(item.contentType) }))
+        : CANONICAL_TABS.map((t) => ({ type: t.type, label: t.label }))
+    activeTab.value = tabOrder.value[0]?.type ?? 'intro'
+  },
+  { immediate: true },
+)
 
 /** 当前激活 Tab 的正文（编辑器 modelValue 输入源） */
 const activeContent = computed(() => contentMap.value[activeTab.value] ?? '')

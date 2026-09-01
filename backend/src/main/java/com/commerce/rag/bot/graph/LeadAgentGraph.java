@@ -21,6 +21,7 @@ import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.bot.rewrite.QueryUnderstandingService;
 import com.commerce.rag.bot.tool.CourseApiTool;
+import com.commerce.rag.properties.AgentProperties;
 import com.commerce.rag.record.AssistantMessageSink;
 import com.commerce.rag.stream.ThinkingPusher;
 import java.util.List;
@@ -32,7 +33,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -130,7 +130,7 @@ public class LeadAgentGraph {
             WarningHook warningHook,
             KeyStrategyFactory keyStrategyFactory,
             CompileConfig compileConfig,
-            @Value("${rag.agent.run-limit:15}") int runLimit) {
+            AgentProperties agentProperties) {
         this.chatModel = chatModel;
         this.promptLoader = promptLoader;
         this.queryUnderstandingService = queryUnderstandingService;
@@ -145,7 +145,9 @@ public class LeadAgentGraph {
         this.warningHook = warningHook;
         this.keyStrategyFactory = keyStrategyFactory;
         this.compileConfig = compileConfig;
-        this.runLimit = runLimit;
+        // BUG-12 @Value 收敛：run 上限经 AgentProperties（rag.agent.run-limit）强类型注入，
+        // 取值与原 @Value 相同
+        this.runLimit = agentProperties.runLimit();
     }
 
     /**

@@ -7,7 +7,8 @@
  *    最后消息时间 / 创建时间
  * 2. 详情 Drawer 700px：sessionApi.detail 回放完整 messages 只读流
  *    （role/content/intentType/seq，逐条消息气泡，服务端时序）
- * 3. 关闭会话：仅 ACTIVE 行入口 → patch close → toast → 刷新
+ * 3. 关闭会话：仅 ACTIVE 行入口 → 二次确认（ConfirmDialog）→ patch close →
+ *    toast → 刷新（BUG-31：终止学生活跃对话属高影响操作，补确认防误触）
  * 4. 删除会话：二次确认（ConfirmDialog danger，级联软删消息与 Run）
  * 5. 四态：loading 骨架 / empty / error 横幅重试 / 正常 + 分页
  *
@@ -117,13 +118,14 @@ function closeDetail() {
 }
 
 // ====================================================================
-// 关闭会话（仅 ACTIVE 行入口）
+// 关闭会话（仅 ACTIVE 行入口；二次确认，与删除会话同款 ConfirmDialog）
 // ====================================================================
 
+/** 确认弹窗目标会话（null = 关闭弹窗；提交中行内 spinner 由 isPending 驱动） */
 const closing = ref<ChatSessionVO | null>(null)
 
-/** 关闭会话提交（行状态随之变 CLOSED；行内 spinner 由 closing ref 驱动，成功后失效列表键） */
-const { mutate: closeSessionMutation } = useMutation({
+/** 关闭会话提交（行状态随之变 CLOSED；成功后失效列表键） */
+const { isPending: closeSubmitting, mutate: closeSessionMutation } = useMutation({
   mutationFn: (id: string) => sessionApi.close(id),
   onSuccess: () => {
     showToast('会话已关闭', 'success')
@@ -136,10 +138,21 @@ const { mutate: closeSessionMutation } = useMutation({
   },
 })
 
-/** 关闭会话：进入提交态（行内 spinner），完成/失败由 mutation 回调处理 */
-function closeSession(s: ChatSessionVO) {
+/** 请求关闭：仅记录目标并弹二次确认（确认前不调接口，防误触终止学生活跃对话） */
+function requestClose(s: ChatSessionVO) {
   closing.value = s
-  closeSessionMutation(s.id)
+}
+
+/** 取消关闭：清空确认目标（提交中拦截，收口由 mutation 回调负责） */
+function cancelClose() {
+  if (closeSubmitting.value) return
+  closing.value = null
+}
+
+/** 确认关闭：提交 mutation，完成/失败由回调处理 */
+function confirmClose() {
+  if (!closing.value) return
+  closeSessionMutation(closing.value.id)
 }
 
 // ====================================================================
@@ -284,16 +297,19 @@ function confirmDelete() {
                 >
                   详情
                 </Button>
-                <!-- 关闭入口：仅 ACTIVE 行（CLOSED 重复关闭后端会 409） -->
+                <!-- 关闭入口：仅 ACTIVE 行（CLOSED 重复关闭后端会 409）；先弹二次确认 -->
                 <Button
                   v-if="s.status === 'ACTIVE'"
                   variant="outline"
                   size="sm"
                   :data-testid="`op-close-${s.id}`"
-                  :disabled="closing?.id === s.id"
-                  @click="closeSession(s)"
+                  :disabled="closeSubmitting && closing?.id === s.id"
+                  @click="requestClose(s)"
                 >
-                  <PhSpinnerGap v-if="closing?.id === s.id" class="h-3 w-3 animate-spin" />
+                  <PhSpinnerGap
+                    v-if="closeSubmitting && closing?.id === s.id"
+                    class="h-3 w-3 animate-spin"
+                  />
                   关闭
                 </Button>
                 <Button
@@ -360,6 +376,21 @@ function confirmDelete() {
       data-testid="confirm-session-del"
       @cancel="cancelDelete"
       @confirm="confirmDelete"
+    />
+  </div>
+
+  <!-- 关闭会话二次确认（BUG-31：终止学生活跃对话属高影响操作，与删除同款弹窗防误触）；
+       外层 div 承载 dialog testid 契约 -->
+  <div v-if="closing" data-testid="session-close-dialog">
+    <ConfirmDialog
+      :open="!!closing"
+      title="关闭会话"
+      :description="`关闭后该学生的对话将被立即中断。确认关闭「${closing.title}」？`"
+      confirm-text="确认关闭"
+      :loading="closeSubmitting"
+      data-testid="confirm-session-close"
+      @cancel="cancelClose"
+      @confirm="confirmClose"
     />
   </div>
 </template>

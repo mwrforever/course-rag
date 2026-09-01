@@ -13,7 +13,7 @@ import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
 import com.commerce.rag.bot.graph.LeadAgentGraph;
 import com.commerce.rag.properties.QueryUnderstandingProperties;
 import java.sql.SQLException;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +28,10 @@ import org.springframework.context.annotation.Configuration;
  * 思考聚合的硬超时配置（2026-08-28 评审 C1——响应式栈 chunk 间静默无 transport idle 保护，
  * 内层 blockLast 必须有界），供 QueryUnderstandingService 注入。
  *
+ * <p>checkpoint 数据源经 Spring Boot 内置 {@link DataSourceProperties}
+ * （spring.datasource.*）强类型注入（BUG-12 @Value 收敛，宪法 A.2.2——官方属性类
+ * 替代 @Value 散落读取，与业务库同源同实例）。
+ *
  * <p>注意：SAA 框架类名是 {@code PostgresSaver}（非 PostgreSqlSaver），
  * 位于 {@code com.alibaba.cloud.ai.graph.checkpoint.savers.postgresql} 包。
  *
@@ -40,14 +44,13 @@ public class GraphConfig {
     /**
      * PostgreSQL checkpoint saver。
      * 使用与业务库同一个数据库实例；checkpoint 三表 DDL 由 Flyway V7 管理。
+     *
+     * @param dataSourceProperties 数据源强类型配置（url/username/password，非空，Spring 注入）
      */
     @Bean
-    public PostgresSaver postgresSaver(
-            @Value("${spring.datasource.url}") String jdbcUrl,
-            @Value("${spring.datasource.username}") String username,
-            @Value("${spring.datasource.password}") String password)
-            throws SQLException {
+    public PostgresSaver postgresSaver(DataSourceProperties dataSourceProperties) throws SQLException {
         // 解析 JDBC URL: jdbc:postgresql://host:port/database?params
+        String jdbcUrl = dataSourceProperties.getUrl();
         String afterScheme = jdbcUrl.substring(jdbcUrl.indexOf("://") + 3);
         int slashIdx = afterScheme.indexOf("/");
         String hostPort = slashIdx > 0 ? afterScheme.substring(0, slashIdx) : afterScheme;
@@ -61,8 +64,8 @@ public class GraphConfig {
         return PostgresSaver.builder()
                 .host(host)
                 .port(port)
-                .user(username)
-                .password(password)
+                .user(dataSourceProperties.getUsername())
+                .password(dataSourceProperties.getPassword())
                 .database(db)
                 // checkpoint 三表 DDL 由 Flyway V7 幂等管理（SAA 1.1.2.0 自动建表
                 // 的 CREATE INDEX 无 IF NOT EXISTS，二次启动必然报 already exists），

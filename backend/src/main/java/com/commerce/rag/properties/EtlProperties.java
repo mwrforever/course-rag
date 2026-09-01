@@ -3,6 +3,7 @@ package com.commerce.rag.properties;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -33,11 +34,23 @@ import org.springframework.validation.annotation.Validated;
  *     max-rows-per-chunk: 30
  *     overlap-rows: 2
  *   chunk-insert-batch-size: 500
+ *   annotation-sync-timeout-seconds: 120
  * </pre>
  *
  * <p>2026-08-29 M-2 迁移：caption-model 键迁出至 {@code attachment.caption-model}
  * （caption 业务归属附件域，ETL 离线与用户附件两通道共用一值，见 AttachmentProperties）。
  *
+ * @param maxFileSizeMb              单文件解析大小上限（MB）
+ * @param executor                   ETL 主线程池配置
+ * @param imageExecutor              ETL 图片并行池配置
+ * @param chunk                      文本分块参数
+ * @param embeddingBatchSize         embedding 批量调用批次大小
+ * @param imageMinSizeKb             图片过滤最小尺寸（KB）
+ * @param table                      表格分块参数
+ * @param chunkInsertBatchSize       分片批量插入批次大小
+ * @param annotationSyncTimeoutSeconds 批量标注文档级 Milvus 同步总超时（秒，PERF-20，默认 120）：
+ *                                     B 端批量标注接口并行同步涉及的全部文档必须在此时限内完成，
+ *                                     超时阻断上抛（可重试收敛），防 HTTP 请求线程无限陪等挂死任务
  * @author commerce-rag
  */
 @Validated
@@ -50,7 +63,8 @@ public record EtlProperties(
         @Min(1) int embeddingBatchSize,
         @Min(1) int imageMinSizeKb,
         Table table,
-        @Min(1) int chunkInsertBatchSize) {
+        @Min(1) int chunkInsertBatchSize,
+        @DefaultValue("120") @Min(1) int annotationSyncTimeoutSeconds) {
 
     /**
      * ETL 线程池配置

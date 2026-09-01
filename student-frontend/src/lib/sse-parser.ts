@@ -18,6 +18,8 @@
  *   无 data 但出现过注释行 → onHeartbeat（后端心跳帧即此类）；两者皆无 → 丢弃
  *   （空帧 / 纯 id 帧 / 纯未知字段帧）
  * - 多条 data 行按规范以换行拼接，派发时去掉末尾行间换行（data:a\ndata:b → "a\nb"）
+ * - 字段值按规范剥离单个前导空格（": " 分隔可选——event:metadata 与 event: metadata 等价；
+ *   BUG-26：中间层按规范写 `data: {...}` 带空格时不再产生 " metadata" 类错位事件名）
  * - data 值原样透传，不加引号、不做任何转义
  * - 注释行内容忽略；无冒号行与未知字段行忽略（retry 等后续扩展不影响帧解析）
  * - 行尾兼容 \n 与 \r\n；一行可能被任意切分跨多个 chunk，由残行缓冲兜底
@@ -77,7 +79,11 @@ export function createSseParser(h: SseHandlers): (chunk: string) => void {
       return;
     }
     const field = line.slice(0, colon);
-    const value = line.slice(colon + 1);
+    // 规范：字段值剥离「单个」前导空格（": " 分隔可选；只剥一个，多空格属值内容）
+    let value = line.slice(colon + 1);
+    if (value.startsWith(" ")) {
+      value = value.slice(1);
+    }
     if (field === "data") {
       // data 行：值追加换行作为行间分隔（规范要求，派发时去掉末尾）
       data += value + "\n";

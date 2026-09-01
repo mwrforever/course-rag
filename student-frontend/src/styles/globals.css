@@ -88,6 +88,21 @@
   --color-subject-business-end: #f4e7e2;
   --color-subject-art-start: #f1e4ce;
   --color-subject-art-end: #f6efd9;
+  /* ── 深景面板奶油文字族（BUG-24 收编散落 hex：页脚/服务区/登录深墨底上的浅字层级）── */
+  --color-cream-100: #f1eadc;
+  --color-cream-200: #e9e2d3;
+  --color-cream-300: #e8dfce;
+  /* 深景舞台底（首页 Hero 与登录页左幅的全屏深底，独立于页脚 ink-800 面板） */
+  --color-surface-deep: #1b140e;
+  /* ── 暖杏卡底与暖墨深字（上手指引横滑卡浅底 / 客言引语标题：同一深字值单源）── */
+  --color-peach-100: #f9e8d8;
+  --color-ink-warm: #2a231d;
+  /* ── 拼贴径向柔光端点（方法拼贴区：沙 / 棕褐 / 鼠尾草三束光斑，渐变内联 var() 引用）── */
+  --color-glow-sand: #efdcc4;
+  --color-glow-tan: #e7cdb4;
+  --color-glow-sage: #dee4d3;
+  /* 暖深正文（浅底长文段落：比 text 柔和的暖深字） */
+  --color-text-warm: #4a4038;
   /* ── 动效令牌 ── */
   --animate-drawer-in: drawer-in 240ms ease-out;
   --animate-overlay-in: overlay-in 240ms ease-out;

@@ -23,6 +23,8 @@ const apiMock = vi.hoisted(() => ({
     list: vi.fn(),
   },
   apiClient: { post: vi.fn() },
+  // 上传超时预算（与真实模块同值）：image-upload 引用，保持 mock 契约完整（BUG-03）
+  UPLOAD_TIMEOUT_MS: 300_000,
   ApiError: class ApiError extends Error {
     code: number
     constructor(code: number, message: string) {
@@ -78,7 +80,17 @@ function course(over: Partial<CourseDTO> = {}): CourseDTO {
   }
 }
 
-async function mountAt(path: string) {
+/**
+ * 挂载组件到指定路由
+ *
+ * @param path 目标路由（如 /courses/c-1）
+ * @param queryClient 可选预构建查询客户端（warm-cache 用例传入预填缓存的客户端；
+ *                    缺省每用例新建冷缓存客户端，staleTime 0 恒过期必重拉）
+ */
+async function mountAt(
+  path: string,
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuth({
@@ -93,14 +105,7 @@ async function mountAt(path: string) {
   await router.isReady()
   const wrapper = mount(CourseOverviewView, {
     global: {
-      plugins: [
-        [
-          VueQueryPlugin,
-          { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
-        ],
-        pinia,
-        router,
-      ],
+      plugins: [[VueQueryPlugin, { queryClient }], pinia, router],
       directives: { reveal: vReveal },
     },
   })
@@ -292,6 +297,73 @@ describe('课程概览（编辑模式 /courses/:id）', () => {
     expect(wrapper.find('[data-testid="tag-chip-RAG"]').exists()).toBe(false)
     wrapper.unmount()
   })
+
+  it('保存成功后的后台重拉不回填覆盖用户新编辑（BUG-35 竞态回归，BUG-02 守卫核实）', async () => {
+    // 首拉：课程数据回填表单；保存后 invalidate 触发的重拉挂起可控（模拟网络往返窗口期）
+    apiMock.courseApi.get.mockResolvedValueOnce(course())
+    let resolveRefetch: (c: CourseDTO) => void = () => {}
+    apiMock.courseApi.get.mockImplementationOnce(
+      () => new Promise<CourseDTO>((resolve) => (resolveRefetch = resolve)),
+    )
+    apiMock.courseApi.update.mockResolvedValue(undefined)
+    const { wrapper } = await mountAt('/courses/c-1')
+    await flushPromises()
+    expect((wrapper.find('[data-testid="field-title"]').element as HTMLInputElement).value).toBe(
+      'RAG 实战营',
+    )
+
+    // 保存成功 → invalidate 统一键 ['course', id] → 后台重拉发出且挂起中（竞态窗口开启；
+    // 二次 get 调用即统一键失效的证据：保存后同键缓存被标脏重拉）
+    await wrapper.find('[data-testid="save-basic"]').trigger('click')
+    await flushPromises()
+    expect(apiMock.courseApi.update).toHaveBeenCalledTimes(1)
+    expect(showToast).toHaveBeenCalledWith('课程信息已保存', 'success')
+    expect(apiMock.courseApi.get).toHaveBeenCalledTimes(2)
+
+    // 重拉往返窗口期：用户立即开始下一轮编辑
+    await wrapper.find('[data-testid="field-title"]').setValue('用户窗口期新标题')
+
+    // 重拉完成：返回保存后的服务端快照。注意 vue-query 默认 structuralSharing 对
+    // 深相等响应保引用（watch 不触发），须以差异字段（learningCount 变化）驱动
+    // data 引用替换，才能复现真实网络往返的竞态窗口
+    resolveRefetch(course({ title: 'RAG 实战营', learningCount: 5 }))
+    await flushPromises()
+
+    // 用户编辑保留，不被服务端快照覆盖（守卫失效时此断言会回到「RAG 实战营」）
+    expect((wrapper.find('[data-testid="field-title"]').element as HTMLInputElement).value).toBe(
+      '用户窗口期新标题',
+    )
+    wrapper.unmount()
+  })
+
+  it('warm cache：命中 30s 未过期缓存不重拉，表单/标签/教师 chips 立即回填（BUG-02 回归）', async () => {
+    // 场景：30s 内重进编辑页（同实体子路由往返），vue-query 命中未过期缓存，
+    // data 在组件 watch 注册前已同步就位且不再变化——冷缓存用例（staleTime 0 恒重拉）
+    // 无法覆盖该时序，须以预填缓存 + staleTime 30s 复现
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    })
+    // PERF-11 统一键：['course', id]（详情壳/概览/教师分配共享）+ ['user-pool', 'TEACHER']
+    queryClient.setQueryData(['course', 'c-1'], course({ teacherIds: ['t1'] }))
+    queryClient.setQueryData(['user-pool', 'TEACHER'], [teacher('t1', '张老师')])
+    const { wrapper } = await mountAt('/courses/c-1', queryClient)
+    await flushPromises()
+
+    // 未过期缓存不触发任何重拉（证明用例确处 warm-cache 路径，非冷缓存误绿）
+    expect(apiMock.courseApi.get).not.toHaveBeenCalled()
+    expect(apiMock.userApi.list).not.toHaveBeenCalled()
+    // 表单已回填（无 immediate 时 watch 不消费初始值，表单全空）
+    expect((wrapper.find('[data-testid="field-title"]').element as HTMLInputElement).value).toBe(
+      'RAG 实战营',
+    )
+    expect((wrapper.find('[data-testid="field-price"]').element as HTMLInputElement).value).toBe(
+      '199',
+    )
+    expect(wrapper.find('[data-testid="tag-chip-RAG"]').exists()).toBe(true)
+    // 教师选中集已回填，chips 回显
+    expect(wrapper.find('[data-testid="remote-chip-t1"]').text()).toContain('张老师')
+    wrapper.unmount()
+  })
 })
 
 describe('课程概览（新建模式 /courses/new）', () => {
@@ -340,6 +412,44 @@ describe('课程概览（新建模式 /courses/new）', () => {
     await wrapper.find('[data-testid="save-basic"]').trigger('click')
     await flushPromises()
     expect(apiMock.courseApi.addTeachers).toHaveBeenCalledWith('c-9', ['t1', 't2'])
+    wrapper.unmount()
+  })
+
+  it('新建教师落库失败：区分提示「课程已创建」并仍跳转编辑页（BUG-07，防重复创建）', async () => {
+    apiMock.courseApi.create.mockResolvedValue(course({ id: 'c-9' }))
+    apiMock.courseApi.addTeachers.mockRejectedValue(new apiMock.ApiError(429, '请求过于频繁'))
+    const { wrapper, router } = await mountAt('/courses/new')
+    await flushPromises()
+
+    const remote = wrapper.findComponent({ name: 'RemoteSelect' })
+    remote.vm.$emit('update:modelValue', [teacher('t1', '张老师')])
+    await flushPromises()
+    await wrapper.find('[data-testid="field-title"]').setValue('新课程')
+    await wrapper.find('[data-testid="save-basic"]').trigger('click')
+    await flushPromises()
+
+    expect(apiMock.courseApi.addTeachers).toHaveBeenCalledWith('c-9', ['t1'])
+    // 课程已落库：区分提示（统一「保存失败」会诱导用户重试 create 产生重复课程）
+    expect(showToast).toHaveBeenCalledWith('课程已创建，教师分配失败，可在编辑页重试分配', 'danger')
+    expect(showToast).not.toHaveBeenCalledWith('课程创建成功', 'success')
+    // 仍跳转编辑页：教师差集语义自然重试分配
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe('course-detail')
+    expect(router.currentRoute.value.params.id).toBe('c-9')
+    wrapper.unmount()
+  })
+
+  it('新建 create 本身失败：维持「保存失败」提示且不跳转', async () => {
+    apiMock.courseApi.create.mockRejectedValue(new Error('网络抖动'))
+    const { wrapper, router } = await mountAt('/courses/new')
+    await flushPromises()
+
+    await wrapper.find('[data-testid="field-title"]').setValue('新课程')
+    await wrapper.find('[data-testid="save-basic"]').trigger('click')
+    await flushPromises()
+
+    expect(showToast).toHaveBeenCalledWith('保存失败，请稍后重试', 'danger')
+    expect(router.currentRoute.value.name).toBe('course-new')
     wrapper.unmount()
   })
 })

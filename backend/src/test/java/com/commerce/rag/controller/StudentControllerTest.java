@@ -251,6 +251,18 @@ class StudentControllerTest {
     }
 
     @Test
+    @DisplayName("J4 chunkContext → 课程归属非数字脏数据按 403 拒绝（BUG-09：不再 NumberFormatException 500）")
+    void chunkContext_nonNumericCourseId_throws403Not500() {
+        when(documentChunkService.findContext(1L)).thenReturn(chunkContextVO(1L, "abc脏数据", null, null, null));
+
+        BizException ex = assertThrows(BizException.class, () -> controller.chunkContext(studentRequest(5L), 1L));
+
+        // 无法解析的课程归属不可能通过选课校验，按未授权拒绝（fail-closed），禁止 500
+        assertEquals(HttpStatus.FORBIDDEN.value(), ex.getCode());
+        verify(enrollmentService, never()).isEnrolled(anyLong(), anyLong());
+    }
+
+    @Test
     @DisplayName("J4 chunkContext → DEFAULT 分片免选课校验，返回上下文（无关联分片）")
     void chunkContext_defaultChunk_returnsContext() {
         when(documentChunkService.findContext(1L)).thenReturn(chunkContextVO(1L, "DEFAULT", null, null, null));

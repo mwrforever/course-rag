@@ -17,7 +17,7 @@
  * - 409/503/网络错误分级 toast（§3.2）；建议提问 chip 点击即发送
  * - 附件全链路：前置校验（超限即拒无网络请求）→ 选中即传（chips 进度环）→
  *   图片 blob URL 预览；blob 生命周期：移除即 revoke、发送后保留供消息内预览、
- *   页面卸载统一 revoke（D12）
+ *   发送成功的失败 chips 随清理 revoke、页面卸载统一 revoke（D12；BUG-20）
  * - 空态：AI 徽标 + 问候（新对话）/「继续提问」（历史会话占位，Task 13 接回显）
  */
 import { ArrowLeft, Paperclip } from "@phosphor-icons/react";
@@ -28,6 +28,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AiBadge } from "@/components/ai-badge";
 import {
   AttachmentChips,
+  classifyFile,
   validateAttachments,
   type PendingAttachment,
 } from "@/components/chat/attachment-chips";
@@ -40,6 +41,7 @@ import { MessageList, shouldStickToBottom } from "@/components/chat/message-list
 import { SectionError } from "@/components/section-error";
 import { useChatStream, type StreamMessage } from "@/hooks/use-chat-stream";
 import { uploadAttachments } from "@/lib/api";
+import { createAttachmentThumbUrl } from "@/lib/attachment-thumb";
 import { useAuth } from "@/lib/auth-context";
 import type { AttachmentRecord } from "@/lib/types";
 
@@ -163,6 +165,12 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
 
   // ── 附件状态：pending chips + record.url → blob URL 映射（D12 本地预览）──
   const [pendings, setPendings] = useState<PendingAttachment[]>([]);
+  // 最新 pendings 镜像（ref）：sendQuery 的 await 结算须读最新快照——闭包中的
+  // pendings 是发送时的旧值，await 期间用户新选的附件会丢失（BUG-20）
+  const pendingsRef = useRef(pendings);
+  useEffect(() => {
+    pendingsRef.current = pendings;
+  }, [pendings]);
   const [blobUrls, setBlobUrls] = useState<Record<string, string>>({});
   // ── 附件预览弹窗（Task 12）：chip 点击打开，Esc/遮罩关闭（null=关闭）──
   const [previewItem, setPreviewItem] = useState<PendingAttachment | null>(null);
@@ -196,8 +204,13 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
     if (lastNewChatSeq.current === newChatSeq) return;
     lastNewChatSeq.current = newChatSeq;
     reset(true);
-    // 附件干净态：pending chips 与消息内 blob 映射全部 revoke 后清空
-    pendings.forEach((item) => URL.revokeObjectURL(item.blobUrl));
+    // 附件干净态：pending chips（原图与缩略均 revoke）与消息内 blob 映射全部 revoke 后清空
+    pendings.forEach((item) => {
+      URL.revokeObjectURL(item.blobUrl);
+      if (item.thumbUrl) {
+        URL.revokeObjectURL(item.thumbUrl);
+      }
+    });
     Object.values(blobUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
     blobUrlsRef.current = {};
     setBlobUrls({});
@@ -233,12 +246,16 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
     }
   }, [streamAnchor, state.messages.length, state.streaming]);
 
-  /** 移除附件 chip：revoke blob 并从记录映射清除（已发送消息内的映射保留不动） */
+  /** 移除附件 chip：revoke blob（原图与缩略均回收）并从记录映射清除（已发送消息内的映射保留不动） */
   const removeAttachment = useCallback(
     (id: string) => {
       const target = pendings.find((item) => item.id === id);
       if (!target) return;
       URL.revokeObjectURL(target.blobUrl);
+      // PERF-18：缩略 blob 一并回收（未生成时为 undefined 跳过）
+      if (target.thumbUrl) {
+        URL.revokeObjectURL(target.thumbUrl);
+      }
       if (target.record) {
         const next = { ...blobUrlsRef.current };
         delete next[target.record.url];
@@ -288,7 +305,9 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
       notify(validation.reason as string);
       return;
     }
-    // 本地 blob 预览（D12：上传返回 url 是 objectKey，展示必须本地 blob）
+    // 本地 blob 预览（D12：上传返回 url 是 objectKey，展示必须本地 blob）；
+    // PERF-18：图片附件另异步生成 96px 缩略 blob（chips 36px/消息行 28px 用缩略，
+    // 相机原图不再整图驻留解码；预览弹窗保留原图 blobUrl，生成期间以原图瞬时占位）
     const fresh: PendingAttachment[] = incoming.map((file) => ({
       id: `att-${(attachmentIdSeq += 1)}`,
       file,
@@ -297,9 +316,37 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
       blobUrl: URL.createObjectURL(file),
     }));
     setPendings((prev) => [...prev, ...fresh]);
+    // PERF-18：图片附件异步生成缩略（非图片不动；失败返回 null 以原图兜底）
+    for (const item of fresh) {
+      if (classifyFile(item.file) !== "image") continue;
+      void createAttachmentThumbUrl(item.file).then((thumbUrl) => {
+        if (!thumbUrl) return;
+        setPendings((prev) => {
+          // 条目已被移除：缩略 URL 未被引用，即刻回收防泄漏
+          if (!prev.some((pending) => pending.id === item.id)) {
+            URL.revokeObjectURL(thumbUrl);
+            return prev;
+          }
+          return prev.map((pending) =>
+            pending.id === item.id ? { ...pending, thumbUrl } : pending,
+          );
+        });
+      });
+    }
+    // 本批上传中条目 id 集合：进度回调只更新本批 chips（多批并发上传不互相覆盖进度）
+    const freshIds = new Set(fresh.map((item) => item.id));
     try {
-      // 选中即传 POST /student/chat/attachments（multipart）
-      const records = await uploadAttachments(incoming);
+      // 选中即传 POST /student/chat/attachments（multipart 单请求不变；
+      // PERF-10a：XHR 进度回调驱动本批 chips 确定进度环）
+      const records = await uploadAttachments(incoming, (percent) => {
+        setPendings((prev) =>
+          prev.map((item) =>
+            item.status === "uploading" && freshIds.has(item.id)
+              ? { ...item, progress: percent }
+              : item,
+          ),
+        );
+      });
       // 空数据兜底（异常响应体容错）：无记录时条目保持上传中态
       const list = Array.isArray(records) ? records : [];
       // 按请求顺序配对返回记录（multipart 顺序契约）；记录缺失的条目留在上传中态
@@ -319,19 +366,44 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
     }
   }
 
-  /** 发送统一入口（输入区与建议 chip 共用）：成功清空 chips，失败向上抛分级 */
+  /** 发送统一入口（输入区与建议 chip 共用）：成功后按发送时快照结算 chips，失败向上抛分级 */
   async function sendQuery(query: string, attachmentsRecord: AttachmentRecord[]) {
+    // 发送时在场快照与已提交记录集合：await 期间新增的 chips 不属于本次发送（BUG-20）
+    const sentIds = new Set(pendings.map((item) => item.id));
+    const sentUrls = new Set(attachmentsRecord.map((record) => record.url));
     await send(query, attachmentsRecord);
-    // 发送成功：chips 清空；blob 保留供消息内附件预览（卸载时统一 revoke）
+    // 发送成功：以最新快照结算（闭包 pendings 在 await 期间已过期）——
+    // - 已随消息提交的 chips：缩略（无则原图）迁入消息预览映射后移除（卸载时统一 revoke；
+    //   PERF-18：缩略接管渲染后原图 blob 不再被引用，即刻回收）
+    // - 发送时已失败的 chips：revoke blob（原图与缩略）后移除（不随清理泄漏）
+    // - await 期间新增的 chips 与发送时仍在传中的 chips：保留，不连带清空
+    const latest = pendingsRef.current;
     const kept: Record<string, string> = {};
-    for (const item of pendings) {
-      if (item.record && item.status === "done") kept[item.record.url] = item.blobUrl;
+    for (const item of latest) {
+      if (item.record && sentUrls.has(item.record.url)) {
+        kept[item.record.url] = item.thumbUrl ?? item.blobUrl;
+        // 缩略接管消息行渲染：原图 blob 无人引用即刻回收（预览弹窗若开着已加载帧不受影响）
+        if (item.thumbUrl) {
+          URL.revokeObjectURL(item.blobUrl);
+        }
+      } else if (sentIds.has(item.id) && item.status === "error") {
+        URL.revokeObjectURL(item.blobUrl);
+        if (item.thumbUrl) {
+          URL.revokeObjectURL(item.thumbUrl);
+        }
+      }
     }
     if (Object.keys(kept).length > 0) {
       blobUrlsRef.current = { ...blobUrlsRef.current, ...kept };
       setBlobUrls({ ...blobUrlsRef.current });
     }
-    setPendings([]);
+    setPendings(
+      latest.filter(
+        (item) =>
+          !(item.record && sentUrls.has(item.record.url)) &&
+          !(sentIds.has(item.id) && item.status === "error"),
+      ),
+    );
   }
 
   /** 输入区发送（带 chips 附件记录；异常由 ChatInput 分级 toast） */

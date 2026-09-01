@@ -77,22 +77,72 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
     }
 
     /**
-     * 更新 Run 状态，自动设置 startedAt / endedAt
+     * 更新 Run 状态（BUG-01 状态机条件守卫），自动设置 startedAt / endedAt
+     *
+     * <p>守卫以 UPDATE WHERE 条件原子判定（非先查后改，无 TOCTOU 窗口）：
+     * <ul>
+     *   <li>目标 ACTIVE：仅允许自 QUEUED 迁移——高峰积压下巡检把滞留 QUEUED run 置 ERROR 解锁
+     *       会话后，runPool 队列中的迟到任务不得把该 ERROR run 拉回 ACTIVE（否则同 thread_id
+     *       与用户新 run 并发跑图，违反 B.3.9 单会话串行）；</li>
+     *   <li>目标终态（COMPLETED/CANCELLED/ERROR）：仅允许自 QUEUED/ACTIVE 迁移——终态 run 不可
+     *       再被任何后续迁移改写（runPool 拒绝/入队回滚的 QUEUED→终态与正常执行的 ACTIVE→终态
+     *       均覆盖）。</li>
+     * </ul>
+     * 返回影响行数：0 行 = run 已离开迁移前提状态（守卫拒绝）或不存在，调用方据此短路。
      *
      * @param runId  Run ID
      * @param status 新状态：ACTIVE / COMPLETED / CANCELLED / ERROR
+     * @return 影响行数：1=迁移成功；0=守卫拒绝或 run 不存在
+     * @throws IllegalArgumentException status 非状态机已知状态（防止绕过守卫的无条件 UPDATE）
      */
-    public void updateStatus(Long runId, String status) {
+    @Override
+    public int updateStatus(Long runId, String status) {
         log.info("更新 Run 状态: runId={}, status={}", runId, status);
         // 合规：Wrappers 静态工厂 + lambda 链式（宪法「Wrapper 一律 lambda 链式构建，禁止 new」）
-        LambdaUpdateWrapper<ChatRun> wrapper =
-                Wrappers.<ChatRun>lambdaUpdate().eq(ChatRun::getId, runId).set(ChatRun::getStatus, status);
+        LambdaUpdateWrapper<ChatRun> wrapper = Wrappers.<ChatRun>lambdaUpdate().eq(ChatRun::getId, runId);
         if ("ACTIVE".equals(status)) {
+            // 状态机守卫：ACTIVE 仅可自 QUEUED 迁移（封死迟到任务复活终态 run 的并发窗口）
+            wrapper.eq(ChatRun::getStatus, "QUEUED");
             wrapper.set(ChatRun::getStartedAt, LocalDateTime.now());
         } else if ("COMPLETED".equals(status) || "CANCELLED".equals(status) || "ERROR".equals(status)) {
+            // 状态机守卫：终态仅可自 QUEUED/ACTIVE 迁移（终态 run 不可再被改写）
+            wrapper.in(ChatRun::getStatus, "QUEUED", "ACTIVE");
             wrapper.set(ChatRun::getEndedAt, LocalDateTime.now());
+        } else {
+            // 未知状态拒绝：若放行将构造无守卫的无条件 UPDATE，守卫语义被绕过
+            throw new IllegalArgumentException("未知的 Run 状态: " + status);
         }
-        runMapper.update(null, wrapper);
+        wrapper.set(ChatRun::getStatus, status);
+        int rows = runMapper.update(null, wrapper);
+        if (rows == 0) {
+            // 守卫拒绝可观测：run 已离开迁移前提状态（如被巡检置 ERROR）或不存在
+            log.warn("Run 状态迁移被守卫拒绝: runId={}, target={}, 当前状态已离开迁移前提或 run 不存在", runId, status);
+        }
+        return rows;
+    }
+
+    /**
+     * 以期望状态为前提的 CAS 式置 ERROR（BUG-01 巡检 TOCTOU 修复，语义详见接口 javadoc）
+     *
+     * @param runId          Run ID
+     * @param expectedStatus 期望当前状态（调用方 SELECT 时观察到的值：QUEUED / ACTIVE）
+     * @return 影响行数：1=置 ERROR 成功；0=run 已不在期望状态（或不存在）
+     */
+    @Override
+    public int markErrorIfCurrent(Long runId, String expectedStatus) {
+        log.info("CAS 置 ERROR（期望状态前提）: runId={}, expected={}", runId, expectedStatus);
+        LambdaUpdateWrapper<ChatRun> wrapper = Wrappers.<ChatRun>lambdaUpdate()
+                .eq(ChatRun::getId, runId)
+                // CAS 前提：仅当 run 仍处于 SELECT 时观察到的状态才置 ERROR（原子判定，消除 TOCTOU）
+                .eq(ChatRun::getStatus, expectedStatus)
+                .set(ChatRun::getStatus, "ERROR")
+                .set(ChatRun::getEndedAt, LocalDateTime.now());
+        int rows = runMapper.update(null, wrapper);
+        if (rows == 0) {
+            // SELECT→UPDATE 窗口内状态已迁移（典型：刚被 worker 取出转 ACTIVE）——跳过不误杀
+            log.info("CAS 置 ERROR 未命中（run 状态已在扫描后迁移）: runId={}, expected={}", runId, expectedStatus);
+        }
+        return rows;
     }
 
     /**

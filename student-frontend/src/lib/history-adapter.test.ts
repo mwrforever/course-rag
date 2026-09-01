@@ -128,6 +128,24 @@ describe("historyAdapter：基础映射", () => {
     expect(message.text).toBe("最终回答");
   });
 
+  it("stage=retrieving 原样透传不降级（BUG-22：历史回显与实时流 STAGE_KEYS 单源化）", () => {
+    const rows = [
+      makeRow({
+        id: "r1",
+        seq: 2,
+        messageType: "thinking",
+        content: "检索知识库",
+        thinkingStage: "retrieving",
+      }),
+      makeRow({ id: "r2", seq: 3, messageType: null, content: "回答" }),
+    ];
+    const [message] = historyAdapter(rows);
+    // retrieving 属合法阶段集合（复用实时流 STAGE_KEYS）：不再被降级归并为 generating 卡
+    expect(message.timeline).toEqual([
+      { kind: "thinking", stage: "retrieving", lines: ["检索知识库"], ended: true },
+    ]);
+  });
+
   it("思考卡按 LLM 调用拆分（2026-08-30）：上一张同 stage 思考卡之后有工具行则另起新卡（主 agent 每次模型调用一块思考卡）", () => {
     const rows = [
       // 调用1 思考（generating）

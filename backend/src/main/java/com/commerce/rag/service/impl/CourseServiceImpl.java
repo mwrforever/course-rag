@@ -178,23 +178,36 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
     }
 
     /**
-     * 注册课程查询缓存失效：事务提交后执行（afterCommit），无事务时直接执行
+     * 注册缓存失效动作：事务提交后执行（afterCommit），无事务上下文时直接执行
      *
-     * @param courseId 课程 ID
+     * <p>一致性铁律（宪法 A.5.4：先写 DB → 后失效缓存）的时机收敛——失效必须发生在事务
+     * commit 之后，否则存在「失效后-提交前并发读 miss 回填旧值」的脏读窗口（TTL 到期前
+     * 旧数据持续命中）。createCourse（77751c4 先例）与 deleteCourse（BUG-05+PERF-02）共用本挂点。
+     *
+     * @param action 缓存失效动作（课程键失效 / dashboard 区失效等）
      */
-    private void evictCourseCacheAfterCommit(Long courseId) {
+    private void evictCacheAfterCommit(Runnable action) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             // 事务内：挂 afterCommit 回调，提交后失效（避免失效后-提交前并发读回填旧值窗口）
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    courseQueryService.evictCourse(courseId);
+                    action.run();
                 }
             });
         } else {
             // 无事务上下文（如直接调用/单测）：保持既有同步失效语义
-            courseQueryService.evictCourse(courseId);
+            action.run();
         }
+    }
+
+    /**
+     * 注册课程查询缓存失效：事务提交后执行（afterCommit），无事务时直接执行
+     *
+     * @param courseId 课程 ID
+     */
+    private void evictCourseCacheAfterCommit(Long courseId) {
+        evictCacheAfterCommit(() -> courseQueryService.evictCourse(courseId));
     }
 
     /**
@@ -442,10 +455,14 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
                 .set(CourseInfo::getDeleted, ts)
                 .set(CourseInfo::getUpdatedAt, LocalDateTime.now());
         courseInfoMapper.update(null, wrapper);
-        // 级联软删后课程详情/内容/排期均不可见，失效该课程相关缓存键（先写 DB 后失效）
-        courseQueryService.evictCourse(courseId);
-        // 统计失效：课程专属 PENDING 分片已软删，影响 pendingChunkCount（先写 DB 后失效——M-2 新增项）
-        dashboardCacheEvictor.evictAll();
+        // 级联软删后课程详情/内容/排期均不可见，失效该课程相关缓存键 + dashboard 统计缓存
+        // （BUG-05+PERF-02：失效挂 afterCommit——提交后失效，消除「失效后-提交前并发读 miss
+        // 回填未删除旧值」的脏读窗口；失效内容不变仅时机后移，TTL 兜底不变）
+        evictCacheAfterCommit(() -> {
+            courseQueryService.evictCourse(courseId);
+            // 统计失效：课程专属 PENDING 分片已软删，影响 pendingChunkCount（M-2 新增项）
+            dashboardCacheEvictor.evictAll();
+        });
         log.info("级联软删课程: courseId={}, operator={}", courseId, currentUserId);
     }
 
@@ -543,6 +560,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
     /**
      * 更新单个 Tab 内容（不存在则创建）
      *
+     * <p>单 Tab 入口：归属校验 + 落库 + 缓存失效齐全；批量路径走
+     * {@link #batchUpdateContents}（校验/失效已收敛，循环内直调 {@link #doUpdateContent}）。
+     *
      * @param courseId      课程 ID
      * @param contentType   内容类型（intro / syllabus / instructor / faq）
      * @param content       Markdown 内容
@@ -550,6 +570,26 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
      */
     public void updateContent(Long courseId, String contentType, String content, Long currentUserId, boolean isAdmin) {
         checkOwnership(courseId, currentUserId, isAdmin);
+        doUpdateContent(courseId, contentType, content);
+        // 内容变更影响学生端内容读取，失效该课程相关缓存键（先写 DB 后失效）
+        courseQueryService.evictCourse(courseId);
+        log.info("更新课程内容: courseId={}, contentType={}", courseId, contentType);
+    }
+
+    /**
+     * 单个 Tab 内容落库（存在则更新、不存在则创建）——无归属校验、无缓存失效。
+     *
+     * <p>PERF-22（2026-08-31）：从 updateContent 提取的纯落库内核，供批量路径循环调用，
+     * 将「每 Tab 一次校验 + 一次失效」收敛为「循环外校验 1 次 + 循环后失效 1 次」；
+     * 校验/失效时机语义由调用方负责（updateContent 单 Tab 失效紧跟落库；
+     * batchUpdateContents 全部落库后统一失效——本方法非事务 autocommit 多语句路径，
+     * 与既有失效时机语义一致，见审核 §B.5）。
+     *
+     * @param courseId    课程 ID（归属校验已由调用方完成）
+     * @param contentType 内容类型（intro / syllabus / instructor / faq）
+     * @param content     Markdown 内容
+     */
+    private void doUpdateContent(Long courseId, String contentType, String content) {
         LambdaQueryWrapper<CourseContent> wrapper = Wrappers.<CourseContent>lambdaQuery()
                 .eq(CourseContent::getCourseId, courseId)
                 .eq(CourseContent::getContentType, contentType);
@@ -575,13 +615,14 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
                 throw new BizException(ErrorCode.CONFLICT, "课程内容已存在（并发操作冲突），请刷新后重试", e);
             }
         }
-        // 内容变更影响学生端内容读取，失效该课程相关缓存键（先写 DB 后失效）
-        courseQueryService.evictCourse(courseId);
-        log.info("更新课程内容: courseId={}, contentType={}", courseId, contentType);
     }
 
     /**
      * 批量更新全部 4 个 Tab 内容
+     *
+     * <p>PERF-22（2026-08-31）：归属校验收敛到循环外 1 次、缓存失效收敛到全部落库后 1 次
+     * （原每 Tab 各一次校验+失效，4 Tab 请求 4 次冗余主键查询 + 4 次冗余 evict——每次
+     * evict 含 SCAN 前缀删除）；先写 DB 后失效顺序语义不变。
      *
      * @param courseId      课程 ID
      * @param contents      内容列表
@@ -591,9 +632,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
             Long courseId, List<CourseDTO.CourseContentDTO> contents, Long currentUserId, boolean isAdmin) {
         checkOwnership(courseId, currentUserId, isAdmin);
         for (CourseDTO.CourseContentDTO dto : contents) {
-            updateContent(courseId, dto.contentType(), dto.content(), currentUserId, isAdmin);
+            doUpdateContent(courseId, dto.contentType(), dto.content());
         }
-        // 各 Tab 已分别失效缓存，此处再按 courseId 兜底一次（幂等，先写 DB 后失效）
+        // 全部 Tab 落库后按 courseId 统一失效（先写 DB 后失效；批内中途被缓存的读最终一致）
         courseQueryService.evictCourse(courseId);
         log.info("批量更新课程内容: courseId={}, tabCount={}", courseId, contents.size());
     }

@@ -203,11 +203,40 @@ class CourseServiceTest {
         course.setCreatedBy(100L);
         when(courseInfoMapper.selectById(1L)).thenReturn(course);
 
-        // When
+        // When（无事务上下文：直接失效的既有语义保持）
         courseService.deleteCourse(1L, 100L, false);
 
         // Then: 软删完成后触发缓存失效（先写 DB 后失效）
         verify(courseQueryService).evictCourse(1L);
+    }
+
+    @Test
+    @DisplayName("BUG-05+PERF-02: deleteCourse → 事务上下文内缓存失效挂 afterCommit（提交后才失效）")
+    void deleteCourse_evictsCacheAfterCommit() {
+        // Given: 课程 1 属于创建者 100；模拟活动事务同步上下文（生产由 @Transactional 切面注册）
+        CourseInfo course = new CourseInfo();
+        course.setId(1L);
+        course.setCreatedBy(100L);
+        when(courseInfoMapper.selectById(1L)).thenReturn(course);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            // When
+            courseService.deleteCourse(1L, 100L, false);
+
+            // Then: 事务提交前课程缓存与 dashboard 缓存均未失效——
+            // 消除「失效后-提交前并发读 miss 回填未删除旧值」的脏读窗口（与 createCourse 先例一致）
+            verify(courseQueryService, never()).evictCourse(anyLong());
+            verify(dashboardCacheEvictor, never()).evictAll();
+            // 触发 afterCommit 回调（等价事务提交后）
+            for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) {
+                sync.afterCommit();
+            }
+            // Then: 提交后课程键 + dashboard 统计区均失效（失效内容不变仅时机后移，TTL 兜底不变）
+            verify(courseQueryService).evictCourse(1L);
+            verify(dashboardCacheEvictor).evictAll();
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     // ==================== createCourse / 查询 / 教师 / 内容 补充 ====================
@@ -719,7 +748,7 @@ class CourseServiceTest {
     }
 
     @Test
-    @DisplayName("batchUpdateContents → 逐 Tab 更新并兜底失效缓存")
+    @DisplayName("batchUpdateContents → 逐 Tab 落库 + 循环后失效缓存 1 次（PERF-22 收敛后语义）")
     void batchUpdateContents_updatesAll() {
         when(courseInfoMapper.selectById(1L)).thenReturn(course(1L, 7L));
         when(courseContentMapper.selectOne(any())).thenReturn(null);
@@ -730,7 +759,35 @@ class CourseServiceTest {
         courseService.batchUpdateContents(1L, contents, 7L, false);
 
         verify(courseContentMapper, times(2)).insert(any(CourseContent.class));
-        verify(courseQueryService, times(3)).evictCourse(1L);
+        // PERF-22：校验收敛到循环外后，逐 Tab 不再各自失效——仅循环后兜底失效 1 次
+        verify(courseQueryService, times(1)).evictCourse(1L);
+    }
+
+    @Test
+    @DisplayName("PERF-22 batchUpdateContents → 校验 1 次 + 全部落库后失效 1 次（行为等价：逐 Tab 落库不变）")
+    void batchUpdateContents_convergesCheckAndEvict() {
+        when(courseInfoMapper.selectById(1L)).thenReturn(course(1L, 7L));
+        CourseContent existing = new CourseContent();
+        existing.setId(10L);
+        // 首个 Tab 命中已存在（update 路径），第二个 Tab 走创建（insert 路径）——两分支均覆盖
+        when(courseContentMapper.selectOne(any())).thenReturn(existing, (CourseContent) null);
+        List<CourseDTO.CourseContentDTO> contents = List.of(
+                new CourseDTO.CourseContentDTO("overview", "新简介", 1), new CourseDTO.CourseContentDTO("faq", "常见问题", 4));
+
+        courseService.batchUpdateContents(1L, contents, 7L, false);
+
+        // 行为等价：两个 Tab 均落库（1 更新 + 1 创建），批量结果与收敛前一致
+        verify(courseContentMapper).update(isNull(), any());
+        verify(courseContentMapper).insert(any(CourseContent.class));
+        // PERF-22 收敛：归属校验仅循环外 1 次（原 3 次主键查询）、缓存失效仅循环后 1 次
+        // （原 3 次 evictCourse，每次含 SCAN 前缀删除）
+        verify(courseInfoMapper, times(1)).selectById(1L);
+        verify(courseQueryService, times(1)).evictCourse(1L);
+        // 一致性铁律（A.5.4）：先写 DB 后失效——全部 Tab 落库完成后才失效缓存
+        InOrder order = inOrder(courseContentMapper, courseQueryService);
+        order.verify(courseContentMapper).update(isNull(), any());
+        order.verify(courseContentMapper).insert(any(CourseContent.class));
+        order.verify(courseQueryService).evictCourse(1L);
     }
 
     @Test

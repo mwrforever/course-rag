@@ -69,8 +69,8 @@ export function SiteFooter() {
 
       {/* ===== 深墨面板 ===== */}
       <div className="bg-ink-800 px-[6vw] pt-[90px] pb-[80px] text-bg">
-        <p className="text-script text-center text-[#E8DFCE]">The Wenqu Way</p>
-        <p className="font-serif-display mx-auto mt-9 max-w-4xl text-center text-[clamp(32px,4.4vw,58px)] leading-[1.18] font-medium text-[#F1EADC]">
+        <p className="text-script text-center text-cream-300">The Wenqu Way</p>
+        <p className="font-serif-display mx-auto mt-9 max-w-4xl text-center text-[clamp(32px,4.4vw,58px)] leading-[1.18] font-medium text-cream-100">
           为有源头活水来。
         </p>
 
@@ -100,7 +100,7 @@ export function SiteFooter() {
         {/* 四列导航 */}
         <div className="mt-[100px] grid grid-cols-1 gap-12 md:grid-cols-[230px_1fr_1fr_1fr]">
           {/* 品牌徽记 */}
-          <div className="text-[#E9E2D3] max-md:text-center">
+          <div className="text-cream-200 max-md:text-center">
             <svg
               viewBox="0 0 140 160"
               fill="none"

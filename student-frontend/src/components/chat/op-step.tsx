@@ -14,7 +14,7 @@
  * reduced-motion 由 globals.css 全局总开关降级（抖动/光带/跳动点全部瞬时化）。
  */
 import { CaretRight } from "@phosphor-icons/react";
-import { useState, type ReactNode } from "react";
+import { memo, useState, type ReactNode } from "react";
 import { ChainNode } from "./chain-node";
 
 /** 检索/工具步骤 props */
@@ -85,9 +85,12 @@ export function summarizeOutput(output: unknown): string {
 /**
  * 检索/工具步骤（单行内容 + 光带 + 完成箭头；未完成点击 shake、完成点击动作）
  *
+ * memo 化（PERF-05 顺带补齐）：时间轴容器重渲染时 props 未变的步骤跳过重新执行，
+ * 与 ThinkingStep 的步骤级 memo 口径对齐。
+ *
  * @param props 见 OpStepProps
  */
-export function OpStep({
+export const OpStep = memo(function OpStep({
   running,
   icon,
   ring,
@@ -175,4 +178,4 @@ export function OpStep({
       </div>
     </div>
   );
-}
+});

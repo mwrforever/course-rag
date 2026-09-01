@@ -119,7 +119,8 @@ class EtlPipelineTest {
                 16,
                 10,
                 new EtlProperties.Table(25, 30, 2),
-                500);
+                500,
+                120);
         // 事务模板：mock 管理器直接放行（getTransaction 返回 mock status，commit 为空操作），
         // 使 executeWithoutResult 透传执行管道落库逻辑
         lenient()
@@ -527,7 +528,8 @@ class EtlPipelineTest {
                 16,
                 10,
                 new EtlProperties.Table(25, 30, 2),
-                2);
+                2,
+                120);
         EtlPipeline smallBatchPipeline = new EtlPipeline(
                 documentMapper,
                 chunkMapper,
@@ -1242,6 +1244,48 @@ class EtlPipelineTest {
         when(documentMapper.selectById(99L)).thenReturn(null);
 
         assertThrows(IllegalStateException.class, () -> etlPipeline.syncDocToMilvus(99L));
+    }
+
+    @Test
+    @DisplayName("PERF-20: syncDocToMilvus → chunk 查询按需投影 12 必要列（向量保留，metadata_json 等可省列不取回）")
+    void syncDocToMilvus_chunkQuery_projectsOnlyNeededColumns() {
+        Document doc = new Document();
+        doc.setId(1L);
+        when(documentMapper.selectById(1L)).thenReturn(doc);
+        DocumentChunk vectorized = new DocumentChunk();
+        vectorized.setId(1L);
+        vectorized.setDocId(1L);
+        vectorized.setKbId(10L);
+        vectorized.setDenseVector(new byte[] {0, 0, 0, 0});
+        when(chunkMapper.selectList(any())).thenReturn(List.of(vectorized));
+
+        etlPipeline.syncDocToMilvus(1L);
+
+        // 捕获 chunk 查询 wrapper，校验 select 列清单（原全列取回含 metadata_json 等无用大列）
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<LambdaQueryWrapper> queryCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(chunkMapper).selectList(queryCaptor.capture());
+        String sqlSelect = String.valueOf(queryCaptor.getValue().getSqlSelect());
+        // 12 个必要列齐全（Milvus 行构建消费 + 向量过滤/恢复）
+        for (String col : List.of(
+                "id",
+                "doc_id",
+                "kb_id",
+                "chunk_index",
+                "content",
+                "heading_path",
+                "token_count",
+                "course_id",
+                "content_type",
+                "image_url",
+                "sha256",
+                "dense_vector")) {
+            assertTrue(sqlSelect.contains(col), "投影应包含必要列: " + col);
+        }
+        // 可省列不得取回（metadata_json 等大列传输后即弃）
+        assertFalse(sqlSelect.contains("metadata_json"), "metadata_json 不应取回");
+        assertFalse(sqlSelect.contains("parent_title"), "parent_title 不应取回");
+        assertFalse(sqlSelect.contains("correction_status"), "correction_status 不应取回");
     }
 
     // ========================================================================

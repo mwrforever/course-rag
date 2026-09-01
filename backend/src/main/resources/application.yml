@@ -43,11 +43,28 @@ spring:
         options:
           model: qwen3.8-max          # spec §6 主对话旗舰
           temperature: 0.7
+    # N3-3（宪法 B.4.4）：模型调用阻塞路径重试收紧——Spring AI 默认 max-attempts=10 ×
+    # 指数退避（initial 2s、multiplier 5），最坏退避累计 20+ 分钟，会话链路多模型调用叠加
+    # 会显著放大端到端延迟。收紧为 3 次（1 次原始 + 2 次重试）+ 2s 起步 ×2 退避、上限 30s，
+    # 最坏退避累计仅 6s。on-client-errors=false（默认语义显式化）：4xx 客户端错误抛
+    # NonTransientAiException 不重试，仅 5xx/429 等瞬时故障进入重试。
+    retry:
+      max-attempts: 3
+      on-client-errors: false
+      backoff:
+        initial-interval: 2s
+        multiplier: 2
+        max-interval: 30s
 
   # ── PostgreSQL 数据源 ──
   datasource:
-    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:commerce_rag}
+    # PERF-01（宪法 A.4.12）：开启 pgJDBC 批插重写——saveBatch 多条 INSERT 合并为
+    # multi-values 单语句下发，批插吞吐提升 2~3 倍；含 ON CONFLICT/RETURNING 等语句
+    # pgJDBC 自动跳过重写，无兼容风险
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:commerce_rag}?reWriteBatchedInserts=true
     username: ${PG_USER:postgres}
+    # BUG-17: dev 兜底默认口令仅供本地/CI（无 .env 也能跑）；生产须注入 PG_PASSWORD 真实值
+    # 并设 auth.strict-secret=true——启动校验发现仍为默认值即拒绝启动
     password: ${PG_PASSWORD:rag_pg_2024}
     hikari:
       maximum-pool-size: 20
@@ -87,6 +104,8 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # BUG-17: dev 兜底默认口令仅供本地/CI；生产须注入 REDIS_PASSWORD 真实值
+      # 并设 auth.strict-secret=true——启动校验发现仍为默认值即拒绝启动
       password: ${REDIS_PASSWORD:rag_redis_2024}
       lettuce:
         pool:
@@ -135,6 +154,9 @@ minio:
 milvus:
   host: ${MILVUS_HOST:localhost}
   port: ${MILVUS_PORT:19530}
+  # PERF-04（宪法 D.5.10）：单次 RPC 截止时间（毫秒）——SDK 默认 0=无截止，
+  # gRPC 挂起会永久占用检索/ETL 线程；30s 起步防误杀大 batch，按部署环境调整
+  rpc-deadline-ms: 30000
   collection-name: knowledge_chunks
   # text-embedding-v4 输出维度
   embedding-dim: 1024
@@ -197,6 +219,10 @@ etl:
     max-rows-per-chunk: 30           # 分组行数硬上限（token 动态调整）
     overlap-rows: 2                  # 相邻子 chunk 间重叠行数（spec §4.3「1~2 行」）
   chunk-insert-batch-size: 500       # P1-4: 分片批量插入分批上限（防超长 SQL）
+  # PERF-20: 批量标注文档级 Milvus 同步总超时（秒，默认 120）——B 端批量标注接口
+  # 2 并发分批同步全部文档的时限，超时取消未完成任务并上抛（同步幂等可重试收敛），
+  # 防 HTTP 请求线程无限陪等挂死的 Milvus 任务
+  annotation-sync-timeout-seconds: 120
 
 # ── 对话配置 ──
 chat:
@@ -314,6 +340,8 @@ auth:
   secret: ${JWT_SECRET:commerce-rag-secret-key-2026-must-be-at-least-256-bits-long-for-hs256}
   # BUG-7: JWT 密钥严格模式（默认 false 不拦截，开发可用默认值）——生产设 true 时启动校验
   # JWT_SECRET 已配置且非默认值，否则拒绝启动（防漏配导致可伪造任意身份 Token）
+  # BUG-17: 严格模式扩展覆盖全部敏感 env——JWT_SECRET / PG_PASSWORD / REDIS_PASSWORD /
+  # AUTH_ADMIN_SEED_PASSWORD 任一未注入（为空或仍为内置默认值）即拒绝启动，缺失项汇总一次性抛出
   strict-secret: false
   # AT 有效期（秒，默认 900=15min）
   access-token-expiry: 900
@@ -335,11 +363,12 @@ auth:
     cleanup-interval-seconds: 3600
   # 默认管理员账户种子（AdminSeedInitializer 启动时幂等写入系统唯一超管）
   # username/display-name 可用 AUTH_ADMIN_SEED_USERNAME / AUTH_ADMIN_SEED_DISPLAY_NAME 覆盖；
-  # password 默认 admin123（与 V6 迁移出厂种子一致），生产必须用 AUTH_ADMIN_SEED_PASSWORD 覆盖真实值
-  # 或首次登录后立即改密——已管理员自行改密后，启动不再覆盖该密码
+  # BUG-17: password 由明文改环境变量注入（dev 兜底默认 admin123 与 V6 迁移出厂种子一致，
+  # 零行为变化）；生产必须用 AUTH_ADMIN_SEED_PASSWORD 覆盖真实值（strict-secret=true 时
+  # 仍为默认值即拒绝启动），或首次登录后立即改密——已管理员自行改密后，启动不再覆盖该密码
   admin-seed:
     username: admin
-    password: admin123
+    password: ${AUTH_ADMIN_SEED_PASSWORD:admin123}
     display-name: 系统管理员
 
 # ── 学员邮箱注册（验证码生命周期 / 防爆破阈值 / 邮件文案，详见 RegisterProperties）──

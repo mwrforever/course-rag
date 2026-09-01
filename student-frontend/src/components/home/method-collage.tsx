@@ -6,7 +6,10 @@
  * 业务替换：西伦敦私塾故事 → RAG 检索增强工作原理的三步讲述
  * （入库 → 检索 → 有据可答），右侧文字块 + 左侧漂浮宝丽来照片墙
  * （三张错落旋转浮动动画 + 区块级视差位移）。
+ * PERF-06：宝丽来照片改走 next/image（fill + 懒加载 + AVIF/WebP 转换），
+ * 浮动/旋转动效保留在 figure 上不受影响。
  */
+import Image from "next/image";
 import Link from "next/link";
 import { useParallax } from "@/components/motion/parallax";
 import { Reveal } from "@/components/motion/reveal";
@@ -53,8 +56,9 @@ export function MethodCollage() {
               aria-hidden
               className="absolute inset-[2%] blur-[4px]"
               style={{
+                // 三束径向柔光端点色引用 @theme 令牌（BUG-24：渐变内联无法用工具类，var() 同值替换）
                 background:
-                  "radial-gradient(closest-side at 28% 28%, #EFDCc4, transparent 70%), radial-gradient(closest-side at 72% 58%, #E7CDB4, transparent 70%), radial-gradient(closest-side at 45% 88%, #DEE4D3, transparent 72%)",
+                  "radial-gradient(closest-side at 28% 28%, var(--color-glow-sand), transparent 70%), radial-gradient(closest-side at 72% 58%, var(--color-glow-tan), transparent 70%), radial-gradient(closest-side at 45% 88%, var(--color-glow-sage), transparent 72%)",
               }}
             />
             {SNAPS.map((snap) => (
@@ -63,12 +67,16 @@ export function MethodCollage() {
                 className={`absolute bg-white p-3 pb-4 shadow-xl ${snap.className} ${snap.rotate}`}
                 style={{ animation: `floaty 8s ease-in-out ${snap.delay} infinite` }}
               >
-                <img
-                  src={snap.src}
-                  alt=""
-                  loading="lazy"
-                  className="aspect-4/3.1 w-full object-cover"
-                />
+                {/* 相对定位容器承载原 aspect 比例（fill 模式需有尺寸的定位父级） */}
+                <div className="relative aspect-4/3.1">
+                  <Image
+                    src={snap.src}
+                    alt=""
+                    fill
+                    sizes="(max-width: 1024px) 60vw, 20vw"
+                    className="object-cover"
+                  />
+                </div>
               </figure>
             ))}
           </div>
@@ -79,12 +87,12 @@ export function MethodCollage() {
           <h2 className="font-serif-display mt-5 mb-8 text-[clamp(32px,3.6vw,52px)] leading-[1.14] font-medium">
             不是凭空作答，而是先翻遍你的课堂资料
           </h2>
-          <p className="mb-[22px] max-w-[560px] text-[15.5px] leading-[1.9] text-[#4A4038]">
+          <p className="mb-[22px] max-w-[560px] text-[15.5px] leading-[1.9] text-text-warm">
             传统问答模型最让人不安的是「一本正经地编」。问渠学堂把检索放在生成之前：
             你的每一门课、每份讲义都经过解析、分块、语义索引进入知识库；提问发生时，
             助教先在资料里定位相关段落，再组织语言回答——答案下方的「来源卡片」可以逐条点开原文核对。
           </p>
-          <p className="max-w-[560px] text-[15.5px] leading-[1.9] text-[#4A4038]">
+          <p className="max-w-[560px] text-[15.5px] leading-[1.9] text-text-warm">
             我们相信：学习工具的价值不在于替你完成作业，而在于让你更快抵达「真正理解」的那一刻。
           </p>
           <Link href="/chat" className="rule-link mt-4 uppercase">

@@ -13,7 +13,10 @@ const nextConfig: NextConfig = {
     return [{ source: "/api/v1/:path*", destination: "http://localhost:8080/api/v1/:path*" }];
   },
   images: {
+    // PERF-06：优化管道输出格式补 AVIF（默认仅 WebP；现代浏览器协商命中 AVIF 体积再降 ~30%）
+    formats: ["image/avif", "image/webp"],
     // 课程封面图来自本地 MinIO（9000 端口），供 next/image 优化使用
+    // （首页精选课程封面 PERF-06 同口径复用；生产域名接入时在此追加）
     remotePatterns: [{ protocol: "http", hostname: "localhost", port: "9000" }],
   },
 };

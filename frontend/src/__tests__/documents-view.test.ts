@@ -8,7 +8,10 @@ import { ApiError, courseApi, documentApi, knowledgeBaseApi } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
-import DocumentsView from '@/views/DocumentsView.vue'
+import DocumentsView, {
+  ETL_REFRESH_ERROR_BACKOFF_MS,
+  UPLOAD_FILE_TYPES,
+} from '@/views/DocumentsView.vue'
 
 import type { PageResponse } from '@/lib/types'
 import type { CourseDTO, DocumentParseStatus, DocumentVO, KnowledgeBaseVO } from '@/lib/types'
@@ -559,6 +562,17 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
     wrapper.unmount()
   })
 
+  it('drop-zone 文案由白名单常量派生：包含 xlsx/xls（Excel 白名单扩展后不再漂移）', async () => {
+    const { wrapper, dialog } = await openUpload()
+    const dropZone = dialog.find('[data-testid="drop-zone"]')
+    expect(dropZone.exists()).toBe(true)
+
+    // 文案必须包含完整派生白名单（xlsx/xls 随常量扩展自动进入提示，不再硬编码漂移）
+    expect(dropZone.text()).toContain(`支持 ${UPLOAD_FILE_TYPES.join('/')}`)
+    expect(dropZone.text()).toContain('pdf/docx/pptx/md/txt/xlsx/xls')
+    wrapper.unmount()
+  })
+
   it('类型白名单：exe 文件拒绝（仅 pdf/docx/pptx/md/txt/xlsx/xls）', async () => {
     const { wrapper, dialog } = await openUpload()
     const uploadSpy = vi.spyOn(documentApi, 'upload').mockResolvedValue(doc('d-new', 'PENDING'))
@@ -768,6 +782,67 @@ describe('DocumentsView：ETL 轮询接线（vue-query refetchInterval）', () =
     expect(listSpy.mock.calls.length).toBe(callsAfterMount)
     vi.useRealTimers()
   })
+
+  it('后台刷新失败：保留已加载表格 + 顶部轻提示（非阻断），恢复后轻提示消失（BUG-33）', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(knowledgeBaseApi, 'list').mockResolvedValue(pageOf([kb('kb-1', '前端知识库')], '1'))
+    vi.spyOn(documentApi, 'list')
+      .mockResolvedValueOnce(pageOf([doc('d-1', 'PARSING')], '1'))
+      .mockRejectedValueOnce(new ApiError(500, '刷新失败', 500))
+      .mockResolvedValueOnce(pageOf([doc('d-1', 'INDEXED')], '1'))
+    const { wrapper } = await mountDocuments()
+    expect(wrapper.find('[data-testid="doc-table"]').exists()).toBe(true)
+
+    // 推进 5s：轮询触发的后台 refetch 失败
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+
+    // 已加载表格保留 + 轻提示在场；整表错误横幅（role=alert）不出现
+    expect(wrapper.find('[data-testid="doc-table"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="row-d-1"]').exists()).toBe(true)
+    const notice = wrapper.find('[data-testid="refresh-notice"]')
+    expect(notice.exists()).toBe(true)
+    expect(notice.attributes('role')).toBe('status')
+    expect(notice.text()).toContain('刷新失败')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+
+    // 退避间隔后自动重试成功 → 轻提示消失、状态收敛为终态（轮询随之停止）
+    await vi.advanceTimersByTimeAsync(ETL_REFRESH_ERROR_BACKOFF_MS)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="refresh-notice"]').exists()).toBe(false)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="row-d-1"]').exists()).toBe(true)
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
+  it('刷新失败退避：error 态轮询间隔退避 15s（5s 处不重发，退避到期才重试）', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(knowledgeBaseApi, 'list').mockResolvedValue(pageOf([kb('kb-1', '前端知识库')], '1'))
+    const listSpy = vi
+      .spyOn(documentApi, 'list')
+      .mockResolvedValueOnce(pageOf([doc('d-1', 'PARSING')], '1'))
+      .mockRejectedValueOnce(new ApiError(500, '刷新失败', 500))
+      .mockResolvedValue(pageOf([doc('d-1', 'PARSING')], '1'))
+    await mountDocuments()
+    const callsAfterMount = listSpy.mock.calls.length
+
+    // t=5000：首次轮询失败（旧 5s 间隔触发）
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+    expect(listSpy.mock.calls.length).toBe(callsAfterMount + 1)
+
+    // t=10000：处于退避期（间隔已退避 15s），失败请求不按 5s 高频重发
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+    expect(listSpy.mock.calls.length).toBe(callsAfterMount + 1)
+
+    // t=20000：退避到期自动重试（成功后恢复常规 5s 轮询，此处只断言退避到期这一次）
+    await vi.advanceTimersByTimeAsync(ETL_REFRESH_ERROR_BACKOFF_MS - 5000)
+    await flushPromises()
+    expect(listSpy.mock.calls.length).toBe(callsAfterMount + 2)
+    vi.useRealTimers()
+  })
 })
 
 describe('DocumentsView：四态', () => {
@@ -800,6 +875,20 @@ describe('DocumentsView：四态', () => {
     await flushPromises()
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="doc-table"]').text()).toContain('d-1')
+    wrapper.unmount()
+  })
+
+  it('首次加载失败（无缓存数据）：整表错误横幅 + 重试语义保留，不出现后台刷新轻提示（BUG-33）', async () => {
+    vi.spyOn(knowledgeBaseApi, 'list').mockResolvedValue(pageOf([kb('kb-1', '前端知识库')], '1'))
+    vi.spyOn(documentApi, 'list')
+      .mockRejectedValueOnce(new ApiError(503, '服务暂时不可用', 503))
+      .mockResolvedValue(pageOf([doc('d-1', 'INDEXED')], '1'))
+    const { wrapper } = await mountDocuments()
+
+    // 无数据失败：整表横幅（role=alert）在场且可重试；轻提示不出现（区分后台刷新失败）
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="retry-docs"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="refresh-notice"]').exists()).toBe(false)
     wrapper.unmount()
   })
 

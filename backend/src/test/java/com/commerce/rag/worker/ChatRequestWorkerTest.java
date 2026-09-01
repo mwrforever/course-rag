@@ -11,6 +11,8 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
+import com.alibaba.cloud.ai.graph.streaming.OutputType;
+import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.RetrieveNode;
 import com.commerce.rag.bot.hook.WarningHook;
@@ -18,6 +20,7 @@ import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
+import com.commerce.rag.properties.AgentProperties;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.record.AssistantMessageCapture;
@@ -151,7 +154,8 @@ class ChatRequestWorkerTest {
                 orchestrator,
                 memoryExtractionPipeline,
                 new ObjectMapper(),
-                "qwen3.8-max");
+                // 主对话模型 qwen3.8-max（原测试语义，runLimit 取兜底值 15）经属性类注入
+                new AgentProperties(15, "qwen3.8-max"));
 
         // 公共 stub：saver.get 返回空 Optional（无历史 checkpoint）
         lenient().when(saver.get(any(RunnableConfig.class))).thenReturn(Optional.empty());
@@ -183,6 +187,10 @@ class ChatRequestWorkerTest {
         lenient()
                 .when(streamOps.acknowledge(anyString(), anyString(), anyString()))
                 .thenReturn(0L);
+
+        // 公共 stub：updateStatus 默认命中 1 行（BUG-01 后返回影响行数，0 行=状态机守卫拒绝迁移；
+        // 正常流程用例均期望迁移成功，个别用例自行覆盖为 0 验证短路）
+        lenient().when(chatRunService.updateStatus(anyLong(), anyString())).thenReturn(1);
     }
 
     @AfterEach
@@ -339,11 +347,24 @@ class ChatRequestWorkerTest {
                 abnormalPath);
     }
 
-    // ==================== cancel() 测试 ====================
+    // ==================== cancel() 测试（BUG-14：条目生命周期 = 入队注册 → processRequest.finally 清理） ====================
 
     @Test
-    @DisplayName("cancel 设置取消标记 — cancelFlags 包含 runId=true")
-    void cancel_setsFlag() throws Exception {
+    @DisplayName("cancel 未注册的 runId — 不创建条目（BUG-14：取消已完成 run 不再残留）")
+    void cancel_unregisteredRun_doesNotCreateEntry() throws Exception {
+        // run 不在排队/执行中（无入队注册条目）：cancel 必须是 no-op，
+        // 原实现 computeIfAbsent 无条件建条目，而唯一清理路径（processRequest.finally）
+        // 已执行完毕 → 条目永久残留（TOCTOU 窗口泄漏）
+        worker.cancel("run123");
+
+        ConcurrentHashMap<String, AtomicBoolean> flags = getCancelFlags();
+        assertFalse(flags.containsKey("run123"), "run 不在执行中时 cancel 不得创建残留条目");
+    }
+
+    @Test
+    @DisplayName("registerPendingRun + cancel — 标记置位为 true（排队/执行中 run 可取消）")
+    void cancel_afterRegister_setsFlag() throws Exception {
+        worker.registerPendingRun("run123");
         worker.cancel("run123");
 
         ConcurrentHashMap<String, AtomicBoolean> flags = getCancelFlags();
@@ -352,8 +373,9 @@ class ChatRequestWorkerTest {
     }
 
     @Test
-    @DisplayName("cancel 多次调用同一 runId — 标记仍为 true")
+    @DisplayName("registerPendingRun + 多次 cancel 同一 runId — 标记仍为 true")
     void cancel_multipleCalls_flagRemainsTrue() throws Exception {
+        worker.registerPendingRun("run123");
         worker.cancel("run123");
         worker.cancel("run123");
 
@@ -362,14 +384,31 @@ class ChatRequestWorkerTest {
     }
 
     @Test
-    @DisplayName("cancel 不同 runId — 各自独立设置")
+    @DisplayName("registerPendingRun + 不同 runId cancel — 各自独立设置")
     void cancel_differentRunIds_independentFlags() throws Exception {
+        worker.registerPendingRun("run1");
+        worker.registerPendingRun("run2");
         worker.cancel("run1");
         worker.cancel("run2");
 
         ConcurrentHashMap<String, AtomicBoolean> flags = getCancelFlags();
         assertTrue(flags.get("run1").get());
         assertTrue(flags.get("run2").get());
+    }
+
+    @Test
+    @DisplayName("registerPendingRun 后 run 正常完成 — finally 清理取消条目（生命周期闭合）")
+    void processRequest_normalCompletion_removesRegisteredCancelFlag() throws Exception {
+        // 入队注册的条目在 run 终止（正常完成）时由 processRequest.finally 清理，
+        // 保证「注册 → 执行 → 清理」生命周期闭合，注册本身不成为泄漏源
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+        worker.registerPendingRun("100");
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        assertFalse(getCancelFlags().containsKey("100"), "run 完成后取消条目应被 finally 清理");
     }
 
     // ==================== processRequest 正常完成流程 ====================
@@ -458,7 +497,8 @@ class ChatRequestWorkerTest {
     @Test
     @DisplayName("取消流程 — cancel 后 stream 触发 CancelledException → updateStatus(CANCELLED)")
     void processRequest_cancelled_updatesStatusCancelled() throws Exception {
-        // Given: 先设置取消标记
+        // Given: 先注册（模拟 BUG-14 入队注册）再设置取消标记
+        worker.registerPendingRun("100");
         worker.cancel("100");
 
         NodeOutput mockChunk = mock(NodeOutput.class);
@@ -701,6 +741,118 @@ class ChatRequestWorkerTest {
     }
 
     @Test
+    @DisplayName("persistMessages 正常路径 — 多工具调用时 TOOL_RESULT 行 seq 穿插于对应实体行之间（BUG-11 回放时序与实时一致）")
+    @SuppressWarnings("unchecked")
+    void persistMessages_toolResultSeq_interleavedBetweenEntityRows() throws Exception {
+        // Given: 多工具调用场景（捕获顺序 = 调用结束序）——
+        // QU（thinking+query_plan，2 VO）→ 主agent第1轮（thinking+2×TOOL_CALL，3 VO，无正文）
+        // → 工具执行返回 2 个结果 → 主agent第2轮（thinking+正文，2 VO）
+        // 实时事件序：... TOOL_CALL(call-1/call-2) → TOOL_RESULT(call-1) → TOOL_RESULT(call-2)
+        // → 第2轮思考/正文；回放（按 seq 重建时间轴）必须与此一致，而非 TOOL_RESULT 集中排在末尾
+        AssistantMessageSink sink = new AssistantMessageSink();
+        sink.capture("understanding", "先理解问题", "{\"intent\":\"knowledge_question\",\"rewritten\":[\"大纲\"]}", List.of());
+        sink.capture(
+                "generating",
+                "第1轮思考",
+                null,
+                List.of(
+                        new AssistantMessageCapture.AssistantToolCall("call-1", "searchKnowledge", "{}"),
+                        new AssistantMessageCapture.AssistantToolCall("call-2", "getCourseOutline", "{}")));
+        // 第2轮思考全文须长于第1轮（sink 按全文差截增量），否则捕获为空思考
+        sink.capture("generating", "第1轮思考继续第2轮思考", "最终回答", List.of());
+
+        ToolResponseMessage trm = mock(ToolResponseMessage.class);
+        when(trm.getResponses())
+                .thenReturn(List.of(
+                        new ToolResponseMessage.ToolResponse("call-1", "searchKnowledge", "结果1"),
+                        new ToolResponseMessage.ToolResponse("call-2", "getCourseOutline", "结果2")));
+        OverAllState state = new OverAllState(Map.of("messages", List.of(trm)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        // When
+        invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, null, sink, false);
+
+        // Then: 期望 seq 分配（事件序）——user(0) → QU 实体(block 1-2) → 主1实体(block 3-5)
+        // → TOOL_RESULT(6,7) → 主2实体(block 8-9)；TOOL_RESULT 穿插于两轮主 agent 实体行之间
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        List<ChatMessage> rows = captor.getValue();
+        assertEquals(6, rows.size(), "USER + QU实体 + 主1实体 + 2×TOOL_RESULT + 主2实体");
+
+        ChatMessage mainRound1 = rows.stream()
+                .filter(r -> r.getContent().contains("call-1") && r.getContent().contains("toolCalls"))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(5, mainRound1.getSeq().intValue(), "主1实体拆 3 VO（thinking+2×TOOL_CALL），seq 取末位 5");
+
+        List<ChatMessage> toolResults = rows.stream()
+                .filter(r -> "TOOL_RESULT".equals(r.getMessageType()))
+                .toList();
+        assertEquals(2, toolResults.size(), "2 个工具结果各落独立 TOOL_RESULT 行");
+        ChatMessage result1 = toolResults.get(0);
+        ChatMessage result2 = toolResults.get(1);
+        assertTrue(result1.getContent().contains("\"toolCallId\":\"call-1\""), "到达序在前的结果先落: " + result1.getContent());
+        assertTrue(result2.getContent().contains("\"toolCallId\":\"call-2\""), "到达序在后的结果后落: " + result2.getContent());
+        assertEquals(6, result1.getSeq().intValue(), "BUG-11：TOOL_RESULT(call-1) seq 应紧随主1实体行（末位5）之后");
+        assertEquals(7, result2.getSeq().intValue(), "BUG-11：TOOL_RESULT(call-2) seq 应紧随 call-1 之后");
+
+        ChatMessage mainRound2 = rows.stream()
+                .filter(r ->
+                        "assistant".equals(r.getMessageType()) && r.getContent().contains("最终回答"))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(9, mainRound2.getSeq().intValue(), "主2实体拆 2 VO（thinking+正文），block 起于 TOOL_RESULT 之后（8-9）");
+        assertTrue(mainRound2.getSeq() > result2.getSeq(), "回放时序：第2轮主 agent 实体行必须排在 TOOL_RESULT 之后（与实时事件序一致）");
+    }
+
+    @Test
+    @DisplayName("persistMessages TOOL_RESULT 落库截断与实时 SSE 事件口径一致（BUG-16 统一 4000）")
+    @SuppressWarnings("unchecked")
+    void persistMessages_toolResultTruncation_alignedWithRealtimeEvent() throws Exception {
+        // Given: 5000 字符工具输出（超 4000 截断阈值）——实时事件侧截断（SseEventTransformer），
+        // 落库侧修复前存全量，前端实时看 4000 截断、回放看全量，口径分叉（BUG-16）
+        String longOutput = "y".repeat(5000);
+        AssistantMessageSink sink = new AssistantMessageSink();
+        sink.capture("generating", "思考", "回答", List.of());
+        ToolResponseMessage trm = mock(ToolResponseMessage.class);
+        when(trm.getResponses())
+                .thenReturn(List.of(new ToolResponseMessage.ToolResponse("call-1", "searchKnowledge", longOutput)));
+        OverAllState state = new OverAllState(Map.of("messages", List.of(trm)));
+        NodeOutput lastOutput = mock(NodeOutput.class);
+        when(lastOutput.state()).thenReturn(state);
+
+        // When: 落库侧（正常完成路径，结果未配对实体行走兜底位）
+        invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, null, sink, false);
+
+        // 落库 TOOL_RESULT 行 output 字段
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(captor.capture());
+        ChatMessage toolResultRow = captor.getValue().stream()
+                .filter(r -> "TOOL_RESULT".equals(r.getMessageType()))
+                .findFirst()
+                .orElseThrow();
+        ObjectMapper mapper = new ObjectMapper();
+        String persistedOutput =
+                mapper.readTree(toolResultRow.getContent()).get("output").asText();
+
+        // 实时侧：同一输出经真实 SseEventTransformer 转 TOOL_RESULT 事件的 output 字段
+        StreamingOutput<?> chunk = mock(StreamingOutput.class);
+        when(chunk.getOutputType()).thenReturn(OutputType.AGENT_TOOL_FINISHED);
+        when(chunk.message()).thenReturn(trm);
+        SseEventTransformer realTransformer = new SseEventTransformer(mapper);
+        SseEvent event = realTransformer
+                .transform(chunk, SseEventTransformer.RunState.create("run1", "sess1", "qwen3-max"))
+                .get(0);
+        String realtimeOutput = mapper.readTree(event.payload()).get("output").asText();
+
+        // Then: 两侧截断口径一致（统一 4000，实时与回放所见相同，且截断保留前缀）
+        assertEquals(4000, persistedOutput.length(), "BUG-16：落库 TOOL_RESULT output 应截断到 4000（与实时一致）");
+        assertEquals(longOutput.substring(0, 4000), persistedOutput, "截断保留前 4000 字符前缀");
+        assertEquals(realtimeOutput, persistedOutput, "BUG-16：落库与实时事件 output 必须同口径");
+    }
+
+    @Test
     @DisplayName("persistMessages 正常路径 — 主 agent 实体行携带真实检索来源（sources 独立非模型事件不丢）")
     @SuppressWarnings("unchecked")
     void persistMessages_entityRow_mainAgentCarriesSources() throws Exception {
@@ -847,10 +999,12 @@ class ChatRequestWorkerTest {
         when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.create(sink -> {
             sink.next(c1);
             // chunk1 已推送后置取消标记：chunk2 检查点即抛取消异常（中断点前事件已到前端）
+            // （条目已在外部 registerPendingRun 注册，模拟 BUG-14 入队注册生命周期）
             worker.cancel("100");
             sink.next(c2);
             sink.complete();
         }));
+        worker.registerPendingRun("100");
 
         // When
         invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
@@ -1004,7 +1158,8 @@ class ChatRequestWorkerTest {
                 .build();
         when(saver.get(any(RunnableConfig.class))).thenReturn(Optional.of(cp));
 
-        // 取消路径：执行前设置取消标记，首个 chunk 触发 CancelledException
+        // 取消路径：执行前注册（模拟入队）并置取消标记，首个 chunk 触发 CancelledException
+        worker.registerPendingRun("100");
         worker.cancel("100");
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1482,8 +1637,9 @@ class ChatRequestWorkerTest {
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
         when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
-        // ACTIVE 转换显式放行（严格桩模式下未匹配的调用会抛 PotentialStubbingProblem）
-        doNothing().when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
+        // ACTIVE 转换显式放行（严格桩模式下未匹配的调用会抛 PotentialStubbingProblem；
+        // BUG-01 后 updateStatus 返回影响行数，doNothing 不适用于非 void 方法）
+        doReturn(1).when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
         doThrow(new RuntimeException("数据库不可用")).when(chatRunService).updateStatus(anyLong(), eq("COMPLETED"));
 
         MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
@@ -1632,7 +1788,8 @@ class ChatRequestWorkerTest {
     @Test
     @DisplayName("R2 取消路径 → END(CANCELLED) 事件不含 messageId 键（半截内容不作反馈目标）")
     void 取消路径END事件不含messageId() throws Exception {
-        // Given: run 起步前设置取消标记，首个 chunk 触发 CancelledException
+        // Given: run 起步前注册（模拟入队）并置取消标记，首个 chunk 触发 CancelledException
+        worker.registerPendingRun("100");
         worker.cancel("100");
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -1701,11 +1858,13 @@ class ChatRequestWorkerTest {
         when(chatRunService.findStaleActive(any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(List.of(new ChatRunVO(
                         101L, 1L, 1L, "QUEUED", LocalDateTime.now().minusMinutes(30))));
+        // BUG-01: CAS 命中 1 行（run 仍处 SELECT 观察到的 QUEUED 状态）
+        when(chatRunService.markErrorIfCurrent(101L, "QUEUED")).thenReturn(1);
 
         invokeSweepStaleRuns();
 
-        // Then: 滞留 QUEUED run 被置 ERROR（解除 uniq_active_run_per_session 会话锁死）
-        verify(chatRunService).updateStatus(101L, "ERROR");
+        // Then: 滞留 QUEUED run 经 CAS 置 ERROR（以观察状态为前提，解除 uniq_active_run_per_session 会话锁死）
+        verify(chatRunService).markErrorIfCurrent(101L, "QUEUED");
         // Then: QUEUED 阈值按 stale-queued-timeout-minutes 计算（created_at < now-5min）
         ArgumentCaptor<LocalDateTime> queuedBefore = ArgumentCaptor.forClass(LocalDateTime.class);
         verify(chatRunService).findStaleActive(any(LocalDateTime.class), queuedBefore.capture());
@@ -1726,6 +1885,7 @@ class ChatRequestWorkerTest {
 
         // Then: 无滞留 run 时不得误置任何状态
         verify(chatRunService, never()).updateStatus(anyLong(), anyString());
+        verify(chatRunService, never()).markErrorIfCurrent(anyLong(), anyString());
     }
 
     @Test
@@ -1742,13 +1902,114 @@ class ChatRequestWorkerTest {
         Thread.sleep(100);
     }
 
+    // ==================== BUG-01 守卫拒绝 / 巡检 TOCTOU ====================
+
+    @Test
+    @DisplayName("BUG-01: updateStatus(ACTIVE) 0 行命中（run 已被巡检置 ERROR）→ 跳过图执行 + 补推终态事件")
+    void processRequest_guardRejected_skipsGraphAndPushesTerminal() throws Exception {
+        // Given: 迟到队列任务——run 已被巡检置 ERROR（QUEUED→ACTIVE 迁移 0 行命中），
+        // 即使图流可执行也不得复活该 run（否则同 thread_id 与用户新 run 并发跑图）
+        when(chatRunService.updateStatus(100L, "ACTIVE")).thenReturn(0);
+        when(chatRunService.findById(100L)).thenReturn(new ChatRunVO(100L, 200L, 300L, "ERROR", LocalDateTime.now()));
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        // 图流桩仅用于证明「可执行也不被执行」（never 断言），lenient 规避严格桩误报
+        lenient().when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+
+        MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 图流未执行（复活被阻断），不落任何后续状态迁移
+        verify(compiledGraph, never()).stream(any(), any(RunnableConfig.class));
+        verify(chatRunService, never()).updateStatus(100L, "COMPLETED");
+        verify(chatRunService, never()).updateStatus(100L, "ERROR");
+        // Then: 补推终态事件（携带实际终态），客户端状态机收到终态而非悬挂到 emitter 超时
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        assertTrue(
+                pushed.getAllValues().stream()
+                        .anyMatch(e ->
+                                e.type() == SseEventType.ERROR && e.payload().contains("ERROR")),
+                "守卫拒绝后必须补推携带终态的 ERROR 终态事件");
+        // Then: finally 清理仍执行（ring/取消标记不泄漏）
+        verify(bridge).removeRing("100");
+    }
+
+    @Test
+    @DisplayName("BUG-01: 巡检 SELECT→UPDATE 窗口内 run 刚转 ACTIVE → CAS 未命中跳过（不误杀执行中 run）")
+    void sweepStaleRuns_casMiss_skipsRun() throws Exception {
+        // Given: 巡检查回滞留 QUEUED run，但 CAS 置 ERROR 时窗口内状态已迁移（返回 0 行）
+        when(workerProperties.staleRunTimeoutMinutes()).thenReturn(10);
+        when(workerProperties.staleQueuedTimeoutMinutes()).thenReturn(5);
+        when(chatRunService.findStaleActive(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of(new ChatRunVO(
+                        101L, 1L, 1L, "QUEUED", LocalDateTime.now().minusMinutes(30))));
+        when(chatRunService.markErrorIfCurrent(101L, "QUEUED")).thenReturn(0);
+
+        invokeSweepStaleRuns();
+
+        // Then: CAS 以 SELECT 观察状态为前提（TOCTOU 原子判定），未命中即跳过不重试不误杀
+        verify(chatRunService).markErrorIfCurrent(101L, "QUEUED");
+        verify(chatRunService, never()).updateStatus(anyLong(), anyString());
+    }
+
+    // ==================== N3-1 SSE 错误文案中文映射（原始异常不透传前端） ====================
+
+    /** 断言 ERROR 事件 message 为期望中文文案，且原始英文异常消息不外发 */
+    private void assertErrorEventMessageMapped(String expectedChinese, String rawFragment) throws Exception {
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        SseEvent errorEvent = pushed.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.ERROR)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("异常路径必须推送 ERROR 终态事件"));
+        assertTrue(errorEvent.payload().contains(expectedChinese), "ERROR 文案应为中文映射: " + errorEvent.payload());
+        assertFalse(errorEvent.payload().contains(rawFragment), "原始英文异常消息不得透传前端: " + errorEvent.payload());
+    }
+
+    @Test
+    @DisplayName("N3-1: 网络断连类异常 → ERROR 文案「网络连接中断，请重试」（原文 Connection reset 不外发）")
+    void processRequest_networkError_messageMappedToChinese() throws Exception {
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new java.io.IOException("Connection reset by peer")));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        assertErrorEventMessageMapped("网络连接中断，请重试", "Connection reset");
+    }
+
+    @Test
+    @DisplayName("N3-1: 超时类异常 → ERROR 文案「模型服务响应超时，请稍后重试」（原文 timed out 不外发）")
+    void processRequest_timeoutError_messageMappedToChinese() throws Exception {
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new java.net.SocketTimeoutException("Read timed out")));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        assertErrorEventMessageMapped("模型服务响应超时，请稍后重试", "timed out");
+    }
+
+    @Test
+    @DisplayName("N3-1: 其它异常 → ERROR 文案「服务暂时不可用，请稍后重试」（原文不外发）")
+    void processRequest_genericError_messageMappedToChinese() throws Exception {
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new RuntimeException("Internal engine failure")));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        assertErrorEventMessageMapped("服务暂时不可用，请稍后重试", "Internal engine failure");
+    }
+
     // ==================== processRequest 边界分支 ====================
 
     @Test
     @DisplayName("onErrorResume → handleError 内部失败被吞并，消息仍持久化")
     void processRequest_onErrorResumeHandleErrorFails_stillPersists() throws Exception {
-        // Flux.error 进入 onErrorResume 分支；ACTIVE 更新正常、ERROR 终态更新三次失败后抛 IllegalStateException
-        doNothing().when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
+        // Flux.error 进入 onErrorResume 分支；ACTIVE 更新正常（BUG-01 后返回影响行数，doNothing 不适用非 void）、
+        // ERROR 终态更新三次失败后抛 IllegalStateException
+        doReturn(1).when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
         when(compiledGraph.stream(any(), any(RunnableConfig.class)))
                 .thenReturn(Flux.error(new RuntimeException("模型超时")));
         doThrow(new RuntimeException("数据库不可用")).when(chatRunService).updateStatus(anyLong(), eq("ERROR"));
@@ -2193,7 +2454,7 @@ class ChatRequestWorkerTest {
                 orchestrator,
                 memoryExtractionPipeline,
                 mapper,
-                "qwen3.8-max");
+                new AgentProperties(15, "qwen3.8-max"));
     }
 
     @Test
@@ -2211,6 +2472,8 @@ class ChatRequestWorkerTest {
                 .when(saver)
                 .put(any(RunnableConfig.class), any(Checkpoint.class));
 
+        // 取消前先注册条目（模拟 BUG-14 入队注册生命周期）
+        worker.registerPendingRun("100");
         worker.cancel("100");
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);
@@ -2329,8 +2592,9 @@ class ChatRequestWorkerTest {
     @Test
     @DisplayName("updateStatusWithRetry → 重试休眠被中断时立即返回（不重抛）")
     void updateStatusWithRetry_interruptedDuringRetry_returnsQuietly() throws Exception {
-        // ACTIVE 更新正常（避免 strict stubbing 误判）、COMPLETED 更新持续失败 → 第 1 次重试休眠期间被中断
-        doNothing().when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
+        // ACTIVE 更新正常（避免 strict stubbing 误判；BUG-01 后返回影响行数，doNothing 不适用非 void）、
+        // COMPLETED 更新持续失败 → 第 1 次重试休眠期间被中断
+        doReturn(1).when(chatRunService).updateStatus(anyLong(), eq("ACTIVE"));
         doThrow(new RuntimeException("DB 瞬时故障")).when(chatRunService).updateStatus(anyLong(), eq("COMPLETED"));
         NodeOutput mockChunk = mock(NodeOutput.class);
         lenient().when(mockChunk.state()).thenReturn(null);

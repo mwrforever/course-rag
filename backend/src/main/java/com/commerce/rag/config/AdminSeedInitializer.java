@@ -32,8 +32,9 @@ public class AdminSeedInitializer implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(AdminSeedInitializer.class);
 
     /** 出厂默认种子密码明文——与 V6__full_schema_v5.sql 迁移预置、auth.admin-seed.password 默认值一致，
-     *  作为识别「仍未改密」超管账户的标记：密码非此值时视为管理员已自行改密，跳过刷新不覆盖 */
-    private static final String FACTORY_DEFAULT_PASSWORD = "admin123";
+     *  作为识别「仍未改密」超管账户的标记：密码非此值时视为管理员已自行改密，跳过刷新不覆盖。
+     *  BUG-17：包内可见，供 AuthSecretValidator 严格模式判定「仍为出厂默认口令」复用同一基准 */
+    static final String FACTORY_DEFAULT_PASSWORD = "admin123";
 
     /** 默认账户种子配置（auth.admin-seed，env 可覆盖真实值） */
     private final AdminSeedProperties adminSeedProperties;

@@ -3,6 +3,8 @@ package com.commerce.rag.bot.tool;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
 import com.commerce.rag.config.MilvusCollectionInitializer;
+import com.commerce.rag.properties.MilvusProperties;
+import com.commerce.rag.properties.RetrievalProperties;
 import com.commerce.rag.record.ContentHash;
 import com.commerce.rag.retrieval.FusionService;
 import com.commerce.rag.retrieval.RerankService;
@@ -32,7 +34,6 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -113,17 +114,18 @@ public class SearchKnowledgeTool {
             EmbeddingModel embeddingModel,
             MilvusClientV2 milvusClientV2,
             IDocumentService documentService,
-            @Value("${milvus.sparse-bm25-k:60}") int rrfK,
-            @Value("${retrieval.prefetch-top-k:20}") int prefetchTopK,
-            @Value("${retrieval.sparse-enabled:false}") boolean sparseEnabled) {
+            MilvusProperties milvusProperties,
+            RetrievalProperties retrievalProperties) {
         this.fusionService = fusionService;
         this.rerankService = rerankService;
         this.embeddingModel = embeddingModel;
         this.milvusClientV2 = milvusClientV2;
         this.documentService = documentService;
-        this.rrfK = rrfK;
-        this.prefetchTopK = prefetchTopK;
-        this.sparseEnabled = sparseEnabled;
+        // BUG-12 @Value 收敛：三个阈值经属性类强类型注入（milvus.sparse-bm25-k /
+        // retrieval.prefetch-top-k / retrieval.sparse-enabled），取值与原 @Value 相同
+        this.rrfK = milvusProperties.sparseBm25K();
+        this.prefetchTopK = retrievalProperties.prefetchTopK();
+        this.sparseEnabled = retrievalProperties.sparseEnabled();
         // 检索并行池：daemon 线程随 JVM 退出，线程名带序号（search-knowledge-N）便于 thread dump 排查（B1-3）
         AtomicInteger seq = new AtomicInteger(1);
         this.searchExecutor = Executors.newFixedThreadPool(4, r -> {

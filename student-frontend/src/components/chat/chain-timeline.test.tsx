@@ -1,6 +1,7 @@
 /**
  * 链式时间轴容器测试（2026-08-28 时间线改版：节点种类映射 + 运行态推导 + 交互；
- * 2026-08-30 对齐设计稿：移除 stage/query_plan 节点，工具步骤改为点击开结果抽屉）
+ * 2026-08-30 对齐设计稿：移除 stage/query_plan 节点，工具步骤改为点击开结果抽屉；
+ * PERF-05：sources 改独立 props 透传，回调收到来源列表数组）
  *
  * 覆盖：四类节点到步骤组件的映射与顺序 / isNodeRunning 末节点运行态推导 /
  * sources 步骤点击开召回抽屉 / tool 步骤完成态点击开工具结果抽屉
@@ -64,6 +65,7 @@ describe("ChainTimeline 节点映射与顺序", () => {
       <ChainTimeline
         timeline={FULL_TIMELINE}
         active={false}
+        sources={[SOURCE]}
         onOpenSources={() => {}}
         onOpenTool={() => {}}
       />,
@@ -94,7 +96,13 @@ describe("ChainTimeline 节点映射与顺序", () => {
       },
     ];
     const { container } = render(
-      <ChainTimeline timeline={timeline} active onOpenSources={() => {}} onOpenTool={() => {}} />,
+      <ChainTimeline
+        timeline={timeline}
+        active
+        sources={[SOURCE]}
+        onOpenSources={() => {}}
+        onOpenTool={() => {}}
+      />,
     );
     const steps = container.querySelectorAll(".chain-step");
     // 末位工具节点 running，其余全部完成
@@ -105,19 +113,21 @@ describe("ChainTimeline 节点映射与顺序", () => {
 });
 
 describe("ChainTimeline 交互", () => {
-  it("sources 步骤点击触发 onOpenSources（开召回抽屉）", () => {
+  it("sources 步骤点击触发 onOpenSources（开召回抽屉，PERF-05：sources 数组透传）", () => {
     const onOpenSources = vi.fn();
     render(
       <ChainTimeline
         timeline={FULL_TIMELINE}
         active={false}
+        sources={[SOURCE]}
         onOpenSources={onOpenSources}
         onOpenTool={() => {}}
       />,
     );
-    // 检索步骤（已检索 1 篇相关资料）点击开抽屉
+    // 检索步骤（已检索 1 篇相关资料）点击开抽屉：回调收到独立 props 透传的来源列表
     fireEvent.click(screen.getByTestId("sources-step"));
     expect(onOpenSources).toHaveBeenCalledTimes(1);
+    expect(onOpenSources).toHaveBeenCalledWith([SOURCE]);
   });
 
   it("tool 步骤完成态点击触发 onOpenTool（开工具结果抽屉，2026-08-30 替代内嵌 JSON）", () => {
@@ -126,6 +136,7 @@ describe("ChainTimeline 交互", () => {
       <ChainTimeline
         timeline={FULL_TIMELINE}
         active={false}
+        sources={[SOURCE]}
         onOpenSources={() => {}}
         onOpenTool={onOpenTool}
       />,

@@ -130,6 +130,16 @@ describe("AttachmentChips 三态渲染", () => {
     expect(screen.getByText(/上传中/)).toBeInTheDocument();
   });
 
+  it("上传中（进度已知）：确定进度环 + 百分比文案（PERF-10a XHR 进度驱动）", () => {
+    render(<AttachmentChips items={[makeItem({ progress: 40 })]} onRemove={() => {}} />);
+    // 确定进度环（progressbar 语义，aria 值即百分比）；不确定环不再渲染
+    const progress = screen.getByTestId("attachment-progress");
+    expect(progress).toHaveAttribute("aria-valuenow", "40");
+    expect(progress).toHaveAttribute("aria-label", "上传进度 40%");
+    expect(screen.queryByTestId("attachment-ring")).not.toBeInTheDocument();
+    expect(screen.getByText("上传中 40%")).toBeInTheDocument();
+  });
+
   it("完成图片：blob 缩略图（本地预览）+ 文件名", () => {
     const item = makeItem({
       status: "done",

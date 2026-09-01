@@ -11,6 +11,7 @@ import com.alibaba.cloud.ai.model.RerankResponse;
 import com.commerce.rag.bot.IntentType;
 import com.commerce.rag.bot.graph.PromptLoader;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.properties.RetrievalProperties;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -41,8 +42,8 @@ class RerankServiceTest {
 
     @BeforeEach
     void setUp() {
-        // 手动构造，确保 threshold = 0.30
-        rerankService = new RerankService(rerankModel, 0.30, promptLoader);
+        // 手动构造，确保 threshold = 0.30（与 application.yml 显式值一致）经属性类注入
+        rerankService = new RerankService(rerankModel, new RetrievalProperties(60, 0.30, 20, false, 3), promptLoader);
     }
 
     @Test

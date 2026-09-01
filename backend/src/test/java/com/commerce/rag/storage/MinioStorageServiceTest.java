@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.commerce.rag.properties.MinioProperties;
 import io.minio.BucketExistsArgs;
 import io.minio.GetObjectArgs;
 import io.minio.GetObjectResponse;
@@ -25,7 +26,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * MinioStorageService 单元测试 —— Mock MinioClient
@@ -42,8 +42,9 @@ class MinioStorageServiceTest {
 
     @BeforeEach
     void setUp() {
-        storageService = new MinioStorageService(minioClient);
-        ReflectionTestUtils.setField(storageService, "bucket", "test-bucket");
+        // bucket=test-bucket（原测试语义）经属性类构造注入（endpoint/凭据为占位值，不参与本类行为）
+        storageService = new MinioStorageService(
+                minioClient, new MinioProperties("http://localhost:9002", "key", "secret", "test-bucket"));
     }
 
     @Test

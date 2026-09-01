@@ -237,13 +237,15 @@ public class AuthController {
         String newAccessToken = tokenService.generateAccessToken(userId, role, newJtiAt);
         String newRefreshToken = tokenService.generateRefreshToken(userId, newJtiRt);
 
-        // 8. 旧 RT jti 入黑名单
+        // 8. 旧 RT jti 入黑名单（BUG-13：正常旋转写 ROTATED，与真实复用检测区分——
+        //    复用路径走 disableUser 全量吊销写 USER_DISABLED；原恒写 TOKEN_REUSE 导致
+        //    所有正常刷新在黑名单审计中呈现为「复用」，按 TOKEN_REUSE 告警会全量误报）
         deviceKickService.addToBlacklist(
                 oldJtiRt,
                 "REFRESH",
                 userId,
                 userId,
-                "TOKEN_REUSE",
+                "ROTATED",
                 LocalDateTime.ofInstant(claims.getExpiration().toInstant(), ZoneId.systemDefault()));
 
         // 9. 更新 login_record（下沉 AuthSessionService）
@@ -350,6 +352,10 @@ public class AuthController {
     private void clearCookie(HttpServletResponse response) {
         Cookie cookie = new Cookie(authProperties.cookieName(), "");
         cookie.setHttpOnly(true);
+        // BUG-10: Secure 标记与 setCookie 对称——Secure cookie 的覆盖/删除须同样带 Secure
+        // 属性（RFC 6265bis），否则生产 HTTPS（cookie-secure=true）登出时清除指令可能与
+        // 已写 cookie 属性不匹配，浏览器残留已黑名单的 AT cookie
+        cookie.setSecure(authProperties.cookieSecure());
         cookie.setPath("/");
         if (authProperties.cookieDomain() != null
                 && !authProperties.cookieDomain().isEmpty()) {

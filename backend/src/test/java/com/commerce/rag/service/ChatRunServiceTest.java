@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.repository.AbstractRepository;
 import com.baomidou.mybatisplus.extension.repository.CrudRepository;
 import com.commerce.rag.convert.ChatRunConverterImpl;
@@ -97,6 +98,93 @@ class ChatRunServiceTest {
         runService.updateStatus(3L, "ERROR");
 
         verify(runMapper, times(3)).update(isNull(), any());
+    }
+
+    // ==================== BUG-01 状态机条件守卫（终态不可复活 / ACTIVE 仅自 QUEUED） ====================
+
+    @Test
+    @DisplayName("BUG-01: updateStatus(ACTIVE) → UPDATE 携带 status=QUEUED 前置守卫（迟到任务无法复活终态 run）")
+    @SuppressWarnings("unchecked")
+    void updateStatus_active_guardedByQueuedPrecondition() {
+        runService.updateStatus(1L, "ACTIVE");
+
+        // 捕获 UPDATE wrapper：WHERE 必须含 status 前置条件（仅 QUEUED 可迁 ACTIVE），
+        // 修复前为无条件 UPDATE——已被巡检置 ERROR 的 run 会被迟到队列任务复活
+        ArgumentCaptor<LambdaUpdateWrapper<ChatRun>> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(runMapper).update(isNull(), captor.capture());
+        LambdaUpdateWrapper<ChatRun> wrapper = captor.getValue();
+        String sqlSegment = wrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("status"), "ACTIVE 迁移必须带状态前置守卫: " + sqlSegment);
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("QUEUED"), "守卫应限定当前状态为 QUEUED");
+        // startedAt 仍随 ACTIVE 写入（既有语义不变）
+        assertTrue(wrapper.getSqlSet().contains("started_at"), "ACTIVE 迁移应写入 started_at");
+    }
+
+    @Test
+    @DisplayName("BUG-01: updateStatus(终态) → UPDATE 携带 status IN (QUEUED,ACTIVE) 守卫（终态 run 不可再被改写）")
+    @SuppressWarnings("unchecked")
+    void updateStatus_terminal_guardedByNonTerminalPrecondition() {
+        runService.updateStatus(1L, "ERROR");
+
+        ArgumentCaptor<LambdaUpdateWrapper<ChatRun>> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(runMapper).update(isNull(), captor.capture());
+        LambdaUpdateWrapper<ChatRun> wrapper = captor.getValue();
+        String sqlSegment = wrapper.getSqlSegment();
+        // 终态仅可自 QUEUED/ACTIVE 迁移（覆盖 runPool 拒绝/入队回滚的 QUEUED→终态 与 正常执行的 ACTIVE→终态）；
+        // 已终态的 run 不再命中任何迁移（含不可复活为 ACTIVE）
+        assertTrue(sqlSegment.toUpperCase().contains("IN"), "终态守卫应为 IN (QUEUED,ACTIVE) 条件: " + sqlSegment);
+        Collection<Object> params = wrapper.getParamNameValuePairs().values();
+        assertTrue(params.contains("QUEUED"), "守卫集合应含 QUEUED");
+        assertTrue(params.contains("ACTIVE"), "守卫集合应含 ACTIVE");
+        assertTrue(wrapper.getSqlSet().contains("ended_at"), "终态迁移应写入 ended_at");
+    }
+
+    @Test
+    @DisplayName("BUG-01: updateStatus → 返回影响行数（0=守卫拒绝，调用方据此短路）")
+    void updateStatus_returnsAffectedRows() {
+        // mapper 返回 1 行（守卫放行）→ 服务原样返回
+        when(runMapper.update(isNull(), any())).thenReturn(1);
+        assertEquals(1, runService.updateStatus(1L, "ACTIVE"));
+
+        // mapper 返回 0 行（run 已离开迁移前提状态）→ 服务返回 0 供调用方跳过图执行
+        when(runMapper.update(isNull(), any())).thenReturn(0);
+        assertEquals(0, runService.updateStatus(1L, "ACTIVE"));
+    }
+
+    @Test
+    @DisplayName("BUG-01: updateStatus → 未知状态直接拒绝（防止无守卫的无条件 UPDATE 漏洞）")
+    void updateStatus_unknownStatus_rejected() {
+        assertThrows(IllegalArgumentException.class, () -> runService.updateStatus(1L, "RUNNING"));
+        verify(runMapper, never()).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("BUG-01: markErrorIfCurrent → 以观察状态为前提的 CAS 置 ERROR（巡检 TOCTOU 原子判定）")
+    @SuppressWarnings("unchecked")
+    void markErrorIfCurrent_casOnObservedStatus() {
+        when(runMapper.update(isNull(), any())).thenReturn(1);
+
+        int rows = runService.markErrorIfCurrent(1L, "QUEUED");
+
+        // WHERE 必须同时绑定 id 与期望状态（SELECT 时观察值）：SELECT→UPDATE 窗口内刚转 ACTIVE
+        // 的 run 不被误杀（0 行命中），主路径滞留 run 置 ERROR 行为不变
+        assertEquals(1, rows);
+        ArgumentCaptor<LambdaUpdateWrapper<ChatRun>> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(runMapper).update(isNull(), captor.capture());
+        LambdaUpdateWrapper<ChatRun> wrapper = captor.getValue();
+        String sqlSegment = wrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("status"), "CAS 必须含期望状态前提: " + sqlSegment);
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("QUEUED"), "期望状态应为 SELECT 观察值 QUEUED");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("ERROR"), "目标状态应为 ERROR");
+        assertTrue(wrapper.getSqlSet().contains("ended_at"), "置 ERROR 应写入 ended_at");
+    }
+
+    @Test
+    @DisplayName("BUG-01: markErrorIfCurrent → 0 行命中原样返回（run 状态已迁移，调用方跳过）")
+    void markErrorIfCurrent_zeroRows_propagated() {
+        when(runMapper.update(isNull(), any())).thenReturn(0);
+
+        assertEquals(0, runService.markErrorIfCurrent(1L, "ACTIVE"));
     }
 
     @Test

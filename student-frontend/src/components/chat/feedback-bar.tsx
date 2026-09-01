@@ -5,7 +5,8 @@
  *
  * - end 后浮现（由 message-list 控制透明度过渡，本组件只管内容与交互）
  * - 复制：CANCELLED 终态文本带「已停止生成」后缀，复制前剥离后缀（carry2），
- *   再经 navigator.clipboard 写入纯回答正文 + toast「已复制」
+ *   再经 copyToClipboard（clipboard API + execCommand 降级，BUG-27）写入纯回答正文
+ *   + toast「已复制」；两条路径均失败提示手动复制
  * - 反馈：POST /student/feedbacks {sessionId, messageId, isLiked, intentType?}
  *   intentType 优先取历史回显透传的真实意图；缺省按「本 run 是否出现 sources」
  *   推断（有 → knowledge_question，无 → chat）
@@ -17,6 +18,7 @@ import { Copy, ThumbsDown, ThumbsUp } from "@phosphor-icons/react";
 import { useState } from "react";
 import { STOPPED_SUFFIX } from "@/hooks/use-chat-stream";
 import { postFeedback } from "@/lib/api";
+import { copyToClipboard } from "@/lib/clipboard";
 
 /** 操作栏组件 props */
 export interface FeedbackBarProps {
@@ -83,8 +85,13 @@ export function FeedbackBar({
   async function copyAnswer() {
     // 后缀由 useChatStream 在 CANCELLED 终态追加进 text；复制内容应为纯回答正文
     const copyText = text.endsWith(STOPPED_SUFFIX) ? text.slice(0, -STOPPED_SUFFIX.length) : text;
-    await navigator.clipboard.writeText(copyText);
-    onNotify("已复制");
+    // BUG-27 降级：非安全上下文 clipboard 不可用时回退 execCommand；两条路径均
+    // 失败 toast 提示手动复制（此前 void 调用下异常静默、按钮无响应）
+    if (await copyToClipboard(copyText)) {
+      onNotify("已复制");
+    } else {
+      onNotify("复制失败，请手动复制");
+    }
   }
 
   /** 提交反馈：成功后锁定；失败解锁并提示重试 */

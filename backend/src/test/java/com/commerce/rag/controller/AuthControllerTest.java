@@ -31,6 +31,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -233,6 +234,42 @@ class AuthControllerTest {
         verify(httpResponse).addCookie(any(Cookie.class));
     }
 
+    @Test
+    @DisplayName("logout → cookie-secure=true 时清除指令同样携带 Secure 属性（BUG-10：与 setCookie 对称）")
+    void logout_clearCookie_carriesSecureFlag_symmetricWithSetCookie() {
+        // 生产 HTTPS 配置（auth.cookie-secure=true）：Secure cookie 的覆盖/删除须同样带
+        // Secure 属性（RFC 6265bis），清除指令与写入不对称可能导致登出后浏览器残留 AT cookie
+        AuthProperties secureProps = new AuthProperties(
+                "test-secret-key-must-be-at-least-256-bits-long-for-hs256!!",
+                900,
+                604800L,
+                "commerce_token",
+                "localhost",
+                true,
+                List.of("WEB_DESKTOP"),
+                false);
+        AuthController secureController = new AuthController(
+                sysUserService,
+                tokenService,
+                deviceKickService,
+                secureProps,
+                passwordEncoder,
+                authSessionService,
+                registerService);
+        when(httpRequest.getHeader("Authorization")).thenReturn(null);
+        when(httpRequest.getCookies()).thenReturn(null);
+
+        secureController.logout(httpRequest, httpResponse);
+
+        // 清除 cookie 契约：空值 + maxAge=0 + Secure 标记与写入路径对称
+        ArgumentCaptor<Cookie> captor = ArgumentCaptor.forClass(Cookie.class);
+        verify(httpResponse).addCookie(captor.capture());
+        Cookie cleared = captor.getValue();
+        assertEquals("", cleared.getValue());
+        assertEquals(0, cleared.getMaxAge());
+        assertTrue(cleared.getSecure(), "清除指令应与写入同样携带 Secure 属性（BUG-10）");
+    }
+
     // ==================== refresh() 测试 ====================
 
     @Test
@@ -262,10 +299,11 @@ class AuthControllerTest {
         verify(deviceKickService).markRefreshTokenUsedAtomic("old-jti-rt");
         // 步骤 4：黑名单检查保留在原子标记之后
         verify(deviceKickService).isBlacklisted("old-jti-rt");
-        // 步骤 8：旧 RT 入黑名单
+        // 步骤 8：旧 RT 入黑名单（BUG-13：正常旋转 reason 语义化写 ROTATED，
+        // 与真实复用检测（disableUser 全量吊销写 USER_DISABLED）在审计层区分）
         verify(deviceKickService)
                 .addToBlacklist(
-                        eq("old-jti-rt"), eq("REFRESH"), eq(1L), eq(1L), eq("TOKEN_REUSE"), any(LocalDateTime.class));
+                        eq("old-jti-rt"), eq("REFRESH"), eq(1L), eq(1L), eq("ROTATED"), any(LocalDateTime.class));
         // 步骤 9：登录记录更新下沉 AuthSessionService
         verify(authSessionService)
                 .updateLoginRecordOnRefresh(eq(1L), eq("old-jti-rt"), eq("new-jti-at"), eq("new-jti-rt"));

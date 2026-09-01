@@ -2,13 +2,13 @@ package com.commerce.rag.retrieval;
 
 import com.commerce.rag.bot.tool.TypedQuery;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
+import com.commerce.rag.properties.RetrievalProperties;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -17,6 +17,9 @@ import org.springframework.stereotype.Service;
  * <p>对多条 rewritten query 各自检索的结果进行 RRF 融合，消除查询偏差，
  * 再用 rerank 精排。RRF 公式：score(d) = Σ(1 / (k + rank_i(d)))
  *
+ * <p>RRF 融合常数 k 经 {@link RetrievalProperties}（retrieval.rrf-k）强类型注入
+ * （BUG-12 @Value 收敛，宪法 A.2.2）。
+ *
  * @author commerce-rag
  */
 @Service
@@ -24,8 +27,8 @@ public class FusionService {
 
     private final int rrfK;
 
-    public FusionService(@Value("${retrieval.rrf-k:60}") int rrfK) {
-        this.rrfK = rrfK;
+    public FusionService(RetrievalProperties retrievalProperties) {
+        this.rrfK = retrievalProperties.rrfK();
     }
 
     /**

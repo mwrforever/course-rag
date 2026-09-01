@@ -104,7 +104,10 @@ describe("首页品牌与结构冒烟", () => {
     }
     // 快捷入口宫格与右下 AI 助教浮动按钮
     expect(screen.getAllByTestId("entry-tile").length).toBe(5);
-    expect(screen.getByTestId("assistant-fab")).toHaveAttribute("aria-label", "打开 AI 课程助教");
+    const fab = screen.getByTestId("assistant-fab");
+    expect(fab).toHaveAttribute("aria-label", "打开 AI 课程助教");
+    // BUG-23：FAB 须挂 group 类，tip 气泡的 group-hover:opacity-100 才能命中（否则永不显示）
+    expect(fab).toHaveClass("group");
   });
 
   it("点击手风琴项展开正文且互斥收合（服务区交互契约）", async () => {

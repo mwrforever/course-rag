@@ -164,6 +164,13 @@ public class StudentController {
         // 权限校验：如果是课程专属 chunk，学生必须已选该课程（courseId 取自 VO）
         String courseId = chunk.courseId();
         if (courseId != null && !"DEFAULT".equals(courseId)) {
+            // BUG-09：course_id 列为 VARCHAR 且上传链路无格式校验，非数字脏数据直接
+            // parseLong 会抛 NumberFormatException 变 500；先判格式，非法归属无法完成
+            // 选课校验，按未授权拒绝（fail-closed），同时告警暴露脏数据
+            if (!courseId.matches("\\d+")) {
+                log.warn("分片课程归属为非数字脏数据，按未授权拒绝: chunkId={}, courseId={}", id, courseId);
+                throw new BizException(ErrorCode.FORBIDDEN, "资料课程归属异常，无权查看");
+            }
             Long courseIdLong = Long.parseLong(courseId);
             if (!enrollmentService.isEnrolled(courseIdLong, userId)) {
                 // P1-3: 内联错误双轨修复——统一走 ResponseStatusException（真实 HTTP 403）

@@ -14,7 +14,10 @@
  * flex/margin/filter/transform 统一 expo-out 同曲线消除错拍（样式见
  * globals.css「首页五联画宫格：层叠式悬浮」块，仅 lg+ 悬停设备生效）；
  * 移动端折行为两列网格。纯 CSS 动画。
+ * PERF-06：五联画影像改走 next/image（fill + 懒加载 + AVIF/WebP 转换），
+ * 灰度/层叠悬浮等视觉类保留。
  */
+import Image from "next/image";
 import Link from "next/link";
 import { Reveal } from "@/components/motion/reveal";
 
@@ -46,11 +49,12 @@ export function EntryTiles() {
             className="entry-tile entry-tile--mid group relative grid min-w-0 flex-1 place-items-center overflow-hidden max-lg:h-[210px] max-lg:flex-basis-full"
           >
             <Link href={tile.href} aria-label="进入课程助手" className="absolute inset-0 z-[3]" />
-            <img
+            <Image
               src={tile.src}
               alt=""
-              loading="lazy"
-              className="absolute inset-0 h-full w-full object-cover"
+              fill
+              sizes="(max-width: 1024px) 100vw, 20vw"
+              className="object-cover"
             />
             <span
               aria-hidden
@@ -77,11 +81,12 @@ export function EntryTiles() {
             className="entry-tile group relative flex min-w-0 flex-1 overflow-hidden max-lg:h-[250px] max-lg:flex-basis-1/2"
           >
             <Link href={tile.href} aria-label={tile.label} className="absolute inset-0 z-[3]" />
-            <img
+            <Image
               src={tile.src}
               alt=""
-              loading="lazy"
-              className="h-full w-full object-cover grayscale"
+              fill
+              sizes="(max-width: 1024px) 50vw, 20vw"
+              className="object-cover grayscale"
             />
             <span
               aria-hidden

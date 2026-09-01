@@ -17,7 +17,7 @@ import {
 import { motion, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { PublicCourse, StudentCourse } from "@/lib/types";
 
 /** 学科兜底映射表：category 关键词 → 学科图标 + 低饱和渐变（设计 §1.5.1 无封面兜底） */
@@ -123,8 +123,15 @@ export interface CourseCardProps {
  *
  * 封面错误兜底实现：next/image 不支持 onError，error 事件不冒泡但走捕获阶段，
  * 由封面容器 onErrorCapture 接住底层 img 的 error 后切换兜底渐变。
+ *
+ * PERF-07：memo 化——课程中心/我的课程页搜索每键触发整页渲染时，props
+ * （course 引用来自 query data、purchased/priority 布尔）不变的卡片跳过重渲染。
  */
-export function CourseCard({ course, priority = false, purchased = false }: CourseCardProps) {
+export const CourseCard = memo(function CourseCard({
+  course,
+  priority = false,
+  purchased = false,
+}: CourseCardProps) {
   // 检测不可用（null）按静态处理，与 AiBadge 一致的可访问性优先策略
   const reduceMotion = useReducedMotion() ?? true;
   // 封面加载失败标记：置真后渲染学科渐变兜底
@@ -151,7 +158,9 @@ export function CourseCard({ course, priority = false, purchased = false }: Cour
             src={coverUrl as string}
             alt={course.title}
             fill
-            sizes="(max-width: 768px) 100vw, 25vw"
+            // PERF-19：3 列网格口径（lg:grid-cols-3；原 25vw 为早期 4 列布局残留，
+            // sizes 偏小导致 next/image 拉取偏小位图、封面发糊）
+            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
             priority={priority}
             className="object-cover"
           />
@@ -229,4 +238,4 @@ export function CourseCard({ course, priority = false, purchased = false }: Cour
       </div>
     </Link>
   );
-}
+});

@@ -7,6 +7,7 @@ import com.commerce.rag.entity.UserEpisodicMemory;
 import com.commerce.rag.enums.EpisodicActionType;
 import com.commerce.rag.mapper.UserEpisodicMemoryMapper;
 import com.commerce.rag.properties.MemoryProperties;
+import com.commerce.rag.properties.MilvusProperties;
 import com.commerce.rag.record.EpisodicAction;
 import com.commerce.rag.record.EpisodicExtractionResult;
 import com.commerce.rag.record.EpisodicMemoryExtraction;
@@ -33,7 +34,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -84,26 +84,26 @@ public class EpisodicMemoryServiceImpl extends ServiceImpl<UserEpisodicMemoryMap
     private final int hnswEf;
 
     /**
-     * 手写构造器（非 @RequiredArgsConstructor）：hnswEf 属 Milvus 阈值配置，经 {@code @Value} 注入
-     * （与 MilvusCollectionInitializer 的 @Value 构造参数先例一致），故不交给 Lombok 生成。
+     * 手写构造器（非 @RequiredArgsConstructor）：hnswEf 属 Milvus 阈值配置，经
+     * {@link MilvusProperties} 强类型注入（BUG-12 @Value 收敛，宪法 A.2.2），故不交给 Lombok 生成。
      *
      * @param decisionEngine 经历记忆决策引擎（纯规则）
      * @param milvusClientV2 Milvus v2 客户端（索引同步/召回定位）
      * @param embeddingModel 向量模型（索引 embedding + 召回查询向量）
      * @param properties     记忆体系配置（episodic 段：阈值/权重/召回）
-     * @param hnswEf         HNSW 检索 ef 参数（milvus.hnsw-ef，默认 64）
+     * @param milvusProperties Milvus 配置（hnsw-ef 检索 ef 参数，默认 64）
      */
     public EpisodicMemoryServiceImpl(
             EpisodicDecisionEngine decisionEngine,
             MilvusClientV2 milvusClientV2,
             EmbeddingModel embeddingModel,
             MemoryProperties properties,
-            @Value("${milvus.hnsw-ef:64}") int hnswEf) {
+            MilvusProperties milvusProperties) {
         this.decisionEngine = decisionEngine;
         this.milvusClientV2 = milvusClientV2;
         this.embeddingModel = embeddingModel;
         this.properties = properties;
-        this.hnswEf = hnswEf;
+        this.hnswEf = milvusProperties.hnswEf();
     }
 
     @Override

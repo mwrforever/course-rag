@@ -44,9 +44,10 @@ public class SseEventTransformer {
 
     /**
      * 工具输出摘要截断长度（200→4000，2026-08-30 工具结果抽屉改版：侧栏抽屉需展示完整
-     * 课程列表数据；历史 TOOL_RESULT 行本存全量，实时事件同步放宽对齐）
+     * 课程列表数据）。BUG-16（2026-08-31）：实时事件与落库/回放共用本常量统一口径 4000
+     * （{@link #truncateToolOutput} 唯一截断实现），前端实时与回放所见一致，禁两处硬编码。
      */
-    private static final int TOOL_OUTPUT_MAX_LENGTH = 4000;
+    public static final int TOOL_OUTPUT_MAX_LENGTH = 4000;
 
     private final ObjectMapper objectMapper;
 
@@ -295,7 +296,7 @@ public class SseEventTransformer {
 
         List<SseEvent> events = new ArrayList<>();
         for (ToolResponseMessage.ToolResponse response : trm.getResponses()) {
-            String output = truncate(response.responseData());
+            String output = truncateToolOutput(response.responseData());
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("toolCallId", response.id());
             payload.put("status", "success");
@@ -492,9 +493,16 @@ public class SseEventTransformer {
     }
 
     /**
-     * 截断工具输出摘要到指定长度。
+     * 截断工具输出摘要到 {@value #TOOL_OUTPUT_MAX_LENGTH} 字符（BUG-16 实时/落库统一口径的唯一截断实现）。
+     *
+     * <p>实时 TOOL_RESULT 事件（本类 transformToolFinished）与落库 TOOL_RESULT 行
+     * （ChatRequestWorker.buildToolResultContent）共用，保证前端实时与回放所见一致；
+     * null 归一为空串，超长保留前缀。
+     *
+     * @param output 工具返回数据字符串（可为 null）
+     * @return 截断后的输出（null → 空串；超长取前 {@value #TOOL_OUTPUT_MAX_LENGTH} 字符）
      */
-    private String truncate(String output) {
+    public static String truncateToolOutput(String output) {
         if (output == null) {
             return "";
         }

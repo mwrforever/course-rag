@@ -39,6 +39,25 @@ describe("ThinkingStep 收起展开", () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
   });
+
+  it("多卡同文档：内容体 id 唯一且各按钮 aria-controls 关联自己的内容体（BUG-21）", () => {
+    render(
+      <>
+        <ThinkingStep node={makeNode()} running />
+        <ThinkingStep node={makeNode({ stage: "retrieving" })} running={false} />
+      </>,
+    );
+    const bodies = screen.getAllByTestId("thinking-body");
+    const toggles = screen.getAllByTestId("thinking-toggle");
+    expect(bodies).toHaveLength(2);
+    // 两张卡的内容体 id 互不相同（HTML id 唯一性）
+    expect(bodies[0].id).not.toBe(bodies[1].id);
+    for (const [toggle, body] of toggles.map((t, i) => [t, bodies[i]] as const)) {
+      // aria-controls 同源引用本卡内容体 id（读屏展开关联正确）
+      expect(toggle).toHaveAttribute("aria-controls", body.id);
+      expect(document.getElementById(toggle.getAttribute("aria-controls") ?? "")).toBe(body);
+    }
+  });
 });
 
 describe("ThinkingStep 运行/完成态", () => {

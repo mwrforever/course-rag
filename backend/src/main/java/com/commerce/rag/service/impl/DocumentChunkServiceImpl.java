@@ -18,23 +18,32 @@ import com.commerce.rag.exception.ErrorCode;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
+import com.commerce.rag.properties.EtlProperties;
 import com.commerce.rag.service.IDocumentChunkService;
 import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
 import com.commerce.rag.vo.ChunkVO;
 import com.commerce.rag.vo.DocumentChunkVO;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 /**
@@ -59,6 +68,14 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
 
     private static final int DEFAULT_PAGE_SIZE = 20;
 
+    /**
+     * 批量标注文档级同步并发上限（PERF-20 保守方案拍板：2 并发）
+     *
+     * <p>取值与 etlPool 核心 2 线程对齐：分批提交锁死并发上限，既不冲高池线程挤占
+     * ETL 主任务（chunkDocument 全流程），也不占满有界队列触发 AbortPolicy 拒绝。
+     */
+    private static final int SYNC_CONCURRENCY = 2;
+
     private final DocumentChunkMapper chunkMapper;
     private final DocumentMapper documentMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
@@ -72,6 +89,16 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
 
     /** Dashboard 统计缓存失效（Spring Cache 注解化的写方统一出口，先写 DB 后失效——一致性铁律） */
     private final DashboardCacheEvictor dashboardCacheEvictor;
+
+    /**
+     * ETL 主线程池（PERF-20：批量标注文档级 Milvus 同步分批提交此池，
+     * 指名注入避免与其他 Executor Bean 歧义，与 DocumentServiceImpl 同款）
+     */
+    @Qualifier("etlPool")
+    private final ThreadPoolExecutor etlPool;
+
+    /** ETL 配置（提供批量标注同步总超时 annotation-sync-timeout-seconds，默认 120s） */
+    private final EtlProperties etlProperties;
 
     /**
      * B 端分片视图投影 wrapper（P1-3）：只取 DocumentChunkVO 全部 22 组件对应列。
@@ -379,7 +406,10 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
                         DocumentChunk::getStartPage,
                         DocumentChunk::getEndPage)
                 .eq(DocumentChunk::getCourseId, String.valueOf(courseId))
-                .orderByAsc(DocumentChunk::getChunkIndex);
+                .orderByAsc(DocumentChunk::getChunkIndex)
+                // PERF-16（宪法 A.4.7 第一阶段兜底）：课程分片查询原本无界，大课程全量返回有
+                // 响应体/内存风险；LIMIT 500 有界兜底不改接口契约，分页化（第二阶段）待前端协同
+                .last("LIMIT 500");
         // 实体列表 → VO 列表：逐条转换，docId/kbId/courseId 等内部字段不随 VO 出边界
         // M-5：投影仅取 ChunkVO 所需 7 列（原全列含 dense_vector BYTEA / 长文本 content 重复传输）
         return chunkMapper.selectList(wrapper).stream()
@@ -397,6 +427,15 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
     public IPage<ChunkBriefVO> findByCourseIdDefaultAsVO(int page, int size) {
         Page<DocumentChunk> pageObj = new Page<>(page, size > 0 ? size : DEFAULT_PAGE_SIZE);
         LambdaQueryWrapper<DocumentChunk> wrapper = Wrappers.<DocumentChunk>lambdaQuery()
+                // PERF-03（宪法 A.4.4 按需取列）：分片列表仅消费 ChunkBriefVO 5 字段，投影收窄
+                // 5 列（与 J4 相邻分片查询同范式）——原全列取回含 dense_vector BYTEA（~80KB/行），
+                // 每次翻页全量传输与反序列化后丢弃；列表页无向量检索诉求，禁回退全列
+                .select(
+                        DocumentChunk::getId,
+                        DocumentChunk::getContent,
+                        DocumentChunk::getHeadingPath,
+                        DocumentChunk::getChunkIndex,
+                        DocumentChunk::getParentTitle)
                 .eq(DocumentChunk::getCourseId, "DEFAULT")
                 .orderByAsc(DocumentChunk::getChunkIndex);
         IPage<DocumentChunk> entityPage = chunkMapper.selectPage(pageObj, wrapper);
@@ -445,10 +484,103 @@ public class DocumentChunkServiceImpl extends ServiceImpl<DocumentChunkMapper, D
                 .stream()
                 .map(DocumentChunk::getDocId)
                 .collect(Collectors.toSet());
-        for (Long docId : docIds) {
-            etlPipeline.syncDocToMilvus(docId);
-        }
+        // PERF-20（保守方案）：原串行循环在 HTTP 请求线程逐文档同步（每文档全量向量传输 +
+        // 2 次 Milvus 往返），改为 2 并发分批提交 etlPool + 总超时 + 单文档失败隔离；
+        // 保持同步完成后才返回（不改变 2026-08-15 文档级同步拍板）与失败上抛契约
+        syncDocsToMilvusConcurrently(docIds);
         log.info("批量更新分片标量字段: count={}, collectionType={}, courseId={}", ids.size(), collectionType, courseId);
+    }
+
+    /**
+     * 批量标注的文档级 Milvus 同步并行化（PERF-20 保守方案）
+     *
+     * <p>执行策略：
+     * <ul>
+     *   <li>docIds 去重后按 {@link #SYNC_CONCURRENCY}（2）分批提交既有 etlPool——
+     *       批内 2 文档并行、批间串行，锁死并发上限（不挤占 ETL 主任务、不占满有界队列）</li>
+     *   <li>整批 join 带总超时（etl.annotation-sync-timeout-seconds，默认 120s，A.1.8 超时控制）：
+     *       超时取消未完成任务并阻断上抛——同步为幂等 delete-then-insert，上层可重试收敛</li>
+     *   <li>单文档失败隔离：批内一文档失败仅记录不中断其余文档，全部执行完后若有失败
+     *       仍上抛首个原始异常（保持原串行「失败上抛可重试收敛」对外契约不变）</li>
+     * </ul>
+     *
+     * @param docIds 本次批量标注涉及的文档 ID 集合（已去重，空集直接返回）
+     * @throws IllegalStateException 总超时（未完成文档已取消），或全部执行完后的首个同步失败（原始异常回抛）
+     */
+    private void syncDocsToMilvusConcurrently(Set<Long> docIds) {
+        if (docIds.isEmpty()) {
+            return;
+        }
+        // Set → 有序列表：批次划分与失败上抛的取序确定（重试语义可复现）
+        List<Long> ordered = new ArrayList<>(docIds);
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(etlProperties.annotationSyncTimeoutSeconds());
+        // 单文档失败登记（docId → 原始异常）：并发写入用 ConcurrentHashMap（A.1.8 线程安全）
+        Map<Long, Throwable> failures = new ConcurrentHashMap<>();
+        for (int i = 0; i < ordered.size(); i += SYNC_CONCURRENCY) {
+            // 当前批次：至多 2 个文档，一次性提交 etlPool（并发上限 = 批大小）
+            List<Long> batch = ordered.subList(i, Math.min(i + SYNC_CONCURRENCY, ordered.size()));
+            CompletableFuture<?>[] futures = batch.stream()
+                    .map(docId -> CompletableFuture.runAsync(
+                            () -> {
+                                try {
+                                    etlPipeline.syncDocToMilvus(docId);
+                                } catch (Throwable t) {
+                                    // 失败隔离：登记后放行其余文档，批末统一上抛（不静默吞结果）
+                                    failures.put(docId, t);
+                                    log.warn("文档级 Milvus 同步单文档失败（隔离继续其余文档）: docId={}, error={}", docId, t.getMessage());
+                                }
+                            },
+                            etlPool))
+                    .toArray(CompletableFuture[]::new);
+            // 批内 allOf join：带剩余时限（总超时均摊到各批，整体不超过配置阈值）
+            long remainingNanos = deadlineNanos - System.nanoTime();
+            try {
+                if (remainingNanos <= 0) {
+                    // 预算耗尽直接按超时处理（后续批次不再提交）
+                    throw new TimeoutException();
+                }
+                CompletableFuture.allOf(futures).get(remainingNanos, TimeUnit.NANOSECONDS);
+            } catch (TimeoutException e) {
+                // 总超时：中断/取消未完成任务并阻断上抛（幂等 delete-then-insert 可重试收敛）
+                for (CompletableFuture<?> future : futures) {
+                    future.cancel(true);
+                }
+                List<Long> unfinished = ordered.subList(i, ordered.size());
+                log.error(
+                        "批量标注文档级 Milvus 同步总超时（取消未完成任务）: 超时阈值={}s, 未完成 docIds={}",
+                        etlProperties.annotationSyncTimeoutSeconds(),
+                        unfinished);
+                throw new IllegalStateException("批量标注文档级 Milvus 同步超时（阈值 " + etlProperties.annotationSyncTimeoutSeconds()
+                        + "s），未完成 docIds=" + unfinished + "，可重试收敛");
+            } catch (InterruptedException e) {
+                // 请求线程被中断：恢复中断标记并取消未完成任务，按失败语义上抛
+                Thread.currentThread().interrupt();
+                for (CompletableFuture<?> future : futures) {
+                    future.cancel(true);
+                }
+                throw new IllegalStateException(
+                        "批量标注文档级 Milvus 同步被中断: 未完成 docIds=" + ordered.subList(i, ordered.size()), e);
+            } catch (ExecutionException e) {
+                // 理论不可达（任务体已自捕获 Throwable 登记 failures），保险上抛防吞
+                throw new IllegalStateException("批量标注文档级 Milvus 同步出现未登记的任务异常", e);
+            }
+        }
+        if (!failures.isEmpty()) {
+            // 全部执行完后统一上抛：按提交顺序取首个失败回抛原始异常（异常类型/消息与原串行语义一致）
+            Long firstFailedDocId =
+                    ordered.stream().filter(failures::containsKey).findFirst().orElseThrow();
+            log.error(
+                    "批量标注文档级 Milvus 同步完成但存在失败文档: 失败 docIds={}, 成功 {}/{}",
+                    failures.keySet(),
+                    ordered.size() - failures.size(),
+                    ordered.size());
+            Throwable first = failures.get(firstFailedDocId);
+            if (first instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException("批量标注文档级 Milvus 同步失败: docIds=" + failures.keySet(), first);
+        }
+        log.info("批量标注文档级 Milvus 同步全部完成: docCount={}", ordered.size());
     }
 
     /**

@@ -20,6 +20,7 @@ import com.commerce.rag.exception.BizException;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
+import com.commerce.rag.properties.EtlProperties;
 import com.commerce.rag.service.impl.DocumentChunkServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.ChunkBriefVO;
@@ -31,8 +32,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -55,6 +58,31 @@ class DocumentChunkServiceTest {
         MybatisPlusTestHelper.initTableInfo();
     }
 
+    /**
+     * PERF-20 测试同步：batchUpdate 的文档级 Milvus 同步已由请求线程串行改为 etlPool 并行分批
+     * + allOf 总超时等待。本类聚焦业务契约（docIds 去重 / 失败上抛 / 查询投影），
+     * mock etlPool.execute 直通在提交线程同步执行任务——任务即提即完，allOf join 零等待，
+     * etlPipeline 的 mock 交互立即可 verify（无需超时轮询）；2 并发上限 / 失败隔离 / 总超时
+     * 等并行化契约已由 DocumentChunkServiceImplTest 专项覆盖，本类不重复。
+     *
+     * <p>两个 stub 标记 lenient：本类多数用例（查询/权限/单分片路径）不触发批量同步，
+     * strict 模式会对未消费的 stub 误报 UnnecessaryStubbing。
+     */
+    @BeforeEach
+    void setUpDocSyncConcurrency() {
+        lenient()
+                .doAnswer(invocation -> {
+                    // 直通执行：Runnable 在提交线程立即 run，CompletableFuture 提交即完成
+                    Runnable task = invocation.getArgument(0);
+                    task.run();
+                    return null;
+                })
+                .when(etlPool)
+                .execute(any(Runnable.class));
+        // 同步总超时取测试友好值 30s（生产默认 120s）：本类无超时路径用例，仅约束 join 有界不挂死
+        lenient().when(etlProperties.annotationSyncTimeoutSeconds()).thenReturn(30);
+    }
+
     @Mock
     private DocumentChunkMapper chunkMapper;
 
@@ -70,6 +98,17 @@ class DocumentChunkServiceTest {
     /** Dashboard 统计缓存（Mock——删除/修正路径的失效钩子仅需不抛异常） */
     @Mock
     private DashboardCacheEvictor dashboardCacheEvictor;
+
+    /**
+     * ETL 主线程池（PERF-20：batchUpdate 文档级 Milvus 同步分批提交此池，
+     * Mock + execute 直通同步执行，见 {@link #setUpDocSyncConcurrency()}）
+     */
+    @Mock
+    private ThreadPoolExecutor etlPool;
+
+    /** ETL 配置（PERF-20：提供批量标注同步总超时 annotationSyncTimeoutSeconds，生产默认 120s） */
+    @Mock
+    private EtlProperties etlProperties;
 
     /** 转换器用真实实现（MapStruct 生成类），转换行为由 DocumentChunkConverterTest 单独覆盖 */
     @Spy
@@ -304,7 +343,7 @@ class DocumentChunkServiceTest {
     }
 
     @Test
-    @DisplayName("findByCourseIdAsVO → 按课程 ID 查询分片（chunk_index 升序，VO 出参）")
+    @DisplayName("findByCourseIdAsVO → 按课程 ID 查询分片（chunk_index 升序，VO 出参，LIMIT 500 有界兜底）")
     void findByCourseIdAsVO_returnsChunks() {
         when(chunkMapper.selectList(any())).thenReturn(List.of(chunk(1L, "10"), chunk(2L, "10")));
 
@@ -319,7 +358,12 @@ class DocumentChunkServiceTest {
         assertEquals("小节", vo.parentTitle());
         assertEquals(1, vo.startPage());
         assertEquals(2, vo.endPage());
-        verify(chunkMapper).selectList(any());
+        ArgumentCaptor<LambdaQueryWrapper<DocumentChunk>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(chunkMapper).selectList(captor.capture());
+        // PERF-16（宪法 A.4.7）：无界 selectList 必须有界——大课程分片全量返回有响应体/内存风险
+        assertTrue(
+                captor.getValue().getSqlSegment().endsWith("LIMIT 500"),
+                "课程分片查询应携带 LIMIT 500 有界兜底，实际 SQL 片段: " + captor.getValue().getSqlSegment());
     }
 
     @Test
@@ -1036,6 +1080,29 @@ class DocumentChunkServiceTest {
         ArgumentCaptor<LambdaQueryWrapper<DocumentChunk>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(chunkMapper).selectPage(any(Page.class), captor.capture());
         assertEquals(VO_COLUMNS, captureSelectColumns(captor.getValue()), "findPending 投影列集应与 DocumentChunkVO 组件一一对应");
+    }
+
+    /** ChunkBriefVO 组件列集（PERF-03：J3 通用资料库分片列表按需取列，仅 5 列） */
+    private static final Set<String> BRIEF_VO_COLUMNS =
+            Set.of("id", "content", "heading_path", "chunk_index", "parent_title");
+
+    @Test
+    @DisplayName("PERF-03 findByCourseIdDefaultAsVO 投影 — SELECT 仅 ChunkBriefVO 5 列、不含 dense_vector")
+    void findByCourseIdDefaultAsVO_projectsBriefColumnsOnly() {
+        Page<DocumentChunk> page = new Page<>(1, 20);
+        page.setRecords(List.of(chunk(1L, "10")));
+        when(chunkMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        // J3 通用资料库分片列表（C 端）：分页查询仅消费 ChunkBriefVO 5 字段，
+        // 修复前全列取回（含 dense_vector BYTEA ~80KB/行，翻页全量传输后丢弃）
+        chunkService.findByCourseIdDefaultAsVO(1, 0);
+
+        ArgumentCaptor<LambdaQueryWrapper<DocumentChunk>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(chunkMapper).selectPage(any(Page.class), captor.capture());
+        assertEquals(
+                BRIEF_VO_COLUMNS,
+                captureSelectColumns(captor.getValue()),
+                "J3 分片列表投影列集应与 ChunkBriefVO 一一对应（不含 dense_vector）");
     }
 
     @Test

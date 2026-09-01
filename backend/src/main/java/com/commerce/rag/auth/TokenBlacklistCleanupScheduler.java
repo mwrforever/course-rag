@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 /**
  * Token 黑名单定时清理调度器 —— sys_token_blacklist 过期行自动软删（B1-4）
  *
- * <p>背景：黑名单写入遍布全链路（refresh 旋转 TOKEN_REUSE、互踢 DEVICE_KICKED、
+ * <p>背景：黑名单写入遍布全链路（refresh 旋转 ROTATED、互踢 DEVICE_KICKED、
  * 禁用用户 USER_DISABLED、登出 MANUAL_REVOKE），原实现仅有手动清理接口
  * （AdminLoginRecordController → cleanupExpiredBlacklist），无自动任务导致表单调增长；
  * 叠加 countByJti 不过滤 expires_at，过期行永久参与认证降级查询（已同步修复）。

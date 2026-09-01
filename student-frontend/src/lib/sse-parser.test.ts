@@ -154,4 +154,20 @@ describe("createSseParser 帧解析", () => {
     expect(sink.events).toEqual([{ name: "delta", data: "y", id: null }]);
     expect(sink.heartbeats).toBe(0);
   });
+
+  it("边界 WHATWG 规范形态「字段: 值」带前导空格：id/event/data 三字段均剥空格后解析（BUG-26）", () => {
+    const sink = createSink();
+    const feed = createSseParser(sink.handlers);
+    // 网关/其他服务端实现/测试桩常按规范写 "data: {...}"（冒号后一个空格）
+    feed('id: 12\nevent: metadata\ndata: {"studentId":"9"}\n\n');
+    expect(sink.events).toEqual([{ name: "metadata", data: '{"studentId":"9"}', id: "12" }]);
+  });
+
+  it("边界 前导空格只剥一个：第二个空格属值内容（规范语义）", () => {
+    const sink = createSink();
+    const feed = createSseParser(sink.handlers);
+    feed("event: delta\ndata:  x\n\n");
+    // data 冒号后两个空格：剥一个，剩一个为值首字符
+    expect(sink.events).toEqual([{ name: "delta", data: " x", id: null }]);
+  });
 });

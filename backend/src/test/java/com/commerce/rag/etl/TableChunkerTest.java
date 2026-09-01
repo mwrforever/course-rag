@@ -24,7 +24,8 @@ class TableChunkerTest {
             16,
             10,
             new EtlProperties.Table(25, 30, 2),
-            500);
+            500,
+            120);
 
     private final TableChunker chunker = new TableChunker(PROPS);
 

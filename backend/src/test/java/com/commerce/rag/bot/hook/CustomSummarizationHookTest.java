@@ -6,6 +6,8 @@ import static org.mockito.Mockito.*;
 
 import com.alibaba.cloud.ai.graph.agent.hook.messages.AgentCommand;
 import com.alibaba.cloud.ai.graph.agent.hook.messages.UpdatePolicy;
+import com.commerce.rag.properties.ContextProperties;
+import com.commerce.rag.properties.ModelProperties;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,8 +40,10 @@ class CustomSummarizationHookTest {
 
     @BeforeEach
     void setUp() {
-        // 手动构造: maxContextTokens=128000, windowRatio=0.7, threshold=0.7, keepRecent=6, summaryModel=qwen3.7-flash
-        hook = new CustomSummarizationHook(chatModel, 128000, 0.7, 0.7, 6, "qwen3.7-flash");
+        // 手动构造: maxContextTokens=128000, windowRatio=0.7, threshold=0.7, keepRecent=6,
+        // summaryModel=qwen3.7-flash（与原 @Value 兜底值一致，经属性类注入）
+        hook = new CustomSummarizationHook(
+                chatModel, new ModelProperties(128000), new ContextProperties(0.7, 0.7, 6, "qwen3.7-flash"));
     }
 
     @Test

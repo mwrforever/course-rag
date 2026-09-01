@@ -12,6 +12,7 @@ import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
+import com.commerce.rag.properties.AgentProperties;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.record.AssistantEntitySplitter;
@@ -38,12 +39,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -53,6 +56,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
@@ -64,7 +68,6 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
@@ -144,7 +147,7 @@ public class ChatRequestWorker {
             AttachmentOrchestrator orchestrator,
             MemoryExtractionPipeline memoryExtractionPipeline,
             ObjectMapper objectMapper,
-            @Value("${rag.agent.model:qwen3.8-max}") String agentModel) {
+            AgentProperties agentProperties) {
         this.redisTemplate = redisTemplate;
         this.compiledGraph = compiledGraph;
         this.saver = saver;
@@ -159,7 +162,9 @@ public class ChatRequestWorker {
         this.orchestrator = orchestrator;
         this.memoryExtractionPipeline = memoryExtractionPipeline;
         this.objectMapper = objectMapper;
-        this.agentModel = agentModel;
+        // BUG-12 @Value 收敛：主对话模型名经 AgentProperties（rag.agent.model）强类型注入，
+        // 取值与原 @Value 相同
+        this.agentModel = agentProperties.model();
     }
 
     // ========================================================================
@@ -225,7 +230,8 @@ public class ChatRequestWorker {
      * B2-3——附件处理发生在转 ACTIVE 之前，该窗口内进程崩溃/停机丢任务的 run 全程
      * 停留 QUEUED，且同样占据 uniq_active_run_per_session 锁死会话）。
      *
-     * <p>巡检将滞留 run 置 ERROR（endedAt 由 updateStatus 自动设置），
+     * <p>巡检将滞留 run 置 ERROR（endedAt 由 markErrorIfCurrent 自动设置；BUG-01 后以 SELECT
+     * 观察状态为前提 CAS 原子判定，窗口内已迁移的 run 跳过不误杀），
      * 失败可见可手动重试。与 P1-5 的完成时刻短重试互补（覆盖执行期崩溃场景）。
      */
     private void sweepStaleRuns() {
@@ -235,12 +241,20 @@ public class ChatRequestWorker {
             List<ChatRunVO> stale = chatRunService.findStaleActive(startedBefore, queuedBefore);
             for (ChatRunVO run : stale) {
                 try {
-                    chatRunService.updateStatus(run.id(), "ERROR");
-                    log.warn(
-                            "巡检发现滞留 run（ACTIVE/QUEUED 超时），置 ERROR 解锁会话: runId={}, sessionId={}, status={}",
-                            run.id(),
-                            run.sessionId(),
-                            run.status());
+                    // BUG-01 巡检 TOCTOU：以 SELECT 时观察到的状态为前提做 CAS 条件 UPDATE 原子判定——
+                    // SELECT→UPDATE 窗口内刚被 worker 取出转 ACTIVE 的 run 不被误杀（误杀会解锁会话，
+                    // 新 run 与仍在执行的旧 run 同 thread_id 真并发）；主路径（滞留 run 置 ERROR 解锁
+                    // 会话）行为不变，仍受 uniq_active_run_per_session 唯一索引保护
+                    int updated = chatRunService.markErrorIfCurrent(run.id(), run.status());
+                    if (updated > 0) {
+                        log.warn(
+                                "巡检发现滞留 run（ACTIVE/QUEUED 超时），置 ERROR 解锁会话: runId={}, sessionId={}, status={}",
+                                run.id(),
+                                run.sessionId(),
+                                run.status());
+                    } else {
+                        log.info("巡检置 ERROR 未命中（run 状态已在扫描后迁移，跳过不误杀）: runId={}, 观察状态={}", run.id(), run.status());
+                    }
                 } catch (Exception e) {
                     log.error("巡检置 ERROR 失败: runId={}", run.id(), e);
                 }
@@ -323,6 +337,9 @@ public class ChatRequestWorker {
                             } catch (Exception removeEx) {
                                 log.error("runPool 拒绝后清理 ring 失败: runId={}", rejectedRunIdStr, removeEx);
                             }
+                            // ②.5 BUG-14：清理入队注册的取消条目——被拒 run 不经过 processRequest
+                            // （其 finally 是条目唯一常规清理点），不清理则条目永久残留
+                            cancelFlags.remove(rejectedRunIdStr);
                         }
                         // ③ run 状态回写 ERROR（解锁会话，失败可见可重试）
                         if (rejectedRunId != null) {
@@ -535,8 +552,14 @@ public class ChatRequestWorker {
         //    且 catch 分支持久化时可直接读取游标）
         RunSnapshot snapshot = captureSnapshot(runIdStr, config);
         try {
-            // 2. 状态 → ACTIVE
-            chatRunService.updateStatus(runId, "ACTIVE");
+            // 2. 状态 → ACTIVE（BUG-01 状态机守卫：仅 QUEUED 可迁移；0 行=run 已被巡检置 ERROR 等
+            //    终态，迟到队列任务直接跳过图执行，避免复活终态 run 后同 thread_id 与用户新 run
+            //    并发跑图——checkpoint 并发写、SSE 双流互踩）
+            int activated = chatRunService.updateStatus(runId, "ACTIVE");
+            if (activated == 0) {
+                skipExecutionForGuardRejectedRun(runId, runIdStr, runState);
+                return;
+            }
 
             // 2.1 落库本次输入附件（业务入口表，spec §5.1 双存决策；紧随 ACTIVE 写入，保证入口数据不丢）
             chatRunService.updateAttachments(runId, attachmentsJson);
@@ -701,12 +724,71 @@ public class ChatRequestWorker {
     // ========================================================================
 
     /**
+     * BUG-01 守卫拒绝后的收尾：跳过图执行并为仍在等待的客户端补推终态事件。
+     *
+     * <p>触发场景：高峰积压下巡检已把滞留 QUEUED 的 run 置 ERROR 解锁会话（用户可能已重发新 run），
+     * 迟到队列任务此时才被取出执行——updateStatus(ACTIVE) 被「仅 QUEUED 可迁移」守卫拒绝（0 行）。
+     * 本方法补查 run 实际终态并推送终态事件（客户端状态机收到终态而非悬挂到 emitter 超时），
+     * 事件经 ring 入队后由 finally 的 removeRing 按 drain 语义送达；run 非终态（重复投递被并发
+     * 任务接管的极端窗口）时不推事件，避免污染执行中流。
+     *
+     * @param runId    Run ID（Long）
+     * @param runIdStr Run 唯一标识（字符串，ring 键）
+     * @param runState SSE 事件序列状态（seqId 递增）
+     */
+    private void skipExecutionForGuardRejectedRun(Long runId, String runIdStr, SseEventTransformer.RunState runState) {
+        ChatRunVO current = chatRunService.findById(runId);
+        String status = current == null ? null : current.status();
+        log.warn("run 迁移 ACTIVE 被状态机守卫拒绝，跳过图执行: runId={}, 当前状态={}", runId, status);
+        // 非终态（重复投递/状态异常窗口）：不推终态事件，仅记日志跳过
+        if (!"COMPLETED".equals(status) && !"CANCELLED".equals(status) && !"ERROR".equals(status)) {
+            return;
+        }
+        // 补推终态事件（携带实际终态；ERROR 类型事件对客户端状态机即终态信号）
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("runId", runIdStr);
+        payload.put("status", status);
+        payload.put("message", "请求排队超时已被结束，请重新发送");
+        bridge.push(
+                runIdStr,
+                new SseEvent(SseEventType.ERROR, runState.nextSeq(), toJson(payload), System.currentTimeMillis()));
+    }
+
+    /**
+     * 注册待执行 run 的取消条目（由入口 ChatStreamEntry 在 XADD 成功后调用）。
+     *
+     * <p>BUG-14 生命周期修正：cancelFlags 条目原由 cancel() 自身 computeIfAbsent 创建，
+     * 唯一清理路径是 processRequest.finally——对已完成 run 取消会在 TOCTOU 窗口内
+     * 重建永不清除的残留条目。现改为「入队注册 → finally 清理」的完整生命周期：
+     * 条目在 run 入队时即存在（排队期取消同样生效），run 终止时由 finally 清理。
+     *
+     * <p>putIfAbsent 幂等且不覆盖已有值：已置位的取消标记（入队后即被取消）不会被重置。
+     *
+     * @param runId Run 唯一标识（字符串形态，与 cancelFlags 键一致）
+     */
+    public void registerPendingRun(String runId) {
+        cancelFlags.putIfAbsent(runId, new AtomicBoolean(false));
+    }
+
+    /**
      * 取消指定 run（由 Controller 调用）。
-     * 设置取消标记后，下次 doOnNext 检查时抛出 CancelledException。
+     *
+     * <p>BUG-14：改用 computeIfPresent 仅对已注册（排队/执行中）的 run 置位——
+     * 条目不存在说明 run 未在执行或已完成（其 finally 已清理），置位是 no-op，
+     * 消除原 computeIfAbsent 对已完成 run 重建残留条目的 TOCTOU 泄漏。
+     * 置位后下次取消检查点（doOnNext/检索 join 前/附件批循环）抛出 CancelledException。
      */
     public void cancel(String runId) {
-        cancelFlags.computeIfAbsent(runId, k -> new AtomicBoolean()).set(true);
-        log.info("请求取消 run: runId={}", runId);
+        // 仅当条目已存在（run 排队/执行中）时原子置位；run 不在执行中则记录后忽略
+        AtomicBoolean flag = cancelFlags.computeIfPresent(runId, (k, f) -> {
+            f.set(true);
+            return f;
+        });
+        if (flag != null) {
+            log.info("请求取消 run: runId={}", runId);
+        } else {
+            log.info("取消请求忽略（run 不在执行中）: runId={}", runId);
+        }
     }
 
     // ========================================================================
@@ -977,20 +1059,69 @@ public class ChatRequestWorker {
             // 正常完成路径（消息实体化，spec §3.3）：每次 LLM 调用一条 assistant 实体行
             // ====================================================================
 
+            List<AssistantMessageCapture> captures = assistantSink == null ? List.of() : assistantSink.snapshot();
+
+            // 3. TOOL_RESULT 行预收集（BUG-11）：按 toolCallId 把工具结果配对到「发起该调用的
+            //    捕获」——实时事件序为 TOOL_CALL（实体行内）→ TOOL_RESULT → 下一实体行，
+            //    落库 seq 必须穿插在对应实体行之后，回放（前端按行 seq 重建时间轴）才与实时
+            //    一致；修复前集中排在全部实体行之后，多轮工具调用回放时序错乱。
+            //    游标语义与取消路径一致：仅取本轮新增（index >= historyCursor）；
+            //    未配对结果（理论兜底：实体序列化失败跳行）按到达序收敛到全部实体行之后。
+            Map<String, Integer> toolCallCaptureIndex = new HashMap<>();
+            for (int i = 0; i < captures.size(); i++) {
+                for (AssistantMessageCapture.AssistantToolCall toolCall :
+                        captures.get(i).toolCalls()) {
+                    if (toolCall.id() != null && !toolCall.id().isEmpty()) {
+                        // putIfAbsent：同一 id 重复出现时锚定首次捕获（toolCallId 模型侧唯一）
+                        toolCallCaptureIndex.putIfAbsent(toolCall.id(), i);
+                    }
+                }
+            }
+            List<List<ToolResponseMessage.ToolResponse>> resultsByCapture = new ArrayList<>(captures.size());
+            for (int i = 0; i < captures.size(); i++) {
+                resultsByCapture.add(new ArrayList<>());
+            }
+            List<ToolResponseMessage.ToolResponse> tailResults = new ArrayList<>();
+            if (lastOutput != null && lastOutput.state() != null) {
+                Optional<Object> messagesOpt = lastOutput.state().value("messages");
+                if (messagesOpt.isPresent() && messagesOpt.get() instanceof List<?> rawList) {
+                    int start = Math.max(0, Math.min(historyCursor, rawList.size()));
+                    for (int i = start; i < rawList.size(); i++) {
+                        Object item = rawList.get(i);
+                        if (item instanceof ToolResponseMessage trm) {
+                            for (ToolResponseMessage.ToolResponse tr : trm.getResponses()) {
+                                // ToolResponse.id() 契约非空（Spring AI 框架保证），直接查表配对；
+                                // 未命中（含 get 返回 null）走 tailResults 兜底，与原判空分支行为一致
+                                Integer captureIdx = toolCallCaptureIndex.get(tr.id());
+                                if (captureIdx == null) {
+                                    tailResults.add(tr);
+                                } else {
+                                    resultsByCapture.get(captureIdx).add(tr);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 2. assistant 实体行：QU / caption / 主 agent 各一次调用一条（捕获顺序 = 调用结束序）。
             //    seq = 拆行末位 VO 序号——n 个拆行 VO 占 [seq, seq+n-1]（虚拟位，无实际行），
             //    实体行取末位；消费面拆行函数按「实体seq-(n-1)…实体seq」倒推，读写两侧同源一致
-            //    （(run_id,seq) 唯一索引无冲突、跨实体/TOOL_RESULT 混合排序正确）
-            List<AssistantMessageCapture> captures = assistantSink == null ? List.of() : assistantSink.snapshot();
-            for (AssistantMessageCapture capture : captures) {
+            //    （(run_id,seq) 唯一索引无冲突、跨实体/TOOL_RESULT 混合排序正确）。
+            //    每条实体行落位后紧随其挂载的 TOOL_RESULT 行（BUG-11 事件序穿插）
+            for (int ci = 0; ci < captures.size(); ci++) {
+                AssistantMessageCapture capture = captures.get(ci);
                 String entityJson = AssistantEntitySplitter.toEntityJson(capture);
                 if (entityJson == null) {
-                    // 序列化失败（理论不可达：纯 LinkedHashMap 结构），跳过该调用不落行
+                    // 序列化失败（理论不可达：纯 LinkedHashMap 结构），跳过该调用不落行——
+                    // 其挂载的工具结果行仍须落库（挂在当前位置，不丢行）
+                    seq = appendToolResultRows(messages, resultsByCapture.get(ci), runId, sessionId, seq);
                     continue;
                 }
                 int voCount = AssistantEntitySplitter.voCount(entityJson);
                 if (voCount == 0) {
                     // 空调用（无思考/正文/工具调用）：与实体化前「空消息不落行」语义一致
+                    seq = appendToolResultRows(messages, resultsByCapture.get(ci), runId, sessionId, seq);
                     continue;
                 }
                 ChatMessage row = new ChatMessage();
@@ -1013,33 +1144,14 @@ public class ChatRequestWorker {
                 row.setSeq(seq + voCount - 1);
                 seq += voCount;
                 messages.add(row);
+
+                // BUG-11：该调用发起的工具结果行紧随其实体行分配 seq（实时事件序），保持独立
+                // 事件行（非模型消息，spec §3.3），与实时 TOOL_RESULT 事件 schema 一致
+                seq = appendToolResultRows(messages, resultsByCapture.get(ci), runId, sessionId, seq);
             }
 
-            // 3. TOOL_RESULT 行：state 中 ToolResponseMessage 保持独立事件行（非模型消息，
-            //    spec §3.3）；与实时 TOOL_RESULT 事件 schema 一致（toolCallId/status/output）。
-            //    游标语义与取消路径一致：仅取本轮新增（index >= historyCursor）
-            if (lastOutput != null && lastOutput.state() != null) {
-                Optional<Object> messagesOpt = lastOutput.state().value("messages");
-                if (messagesOpt.isPresent() && messagesOpt.get() instanceof List<?> rawList) {
-                    int start = Math.max(0, Math.min(historyCursor, rawList.size()));
-                    for (int i = start; i < rawList.size(); i++) {
-                        Object item = rawList.get(i);
-                        if (item instanceof ToolResponseMessage trm) {
-                            for (ToolResponseMessage.ToolResponse tr : trm.getResponses()) {
-                                ChatMessage cm = new ChatMessage();
-                                cm.setSessionId(sessionId);
-                                cm.setRunId(runId);
-                                cm.setRole("ASSISTANT");
-                                cm.setMessageType("TOOL_RESULT");
-                                cm.setContent(buildToolResultContent(tr.id(), tr.responseData()));
-                                cm.setSourcesJson("[]");
-                                cm.setSeq(seq++);
-                                messages.add(cm);
-                            }
-                        }
-                    }
-                }
-            }
+            // 未配对工具结果兜底：按到达序排全部实体行之后（与修复前集中末尾行为一致）
+            seq = appendToolResultRows(messages, tailResults, runId, sessionId, seq);
         }
 
         // 6. 批量插入
@@ -1390,22 +1502,63 @@ public class ChatRequestWorker {
     }
 
     /**
-     * 处理异常：ERROR 事件 + 状态 ERROR + 错误信息。
+     * 处理异常：ERROR 事件（中文文案）+ 状态 ERROR + 错误信息。
+     *
+     * <p>N3-1：SSE error 事件的 message 按异常类型映射中文用户文案
+     * （{@link #userFacingErrorMessage}），原始英文异常消息仅入日志（下方 error 日志含
+     * 异常类名与网关响应体摘要），不透传前端。
      */
     private void handleError(String runIdStr, Long runId, SseEventTransformer.RunState runState, Throwable e) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("runId", runIdStr);
         payload.put("status", "ERROR");
-        payload.put(
-                "message",
-                e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        payload.put("message", userFacingErrorMessage(e));
         bridge.push(
                 runIdStr,
                 new SseEvent(SseEventType.ERROR, runState.nextSeq(), toJson(payload), System.currentTimeMillis()));
         updateStatusWithRetry(runId, "ERROR");
         // 响应体摘要（WebClientResponseException 携带 LLM 网关 400/429 详情——如 DashScope 欠费
-        // Arrearage，2026-08-30 实证仅有状态码无法定位根因，补打响应体截断）
-        log.error("Run 执行异常: runId={}, 网关响应体={}", runId, responseBodyOf(e), e);
+        // Arrearage，2026-08-30 实证仅有状态码无法定位根因，补打响应体截断）；
+        // N3-1：异常类名与原始消息显式入日志（前端只见中文文案，技术细节留服务端排查）
+        log.error(
+                "Run 执行异常: runId={}, 异常类={}, 原始消息={}, 网关响应体={}",
+                runId,
+                e.getClass().getName(),
+                e.getMessage(),
+                responseBodyOf(e),
+                e);
+    }
+
+    /**
+     * 按异常类型映射面向用户的中文错误文案（N3-1：原始英文异常消息不透传前端）
+     *
+     * <p>映射保持简单（3 类，instanceof + 消息关键词判定）：
+     * <ol>
+     *   <li>超时类（TimeoutException 及消息含 timeout/timed out）→「模型服务响应超时，请稍后重试」；
+     *       判定先于网络断连——SocketTimeoutException 属 IOException 子类，先按超时归类避免误报</li>
+     *   <li>网络断连类（IOException 及消息含 connection reset/refused、broken pipe）→「网络连接中断，请重试」</li>
+     *   <li>其它 →「服务暂时不可用，请稍后重试」</li>
+     * </ol>
+     *
+     * @param e 图执行抛出的异常（消息可为 null）
+     * @return 中文用户文案（恒非空）
+     */
+    static String userFacingErrorMessage(Throwable e) {
+        String message = e.getMessage();
+        String lower = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        // 超时类：类型或消息命中（reactor blockLast 超时为 IllegalStateException("Timeout on ...")，靠消息命中）
+        if (e instanceof TimeoutException || lower.contains("timeout") || lower.contains("timed out")) {
+            return "模型服务响应超时，请稍后重试";
+        }
+        // 网络断连类：IO 异常类型或典型断连关键词
+        if (e instanceof IOException
+                || lower.contains("connection reset")
+                || lower.contains("connection refused")
+                || lower.contains("broken pipe")) {
+            return "网络连接中断，请重试";
+        }
+        // 兜底：不暴露内部技术细节
+        return "服务暂时不可用，请稍后重试";
     }
 
     /** 提取 LLM 网关异常响应体摘要（WebClientResponseException 携带业务错误详情；非网关异常返回空串） */
@@ -1701,20 +1854,57 @@ public class ChatRequestWorker {
     }
 
     /**
+     * 追加一批 TOOL_RESULT 落库行（BUG-11：正常路径事件序穿插的唯一落行点）。
+     *
+     * <p>每条工具结果落一条独立事件行（非模型消息，spec §3.3），content 与实时 TOOL_RESULT
+     * 事件 schema 一致（toolCallId/status/output）；seq 在调用方当前位置顺序分配——
+     * 调用方保证传入位置与实时事件序一致（实体行之后 / 全部实体行之后兜底）。
+     *
+     * @param messages 落库行累计列表（原地追加）
+     * @param results  本批工具结果（到达序，可为空列表）
+     * @param runId    Run 唯一标识
+     * @param sessionId 会话 ID
+     * @param seq      当前 seq 游标
+     * @return 消费后的新 seq 游标（消费 n 条结果则 +n）
+     */
+    private int appendToolResultRows(
+            List<ChatMessage> messages,
+            List<ToolResponseMessage.ToolResponse> results,
+            Long runId,
+            Long sessionId,
+            int seq) {
+        for (ToolResponseMessage.ToolResponse tr : results) {
+            ChatMessage cm = new ChatMessage();
+            cm.setSessionId(sessionId);
+            cm.setRunId(runId);
+            cm.setRole("ASSISTANT");
+            cm.setMessageType("TOOL_RESULT");
+            cm.setContent(buildToolResultContent(tr.id(), tr.responseData()));
+            cm.setSourcesJson("[]");
+            cm.setSeq(seq++);
+            messages.add(cm);
+        }
+        return seq;
+    }
+
+    /**
      * 构建 TOOL_RESULT 消息内容 JSON —— 与实时 TOOL_RESULT 事件（SseEventTransformer）schema 一致：
      * {@code {"toolCallId":"...","status":"success","output":"..."}}
      *
      * <p>P1-2：与 {@link #buildToolCallContent} 同理，统一落库格式与实时事件。
+     * BUG-16（2026-08-31）：output 经 {@link SseEventTransformer#truncateToolOutput} 与实时事件
+     * 统一截断到 4000 字符——修复前落库存全量、实时截 4000，前端实时与回放口径分叉；正常/取消
+     * 两路径的 TOOL_RESULT 行均经本方法落库，单点收敛截断口径。
      *
      * @param toolCallId   工具调用 ID（模型生成）
      * @param responseData 工具返回数据字符串
-     * @return 符合实时事件 schema 的 JSON 字符串
+     * @return 符合实时事件 schema 的 JSON 字符串（output 已按统一口径截断）
      */
     private String buildToolResultContent(String toolCallId, String responseData) {
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("toolCallId", toolCallId != null ? toolCallId : "");
         content.put("status", "success");
-        content.put("output", responseData != null ? responseData : "");
+        content.put("output", SseEventTransformer.truncateToolOutput(responseData));
         try {
             return objectMapper.writeValueAsString(content);
         } catch (JsonProcessingException e) {

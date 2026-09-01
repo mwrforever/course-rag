@@ -94,18 +94,11 @@ describe("apiFetch 基础契约", () => {
     expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe("POST");
   });
 
-  it("携带内存 Bearer 与 credentials include；FormData 不强设 JSON Content-Type", async () => {
+  it("携带内存 Bearer 与 credentials include（fetch 通道）", async () => {
     const api = await freshApi();
     api.setAccessToken("at-1");
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/chat/attachments")) {
-        return res(200, {
-          code: 0,
-          message: "ok",
-          data: [{ type: "image", url: "objkey", name: "a.png", size: "1024" }],
-        });
-      }
       if (url.includes("/student/sessions")) {
         return res(200, {
           code: 0,
@@ -121,14 +114,144 @@ describe("apiFetch 基础契约", () => {
     )!;
     expect((sessionCall[1] as RequestInit).credentials).toBe("include");
     expect(new Headers(sessionCall[1]?.headers).get("Authorization")).toBe("Bearer at-1");
+  });
+});
 
+/** XHR 假实现（PERF-10a 上传通道测试驱动）：捕获请求形态，测试手工驱动进度/完成/失败 */
+class FakeXhr {
+  static instances: FakeXhr[] = [];
+  method = "";
+  url = "";
+  withCredentials = false;
+  headers: Record<string, string> = {};
+  status = 0;
+  responseText = "";
+  sentBody: FormData | null = null;
+  upload = {
+    onprogress: null as null | ((event: { loaded: number; total?: number }) => void),
+  };
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  open(method: string, url: string): void {
+    this.method = method;
+    this.url = url;
+  }
+  setRequestHeader(key: string, value: string): void {
+    this.headers[key] = value;
+  }
+  send(body: FormData): void {
+    this.sentBody = body;
+    FakeXhr.instances.push(this);
+  }
+  /** 测试驱动：以指定状态与响应体完成（触发 onload） */
+  complete(status: number, body?: unknown): void {
+    this.status = status;
+    this.responseText = body === undefined ? "" : JSON.stringify(body);
+    this.onload?.();
+  }
+  /** 测试驱动：网络层失败（触发 onerror） */
+  fail(): void {
+    this.onerror?.();
+  }
+  /** 测试驱动：上报一段上传进度 */
+  emitProgress(loaded: number, total?: number): void {
+    this.upload.onprogress?.({ loaded, total });
+  }
+}
+
+describe("uploadAttachments XHR 上传通道（PERF-10a）", () => {
+  beforeEach(() => {
+    FakeXhr.instances = [];
+    vi.stubGlobal("XMLHttpRequest", FakeXhr);
+  });
+
+  it("multipart 经 XHR POST：携带 Bearer 与 withCredentials，进度回调触发且解包 data", async () => {
+    const api = await freshApi();
+    api.setAccessToken("at-1");
+    const onProgress = vi.fn();
     const file = new File(["x"], "a.png", { type: "image/png" });
-    await api.uploadAttachments([file]);
-    const uploadCall = fetchMock.mock.calls.find((c) =>
-      String(c[0]).includes("/chat/attachments"),
-    )!;
-    expect(uploadCall[1]?.body).toBeInstanceOf(FormData);
-    expect(new Headers(uploadCall[1]?.headers).get("Content-Type")).toBeNull();
+    const pending = api.uploadAttachments([file], onProgress);
+    // XHR 已发出：形态断言（multipart 单请求、字段名 files、不强设 JSON Content-Type）
+    const xhr = FakeXhr.instances[0];
+    expect(xhr.method).toBe("POST");
+    expect(xhr.url).toBe("/api/v1/student/chat/attachments");
+    expect(xhr.withCredentials).toBe(true);
+    expect(xhr.headers["Authorization"]).toBe("Bearer at-1");
+    expect(xhr.headers["Content-Type"]).toBeUndefined();
+    expect(xhr.sentBody).toBeInstanceOf(FormData);
+    expect(xhr.sentBody?.get("files")).toBeInstanceOf(File);
+    // 进度事件 → 0-100 整数百分比回调
+    xhr.emitProgress(40, 100);
+    xhr.emitProgress(100, 100);
+    expect(onProgress).toHaveBeenNthCalledWith(1, 40);
+    expect(onProgress).toHaveBeenNthCalledWith(2, 100);
+    xhr.complete(200, {
+      code: 0,
+      message: "ok",
+      data: [{ type: "image", url: "objkey", name: "a.png", size: "1" }],
+    });
+    await expect(pending).resolves.toEqual([
+      { type: "image", url: "objkey", name: "a.png", size: "1" },
+    ]);
+  });
+
+  it("401：单飞刷新成功后以新 AT 重放一次（refresh 走 fetch，仅一次）", async () => {
+    const api = await freshApi();
+    api.setAccessToken("at-old");
+    api.setRefreshToken("rt-old");
+    const logoutSpy = vi.fn();
+    api.setUnauthorizedHandler(logoutSpy);
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/auth/refresh")) {
+        return res(200, { code: 0, message: "ok", data: loginData("at-new", "rt-new") });
+      }
+      throw new Error(`未预期的请求: ${String(input)}`);
+    });
+    const file = new File(["x"], "a.pdf", { type: "application/pdf" });
+    const pending = api.uploadAttachments([file]);
+    FakeXhr.instances[0].complete(401, { code: 401, message: "令牌无效或已过期" });
+    // 刷新完成后重放：等待第二个 XHR 发出，以新 Bearer 完成
+    await vi.waitFor(() => expect(FakeXhr.instances).toHaveLength(2));
+    expect(FakeXhr.instances[1].headers["Authorization"]).toBe("Bearer at-new");
+    FakeXhr.instances[1].complete(200, {
+      code: 0,
+      message: "ok",
+      data: [{ type: "document", url: "objkey", name: "a.pdf", size: "1" }],
+    });
+    await expect(pending).resolves.toEqual([
+      { type: "document", url: "objkey", name: "a.pdf", size: "1" },
+    ]);
+    // 刷新仅一次且未触发登出回调（重放成功路径）
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(logoutSpy).not.toHaveBeenCalled();
+  });
+
+  it("业务码非 0：抛 ApiError（code 与业务码一致，错误语义与 fetch 通道对齐）", async () => {
+    const api = await freshApi();
+    const file = new File(["x"], "a.png", { type: "image/png" });
+    const pending = api.uploadAttachments([file]);
+    FakeXhr.instances[0].complete(413, { code: 413, message: "附件大小超限" });
+    const err = await pending.catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(api.ApiError);
+    expect((err as InstanceType<typeof api.ApiError>).code).toBe(413);
+    expect((err as InstanceType<typeof api.ApiError>).message).toBe("附件大小超限");
+  });
+
+  it("HTTP 错误且响应体非 JSON：按状态码抛 ApiError；网络层失败抛 NetworkError", async () => {
+    const api = await freshApi();
+    const file = new File(["x"], "a.png", { type: "image/png" });
+    const gateway = api.uploadAttachments([file]);
+    FakeXhr.instances[0].status = 502;
+    FakeXhr.instances[0].responseText = "<html>Bad Gateway</html>";
+    FakeXhr.instances[0].onload?.();
+    const err = await gateway.catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(api.ApiError);
+    expect((err as InstanceType<typeof api.ApiError>).code).toBe(502);
+
+    const offline = api.uploadAttachments([file]);
+    FakeXhr.instances[1].fail();
+    await expect(offline).rejects.toBeInstanceOf(api.NetworkError);
   });
 });
 

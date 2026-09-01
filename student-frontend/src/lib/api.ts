@@ -134,9 +134,8 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 
 // ===== 响应解析 =====
 
-/** 解析响应体：空体与非 JSON 容错为 null（cancel 端点为 ResponseEntity<Void> 空体；网关错误页为 HTML） */
-async function parseBody(response: Response): Promise<unknown> {
-  const text = await response.text();
+/** 解析响应体文本：空体与非 JSON 容错为 null（JSON 解析失败按 null 兜底） */
+function parseText(text: string): unknown {
   if (!text) {
     return null;
   }
@@ -147,8 +146,19 @@ async function parseBody(response: Response): Promise<unknown> {
   }
 }
 
-/** 统一业务校验：ApiResponse.code!==0 抛 ApiError；非 ApiResponse 结构按 HTTP 状态兜底 */
-function assertOk(response: Response, body: unknown): void {
+/** 解析响应体：空体与非 JSON 容错为 null（cancel 端点为 ResponseEntity<Void> 空体；网关错误页为 HTML） */
+async function parseBody(response: Response): Promise<unknown> {
+  return parseText(await response.text());
+}
+
+/**
+ * 统一业务校验核心（fetch/XHR 通道共用）：ApiResponse.code!==0 抛 ApiError；
+ * 非 ApiResponse 结构按 HTTP 状态兜底（200-299 之外视为失败）
+ *
+ * @param status HTTP 状态码
+ * @param body 已解析的响应体（null=空体或非 JSON）
+ */
+function assertPayload(status: number, body: unknown): void {
   if (body !== null && typeof body === "object" && "code" in body) {
     const { code, message } = body as { code: number; message?: string };
     // 成功码是 0 而非 200（契约 §1）
@@ -157,9 +167,14 @@ function assertOk(response: Response, body: unknown): void {
     }
     return;
   }
-  if (!response.ok) {
-    throw new ApiError(response.status, `请求失败（HTTP ${response.status}）`);
+  if (status < 200 || status >= 300) {
+    throw new ApiError(status, `请求失败（HTTP ${status}）`);
   }
+}
+
+/** 统一业务校验（fetch 变体）：Response.ok 即 200-299 */
+function assertOk(response: Response, body: unknown): void {
+  assertPayload(response.status, body);
 }
 
 // ===== 刷新（RT 一次性旋转 + 单飞去重） =====
@@ -455,13 +470,77 @@ export function reconnectChat(runId: string, lastEventId: number | null): Promis
   return authedFetch(`/student/chat/${runId}/reconnect${query}`, { method: "GET" });
 }
 
-/** 附件上传（multipart 字段名 files）：返回附件记录（url 为 objectKey，预览用本地 blob） */
-export function uploadAttachments(files: File[]): Promise<AttachmentRecord[]> {
+// ===== 上传通道（XHR：fetch 无法获取上传进度，PERF-10a） =====
+
+/**
+ * XHR 上传单次请求：POST multipart（FormData），携带内存 Bearer 与 cookie 凭证
+ *
+ * 错误语义与 authedFetch 对齐：网络层失败抛 NetworkError（不清凭据不登出）；
+ * 401 的单飞刷新与重放由 uploadAttachments 统一编排（与 authedFetch 同策略）。
+ *
+ * @param path 相对路径（自动拼 baseURL /api/v1）
+ * @param form multipart 表单体（浏览器自动生成边界，不手工设 Content-Type）
+ * @param onUploadProgress 上传进度回调（loaded/total → 0-100 整数百分比；不传不注册）
+ * @returns 响应状态码与响应体文本（解析与校验由调用方复用统一契约）
+ */
+function xhrOnce(
+  path: string,
+  form: FormData,
+  onUploadProgress?: (percent: number) => void,
+): Promise<{ status: number; text: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE_URL}${path}`);
+    // 内存 AT 优先（与 authedFetch 同口径）；httpOnly cookie 由 withCredentials 通道兜底
+    if (accessToken) {
+      xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+    }
+    xhr.withCredentials = true;
+    if (onUploadProgress) {
+      // 上传进度：loaded/total → 0-100 整数百分比（total 缺省按 1 防除零，对齐 B 端口径）
+      xhr.upload.onprogress = (event) => {
+        onUploadProgress(Math.round((event.loaded / (event.total ?? 1)) * 100));
+      };
+    }
+    xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText });
+    // 网络层失败（断网/DNS/代理不可达）：类型化抛出且不动凭据（与 fetch 通道一致）
+    xhr.onerror = () => reject(new NetworkError());
+    xhr.send(form);
+  });
+}
+
+/**
+ * 附件上传（multipart 字段名 files）：返回附件记录（url 为 objectKey，预览用本地 blob）
+ *
+ * PERF-10a：fetch 无上传进度能力，改走 XHR 携带 onUploadProgress 驱动 chips 确定进度；
+ * 请求形态不变（多文件单请求 multipart，按顺序配对契约保留）。错误语义与 apiFetch
+ * 完全对齐——业务码非 0/HTTP 错误抛 ApiError，401 单飞刷新成功后重放一次（刷新
+ * 认证性失败时 refreshOnce 内已清凭据 + 触发登出回调并抛出，不重放），网络层
+ * 失败抛 NetworkError。
+ *
+ * @param files 待上传文件（≤10 个，前置校验已由页面完成，此处不重复校验）
+ * @param onUploadProgress 上传进度回调（0-100 整数百分比；可选，不传不注册监听）
+ * @returns 解包后的附件记录数组
+ * @throws ApiError 业务码非 0 或 HTTP 错误（含 401 刷新失败）；NetworkError 网络层失败
+ */
+export async function uploadAttachments(
+  files: File[],
+  onUploadProgress?: (percent: number) => void,
+): Promise<AttachmentRecord[]> {
+  const path = "/student/chat/attachments";
   const form = new FormData();
   for (const file of files) {
     form.append("files", file);
   }
-  return apiFetch<AttachmentRecord[]>("/student/chat/attachments", { method: "POST", body: form });
+  let response = await xhrOnce(path, form, onUploadProgress);
+  // 401 → 单飞刷新成功后重放一次（retried 语义由本函数单层编排保证只重放一次）
+  if (response.status === 401 && !SELF_AUTH_PATHS.includes(path)) {
+    await refreshOnce();
+    response = await xhrOnce(path, form, onUploadProgress);
+  }
+  const body = parseText(response.text);
+  assertPayload(response.status, body);
+  return (body as ApiResponse<AttachmentRecord[]> | null)?.data as AttachmentRecord[];
 }
 
 /** J5: 提交 AI 回答反馈（messageId 来自 SSE end 事件） */

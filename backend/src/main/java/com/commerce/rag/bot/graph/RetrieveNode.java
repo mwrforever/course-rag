@@ -15,6 +15,7 @@ import com.commerce.rag.bot.tool.TypedQuery;
 import com.commerce.rag.bot.tool.dto.KnowledgeSearchResult.KnowledgeChunk;
 import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.MemoryProperties;
+import com.commerce.rag.properties.RetrievalProperties;
 import com.commerce.rag.record.AttachmentContext;
 import com.commerce.rag.record.DocumentLocalChunk;
 import com.commerce.rag.record.EpisodicMemoryRef;
@@ -43,7 +44,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -177,7 +177,7 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
             EmbeddingModel embeddingModel,
             IEpisodicMemoryService episodicMemoryService,
             MemoryProperties properties,
-            @Value("${retrieval.retrieve-node-parallelism:3}") int parallelism) {
+            RetrievalProperties retrievalProperties) {
         this.searchKnowledgeTool = searchKnowledgeTool;
         this.courseNameMapper = courseNameMapper;
         this.contextBuilderService = contextBuilderService;
@@ -185,6 +185,9 @@ public class RetrieveNode implements AsyncNodeActionWithConfig {
         this.embeddingModel = embeddingModel;
         this.episodicMemoryService = episodicMemoryService;
         this.properties = properties;
+        // BUG-12 @Value 收敛：并行线程数经 RetrievalProperties（retrieval.retrieve-node-parallelism）
+        // 强类型注入，取值与原 @Value 相同
+        int parallelism = retrievalProperties.retrieveNodeParallelism();
         // 独立小线程池（不与 SearchKnowledgeTool 内部 searchExecutor 共用，避免检索任务与召回任务
         // 互抢 4 线程形成自阻塞）；P2-3 默认 3 线程——三段任务（附件局部检索/经历召回/知识检索）各有
         // 线程可占，最重的知识检索不再因 2 线程池排队延后（有附件场景退化修复）；

@@ -110,6 +110,15 @@ export const apiClient = axios.create({
   timeout: 20_000,
 })
 
+/**
+ * 上传类请求超时预算（毫秒，per-request 覆盖实例级 20s）
+ *
+ * axios 的 timeout 覆盖请求体发送与服务端响应等待全程：文档上传（≤100MB）在常见
+ * 上行带宽下 30MB+ 发送即超 20s，超时后无响应体被归一为「网络连接失败」误导排查；
+ * 封面上传（5MB）慢网络下同样风险。上传通道统一放宽至 300s，取消由用户导航离开承担。
+ */
+export const UPLOAD_TIMEOUT_MS = 300_000
+
 /** 请求拦截器：内存 AT 存在时写入 Authorization 头（AT 丢失时基于 cookie 兜底） */
 apiClient.interceptors.request.use((config) => {
   const auth = useAuthStore()
@@ -250,13 +259,15 @@ export function toProgressCallback(onUploadProgress: (percent: number) => void) 
 
 /** 文档域（AdminDocumentController）：上传/列表/解析/下载，ETL 状态见设计 §2.5 */
 export const documentApi = {
-  /** 上传文档：multipart（kbId/title 必填，courseId 可选，file ≤100MB 白名单 pdf/docx/pptx/md/txt） */
+  /** 上传文档：multipart（kbId/title 必填，courseId 可选，file ≤100MB 白名单 pdf/docx/pptx/md/txt）；
+   *  ≤100MB 传输远超实例级 20s，per-request 放宽超时（BUG-03） */
   upload: (form: FormData, onUploadProgress?: (percent: number) => void) =>
     request<DocumentVO>({
       method: 'post',
       url: '/admin/documents',
       data: form,
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: UPLOAD_TIMEOUT_MS,
       // 上传进度回调（设计 §2.4.2 进度条；未传时不注册）
       onUploadProgress: onUploadProgress ? toProgressCallback(onUploadProgress) : undefined,
     }),
@@ -343,6 +354,8 @@ export const courseApi = {
       url: '/admin/courses/cover',
       data: form,
       headers: { 'Content-Type': 'multipart/form-data' },
+      // 5MB 慢网络下同样会超实例级 20s，与文档上传同口径放宽（BUG-03）
+      timeout: UPLOAD_TIMEOUT_MS,
     }),
   /** 教师分配（POST body 为 ID 数组，仅超管全量可选教师） */
   addTeachers: (id: string, teacherIds: string[]) =>

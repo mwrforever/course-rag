@@ -43,6 +43,17 @@ describe("CourseCard 课程卡", () => {
     expect(screen.getByAltText("数据结构与算法")).toBeInTheDocument();
   });
 
+  it("封面 sizes 口径为 3 列网格（PERF-19：25vw 旧 4 列口径导致封面发糊）", () => {
+    render(
+      <CourseCard course={makeCourse({ coverImage: "http://localhost:9000/bucket/java.jpg" })} />,
+    );
+    // next/image 底层 img 透传 sizes；≤768px 单列 100vw、≤1024px 双列 50vw、lg 3 列 33vw
+    expect(screen.getByAltText("数据结构与算法")).toHaveAttribute(
+      "sizes",
+      "(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw",
+    );
+  });
+
   it("无封面：category 映射低饱和渐变学科兜底（@theme 学科渐变令牌）", () => {
     const { rerender } = render(<CourseCard course={makeCourse({ category: "计算机科学" })} />);
     expect(screen.getByTestId("cover-fallback")).toHaveClass("from-subject-code-start");

@@ -8,13 +8,18 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.commerce.rag.properties.StreamProperties;
+import com.commerce.rag.service.IChatRunService;
+import com.commerce.rag.vo.ChatRunVO;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,10 +47,14 @@ class MemoryStreamBridgeTest {
     private MemoryStreamBridge bridge;
     private static final int BUFFER_SIZE = 256;
 
+    /** Run 生命周期服务 mock（BUG-04：closed ring 回放收尾查 run 终态用） */
+    private IChatRunService chatRunService;
+
     @BeforeEach
     void setUp() {
         StreamProperties props = new StreamProperties("chat:request", "chat-workers", 10, 2000, 300, 15, BUFFER_SIZE);
-        bridge = new MemoryStreamBridge(props);
+        chatRunService = mock(IChatRunService.class);
+        bridge = new MemoryStreamBridge(props, chatRunService);
     }
 
     // ==================== 辅助方法 ====================
@@ -115,6 +124,139 @@ class MemoryStreamBridgeTest {
             }
         }
         return ids;
+    }
+
+    /**
+     * 提取 mock emitter 已送达事件的完整帧文本（单次 send 的全部 String part 拼接——
+     * id/event 前缀与 data 内容分属不同 DataWithMediaType part），供事件名/payload 断言使用。
+     *
+     * @param emitter 已投递的 mock emitter（调用前须 awaitSendCount 等待完成）
+     * @return 按送达顺序的帧文本列表（以 "id:" 起始的帧；无 id 段的帧跳过——本链路恒带 id）
+     */
+    private List<String> sentFrames(SseEmitter emitter) throws Exception {
+        List<String> frames = new ArrayList<>();
+        for (var invocation : Mockito.mockingDetails(emitter).getInvocations()) {
+            if (!invocation.getMethod().getName().equals("send") || invocation.getArguments().length == 0) {
+                continue;
+            }
+            Object builder = invocation.getArguments()[0];
+            Field dataField = builder.getClass().getDeclaredField("dataToSend");
+            dataField.setAccessible(true);
+            StringBuilder frame = new StringBuilder();
+            for (Object part : (java.util.Set<?>) dataField.get(builder)) {
+                Object data = part.getClass().getMethod("getData").invoke(part);
+                if (data instanceof String text) {
+                    frame.append(text);
+                }
+            }
+            if (!frame.isEmpty() && frame.charAt(0) == 'i') {
+                frames.add(frame.toString());
+            }
+        }
+        return frames;
+    }
+
+    // ==================== BUG-04 closed ring 回放收尾（重连恰逢 run 完成竞态） ====================
+
+    /** 等待 ring 的 closed 标志置位（Ring 级 subscribe 仅在 closed 时返回 false，探测 emitter 不入订阅表） */
+    private void awaitRingClosed(MemoryStreamBridge.Ring ring) throws InterruptedException {
+        SseEmitter probe = mock(SseEmitter.class);
+        long deadline = System.currentTimeMillis() + 3000;
+        while (ring.subscribe(probe) && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+    }
+
+    @Test
+    @DisplayName("BUG-04: 回放批次在 close 后投递（快照未含终态）→ 补发终态 end 事件并 complete（客户端不悬挂）")
+    void replayAndSubscribe_closedDuringDelivery_sendsTerminalEndAndCompletes() throws Exception {
+        // Given: run 已 COMPLETED（closed 收尾查库返回终态）
+        when(chatRunService.findById(1L)).thenReturn(new ChatRunVO(1L, 1L, 1L, "COMPLETED", LocalDateTime.now()));
+        // 首订阅者 send 阻塞：把投递线程卡在广播事件上，确保回放批次在 closed 之后才被处理
+        CountDownLatch sendBlocked = new CountDownLatch(1);
+        CountDownLatch releaseSend = new CountDownLatch(1);
+        SseEmitter first = mock(SseEmitter.class);
+        doAnswer(inv -> {
+                    sendBlocked.countDown();
+                    releaseSend.await();
+                    return null;
+                })
+                .when(first)
+                .send(any(SseEmitter.SseEventBuilder.class));
+        MemoryStreamBridge.Ring ring = bridge.createRing("1");
+        bridge.subscribe("1", first);
+        bridge.push("1", event(1)); // 投递线程取走广播事件并阻塞在 send（回放批次将积压其后）
+        assertTrue(sendBlocked.await(3, TimeUnit.SECONDS), "投递线程应已阻塞在首个 send");
+
+        // When: 断线重连回放入队（ring 仍开放返回 true——ChatStreamEntry 据此不再查终态，悬挂窗口由此形成）
+        SseEmitter reconnected = mock(SseEmitter.class);
+        assertTrue(bridge.replayAndSubscribe("1", 0, reconnected));
+        // run 完成收尾：removeRing 置 closed（等 closed 确定置位后再放行首个 send——确定性时序）
+        Thread closer = new Thread(() -> bridge.removeRing("1"));
+        closer.start();
+        awaitRingClosed(ring);
+        releaseSend.countDown();
+        closer.join(5000);
+
+        // Then: 重连 emitter 收到回放事件 + 补发终态 end（2 次 send）并被 complete（而非悬挂到 30 分钟超时）
+        awaitSendCount(reconnected, 2);
+        verify(reconnected, timeout(3000).times(1)).complete();
+        // 补发 end 事件格式对齐 ChatStreamEntry：event:end + 携带终态 COMPLETED + messageId 显式 null
+        List<String> frames = sentFrames(reconnected);
+        assertTrue(
+                frames.stream().anyMatch(f -> f.contains("event:end") && f.contains("\"status\":\"COMPLETED\"")),
+                "应补发携带 COMPLETED 终态的 end 事件，实际帧: " + frames);
+        assertTrue(
+                frames.stream().anyMatch(f -> f.contains("event:end") && f.contains("\"messageId\":null")),
+                "COMPLETED 终态 end 应显式携带 messageId:null（R2 契约可空容忍），实际帧: " + frames);
+    }
+
+    @Test
+    @DisplayName("BUG-04: 回放批次已含终态事件 → 不重复补发 end（双终态防线），仅 complete")
+    void replayAndSubscribe_closedWithTerminalInSnapshot_onlyCompletes() throws Exception {
+        // Given: 首订阅者 send 阻塞且不被 close 中断打断（park 循环重睡直至放行）——
+        // 确保投递线程停留在回放批次的发送过程中，回放完成后才观察到 closed
+        AtomicBoolean release = new AtomicBoolean(false);
+        SseEmitter reconnected = mock(SseEmitter.class);
+        doAnswer(inv -> {
+                    while (!release.get()) {
+                        // 可中断唤醒（close 的 interrupt）不退出：循环重睡直至放行，模拟慢而不死的客户端
+                        LockSupport.parkNanos(1_000_000L);
+                    }
+                    return null;
+                })
+                .when(reconnected)
+                .send(any(SseEmitter.SseEventBuilder.class));
+        MemoryStreamBridge.Ring ring = bridge.createRing("1");
+        // 历史事件 1-2 + 终态 END 事件 seq=3（快照将包含终态）
+        bridge.push("1", event(1));
+        bridge.push("1", event(2));
+        bridge.push(
+                "1",
+                new SseEvent(
+                        SseEventType.END,
+                        3,
+                        "{\"runId\":\"1\",\"status\":\"COMPLETED\",\"messageId\":null}",
+                        System.currentTimeMillis()));
+
+        // When: 回放入队（seq 1..3 全量快照），投递线程阻塞在首个回放 send 上
+        assertTrue(bridge.replayAndSubscribe("1", 0, reconnected));
+        awaitSendCount(reconnected, 1);
+        // run 收尾 close（closed 置位后放行投递线程）
+        Thread closer = new Thread(() -> bridge.removeRing("1"));
+        closer.start();
+        awaitRingClosed(ring);
+        release.set(true);
+        closer.join(5000);
+
+        // Then: 仅快照内 3 个事件送达（含原 END），无第 4 个补发 end（B2-4 双终态防线），并 complete
+        awaitSendCount(reconnected, 3);
+        verify(reconnected, timeout(3000).times(1)).complete();
+        List<String> frames = sentFrames(reconnected);
+        assertEquals(3, frames.size(), "不得重复补发终态事件，实际帧: " + frames);
+        assertEquals(1, frames.stream().filter(f -> f.contains("event:end")).count(), "end 事件应仅 1 个（快照内原事件）");
+        // 查库解析器未被调用（终态已随快照送达，无需补发）
+        verify(chatRunService, never()).findById(anyLong());
     }
 
     // ==================== push 测试 ====================

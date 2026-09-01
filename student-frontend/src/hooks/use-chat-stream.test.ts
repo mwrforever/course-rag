@@ -914,9 +914,64 @@ describe("sseEventToAction 事件映射（payload → action）", () => {
   });
 
   it("未知事件名与非法 JSON 返回 null（上层静默忽略，不落状态）", () => {
+    // N3-C②：坏 JSON 现会打降级 warn（可观测性），此处静音 spy 保持断言聚焦返回行为
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(sseEventToAction("unknown_event", J({}), 1)).toBeNull();
     expect(sseEventToAction("delta", "not-json{{{", 1)).toBeNull();
     expect(sseEventToAction("metadata", "null", 1)).toBeNull();
+    warnSpy.mockRestore();
+  });
+
+  it("N3-C②：坏 JSON/关键字段缺失打中文 warn 且按事件名计数（返回行为不变：null/兜底值照旧）", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // 坏 JSON：返回 null 不抛 + warn（含事件名与 data 片段的诊断线索）
+    expect(sseEventToAction("delta", "not-json{{{", 1)).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain("delta");
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain("not-json");
+
+    // metadata 缺 runId（槽键/重连/cancel 全依赖）：动作照旧返回（runId 兜底空串）+ warn
+    const meta = sseEventToAction("metadata", J({ sessionId: "sess-1", model: "m" }), 2);
+    expect(meta).toEqual({ type: "metadata", runId: "", sessionId: "sess-1", model: "m", seq: 2 });
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+
+    // delta 缺 text 字段（「思考正常正文为空」诊断线索）：动作照旧返回（text 兜底空串）+ warn
+    const delta = sseEventToAction("delta", J({}), 3);
+    expect(delta).toEqual({ type: "delta", text: "", seq: 3 });
+    expect(warnSpy).toHaveBeenCalledTimes(3);
+
+    // end 状态非法：返回 null + warn（终态丢失将误入重连回放路径）
+    expect(sseEventToAction("end", J({ status: "RUNNING" }), 4)).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(4);
+    expect(String(warnSpy.mock.calls[3]?.[0])).toContain("end");
+
+    // 计数递增：同一事件名再触发一次坏 JSON，日志中的「第 N 次」序号递增
+    expect(sseEventToAction("delta", "{bad", 5)).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(5);
+    const counts = warnSpy.mock.calls
+      .map((call) => /第 (\d+) 次/.exec(String(call[0]))?.[1])
+      .filter((value): value is string => value !== undefined)
+      .map(Number);
+    expect(counts.length).toBeGreaterThanOrEqual(2);
+    expect(counts.at(-1)).toBeGreaterThan(counts[0]);
+    warnSpy.mockRestore();
+  });
+
+  it("N3-C② 回归：正常事件与设计内忽略的事件名（stage/query_plan/未知）不打 warn", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // 正常事件全字段透传：零告警
+    expect(sseEventToAction("delta", J({ text: "正文" }), 1)).not.toBeNull();
+    expect(
+      sseEventToAction("metadata", J({ runId: "r", sessionId: "s", model: "m" }), 2),
+    ).not.toBeNull();
+    // thinking 空 delta / stage 降级为文档化契约（噪声防御），不告警
+    expect(sseEventToAction("thinking", J({ delta: "", stage: "unknown" }), 3)).not.toBeNull();
+    // 设计内忽略的事件名（后端照发、前端不消费）：不告警
+    expect(sseEventToAction("stage", J({ stage: "understanding" }), 4)).toBeNull();
+    expect(sseEventToAction("query_plan", J({ intent: "chat" }), 5)).toBeNull();
+    expect(sseEventToAction("future_event", J({}), 6)).toBeNull();
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });
 
@@ -1091,6 +1146,118 @@ describe("useChatStream 集成", () => {
     expect(result.current.state.messages).toHaveLength(2); // 第一问的用户消息 + AI 槽，无第三问
     expect(result.current.state.messages[0]).toMatchObject({ role: "user", content: "第一问" });
     expect(result.current.state.messages[1]).toMatchObject({ role: "assistant", id: "run-1" });
+  });
+
+  it("BUG-36：metadata 前失败后重发：清失败现场后以新对话语义发送（不留幽灵提问接续，UI 与服务端新会话对齐）", async () => {
+    // 复现路径：新会话首问流在 metadata 到达前即断（error 落位、sessionId/runId 均 null）——
+    // 服务端已为失败提问建过会话但 id 唯一下发通道（metadata 事件）未达前端；
+    // 修复前重发直接 POST sessionId=null 另建新会话，UI 却把新提问接在旧历史后（历史不连续）
+    const ctrl = controllableSse();
+    const brokenBody = {
+      getReader: () => ({
+        read: () => Promise.reject(new Error("connection reset")),
+      }),
+    } as unknown as ReadableStream;
+    let postCount = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") {
+        // 第 1 次：metadata 前断流；第 2 次（重发）：正常可流式响应
+        postCount += 1;
+        return postCount === 1
+          ? ({ status: 200, ok: true, body: brokenBody } as unknown as Response)
+          : ctrl.response;
+      }
+      throw new Error(`未预期的请求: ${input}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+
+    // 首问：metadata 前失败（error 落位，会话归属/ run 均未落位，仅幽灵用户消息残留）
+    await act(async () => {
+      await result.current.send("第一问", []);
+    });
+    await waitFor(() =>
+      expect(result.current.state.error).toEqual({
+        kind: "retryable",
+        message: "连接中断，请重试",
+      }),
+    );
+    expect(result.current.state.sessionId).toBeNull();
+    expect(result.current.state.runId).toBeNull();
+    expect(result.current.state.messages).toHaveLength(1);
+
+    // 重发：修复语义 = 先清失败现场（丢弃未获服务端会话确认的幽灵提问）再发，
+    // 新提问即新对话起点——消息历史与新建会话的服务端历史完全对齐
+    await act(async () => {
+      await result.current.send("再问一次", []);
+    });
+    expect(result.current.state.messages).toHaveLength(1);
+    expect(result.current.state.messages[0]).toMatchObject({ role: "user", content: "再问一次" });
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(true);
+    // 重发 POST 恰好 2 次，第 2 次按新对话语义（sessionId=null，由新 metadata 落位新会话）
+    expect(postCount).toBe(2);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1][1]?.body as string) as {
+      sessionId: string | null;
+    };
+    expect(secondBody.sessionId).toBeNull();
+  });
+
+  it("BUG-36 回归：会话已确立（metadata 落位）后的 error 重发不清历史且复用同一 sessionId", async () => {
+    vi.useFakeTimers();
+    const firstCtrl = controllableSse();
+    const secondCtrl = controllableSse();
+    let getCount = 0;
+    let postCount = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/student/chat") && init?.method === "POST") {
+        postCount += 1;
+        return postCount === 1 ? firstCtrl.response : secondCtrl.response;
+      }
+      if (init?.method === "GET") {
+        getCount += 1;
+        // 重连三次全失败：第 1 次网络层异常，第 2/3 次服务端 503
+        return getCount === 1
+          ? Promise.reject(new TypeError("Failed to fetch"))
+          : jsonRes(503, { code: 503, message: "服务暂时不可用" });
+      }
+      throw new Error(`未预期的请求: ${url} ${init?.method}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+
+    // 第一问成功确立会话（sess-1）后断流：3 次重连失败 → error 落位
+    await act(async () => {
+      await result.current.send("第一问", []);
+    });
+    await act(async () => {
+      firstCtrl.push(md());
+      firstCtrl.push(frame(2, "delta", J({ text: "部分回答" })));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(33_000);
+    });
+    expect(result.current.state.error).toEqual({
+      kind: "retryable",
+      message: "连接已断开，请重试",
+    });
+    expect(result.current.state.streaming).toBe(false);
+
+    // 重发（普通重试语义）：POST 复用 sess-1，完整历史保留，不受 metadata 前失败守卫影响
+    await act(async () => {
+      await result.current.send("重问", []);
+    });
+    expect(postCount).toBe(2);
+    const postCalls = fetchMock.mock.calls.filter(
+      (c) => String(c[0]).endsWith("/student/chat") && (c[1] as RequestInit)?.method === "POST",
+    );
+    const secondBody = JSON.parse(postCalls[1]?.[1]?.body as string) as {
+      sessionId: string | null;
+    };
+    expect(secondBody.sessionId).toBe("sess-1");
+    expect(result.current.state.messages).toHaveLength(3);
+    expect(result.current.state.messages[2]).toMatchObject({ role: "user", content: "重问" });
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(true);
   });
 
   it("Critical-1 全链路：首轮 end COMPLETED 后追问，新 run 事件全部正常落位（终态恢复/反馈 id 更新/第二轮 CANCELLED 后缀）", async () => {
@@ -1399,6 +1566,149 @@ describe("useChatStream 集成", () => {
     expect(st.error).toBeNull();
   });
 
+  it("BUG-18：重连退避期间新 run 建立，循环耗尽的无条件 error 不击落在途新流（新 run 事件不被 isTerminal 吞）", async () => {
+    vi.useFakeTimers();
+    const firstCtrl = controllableSse();
+    const secondCtrl = controllableSse();
+    let postCount = 0;
+    let getCount = 0;
+    /** 第 3 次重连 GET 的挂起句柄：在途期间由测试侧制造「用户发送新问题」竞态 */
+    let resolveThirdGet!: (r: Response) => void;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/student/chat") && init?.method === "POST") {
+        postCount += 1;
+        return postCount === 1 ? firstCtrl.response : secondCtrl.response;
+      }
+      if (init?.method === "GET") {
+        getCount += 1;
+        // 第 1 次网络层失败、第 2 次 503、第 3 次挂起（在途期间新 run 建立——竞态窗口）
+        if (getCount === 1) throw new TypeError("Failed to fetch");
+        if (getCount === 2) return jsonRes(503, { code: 503, message: "服务暂时不可用" });
+        return new Promise<Response>((resolve) => {
+          resolveThirdGet = resolve;
+        });
+      }
+      throw new Error(`未预期的请求: ${url} ${init?.method}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+
+    // 第一问（run-1）推流后断流 30s：第 1 次重连失败 + 退避 1s 第 2 次失败 + 退避 2s 第 3 次在途
+    await act(async () => {
+      await result.current.send("第一问", []);
+    });
+    await act(async () => {
+      firstCtrl.push(md("run-1", "sess-1"));
+      firstCtrl.push(frame(2, "delta", J({ text: "旧回答" })));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(33_000);
+    });
+    expect(getCount).toBe(3);
+
+    // 竞态窗口：第 3 次重连 GET 在途期间用户发送新问题，run-2 建立并开始产出事件
+    await act(async () => {
+      await result.current.send("第二问", []);
+    });
+    await act(async () => {
+      secondCtrl.push(md("run-2", "sess-1"));
+      secondCtrl.push(frame(2, "delta", J({ text: "新回答" })));
+    });
+    expect(result.current.state.runId).toBe("run-2");
+    expect(result.current.state.messages.at(-1)).toMatchObject({ id: "run-2", text: "新回答" });
+
+    // 第 3 次重连以 503 收场 → 三次尝试耗尽：修复前无条件 dispatch error 击落 run-2
+    //（isTerminal 判终态，后续事件全吞）；修复后 runId 已切换（run-2 ≠ 发起时的 run-1），
+    // 旧 run 的过期 error 丢弃不打到新流上
+    await act(async () => {
+      resolveThirdGet(jsonRes(503, { code: 503, message: "服务暂时不可用" }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.endedStatus).toBeNull();
+    expect(result.current.state.streaming).toBe(true);
+
+    // 新 run 后续事件正常消费（不被终态守卫静默丢弃——正文冻结回归断言）
+    await act(async () => {
+      secondCtrl.push(frame(3, "delta", J({ text: "续写" })));
+    });
+    expect(result.current.state.messages.at(-1)).toMatchObject({ id: "run-2", text: "新回答续写" });
+  });
+
+  it("BUG-18：重连目标锁定发起时 runId——在途重连成功不替换新建立的流（回放不重放已消费事件致正文重复）", async () => {
+    vi.useFakeTimers();
+    const firstCtrl = controllableSse();
+    const secondCtrl = controllableSse();
+    const replayCtrl = controllableSse();
+    let postCount = 0;
+    let getCount = 0;
+    /** 第 2 次重连 GET 的挂起句柄：在途期间制造新 run 竞态后以 200 回放流放行 */
+    let resolveSecondGet!: (r: Response) => void;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/student/chat") && init?.method === "POST") {
+        postCount += 1;
+        return postCount === 1 ? firstCtrl.response : secondCtrl.response;
+      }
+      if (init?.method === "GET") {
+        getCount += 1;
+        // 第 1 次网络层失败；第 2 次挂起（在途期间新 run 建立，随后 200 成功返回回放流）
+        if (getCount === 1) throw new TypeError("Failed to fetch");
+        return new Promise<Response>((resolve) => {
+          resolveSecondGet = resolve;
+        });
+      }
+      throw new Error(`未预期的请求: ${url} ${init?.method}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+
+    // 第一问（run-1）断流 30s：第 1 次重连失败，退避 1s 后第 2 次在途
+    await act(async () => {
+      await result.current.send("第一问", []);
+    });
+    await act(async () => {
+      firstCtrl.push(md("run-1", "sess-1"));
+      firstCtrl.push(frame(2, "delta", J({ text: "旧回答" })));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+    expect(getCount).toBe(2);
+
+    // 竞态窗口：重连 GET 在途期间新 run 建立并产出事件
+    await act(async () => {
+      await result.current.send("第二问", []);
+    });
+    await act(async () => {
+      secondCtrl.push(md("run-2", "sess-1"));
+      secondCtrl.push(frame(2, "delta", J({ text: "新回答" })));
+    });
+    expect(result.current.state.runId).toBe("run-2");
+
+    // 第 2 次重连成功返回 run-1 的回放流：修复前 startStream 用回放流替换 run-2 原始流，
+    // 已消费事件重放（delta 追加型更新产生正文重复片段）；修复后复查 runId 已切换 →
+    // 丢弃回放响应（不得接管新流）
+    await act(async () => {
+      resolveSecondGet(replayCtrl.response);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // 回放流事件（重放 run-1 的 metadata + 已消费 delta）不得污染 run-2 的正文
+    await act(async () => {
+      replayCtrl.push(md("run-1", "sess-1"));
+      replayCtrl.push(frame(2, "delta", J({ text: "旧回答" })));
+    });
+    expect(result.current.state.messages.at(-1)).toMatchObject({ id: "run-2", text: "新回答" });
+    expect(result.current.state.runId).toBe("run-2");
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(true);
+
+    // run-2 原始流仍然健在：继续推帧正常消费（未被回放流替换的回归断言）
+    await act(async () => {
+      secondCtrl.push(frame(3, "delta", J({ text: "续写" })));
+    });
+    expect(result.current.state.messages.at(-1)).toMatchObject({ id: "run-2", text: "新回答续写" });
+  });
+
   it("重连指数退避：3 次失败（1s/2s 间隔）后错误分级 retryable 且 streaming=false", async () => {
     vi.useFakeTimers();
     const ctrl = controllableSse();
@@ -1548,6 +1858,8 @@ describe("useChatStream 集成", () => {
   });
 
   it("未知事件名与非法 JSON 静默忽略（流不崩溃、不落状态）", async () => {
+    // N3-C②：坏 JSON 帧现会打降级 warn（可观测性），静音 spy 保持输出干净
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchMock.mockResolvedValue(
       sseResponse([
         md(),
@@ -1563,6 +1875,7 @@ describe("useChatStream 集成", () => {
     await waitFor(() => expect(result.current.state.endedStatus).toBe("COMPLETED"));
     expect(result.current.state.messages[1].text).toBe("");
     expect(result.current.state.lastEventId).toBe(4);
+    warnSpy.mockRestore();
   });
 
   it("响应体缺失（body=null）：错误分级 retryable 且不建任何槽", async () => {

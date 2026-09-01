@@ -50,7 +50,8 @@ class AdminDocumentControllerTest {
                 16,
                 10,
                 new EtlProperties.Table(25, 30, 2),
-                500);
+                500,
+                120);
         controller = new AdminDocumentController(documentService, props);
     }
 

@@ -444,6 +444,38 @@ describe('ChunksView：批量修正 Dialog（表单校验 + 提交体 + loading 
     wrapper.unmount()
   })
 
+  it('末页行全部移出：批量修正后回退上一页防空页（BUG-34，对齐 DocumentsView 口径）', async () => {
+    vi.spyOn(knowledgeBaseApi, 'list').mockResolvedValue(pageOf([kb('kb-1', 'RAG 知识库')], '1'))
+    // 第 1 页 1 条共 11（2 页）→ 翻第 2 页 1 条 → 批量修正当前页全部行后回退第 1 页
+    const listSpy = vi
+      .spyOn(chunkApi, 'pending')
+      .mockResolvedValueOnce(pageOf([chunk('c-1')], '11'))
+      .mockResolvedValueOnce(pageOf([chunk('c-9')], '11'))
+      .mockResolvedValueOnce(pageOf([chunk('c-1')], '10'))
+    const batchSpy = vi.spyOn(chunkApi, 'batchUpdate').mockResolvedValue()
+    const { wrapper } = await mountChunks()
+
+    await wrapper.find('[data-testid="next-page"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('第 2 / 2 页')
+
+    // 勾选唯一行 → 批量修正 → 回退第 1 页（不展示越界空页与空态）
+    await wrapper.find('[data-testid="select-c-9"]').setValue(true)
+    await wrapper.find('[data-testid="batch-update"]').trigger('click')
+    const dialog = wrapper.find('[data-testid="batch-dialog"]')
+    await dialog.find('[data-testid="batch-collection-type"]').setValue('TECHNICAL_QA')
+    await dialog.find('[data-testid="submit-batch"]').trigger('click')
+    await flushPromises()
+
+    expect(batchSpy).toHaveBeenCalledWith({ ids: ['c-9'], collectionType: 'TECHNICAL_QA' })
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('第 1 / 1 页')
+      expect(wrapper.find('[data-testid="row-c-9"]').exists()).toBe(false)
+      expect(listSpy.mock.calls.length).toBeGreaterThan(2)
+    })
+    wrapper.unmount()
+  })
+
   it('失败：toast danger 且 Dialog 保留可重试，loading 态恢复', async () => {
     const { wrapper, dialog } = await openBatchDialog()
     const batchSpy = vi
@@ -519,6 +551,38 @@ describe('ChunksView：标记已修正（二次确认，不可撤销）', () => 
     // 勾选清空 → 批量按钮消失
     expect(wrapper.find('[data-testid="batch-corrected"]').exists()).toBe(false)
     expect(listSpy.mock.calls.length).toBeGreaterThan(1)
+    wrapper.unmount()
+  })
+
+  it('末页行全部移出：标记已修正后回退上一页防空页（BUG-34）', async () => {
+    vi.spyOn(knowledgeBaseApi, 'list').mockResolvedValue(pageOf([kb('kb-1', 'RAG 知识库')], '1'))
+    // 第 1 页 1 条共 11（2 页）→ 翻第 2 页 1 条 → 标记已修正（PENDING → CORRECTED）后回退第 1 页
+    const listSpy = vi
+      .spyOn(chunkApi, 'pending')
+      .mockResolvedValueOnce(pageOf([chunk('c-1')], '11'))
+      .mockResolvedValueOnce(pageOf([chunk('c-9')], '11'))
+      .mockResolvedValueOnce(pageOf([chunk('c-1')], '10'))
+    const correctedSpy = vi.spyOn(chunkApi, 'batchCorrected').mockResolvedValue()
+    const { wrapper } = await mountChunks()
+
+    // 翻到第 2 页（末页仅剩 1 条）
+    await wrapper.find('[data-testid="next-page"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('第 2 / 2 页')
+
+    // 勾选唯一行 → 标记已修正 → 回退第 1 页（不展示越界空页与空态）
+    await wrapper.find('[data-testid="select-c-9"]').setValue(true)
+    await wrapper.find('[data-testid="batch-corrected"]').trigger('click')
+    await wrapper.find('[data-testid="confirm-corrected"]').trigger('click')
+    await flushPromises()
+
+    expect(correctedSpy).toHaveBeenCalledWith({ ids: ['c-9'] })
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('第 1 / 1 页')
+      expect(wrapper.find('[data-testid="row-c-1"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="row-c-9"]').exists()).toBe(false)
+      expect(listSpy.mock.calls.length).toBeGreaterThan(2)
+    })
     wrapper.unmount()
   })
 

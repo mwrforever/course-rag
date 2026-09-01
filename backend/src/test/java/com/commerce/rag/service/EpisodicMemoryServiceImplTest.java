@@ -17,6 +17,7 @@ import com.commerce.rag.config.MilvusCollectionInitializer;
 import com.commerce.rag.entity.UserEpisodicMemory;
 import com.commerce.rag.enums.EpisodicActionType;
 import com.commerce.rag.properties.MemoryProperties;
+import com.commerce.rag.properties.MilvusProperties;
 import com.commerce.rag.record.EpisodicAction;
 import com.commerce.rag.record.EpisodicExtractionResult;
 import com.commerce.rag.record.EpisodicMemoryExtraction;
@@ -48,7 +49,7 @@ class EpisodicMemoryServiceImplTest {
     private final MilvusClientV2 milvus = mock(MilvusClientV2.class);
     private final EmbeddingModel embedding = mock(EmbeddingModel.class);
     private final EpisodicMemoryServiceImpl service =
-            new EpisodicMemoryServiceImpl(engine, milvus, embedding, props, 64);
+            new EpisodicMemoryServiceImpl(engine, milvus, embedding, props, milvusProperties(64));
 
     @Test
     @DisplayName("toExistingMemoriesText — active 记忆行转「标签:内容」行，空返回「无」")
@@ -238,13 +239,19 @@ class EpisodicMemoryServiceImplTest {
     @DisplayName("applyExtraction — userId=null / result=null / memories 空 → 返回 0 且不触发决策")
     void applyExtraction_nullGuard_returnsZero() {
         EpisodicDecisionEngine mockEngine = mock(EpisodicDecisionEngine.class);
-        EpisodicMemoryServiceImpl svc = new EpisodicMemoryServiceImpl(mockEngine, milvus, embedding, props, 64);
+        EpisodicMemoryServiceImpl svc =
+                new EpisodicMemoryServiceImpl(mockEngine, milvus, embedding, props, milvusProperties(64));
         var result = new EpisodicExtractionResult(List.of(
                 new EpisodicMemoryExtraction(true, "CREATE", "learning_goal", "内容", "摘要", null, 0.8, 0.8, 0.8, null)));
         assertEquals(0, svc.applyExtraction(null, 1L, result), "userId 为空不写库");
         assertEquals(0, svc.applyExtraction(7L, 1L, null), "result 为空不写库");
         assertEquals(0, svc.applyExtraction(7L, 1L, EpisodicExtractionResult.empty()), "memories 空不写库");
         verify(mockEngine, never()).decide(any(), any());
+    }
+
+    /** 被测 Milvus 属性快照（仅 hnswEf 随用例变化，其余为 @DefaultValue 兜底值） */
+    private static MilvusProperties milvusProperties(int hnswEf) {
+        return new MilvusProperties(30000L, "localhost", 19530, "knowledge_chunks", 1024, 16, 200, hnswEf, 60, true);
     }
 
     /** 构造纯 type/content 记忆行（toExistingMemoriesText 用） */

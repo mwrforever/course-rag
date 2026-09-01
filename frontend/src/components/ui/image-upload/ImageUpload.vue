@@ -13,7 +13,7 @@
 import { ref } from 'vue'
 import { PhSpinnerGap, PhUploadSimple, PhWarning, PhX } from '@phosphor-icons/vue'
 
-import { ApiError, apiClient } from '@/lib/api'
+import { ApiError, UPLOAD_TIMEOUT_MS, apiClient } from '@/lib/api'
 import { COVER_ALLOWED_EXTENSIONS, COVER_MAX_SIZE_MB } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import type { CourseCoverVO } from '@/lib/types'
@@ -92,10 +92,13 @@ async function uploadFile(file: File | null) {
   uploading.value = true
   errorMessage.value = ''
   try {
-    // multipart 字段名 file（契约 D.2.2）；经 apiClient 统一解包拿业务数据
+    // multipart 字段名 file（契约 D.2.2）；经 apiClient 统一解包拿业务数据；
+    // 上传类请求 per-request 放宽超时（BUG-03：慢网络下 5MB 也会超实例级 20s）
     const form = new FormData()
     form.set('file', file)
-    const response = await apiClient.post<CourseCoverVO>(props.uploadUrl, form)
+    const response = await apiClient.post<CourseCoverVO>(props.uploadUrl, form, {
+      timeout: UPLOAD_TIMEOUT_MS,
+    })
     emit('update:modelValue', response.data.url)
   } catch (err) {
     // 上传失败：保留原图/占位态，错误内联 + 重试入口（不抛出，页面经 error 事件感知）

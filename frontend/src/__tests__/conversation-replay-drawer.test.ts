@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, sessionApi } from '@/lib/api'
@@ -16,6 +17,7 @@ import type { ChatSessionDetailVO, SessionStatus } from '@/lib/types'
  * 4. 空消息空态兜底；加载中 spinner
  * 5. 关闭：Esc / 遮罩点击 → close emit；加载中关闭拦截（不发 close）
  * 6. 详情加载失败 → danger toast + close emit；重开再次拉取
+ * 7. PERF-08 缓存契约：30s 内重开同会话 0 请求；切换会话按新键拉新
  */
 
 /** 会话详情工厂（messages 只读流：role/content/intentType/seq） */
@@ -54,14 +56,29 @@ function detailOf(over: Partial<ChatSessionDetailVO> = {}): ChatSessionDetailVO 
   }
 }
 
-/** 挂载 Drawer：props 与组件声明对齐（open/sessionId 必填，title/initialStatus 可选） */
+/** 挂载 Drawer：props 与组件声明对齐（open/sessionId 必填，title/initialStatus 可选）；
+    QueryClient 每次挂载新建（隔离缓存）并镜像 main.ts 全局默认 30s staleTime，retry 关闭对齐组件声明 */
 function mountDrawer(props: {
   open: boolean
   sessionId: string
   title?: string
   initialStatus?: SessionStatus | ''
 }) {
-  return mount(ConversationReplayDrawer, { props })
+  return mount(ConversationReplayDrawer, {
+    props,
+    global: {
+      plugins: [
+        [
+          VueQueryPlugin,
+          {
+            queryClient: new QueryClient({
+              defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+            }),
+          },
+        ],
+      ],
+    },
+  })
 }
 
 describe('ConversationReplayDrawer：回放只读流', () => {
@@ -176,6 +193,29 @@ describe('ConversationReplayDrawer：回放只读流', () => {
     await flushPromises()
     expect(detailSpy).toHaveBeenCalledTimes(2)
     expect(wrapper.find('[data-testid="session-drawer"]').text()).toContain('课程资料在哪？')
+    wrapper.unmount()
+  })
+
+  it('PERF-08：30s 内重开同一会话命中缓存 0 请求；切换会话按新键拉新', async () => {
+    const detailSpy = vi.spyOn(sessionApi, 'detail').mockResolvedValue(detailOf())
+    const wrapper = mountDrawer({ open: true, sessionId: 's-1' })
+    await flushPromises()
+    expect(detailSpy).toHaveBeenCalledTimes(1)
+
+    // 关闭 → 30s 内重开同会话：命中缓存，不重复请求且消息流直接在场（秒开）
+    await wrapper.setProps({ open: false })
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+    expect(detailSpy).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="session-drawer"]').text()).toContain('课程资料在哪？')
+
+    // 切换会话（s-1 → s-2）：查询键随 sessionId 变化，按新键拉取新会话
+    await wrapper.setProps({ open: false, sessionId: 's-2' })
+    detailSpy.mockResolvedValue(detailOf({ id: 's-2', title: '会话-s-2' }))
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+    expect(detailSpy).toHaveBeenCalledTimes(2)
+    expect(detailSpy).toHaveBeenLastCalledWith('s-2')
     wrapper.unmount()
   })
 })

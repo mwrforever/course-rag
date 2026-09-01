@@ -4,6 +4,8 @@ import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.agent.hook.messages.AgentCommand;
 import com.alibaba.cloud.ai.graph.agent.hook.messages.MessagesModelHook;
 import com.alibaba.cloud.ai.graph.agent.hook.messages.UpdatePolicy;
+import com.commerce.rag.properties.ContextProperties;
+import com.commerce.rag.properties.ModelProperties;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -16,7 +18,6 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -65,18 +66,16 @@ public class CustomSummarizationHook extends MessagesModelHook {
     private final String summaryModel;
 
     public CustomSummarizationHook(
-            ChatModel chatModel,
-            @Value("${model.max-context-tokens:128000}") long maxContextTokens,
-            @Value("${context.window-ratio:0.7}") double windowRatio,
-            @Value("${context.threshold:0.7}") double contextThreshold,
-            @Value("${context.keep-recent:6}") int keepRecent,
-            @Value("${context.summary-model:qwen3.7-flash}") String summaryModel) {
+            ChatModel chatModel, ModelProperties modelProperties, ContextProperties contextProperties) {
         this.chatModel = chatModel;
-        this.maxContextTokens = maxContextTokens;
-        this.windowRatio = windowRatio;
-        this.contextThreshold = contextThreshold;
-        this.keepRecent = keepRecent;
-        this.summaryModel = summaryModel;
+        // BUG-12 @Value 收敛：五个参数经属性类强类型注入（model.max-context-tokens /
+        // context.window-ratio / context.threshold / context.keep-recent / context.summary-model），
+        // 取值与原 @Value 相同
+        this.maxContextTokens = modelProperties.maxContextTokens();
+        this.windowRatio = contextProperties.windowRatio();
+        this.contextThreshold = contextProperties.threshold();
+        this.keepRecent = contextProperties.keepRecent();
+        this.summaryModel = contextProperties.summaryModel();
     }
 
     @Override

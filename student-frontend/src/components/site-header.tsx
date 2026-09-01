@@ -6,7 +6,9 @@
  * 结构：单层吸顶栏——左（衬线 Logo）· 中左（主导航三项：首页 / 课程助手 / 课程中心，
  * 关联路由 /、/chat、/courses）· 右（认证区）。原深墨顶条与汉堡全屏抽屉按用户
  * 「不要三层、统一合并成一层」要求移除；搜索图标入口并入「课程中心」导航项。
- * 滚动行为：下滑过阈值隐藏吸顶栏、过 40px 切换磨砂玻璃底（rAF 方向感知节流）。
+ * 滚动行为：下滑过阈值隐藏吸顶栏、过 40px 切换磨砂玻璃底（rAF 方向感知节流；
+ * BUG-29+PERF-23：循环改 useRafLoop 空闲降级——吸顶栏为自隐藏元素，若按自身
+ * 可见性暂停会在隐藏后死锁，故仅页面切后台暂停）。
  *
  * 登录态契约（沿用 2026-08-26 拍板）：未登录 = 文字链「登录」跳独立登录页 + 胶囊「注册」按钮；
  * 已登录 = 头像下拉（身份信息 + 个人中心 + 退出登录），登出经 ConfirmDialog 二次确认。
@@ -21,6 +23,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useRafLoop } from "@/components/motion/raf-loop";
 import { useAuth } from "@/lib/auth-context";
 
 /** 主导航模型（单层直出：三项关联路由；课程助手对话页在侧栏壳另有入口） */
@@ -50,36 +53,27 @@ export function SiteHeader() {
   const reduceMotion = useReducedMotion() ?? true;
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLElement | null>(null);
+  // 上帧滚动位置（null=首帧，按当帧 scrollY 初始化避免中位刷新误判方向）
+  const lastYRef = useRef<number | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   // 登出二次确认（用户拍板：登出必须确认）
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   // 滚动状态：下滑隐藏吸顶栏 / 过阈值切玻璃底（方向感知 + rAF 节流；
-  // 用户下拉开启时不隐藏，保证可回退）
-  useEffect(() => {
-    const header = document.getElementById("site-header");
-    if (!header || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-    let lastY = window.scrollY;
-    let rafId = 0;
-    const menuOpenRef = { current: false };
-    const syncMenuOpen = () => {
-      menuOpenRef.current = userMenuOpen;
-    };
-    syncMenuOpen();
-    const tick = () => {
-      const y = window.scrollY;
-      const down = y > lastY && Math.abs(y - lastY) > 1;
-      lastY = y;
-      header.classList.toggle("scrolled", y > 40);
-      // 下滑且远离顶部时隐藏（下拉展开时不隐藏）
-      header.classList.toggle("header-hide", down && y > 200 && !menuOpenRef.current);
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [userMenuOpen]);
+  // 循环启停归 useRafLoop：仅页面切后台暂停——吸顶栏自隐藏，按自身可见性
+  // 暂停会死锁；用户下拉开启时不隐藏，保证可回退）
+  useRafLoop(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const y = window.scrollY;
+    const lastY = lastYRef.current ?? y;
+    const down = y > lastY && Math.abs(y - lastY) > 1;
+    lastYRef.current = y;
+    header.classList.toggle("scrolled", y > 40);
+    // 下滑且远离顶部时隐藏（下拉展开时不隐藏）
+    header.classList.toggle("header-hide", down && y > 200 && !userMenuOpen);
+  });
 
   // 用户下拉关闭：Esc + 点击外部 + 路由变化
   useEffect(() => {
@@ -134,6 +128,7 @@ export function SiteHeader() {
     <>
       {/* ===== 单层吸顶主栏：Logo · 主导航 · 认证区 ===== */}
       <header
+        ref={headerRef}
         id="site-header"
         data-testid="site-header"
         className="sticky top-0 z-[100] text-bg transition-[transform,background,box-shadow] duration-500 ease-out"

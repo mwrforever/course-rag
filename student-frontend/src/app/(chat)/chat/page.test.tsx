@@ -41,6 +41,8 @@ const routerMock = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
 const authMock = vi.hoisted(() => ({ useAuth: vi.fn() }));
 /** blob URL mock：jsdom 未实现 createObjectURL/revokeObjectURL */
 const urlMock = vi.hoisted(() => ({ createObjectURL: vi.fn(), revokeObjectURL: vi.fn() }));
+/** 缩略图生成 mock（PERF-18：默认不设定返回值=未生成/降级，chips 以原图兜底） */
+const thumbMock = vi.hoisted(() => ({ createAttachmentThumbUrl: vi.fn() }));
 
 vi.mock("@/hooks/use-chat-stream", () => ({
   useChatStream: () => ({
@@ -64,6 +66,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
     postFeedback: apiMock.postFeedback,
   };
 });
+vi.mock("@/lib/attachment-thumb", () => ({
+  createAttachmentThumbUrl: thumbMock.createAttachmentThumbUrl,
+}));
 vi.mock("next/navigation", () => ({
   useRouter: () => routerMock,
   useSearchParams: () => searchParamsMock.current,
@@ -126,6 +131,7 @@ beforeEach(() => {
   chatMock.reset.mockReset();
   apiMock.uploadAttachments.mockReset();
   apiMock.postFeedback.mockReset().mockResolvedValue(undefined);
+  thumbMock.createAttachmentThumbUrl.mockReset().mockResolvedValue(null);
   routerMock.replace.mockReset();
   routerMock.push.mockReset();
   searchParamsMock.current = new URLSearchParams();
@@ -366,9 +372,72 @@ describe("新对话页：附件全链路", () => {
     apiMock.uploadAttachments.mockResolvedValue([RECORD]);
     renderPage();
     setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
-    await waitFor(() => expect(apiMock.uploadAttachments).toHaveBeenCalledWith([PNG]));
+    await waitFor(() =>
+      expect(apiMock.uploadAttachments).toHaveBeenCalledWith([PNG], expect.any(Function)),
+    );
     const img = await screen.findByRole("img", { name: /图\.png/ });
     expect(img).toHaveAttribute("src", "blob:mock-url");
+  });
+
+  it("上传进度回调驱动 chips 确定进度（PERF-10a：百分比文案即时更新）", async () => {
+    let report: ((percent: number) => void) | undefined;
+    apiMock.uploadAttachments.mockImplementation(
+      async (_files: File[], onProgress?: (percent: number) => void) => {
+        report = onProgress;
+        return await new Promise<AttachmentRecord[]>(() => {
+          // 挂起等待测试驱动进度（不上传完成）
+        });
+      },
+    );
+    renderPage();
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
+    await waitFor(() => expect(apiMock.uploadAttachments).toHaveBeenCalled());
+    // 进度回调 40% → chip 状态行出现百分比文案
+    act(() => report?.(40));
+    expect(screen.getByText("上传中 40%")).toBeInTheDocument();
+    expect(screen.getByTestId("attachment-progress")).toHaveAttribute("aria-valuenow", "40");
+  });
+
+  it("图片缩略生成后接管 chips/消息行渲染，预览弹窗保留原图（PERF-18）", async () => {
+    thumbMock.createAttachmentThumbUrl.mockResolvedValue("blob:thumb-url");
+    apiMock.uploadAttachments.mockResolvedValue([RECORD]);
+    chatMock.send.mockImplementation(async (_query: string, attachments: AttachmentRecord[]) => {
+      const userMsg: StreamMessage = {
+        id: "local-1",
+        role: "user",
+        content: "看图提问",
+        attachments,
+        model: null,
+        text: "",
+        sources: [],
+        timeline: [],
+        endStatus: null,
+        messageId: null,
+      };
+      chatMock.state = { ...chatMock.state, messages: [userMsg], streaming: true };
+    });
+    renderPage();
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
+    // 缩略异步生成完成 → chips 缩略位切换为小图 blob（原图不再用于 36px 缩略）
+    expect(thumbMock.createAttachmentThumbUrl).toHaveBeenCalledWith(PNG);
+    const chipImg = await screen.findByRole("img", { name: /缩略图：图\.png/ });
+    await waitFor(() => expect(chipImg).toHaveAttribute("src", "blob:thumb-url"));
+    // 预览弹窗保留原图 blob（Zoom 大图不受缩略化影响）
+    fireEvent.click(screen.getByRole("button", { name: /预览附件：图\.png/ }));
+    expect(await screen.findByTestId("attachment-preview-image")).toHaveAttribute(
+      "src",
+      "blob:mock-url",
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    // 发送后消息行附件缩略（28px）走缩略 blob（映射迁入 thumbUrl）
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "看图提问" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: /附件：图\.png/ })).toHaveAttribute(
+        "src",
+        "blob:thumb-url",
+      );
+    });
   });
 
   it("移除附件：revoke blob URL", async () => {
@@ -408,6 +477,68 @@ describe("新对话页：附件全链路", () => {
     // 消息内仍以 blob 预览（记录 url → blob 映射保留）
     expect(screen.getByRole("img", { name: /图\.png/ })).toBeInTheDocument();
   });
+
+  it("发送成功：上传失败的 chips 清理并 revoke blob（BUG-20 不泄漏）", async () => {
+    apiMock.uploadAttachments.mockRejectedValueOnce(new Error("上传失败"));
+    renderPage();
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
+    // 上传失败 toast 出现即 chips 进入失败态
+    await screen.findByRole("status");
+    expect(screen.getByTestId("attachment-chip")).toBeInTheDocument();
+    // 失败态不阻塞发送（sendDisabled 仅拦上传中）：直接文本发送
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "不带附件提问" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await waitFor(() => {
+      expect(chatMock.send).toHaveBeenCalledWith("不带附件提问", []);
+    });
+    // 发送成功后：失败 chip 随清理移除且 blob 已 revoke（不泄漏至页面卸载）
+    await waitFor(() => {
+      expect(screen.queryByTestId("attachment-chip")).not.toBeInTheDocument();
+    });
+    expect(urlMock.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
+  });
+
+  it("发送成功：await 期间新增的 chips 保留不连带清空（BUG-20）", async () => {
+    // blob URL 递增编号：区分发送时 chips 与 await 期间新增 chips
+    let blobSeq = 0;
+    urlMock.createObjectURL.mockImplementation(() => `blob:mock-${(blobSeq += 1)}`);
+    const RECORD2: AttachmentRecord = {
+      type: "image",
+      url: "obj/2.png",
+      name: "追问图.png",
+      size: "1024",
+    };
+    const PNG2 = new File([new Uint8Array(1024)], "追问图.png", { type: "image/png" });
+    apiMock.uploadAttachments.mockResolvedValueOnce([RECORD]).mockResolvedValueOnce([RECORD2]);
+    // 挂起 send：模拟网络慢，制造 await 窗口
+    let resolveSend!: () => void;
+    chatMock.send.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (resolveSend = resolve)),
+    );
+    renderPage();
+    // 发送前：第一个附件已上传完成
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
+    await screen.findByRole("img", { name: /图\.png/ });
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "带附件提问" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await waitFor(() => {
+      expect(chatMock.send).toHaveBeenCalledWith("带附件提问", [RECORD]);
+    });
+    // await 窗口内：用户新选第二个附件（上传完成）
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG2]);
+    await screen.findByRole("img", { name: /追问图\.png/ });
+    expect(screen.getAllByTestId("attachment-chip").length).toBe(2);
+    // 完成发送：仅清理本次提交的第一个 chip，新增第二个 chip 保留
+    await act(async () => {
+      resolveSend();
+    });
+    await waitFor(() => {
+      expect(screen.getAllByTestId("attachment-chip").length).toBe(1);
+    });
+    expect(screen.getByRole("img", { name: /追问图\.png/ })).toBeInTheDocument();
+    // 新增 chip 的 blob 未被 revoke（仍挂在 chips 上供预览/后续发送）
+    expect(urlMock.revokeObjectURL).not.toHaveBeenCalledWith("blob:mock-2");
+  });
 });
 
 describe("新对话页：拖拽上传与附件预览（Task 12 扩容）", () => {
@@ -438,7 +569,7 @@ describe("新对话页：拖拽上传与附件预览（Task 12 扩容）", () =>
       dataTransfer: { files: [PNG] },
     });
     await waitFor(() => {
-      expect(apiMock.uploadAttachments).toHaveBeenCalledWith([PNG]);
+      expect(apiMock.uploadAttachments).toHaveBeenCalledWith([PNG], expect.any(Function));
     });
   });
 

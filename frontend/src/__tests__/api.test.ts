@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ApiError,
   NETWORK_ERROR_MESSAGE,
+  UPLOAD_TIMEOUT_MS,
   apiClient,
   authApi,
   chunkApi,
@@ -587,6 +588,25 @@ describe('api client：接口函数拼装', () => {
     const uploadCall = lastCall('/admin/courses/cover')
     expect(uploadCall.method).toBe('post')
     expect(uploadCall.headers?.['Content-Type']).toContain('multipart/form-data')
+  })
+
+  it('上传类请求 per-request 放宽 timeout，普通请求维持实例级 20s（BUG-03 回归）', async () => {
+    // axios timeout 覆盖含请求体发送与响应等待的全程：文档 ≤100MB 在常见上行带宽下
+    // 30MB+ 发送即超 20s，且超时后无响应体被归一为「网络连接失败」误导排查方向
+    const form = new FormData()
+    form.set('file', new File(['x'], 'a.pdf'))
+    await documentApi.upload(form)
+    expect(lastCall('/admin/documents').timeout).toBe(UPLOAD_TIMEOUT_MS)
+
+    // 封面上传（5MB）：慢网络下 20s 同样不足，与文档上传同口径放宽
+    const coverForm = new FormData()
+    coverForm.set('file', new File(['x'], 'cover.png', { type: 'image/png' }))
+    await courseApi.uploadCover(coverForm)
+    expect(lastCall('/admin/courses/cover').timeout).toBe(UPLOAD_TIMEOUT_MS)
+
+    // 普通请求不受影响：仍为实例级 20s 默认
+    await courseApi.list({ page: 1 })
+    expect(lastCall('/admin/courses').timeout).toBe(20_000)
   })
 
   it('list 系接口 signal 剔除出查询串并透传取消信号（契约 E 竞态防护）', async () => {

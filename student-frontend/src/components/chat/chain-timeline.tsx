@@ -17,10 +17,10 @@
  * 节点（「未识别意图」/重写查询清单）——设计稿无对应元素，前端不再渲染。
  */
 import { MagnifyingGlass, Wrench } from "@phosphor-icons/react";
-import { memo } from "react";
+import { memo, useCallback } from "react";
 import { OpStep, summarizeOutput, toolNameLabel } from "./op-step";
 import { ThinkingStep } from "./thinking-step";
-import type { TimelineNode, TimelineToolNode } from "@/lib/types";
+import type { RetrievalSource, TimelineNode, TimelineToolNode } from "@/lib/types";
 
 /** 链式时间轴 props */
 export interface ChainTimelineProps {
@@ -28,8 +28,14 @@ export interface ChainTimelineProps {
   timeline: TimelineNode[];
   /** 所属消息是否流式进行中（末节点 running 判定；历史消息恒 false） */
   active: boolean;
-  /** 打开召回抽屉回调（sources 步骤完成态点击） */
-  onOpenSources: () => void;
+  /**
+   * 本条消息的来源列表（PERF-05：以独立 props 传入而非调用方闭包捕获——
+   * reducer delta 分支保留 sources 引用不变，引用稳定可令 memo 在正文 delta
+   * 期间整轴跳过重渲染；点击来源步骤时由本组件内部闭包交给 onOpenSources）
+   */
+  sources: RetrievalSource[];
+  /** 打开召回抽屉回调（稳定引用，接收上方 sources 原样透传） */
+  onOpenSources: (sources: RetrievalSource[]) => void;
   /** 打开工具结果抽屉回调（tool 步骤完成态点击，2026-08-30 工具结果侧栏展示） */
   onOpenTool: (tool: TimelineToolNode) => void;
 }
@@ -53,16 +59,21 @@ export function isNodeRunning(node: TimelineNode, isLast: boolean, active: boole
 
 /**
  * 链式时间轴容器（竖线 + 逐节点步骤；memo 化 Task 14——历史行 timeline 引用稳定，
- * 整轴跳过重渲染；流式行仅变化节点经步骤级 memo 局部更新）
+ * 整轴跳过重渲染；流式行仅变化节点经步骤级 memo 局部更新；PERF-05 修复：
+ * sources 以独立 props 传入替代调用方内联闭包，正文 delta 期间本轴 memo 不再被击穿）
  *
  * @param props 见 ChainTimelineProps
  */
 export const ChainTimeline = memo(function ChainTimeline({
   timeline,
   active,
+  sources,
   onOpenSources,
   onOpenTool,
 }: ChainTimelineProps) {
+  // 来源步骤点击回调（PERF-05）：依赖仅稳定引用（onOpenSources 调用方 useCallback、
+  // sources 数组随事件到达才换引用），保证时间轴自身 memo 不被内部闭包击穿
+  const openSources = useCallback(() => onOpenSources(sources), [onOpenSources, sources]);
   const lastIndex = timeline.length - 1;
   return (
     <div data-testid="chain-timeline" className="chain-timeline">
@@ -88,7 +99,7 @@ export const ChainTimeline = memo(function ChainTimeline({
                     已检索 <em>{node.sources.length}</em> 篇相关资料
                   </>
                 }
-                onClick={onOpenSources}
+                onClick={openSources}
               />
             );
           case "tool": {

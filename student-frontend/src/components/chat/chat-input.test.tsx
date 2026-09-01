@@ -170,6 +170,26 @@ describe("ChatInput 错误分级提示（设计 §3.2）", () => {
     expect(textarea).toHaveValue("并发问题");
   });
 
+  it("发送失败且 await 期间已键入新内容：不覆盖新键入内容（BUG-19）", async () => {
+    // 手动控制 reject 时机：模拟网络慢时用户在 await 窗口内继续补充输入
+    let rejectSend!: (error: unknown) => void;
+    onSend.mockImplementationOnce(
+      () => new Promise<never>((_resolve, reject) => (rejectSend = reject)),
+    );
+    renderInput();
+    const textarea = typeText("原始查询");
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(textarea).toHaveValue("");
+    // await 期间用户键入补充内容
+    fireEvent.change(textarea, { target: { value: "补充的新内容" } });
+    rejectSend(new ApiError(503, "服务不可用"));
+    await vi.waitFor(() => {
+      expect(onNotify).toHaveBeenCalledWith("服务暂时不可用，请稍后重试");
+    });
+    // 旧查询不整体覆写，新键入内容保留
+    expect(textarea).toHaveValue("补充的新内容");
+  });
+
   it("503：toast「服务暂时不可用，请稍后重试」", async () => {
     onSend.mockRejectedValueOnce(new ApiError(503, "服务不可用"));
     renderInput();
@@ -326,5 +346,39 @@ describe("ChatInput 受控与重置（T12 受控化，T13 新建会话 reset 消
       expect(onValueChange).toHaveBeenCalledWith("");
       expect(onValueChange).toHaveBeenCalledWith("并发问题");
     });
+  });
+
+  it("受控模式发送失败且 await 期间已键入新内容：不再回填旧查询（BUG-19）", async () => {
+    let rejectSend!: (error: unknown) => void;
+    onSend.mockImplementationOnce(
+      () => new Promise<never>((_resolve, reject) => (rejectSend = reject)),
+    );
+    let parentValue = "原始查询";
+    const onValueChange = vi.fn((next: string) => {
+      // 模拟父级受控回写：onValueChange 后以新值重渲染
+      parentValue = next;
+    });
+    const props = {
+      streaming: false,
+      onSend,
+      onCancel,
+      onNotify,
+      onValueChange,
+    };
+    const view = render(<ChatInput {...props} value={parentValue} />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    // 父级随清空上拔回写空串
+    view.rerender(<ChatInput {...props} value={parentValue} />);
+    // await 期间用户键入新内容，父级回写驱动视图
+    fireEvent.change(textarea, { target: { value: "新键入内容" } });
+    view.rerender(<ChatInput {...props} value={parentValue} />);
+    rejectSend(new ApiError(503, "服务不可用"));
+    await vi.waitFor(() => {
+      expect(onNotify).toHaveBeenCalled();
+    });
+    // 旧查询不回填，输入框保持新键入内容
+    expect(textarea).toHaveValue("新键入内容");
+    expect(onValueChange).not.toHaveBeenCalledWith("原始查询");
   });
 });

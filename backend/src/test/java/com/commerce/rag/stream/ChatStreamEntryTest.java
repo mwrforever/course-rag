@@ -28,7 +28,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -518,9 +521,33 @@ class ChatStreamEntryTest {
 
         // Then: 终态分支——不 subscribe、不启动心跳（无额外 push）；PG 回放已执行
         verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
-        // R2 改造适配：COMPLETED 终态补 messageId——findByRunId 由 PG 回放 + messageId 解析各查一次
-        verify(chatMessageService, times(2)).findByRunId(123L);
+        // R2 改造适配（PERF-13 收敛后）：COMPLETED 终态补 messageId——messageId 解析复用
+        // PG 回放已查消息列表，findByRunId 全程仅 1 次
+        verify(chatMessageService, times(1)).findByRunId(123L);
         assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("reconnect PG 回放成功 + COMPLETED 终态 → 降级路径 DB 查询收敛（PERF-13：run/messages 各查 1 次）")
+    void reconnect_terminalRun_degradePathQueriesConverge() {
+        // Given: 归属校验 + 终态判定共用 run 查桩（COMPLETED）；PG 历史含正文行（messageId 目标）
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(
+                        new ChatMessageVO(1L, "ASSISTANT", "历史思考内容", "thinking", null, null, 123L, 1, null),
+                        new ChatMessageVO(2L, "ASSISTANT", "最终回答", null, null, null, 123L, 2, null)));
+
+        // When: 降级路径（ring 失效 → PG 回放成功 → run 已终态补发 end）
+        entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
+
+        // Then: PERF-13——messageId 解析复用 PG 回放消息 + 已查 run，findByRunId 全程仅 1 次、
+        // findById 仅归属校验 + 终态判定 2 次（修复前 resolveAssistantMessageId 内部再查
+        // run + messages 各 1 次，降级路径 4 次往返）
+        verify(chatRunService, times(2)).findById(123L);
+        verify(chatMessageService, times(1)).findByRunId(123L);
+        verify(bridge, never()).subscribe(anyString(), any(SseEmitter.class));
     }
 
     @Test
@@ -742,6 +769,41 @@ class ChatStreamEntryTest {
                 sent.stream()
                         .anyMatch(s -> s.contains("\"delta\":\"生成阶段思考\"") && s.contains("\"stage\":\"generating\"")),
                 "generating 思考应携带 stage: " + sent);
+    }
+
+    @Test
+    @DisplayName("replayFromPg 正文含 C0 控制字符 → 十六进制转义且 payload 可解析还原原文（BUG-15）")
+    void reconnect_replayFromPg_controlChars_escapedAndParseable() throws Exception {
+        // Given: 正文含 \n \t 与 \u0000 \u001f \f \b 等 C0 控制字符——原 escapeJson 只覆盖
+        // \\ " \n \r \t 五种，其余控制字符裸输出产出非法 JSON（RFC 8259 禁止字符串内裸
+        // 控制字符），前端 JSON.parse 抛错导致回放中断。
+        // 注：断言文本经 "\\" + "uXXXX" 拼接构造——源码字面 "\\u0000" 会被 Java 词法层
+        // Unicode 转义预处理成「反斜杠 + 真实 NUL 字符」，不是六字符文本
+        String content = "前\u0000中\f换\b页\u001f后\n制\t表\"引\\斜";
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(1L, "ASSISTANT", content, null, null, null, 123L, 1, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(true);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
+
+        // Then: DELTA payload 中既有短转义（\n/\t）保留，其余控制字符统一十六进制转义
+        List<String> sent = sentDataStrings(emitter);
+        String payload = sent.stream()
+                .filter(s -> s.startsWith("{\"text\":\""))
+                .findFirst()
+                .orElse("");
+        assertTrue(payload.contains("\\n"), "换行应保留短转义: " + payload);
+        assertTrue(payload.contains("\\t"), "制表应保留短转义: " + payload);
+        assertTrue(payload.contains("\\" + "u0000"), "NUL 应转义: " + payload);
+        assertTrue(payload.contains("\\" + "u001f"), "US 应转义: " + payload);
+        assertTrue(payload.contains("\\f") || payload.contains("\\" + "u000c"), "换页应转义（短转义或十六进制均合法）: " + payload);
+        assertTrue(payload.contains("\\b") || payload.contains("\\" + "u0008"), "退格应转义（短转义或十六进制均合法）: " + payload);
+        // 业务等价断言：payload 必须是合法 JSON 且解析后还原原文（= 前端 JSON.parse 不中断）
+        assertEquals(content, new ObjectMapper().readTree(payload).path("text").asText(), "payload 解析应还原原文");
     }
 
     @Test
@@ -1005,11 +1067,13 @@ class ChatStreamEntryTest {
                 .orElseThrow(() -> new AssertionError("应补发 end 事件 payload"));
     }
 
-    /** 反射调用 private resolveAssistantMessageId（M2：仅 COMPLETED run 的 assistant 正文行可作反馈目标） */
+    /** 反射调用 private resolveAssistantMessageId（M2：仅 COMPLETED run 的 assistant 正文行可作反馈目标；
+     * PERF-13 后签名为 (runId, knownRun)，传 null 走 run 自查路径——与原单参语义一致） */
     private String invokeResolveAssistantMessageId(String runId) throws Exception {
-        Method method = ChatStreamEntry.class.getDeclaredMethod("resolveAssistantMessageId", String.class);
+        Method method =
+                ChatStreamEntry.class.getDeclaredMethod("resolveAssistantMessageId", String.class, ChatRunVO.class);
         method.setAccessible(true);
-        return (String) method.invoke(entry, runId);
+        return (String) method.invoke(entry, runId, null);
     }
 
     @Test
@@ -1180,5 +1244,65 @@ class ChatStreamEntryTest {
         // Then: 首个心跳 tick 触发 send 异常后任务被取消，调度队列清空（心跳停止）
         Thread.sleep(2200);
         assertEquals(0, heartbeatScheduler().getQueue().size());
+    }
+
+    @Test
+    @DisplayName("startHeartbeat emitter 已完成 → send 抛 IllegalStateException 时心跳任务经显式取消停跳（BUG-37 防静默取消）")
+    void chat_startHeartbeat_completedEmitterSendThrows_cancelsExplicitlyNotSilently() throws Exception {
+        // Given: 心跳间隔 1 秒；emitter 已完成（send 抛 IllegalStateException——SseEmitter
+        // 完成后再 send 的标准行为），且生命周期回调未生效（隔离复现 BUG-37 场景：完成与
+        // onCompletion 回调执行之间的竞态窗口内心跳 tick 先行触发 send）
+        when(streamProperties.heartbeatInterval()).thenReturn(1);
+        SseEmitter completedEmitter = mock(SseEmitter.class);
+        doThrow(new IllegalStateException("SseEmitter has already completed"))
+                .when(completedEmitter)
+                .send(any(SseEmitter.SseEventBuilder.class));
+
+        // 反射替换调度器为可记录 future 的实现（取回 startHeartbeat 内部创建的周期任务，
+        // 用于断言停止方式：显式 cancel vs 未捕获异常静默取消）
+        FutureRecordingScheduler recorder = new FutureRecordingScheduler();
+        Field schedulerField = ChatStreamEntry.class.getDeclaredField("scheduler");
+        schedulerField.setAccessible(true);
+        ScheduledExecutorService original = (ScheduledExecutorService) schedulerField.get(entry);
+        schedulerField.set(entry, recorder);
+
+        // 直接调用私有 startHeartbeat（不经 chat 流程，避免真实 emitter 生命周期干扰）
+        Method startHeartbeat = ChatStreamEntry.class.getDeclaredMethod("startHeartbeat", SseEmitter.class);
+        startHeartbeat.setAccessible(true);
+        startHeartbeat.invoke(entry, completedEmitter);
+
+        // When: 等待 2 个心跳周期（修复前：未捕获 RuntimeException → scheduleAtFixedRate
+        // 周期任务被调度器静默取消且异常被吞进 Future——心跳无任何日志停跳，连接假死难定位）
+        Thread.sleep(2200);
+        original.shutdownNow();
+
+        // Then: 心跳任务已停止（连接不可用不再发心跳），且经显式 cancel 停止——
+        // 修复前静默取消表现为 isDone=true 但 isCancelled=false（异常终止非取消）
+        ScheduledFuture<?> task = recorder.lastFixedRateTask;
+        assertNotNull(task, "startHeartbeat 应已创建周期心跳任务");
+        assertTrue(task.isDone(), "send 失败后心跳任务应停止（不再发心跳）");
+        assertTrue(task.isCancelled(), "BUG-37：停跳必须经显式取消，禁止未捕获异常静默取消");
+    }
+
+    /** 记录 scheduleAtFixedRate 创建的周期任务 future 的调度器（BUG-37 测试专用） */
+    private static final class FutureRecordingScheduler extends ScheduledThreadPoolExecutor {
+
+        /** 最近一次经 scheduleAtFixedRate 提交的周期任务（测试断言对象） */
+        volatile ScheduledFuture<?> lastFixedRateTask;
+
+        FutureRecordingScheduler() {
+            super(1, r -> {
+                Thread t = new Thread(r, "test-heartbeat");
+                t.setDaemon(true);
+                return t;
+            });
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
+            ScheduledFuture<?> future = super.scheduleAtFixedRate(command, initialDelay, period, unit);
+            lastFixedRateTask = future;
+            return future;
+        }
     }
 }

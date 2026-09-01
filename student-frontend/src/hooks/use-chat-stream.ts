@@ -32,6 +32,7 @@
  */
 import { useEffect, useReducer, useRef } from "react";
 import { ApiError, cancelRun, postChat, reconnectChat } from "../lib/api";
+import { warn as logWarn } from "../lib/logger";
 import { createSseParser } from "../lib/sse-parser";
 import {
   type AttachmentRecord,
@@ -40,8 +41,13 @@ import {
   type TimelineNode,
 } from "../lib/types";
 
-/** 合法阶段键集合（后端 STAGE_* 契约同值；未知阶段事件整体忽略，防脏数据进状态机） */
-const STAGE_KEYS: ReadonlySet<string> = new Set([
+/**
+ * 合法阶段键集合（后端 STAGE_* 契约同值；未知阶段事件整体忽略，防脏数据进状态机）
+ *
+ * 单一事实源（BUG-22）：历史回显 history-adapter 的思考阶段归一化导入同一集合，
+ * 实时流与历史回显口径不再各自维护分叉
+ */
+export const STAGE_KEYS: ReadonlySet<string> = new Set([
   "attachments",
   "understanding",
   "retrieving",
@@ -522,6 +528,31 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
 
 // ===== SSE 事件 → reducer 动作映射（纯函数，未知事件/坏 JSON 返回 null 静默忽略） =====
 
+/**
+ * SSE 载荷降级计数（按事件名分组，模块级累计）
+ *
+ * N3-C② 可观测性：坏 JSON/关键字段缺失原为纯静默降级（null/兜底值零线索），
+ * 「思考正常正文为空」类问题无从排查；计数随告警日志输出（「同类第 N 次」），
+ * 供区分偶发脏帧与批量劣化。仅计数不清理，页面生命周期内单调递增。
+ */
+const sseDropCounts = new Map<string, number>();
+
+/**
+ * SSE 载荷降级告警（N3-C②）：坏 JSON/关键字段缺失时打中文 warn + 分组计数，
+ * 不改变 sseEventToAction 的返回行为（null/兜底值照旧，流不中断）
+ *
+ * @param name   SSE 事件名（计数分组键）
+ * @param reason 降级原因（中文，定位字段级缺失）
+ * @param data   事件 data 行原文（截断展示供诊断；问答内容非敏感凭据，限 120 字符防刷屏）
+ */
+function warnSsePayloadDrop(name: string, reason: string, data: string): void {
+  const count = (sseDropCounts.get(name) ?? 0) + 1;
+  sseDropCounts.set(name, count);
+  logWarn(
+    `[对话流] ${name} 事件${reason}，已降级忽略（同类第 ${count} 次）；data 片段：${data.slice(0, 120)}`,
+  );
+}
+
 /** 解析事件 data 为对象；非法 JSON / 非对象值返回 null */
 function parseEventData(data: string): Record<string, unknown> | null {
   try {
@@ -553,9 +584,17 @@ export function sseEventToAction(
   seq: number | null,
 ): ChatAction | null {
   const payload = parseEventData(data);
-  if (payload === null) return null;
+  if (payload === null) {
+    // N3-C②：坏 JSON/非对象载荷留诊断线索（返回 null 行为不变）
+    warnSsePayloadDrop(name, " data 非合法 JSON 对象", data);
+    return null;
+  }
   switch (name) {
-    case "metadata":
+    case "metadata": {
+      // N3-C②：runId 为 AI 槽键/重连/cancel 的共同依赖，缺失/非字符串即降级（兜底空串行为不变）
+      if (typeof payload["runId"] !== "string" || payload["runId"] === "") {
+        warnSsePayloadDrop(name, "缺少 runId 字段", data);
+      }
       return {
         type: "metadata",
         runId: strField(payload, "runId"),
@@ -563,6 +602,7 @@ export function sseEventToAction(
         model: strField(payload, "model"),
         seq,
       };
+    }
     case "thinking":
       // thinking 载荷 {delta, stage}：stage 缺失/null/未知降级 generating（历史回放契约）
       return {
@@ -574,8 +614,14 @@ export function sseEventToAction(
     case "thinking_end":
       // thinking_end 载荷 {stage}：与同 stage 的 THINKING 事件配对退出「思考中」
       return { type: "thinking_end", stage: normalizeThinkingStage(payload["stage"]), seq };
-    case "delta":
+    case "delta": {
+      // N3-C②：text 缺失/非字符串即「思考正常正文为空」的直接诊断线索（兜底空串行为不变；
+      // 空串本体为文档化正常帧，不告警）
+      if (typeof payload["text"] !== "string") {
+        warnSsePayloadDrop(name, "缺少 text 字段", data);
+      }
       return { type: "delta", text: strField(payload, "text"), seq };
+    }
     case "tool_call":
       return {
         type: "tool_call",
@@ -610,7 +656,11 @@ export function sseEventToAction(
       };
     case "end": {
       const status = payload["status"];
-      if (status !== "COMPLETED" && status !== "CANCELLED" && status !== "ERROR") return null;
+      if (status !== "COMPLETED" && status !== "CANCELLED" && status !== "ERROR") {
+        // N3-C②：终态丢失会误入断流重连回放路径，留线索（返回 null 行为不变）
+        warnSsePayloadDrop(name, " status 非白名单终态", data);
+        return null;
+      }
       return {
         type: "end",
         status,
@@ -619,7 +669,7 @@ export function sseEventToAction(
       };
     }
     default:
-      // 未知事件名（如未来新增事件）：上层静默忽略，不落状态
+      // 未知事件名（如 stage/query_plan 后端照发前端设计内忽略、未来新增事件）：静默忽略，不落状态
       return null;
   }
 }
@@ -793,26 +843,37 @@ export function useChatStream(initialSessionId: string | null): {
   /**
    * 重连周期：指数退避（1s/2s/4s 序列，封顶 3 次尝试）调 GET reconnect
    * 成功 → 新流接管续流；全部失败 → retryable 错误分级并解除流式
+   *
+   * BUG-18 竞态防护：循环入口锁定发起时的 runId（originRunId），全程以捕获值为准——
+   * 退避/请求在途期间用户另发新问题（send 重置 runId → 新 metadata 落位新值）时：
+   * ① 不得把新 run 的 runId 当重连目标（成功回放流会替换新 run 的原始流，
+   *    已消费事件重放 → delta 追加型更新产生正文重复片段）；
+   * ② 循环耗尽的无条件 error 不得落位（会把新 run 判成终态，后续事件被
+   *    isTerminal 幂等守卫静默吞掉——正文冻结 + 错误横幅误报）。
+   * runId 与发起时不一致即视为世代已切换，放弃本次重连周期（不 dispatch）。
    */
   async function runReconnect(): Promise<void> {
     if (reconnectBusyRef.current) return;
     reconnectBusyRef.current = true;
     try {
+      // 锁定重连目标 run：null（metadata 前窗口）时无从重连，直接放弃
+      const originRunId = stateRef.current.runId;
+      if (!originRunId) return;
       for (let attempt = 1; attempt <= MAX_RECONNECT_ATTEMPTS; attempt += 1) {
         // 第 2 次起按指数退避等待（1s/2s；4s 留给第 4 次，封顶 3 次不产生）
         if (attempt > 1) {
           await sleep(RECONNECT_BACKOFF_MS[attempt - 2]);
         }
         const current = stateRef.current;
-        // 重连期间终态/新 run 到达（如用户另开新问题）→ 放弃本次重连；
+        // 重连期间终态到达（如用户停止/新 run 已收尾）→ 放弃本次重连；
         // 注：错误态不在此列，手动重试入口（reconnect 动作）已先清错误
         if (current.endedStatus !== null) return;
-        const runId = current.runId;
-        if (!runId) return;
+        // runId 已切换（退避期间用户新 send）→ 本次重连周期作废，不撞新流
+        if (current.runId !== originRunId) return;
         let response: Response;
         try {
-          // 锚点 lastEventId：断流处续放（null=全量回放）
-          response = await reconnectChat(runId, current.lastEventId);
+          // 锚点 lastEventId：断流处续放（null=全量回放）；目标用锁定值防错连新 run
+          response = await reconnectChat(originRunId, current.lastEventId);
         } catch {
           // 网络层失败：退避后进入下一次尝试
           continue;
@@ -821,11 +882,21 @@ export function useChatStream(initialSessionId: string | null): {
           // 服务端拒绝（run 已终结/暂不可用）：退避后下一次尝试
           continue;
         }
+        // 请求在途期间 run 可能已切换/已终态：成功响应不得接管（回放流会替换新 run 的
+        // 原始流导致已消费事件重放）——复查后丢弃响应体并放弃
+        const after = stateRef.current;
+        if (after.runId !== originRunId || after.endedStatus !== null) {
+          void response.body?.cancel().catch(() => {});
+          return;
+        }
         // 重连成功：新流接管（世代切换），返回后交还心跳/事件驱动
         startStream(response);
         return;
       }
-      // 三次尝试全部失败：错误分级 + 解除流式（页面横幅与重试入口）
+      // 三次尝试全部失败：错误分级 + 解除流式（页面横幅与重试入口）；
+      // dispatch 前复查：在途期间 run 已切换 → 本次 error 属于旧 run，丢弃不打到新流上
+      const finalState = stateRef.current;
+      if (finalState.runId !== originRunId || finalState.endedStatus !== null) return;
       dispatch({ type: "error", kind: "retryable", message: "连接已断开，请重试" });
     } finally {
       reconnectBusyRef.current = false;
@@ -854,6 +925,19 @@ export function useChatStream(initialSessionId: string | null): {
    * 仅响应确立（非 409 且可流式）后才追加用户消息并启动流消费，杜绝失败路径的幽灵消息
    */
   async function send(query: string, attachments: AttachmentRecord[]): Promise<void> {
+    // BUG-36 修复：metadata 前失败现场（error 未清场且会话归属未落位）的重发收敛——
+    // 失败提问的服务端会话 id 唯一下发通道是 metadata 事件（POST 响应头/体不携带，后端
+    // ChatStreamEntry 实证），流断在 metadata 前则该会话 id 永不可知；此时直接重发会把
+    // 新提问 POST 成另一个 sessionId=null 新会话，UI 却接续旧历史（孤儿会话 + 历史不连续）。
+    // 语义定为：重发即干净重开——先清失败现场（丢弃未获服务端会话确认的幽灵提问），
+    // 新提问即新对话起点，UI 与新建会话的服务端历史完全对齐；会话已确立（sessionId 非空）
+    // 的普通 error 重发不受影响（POST 复用同一会话）。
+    // 注：reset 后 stateRef 仍是旧值（effect 异步更新），但本守卫条件保证旧值 sessionId
+    // 必为 null，后续 postChat 读取结果与 reset 后一致
+    const beforeSend = stateRef.current;
+    if (beforeSend.error !== null && beforeSend.sessionId === null) {
+      dispatch({ type: "reset" });
+    }
     let response: Response;
     try {
       response = await postChat({

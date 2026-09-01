@@ -282,19 +282,35 @@ function buildBatchBody() {
 const queryClient = useQueryClient()
 
 /**
+ * 末页回退判定（BUG-34，对齐 DocumentsView 批量删除口径）：
+ * 当前页行全部包含在本次批量操作 ids 内且不在第 1 页 → 回退一页防空页
+ * （页码为查询键组成，变化自动重拉上一页）；否则调用方按原口径失效列表键重拉当前页。
+ *
+ * @param ids 本次批量操作覆盖的分片 id 集合（勾选跨页保留，以勾选集合为准）
+ */
+function shouldFallBackOnePage(ids: string[]): boolean {
+  return chunks.value.length > 0 && chunks.value.every((c) => ids.includes(c.id)) && page.value > 1
+}
+
+/**
  * 批量修正提交（POST batch-update，loading 态由 isPending 驱动，文档级 Milvus 同步可能慢）
  *
- * 成功后 toast、关闭 Dialog、清空勾选并失效待修正列表键（工作流继续进入「标记已修正」）；
- * 失败 toast danger 且 Dialog 保留可重试。
+ * 成功后 toast、关闭 Dialog、清空勾选；当前页行全部移出时回退一页防空页（BUG-34），
+ * 否则失效待修正列表键（工作流继续进入「标记已修正」）；失败 toast danger 且 Dialog 保留可重试。
  */
 const { isPending: batchSubmitting, mutate: batchUpdateMutation } = useMutation({
   mutationFn: (body: { ids: string[]; collectionType?: CollectionType; courseId?: string }) =>
     chunkApi.batchUpdate(body),
-  onSuccess: () => {
+  onSuccess: (_data, body) => {
     showToast('批量修正完成', 'success')
     batchDialogOpen.value = false
     selected.value = new Set()
-    queryClient.invalidateQueries({ queryKey: ['admin-chunks-pending'] })
+    // 当前页行全部移出 → 回退一页防空页（页码变化自动重拉）；否则失效列表键重拉当前页
+    if (shouldFallBackOnePage(body.ids)) {
+      page.value -= 1
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['admin-chunks-pending'] })
+    }
   },
   onError: (err) => {
     showToast(messageOf(err, '批量修正失败，请稍后重试'), 'danger')
@@ -322,7 +338,8 @@ function closeCorrectedConfirm() {
  * 确认标记已修正（POST batch-corrected {ids}，不可撤销）
  *
  * 后端将 correction_status 置为 CORRECTED（不可撤销，PENDING → CORRECTED 单向）：
- * 成功后清空勾选并失效待修正列表键，已标记行移出待修正视图。
+ * 成功后清空勾选，已标记行移出待修正视图；当前页行全部移出时回退一页防空页（BUG-34），
+ * 否则失效待修正列表键重拉当前页。
  */
 const { isPending: correctedSubmitting, mutate: batchCorrectedMutation } = useMutation({
   mutationFn: (ids: string[]) => chunkApi.batchCorrected({ ids }),
@@ -330,7 +347,12 @@ const { isPending: correctedSubmitting, mutate: batchCorrectedMutation } = useMu
     showToast(`已标记 ${ids.length} 个分片为已修正`, 'success')
     correctedConfirmOpen.value = false
     selected.value = new Set()
-    queryClient.invalidateQueries({ queryKey: ['admin-chunks-pending'] })
+    // 当前页行全部移出（PENDING → CORRECTED）→ 回退一页防空页（页码变化自动重拉）
+    if (shouldFallBackOnePage(ids)) {
+      page.value -= 1
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['admin-chunks-pending'] })
+    }
   },
   onError: (err) => {
     showToast(messageOf(err, '标记失败，请稍后重试'), 'danger')
@@ -519,7 +541,7 @@ function closeContext() {
   <div
     v-if="listError"
     role="alert"
-    class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-red-50 px-4 py-3"
+    class="flex items-center justify-between gap-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"
   >
     <span class="text-sm text-danger">{{ listError }}</span>
     <Button variant="outline" size="sm" data-testid="retry-chunks" @click="refetch">重试</Button>
@@ -533,12 +555,12 @@ function closeContext() {
     aria-label="分片列表加载中"
   >
     <div class="flex items-center gap-6 border-b border-border bg-surface-2 px-5 py-3.5">
-      <div v-for="i in 6" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-slate-200" />
+      <div v-for="i in 6" :key="`head-${i}`" class="h-3 w-20 animate-pulse rounded bg-border" />
     </div>
     <div
       v-for="i in 5"
       :key="`row-${i}`"
-      class="h-12 animate-pulse border-b border-border bg-slate-50 last:border-b-0"
+      class="h-12 animate-pulse border-b border-border bg-surface-2 last:border-b-0"
     />
   </div>
 
@@ -810,7 +832,7 @@ function closeContext() {
       @click.stop
     >
       <div class="flex items-start gap-3">
-        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50">
+        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger/5">
           <PhWarningCircle class="h-5 w-5 text-danger" />
         </div>
         <div>

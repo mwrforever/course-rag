@@ -170,6 +170,10 @@ public class ChatStreamEntry {
         message.put("attachments", attachmentsJson);
         try {
             redisTemplate.opsForStream().add(streamProperties.requestStream(), message);
+            // BUG-14：XADD 成功后注册取消条目（生命周期「入队 → processRequest.finally 清理」），
+            // 使 worker.cancel 的 computeIfPresent 在排队期与执行期均能命中；runPool 拒绝路径
+            // 与 finally 均负责清理，注册不引入残留
+            worker.registerPendingRun(runId);
         } catch (Exception e) {
             // P0-4c 修复：入队失败回滚 run 状态（解除 uniq_active_run_per_session 唯一索引锁死）
             // + 清理 ring。复合故障（Redis+DB 双挂）下 updateStatus 抛异常也必须清理 ring，
@@ -205,8 +209,9 @@ public class ChatStreamEntry {
      * <p>归属校验：run 必须属于当前用户（P0-3，不匹配 404 不泄露存在性）。
      *
      * <p>B2-7 终态校验：已终态（COMPLETED/CANCELLED/ERROR）的 run 无可取消对象，
-     * 直接 409 拒绝——否则 worker.cancel 会在 cancelFlags 无条件新建条目，而其唯一
-     * 清理路径（processRequest.finally）早已执行，条目将永久残留（内存泄漏）。
+     * 直接 409 拒绝。BUG-14 后 worker.cancel 改 computeIfPresent 仅对已注册条目置位
+     * （条目生命周期「入队注册 → processRequest.finally 清理」），即使本校验与置位
+     * 之间 run 恰好完成（条目已被 finally 清理），置位也为 no-op，不再产生残留条目。
      */
     public ResponseEntity<Void> cancel(String runId, HttpServletRequest httpRequest) {
         Long userId = AuthInterceptor.getCurrentUserId(httpRequest);
@@ -259,8 +264,8 @@ public class ChatStreamEntry {
         if (!success) {
             // F2-9: ring buffer 已覆盖/不存在 → 降级查 PG chat_message 表，replay 历史消息（§3.6）
             log.warn("ring 回放失败，降级查 PG: runId={}, lastEventId={}", runId, lastEventId);
-            long lastSeq = replayFromPg(runId, lastEventId, emitter);
-            if (lastSeq < 0) {
+            PgReplayOutcome replay = replayFromPg(runId, lastEventId, emitter);
+            if (replay.lastSeq() < 0) {
                 // P2-10 修复: run 仍在执行时（ring 覆盖、PG 尚无消息——持久化在 run 结束）
                 // 不得误报 REPLAY_FAILED 终态——仅订阅继续收实时事件，历史缺失可接受
                 ChatRunVO run = chatRunService.findById(Long.parseLong(runId));
@@ -270,9 +275,11 @@ public class ChatStreamEntry {
                         ChatRunVO closedRun = chatRunService.findById(Long.parseLong(runId));
                         if (closedRun != null && isTerminalStatus(closedRun.status())) {
                             // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（M2：解析方法复查
-                            // run 状态）；CANCELLED/ERROR 不带 messageId（半截内容不作反馈目标）
+                            // run 状态——PERF-13 复用已查 closedRun，免重复查询）；CANCELLED/ERROR
+                            // 不带 messageId（半截内容不作反馈目标）
                             String payload = "COMPLETED".equals(closedRun.status())
-                                    ? buildEndPayload(runId, closedRun.status(), resolveAssistantMessageId(runId))
+                                    ? buildEndPayload(
+                                            runId, closedRun.status(), resolveAssistantMessageId(runId, closedRun))
                                     : buildEndPayload(runId, closedRun.status());
                             try {
                                 emitter.send(SseEmitter.event()
@@ -304,14 +311,15 @@ public class ChatStreamEntry {
             // 否则新 emitter 收不到 end，前端状态机永久停在"生成中"
             ChatRunVO run = chatRunService.findById(Long.parseLong(runId));
             if (run != null && isTerminalStatus(run.status())) {
-                // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（resolveAssistantMessageId
-                // 内部复查 M2 状态过滤）；CANCELLED/ERROR 不带 messageId 键
+                // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（PERF-13：M2 状态过滤
+                // 与正文行扫描均在已查 run + PG 回放消息上比对，免重复查询）；CANCELLED/ERROR
+                // 不带 messageId 键
                 String payload = "COMPLETED".equals(run.status())
-                        ? buildEndPayload(runId, run.status(), resolveAssistantMessageId(runId))
+                        ? buildEndPayload(runId, run.status(), resolveAssistantMessageId(run, replay.messages()))
                         : buildEndPayload(runId, run.status());
                 try {
                     emitter.send(SseEmitter.event()
-                            .id(String.valueOf(lastSeq + 1))
+                            .id(String.valueOf(replay.lastSeq() + 1))
                             .name(SseEventType.END.getEventName())
                             .data(payload));
                     emitter.complete();
@@ -327,14 +335,14 @@ public class ChatStreamEntry {
             if (!bridge.subscribe(runId, emitter)) {
                 ChatRunVO closedRun = chatRunService.findById(Long.parseLong(runId));
                 if (closedRun != null && isTerminalStatus(closedRun.status())) {
-                    // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（M2 状态过滤）；
-                    // CANCELLED/ERROR 不带 messageId 键
+                    // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（M2 状态过滤——
+                    // PERF-13 复用已查 closedRun）；CANCELLED/ERROR 不带 messageId 键
                     String payload = "COMPLETED".equals(closedRun.status())
-                            ? buildEndPayload(runId, closedRun.status(), resolveAssistantMessageId(runId))
+                            ? buildEndPayload(runId, closedRun.status(), resolveAssistantMessageId(runId, closedRun))
                             : buildEndPayload(runId, closedRun.status());
                     try {
                         emitter.send(SseEmitter.event()
-                                .id(String.valueOf(lastSeq + 1))
+                                .id(String.valueOf(replay.lastSeq() + 1))
                                 .name(SseEventType.END.getEventName())
                                 .data(payload));
                     } catch (IOException ex) {
@@ -400,18 +408,31 @@ public class ChatStreamEntry {
      * 因此 bridge.subscribe 注册的回调与这里的 heartbeat.cancel 回调可共存。
      */
     private void startHeartbeat(SseEmitter emitter) {
-        ScheduledFuture<?> heartbeat = scheduler.scheduleAtFixedRate(
+        // BUG-37（2026-08-31）：心跳 future 先落 holder 再供任务体引用——send 失败时在任务内
+        // <b>显式取消</b>，不依赖未捕获异常的隐式取消：scheduleAtFixedRate 对未捕获
+        // RuntimeException 会静默取消后续所有执行且异常被吞进 Future 无人消费（心跳无任何
+        // 日志停跳，连接假死难定位）；对齐 sendEvent 投递侧防御风格（MemoryStreamBridge
+        // 单条投递异常不外抛）。任务首跑在 ≥1 个周期之后，holder 赋值先行，无竞态。
+        ScheduledFuture<?>[] heartbeatHolder = new ScheduledFuture<?>[1];
+        heartbeatHolder[0] = scheduler.scheduleAtFixedRate(
                 () -> {
                     try {
                         // 发送 SSE 注释行 :heartbeat（非命名事件），符合 SSE 协议保活规范
                         emitter.send(SseEmitter.event().comment("heartbeat"));
-                    } catch (IOException e) {
-                        // emitter 已关闭，取消定时器
+                    } catch (IOException | RuntimeException e) {
+                        // emitter 已关闭（IOException）/ 已完成（complete 并发导致的
+                        // IllegalStateException）：连接不可用，显式取消心跳任务停跳
+                        log.debug("心跳发送失败，显式取消心跳任务: {}", e.getMessage());
+                        ScheduledFuture<?> task = heartbeatHolder[0];
+                        if (task != null) {
+                            task.cancel(false);
+                        }
                     }
                 },
                 streamProperties.heartbeatInterval(),
                 streamProperties.heartbeatInterval(),
                 TimeUnit.SECONDS);
+        ScheduledFuture<?> heartbeat = heartbeatHolder[0];
 
         emitter.onCompletion(() -> heartbeat.cancel(false));
         emitter.onTimeout(() -> heartbeat.cancel(false));
@@ -440,15 +461,16 @@ public class ChatStreamEntry {
      * @param runId       Run 唯一标识（字符串）
      * @param lastEventId 客户端最后收到的 eventId（用于 seq 续编号）
      * @param emitter     SSE 订阅者
-     * @return 最后回放的 seq（回放成功）；-1=PG 无数据或回放失败
+     * @return 回放结果（PERF-13）：lastSeq=最后回放的 seq（-1=PG 无数据或回放失败）；
+     *         messages=本次已查消息列表（供终态 messageId 解析复用，免二次查询）
      */
-    private long replayFromPg(String runId, long lastEventId, SseEmitter emitter) {
+    private PgReplayOutcome replayFromPg(String runId, long lastEventId, SseEmitter emitter) {
         try {
             Long runIdLong = Long.parseLong(runId);
             List<ChatMessageVO> messages = chatMessageService.findByRunId(runIdLong);
             if (messages == null || messages.isEmpty()) {
                 log.warn("PG 降级回放: runId={} 无历史消息", runId);
-                return -1;
+                return new PgReplayOutcome(-1, List.of());
             }
 
             long seq = lastEventId;
@@ -503,15 +525,18 @@ public class ChatStreamEntry {
             }
 
             log.info("PG 降级回放完成: runId={}, 消息数={}", runId, messages.size());
-            return seq;
+            return new PgReplayOutcome(seq, messages);
         } catch (NumberFormatException e) {
             log.warn("PG 降级回放: runId 解析失败 runId={}", runId);
-            return -1;
+            return new PgReplayOutcome(-1, List.of());
         } catch (Exception e) {
             log.warn("PG 降级回放失败: runId={}", runId, e);
-            return -1;
+            return new PgReplayOutcome(-1, List.of());
         }
     }
+
+    /** PG 降级回放结果（PERF-13）：seq 游标 + 已查消息列表（复用给终态 messageId 解析，消重复查询） */
+    private record PgReplayOutcome(long lastSeq, List<ChatMessageVO> messages) {}
 
     /**
      * 判断 run 是否已处于终态（COMPLETED/CANCELLED/ERROR）。
@@ -533,34 +558,55 @@ public class ChatStreamEntry {
      * 半截 assistant 正文行虽已落库，但不得作为反馈目标（与实时路径「CANCELLED/ERROR 终态
      * 不带 messageId」语义对齐）。异常/未落库窗口返回 null（正常降级，前端 {@code messageId?} 可空容忍）。
      *
-     * @param runId Run 唯一标识（字符串，归属校验已通过）
+     * <p>PERF-13（2026-08-31）：降级路径 run 已在手时复用传入（免 run 复查），messages 仍自查
+     * （无既有可复用列表的调用点）；run/messages 均在手时直接走纯比对重载，全程零额外查询
+     * （降级路径 4 次 DB 往返收敛为 2 次）。
+     *
+     * @param runId    Run 唯一标识（字符串，归属校验已通过）
+     * @param knownRun 调用方已查询的 run（非 null 时复用，M2 状态过滤在该对象上比对；null 时自查）
      * @return assistant 正文行消息 ID 字符串；run 非 COMPLETED / 无正文行 / 查询异常时返回 null
      */
-    private String resolveAssistantMessageId(String runId) {
+    private String resolveAssistantMessageId(String runId, ChatRunVO knownRun) {
         try {
             Long runIdLong = Long.parseLong(runId);
-            // M2 状态过滤：仅 COMPLETED run 的 assistant 正文行可作反馈目标
-            ChatRunVO run = chatRunService.findById(runIdLong);
+            // M2 状态过滤：仅 COMPLETED run 的 assistant 正文行可作反馈目标（knownRun 非空时免查）
+            ChatRunVO run = knownRun != null ? knownRun : chatRunService.findById(runIdLong);
             if (run == null || !"COMPLETED".equals(run.status())) {
                 return null;
             }
             List<ChatMessageVO> messages = chatMessageService.findByRunId(runIdLong);
-            if (messages == null || messages.isEmpty()) {
-                return null;
-            }
-            // 反向扫描：消息按 seq 升序返回，取最后一条正文行即「最终回答」
-            for (int i = messages.size() - 1; i >= 0; i--) {
-                ChatMessageVO msg = messages.get(i);
-                if ("ASSISTANT".equals(msg.role()) && msg.messageType() == null && msg.id() != null) {
-                    return msg.id().toString();
-                }
-            }
-            return null;
+            return resolveAssistantMessageId(run, messages);
         } catch (Exception e) {
             // 解析/查询失败不得阻断 end 补发——messageId 降级 null
             log.warn("解析 assistant 消息 ID 失败，end 事件 messageId 降级为 null: runId={}", runId, e);
             return null;
         }
+    }
+
+    /**
+     * 解析 assistant 正文行消息 ID 的纯比对重载（PERF-13）——在既有 run/messages 上完成
+     * M2 状态过滤与反向扫描，不产生任何 DB 查询；调用方保证对象新鲜度
+     * （同一降级流程内已查数据，run 终态为最终态无并发漂移）。
+     *
+     * @param run      已查询的 run（M2 过滤对象；null 或非 COMPLETED 返回 null）
+     * @param messages 已查询的消息列表（按 seq 升序；null/空返回 null）
+     * @return assistant 正文行消息 ID 字符串；无正文行时返回 null
+     */
+    private String resolveAssistantMessageId(ChatRunVO run, List<ChatMessageVO> messages) {
+        if (run == null || !"COMPLETED".equals(run.status())) {
+            return null;
+        }
+        if (messages == null || messages.isEmpty()) {
+            return null;
+        }
+        // 反向扫描：消息按 seq 升序返回，取最后一条正文行即「最终回答」
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessageVO msg = messages.get(i);
+            if ("ASSISTANT".equals(msg.role()) && msg.messageType() == null && msg.id() != null) {
+                return msg.id().toString();
+            }
+        }
+        return null;
     }
 
     /**
@@ -655,13 +701,37 @@ public class ChatStreamEntry {
 
     /**
      * 简单 JSON 字符串转义（用于 PG 降级回放时构造 payload）。
+     *
+     * <p>BUG-15：补齐 C0 控制字符（U+0000-U+001F）转义——RFC 8259 禁止 JSON 字符串内
+     * 出现裸控制字符，原实现仅覆盖反斜杠/引号与换行/回车/制表五种，正文/思考含其余
+     * 控制字符（如换页、退格、垂直制表）时产出非法 JSON，前端 JSON.parse 抛错导致
+     * 回放中断。现逐字符转义：常用短转义保留（与实时事件构造口径一致），其余控制
+     * 字符统一十六进制转义（"u" + 四位小写十六进制），保证转义后恒为合法 JSON 且
+     * 解析还原原文。
      */
     private String escapeJson(String text) {
-        if (text == null) return "";
-        return text.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
+        if (text == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            switch (c) {
+                case '\\' -> sb.append("\\\\");
+                case '"' -> sb.append("\\\"");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                    // 非常用短转义的 C0 控制字符统一十六进制转义（换页→u000c、退格→u0008 等）
+                default -> {
+                    if (c < 0x20) {
+                        sb.append('\\').append('u').append(String.format("%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        return sb.toString();
     }
 }
