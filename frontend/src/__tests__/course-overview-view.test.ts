@@ -298,6 +298,43 @@ describe('课程概览（编辑模式 /courses/:id）', () => {
     wrapper.unmount()
   })
 
+  it('保存成功后的后台重拉不回填覆盖用户新编辑（BUG-35 竞态回归，BUG-02 守卫核实）', async () => {
+    // 首拉：课程数据回填表单；保存后 invalidate 触发的重拉挂起可控（模拟网络往返窗口期）
+    apiMock.courseApi.get.mockResolvedValueOnce(course())
+    let resolveRefetch: (c: CourseDTO) => void = () => {}
+    apiMock.courseApi.get.mockImplementationOnce(
+      () => new Promise<CourseDTO>((resolve) => (resolveRefetch = resolve)),
+    )
+    apiMock.courseApi.update.mockResolvedValue(undefined)
+    const { wrapper } = await mountAt('/courses/c-1')
+    await flushPromises()
+    expect((wrapper.find('[data-testid="field-title"]').element as HTMLInputElement).value).toBe(
+      'RAG 实战营',
+    )
+
+    // 保存成功 → invalidate ['course-form'] → 后台重拉发出且挂起中（竞态窗口开启）
+    await wrapper.find('[data-testid="save-basic"]').trigger('click')
+    await flushPromises()
+    expect(apiMock.courseApi.update).toHaveBeenCalledTimes(1)
+    expect(showToast).toHaveBeenCalledWith('课程信息已保存', 'success')
+    expect(apiMock.courseApi.get).toHaveBeenCalledTimes(2)
+
+    // 重拉往返窗口期：用户立即开始下一轮编辑
+    await wrapper.find('[data-testid="field-title"]').setValue('用户窗口期新标题')
+
+    // 重拉完成：返回保存后的服务端快照。注意 vue-query 默认 structuralSharing 对
+    // 深相等响应保引用（watch 不触发），须以差异字段（learningCount 变化）驱动
+    // data 引用替换，才能复现真实网络往返的竞态窗口
+    resolveRefetch(course({ title: 'RAG 实战营', learningCount: 5 }))
+    await flushPromises()
+
+    // 用户编辑保留，不被服务端快照覆盖（守卫失效时此断言会回到「RAG 实战营」）
+    expect((wrapper.find('[data-testid="field-title"]').element as HTMLInputElement).value).toBe(
+      '用户窗口期新标题',
+    )
+    wrapper.unmount()
+  })
+
   it('warm cache：命中 30s 未过期缓存不重拉，表单/标签/教师 chips 立即回填（BUG-02 回归）', async () => {
     // 场景：30s 内重进编辑页（同实体子路由往返），vue-query 命中未过期缓存，
     // data 在组件 watch 注册前已同步就位且不再变化——冷缓存用例（staleTime 0 恒重拉）
