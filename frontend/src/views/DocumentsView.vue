@@ -8,7 +8,8 @@
  * 2. 筛选：kbId 下拉 + status 下拉 + q 关键字（搜索按钮/回车提交）
  * 3. 排序仅 created/updated 两值（后端实测固定降序），排序指示器只在这两列
  * 4. 上传 Dialog：kbId 必选下拉 + courseId 可选搜索选择器 + 拖拽区
- *    （pdf/docx/pptx/md/txt ≤100MB）+ 标题 + XHR 进度条；完成关闭并刷新
+ *    （白名单文案由 UPLOAD_FILE_TYPES / UPLOAD_MAX_SIZE_MB 派生，单一事实源不漂移）
+ *    + 标题 + XHR 进度条；完成关闭并刷新
  * 5. 批量删除：无后端批量端点（设计 D10）→ 前端循环单条 + Promise.allSettled
  *    聚合 toast「成功 n / 失败 m」
  * 6. ETL 轮询：vue-query refetchInterval 由 useEtlPolling 决策（非终态 5s / 全终态停）
@@ -1017,7 +1018,10 @@ function submitUpload() {
             <p class="mt-3 text-sm font-medium text-text">
               {{ uploadFile?.name ?? '拖拽文件到此处，或点击选择' }}
             </p>
-            <p class="mt-1 text-xs text-text-subtle">支持 pdf/docx/pptx/md/txt，≤100MB</p>
+            <!-- 白名单文案由常量派生（BUG-30 修复）：后续白名单扩展示自动同步，不再漂移 -->
+            <p class="mt-1 text-xs text-text-subtle">
+              支持 {{ UPLOAD_FILE_TYPES.join('/') }}，≤{{ UPLOAD_MAX_SIZE_MB }}MB
+            </p>
             <input
               ref="fileInputRef"
               type="file"

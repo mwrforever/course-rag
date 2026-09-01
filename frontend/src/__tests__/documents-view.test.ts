@@ -8,7 +8,7 @@ import { ApiError, courseApi, documentApi, knowledgeBaseApi } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
 import { createAppRouter } from '@/router'
 import { useAuthStore } from '@/stores/auth'
-import DocumentsView from '@/views/DocumentsView.vue'
+import DocumentsView, { UPLOAD_FILE_TYPES } from '@/views/DocumentsView.vue'
 
 import type { PageResponse } from '@/lib/types'
 import type { CourseDTO, DocumentParseStatus, DocumentVO, KnowledgeBaseVO } from '@/lib/types'
@@ -556,6 +556,17 @@ describe('DocumentsView：上传 Dialog（校验 + 进度条）', () => {
 
     expect(dialog.find('[data-testid="upload-error"]').text()).toContain('请选择知识库')
     expect(uploadSpy).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('drop-zone 文案由白名单常量派生：包含 xlsx/xls（Excel 白名单扩展后不再漂移）', async () => {
+    const { wrapper, dialog } = await openUpload()
+    const dropZone = dialog.find('[data-testid="drop-zone"]')
+    expect(dropZone.exists()).toBe(true)
+
+    // 文案必须包含完整派生白名单（xlsx/xls 随常量扩展自动进入提示，不再硬编码漂移）
+    expect(dropZone.text()).toContain(`支持 ${UPLOAD_FILE_TYPES.join('/')}`)
+    expect(dropZone.text()).toContain('pdf/docx/pptx/md/txt/xlsx/xls')
     wrapper.unmount()
   })
 
