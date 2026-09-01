@@ -793,26 +793,37 @@ export function useChatStream(initialSessionId: string | null): {
   /**
    * 重连周期：指数退避（1s/2s/4s 序列，封顶 3 次尝试）调 GET reconnect
    * 成功 → 新流接管续流；全部失败 → retryable 错误分级并解除流式
+   *
+   * BUG-18 竞态防护：循环入口锁定发起时的 runId（originRunId），全程以捕获值为准——
+   * 退避/请求在途期间用户另发新问题（send 重置 runId → 新 metadata 落位新值）时：
+   * ① 不得把新 run 的 runId 当重连目标（成功回放流会替换新 run 的原始流，
+   *    已消费事件重放 → delta 追加型更新产生正文重复片段）；
+   * ② 循环耗尽的无条件 error 不得落位（会把新 run 判成终态，后续事件被
+   *    isTerminal 幂等守卫静默吞掉——正文冻结 + 错误横幅误报）。
+   * runId 与发起时不一致即视为世代已切换，放弃本次重连周期（不 dispatch）。
    */
   async function runReconnect(): Promise<void> {
     if (reconnectBusyRef.current) return;
     reconnectBusyRef.current = true;
     try {
+      // 锁定重连目标 run：null（metadata 前窗口）时无从重连，直接放弃
+      const originRunId = stateRef.current.runId;
+      if (!originRunId) return;
       for (let attempt = 1; attempt <= MAX_RECONNECT_ATTEMPTS; attempt += 1) {
         // 第 2 次起按指数退避等待（1s/2s；4s 留给第 4 次，封顶 3 次不产生）
         if (attempt > 1) {
           await sleep(RECONNECT_BACKOFF_MS[attempt - 2]);
         }
         const current = stateRef.current;
-        // 重连期间终态/新 run 到达（如用户另开新问题）→ 放弃本次重连；
+        // 重连期间终态到达（如用户停止/新 run 已收尾）→ 放弃本次重连；
         // 注：错误态不在此列，手动重试入口（reconnect 动作）已先清错误
         if (current.endedStatus !== null) return;
-        const runId = current.runId;
-        if (!runId) return;
+        // runId 已切换（退避期间用户新 send）→ 本次重连周期作废，不撞新流
+        if (current.runId !== originRunId) return;
         let response: Response;
         try {
-          // 锚点 lastEventId：断流处续放（null=全量回放）
-          response = await reconnectChat(runId, current.lastEventId);
+          // 锚点 lastEventId：断流处续放（null=全量回放）；目标用锁定值防错连新 run
+          response = await reconnectChat(originRunId, current.lastEventId);
         } catch {
           // 网络层失败：退避后进入下一次尝试
           continue;
@@ -821,11 +832,21 @@ export function useChatStream(initialSessionId: string | null): {
           // 服务端拒绝（run 已终结/暂不可用）：退避后下一次尝试
           continue;
         }
+        // 请求在途期间 run 可能已切换/已终态：成功响应不得接管（回放流会替换新 run 的
+        // 原始流导致已消费事件重放）——复查后丢弃响应体并放弃
+        const after = stateRef.current;
+        if (after.runId !== originRunId || after.endedStatus !== null) {
+          void response.body?.cancel().catch(() => {});
+          return;
+        }
         // 重连成功：新流接管（世代切换），返回后交还心跳/事件驱动
         startStream(response);
         return;
       }
-      // 三次尝试全部失败：错误分级 + 解除流式（页面横幅与重试入口）
+      // 三次尝试全部失败：错误分级 + 解除流式（页面横幅与重试入口）；
+      // dispatch 前复查：在途期间 run 已切换 → 本次 error 属于旧 run，丢弃不打到新流上
+      const finalState = stateRef.current;
+      if (finalState.runId !== originRunId || finalState.endedStatus !== null) return;
       dispatch({ type: "error", kind: "retryable", message: "连接已断开，请重试" });
     } finally {
       reconnectBusyRef.current = false;

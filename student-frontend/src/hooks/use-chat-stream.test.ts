@@ -1511,6 +1511,149 @@ describe("useChatStream 集成", () => {
     expect(st.error).toBeNull();
   });
 
+  it("BUG-18：重连退避期间新 run 建立，循环耗尽的无条件 error 不击落在途新流（新 run 事件不被 isTerminal 吞）", async () => {
+    vi.useFakeTimers();
+    const firstCtrl = controllableSse();
+    const secondCtrl = controllableSse();
+    let postCount = 0;
+    let getCount = 0;
+    /** 第 3 次重连 GET 的挂起句柄：在途期间由测试侧制造「用户发送新问题」竞态 */
+    let resolveThirdGet!: (r: Response) => void;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/student/chat") && init?.method === "POST") {
+        postCount += 1;
+        return postCount === 1 ? firstCtrl.response : secondCtrl.response;
+      }
+      if (init?.method === "GET") {
+        getCount += 1;
+        // 第 1 次网络层失败、第 2 次 503、第 3 次挂起（在途期间新 run 建立——竞态窗口）
+        if (getCount === 1) throw new TypeError("Failed to fetch");
+        if (getCount === 2) return jsonRes(503, { code: 503, message: "服务暂时不可用" });
+        return new Promise<Response>((resolve) => {
+          resolveThirdGet = resolve;
+        });
+      }
+      throw new Error(`未预期的请求: ${url} ${init?.method}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+
+    // 第一问（run-1）推流后断流 30s：第 1 次重连失败 + 退避 1s 第 2 次失败 + 退避 2s 第 3 次在途
+    await act(async () => {
+      await result.current.send("第一问", []);
+    });
+    await act(async () => {
+      firstCtrl.push(md("run-1", "sess-1"));
+      firstCtrl.push(frame(2, "delta", J({ text: "旧回答" })));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(33_000);
+    });
+    expect(getCount).toBe(3);
+
+    // 竞态窗口：第 3 次重连 GET 在途期间用户发送新问题，run-2 建立并开始产出事件
+    await act(async () => {
+      await result.current.send("第二问", []);
+    });
+    await act(async () => {
+      secondCtrl.push(md("run-2", "sess-1"));
+      secondCtrl.push(frame(2, "delta", J({ text: "新回答" })));
+    });
+    expect(result.current.state.runId).toBe("run-2");
+    expect(result.current.state.messages.at(-1)).toMatchObject({ id: "run-2", text: "新回答" });
+
+    // 第 3 次重连以 503 收场 → 三次尝试耗尽：修复前无条件 dispatch error 击落 run-2
+    //（isTerminal 判终态，后续事件全吞）；修复后 runId 已切换（run-2 ≠ 发起时的 run-1），
+    // 旧 run 的过期 error 丢弃不打到新流上
+    await act(async () => {
+      resolveThirdGet(jsonRes(503, { code: 503, message: "服务暂时不可用" }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.endedStatus).toBeNull();
+    expect(result.current.state.streaming).toBe(true);
+
+    // 新 run 后续事件正常消费（不被终态守卫静默丢弃——正文冻结回归断言）
+    await act(async () => {
+      secondCtrl.push(frame(3, "delta", J({ text: "续写" })));
+    });
+    expect(result.current.state.messages.at(-1)).toMatchObject({ id: "run-2", text: "新回答续写" });
+  });
+
+  it("BUG-18：重连目标锁定发起时 runId——在途重连成功不替换新建立的流（回放不重放已消费事件致正文重复）", async () => {
+    vi.useFakeTimers();
+    const firstCtrl = controllableSse();
+    const secondCtrl = controllableSse();
+    const replayCtrl = controllableSse();
+    let postCount = 0;
+    let getCount = 0;
+    /** 第 2 次重连 GET 的挂起句柄：在途期间制造新 run 竞态后以 200 回放流放行 */
+    let resolveSecondGet!: (r: Response) => void;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/student/chat") && init?.method === "POST") {
+        postCount += 1;
+        return postCount === 1 ? firstCtrl.response : secondCtrl.response;
+      }
+      if (init?.method === "GET") {
+        getCount += 1;
+        // 第 1 次网络层失败；第 2 次挂起（在途期间新 run 建立，随后 200 成功返回回放流）
+        if (getCount === 1) throw new TypeError("Failed to fetch");
+        return new Promise<Response>((resolve) => {
+          resolveSecondGet = resolve;
+        });
+      }
+      throw new Error(`未预期的请求: ${url} ${init?.method}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+
+    // 第一问（run-1）断流 30s：第 1 次重连失败，退避 1s 后第 2 次在途
+    await act(async () => {
+      await result.current.send("第一问", []);
+    });
+    await act(async () => {
+      firstCtrl.push(md("run-1", "sess-1"));
+      firstCtrl.push(frame(2, "delta", J({ text: "旧回答" })));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+    expect(getCount).toBe(2);
+
+    // 竞态窗口：重连 GET 在途期间新 run 建立并产出事件
+    await act(async () => {
+      await result.current.send("第二问", []);
+    });
+    await act(async () => {
+      secondCtrl.push(md("run-2", "sess-1"));
+      secondCtrl.push(frame(2, "delta", J({ text: "新回答" })));
+    });
+    expect(result.current.state.runId).toBe("run-2");
+
+    // 第 2 次重连成功返回 run-1 的回放流：修复前 startStream 用回放流替换 run-2 原始流，
+    // 已消费事件重放（delta 追加型更新产生正文重复片段）；修复后复查 runId 已切换 →
+    // 丢弃回放响应（不得接管新流）
+    await act(async () => {
+      resolveSecondGet(replayCtrl.response);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // 回放流事件（重放 run-1 的 metadata + 已消费 delta）不得污染 run-2 的正文
+    await act(async () => {
+      replayCtrl.push(md("run-1", "sess-1"));
+      replayCtrl.push(frame(2, "delta", J({ text: "旧回答" })));
+    });
+    expect(result.current.state.messages.at(-1)).toMatchObject({ id: "run-2", text: "新回答" });
+    expect(result.current.state.runId).toBe("run-2");
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(true);
+
+    // run-2 原始流仍然健在：继续推帧正常消费（未被回放流替换的回归断言）
+    await act(async () => {
+      secondCtrl.push(frame(3, "delta", J({ text: "续写" })));
+    });
+    expect(result.current.state.messages.at(-1)).toMatchObject({ id: "run-2", text: "新回答续写" });
+  });
+
   it("重连指数退避：3 次失败（1s/2s 间隔）后错误分级 retryable 且 streaming=false", async () => {
     vi.useFakeTimers();
     const ctrl = controllableSse();
