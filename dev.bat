@@ -148,7 +148,7 @@ call :resolve_pnpm
 if "%PNPM_CMD%"=="" goto :eof
 echo [dev] running B-side admin frontend in foreground, Ctrl+C to exit...
 cd /d "%PROJECT_ROOT%"
-rem NO_COLOR=1 关闭 Vite ANSI 色码：主窗口 tail 日志时无控制字符（2026-08-30 可观测性）
+rem NO_COLOR=1 disables Vite ANSI colors for clean tail logs (added 2026-08-30)
 set "NO_COLOR=1"
 %PNPM_CMD% --filter frontend dev
 goto :eof
@@ -318,7 +318,7 @@ if "%PL_RESULT%"=="1" (
 call :resolve_pnpm
 if "%PNPM_CMD%"=="" goto :eof
 echo [dev] starting B-side admin frontend (%PNPM_CMD% --filter frontend dev, minimized window, log: logs\b-frontend.log)...
-rem NO_COLOR=1 关闭 Vite ANSI 色码：主窗口 tail 日志时无控制字符（2026-08-30 可观测性）
+rem NO_COLOR=1 disables Vite ANSI colors for clean tail logs (added 2026-08-30)
 start "commerce-b-frontend" /min cmd /c "cd /d ""%PROJECT_ROOT%"" && set ""NO_COLOR=1"" && %PNPM_CMD% --filter frontend dev > ""%LOGS_DIR%\b-frontend.log"" 2>&1"
 goto :eof
 
