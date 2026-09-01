@@ -78,7 +78,17 @@ function course(over: Partial<CourseDTO> = {}): CourseDTO {
   }
 }
 
-async function mountAt(path: string) {
+/**
+ * 挂载组件到指定路由
+ *
+ * @param path 目标路由（如 /courses/c-1）
+ * @param queryClient 可选预构建查询客户端（warm-cache 用例传入预填缓存的客户端；
+ *                    缺省每用例新建冷缓存客户端，staleTime 0 恒过期必重拉）
+ */
+async function mountAt(
+  path: string,
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuth({
@@ -93,14 +103,7 @@ async function mountAt(path: string) {
   await router.isReady()
   const wrapper = mount(CourseOverviewView, {
     global: {
-      plugins: [
-        [
-          VueQueryPlugin,
-          { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
-        ],
-        pinia,
-        router,
-      ],
+      plugins: [[VueQueryPlugin, { queryClient }], pinia, router],
       directives: { reveal: vReveal },
     },
   })
@@ -290,6 +293,34 @@ describe('课程概览（编辑模式 /courses/:id）', () => {
     await wrapper.find('[data-testid="tag-remove-RAG"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-testid="tag-chip-RAG"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('warm cache：命中 30s 未过期缓存不重拉，表单/标签/教师 chips 立即回填（BUG-02 回归）', async () => {
+    // 场景：30s 内重进编辑页（同实体子路由往返），vue-query 命中未过期缓存，
+    // data 在组件 watch 注册前已同步就位且不再变化——冷缓存用例（staleTime 0 恒重拉）
+    // 无法覆盖该时序，须以预填缓存 + staleTime 30s 复现
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    })
+    queryClient.setQueryData(['course-form', 'c-1'], course({ teacherIds: ['t1'] }))
+    queryClient.setQueryData(['teacher-pool'], [teacher('t1', '张老师')])
+    const { wrapper } = await mountAt('/courses/c-1', queryClient)
+    await flushPromises()
+
+    // 未过期缓存不触发任何重拉（证明用例确处 warm-cache 路径，非冷缓存误绿）
+    expect(apiMock.courseApi.get).not.toHaveBeenCalled()
+    expect(apiMock.userApi.list).not.toHaveBeenCalled()
+    // 表单已回填（无 immediate 时 watch 不消费初始值，表单全空）
+    expect((wrapper.find('[data-testid="field-title"]').element as HTMLInputElement).value).toBe(
+      'RAG 实战营',
+    )
+    expect((wrapper.find('[data-testid="field-price"]').element as HTMLInputElement).value).toBe(
+      '199',
+    )
+    expect(wrapper.find('[data-testid="tag-chip-RAG"]').exists()).toBe(true)
+    // 教师选中集已回填，chips 回显
+    expect(wrapper.find('[data-testid="remote-chip-t1"]').text()).toContain('张老师')
     wrapper.unmount()
   })
 })

@@ -130,17 +130,23 @@ const initialTeachers = computed(() => {
   return teacherPool.value.filter((t) => ids.includes(t.id))
 })
 
-watch(initialTeachers, (list) => {
-  if (list && !teachersInitialized) {
-    teachersInitialized = true
-    selectedTeachers.value = [...list]
-    originalTeacherIds.value = [...(courseData.value?.teacherIds ?? [])]
-    // 契约 E.3：讲师名为空时以第一位教师姓名预填（回显与交互两条路径同一规则，仍可手改）
-    if (list.length > 0 && form.instructorName.trim() === '') {
-      form.instructorName = list[0].displayName
+watch(
+  initialTeachers,
+  (list) => {
+    if (list && !teachersInitialized) {
+      teachersInitialized = true
+      selectedTeachers.value = [...list]
+      originalTeacherIds.value = [...(courseData.value?.teacherIds ?? [])]
+      // 契约 E.3：讲师名为空时以第一位教师姓名预填（回显与交互两条路径同一规则，仍可手改）
+      if (list.length > 0 && form.instructorName.trim() === '') {
+        form.instructorName = list[0].displayName
+      }
     }
-  }
-})
+  },
+  // immediate：warm cache 下课程与教师池在 watch 注册前已齐备且不再变化，
+  // 不消费初始值则教师回显永不执行（BUG-02）
+  { immediate: true },
+)
 
 /**
  * 教师远程搜索 fetcher（remote-select 契约 E：防抖与取消由组件负责）
@@ -177,10 +183,24 @@ function onTeachersChange(value: UserDTO | UserDTO[] | null) {
 // 表单回填与辅助
 // ====================================================================
 
-/** 加载完成回填表单（本查询无自动刷新，表单编辑不受缓存覆盖；重进页面命中 30s 缓存即回填） */
-watch(courseData, (c) => {
-  if (c) applyCourseToForm(c)
-})
+/** 表单回填初始化标记（数据首次就位回填一次，后续重拉不再覆盖用户编辑） */
+let formInitialized = false
+
+/**
+ * 数据就位即回填表单（BUG-02：immediate 消费初始值——warm cache 下 data 在 watch
+ * 注册前已同步就位且不再变化，无 immediate 则 30s 内重进编辑页表单全空）。
+ * 一次化守卫（formInitialized）防保存后 invalidate 重拉覆盖用户已开始的下一轮编辑。
+ */
+watch(
+  courseData,
+  (c) => {
+    if (c && !formInitialized) {
+      formInitialized = true
+      applyCourseToForm(c)
+    }
+  },
+  { immediate: true },
+)
 
 /** 编辑模式加载失败横幅文案（queryError 非空时透出；503 统一降级） */
 const listError = computed(() =>

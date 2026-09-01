@@ -70,13 +70,20 @@ const assignedTeachers = computed(() => {
   return teacherPool.value.filter((t) => assignedTeacherIds.value.includes(t.id))
 })
 
-// 数据齐备（课程 + 教师池）后回填草稿一次（setup 作用域 watch 随组件卸载自动停止）
-watch(assignedTeachers, (list) => {
-  if (list && !draftInitialized) {
-    draftInitialized = true
-    draftTeachers.value = [...list]
-  }
-})
+// 数据齐备（课程 + 教师池）后回填草稿一次（setup 作用域 watch 随组件卸载自动停止）；
+// immediate：warm cache 下数据在 watch 注册前已齐备且不再变化，不消费初始值则
+// draftInitialized 永不为 true、草稿 chips 空白（BUG-02）；draftInitialized 一次化守卫
+// 防后续重拉覆盖用户改动
+watch(
+  assignedTeachers,
+  (list) => {
+    if (list && !draftInitialized) {
+      draftInitialized = true
+      draftTeachers.value = [...list]
+    }
+  },
+  { immediate: true },
+)
 
 /**
  * 保存分配（差集提交：新增 POST / 移除 DELETE，body 裸数组——契约 E.3）

@@ -49,7 +49,10 @@ vi.mock('md-editor-v3', async () => {
 
 import { showToast } from '@/lib/toast'
 
-async function mountAt(path: string) {
+async function mountAt(
+  path: string,
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuth({
@@ -64,14 +67,7 @@ async function mountAt(path: string) {
   await router.isReady()
   const wrapper = mount(CourseContentView, {
     global: {
-      plugins: [
-        [
-          VueQueryPlugin,
-          { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
-        ],
-        pinia,
-        router,
-      ],
+      plugins: [[VueQueryPlugin, { queryClient }], pinia, router],
       directives: { reveal: vReveal },
     },
   })
@@ -144,6 +140,35 @@ describe('课程内容（/courses/:id/content）', () => {
     expect(
       (wrapper.find('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value,
     ).toBe('恢复正文')
+    wrapper.unmount()
+  })
+
+  it('warm cache：命中 30s 未过期缓存不重拉，编辑器立即回填（BUG-02 回归）', async () => {
+    // 场景：30s 内重进内容页命中未过期缓存，data 在 watch 注册前已同步就位——
+    // 无 immediate 时编辑器全空，且此时保存会以空串覆盖清空服务端内容（数据丢失路径）
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    })
+    queryClient.setQueryData(
+      ['course-contents', 'c-1'],
+      [
+        { contentType: 'intro', content: '介绍正文', sortOrder: 1 },
+        { contentType: 'faq', content: 'FAQ 正文', sortOrder: 4 },
+      ],
+    )
+    const { wrapper } = await mountAt('/courses/c-1/content', queryClient)
+    await flushPromises()
+
+    // 未过期缓存不触发重拉（证明用例确处 warm-cache 路径，非冷缓存误绿）
+    expect(apiMock.courseApi.contents).not.toHaveBeenCalled()
+    // 编辑器与 Tab 顺序已按缓存数据回填
+    expect(
+      (wrapper.find('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value,
+    ).toBe('介绍正文')
+    expect(wrapper.findAll('[data-testid^="tab-"]').map((t) => t.text())).toEqual([
+      '课程介绍',
+      '常见问题',
+    ])
     wrapper.unmount()
   })
 })

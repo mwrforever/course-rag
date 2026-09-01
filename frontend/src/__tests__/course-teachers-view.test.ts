@@ -70,7 +70,10 @@ function course(over: Partial<CourseDTO> = {}): CourseDTO {
   }
 }
 
-async function mountAt(path = '/courses/c-1/teachers') {
+async function mountAt(
+  path = '/courses/c-1/teachers',
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuth({
@@ -85,14 +88,7 @@ async function mountAt(path = '/courses/c-1/teachers') {
   await router.isReady()
   const wrapper = mount(CourseTeachersView, {
     global: {
-      plugins: [
-        [
-          VueQueryPlugin,
-          { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
-        ],
-        pinia,
-        router,
-      ],
+      plugins: [[VueQueryPlugin, { queryClient }], pinia, router],
       directives: { reveal: vReveal },
     },
   })
@@ -216,6 +212,28 @@ describe('课程教师分配（remote-select 多选差集保存）', () => {
     await wrapper.find('[data-testid="refresh-teachers"]').trigger('click')
     await flushPromises()
     expect(apiMock.courseApi.get).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('warm cache：命中 30s 未过期缓存不重拉，草稿 chips 立即回填（BUG-02 回归）', async () => {
+    // 场景：30s 内重进教师分配页命中未过期缓存，data 在 watch 注册前已同步就位——
+    // 无 immediate 时 draftInitialized 永不为 true，已分配教师 chips 空白
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    })
+    queryClient.setQueryData(['course-teachers', 'c-1'], {
+      course: course({ teacherIds: ['t-1'] }),
+      teacherPool: [teacher('t-1', '老王')],
+    })
+    const { wrapper } = await mountAt('/courses/c-1/teachers', queryClient)
+    await flushPromises()
+
+    // 未过期缓存不触发任何重拉（证明用例确处 warm-cache 路径，非冷缓存误绿）
+    expect(apiMock.courseApi.get).not.toHaveBeenCalled()
+    expect(apiMock.userApi.list).not.toHaveBeenCalled()
+    // 草稿已回填：已分配教师以 chip 回显
+    expect(wrapper.find('[data-testid="remote-chip-t-1"]').text()).toContain('老王')
+    expect(wrapper.text()).toContain('当前已分配 1 名')
     wrapper.unmount()
   })
 })
