@@ -20,6 +20,7 @@ import com.commerce.rag.exception.BizException;
 import com.commerce.rag.mapper.DocumentChunkMapper;
 import com.commerce.rag.mapper.DocumentMapper;
 import com.commerce.rag.mapper.KnowledgeBaseMapper;
+import com.commerce.rag.properties.EtlProperties;
 import com.commerce.rag.service.impl.DocumentChunkServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.ChunkBriefVO;
@@ -31,8 +32,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -55,6 +58,31 @@ class DocumentChunkServiceTest {
         MybatisPlusTestHelper.initTableInfo();
     }
 
+    /**
+     * PERF-20 测试同步：batchUpdate 的文档级 Milvus 同步已由请求线程串行改为 etlPool 并行分批
+     * + allOf 总超时等待。本类聚焦业务契约（docIds 去重 / 失败上抛 / 查询投影），
+     * mock etlPool.execute 直通在提交线程同步执行任务——任务即提即完，allOf join 零等待，
+     * etlPipeline 的 mock 交互立即可 verify（无需超时轮询）；2 并发上限 / 失败隔离 / 总超时
+     * 等并行化契约已由 DocumentChunkServiceImplTest 专项覆盖，本类不重复。
+     *
+     * <p>两个 stub 标记 lenient：本类多数用例（查询/权限/单分片路径）不触发批量同步，
+     * strict 模式会对未消费的 stub 误报 UnnecessaryStubbing。
+     */
+    @BeforeEach
+    void setUpDocSyncConcurrency() {
+        lenient()
+                .doAnswer(invocation -> {
+                    // 直通执行：Runnable 在提交线程立即 run，CompletableFuture 提交即完成
+                    Runnable task = invocation.getArgument(0);
+                    task.run();
+                    return null;
+                })
+                .when(etlPool)
+                .execute(any(Runnable.class));
+        // 同步总超时取测试友好值 30s（生产默认 120s）：本类无超时路径用例，仅约束 join 有界不挂死
+        lenient().when(etlProperties.annotationSyncTimeoutSeconds()).thenReturn(30);
+    }
+
     @Mock
     private DocumentChunkMapper chunkMapper;
 
@@ -70,6 +98,17 @@ class DocumentChunkServiceTest {
     /** Dashboard 统计缓存（Mock——删除/修正路径的失效钩子仅需不抛异常） */
     @Mock
     private DashboardCacheEvictor dashboardCacheEvictor;
+
+    /**
+     * ETL 主线程池（PERF-20：batchUpdate 文档级 Milvus 同步分批提交此池，
+     * Mock + execute 直通同步执行，见 {@link #setUpDocSyncConcurrency()}）
+     */
+    @Mock
+    private ThreadPoolExecutor etlPool;
+
+    /** ETL 配置（PERF-20：提供批量标注同步总超时 annotationSyncTimeoutSeconds，生产默认 120s） */
+    @Mock
+    private EtlProperties etlProperties;
 
     /** 转换器用真实实现（MapStruct 生成类），转换行为由 DocumentChunkConverterTest 单独覆盖 */
     @Spy
