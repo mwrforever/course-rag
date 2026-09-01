@@ -9,10 +9,13 @@
  * 入场动画为纯 CSS keyframes，挂载后才启动 rAF 视差，2026-08-26 教训对齐）。
  * PERF-06：LCP 背景改走 next/image（priority 预载 + AVIF/WebP 运行时转换 +
  * 响应式 srcset），Ken Burns 动效保留在图元素 style 上。
+ * BUG-29+PERF-23：rAF 循环改 useRafLoop——hero 滚出视口/页面切后台即暂停，
+ * 重新入视口先同步补一帧再续排（滚动视差帧率不回退）。
  */
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useRafLoop } from "@/components/motion/raf-loop";
 
 /** 英雄区巨型字 */
 const HERO_WORD = "问渠学堂";
@@ -21,41 +24,34 @@ const HERO_WORD = "问渠学堂";
  * 首页英雄区
  */
 export function HomeHero() {
+  const sectionRef = useRef<HTMLElement>(null);
   const wordRef = useRef<HTMLHeadingElement>(null);
   const bgRef = useRef<HTMLDivElement>(null);
   const footRef = useRef<HTMLDivElement>(null);
 
-  // 三层差速视差（rAF 单循环驱动三元素，近顶 1.2 屏内生效）
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-    let rafId = 0;
-    const tick = () => {
-      const y = window.scrollY;
-      const vh = window.innerHeight;
-      if (y < vh * 1.2) {
-        if (wordRef.current) {
-          wordRef.current.style.transform = `translate3d(0, ${(y * 0.3).toFixed(1)}px, 0)`;
-          wordRef.current.style.opacity = String(Math.max(0, 1 - y / (vh * 0.75)));
-        }
-        bgRef.current?.style.setProperty(
-          "transform",
-          `translate3d(0, ${(y * 0.16).toFixed(1)}px, 0)`,
-        );
-        footRef.current?.style.setProperty(
-          "transform",
-          `translate3d(0, ${(y * 0.08).toFixed(1)}px, 0)`,
-        );
+  // 三层差速视差（rAF 单循环驱动三元素，近顶 1.2 屏内生效；循环启停归 useRafLoop）
+  useRafLoop(() => {
+    const y = window.scrollY;
+    const vh = window.innerHeight;
+    if (y < vh * 1.2) {
+      if (wordRef.current) {
+        wordRef.current.style.transform = `translate3d(0, ${(y * 0.3).toFixed(1)}px, 0)`;
+        wordRef.current.style.opacity = String(Math.max(0, 1 - y / (vh * 0.75)));
       }
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
+      bgRef.current?.style.setProperty(
+        "transform",
+        `translate3d(0, ${(y * 0.16).toFixed(1)}px, 0)`,
+      );
+      footRef.current?.style.setProperty(
+        "transform",
+        `translate3d(0, ${(y * 0.08).toFixed(1)}px, 0)`,
+      );
+    }
+  }, sectionRef);
 
   return (
     <section
+      ref={sectionRef}
       className="relative flex min-h-[calc(100vh-68px)] flex-col overflow-hidden bg-surface-deep text-bg md:min-h-[calc(100vh-78px)]"
       id="top"
     >
