@@ -850,7 +850,23 @@ public class EtlPipeline {
             throw new IllegalStateException("文档不存在: docId=" + docId);
         }
         String docTitle = doc.getTitle();
+        // PERF-20（宪法 A.4.4 按需取列）：原查询无投影全列取回（26 列，含 metadata_json/
+        // parent_title 等大列传输后即弃）；Milvus 行构建 + 向量过滤仅消费以下 12 列
+        // （dense_vector 向量列必须保留——delete-then-insert 重建的向量来源）
         List<DocumentChunk> chunks = chunkMapper.selectList(Wrappers.<DocumentChunk>lambdaQuery()
+                .select(
+                        DocumentChunk::getId,
+                        DocumentChunk::getDocId,
+                        DocumentChunk::getKbId,
+                        DocumentChunk::getChunkIndex,
+                        DocumentChunk::getContent,
+                        DocumentChunk::getHeadingPath,
+                        DocumentChunk::getTokenCount,
+                        DocumentChunk::getCourseId,
+                        DocumentChunk::getContentType,
+                        DocumentChunk::getImageUrl,
+                        DocumentChunk::getSha256,
+                        DocumentChunk::getDenseVector)
                 .eq(DocumentChunk::getDocId, docId)
                 .orderByAsc(DocumentChunk::getChunkIndex));
         // 仅同步已向量化的分片（未向量化的跳过，无需同步）

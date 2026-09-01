@@ -27,7 +27,8 @@ class EtlConfigTest {
                 16,
                 10,
                 new EtlProperties.Table(25, 30, 2),
-                500);
+                500,
+                120);
         ThreadPoolExecutor pool = new EtlConfig().etlPool(props);
 
         try {
@@ -52,7 +53,8 @@ class EtlConfigTest {
                 16,
                 10,
                 new EtlProperties.Table(25, 30, 2),
-                500);
+                500,
+                120);
         ThreadPoolExecutor pool = new EtlConfig().etlImagePool(props);
 
         try {

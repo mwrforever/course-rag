@@ -219,6 +219,10 @@ etl:
     max-rows-per-chunk: 30           # 分组行数硬上限（token 动态调整）
     overlap-rows: 2                  # 相邻子 chunk 间重叠行数（spec §4.3「1~2 行」）
   chunk-insert-batch-size: 500       # P1-4: 分片批量插入分批上限（防超长 SQL）
+  # PERF-20: 批量标注文档级 Milvus 同步总超时（秒，默认 120）——B 端批量标注接口
+  # 2 并发分批同步全部文档的时限，超时取消未完成任务并上抛（同步幂等可重试收敛），
+  # 防 HTTP 请求线程无限陪等挂死的 Milvus 任务
+  annotation-sync-timeout-seconds: 120
 
 # ── 对话配置 ──
 chat:

@@ -66,7 +66,8 @@ class ImageCaptionServiceTest {
                 16,
                 10,
                 new EtlProperties.Table(25, 30, 2),
-                500);
+                500,
+                120);
         // M-2 迁移（2026-08-29）：caption 模型配置自 etl 迁入 attachment 命名空间，服务同时注入
         // EtlProperties（imageExecutor 超时预算）与 AttachmentProperties（captionModel）
         attachmentProps = new AttachmentProperties(
@@ -207,7 +208,8 @@ class ImageCaptionServiceTest {
                 16,
                 10,
                 new EtlProperties.Table(25, 30, 2),
-                500);
+                500,
+                120);
         ImageCaptionService timeoutService =
                 new ImageCaptionService(chatModel, promptLoader, oneSecondProps, attachmentProps);
         ThinkingPusher pusher = mock(ThinkingPusher.class);
