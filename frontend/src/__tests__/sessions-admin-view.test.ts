@@ -216,7 +216,7 @@ describe('SessionsAdminView：关闭与删除', () => {
     vi.restoreAllMocks()
   })
 
-  it('关闭会话：close(id) → toast → 刷新（仅 ACTIVE 行入口）', async () => {
+  it('关闭会话：先弹二次确认，确认后才调 close(id) → toast → 刷新（仅 ACTIVE 行入口）', async () => {
     const listSpy = vi
       .spyOn(sessionApi, 'list')
       .mockResolvedValueOnce(pageOf([session('s-1')], '1'))
@@ -224,7 +224,16 @@ describe('SessionsAdminView：关闭与删除', () => {
     const closeSpy = vi.spyOn(sessionApi, 'close').mockResolvedValue()
     const { wrapper } = await mountSessions()
 
+    // 点「关闭」→ 先弹二次确认（未确认前不调接口）
     await wrapper.find('[data-testid="op-close-s-1"]').trigger('click')
+    const dialog = wrapper.find('[data-testid="session-close-dialog"]')
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.text()).toContain('关闭会话')
+    expect(dialog.text()).toContain('会话-s-1')
+    expect(closeSpy).not.toHaveBeenCalled()
+
+    // 确认 → close(id) → toast
+    await wrapper.find('[data-testid="confirm-session-close"]').trigger('click')
     await flushPromises()
 
     expect(closeSpy).toHaveBeenCalledWith('s-1')
@@ -235,6 +244,28 @@ describe('SessionsAdminView：关闭与删除', () => {
       // 刷新后行变 CLOSED：关闭入口消失
       expect(wrapper.find('[data-testid="op-close-s-1"]').exists()).toBe(false)
     })
+    wrapper.unmount()
+  })
+
+  it('关闭会话取消分支：取消不调 close 接口且弹窗关闭', async () => {
+    vi.spyOn(sessionApi, 'list').mockResolvedValue(pageOf([session('s-1')], '1'))
+    const closeSpy = vi.spyOn(sessionApi, 'close').mockResolvedValue()
+    const { wrapper } = await mountSessions()
+
+    await wrapper.find('[data-testid="op-close-s-1"]').trigger('click')
+    expect(wrapper.find('[data-testid="session-close-dialog"]').exists()).toBe(true)
+
+    // ConfirmDialog 取消按钮（cancel-action testid 契约）
+    await wrapper
+      .find('[data-testid="session-close-dialog"] [data-testid="cancel-action"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(closeSpy).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="session-close-dialog"]').exists()).toBe(false)
+    // 行仍在且入口保留（ACTIVE 行关闭按钮可再次发起）
+    expect(wrapper.find('[data-testid="row-s-1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="op-close-s-1"]').exists()).toBe(true)
     wrapper.unmount()
   })
 
