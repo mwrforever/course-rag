@@ -303,9 +303,20 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
       blobUrl: URL.createObjectURL(file),
     }));
     setPendings((prev) => [...prev, ...fresh]);
+    // 本批上传中条目 id 集合：进度回调只更新本批 chips（多批并发上传不互相覆盖进度）
+    const freshIds = new Set(fresh.map((item) => item.id));
     try {
-      // 选中即传 POST /student/chat/attachments（multipart）
-      const records = await uploadAttachments(incoming);
+      // 选中即传 POST /student/chat/attachments（multipart 单请求不变；
+      // PERF-10a：XHR 进度回调驱动本批 chips 确定进度环）
+      const records = await uploadAttachments(incoming, (percent) => {
+        setPendings((prev) =>
+          prev.map((item) =>
+            item.status === "uploading" && freshIds.has(item.id)
+              ? { ...item, progress: percent }
+              : item,
+          ),
+        );
+      });
       // 空数据兜底（异常响应体容错）：无记录时条目保持上传中态
       const list = Array.isArray(records) ? records : [];
       // 按请求顺序配对返回记录（multipart 顺序契约）；记录缺失的条目留在上传中态

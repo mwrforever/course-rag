@@ -366,9 +366,30 @@ describe("新对话页：附件全链路", () => {
     apiMock.uploadAttachments.mockResolvedValue([RECORD]);
     renderPage();
     setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
-    await waitFor(() => expect(apiMock.uploadAttachments).toHaveBeenCalledWith([PNG]));
+    await waitFor(() =>
+      expect(apiMock.uploadAttachments).toHaveBeenCalledWith([PNG], expect.any(Function)),
+    );
     const img = await screen.findByRole("img", { name: /图\.png/ });
     expect(img).toHaveAttribute("src", "blob:mock-url");
+  });
+
+  it("上传进度回调驱动 chips 确定进度（PERF-10a：百分比文案即时更新）", async () => {
+    let report: ((percent: number) => void) | undefined;
+    apiMock.uploadAttachments.mockImplementation(
+      async (_files: File[], onProgress?: (percent: number) => void) => {
+        report = onProgress;
+        return await new Promise<AttachmentRecord[]>(() => {
+          // 挂起等待测试驱动进度（不上传完成）
+        });
+      },
+    );
+    renderPage();
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
+    await waitFor(() => expect(apiMock.uploadAttachments).toHaveBeenCalled());
+    // 进度回调 40% → chip 状态行出现百分比文案
+    act(() => report?.(40));
+    expect(screen.getByText("上传中 40%")).toBeInTheDocument();
+    expect(screen.getByTestId("attachment-progress")).toHaveAttribute("aria-valuenow", "40");
   });
 
   it("移除附件：revoke blob URL", async () => {
@@ -500,7 +521,7 @@ describe("新对话页：拖拽上传与附件预览（Task 12 扩容）", () =>
       dataTransfer: { files: [PNG] },
     });
     await waitFor(() => {
-      expect(apiMock.uploadAttachments).toHaveBeenCalledWith([PNG]);
+      expect(apiMock.uploadAttachments).toHaveBeenCalledWith([PNG], expect.any(Function));
     });
   });
 
