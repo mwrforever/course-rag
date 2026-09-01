@@ -722,7 +722,7 @@ public class ChatStreamEntry {
                 case '\n' -> sb.append("\\n");
                 case '\r' -> sb.append("\\r");
                 case '\t' -> sb.append("\\t");
-                // 非常用短转义的 C0 控制字符统一十六进制转义（换页→u000c、退格→u0008 等）
+                    // 非常用短转义的 C0 控制字符统一十六进制转义（换页→u000c、退格→u0008 等）
                 default -> {
                     if (c < 0x20) {
                         sb.append('\\').append('u').append(String.format("%04x", (int) c));
