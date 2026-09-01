@@ -32,6 +32,7 @@
  */
 import { useEffect, useReducer, useRef } from "react";
 import { ApiError, cancelRun, postChat, reconnectChat } from "../lib/api";
+import { warn as logWarn } from "../lib/logger";
 import { createSseParser } from "../lib/sse-parser";
 import {
   type AttachmentRecord,
@@ -522,6 +523,31 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
 
 // ===== SSE 事件 → reducer 动作映射（纯函数，未知事件/坏 JSON 返回 null 静默忽略） =====
 
+/**
+ * SSE 载荷降级计数（按事件名分组，模块级累计）
+ *
+ * N3-C② 可观测性：坏 JSON/关键字段缺失原为纯静默降级（null/兜底值零线索），
+ * 「思考正常正文为空」类问题无从排查；计数随告警日志输出（「同类第 N 次」），
+ * 供区分偶发脏帧与批量劣化。仅计数不清理，页面生命周期内单调递增。
+ */
+const sseDropCounts = new Map<string, number>();
+
+/**
+ * SSE 载荷降级告警（N3-C②）：坏 JSON/关键字段缺失时打中文 warn + 分组计数，
+ * 不改变 sseEventToAction 的返回行为（null/兜底值照旧，流不中断）
+ *
+ * @param name   SSE 事件名（计数分组键）
+ * @param reason 降级原因（中文，定位字段级缺失）
+ * @param data   事件 data 行原文（截断展示供诊断；问答内容非敏感凭据，限 120 字符防刷屏）
+ */
+function warnSsePayloadDrop(name: string, reason: string, data: string): void {
+  const count = (sseDropCounts.get(name) ?? 0) + 1;
+  sseDropCounts.set(name, count);
+  logWarn(
+    `[对话流] ${name} 事件${reason}，已降级忽略（同类第 ${count} 次）；data 片段：${data.slice(0, 120)}`,
+  );
+}
+
 /** 解析事件 data 为对象；非法 JSON / 非对象值返回 null */
 function parseEventData(data: string): Record<string, unknown> | null {
   try {
@@ -553,9 +579,17 @@ export function sseEventToAction(
   seq: number | null,
 ): ChatAction | null {
   const payload = parseEventData(data);
-  if (payload === null) return null;
+  if (payload === null) {
+    // N3-C②：坏 JSON/非对象载荷留诊断线索（返回 null 行为不变）
+    warnSsePayloadDrop(name, " data 非合法 JSON 对象", data);
+    return null;
+  }
   switch (name) {
-    case "metadata":
+    case "metadata": {
+      // N3-C②：runId 为 AI 槽键/重连/cancel 的共同依赖，缺失/非字符串即降级（兜底空串行为不变）
+      if (typeof payload["runId"] !== "string" || payload["runId"] === "") {
+        warnSsePayloadDrop(name, "缺少 runId 字段", data);
+      }
       return {
         type: "metadata",
         runId: strField(payload, "runId"),
@@ -563,6 +597,7 @@ export function sseEventToAction(
         model: strField(payload, "model"),
         seq,
       };
+    }
     case "thinking":
       // thinking 载荷 {delta, stage}：stage 缺失/null/未知降级 generating（历史回放契约）
       return {
@@ -574,8 +609,14 @@ export function sseEventToAction(
     case "thinking_end":
       // thinking_end 载荷 {stage}：与同 stage 的 THINKING 事件配对退出「思考中」
       return { type: "thinking_end", stage: normalizeThinkingStage(payload["stage"]), seq };
-    case "delta":
+    case "delta": {
+      // N3-C②：text 缺失/非字符串即「思考正常正文为空」的直接诊断线索（兜底空串行为不变；
+      // 空串本体为文档化正常帧，不告警）
+      if (typeof payload["text"] !== "string") {
+        warnSsePayloadDrop(name, "缺少 text 字段", data);
+      }
       return { type: "delta", text: strField(payload, "text"), seq };
+    }
     case "tool_call":
       return {
         type: "tool_call",
@@ -610,7 +651,11 @@ export function sseEventToAction(
       };
     case "end": {
       const status = payload["status"];
-      if (status !== "COMPLETED" && status !== "CANCELLED" && status !== "ERROR") return null;
+      if (status !== "COMPLETED" && status !== "CANCELLED" && status !== "ERROR") {
+        // N3-C②：终态丢失会误入断流重连回放路径，留线索（返回 null 行为不变）
+        warnSsePayloadDrop(name, " status 非白名单终态", data);
+        return null;
+      }
       return {
         type: "end",
         status,
@@ -619,7 +664,7 @@ export function sseEventToAction(
       };
     }
     default:
-      // 未知事件名（如未来新增事件）：上层静默忽略，不落状态
+      // 未知事件名（如 stage/query_plan 后端照发前端设计内忽略、未来新增事件）：静默忽略，不落状态
       return null;
   }
 }

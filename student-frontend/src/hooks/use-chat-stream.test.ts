@@ -914,9 +914,64 @@ describe("sseEventToAction 事件映射（payload → action）", () => {
   });
 
   it("未知事件名与非法 JSON 返回 null（上层静默忽略，不落状态）", () => {
+    // N3-C②：坏 JSON 现会打降级 warn（可观测性），此处静音 spy 保持断言聚焦返回行为
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(sseEventToAction("unknown_event", J({}), 1)).toBeNull();
     expect(sseEventToAction("delta", "not-json{{{", 1)).toBeNull();
     expect(sseEventToAction("metadata", "null", 1)).toBeNull();
+    warnSpy.mockRestore();
+  });
+
+  it("N3-C②：坏 JSON/关键字段缺失打中文 warn 且按事件名计数（返回行为不变：null/兜底值照旧）", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // 坏 JSON：返回 null 不抛 + warn（含事件名与 data 片段的诊断线索）
+    expect(sseEventToAction("delta", "not-json{{{", 1)).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain("delta");
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain("not-json");
+
+    // metadata 缺 runId（槽键/重连/cancel 全依赖）：动作照旧返回（runId 兜底空串）+ warn
+    const meta = sseEventToAction("metadata", J({ sessionId: "sess-1", model: "m" }), 2);
+    expect(meta).toEqual({ type: "metadata", runId: "", sessionId: "sess-1", model: "m", seq: 2 });
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+
+    // delta 缺 text 字段（「思考正常正文为空」诊断线索）：动作照旧返回（text 兜底空串）+ warn
+    const delta = sseEventToAction("delta", J({}), 3);
+    expect(delta).toEqual({ type: "delta", text: "", seq: 3 });
+    expect(warnSpy).toHaveBeenCalledTimes(3);
+
+    // end 状态非法：返回 null + warn（终态丢失将误入重连回放路径）
+    expect(sseEventToAction("end", J({ status: "RUNNING" }), 4)).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(4);
+    expect(String(warnSpy.mock.calls[3]?.[0])).toContain("end");
+
+    // 计数递增：同一事件名再触发一次坏 JSON，日志中的「第 N 次」序号递增
+    expect(sseEventToAction("delta", "{bad", 5)).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(5);
+    const counts = warnSpy.mock.calls
+      .map((call) => /第 (\d+) 次/.exec(String(call[0]))?.[1])
+      .filter((value): value is string => value !== undefined)
+      .map(Number);
+    expect(counts.length).toBeGreaterThanOrEqual(2);
+    expect(counts.at(-1)).toBeGreaterThan(counts[0]);
+    warnSpy.mockRestore();
+  });
+
+  it("N3-C② 回归：正常事件与设计内忽略的事件名（stage/query_plan/未知）不打 warn", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // 正常事件全字段透传：零告警
+    expect(sseEventToAction("delta", J({ text: "正文" }), 1)).not.toBeNull();
+    expect(
+      sseEventToAction("metadata", J({ runId: "r", sessionId: "s", model: "m" }), 2),
+    ).not.toBeNull();
+    // thinking 空 delta / stage 降级为文档化契约（噪声防御），不告警
+    expect(sseEventToAction("thinking", J({ delta: "", stage: "unknown" }), 3)).not.toBeNull();
+    // 设计内忽略的事件名（后端照发、前端不消费）：不告警
+    expect(sseEventToAction("stage", J({ stage: "understanding" }), 4)).toBeNull();
+    expect(sseEventToAction("query_plan", J({ intent: "chat" }), 5)).toBeNull();
+    expect(sseEventToAction("future_event", J({}), 6)).toBeNull();
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });
 
@@ -1803,6 +1858,8 @@ describe("useChatStream 集成", () => {
   });
 
   it("未知事件名与非法 JSON 静默忽略（流不崩溃、不落状态）", async () => {
+    // N3-C②：坏 JSON 帧现会打降级 warn（可观测性），静音 spy 保持输出干净
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchMock.mockResolvedValue(
       sseResponse([
         md(),
@@ -1818,6 +1875,7 @@ describe("useChatStream 集成", () => {
     await waitFor(() => expect(result.current.state.endedStatus).toBe("COMPLETED"));
     expect(result.current.state.messages[1].text).toBe("");
     expect(result.current.state.lastEventId).toBe(4);
+    warnSpy.mockRestore();
   });
 
   it("响应体缺失（body=null）：错误分级 retryable 且不建任何槽", async () => {

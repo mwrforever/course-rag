@@ -23,6 +23,14 @@ const eslintConfig = [
       "@typescript-eslint/no-explicit-any": "error",
     },
   },
+  {
+    // 日志封装文件豁免 no-console（全局规则注释「日志统一走封装」的落地点：
+    // src/lib/logger.ts 是唯一允许触碰 console 的文件，其余文件仍全量禁用）
+    files: ["src/lib/logger.ts"],
+    rules: {
+      "no-console": "off",
+    },
+  },
 ];
 
 export default eslintConfig;
