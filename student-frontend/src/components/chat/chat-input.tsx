@@ -20,7 +20,8 @@
  * - 生成中发送键 morph 为停止键（PaperPlaneRight ↔ Square 交叉淡入 + 尺寸弹性，
  *   motion spring 180ms；prefers-reduced-motion 静态切换）
  * - streaming 中 Enter 仍可发送（触发后端 409 并发冲突路径，由错误分级 toast 提示）
- * - 发送失败（上抛）：输入内容恢复，供用户修改重试
+ * - 发送失败（上抛）：仅当输入框仍为空时恢复旧查询供修改重试——await 期间
+ *   用户已键入新内容则不覆盖（BUG-19，旧查询直接丢弃）
  * - textarea 自动增高 ≤6 行（按换行数）
  */
 import { PaperPlaneRight, Square } from "@phosphor-icons/react";
@@ -81,7 +82,8 @@ export function chatErrorText(error: unknown): string {
  * 对话输入区组件
  *
  * 组件自持输入文本与 morph 动效（受控模式由外部 value 驱动）；发送成功/失败均
- * 向上传播，失败时恢复输入内容。不受 redux/表单库约束（单消费者，无并发问题）。
+ * 向上传播，失败且输入框仍为空时恢复旧查询（已键入新内容不覆盖）。
+ * 不受 redux/表单库约束（单消费者，无并发问题）。
  */
 export function ChatInput({
   streaming,
@@ -102,8 +104,13 @@ export function ChatInput({
   const [internalValue, setInternalValue] = useState(initialValue ?? "");
   /** 当前输入值（受控=外部 prop，非受控=内部状态） */
   const current = isControlled ? (value as string) : internalValue;
-  /** 写入输入值：内部镜像 + 受控上抛（受控模式下父级回写驱动视图） */
+  // 最新输入值镜像（ref）：submit 的 await 期间用户可能继续键入，闭包中的 current
+  // 已过期，恢复输入前须读实时值判断是否回填（BUG-19）。所有用户键入与程序写入
+  // 均经 writeValue，故在此同步即可覆盖两种模式（不依赖受控父级回显 prop）
+  const latestValue = useRef(current);
+  /** 写入输入值：内部镜像 + ref 同步 + 受控上抛（受控模式下父级回写驱动视图） */
   const writeValue = (next: string) => {
+    latestValue.current = next;
     setInternalValue(next);
     onValueChange?.(next);
   };
@@ -151,7 +158,7 @@ export function ChatInput({
     void submit();
   }
 
-  /** 提交发送：清空输入 → 调 onSend；失败分级 toast 并恢复输入内容 */
+  /** 提交发送：清空输入 → 调 onSend；失败分级 toast，仅当输入框仍为空时回填旧查询 */
   async function submit() {
     if (!canSend) return;
     const query = current.trim();
@@ -159,9 +166,12 @@ export function ChatInput({
     try {
       await onSend(query);
     } catch (error) {
-      // 分级 toast（409/503/网络/兜底）；恢复输入内容供修改重试
+      // 分级 toast（409/503/网络/兜底）；仅当输入框仍为空时回填旧查询供修改重试，
+      // await 期间用户已键入新内容则不覆盖（BUG-19：旧查询直接丢弃）
       onNotify(chatErrorText(error));
-      writeValue(query);
+      if (latestValue.current === "") {
+        writeValue(query);
+      }
     }
   }
 
