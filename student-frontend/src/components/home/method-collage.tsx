@@ -6,7 +6,10 @@
  * 业务替换：西伦敦私塾故事 → RAG 检索增强工作原理的三步讲述
  * （入库 → 检索 → 有据可答），右侧文字块 + 左侧漂浮宝丽来照片墙
  * （三张错落旋转浮动动画 + 区块级视差位移）。
+ * PERF-06：宝丽来照片改走 next/image（fill + 懒加载 + AVIF/WebP 转换），
+ * 浮动/旋转动效保留在 figure 上不受影响。
  */
+import Image from "next/image";
 import Link from "next/link";
 import { useParallax } from "@/components/motion/parallax";
 import { Reveal } from "@/components/motion/reveal";
@@ -64,12 +67,16 @@ export function MethodCollage() {
                 className={`absolute bg-white p-3 pb-4 shadow-xl ${snap.className} ${snap.rotate}`}
                 style={{ animation: `floaty 8s ease-in-out ${snap.delay} infinite` }}
               >
-                <img
-                  src={snap.src}
-                  alt=""
-                  loading="lazy"
-                  className="aspect-4/3.1 w-full object-cover"
-                />
+                {/* 相对定位容器承载原 aspect 比例（fill 模式需有尺寸的定位父级） */}
+                <div className="relative aspect-4/3.1">
+                  <Image
+                    src={snap.src}
+                    alt=""
+                    fill
+                    sizes="(max-width: 1024px) 60vw, 20vw"
+                    className="object-cover"
+                  />
+                </div>
               </figure>
             ))}
           </div>

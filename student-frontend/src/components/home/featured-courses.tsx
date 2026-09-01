@@ -9,8 +9,11 @@
  * 四态契约保留：骨架（Loading）／空态／错误重试／正常网格；
  * 布局改为设计稿三列大卡（sepia 封面 hover 复原、时长徽章、分类 pill、衬线标题、
  * 元信息圆点行、讲师头像 + 价签位），reduced-motion 全静态。
+ * PERF-06：封面改走 next/image（fill + MinIO remotePatterns 白名单同课程中心口径，
+ * 原图直链经运行时优化管道转 AVIF/WebP；sepia/hover 复原动效类保留）。
  */
 import { useQuery } from "@tanstack/react-query";
+import Image from "next/image";
 import Link from "next/link";
 import { Reveal, Stagger } from "@/components/motion/reveal";
 import { EmptyState } from "@/components/empty-state";
@@ -39,11 +42,12 @@ function WenquCourseCard({
       {/* 媒体区：sepia 暖调 → hover 复原微放大 */}
       <div className="relative aspect-16/10 overflow-hidden">
         {course.coverImage ? (
-          <img
+          <Image
             src={course.coverImage}
             alt=""
-            loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.06]"
+            fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover transition-transform duration-1000 ease-out group-hover:scale-[1.06]"
             style={{ filter: "sepia(.12)" }}
           />
         ) : (

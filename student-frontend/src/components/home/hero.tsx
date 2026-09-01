@@ -7,7 +7,10 @@
  * 动画契约与设计稿逐帧一致——hero-word/bg/foot 三层以 y*0.30/0.16/0.08 差速位移，
  * 大字随滚动渐隐；reduced-motion 下全部静态呈现（hydration 安全：SSR 输出无随机量，
  * 入场动画为纯 CSS keyframes，挂载后才启动 rAF 视差，2026-08-26 教训对齐）。
+ * PERF-06：LCP 背景改走 next/image（priority 预载 + AVIF/WebP 运行时转换 +
+ * 响应式 srcset），Ken Burns 动效保留在图元素 style 上。
  */
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 
@@ -56,13 +59,15 @@ export function HomeHero() {
       className="relative flex min-h-[calc(100vh-68px)] flex-col overflow-hidden bg-surface-deep text-bg md:min-h-[calc(100vh-78px)]"
       id="top"
     >
-      {/* 背景：本地化素材 Ken Burns 缓推近 */}
+      {/* 背景：本地化素材 Ken Burns 缓推近（PERF-06：next/image priority 预载 LCP） */}
       <div ref={bgRef} aria-hidden className="absolute inset-0 will-change-transform">
-        <img
+        <Image
           src="/images/hero-study.jpg"
           alt=""
-          fetchPriority="high"
-          className="h-full w-full object-cover"
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover"
           style={{ animation: "kenburns 7s cubic-bezier(.22,.61,.36,1) both" }}
         />
         <div
