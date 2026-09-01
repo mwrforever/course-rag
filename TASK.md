@@ -73,10 +73,8 @@
 > 批一/批二 SDD 执行与审核中裁决「不处理/后置」的遗留，登记于此随后续批次处理；完成即删本节对应行。
 > 2026-08-29 消息实体化批收口：M-2 配置迁移（T-4）、Task 2B deferred ①③④（T-2）、findBySessionId 投影（T-1 实体化下自然消解）三项已完成删除；A.2.2 @Value 混用项未在本次范围，保留待办。
 
-- [ ] **A.2.2 rag.query-understanding 前缀 @Value 混用收口**（批一 Task 3 minor）：该前缀下
-      `model`/`max-queries` 两项仍经 `@Value` 散注而其余键走属性类强类型绑定，违反宪法
-      A.2.2（禁止散落 `@Value` 逐条注入）。收口方式：并入既有属性类补两字段 + 启动期校验，
-      改动局限 QueryUnderstanding 相关配置消费点。
+> 2026-08-29 消息实体化批收口后本节仅余 A.2.2 @Value 混用一项；该项已于 2026-09-01 由项目风险扫描修复
+> BUG-12（PR#28，@Value 31 处→0 全量收敛 ConfigurationProperties）覆盖解决，待办删除、本节关闭。
 
 ---
 
@@ -88,3 +86,23 @@
 > - c_rt_live 清理不对称收口（Finding 1）——auth-context 挂载无 RT 分支兜底清除残留提示 cookie
 > - c_rt_live 生产 Secure 属性（Finding 2）——写入串 https 环境条件追加
 > 原三项待办行已删除；S1 spec 文件缺失（F4）用户裁定为中间产物不回补（docs/ 不入库所致）。
+
+---
+
+## 7. 项目风险扫描修复·待用户拍板事项（2026-09-01 PR#28 终验汇总，只登记不实施）
+
+> 全部为「需用户拍板的设计/部署/产品决策」——修复队列已全部落地（见 CHANGELOG 2026-09-01 记录），以下事项
+> 逐项现状与建议详见 `docs/progress/2026-08-31-项目风险扫描修复.md`「待用户决策」节与终验报告。拍板后按常规
+> 流程立项，完成即删本节对应行。
+
+- [ ] **N3-② ERROR run 刷新后回答消失**：assistant 半截过滤为 M3 拍板契约（findCompletedRunIds 仅保留 COMPLETED run）——是否保留失败现场属产品决策
+- [ ] **N3-③ 流式链路零重试**：主对话流式调用（OpenAiChatModel.internalStream）无 RetryTemplate，单次连接 reset 即整 run 失败——是否加受控重试/备选模型切换属设计变更（retry 配置化本体已修）
+- [ ] **N3-④ 主 agent 流无 per-chunk 超时**：仅 blockLast 5min 兜底、失败静默窗口 ~15s——「静默多久判死」阈值与失败语义需拍板
+- [ ] **PERF-21 公开课程端点缓存**：现「不做缓存」为显式注释决策；分层预审已过（Spring Cache + 60s TTL + afterCommit），拍板即可实施
+- [ ] **PERF-26 课程中心切 tab/排序交错入场动效**：2026-08-31 改版拍板意图——需 Profiler 证实卡顿 + 用户确认视觉等价后立项
+- [ ] **PERF-20 激进异步化**：保守方案已修；完全异步化引入检索可见性窗口，推翻 2026-08-15「同步语义」裁决须重新拍板
+- [ ] **BUG-25 C 端 7 页面全 CSR 收缩**：全 CSR 为设计拍板形态、与宪法 C.1.3 张力——确认后逐页收缩 "use client"
+- [ ] **证据不足 2 条**：①next.config rewrites 代理 localhost:8080 缺生产部署拓扑决策；②教师池 size:100 截断缺规模数据（破百需后端 keyword/前端翻页）
+- [ ] **N3 结论告知**：慢响应+思考-only 根因=外部因素（DashScope 间歇断连 × 流式零重试），非代码 bug（处置建议并入 N3-③）
+
+---

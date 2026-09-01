@@ -4,6 +4,10 @@
 
 ---
 
+- 2026-09-01 · 项目风险扫描修复全量落地（fix/2026-08-31-risk-scan → PR#28 squash 合 dev `0abb5cb`，59 commit）：2026-08-31 全仓风险扫描产出 BUG 39 条可修 + PERF 20 条可优化（两轮独立审核 0 误报）逐项修复，一问题一提交（锁定合并组：BUG-05+PERF-02、BUG-29+PERF-23、PERF-07+19、PERF-09+11）。①后端 22 commit——BUG-01 run 状态机守卫 / BUG-04 回放 closed 补终态 / BUG-05+PERF-02 缓存失效 afterCommit / BUG-09~17 杂项（course_id 校验、clearCookie Secure、黑名单 reason、取消标记 computeIfPresent、SSE 控制字符转义、TOOL_RESULT seq 对齐、截断口径 4000、心跳 RuntimeException 捕获）/ N3-1 错误文案中文映射 / N3-3 retry 配置化 / PERF-01/03/04/13/16/22 / PERF-20 保守（2 并发+120s 超时+失败隔离）/ BUG-12 @Value 31 处收敛 ConfigurationProperties / BUG-17 敏感 env 启动校验；②C 端 19 commit——BUG-06 账号切换清缓存、BUG-18 重连 runId 锁定、BUG-36 失败现场清场、N3-C2 坏帧降级告警、BUG-19~28（输入回填守卫、附件快照结算、useId、STAGE_KEYS 单源、令牌收编、SSE 空格剥离、剪贴板降级、头注释修正）、PERF-05/06/07+19/10a/18/23（memo 化、next/image、缩略 blob、XHR 进度、rAF 空闲降级）；③B 端 14 commit——BUG-02 watch immediate、BUG-03 上传 timeout 300s、BUG-07 教师落库区分提示、BUG-08/30~35 杂项、BUG-32 令牌收敛、PERF-08 回放 useQuery、PERF-09+11 查询键统一（['course', id] / ['user-pool', role]，fetcher 走 ensureQueryData）、PERF-12 dashboard 拆 core/trend 双键+分区错误+keepPreviousData、PERF-24 RemoteSelect 空关键字短 TTL 30s；④门禁支撑 4 commit（PERF-20 测试同步、spotbugs RCN 清理、PERF-09 E2E 断言同步、CI spotless JDK17 缩进对齐）。验证：后端 verify 1438/1438 + spotbugs 0 违规 + jacoco 达标、B 端 478 单测+29 E2E、C 端 540 单测+53 E2E 全绿；PR#28 CI 三 job 绿 + code-review 五视角审核 3 候选 Finding（75/50/50）均低于 80 阈值无阻断。2 项升级用户（PERF-21 公开课程缓存 / PERF-26 动效）+ 7 项设计内事项（N3-②③④、PERF-20 激进、BUG-25、证据不足 2 条、N3 结论）汇总待拍板（TASK.md §7 与 docs/progress/ 终验报告「待用户决策」节）。原因：用户指令按 docs/prompt/2026-08-31-graph-项目风险扫描修复.md 与续接/续接-2 执行文档分批修复合并。
+
+---
+
 - 2026-08-31（二改）· 记忆提取超时改判 5 分钟→1 分钟（用户当日再拍板，dev 直合不走门控）：`memory.extraction.timeout-ms` 300000→60000，MemoryProperties.timeoutMs 默认值与 MemoryPropertiesTest 断言同步；注释记录两改定稿——先拍板 5 分钟（覆盖晚间实测延迟 14~22s），当日改判收紧至 1 分钟（仍覆盖实测延迟并约束挂起线程占用上限）。原因：用户指示「改成 1min，不走门控直接合并」。
 
 ---
