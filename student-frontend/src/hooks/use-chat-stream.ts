@@ -854,6 +854,19 @@ export function useChatStream(initialSessionId: string | null): {
    * 仅响应确立（非 409 且可流式）后才追加用户消息并启动流消费，杜绝失败路径的幽灵消息
    */
   async function send(query: string, attachments: AttachmentRecord[]): Promise<void> {
+    // BUG-36 修复：metadata 前失败现场（error 未清场且会话归属未落位）的重发收敛——
+    // 失败提问的服务端会话 id 唯一下发通道是 metadata 事件（POST 响应头/体不携带，后端
+    // ChatStreamEntry 实证），流断在 metadata 前则该会话 id 永不可知；此时直接重发会把
+    // 新提问 POST 成另一个 sessionId=null 新会话，UI 却接续旧历史（孤儿会话 + 历史不连续）。
+    // 语义定为：重发即干净重开——先清失败现场（丢弃未获服务端会话确认的幽灵提问），
+    // 新提问即新对话起点，UI 与新建会话的服务端历史完全对齐；会话已确立（sessionId 非空）
+    // 的普通 error 重发不受影响（POST 复用同一会话）。
+    // 注：reset 后 stateRef 仍是旧值（effect 异步更新），但本守卫条件保证旧值 sessionId
+    // 必为 null，后续 postChat 读取结果与 reset 后一致
+    const beforeSend = stateRef.current;
+    if (beforeSend.error !== null && beforeSend.sessionId === null) {
+      dispatch({ type: "reset" });
+    }
     let response: Response;
     try {
       response = await postChat({

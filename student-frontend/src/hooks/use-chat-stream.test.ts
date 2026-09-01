@@ -1093,6 +1093,118 @@ describe("useChatStream 集成", () => {
     expect(result.current.state.messages[1]).toMatchObject({ role: "assistant", id: "run-1" });
   });
 
+  it("BUG-36：metadata 前失败后重发：清失败现场后以新对话语义发送（不留幽灵提问接续，UI 与服务端新会话对齐）", async () => {
+    // 复现路径：新会话首问流在 metadata 到达前即断（error 落位、sessionId/runId 均 null）——
+    // 服务端已为失败提问建过会话但 id 唯一下发通道（metadata 事件）未达前端；
+    // 修复前重发直接 POST sessionId=null 另建新会话，UI 却把新提问接在旧历史后（历史不连续）
+    const ctrl = controllableSse();
+    const brokenBody = {
+      getReader: () => ({
+        read: () => Promise.reject(new Error("connection reset")),
+      }),
+    } as unknown as ReadableStream;
+    let postCount = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") {
+        // 第 1 次：metadata 前断流；第 2 次（重发）：正常可流式响应
+        postCount += 1;
+        return postCount === 1
+          ? ({ status: 200, ok: true, body: brokenBody } as unknown as Response)
+          : ctrl.response;
+      }
+      throw new Error(`未预期的请求: ${input}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+
+    // 首问：metadata 前失败（error 落位，会话归属/ run 均未落位，仅幽灵用户消息残留）
+    await act(async () => {
+      await result.current.send("第一问", []);
+    });
+    await waitFor(() =>
+      expect(result.current.state.error).toEqual({
+        kind: "retryable",
+        message: "连接中断，请重试",
+      }),
+    );
+    expect(result.current.state.sessionId).toBeNull();
+    expect(result.current.state.runId).toBeNull();
+    expect(result.current.state.messages).toHaveLength(1);
+
+    // 重发：修复语义 = 先清失败现场（丢弃未获服务端会话确认的幽灵提问）再发，
+    // 新提问即新对话起点——消息历史与新建会话的服务端历史完全对齐
+    await act(async () => {
+      await result.current.send("再问一次", []);
+    });
+    expect(result.current.state.messages).toHaveLength(1);
+    expect(result.current.state.messages[0]).toMatchObject({ role: "user", content: "再问一次" });
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(true);
+    // 重发 POST 恰好 2 次，第 2 次按新对话语义（sessionId=null，由新 metadata 落位新会话）
+    expect(postCount).toBe(2);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1][1]?.body as string) as {
+      sessionId: string | null;
+    };
+    expect(secondBody.sessionId).toBeNull();
+  });
+
+  it("BUG-36 回归：会话已确立（metadata 落位）后的 error 重发不清历史且复用同一 sessionId", async () => {
+    vi.useFakeTimers();
+    const firstCtrl = controllableSse();
+    const secondCtrl = controllableSse();
+    let getCount = 0;
+    let postCount = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/student/chat") && init?.method === "POST") {
+        postCount += 1;
+        return postCount === 1 ? firstCtrl.response : secondCtrl.response;
+      }
+      if (init?.method === "GET") {
+        getCount += 1;
+        // 重连三次全失败：第 1 次网络层异常，第 2/3 次服务端 503
+        return getCount === 1
+          ? Promise.reject(new TypeError("Failed to fetch"))
+          : jsonRes(503, { code: 503, message: "服务暂时不可用" });
+      }
+      throw new Error(`未预期的请求: ${url} ${init?.method}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+
+    // 第一问成功确立会话（sess-1）后断流：3 次重连失败 → error 落位
+    await act(async () => {
+      await result.current.send("第一问", []);
+    });
+    await act(async () => {
+      firstCtrl.push(md());
+      firstCtrl.push(frame(2, "delta", J({ text: "部分回答" })));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(33_000);
+    });
+    expect(result.current.state.error).toEqual({
+      kind: "retryable",
+      message: "连接已断开，请重试",
+    });
+    expect(result.current.state.streaming).toBe(false);
+
+    // 重发（普通重试语义）：POST 复用 sess-1，完整历史保留，不受 metadata 前失败守卫影响
+    await act(async () => {
+      await result.current.send("重问", []);
+    });
+    expect(postCount).toBe(2);
+    const postCalls = fetchMock.mock.calls.filter(
+      (c) => String(c[0]).endsWith("/student/chat") && (c[1] as RequestInit)?.method === "POST",
+    );
+    const secondBody = JSON.parse(postCalls[1]?.[1]?.body as string) as {
+      sessionId: string | null;
+    };
+    expect(secondBody.sessionId).toBe("sess-1");
+    expect(result.current.state.messages).toHaveLength(3);
+    expect(result.current.state.messages[2]).toMatchObject({ role: "user", content: "重问" });
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(true);
+  });
+
   it("Critical-1 全链路：首轮 end COMPLETED 后追问，新 run 事件全部正常落位（终态恢复/反馈 id 更新/第二轮 CANCELLED 后缀）", async () => {
     // 多轮追问回归：send 未重置 endedStatus 时，第二轮 metadata 被 isTerminal 守卫吞掉，
     // streaming 永久 true 页面假死（三轮可控流模拟首轮 COMPLETED → 二轮 COMPLETED → 三轮 CANCELLED）
