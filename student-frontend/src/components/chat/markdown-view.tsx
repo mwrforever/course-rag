@@ -32,6 +32,7 @@ import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typesc
 import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { copyToClipboard } from "@/lib/clipboard";
 
 // 语法高亮定集注册：课程问答高频语言（模块级只注册一次，PrismLight 惰性加载）
 SyntaxHighlighter.registerLanguage("bash", bash);
@@ -96,10 +97,16 @@ export function normalizeLanguage(language: string): string {
   return REGISTERED_LANGUAGES.has(name) ? name : "";
 }
 
-/** 复制文本到剪贴板并提示（clipboard API 现代浏览器通用） */
+/**
+ * 复制文本到剪贴板并提示（BUG-27 降级：非安全上下文 clipboard 不可用时回退
+ * execCommand；两条路径均失败 toast 提示手动复制，不再静默无响应）
+ */
 async function copyText(text: string, onNotify: (message: string) => void) {
-  await navigator.clipboard.writeText(text);
-  onNotify("已复制");
+  if (await copyToClipboard(text)) {
+    onNotify("已复制");
+  } else {
+    onNotify("复制失败，请手动复制");
+  }
 }
 
 /**

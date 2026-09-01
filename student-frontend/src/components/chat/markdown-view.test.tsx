@@ -115,10 +115,11 @@ describe("MarkdownView 代码块", () => {
     const code = "console.log('hi')";
     renderMarkdown(["```js", code, "```"].join("\n"));
     fireEvent.click(screen.getByRole("button", { name: "复制代码" }));
+    // toast 断言并入轮询：copyToClipboard 引入多一跳微任务，固定时点断言会竞态
     await vi.waitFor(() => {
       expect(clipboardWriteText).toHaveBeenCalledWith(code);
+      expect(onNotify).toHaveBeenCalledWith("已复制");
     });
-    expect(onNotify).toHaveBeenCalledWith("已复制");
   });
 
   it("未知语言代码块：降级纯文本渲染不崩溃", () => {

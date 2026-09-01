@@ -73,10 +73,36 @@ describe("FeedbackBar 复制", () => {
   it("点击复制：clipboard 写入回答正文 + toast 已复制", async () => {
     renderBar();
     fireEvent.click(screen.getByRole("button", { name: /复制/ }));
+    // toast 断言并入轮询：copyToClipboard 引入多一跳微任务，固定时点断言会竞态
     await vi.waitFor(() => {
       expect(clipboardWriteText).toHaveBeenCalledWith("回答正文");
+      expect(onNotify).toHaveBeenCalledWith("已复制");
+    });
+  });
+
+  it("BUG-27 降级：clipboard 不可用（非安全上下文）→ execCommand 中转成功仍「已复制」", async () => {
+    // 模拟 HTTP 内网部署：navigator.clipboard 为 undefined
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(document, "execCommand", { value: execCommand, configurable: true });
+    renderBar();
+    fireEvent.click(screen.getByRole("button", { name: /复制/ }));
+    await vi.waitFor(() => {
+      expect(execCommand).toHaveBeenCalledWith("copy");
     });
     expect(onNotify).toHaveBeenCalledWith("已复制");
+    delete (document as unknown as Record<string, unknown>).execCommand;
+  });
+
+  it("BUG-27 降级：两条路径均失败 → toast「复制失败，请手动复制」（不再静默无响应）", async () => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    Object.defineProperty(document, "execCommand", { value: () => false, configurable: true });
+    renderBar();
+    fireEvent.click(screen.getByRole("button", { name: /复制/ }));
+    await vi.waitFor(() => {
+      expect(onNotify).toHaveBeenCalledWith("复制失败，请手动复制");
+    });
+    delete (document as unknown as Record<string, unknown>).execCommand;
   });
 
   it("carry2：CANCELLED 终态文本带「已停止生成」后缀 → 复制前剥离后缀", async () => {
