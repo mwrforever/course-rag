@@ -7,54 +7,83 @@
  * （body 均为裸 JSON 数组，契约 E.3）。教师池经 GET /users?role=TEACHER 拉取
  * （后端无 keyword 参数，fetcher 内客户端过滤；选择器只列 TEACHER 角色兜底 R18）。
  *
+ * PERF-09/11：课程详情与教师池分别消费统一键 ['course', id] / ['user-pool', 'TEACHER']
+ * ——与详情壳/概览共享缓存（原合并单查询三键各自缓存的重复请求收敛），
+ * 页面级加载/错误态由两查询的聚合视图承载（行为不变）。
+ *
  * 线程安全注意：全部状态为组件私有 ref，无跨实例共享可变状态。
  */
 import { computed, ref, watch } from 'vue'
-import { useMutation, useQuery } from '@tanstack/vue-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
 import { PhArrowClockwise, PhSpinnerGap } from '@phosphor-icons/vue'
 
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { RemoteSelect } from '@/components/ui/remote-select'
-import { ApiError, courseApi, userApi } from '@/lib/api'
+import {
+  courseDetailKey,
+  fetchCourseDetail,
+  fetchUserPool,
+  userPoolKey,
+} from '@/composables/course-queries'
+import { ApiError, courseApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import type { UserDTO } from '@/lib/types'
 
 const route = useRoute()
+const queryClient = useQueryClient()
 /** 课程 id（Long 字符串铁律） */
 const courseId = computed(() => String(route.params.id ?? ''))
 
-/** 页面级加载：课程（teacherIds）+ 教师候选池 并发拉取（整体错误态横幅重试；vue-query 合并单查询） */
+/** 课程详情：消费统一键 ['course', id]（PERF-11：与详情壳/概览共享缓存，Tab 首访切换去重） */
 const {
-  data,
-  isLoading,
-  isError,
-  isFetching,
-  error: queryError,
-  refetch,
+  data: courseData,
+  isLoading: courseLoading,
+  isError: courseIsError,
+  isFetching: courseIsFetching,
+  error: courseQueryError,
+  refetch: refetchCourse,
 } = useQuery({
-  queryKey: computed(() => ['course-teachers', courseId.value]),
-  queryFn: async () => {
-    const [c, teacherPage] = await Promise.all([
-      courseApi.get(courseId.value),
-      userApi.list({ role: 'TEACHER', size: 100 }),
-    ])
-    return {
-      course: c,
-      // 教师池按角色客户端兜底过滤（设计 R18：后端不校验，选择器只列 TEACHER）
-      teacherPool: (teacherPage.records ?? []).filter((u) => u.role === 'TEACHER'),
-    }
-  },
+  queryKey: computed(() => courseDetailKey(courseId.value)),
+  queryFn: () => fetchCourseDetail(courseId.value),
 })
 
-const course = computed(() => data.value?.course ?? null)
-const teacherPool = computed(() => data.value?.teacherPool ?? [])
+/** 教师池：消费统一键 ['user-pool', 'TEACHER']（PERF-09：与概览池查询/搜索 fetcher 共享缓存） */
+const {
+  data: teacherPoolData,
+  isLoading: poolLoading,
+  isError: poolIsError,
+  isFetching: poolIsFetching,
+  error: poolQueryError,
+  refetch: refetchPool,
+} = useQuery({
+  queryKey: userPoolKey('TEACHER'),
+  queryFn: () => fetchUserPool('TEACHER'),
+})
 
-/** 页面级加载失败横幅文案（queryError 非空时透出；503 统一降级） */
-const listError = computed(() =>
-  isError.value ? messageOf(queryError.value, '页面加载失败，请稍后重试') : '',
-)
+const course = computed(() => courseData.value ?? null)
+const teacherPool = computed(() => teacherPoolData.value ?? [])
+
+/** 页面级聚合态：课程 + 教师池任一在加载/在途即整页骨架/刷新中（保持原合并单查询形态） */
+const isLoading = computed(() => courseLoading.value || poolLoading.value)
+const isFetching = computed(() => courseIsFetching.value || poolIsFetching.value)
+
+/** 页面级加载失败横幅文案（课程/池任一失败透出；503 统一降级） */
+const listError = computed(() => {
+  if (courseIsError.value) {
+    return messageOf(courseQueryError.value, '页面加载失败，请稍后重试')
+  }
+  if (poolIsError.value) {
+    return messageOf(poolQueryError.value, '教师池加载失败，请稍后重试')
+  }
+  return ''
+})
+
+/** 聚合重拉：课程详情 + 教师池一起刷新（重试按钮/页头刷新/保存后基线重建共用） */
+async function refetch() {
+  await Promise.all([refetchCourse(), refetchPool()])
+}
 
 /** 已分配教师 id（课程 teacherIds，Long 字符串铁律） */
 const assignedTeacherIds = computed(() => course.value?.teacherIds ?? [])
@@ -66,7 +95,7 @@ let draftInitialized = false
 
 /** 已分配教师明细（对象池 ∩ teacherIds；池未就绪时为 null 触发等待） */
 const assignedTeachers = computed(() => {
-  if (!course.value || !data.value) return null
+  if (!course.value || !teacherPoolData.value) return null
   return teacherPool.value.filter((t) => assignedTeacherIds.value.includes(t.id))
 })
 
@@ -104,7 +133,8 @@ const { isPending: saving, mutate: saveTeachersMutation } = useMutation({
   },
   onSuccess: async () => {
     showToast('教师分配已保存', 'success')
-    // 重建草稿基线：重拉后 watch 会以新数据刷新已分配集（草稿已与提交一致）
+    // 重建草稿基线：聚合重拉（课程统一键 + 教师池）后 watch 以新数据刷新已分配集
+    // （共享键缓存同步更新，详情壳/概览下次挂载即见最新 teacherIds）
     await refetch()
   },
   onError: (err) => {
@@ -120,18 +150,21 @@ function messageOf(err: unknown, fallback: string): string {
 }
 
 /**
- * 教师远程搜索 fetcher（remote-select 契约 E：防抖与取消由组件负责）
+ * 教师远程搜索 fetcher（remote-select 契约 E：防抖由组件负责）
  *
- * 后端 /admin/users 无 keyword 参数：整池拉取后客户端按显示名/用户名过滤；
- * signal 透传 axios，新输入取消旧请求。
+ * PERF-09：池数据经 queryClient.ensureQueryData 走统一键 ['user-pool', 'TEACHER']——
+ * 命中缓存（30s staleTime 窗口内）即纯本地过滤 0 请求，未命中才整池拉取；
+ * 后端 /admin/users 无 keyword 参数：拉池后按显示名/用户名客户端过滤。
+ * 不透传 signal：同键在途请求由 QueryClient 自动去重合并，语义等价。
  *
  * @param keyword 搜索关键字（空串 = 首屏候选全量）
- * @param signal 取消信号
  * @returns 命中的教师列表
  */
-async function fetchTeachers(keyword: string, signal: AbortSignal): Promise<UserDTO[]> {
-  const res = await userApi.list({ role: 'TEACHER', size: 100, signal })
-  const pool = (res.records ?? []).filter((u) => u.role === 'TEACHER')
+async function fetchTeachers(keyword: string): Promise<UserDTO[]> {
+  const pool = await queryClient.ensureQueryData({
+    queryKey: userPoolKey('TEACHER'),
+    queryFn: () => fetchUserPool('TEACHER'),
+  })
   const kw = keyword.trim()
   if (kw === '') return pool
   return pool.filter((t) => t.displayName.includes(kw) || t.username.includes(kw))

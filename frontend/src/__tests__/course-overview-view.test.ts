@@ -312,7 +312,8 @@ describe('课程概览（编辑模式 /courses/:id）', () => {
       'RAG 实战营',
     )
 
-    // 保存成功 → invalidate ['course-form'] → 后台重拉发出且挂起中（竞态窗口开启）
+    // 保存成功 → invalidate 统一键 ['course', id] → 后台重拉发出且挂起中（竞态窗口开启；
+    // 二次 get 调用即统一键失效的证据：保存后同键缓存被标脏重拉）
     await wrapper.find('[data-testid="save-basic"]').trigger('click')
     await flushPromises()
     expect(apiMock.courseApi.update).toHaveBeenCalledTimes(1)
@@ -342,8 +343,9 @@ describe('课程概览（编辑模式 /courses/:id）', () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
     })
-    queryClient.setQueryData(['course-form', 'c-1'], course({ teacherIds: ['t1'] }))
-    queryClient.setQueryData(['teacher-pool'], [teacher('t1', '张老师')])
+    // PERF-11 统一键：['course', id]（详情壳/概览/教师分配共享）+ ['user-pool', 'TEACHER']
+    queryClient.setQueryData(['course', 'c-1'], course({ teacherIds: ['t1'] }))
+    queryClient.setQueryData(['user-pool', 'TEACHER'], [teacher('t1', '张老师')])
     const { wrapper } = await mountAt('/courses/c-1', queryClient)
     await flushPromises()
 

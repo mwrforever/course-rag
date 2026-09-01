@@ -14,8 +14,8 @@ import { PhArrowLeft, PhSpinnerGap } from '@phosphor-icons/vue'
 
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { ApiError, courseApi } from '@/lib/api'
-import type { CourseDTO } from '@/lib/types'
+import { courseDetailKey, fetchCourseDetail } from '@/composables/course-queries'
+import { ApiError } from '@/lib/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,6 +26,8 @@ const courseId = computed(() => String(route.params.id ?? ''))
 /**
  * 课程元数据（标题 + 存在性校验；查询键含路由 id，换课程自动重拉）
  *
+ * PERF-11：消费统一键 ['course', id]——概览（旧独立表单键）/ 教师分配（原合并单查询）
+ * 与本壳共享同一缓存，Tab 首访切换同键去重；保存后失效收敛为单键（含本壳标题联动）。
  * 404 语义用「返回 null」表达（与错误状态区分）：error 态走横幅重试，null 态走不存在页。
  */
 const {
@@ -35,15 +37,8 @@ const {
   error: queryError,
   refetch,
 } = useQuery({
-  queryKey: computed(() => ['course-detail-meta', courseId.value]),
-  queryFn: async (): Promise<CourseDTO | null> => {
-    try {
-      return await courseApi.get(courseId.value)
-    } catch (err) {
-      if (err instanceof ApiError && err.code === 404) return null
-      throw err
-    }
-  },
+  queryKey: computed(() => courseDetailKey(courseId.value)),
+  queryFn: () => fetchCourseDetail(courseId.value),
 })
 
 /** 课程元数据（标题展示） */

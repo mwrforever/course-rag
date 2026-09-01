@@ -217,14 +217,14 @@ describe('课程教师分配（remote-select 多选差集保存）', () => {
 
   it('warm cache：命中 30s 未过期缓存不重拉，草稿 chips 立即回填（BUG-02 回归）', async () => {
     // 场景：30s 内重进教师分配页命中未过期缓存，data 在 watch 注册前已同步就位——
-    // 无 immediate 时 draftInitialized 永不为 true，已分配教师 chips 空白
+    // 无 immediate 时 draftInitialized 永不为 true，已分配教师 chips 空白。
+    // PERF-11：缓存按统一键预填——['course', id] 为详情壳/概览同键的原始 CourseDTO
+    // （模拟 Tab 首访切换：前一个视图已填充共享缓存，本视图二次挂载 0 请求）
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
     })
-    queryClient.setQueryData(['course-teachers', 'c-1'], {
-      course: course({ teacherIds: ['t-1'] }),
-      teacherPool: [teacher('t-1', '老王')],
-    })
+    queryClient.setQueryData(['course', 'c-1'], course({ teacherIds: ['t-1'] }))
+    queryClient.setQueryData(['user-pool', 'TEACHER'], [teacher('t-1', '老王')])
     const { wrapper } = await mountAt('/courses/c-1/teachers', queryClient)
     await flushPromises()
 
@@ -234,6 +234,35 @@ describe('课程教师分配（remote-select 多选差集保存）', () => {
     // 草稿已回填：已分配教师以 chip 回显
     expect(wrapper.find('[data-testid="remote-chip-t-1"]').text()).toContain('老王')
     expect(wrapper.text()).toContain('当前已分配 1 名')
+    wrapper.unmount()
+  })
+
+  it('PERF-09：池 fetcher 命中 QueryClient 缓存——页面池查询后打开下拉/搜索 0 重复请求', async () => {
+    // 30s staleTime 对齐生产全局默认：页面池查询首拉后，remote-select fetcher 的
+    // ensureQueryData 同键命中缓存，空关键字首屏 + 关键字搜索均纯本地过滤
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    })
+    apiMock.courseApi.get.mockResolvedValue(course({ teacherIds: [] }))
+    apiMock.userApi.list.mockResolvedValue(pageOf([teacher('t-1', '老王'), teacher('t-2', '小李')]))
+    const { wrapper } = await mountAt('/courses/c-1/teachers', queryClient)
+    await flushPromises()
+    // 页面教师池查询首拉一次
+    expect(apiMock.userApi.list).toHaveBeenCalledTimes(1)
+
+    // 打开下拉（空关键字首屏，无防抖立即拉）：fetcher 命中缓存 0 新请求，选项照常渲染
+    await wrapper.find('[data-testid="remote-input"]').trigger('focus')
+    await flushPromises()
+    expect(apiMock.userApi.list).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="remote-option-t-2"]').exists()).toBe(true)
+
+    // 关键字搜索（防抖 300ms 后触发）：仍命中缓存本地过滤
+    await wrapper.find('[data-testid="remote-input"]').setValue('老王')
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    await flushPromises()
+    expect(apiMock.userApi.list).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="remote-option-t-1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="remote-option-t-2"]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

@@ -5,8 +5,8 @@
  *
  * 职责：已选列表（username/displayName/enrolledAt）+ 添加 Dialog
  * （remote-select 多选 → POST 返回成功数 → 「成功添加 N 名」提示）+ 行移除二次确认。
- * 学生候选走 userApi role=STUDENT 拉取（后端无 keyword，fetcher 内客户端过滤 +
- * 剔除已报名；signal 透传取消过期请求，契约 E）。
+ * 学生候选经统一键 ['user-pool', 'STUDENT'] 拉取（PERF-09：ensureQueryData 命中缓存
+ * 本地过滤；后端无 keyword，fetcher 内客户端过滤 + 剔除已报名，契约 E）。
  */
 import { computed, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
@@ -26,7 +26,8 @@ import { Dialog } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconButton } from '@/components/ui/icon-button'
 import { RemoteSelect } from '@/components/ui/remote-select'
-import { ApiError, enrollmentApi, userApi } from '@/lib/api'
+import { fetchUserPool, userPoolKey } from '@/composables/course-queries'
+import { ApiError, enrollmentApi } from '@/lib/api'
 import { showToast } from '@/lib/toast'
 import { formatDateTime } from '@/lib/utils'
 import type { StudentDTO, UserDTO } from '@/lib/types'
@@ -94,18 +95,21 @@ const studentSelected = ref<UserDTO[]>([])
 const studentDeleting = ref<StudentDTO | null>(null)
 
 /**
- * 学生候选 fetcher（remote-select 契约 E：防抖与取消由组件负责）
+ * 学生候选 fetcher（remote-select 契约 E：防抖由组件负责）
  *
- * 后端 /admin/users 无 keyword 参数：整池拉取后客户端按显示名/用户名过滤，
- * 并剔除已报名学生；signal 透传 axios 取消过期请求。
+ * PERF-09：池数据经 queryClient.ensureQueryData 走统一键 ['user-pool', 'STUDENT']——
+ * 命中缓存（30s staleTime 窗口内）即纯本地过滤 0 请求，未命中才整池拉取；
+ * 后端 /admin/users 无 keyword 参数：拉池后按显示名/用户名客户端过滤并剔除已报名。
+ * 不透传 signal：同键在途请求由 QueryClient 自动去重合并，语义等价。
  *
  * @param keyword 搜索关键字（空串 = 首屏候选）
- * @param signal 取消信号
  * @returns 可添加的学生候选
  */
-async function fetchStudentOptions(keyword: string, signal: AbortSignal): Promise<UserDTO[]> {
-  const res = await userApi.list({ role: 'STUDENT', size: 100, signal })
-  const pool = (res.records ?? []).filter((u) => u.role === 'STUDENT')
+async function fetchStudentOptions(keyword: string): Promise<UserDTO[]> {
+  const pool = await queryClient.ensureQueryData({
+    queryKey: userPoolKey('STUDENT'),
+    queryFn: () => fetchUserPool('STUDENT'),
+  })
   const kw = keyword.trim()
   return pool.filter(
     (u) =>

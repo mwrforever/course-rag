@@ -11,7 +11,7 @@
  *   POST/DELETE /admin/courses/{id}/teachers（body 裸数组，契约 E.3）；
  * - instructorName 在为空时自动预填第一位教师姓名（仍可手改，契约 E.3）；
  * - zod 全字段校验（标题必填、价格数字、封面 URL 格式、课时数字），错误内联字段下方；
- * - 提交 loading 防重复；成功后按 queryKey 失效（admin-courses / course-form / course-teachers）。
+ * - 提交 loading 防重复；成功后按 queryKey 失效（admin-courses / course 统一键，PERF-11）。
  *
  * 线程安全注意：全部状态为组件私有 ref；复制成功的 1.5s 复位定时器在卸载时清理。
  */
@@ -37,7 +37,13 @@ import { RemoteSelect } from '@/components/ui/remote-select'
 import { Select } from '@/components/ui/select'
 import { StatCard } from '@/components/ui/stat-card'
 import { Textarea } from '@/components/ui/textarea'
-import { ApiError, courseApi, userApi } from '@/lib/api'
+import {
+  courseDetailKey,
+  fetchCourseDetail,
+  fetchUserPool,
+  userPoolKey,
+} from '@/composables/course-queries'
+import { ApiError, courseApi } from '@/lib/api'
 import { COURSE_CATEGORY_PRESETS } from '@/lib/constants'
 import { showToast } from '@/lib/toast'
 import type { CourseDTO, UpdateCourseRequest, UserDTO } from '@/lib/types'
@@ -86,7 +92,8 @@ const isNew = route.name === 'course-new'
 /** 课程 id：编辑模式取自路由参数（Long 字符串铁律） */
 const courseId = computed(() => String(route.params.id ?? ''))
 
-/** 编辑模式课程加载（新建模式 enabled=false 不拉取，表单直开；查询键含路由 id 派生态） */
+/** 编辑模式课程加载（新建模式 enabled=false 不拉取，表单直开）
+ *  PERF-11：消费统一键 ['course', id]——与详情壳/教师分配共享缓存，Tab 首访切换 0 重复请求 */
 const {
   data: courseData,
   isLoading,
@@ -94,8 +101,8 @@ const {
   error: queryError,
   refetch,
 } = useQuery({
-  queryKey: computed(() => ['course-form', courseId.value]),
-  queryFn: () => courseApi.get(courseId.value),
+  queryKey: computed(() => courseDetailKey(courseId.value)),
+  queryFn: () => fetchCourseDetail(courseId.value),
   enabled: !isNew,
   // 表单回填后不随后台 refetch 覆盖未保存编辑：禁用窗口聚焦重拉
   refetchOnWindowFocus: false,
@@ -105,13 +112,11 @@ const {
 // 授课教师（remote-select 多选，契约 E / E.3）
 // ====================================================================
 
-/** 教师池（编辑态：teacherIds → 教师对象回显；后端 /users 无 keyword，fetcher 内客户端过滤） */
+/** 教师池（编辑态：teacherIds → 教师对象回显；PERF-09 统一键 ['user-pool', 'TEACHER']，
+    与 remote-select fetcher 的 ensureQueryData 共享同一缓存条目） */
 const { data: teacherPoolData } = useQuery({
-  queryKey: ['teacher-pool'],
-  queryFn: async () => {
-    const res = await userApi.list({ role: 'TEACHER', size: 100 })
-    return (res.records ?? []).filter((u) => u.role === 'TEACHER')
-  },
+  queryKey: userPoolKey('TEACHER'),
+  queryFn: () => fetchUserPool('TEACHER'),
   enabled: !isNew,
 })
 const teacherPool = computed(() => teacherPoolData.value ?? [])
@@ -149,18 +154,21 @@ watch(
 )
 
 /**
- * 教师远程搜索 fetcher（remote-select 契约 E：防抖与取消由组件负责）
+ * 教师远程搜索 fetcher（remote-select 契约 E：防抖由组件负责）
  *
- * 后端 /admin/users 仅支持 page/size/role/status（无 keyword），此处整池拉取后
- * 客户端按显示名/用户名过滤；signal 透传 axios，新输入取消旧请求。
+ * PERF-09：池数据经 queryClient.ensureQueryData 走统一键 ['user-pool', 'TEACHER']——
+ * 命中缓存（30s staleTime 窗口内）即纯本地过滤 0 请求，未命中才整池拉取；
+ * 后端 /admin/users 无 keyword，此处拉池后按显示名/用户名客户端过滤。
+ * 不透传 signal：同键在途请求由 QueryClient 自动去重合并，语义等价。
  *
  * @param keyword 搜索关键字（空串 = 首屏候选全量）
- * @param signal 取消信号（透传 api 层）
  * @returns 命中的教师列表
  */
-async function fetchTeachers(keyword: string, signal: AbortSignal): Promise<UserDTO[]> {
-  const res = await userApi.list({ role: 'TEACHER', size: 100, signal })
-  const pool = (res.records ?? []).filter((u) => u.role === 'TEACHER')
+async function fetchTeachers(keyword: string): Promise<UserDTO[]> {
+  const pool = await queryClient.ensureQueryData({
+    queryKey: userPoolKey('TEACHER'),
+    queryFn: () => fetchUserPool('TEACHER'),
+  })
   const kw = keyword.trim()
   if (kw === '') return pool
   return pool.filter((t) => t.displayName.includes(kw) || t.username.includes(kw))
@@ -246,7 +254,13 @@ function applyCourseToForm(c: CourseDTO) {
   form.description = c.description ?? ''
   form.coverImage = c.coverImage ?? ''
   form.category = c.category ?? ''
-  form.instructorName = c.instructorName ?? ''
+  // 契约 E.3：讲师名为空时以第一位教师姓名预填——课程/教师池数据到达顺序不定
+  // （共享键后池常先于课程就位，本表单回填与教师回填 watch 互有先后），
+  // 两条路径同一规则，避免表单回填把教师预填名覆盖清空
+  form.instructorName =
+    (c.instructorName ?? '').trim() === '' && selectedTeachers.value.length > 0
+      ? selectedTeachers.value[0].displayName
+      : (c.instructorName ?? '')
   form.price = c.price === 0 ? '' : String(c.price)
   form.duration = c.duration ?? ''
   form.status = c.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE'
@@ -368,8 +382,9 @@ const { isPending: saving, mutate: saveBasicMutation } = useMutation({
       if (result) await router.push({ name: 'course-detail', params: { id: result.course.id } })
     } else {
       showToast('课程信息已保存', 'success')
-      void queryClient.invalidateQueries({ queryKey: ['course-form'] })
-      void queryClient.invalidateQueries({ queryKey: ['course-teachers'] })
+      // PERF-11：统一键失效——详情壳标题/概览表单/教师分配页共享缓存一次收敛
+      // （原详情壳旧键漏失效问题随之自然修复）
+      void queryClient.invalidateQueries({ queryKey: courseDetailKey(courseId.value) })
     }
   },
   onError: (err) => {
