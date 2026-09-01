@@ -41,6 +41,8 @@ const routerMock = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
 const authMock = vi.hoisted(() => ({ useAuth: vi.fn() }));
 /** blob URL mock：jsdom 未实现 createObjectURL/revokeObjectURL */
 const urlMock = vi.hoisted(() => ({ createObjectURL: vi.fn(), revokeObjectURL: vi.fn() }));
+/** 缩略图生成 mock（PERF-18：默认不设定返回值=未生成/降级，chips 以原图兜底） */
+const thumbMock = vi.hoisted(() => ({ createAttachmentThumbUrl: vi.fn() }));
 
 vi.mock("@/hooks/use-chat-stream", () => ({
   useChatStream: () => ({
@@ -64,6 +66,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
     postFeedback: apiMock.postFeedback,
   };
 });
+vi.mock("@/lib/attachment-thumb", () => ({
+  createAttachmentThumbUrl: thumbMock.createAttachmentThumbUrl,
+}));
 vi.mock("next/navigation", () => ({
   useRouter: () => routerMock,
   useSearchParams: () => searchParamsMock.current,
@@ -126,6 +131,7 @@ beforeEach(() => {
   chatMock.reset.mockReset();
   apiMock.uploadAttachments.mockReset();
   apiMock.postFeedback.mockReset().mockResolvedValue(undefined);
+  thumbMock.createAttachmentThumbUrl.mockReset().mockResolvedValue(null);
   routerMock.replace.mockReset();
   routerMock.push.mockReset();
   searchParamsMock.current = new URLSearchParams();
@@ -390,6 +396,48 @@ describe("新对话页：附件全链路", () => {
     act(() => report?.(40));
     expect(screen.getByText("上传中 40%")).toBeInTheDocument();
     expect(screen.getByTestId("attachment-progress")).toHaveAttribute("aria-valuenow", "40");
+  });
+
+  it("图片缩略生成后接管 chips/消息行渲染，预览弹窗保留原图（PERF-18）", async () => {
+    thumbMock.createAttachmentThumbUrl.mockResolvedValue("blob:thumb-url");
+    apiMock.uploadAttachments.mockResolvedValue([RECORD]);
+    chatMock.send.mockImplementation(async (_query: string, attachments: AttachmentRecord[]) => {
+      const userMsg: StreamMessage = {
+        id: "local-1",
+        role: "user",
+        content: "看图提问",
+        attachments,
+        model: null,
+        text: "",
+        sources: [],
+        timeline: [],
+        endStatus: null,
+        messageId: null,
+      };
+      chatMock.state = { ...chatMock.state, messages: [userMsg], streaming: true };
+    });
+    renderPage();
+    setFiles(screen.getByTestId("file-input") as HTMLInputElement, [PNG]);
+    // 缩略异步生成完成 → chips 缩略位切换为小图 blob（原图不再用于 36px 缩略）
+    expect(thumbMock.createAttachmentThumbUrl).toHaveBeenCalledWith(PNG);
+    const chipImg = await screen.findByRole("img", { name: /缩略图：图\.png/ });
+    await waitFor(() => expect(chipImg).toHaveAttribute("src", "blob:thumb-url"));
+    // 预览弹窗保留原图 blob（Zoom 大图不受缩略化影响）
+    fireEvent.click(screen.getByRole("button", { name: /预览附件：图\.png/ }));
+    expect(await screen.findByTestId("attachment-preview-image")).toHaveAttribute(
+      "src",
+      "blob:mock-url",
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    // 发送后消息行附件缩略（28px）走缩略 blob（映射迁入 thumbUrl）
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "看图提问" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: /附件：图\.png/ })).toHaveAttribute(
+        "src",
+        "blob:thumb-url",
+      );
+    });
   });
 
   it("移除附件：revoke blob URL", async () => {

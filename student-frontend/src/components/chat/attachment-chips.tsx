@@ -68,8 +68,13 @@ export interface PendingAttachment {
    * undefined=进度未知（total 缺省等防御场景），chips 回退不确定进度环。
    */
   progress?: number;
-  /** 本地 blob URL（图片缩略图预览；文档仅图标）；过期时由页面 revoke */
+  /** 本地原图 blob URL（预览弹窗大图用；缩略生成期间亦作 chips 瞬时占位）；过期时由页面 revoke */
   blobUrl: string;
+  /**
+   * 缩略 blob URL（PERF-18：createImageBitmap 异步生成的 ~96px 小图，chips 36px/
+   * 消息行 28px 渲染用，避免原图整图驻留解码）；undefined=未生成/降级，以 blobUrl 兜底
+   */
+  thumbUrl?: string;
 }
 
 /**
@@ -263,10 +268,10 @@ export function AttachmentChips({ items, onRemove, onPreview }: AttachmentChipsP
                   />
                 )
               ) : item.status === "done" && item.record?.type === "image" ? (
-                // 完成图片：本地 blob 缩略图（记录 url 为 objectKey 不可直接访问，D12）
+                // 完成图片：缩略 blob（PERF-18；未生成时原图兜底。记录 url 为 objectKey 不可直接访问，D12）
                 // eslint-disable-next-line @next/next/no-img-element -- blob: URL 无法走 next/image 优化器，本地预览用原生 img
                 <img
-                  src={item.blobUrl}
+                  src={item.thumbUrl ?? item.blobUrl}
                   alt={`缩略图：${item.file.name}`}
                   className="size-9 shrink-0 rounded-lg border border-border object-cover"
                 />
