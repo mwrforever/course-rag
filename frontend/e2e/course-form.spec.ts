@@ -6,7 +6,8 @@ import { mockAuth, login, apiOk } from './helpers/api-mock'
  *
  * 覆盖：
  * - 新建课程含封面上传：POST /admin/courses/cover 回传相对 URL → 预览 → 随创建提交 coverImage
- * - 远程搜索防抖：连续输入只触发一次防抖后请求（打开首拉 1 次 + 搜索 1 次，无逐键请求）
+ * - 远程搜索防抖：PERF-09 池缓存（['user-pool','TEACHER'] ensureQueryData）打开首拉整池 1 次，
+ *   30s staleTime 窗口内关键字搜索纯本地过滤 0 请求（无逐键/防抖后网络请求）
  * - 课程列表页头刷新按钮：点击按查询重拉（请求数收敛为 2）
  */
 
@@ -78,7 +79,7 @@ test.describe('课程表单（封面上传 / 远程搜索防抖 / 刷新）', ()
     await expect(page).toHaveURL(/\/courses\/co9$/, { timeout: 10_000 })
   })
 
-  test('远程搜索防抖：连续输入只发首拉 + 防抖后一次请求', async ({ page }) => {
+  test('远程搜索防抖：池缓存首拉一次 + 关键字本地过滤 0 请求', async ({ page }) => {
     const keywords: string[] = []
     await page.route('**/api/v1/admin/users*', (r) => {
       keywords.push(new URL(r.request().url()).searchParams.get('keyword') ?? '')
@@ -109,14 +110,16 @@ test.describe('课程表单（封面上传 / 远程搜索防抖 / 刷新）', ()
     const input = page.locator('[data-testid="field-teachers"] [data-testid="remote-input"]')
     await input.click()
     await expect(page.getByTestId('remote-option-t1')).toBeVisible()
-    // 连续输入（40ms/键 < 300ms 防抖窗口）：期间不逐键发请求
+    // 首拉完成：整池恰一次真实请求（PERF-09：fetcher 经 ensureQueryData 未命中缓存时整池拉取）
+    await expect.poll(() => keywords.length).toBe(1)
+    // 连续输入（40ms/键 < 300ms 防抖窗口）：防抖窗口内不逐键、不防抖发请求（本地过滤 0 网络）
     await input.pressSequentially('张老师', { delay: 40 })
-    // 防抖窗口后只发一次搜索请求（首拉 1 + 搜索 1 = 2）
-    await expect.poll(() => keywords.length).toBe(2)
-    // 负向断言的稳定窗口：防抖窗口两倍时长后仍无第 3 次请求（禁逐键请求的回归保护）
+    expect(keywords.length).toBe(1)
+    // 负向断言的稳定窗口：防抖窗口两倍时长后仍无第 2 次请求
+    // （PERF-09：30s staleTime 窗口内关键字搜索命中池缓存纯本地过滤 0 网络请求的回归保护）
     await page.waitForTimeout(600)
-    expect(keywords.length).toBe(2)
-    // 搜索命中选项可选中入 chip
+    expect(keywords.length).toBe(1)
+    // 本地过滤命中 displayName 含「张老师」的选项，可选中入 chip（fetcher 过滤字段 displayName/username）
     await page.getByTestId('remote-option-t1').click()
     await expect(page.getByTestId('remote-chip-t1')).toBeVisible()
   })
