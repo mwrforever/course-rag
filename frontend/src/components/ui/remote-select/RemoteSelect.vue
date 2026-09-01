@@ -1,3 +1,30 @@
+<script lang="ts">
+/**
+ * PERF-24：空关键字首屏候选的模块级短 TTL 记忆（模块级状态放普通 script 块，
+ * 与 AdminLayout 的静态表导出同构——script setup 内的顶层变量是实例级，跨实例不共享）。
+ *
+ * 业务取舍：表单场景首屏候选（课程/KB 列表）30s 内新鲜度损失可接受，
+ * 以 30s 记忆换同一字段反复开关下拉 0 重复请求；真关键字搜索必须实时，不进缓存。
+ */
+const EMPTY_KEYWORD_CACHE_TTL_MS = 30_000
+
+/** 首屏记忆条目：value 为空关键字响应的选项列表（模块级缓存不携带组件泛型，收窄为 unknown[]，读取侧断言回 T[]） */
+interface EmptyKeywordCacheEntry {
+  value: unknown[]
+  /** 过期时间戳（毫秒）：读取时惰性比较，不设常驻清理定时器（过期条目随键 GC 一并回收） */
+  expireAt: number
+}
+
+/**
+ * 模块级缓存，以 fetcher 函数引用为键：
+ * - 防串：不同 RemoteSelect 实例的 fetcher 引用不同 → 记忆天然隔离互不串台；
+ *   同一 fetcher（父组件复用的同一池函数）跨实例共享 → 同源数据去重；
+ * - 防泄漏：fetcher 多为父组件内联闭包，选 WeakMap 而非 Map——不强持键引用，
+ *   组件销毁后闭包不可达时条目随之 GC，避免长期驻留内存。
+ */
+const emptyKeywordCache = new WeakMap<object, EmptyKeywordCacheEntry>()
+</script>
+
 <script setup lang="ts" generic="T">
 /**
  * 远程搜索选择组件（契约 E：防抖 + 取消 + 三态 + 键盘可达）
@@ -7,7 +34,8 @@
  * 下拉三态（加载 CircleNotch / 空结果 emptyText / 错误 errorText + 点击重试）；
  * 键盘可达（Enter 确认高亮、上下键移动、Esc 关闭、Tab 自然离焦）；
  * 多选选中项以 chip 形态展示在触发器内，chip 带 X 平级移除钮。
- * 关闭下拉不清空已选；打开即以空关键字拉一次首屏候选。
+ * 关闭下拉不清空已选；打开即以空关键字拉一次首屏候选（PERF-24：空关键字首屏结果
+ * 走模块级 30s 短 TTL 记忆，窗口内重复打开 0 重复请求；真关键字搜索始终实时）。
  *
  * 线程安全注意：全部状态为组件私有 ref；abortController/timer 单线程事件循环内
  * 顺序读写，无跨线程共享（浏览器环境无并发竞争）。
@@ -131,7 +159,24 @@ function isAbortError(err: unknown): boolean {
 }
 
 /**
+ * 读取空关键字首屏记忆（PERF-24）：仅未过期才命中
+ *
+ * 过期采用惰性时间戳比较（读取时判 30s 窗口），无常驻定时器/侦听器，
+ * 组件卸载无需清理缓存；过期条目不主动删除，等 fetcher 键被 GC 一并回收。
+ *
+ * @returns 命中返回首屏候选列表；未命中/已过期返回 null（触发真实请求）
+ */
+function readEmptyKeywordCache(): T[] | null {
+  const entry = emptyKeywordCache.get(props.fetcher)
+  if (!entry || Date.now() > entry.expireAt) return null
+  return entry.value as T[]
+}
+
+/**
  * 执行一次搜索：abort 旧请求 → 新控制器发请求 → 过期响应禁止回写
+ *
+ * PERF-24：空关键字（首屏候选）优先读模块级 30s 短 TTL 记忆，命中直接回放
+ * 跳过网络请求；真关键字（有内容）每次都实时搜索、永不读写缓存。
  *
  * @param kw 搜索关键字（空串 = 首屏候选）
  */
@@ -141,13 +186,23 @@ async function doSearch(kw: string) {
   controller = current
   loading.value = true
   loadFailed.value = false
+  // 仅空关键字查记忆；命中则整个分支同步完成，无加载闪烁
+  const remembered = kw.trim() === '' ? readEmptyKeywordCache() : null
   try {
-    const list = await props.fetcher(kw.trim(), current.signal)
+    const list = remembered ?? (await props.fetcher(kw.trim(), current.signal))
     // 竞态防护：请求返回时控制器已被替换（新输入触发）→ 丢弃过期响应
     if (controller !== current) return
     options.value = list
     cacheOptions(list)
     highlightIndex.value = list.length > 0 ? 0 : -1
+    // 仅「真实请求成功的空关键字结果」写入记忆：真关键字与记忆命中的回放不写，
+    // 失败/被取消的结果也不写（下次打开仍重试真实接口）
+    if (kw.trim() === '' && remembered === null) {
+      emptyKeywordCache.set(props.fetcher, {
+        value: list,
+        expireAt: Date.now() + EMPTY_KEYWORD_CACHE_TTL_MS,
+      })
+    }
   } catch (err) {
     if (controller !== current || isAbortError(err)) return
     loadFailed.value = true
@@ -185,7 +240,7 @@ function onInput(event: Event) {
   scheduleSearch(keyword.value)
 }
 
-/** 打开下拉（首屏候选立即拉取，无防抖）；已打开时不重复拉 */
+/** 打开下拉（首屏候选立即拉取，无防抖；PERF-24：空关键字在 doSearch 内先查 30s 记忆，命中不重复拉）；已打开时不重复拉 */
 function openDropdown() {
   if (props.disabled || open.value) return
   open.value = true
@@ -193,7 +248,7 @@ function openDropdown() {
   void doSearch('')
 }
 
-/** 关闭下拉（不清空已选；中止在途请求并复位加载态） */
+/** 关闭下拉（不清空已选；中止在途请求并复位加载态；首屏短 TTL 记忆有意保留，供 30s 内重开去重） */
 function closeDropdown() {
   open.value = false
   options.value = []

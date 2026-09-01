@@ -283,4 +283,78 @@ describe('RemoteSelect 远程搜索选择', () => {
     expect(calls).toHaveLength(0)
     wrapper.unmount()
   })
+
+  describe('空关键字首屏短 TTL 记忆（PERF-24）', () => {
+    /** 点击组件外关闭下拉（复用既有 document mousedown 关闭契约） */
+    async function closeByOutsideClick() {
+      document.dispatchEvent(new MouseEvent('mousedown'))
+      await vi.advanceTimersByTimeAsync(0)
+    }
+
+    it('30s 内重复打开：命中记忆 0 重复请求，直接回放缓存的首屏候选', async () => {
+      const { wrapper, calls, fetcher } = mountSelect()
+      await wrapper.find('[data-testid="remote-input"]').trigger('focus')
+      await vi.advanceTimersByTimeAsync(0)
+      calls[0].resolve(POOL)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fetcher).toHaveBeenCalledTimes(1)
+
+      // 关闭再打开（fake 时钟未推进，仍在 30s TTL 窗口内）：不得重复请求
+      await closeByOutsideClick()
+      expect(wrapper.find('[data-testid="remote-listbox"]').exists()).toBe(false)
+      await wrapper.find('[data-testid="remote-input"]').trigger('focus')
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(fetcher).toHaveBeenCalledTimes(1) // 0 重复 fetch
+      expect(wrapper.find('[data-testid="remote-loading"]').exists()).toBe(false) // 无加载闪烁
+      expect(wrapper.find('[data-testid="remote-option-t1"]').exists()).toBe(true) // 直接回放缓存
+      wrapper.unmount()
+    })
+
+    it('真关键字搜索不吃缓存：每次输入（含重复同一关键字）均实时请求', async () => {
+      const { wrapper, calls, fetcher } = mountSelect()
+      await wrapper.find('[data-testid="remote-input"]').trigger('focus')
+      await vi.advanceTimersByTimeAsync(0)
+      calls[0].resolve(POOL)
+      await vi.advanceTimersByTimeAsync(0)
+
+      // 第一次输入关键字：实时请求
+      await type(wrapper, '张')
+      await flush()
+      expect(fetcher).toHaveBeenCalledTimes(2)
+      expect(calls[1].keyword).toBe('张')
+      calls[1].resolve(POOL)
+      await vi.advanceTimersByTimeAsync(0)
+
+      // 清空回空关键字：吃首屏记忆，不新增请求
+      await type(wrapper, '')
+      await flush()
+      expect(fetcher).toHaveBeenCalledTimes(2)
+
+      // 再次输入同一关键字「张」：必须再次实时请求（真关键字永不缓存）
+      await type(wrapper, '张')
+      await flush()
+      expect(fetcher).toHaveBeenCalledTimes(3)
+      expect(calls[2].keyword).toBe('张')
+      wrapper.unmount()
+    })
+
+    it('记忆过期：超过 30s TTL 后再次打开重新拉取首屏候选', async () => {
+      const { wrapper, calls, fetcher } = mountSelect()
+      await wrapper.find('[data-testid="remote-input"]').trigger('focus')
+      await vi.advanceTimersByTimeAsync(0)
+      calls[0].resolve(POOL)
+      await vi.advanceTimersByTimeAsync(0)
+
+      await closeByOutsideClick()
+      // 推进刚超过 30s TTL 窗口（fake 时钟同步推进 Date.now）
+      await vi.advanceTimersByTimeAsync(30_001)
+
+      await wrapper.find('[data-testid="remote-input"]').trigger('focus')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fetcher).toHaveBeenCalledTimes(2)
+      expect(calls[1].keyword).toBe('')
+      wrapper.unmount()
+    })
+  })
 })
