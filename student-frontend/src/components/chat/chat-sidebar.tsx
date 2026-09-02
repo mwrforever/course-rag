@@ -10,7 +10,7 @@
  * → 会话搜索入口（M1 弹窗化）→ 会话历史列表（分页加载、当前会话激活态、
  * hover 行操作：重命名 / 删除）→ 底部用户区（渐变头像 + 显示名 + 退出）。
  * 折叠态 260px↔64px 宽度过渡（200ms），偏好经 localStorage 持久化（kimi 语义）；
- * 折叠态列表区收敛为「历史」入口：hover 弹浮层（最新 10 条 + 搜索入口，触屏退化 click 切换）。
+ * 折叠态列表区收敛为「历史」入口：hover 弹浮层（顶部搜索入口 + 最新 10 条，触屏退化 click 切换）。
  *
  * 会话管理（用户拍板：会话在侧边栏单一管理，二次确认契约）：
  * - 增：新建对话无确认（无破坏性、可撤销；流式进行中禁用）——/chat 同路由经
@@ -374,6 +374,17 @@ export function ChatSidebar() {
               data-testid="collapsed-history-popover"
               className="absolute left-full top-0 z-40 w-64 rounded-xl border border-border bg-surface p-2 shadow-lg"
             >
+              {/* 搜索入口（spec M1.1：浮层顶部）：打开统一搜索弹窗 */}
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryOpen(false);
+                  setSearchDialogOpen(true);
+                }}
+                className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                <MagnifyingGlass size={14} aria-hidden /> 搜索会话
+              </button>
               <p className="px-2 pb-1.5 text-xs text-subtle">最近会话</p>
               {recentSessions.map((session) => (
                 <Link
@@ -393,17 +404,6 @@ export function ChatSidebar() {
                   </span>
                 </Link>
               ))}
-              {/* 搜索入口：打开统一搜索弹窗 */}
-              <button
-                type="button"
-                onClick={() => {
-                  setHistoryOpen(false);
-                  setSearchDialogOpen(true);
-                }}
-                className="mt-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:ring-2 focus-visible:ring-brand"
-              >
-                <MagnifyingGlass size={14} aria-hidden /> 搜索会话
-              </button>
             </div>
           ) : null}
         </div>
