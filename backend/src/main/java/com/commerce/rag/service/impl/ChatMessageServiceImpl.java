@@ -15,9 +15,11 @@ import com.commerce.rag.record.RetrievalSource;
 import com.commerce.rag.service.IChatMessageService;
 import com.commerce.rag.service.IChatRunService;
 import com.commerce.rag.vo.ChatMessageVO;
+import com.commerce.rag.vo.ChatRunStatusVO;
 import com.commerce.rag.vo.StudentMessageVO;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -49,7 +51,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
     private final ChatSessionConverter chatSessionConverter;
     /** 学生转换器 —— 学生消息 VO 转换（toStudentMessageVO，sources/attachments JSON 解析） */
     private final StudentConverter studentConverter;
-    /** Run 服务 —— 两步查询第一步取 COMPLETED runId（宪法：跨 service 走对方接口，禁直操作他人 mapper） */
+    /** Run 服务 —— 两步查询第一步取终态 run 状态列表（宪法：跨 service 走对方接口，禁直操作他人 mapper） */
     private final IChatRunService chatRunService;
 
     /**
@@ -153,23 +155,31 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
      *
      * <p>执行流程：
      * <ol>
-     *   <li>M3 半截过滤第一步——经 IChatRunService 取会话内 COMPLETED runId 列表
-     *       （取消/异常 run 的 assistant 半截内容须剔除，与实时「已停止生成」语义一致）</li>
+     *   <li>M4 终态保留口径第一步——经 IChatRunService 取会话内终态（COMPLETED/CANCELLED/ERROR）
+     *       run 状态列表（取消/失败 run 的半截 assistant 内容全量保留 + 未完成徽标数据源；
+     *       QUEUED/ACTIVE run 行仍不进历史，进行中内容靠续流路径呈现，与 D3 一致）</li>
      *   <li>size 上限钳制 500（防御性，宪法查询必带分页）</li>
-     *   <li>M3 第二步——消息表过滤 {@code session_id=? and (role='USER' or run_id in (...))}，
+     *   <li>M4 第二步——消息表过滤 {@code session_id=? and (role='USER' or run_id in (...))}，
      *       空 runId 列表退化为仅查 USER 行（避免生成 IN () 非法 SQL）</li>
      *   <li>排序 created_at asc + seq asc 复合，升序 page=1 即最旧一页（聊天 UI 渲染方向）</li>
-     *   <li>entity 分页 → 学生 VO 分页（sources/attachments JSON 由转换器解析，entity 不出边界）</li>
+     *   <li>entity 分页 → 学生 VO 分页（sources/attachments JSON 由转换器解析，entity 不出边界；
+     *       run 终态/错误信息随终态行下发——前端徽标渲染依据）</li>
      * </ol>
      *
      * @param sessionId 会话 ID（调用方须先完成归属校验）
      * @param page      页码（1-based）
      * @param size      每页条数（超 500 钳制为 500）
-     * @return 学生消息 VO 分页（records 含解析后的 sources/attachments 数组）
+     * @return 学生消息 VO 分页（records 含解析后的 sources/attachments 数组与 run 终态字段）
      */
     public IPage<StudentMessageVO> findStudentMessagesBySession(Long sessionId, int page, int size) {
-        // M3 第一步：会话内 COMPLETED run 列表（经对方 service 接口，跨模块禁直操作 mapper）
-        List<Long> completedRunIds = chatRunService.findCompletedRunIds(sessionId);
+        // M4 第一步：会话内终态 run 状态列表（经对方 service 接口，跨模块禁直操作 mapper）
+        List<ChatRunStatusVO> visibleRuns = chatRunService.findVisibleRunStatuses(sessionId);
+        // 终态 runId 列表（消息表 run_id IN 过滤用）
+        List<Long> visibleRunIds =
+                visibleRuns.stream().map(ChatRunStatusVO::runId).toList();
+        // runId → 终态状态映射（VO 构造时随行下发 runStatus/errorMessage）
+        Map<Long, ChatRunStatusVO> statusByRunId =
+                visibleRuns.stream().collect(Collectors.toMap(ChatRunStatusVO::runId, v -> v));
         // size 上限钳制（一轮工具调用产出 5+ 行，防止无界拉取）
         Page<ChatMessage> pageObj = new Page<>(page, Math.min(size, MAX_PAGE_SIZE));
         LambdaQueryWrapper<ChatMessage> wrapper = Wrappers.<ChatMessage>lambdaQuery()
@@ -188,50 +198,58 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
                         ChatMessage::getSourcesJson,
                         ChatMessage::getAttachmentsJson)
                 .eq(ChatMessage::getSessionId, sessionId);
-        if (completedRunIds.isEmpty()) {
-            // 会话内无已完成 run：退化为仅保留 USER 行（用户提问痕迹完整，半截回答全剔除）
+        if (visibleRunIds.isEmpty()) {
+            // 会话内无终态 run：退化为仅保留 USER 行（用户提问痕迹完整，进行中内容靠续流呈现）
             wrapper.eq(ChatMessage::getRole, "USER");
         } else {
-            // M3 核心：USER 行 + COMPLETED run 的非 USER 行（OR 嵌套须包一层，避免与软删条件错误展开）
-            wrapper.and(w -> w.eq(ChatMessage::getRole, "USER").or().in(ChatMessage::getRunId, completedRunIds));
+            // M4 核心：USER 行 + 终态 run 的非 USER 行（OR 嵌套须包一层，避免与软删条件错误展开）
+            wrapper.and(w -> w.eq(ChatMessage::getRole, "USER").or().in(ChatMessage::getRunId, visibleRunIds));
         }
         // 复合排序：批内 created_at 相同时按 seq 定序（M5 同根因）
         wrapper.orderByAsc(ChatMessage::getCreatedAt).orderByAsc(ChatMessage::getSeq);
         IPage<ChatMessage> entityPage = messageMapper.selectPage(pageObj, wrapper);
         log.info(
-                "查询学生历史消息: sessionId={}, page={}, rows={}, completedRuns={}",
+                "查询学生历史消息: sessionId={}, page={}, rows={}, visibleRuns={}",
                 sessionId,
                 page,
                 entityPage.getRecords().size(),
-                completedRunIds.size());
+                visibleRunIds.size());
         // entity 分页 → 学生 VO 分页：分页元数据保持，records 经拆行/转换产出——
         // assistant 实体行先拆行还原事件序（消息实体化 2026-08-29），再逐 VO 携带
         // sources/attachments（解析自实体行 JSONB 列）；非实体行原样转换
         Page<StudentMessageVO> voPage =
                 new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
         voPage.setRecords(entityPage.getRecords().stream()
-                .flatMap(entity -> toStudentVos(entity).stream())
+                .flatMap(entity -> toStudentVos(entity, statusByRunId.get(entity.getRunId())).stream())
                 .collect(Collectors.toList()));
         return voPage;
     }
 
     /**
-     * 实体行 → 学生历史 VO 列表（消息实体化 2026-08-29，C 端历史消费面）。
+     * 实体行 → 学生历史 VO 列表（消息实体化 2026-08-29，C 端历史消费面；M4 终态随行下发）。
      *
      * <p>assistant 实体行经 {@link AssistantEntitySplitter} 拆行还原事件序行（thinking /
      * query_plan / TOOL_CALL / 正文），非实体行（增量行/存量行）原样单条——前端
      * history-adapter 消费的 VO 行类型与实体化前完全一致（零改动）；检索来源仅正文行
      * （messageType=null）携带（实体行取自实体行 sources_json、非实体行取自身行值——
      * 与实体化前「正文行落真实来源、其余行 []」口径一致），附件仅用户行携带。
+     * M4：run 终态/错误信息仅随终态 run 的非 USER 行下发（USER 行即使 runId 命中终态
+     * run 也恒 null——spec「仅终态行」语义，以 entity.getRole() 判定）。
      *
-     * @param entity 查询投影行（含 sources_json/attachments_json/thinking_stage）
+     * @param entity    查询投影行（含 sources_json/attachments_json/thinking_stage）
+     * @param runStatus 该行所属 run 的终态状态（statusByRunId 查得；非终态 run 行/USER 行为 null）
      * @return 学生历史 VO 列表（拆行 0 条时为空列表）
      */
-    private List<StudentMessageVO> toStudentVos(ChatMessage entity) {
+    private List<StudentMessageVO> toStudentVos(ChatMessage entity, ChatRunStatusVO runStatus) {
         List<ChatMessageVO> vos = AssistantEntitySplitter.splitEntity(chatSessionConverter.toMessageVO(entity));
         // sources/attachments 解析复用 StudentConverter 既有 @Named 解析（非法 JSON 兜底空列表）
         List<RetrievalSource> sources = studentConverter.parseSources(entity.getSourcesJson());
         List<AttachmentRecord> attachments = studentConverter.parseAttachments(entity.getAttachmentsJson());
+        // M4：run 终态仅非 USER 行下发（USER 行恒 null）；错误信息仅 ERROR 行下发（徽标 tooltip）
+        boolean nonUserRow = !"USER".equals(entity.getRole());
+        String voRunStatus = nonUserRow && runStatus != null ? runStatus.status() : null;
+        String voErrorMessage =
+                nonUserRow && runStatus != null && "ERROR".equals(runStatus.status()) ? runStatus.errorMessage() : null;
         return vos.stream()
                 .map(vo -> new StudentMessageVO(
                         vo.id(),
@@ -244,7 +262,9 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
                         vo.seq(),
                         vo.createdAt(),
                         vo.messageType() == null ? sources : List.of(),
-                        attachments))
+                        attachments,
+                        voRunStatus,
+                        voErrorMessage))
                 .toList();
     }
 

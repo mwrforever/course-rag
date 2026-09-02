@@ -16,6 +16,7 @@ import com.commerce.rag.record.AssistantMessageCapture;
 import com.commerce.rag.service.impl.ChatMessageServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
 import com.commerce.rag.vo.ChatMessageVO;
+import com.commerce.rag.vo.ChatRunStatusVO;
 import com.commerce.rag.vo.StudentMessageVO;
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -298,7 +299,8 @@ class ChatMessageServiceTest {
     @SuppressWarnings("unchecked")
     void findStudentMessagesBySession_ordersByCreatedAtAscSeqAsc() {
         // Given: 会话内有一个 COMPLETED run（含一行 understanding thinking 行）
-        when(chatRunService.findCompletedRunIds(1L)).thenReturn(List.of(10L));
+        when(chatRunService.findVisibleRunStatuses(1L))
+                .thenReturn(List.of(new ChatRunStatusVO(10L, "COMPLETED", null)));
         Page<ChatMessage> returned = new Page<>(1, 200);
         returned.setRecords(
                 List.of(studentRow(1L, "USER", null), thinkingRow(2L, 10L), studentRow(3L, "ASSISTANT", 10L)));
@@ -335,37 +337,42 @@ class ChatMessageServiceTest {
     }
 
     @Test
-    @DisplayName("findStudentMessagesBySession → 非 COMPLETED 的 run 仅保留 USER 行（M3 半截过滤）")
+    @DisplayName("findStudentMessagesBySession → CANCELLED/ERROR run 的半截行保留（M4 新口径），ACTIVE/QUEUED 行剔除")
     @SuppressWarnings("unchecked")
-    void findStudentMessagesBySession_filtersIncompleteRunRows() {
-        // Given: 会话内 run 10 已完成、run 20 已取消（CANCELLED run 的 assistant 行应被 SQL 过滤剔除）
-        when(chatRunService.findCompletedRunIds(1L)).thenReturn(List.of(10L));
+    void findStudentMessagesBySession_keepsCancelledAndErrorRows() {
+        // Given: 会话内三个终态 run（M4 三态口径）；ACTIVE run 9004 的行由库侧 IN 条件剔除
+        when(chatRunService.findVisibleRunStatuses(1L))
+                .thenReturn(List.of(
+                        new ChatRunStatusVO(9001L, "COMPLETED", null),
+                        new ChatRunStatusVO(9002L, "CANCELLED", null),
+                        new ChatRunStatusVO(9003L, "ERROR", "模型调用失败")));
         Page<ChatMessage> returned = new Page<>(1, 200);
-        returned.setRecords(List.of(studentRow(1L, "USER", null), studentRow(2L, "ASSISTANT", 10L)));
+        returned.setRecords(List.of(studentRow(1L, "USER", null), studentRow(2L, "ASSISTANT", 9001L)));
         returned.setTotal(2);
         when(messageMapper.selectPage(any(), any())).thenReturn(returned);
 
         messageService.findStudentMessagesBySession(1L, 1, 200);
 
-        // Then: 过滤条件为 role = 'USER' OR run_id IN (completedRunIds)（半截内容剔除下沉 SQL，无 N+1）
+        // Then: 过滤条件为 role = 'USER' OR run_id IN (三态终态 runId)（取消/失败半截内容保留，无 N+1）
         ArgumentCaptor<LambdaQueryWrapper<ChatMessage>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(messageMapper).selectPage(any(), captor.capture());
         String sqlSegment = captor.getValue().getSqlSegment();
         assertTrue(sqlSegment.contains("role"), "应含 role 条件: " + sqlSegment);
         assertTrue(sqlSegment.contains("run_id"), "应含 run_id IN 条件: " + sqlSegment);
-        assertTrue(sqlSegment.contains("OR"), "USER 行与 COMPLETED run 行应为 OR 关系: " + sqlSegment);
+        assertTrue(sqlSegment.contains("OR"), "USER 行与终态 run 行应为 OR 关系: " + sqlSegment);
         Collection<Object> params = captor.getValue().getParamNameValuePairs().values();
         assertTrue(params.contains("USER"), "参数应含 USER 角色值");
-        assertTrue(params.contains(10L), "参数应含已完成 runId");
-        assertFalse(params.contains(20L), "未完成 runId 不应进入查询参数");
+        assertTrue(params.contains(9001L), "参数应含 COMPLETED runId");
+        assertTrue(params.contains(9002L), "参数应含 CANCELLED runId（M4：取消 run 半截行保留）");
+        assertTrue(params.contains(9003L), "参数应含 ERROR runId（M4：失败 run 半截行保留）");
     }
 
     @Test
-    @DisplayName("findStudentMessagesBySession → 会话无 COMPLETED run 时退化为仅查 USER 行，size 超限钳制 500")
+    @DisplayName("findStudentMessagesBySession → 会话无终态 run 时退化为仅查 USER 行，size 超限钳制 500")
     @SuppressWarnings("unchecked")
-    void findStudentMessagesBySession_noCompletedRunAndSizeClamp() {
-        // Given: 会话内无 COMPLETED run（全部 run 被取消/异常）
-        when(chatRunService.findCompletedRunIds(1L)).thenReturn(List.of());
+    void findStudentMessagesBySession_noTerminalRunAndSizeClamp() {
+        // Given: 会话内无任何终态 run（全部 run 仍在 QUEUED/ACTIVE 进行中）
+        when(chatRunService.findVisibleRunStatuses(1L)).thenReturn(List.of());
         Page<ChatMessage> returned = new Page<>(1, 500);
         returned.setRecords(List.of(studentRow(1L, "USER", null)));
         returned.setTotal(1);
@@ -379,7 +386,7 @@ class ChatMessageServiceTest {
         assertEquals("USER", result.getRecords().get(0).role());
         assertEquals(500, result.getSize());
 
-        // Then: 空 completedRunIds 不生成 IN ()（非法 SQL），条件退化为 role = 'USER'
+        // Then: 空 visibleRunIds 不生成 IN ()（非法 SQL），条件退化为 role = 'USER'
         ArgumentCaptor<LambdaQueryWrapper<ChatMessage>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         ArgumentCaptor<Page<ChatMessage>> pageCaptor = ArgumentCaptor.forClass(Page.class);
         verify(messageMapper).selectPage(pageCaptor.capture(), captor.capture());
@@ -387,6 +394,45 @@ class ChatMessageServiceTest {
         String sqlSegment = captor.getValue().getSqlSegment();
         assertFalse(sqlSegment.contains("IN"), "空 runId 列表不应生成 IN 条件: " + sqlSegment);
         assertTrue(captor.getValue().getParamNameValuePairs().containsValue("USER"));
+    }
+
+    @Test
+    @DisplayName("StudentMessageVO → 终态行携带 runStatus；ERROR 行携带 errorMessage；USER 行两字段为 null")
+    void studentMessageVo_carriesRunStatusAndError() {
+        // Given: 会话内三态 run 各一行 assistant + 一行 USER（USER 行 runId 亦命中终态 run——
+        // 按 spec「仅终态行」语义，USER 行两字段应恒 null）
+        when(chatRunService.findVisibleRunStatuses(1L))
+                .thenReturn(List.of(
+                        new ChatRunStatusVO(9001L, "COMPLETED", null),
+                        new ChatRunStatusVO(9002L, "CANCELLED", null),
+                        new ChatRunStatusVO(9003L, "ERROR", "模型调用失败")));
+        Page<ChatMessage> returned = new Page<>(1, 200);
+        returned.setRecords(List.of(
+                studentRow(1L, "USER", 9001L),
+                studentRow(2L, "ASSISTANT", 9001L),
+                studentRow(3L, "ASSISTANT", 9002L),
+                studentRow(4L, "ASSISTANT", 9003L)));
+        returned.setTotal(4);
+        when(messageMapper.selectPage(any(), any())).thenReturn(returned);
+
+        IPage<StudentMessageVO> result = messageService.findStudentMessagesBySession(1L, 1, 200);
+
+        // Then: USER 行两字段恒 null（即使 runId 命中终态 run）
+        StudentMessageVO userRow = result.getRecords().get(0);
+        assertEquals("USER", userRow.role());
+        assertNull(userRow.runStatus());
+        assertNull(userRow.errorMessage());
+        // COMPLETED / CANCELLED 行携带 runStatus，无 errorMessage
+        StudentMessageVO completedRow = result.getRecords().get(1);
+        assertEquals("COMPLETED", completedRow.runStatus());
+        assertNull(completedRow.errorMessage());
+        StudentMessageVO cancelledRow = result.getRecords().get(2);
+        assertEquals("CANCELLED", cancelledRow.runStatus());
+        assertNull(cancelledRow.errorMessage());
+        // ERROR 行携带 runStatus + errorMessage（前端「生成失败」徽标 tooltip 数据源）
+        StudentMessageVO errorRow = result.getRecords().get(3);
+        assertEquals("ERROR", errorRow.runStatus());
+        assertEquals("模型调用失败", errorRow.errorMessage());
     }
 
     // ==================== 消息实体化：学生历史拆行（2026-08-29，C 端历史消费面） ====================
@@ -406,7 +452,8 @@ class ChatMessageServiceTest {
     void findStudentMessagesBySession_splitsAssistantEntityRows() {
         // Given: COMPLETED run 含 QU 实体行（拆 thinking+query_plan，实体 seq=2）与主 agent 实体行
         // （拆 thinking+正文，实体 seq=4——seq 按拆行末位倒推，与 persistMessages 赋位同源）
-        when(chatRunService.findCompletedRunIds(1L)).thenReturn(List.of(10L));
+        when(chatRunService.findVisibleRunStatuses(1L))
+                .thenReturn(List.of(new ChatRunStatusVO(10L, "COMPLETED", null)));
         ChatMessage quEntity = entityRow(
                 2L,
                 10L,

@@ -252,6 +252,25 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
             ) : null}
           </div>
         ) : null}
+        {/* M4 未完成徽标：历史回显侧 CANCELLED/ERROR 回答（实时链路已有后缀/横幅，此处历史侧补；
+            ERROR 徽标携带 errorMessage tooltip（取自 chat_run.error_message） */}
+        {message.endStatus === "CANCELLED" ? (
+          <span
+            data-testid="incomplete-badge-cancelled"
+            className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-subtle"
+          >
+            已停止生成
+          </span>
+        ) : null}
+        {message.endStatus === "ERROR" ? (
+          <span
+            data-testid="incomplete-badge-error"
+            title={message.errorMessage ?? undefined}
+            className="rounded-full bg-danger/10 px-2 py-0.5 text-xs text-danger"
+          >
+            生成失败
+          </span>
+        ) : null}
         {/* 操作栏：end 后浮现（200ms fade-in，transform/opacity，reduced-motion 静态） */}
         {message.endStatus !== null ? (
           <div className="animate-fade-in motion-reduce:animate-none">

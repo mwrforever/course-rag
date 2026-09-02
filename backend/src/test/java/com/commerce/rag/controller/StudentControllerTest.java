@@ -447,7 +447,8 @@ class StudentControllerTest {
                 LocalDateTime.of(2026, 8, 15, 9, 0));
     }
 
-    /** 构造带解析后 sources/attachments 的学生消息 VO（模拟 service 出参；thinkingStage 见时间线改版用例） */
+    /** 构造带解析后 sources/attachments 的学生消息 VO（模拟 service 出参；thinkingStage 见时间线改版用例；
+     *  M4 runStatus/errorMessage 仅终态行由 service 下发，controller 层测试构造用例不涉及——恒 null） */
     private StudentMessageVO studentMessageVO(Long id, String role) {
         return new StudentMessageVO(
                 id,
@@ -460,7 +461,9 @@ class StudentControllerTest {
                 1,
                 LocalDateTime.of(2026, 8, 15, 9, 1),
                 List.of(new RetrievalSource("101", "RAG 讲义", "Ch3 > 3.2", 0.87)),
-                List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1024L)));
+                List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1024L)),
+                null,
+                null);
     }
 
     @Test
@@ -480,7 +483,9 @@ class StudentControllerTest {
                 2,
                 LocalDateTime.of(2026, 8, 15, 9, 1),
                 List.of(),
-                List.of());
+                List.of(),
+                null,
+                null);
         paged.setRecords(List.of(studentMessageVO(1L, "USER"), studentMessageVO(2L, "ASSISTANT"), thinkingRow));
         paged.setTotal(3);
         when(messageService.findStudentMessagesBySession(1L, 1, 200)).thenReturn(paged);

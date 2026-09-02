@@ -9,8 +9,12 @@
  *   TOOL_CALL/TOOL_RESULT→时间轴工具节点（run 内按 toolCallId 配对，空串按到达顺序兜底）、
  *   sources→来源卡与时间轴来源节点（取最后一组非空，原位替换）、
  *   intentType 透传、messageId=正文行 id（J5 反馈来源）
- * - 三场景（Task 9 验收）：完整 run 重建 / 取消 run 过滤后仅剩用户行 / 旧数据无 stage 降级
+ * - 三场景（Task 9 验收）：完整 run 重建 / 首 chunk 前取消 run 仅剩用户行（M4 口径下
+ *   半截行已保留，此场景仅剩 USER 行 = 服务端仅落 USER 行的 run）/ 旧数据无 stage 降级
  * - 输入按 (createdAt, seq) 稳定排序；空列表 → []
+ * - M4（2026-09-01 问题修复）：终态三态口径——runStatus 随行透传（CANCELLED/ERROR 落
+ *   终态 + errorMessage 透传、旧数据无 runStatus 保持 COMPLETED 向后兼容）、
+ *   无内容行 run 剔除（不渲染空回答）
  */
 import { describe, expect, it } from "vitest";
 import { historyAdapter } from "./history-adapter";
@@ -89,7 +93,8 @@ describe("historyAdapter：基础映射", () => {
   });
 
   it("intentType 为 null（存量消息）原样透传 null", () => {
-    const [message] = historyAdapter([makeRow({ intentType: null })]);
+    // M4：无内容行的 run 会被剔除，故补正文行保住 run 占位（本用例焦点是 intentType 透传）
+    const [message] = historyAdapter([makeRow({ intentType: null, content: "回答" })]);
     expect(message.intentType).toBeNull();
   });
 
@@ -321,15 +326,18 @@ describe("historyAdapter：工具卡配对", () => {
   });
 
   it("无配对的 TOOL_RESULT 忽略（不产生错误工具卡，时间轴同样不建节点）", () => {
+    // M4：无内容行的 run 会被剔除，故补正文行保住 run 占位（本用例焦点是幽灵结果不建节点）
     const rows = [
       makeRow({
         seq: 2,
         messageType: "TOOL_RESULT",
         content: JSON.stringify({ toolCallId: "ghost", status: "success", output: {} }),
       }),
+      makeRow({ seq: 3, messageType: null, content: "回答" }),
     ];
     const [message] = historyAdapter(rows);
     expect(message.timeline).toEqual([]);
+    expect(message.text).toBe("回答");
   });
 });
 
@@ -507,9 +515,10 @@ describe("historyAdapter：时间轴重建三场景（Task 9 验收）", () => {
     ]);
   });
 
-  it("场景二 取消 run 过滤后：服务端剔除取消 run 的 assistant 行，仅剩 USER 行独立成条（无悬挂 AI 消息）", () => {
-    // 服务端契约（M3 半截过滤）：仅 COMPLETED run 的 assistant 行下发；取消 run 的
-    // USER 行保留——前端视角 = 一条用户消息后无 AI 消息，直接衔接下一 run
+  it("场景二 首 chunk 前取消的 run（服务端仅落 USER 行）：用户消息独立成条（无悬挂 AI 消息）", () => {
+    // M4 口径：取消/失败 run 的半截 assistant 行已保留（见 M4 describe 用例）；首 chunk 前
+    // 取消的 run 服务端仅落 USER 行（无 assistant 行、无 run 草稿）——前端视角 = 一条
+    // 用户消息后无 AI 消息，直接衔接下一 run
     const rows = [
       makeRow({ id: "u1", role: "USER", content: "被取消的问题", runId: "run-cancel", seq: 1 }),
       makeRow({ id: "u2", role: "USER", content: "下一个问题", runId: "run-ok", seq: 2 }),
@@ -623,5 +632,84 @@ describe("historyAdapter：时间轴重建三场景（Task 9 验收）", () => {
       { kind: "thinking", stage: "understanding", lines: ["理解"], ended: true },
       { kind: "thinking", stage: "generating", lines: ["生成继续生成"], ended: true },
     ]);
+  });
+});
+
+describe("historyAdapter：M4 终态徽标与空 run 剔除", () => {
+  it("CANCELLED run 行 → endStatus=CANCELLED（半截现场保留，徽标数据源）；USER 行不受影响", () => {
+    const rows = [
+      makeRow({ id: "u1", role: "USER", content: "被停止的问题", runId: "run-c", seq: 1 }),
+      makeRow({
+        id: "t1",
+        runId: "run-c",
+        seq: 2,
+        messageType: "thinking",
+        content: "思考到一半",
+        thinkingStage: "generating",
+      }),
+      makeRow({ id: "a1", runId: "run-c", seq: 3, content: "半截回答", runStatus: "CANCELLED" }),
+    ];
+    const [user, assistant] = historyAdapter(rows);
+    // USER 行两字段恒 null（后端契约：仅终态 run 的非 USER 行下发 runStatus）
+    expect(user.role).toBe("user");
+    expect(user.endStatus).toBeNull();
+    // CANCELLED run 的半截 thinking/正文全量还原，endStatus 落终态供徽标渲染
+    expect(assistant.endStatus).toBe("CANCELLED");
+    expect(assistant.text).toBe("半截回答");
+    expect(assistant.errorMessage).toBeNull();
+    expect(assistant.timeline).toEqual([
+      { kind: "thinking", stage: "generating", lines: ["思考到一半"], ended: true },
+    ]);
+  });
+
+  it("ERROR run 行 → endStatus=ERROR + errorMessage 透传（「生成失败」徽标 tooltip 数据源）", () => {
+    const rows = [
+      makeRow({ id: "u1", role: "USER", content: "失败的问题", runId: "run-e", seq: 1 }),
+      makeRow({
+        id: "a1",
+        runId: "run-e",
+        seq: 2,
+        content: "失败前的半截",
+        runStatus: "ERROR",
+        errorMessage: "模型调用失败",
+      }),
+    ];
+    const [, assistant] = historyAdapter(rows);
+    expect(assistant.endStatus).toBe("ERROR");
+    expect(assistant.errorMessage).toBe("模型调用失败");
+  });
+
+  it("旧数据无 runStatus 字段 → endStatus 保持 COMPLETED（向后兼容）", () => {
+    const rows = [makeRow({ id: "a1", content: "存量完整回答" })];
+    const [assistant] = historyAdapter(rows);
+    expect(assistant.endStatus).toBe("COMPLETED");
+    expect(assistant.errorMessage).toBeNull();
+  });
+
+  it("run 无任何内容行（仅 query_plan 等不回显行）→ 剔除空 AI 消息占位，USER 行独立成条", () => {
+    const rows = [
+      makeRow({ id: "u1", role: "USER", content: "问题", runId: "run-x", seq: 1 }),
+      makeRow({ id: "q1", runId: "run-x", seq: 2, messageType: "query_plan", content: "{}" }),
+      makeRow({ id: "u2", role: "USER", content: "下一问", runId: "run-y", seq: 3 }),
+      makeRow({ id: "a2", runId: "run-y", seq: 4, content: "正常回答" }),
+    ];
+    const messages = historyAdapter(rows);
+    // 空 run（run-x）不渲染空回答：output 不含该 runId 的 AI 消息
+    expect(messages.map((message) => message.id)).toEqual(["u1", "u2", "run-y"]);
+    expect(messages.map((message) => message.role)).toEqual(["user", "user", "assistant"]);
+  });
+
+  it("多个空 run 连续剔除不位移误删（降序 splice：后续 run 占位不受先删低位影响）", () => {
+    const rows = [
+      makeRow({ id: "u1", role: "USER", content: "问一", runId: "run-a", seq: 1 }),
+      makeRow({ id: "q1", runId: "run-a", seq: 2, messageType: "query_plan", content: "{}" }),
+      makeRow({ id: "u2", role: "USER", content: "问二", runId: "run-b", seq: 3 }),
+      makeRow({ id: "q2", runId: "run-b", seq: 4, messageType: "query_plan", content: "{}" }),
+      makeRow({ id: "u3", role: "USER", content: "问三", runId: "run-c", seq: 5 }),
+      makeRow({ id: "a3", runId: "run-c", seq: 6, content: "正常回答" }),
+    ];
+    const messages = historyAdapter(rows);
+    // 两个空 run（run-a/run-b）均剔除，末尾正常 run（run-c）占位不被误删
+    expect(messages.map((message) => message.id)).toEqual(["u1", "u2", "u3", "run-c"]);
   });
 });

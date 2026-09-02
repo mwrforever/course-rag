@@ -21,8 +21,10 @@
  *     （空串同一谓词按到达顺序配对，与实时 chatReducer 语义一致）；无配对忽略
  *   - 2026-08-30 对齐设计稿：query_plan 行不再建节点（重写正文/意图胶囊不回前端展示；
  *     数据仍落库供审计）
- * - 历史消息一律落 endStatus=COMPLETED（持久化即完成态；取消/异常 run 的 assistant
- *   行由服务端过滤不下发，前端天然只见完整 run）
+ * - M4（2026-09-01 问题修复）：终态三态口径——runStatus 随行透传，CANCELLED/ERROR run
+ *   的半截回答全量保留并落对应终态（「已停止生成 / 生成失败」徽标数据源），旧数据无
+ *   runStatus 保持 COMPLETED 向后兼容；run 无任何内容行（仅 query_plan 等不回显行）
+ *   剔除空 AI 消息占位（不渲染空回答）
  */
 import { STAGE_KEYS, type StreamMessage } from "@/hooks/use-chat-stream";
 import {
@@ -177,6 +179,10 @@ interface RunDraft {
   mainMessageId: string | null;
   /** 意图（存量消息可能为 null/unknown，原样透传由 FeedbackBar 过滤） */
   intentType: string | null;
+  /** 所属 run 终态（M4：COMPLETED/CANCELLED/ERROR，随行透传；旧行缺省 null → COMPLETED） */
+  runStatus: string | null;
+  /** run 错误信息（M4：仅 runStatus=ERROR 行有值，徽标 tooltip 文案） */
+  errorMessage: string | null;
 }
 
 /** USER 行 → 用户消息（正文 + 附件；历史态无本地 blob 预览，G8 由 MessageList 降级） */
@@ -231,6 +237,8 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
         sources: [],
         mainMessageId: null,
         intentType: row.intentType,
+        runStatus: null,
+        errorMessage: null,
       };
       drafts.set(runId, draft);
       // 首行出现位置插入 AI 消息占位（保证 user → assistant 交错顺序）
@@ -245,15 +253,21 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
         // 历史消息无 STAGE 事件可回放（阶段是瞬时进度，不落库）——时间轴由
         // thinking/tool/sources 行重建，阶段节点天然缺席（query_plan 行对齐设计稿不回显）
         timeline: [],
+        // 占位默认 COMPLETED，本轮行处理末尾的同步块按 runStatus 落实际终态（M4）
         endStatus: "COMPLETED",
         messageId: null,
         intentType: row.intentType,
+        errorMessage: null,
       });
       indices.set(runId, output.length - 1);
     } else if (draft.intentType === null) {
       // 后续行携带意图时补齐（存量行可能只有部分行有 intentType）
       draft.intentType = row.intentType;
     }
+    // M4：历史回显按行携带的 runStatus 落终态（同 run 各行同值幂等覆盖；
+    // 旧数据无 runStatus → null，同步块兜底 COMPLETED 向后兼容）
+    draft.runStatus = row.runStatus ?? null;
+    draft.errorMessage = row.errorMessage ?? null;
 
     switch (row.messageType) {
       case "thinking":
@@ -315,6 +329,31 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
     target.timeline = draft.timeline;
     target.messageId = draft.mainMessageId;
     target.intentType = draft.intentType;
+    // M4：按 runStatus 落终态（CANCELLED/ERROR 半截现场保留 + 徽标数据源；
+    // 旧数据无 runStatus → null 时保持 COMPLETED 向后兼容）
+    const terminalStatus: StreamMessage["endStatus"] =
+      draft.runStatus === "CANCELLED" || draft.runStatus === "ERROR"
+        ? draft.runStatus
+        : "COMPLETED";
+    target.endStatus = terminalStatus;
+    // M4：错误信息仅 ERROR 终态透传（「生成失败」徽标 tooltip）；其余终态恒 null
+    target.errorMessage = draft.runStatus === "ERROR" ? draft.errorMessage : null;
+  }
+
+  // M4：无内容行（textParts/timeline/sources 全空）的终态 run 不渲染空回答
+  // （首 chunk 前失败的 run 服务端仅落 USER 行——本就无 run 草稿；此处防御
+  //  「仅 query_plan 等不回显行」导致的空占位）
+  const emptyRunIndices: number[] = [];
+  for (const [runId, index] of indices) {
+    const draft = drafts.get(runId);
+    if (!draft) continue;
+    const hasContent =
+      draft.textParts.join("").length > 0 || draft.timeline.length > 0 || draft.sources.length > 0;
+    if (!hasContent) emptyRunIndices.push(index);
+  }
+  // 按下标降序 splice：先删高位占位，后续低位下标不发生位移，避免误删
+  for (const index of emptyRunIndices.sort((a, b) => b - a)) {
+    output.splice(index, 1);
   }
   return output;
 }

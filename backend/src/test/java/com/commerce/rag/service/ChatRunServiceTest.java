@@ -15,6 +15,7 @@ import com.commerce.rag.mapper.ChatRunMapper;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.service.impl.ChatRunServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.ChatRunStatusVO;
 import com.commerce.rag.vo.ChatRunVO;
 import java.lang.reflect.Field;
 import java.time.LocalDateTime;
@@ -264,30 +265,65 @@ class ChatRunServiceTest {
     }
 
     @Test
-    @DisplayName("findCompletedRunIds → 查会话内 COMPLETED run 的 ID 列表（按需取列，R1 历史消息两步查询第一步）")
+    @DisplayName("findVisibleRunStatuses → 返回 COMPLETED/CANCELLED/ERROR 三态 run（含 errorMessage），QUEUED/ACTIVE 不返回")
     @SuppressWarnings("unchecked")
-    void findCompletedRunIds_returnsCompletedRunIdsOnly() {
+    void findVisibleRunStatuses_returnsTerminalRunsOnly() {
+        // Given: SQL 过滤后仅返回三态终态 run（QUEUED/ACTIVE 被 IN 条件挡在库侧，不进历史）
         ChatRun completed = new ChatRun();
-        completed.setId(10L);
+        completed.setId(9001L);
         completed.setStatus("COMPLETED");
-        when(runMapper.selectList(any())).thenReturn(List.of(completed));
+        ChatRun cancelled = new ChatRun();
+        cancelled.setId(9002L);
+        cancelled.setStatus("CANCELLED");
+        ChatRun errored = new ChatRun();
+        errored.setId(9003L);
+        errored.setStatus("ERROR");
+        errored.setErrorMessage("模型调用超时");
+        when(runMapper.selectList(any())).thenReturn(List.of(completed, cancelled, errored));
 
-        List<Long> runIds = runService.findCompletedRunIds(1L);
+        List<ChatRunStatusVO> statuses = runService.findVisibleRunStatuses(1L);
 
-        // Then: 仅返回 runId 列表（供消息表 run_id IN 过滤，剔除取消/异常 run 的半截内容）
-        assertEquals(List.of(10L), runIds);
+        // Then: 三态 run 均返回且字段透传（M4：取消/失败半截回答全量保留 + 徽标数据源）
+        assertEquals(
+                List.of(
+                        new ChatRunStatusVO(9001L, "COMPLETED", null),
+                        new ChatRunStatusVO(9002L, "CANCELLED", null),
+                        new ChatRunStatusVO(9003L, "ERROR", "模型调用超时")),
+                statuses);
 
-        // Then: 查询条件为 session_id + status=COMPLETED，投影仅 id 列
+        // Then: 查询条件为 session_id + status IN (COMPLETED,CANCELLED,ERROR)，投影仅三列
+        // （徽标数据源不取 meta_json 等大字段）
         ArgumentCaptor<LambdaQueryWrapper<ChatRun>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(runMapper).selectList(captor.capture());
         LambdaQueryWrapper<ChatRun> wrapper = captor.getValue();
         String sqlSegment = wrapper.getSqlSegment();
         assertTrue(sqlSegment.contains("session_id"), "应按会话过滤: " + sqlSegment);
-        assertTrue(sqlSegment.contains("status"), "应按状态过滤: " + sqlSegment);
-        assertTrue(wrapper.getSqlSelect().contains("id"), "投影应仅取 id 列: " + wrapper.getSqlSelect());
-        assertFalse(wrapper.getSqlSelect().contains("meta_json"), "不应取 meta_json 等大字段");
-        assertTrue(wrapper.getParamNameValuePairs().containsValue("COMPLETED"), "状态参数应为 COMPLETED");
+        assertTrue(sqlSegment.toUpperCase().contains("IN"), "终态口径应为 IN (COMPLETED,CANCELLED,ERROR): " + sqlSegment);
+        String sqlSelect = wrapper.getSqlSelect();
+        assertTrue(sqlSelect.contains("id"), "投影应含 id 列: " + sqlSelect);
+        assertTrue(sqlSelect.contains("status"), "投影应含 status 列: " + sqlSelect);
+        assertTrue(sqlSelect.contains("error_message"), "投影应含 error_message 列: " + sqlSelect);
+        assertFalse(sqlSelect.contains("meta_json"), "不应取 meta_json 等大字段");
+        Collection<Object> params = wrapper.getParamNameValuePairs().values();
+        assertTrue(params.contains("COMPLETED"), "终态集合应含 COMPLETED");
+        assertTrue(params.contains("CANCELLED"), "终态集合应含 CANCELLED（M4 取消半截回答保留）");
+        assertTrue(params.contains("ERROR"), "终态集合应含 ERROR（M4 失败半截回答保留）");
+        assertFalse(params.contains("QUEUED"), "QUEUED 为进行中状态不应进入口径（D3：进行中靠续流呈现）");
+        assertFalse(params.contains("ACTIVE"), "ACTIVE 为进行中状态不应进入口径（D3：进行中靠续流呈现）");
         assertTrue(wrapper.getParamNameValuePairs().containsValue(1L), "会话参数应为入参 sessionId");
+    }
+
+    @Test
+    @DisplayName("findVisibleRunStatuses → 无终态 run 返回空列表（调用方退化为仅 USER 行）")
+    void findVisibleRunStatuses_empty() {
+        // Given: 会话内全部 run 仍在 QUEUED/ACTIVE 进行中（无终态行返回）
+        when(runMapper.selectList(any())).thenReturn(List.of());
+
+        List<ChatRunStatusVO> statuses = runService.findVisibleRunStatuses(1L);
+
+        // Then: 返回空列表而非 null，调用方据此退化为仅查 USER 行
+        assertNotNull(statuses);
+        assertTrue(statuses.isEmpty());
     }
 
     // ==================== collectUniqueAttachments 后续轮次附件重建聚合（Task 11，spec §5.1） ====================

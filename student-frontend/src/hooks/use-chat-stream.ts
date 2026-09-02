@@ -100,6 +100,11 @@ export interface StreamMessage {
    * 实时流消息无此字段，FeedbackBar 按 hasSources 推断）
    */
   intentType?: string | null;
+  /**
+   * 历史回显侧 run 错误信息（M4：ERROR 徽标 tooltip 文案来源，取自 chat_run.error_message；
+   * 实时流为 null——实时错误走页面横幅 error 分级，不落在消息上）
+   */
+  errorMessage?: string | null;
 }
 
 /** 对话流整体状态（useChatStream 暴露给页面的全部状态面） */

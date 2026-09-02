@@ -6,6 +6,7 @@
  * - 历史消息拉取 getSessionMessages(sessionId, 1, 200) → historyAdapter 回显：
  *   用户附件 chips 无缩略图（G8 降级图标）、思考卡、来源卡、工具卡、正文、反馈操作栏
  * - 历史加载中 → 骨架；加载失败 → 横幅 + 重试闭环；空历史 → 「继续提问」空态
+ * - M4 历史徽标：CANCELLED/ERROR run 半截回答回显未完成徽标（+ errorMessage tooltip）
  * - 输入发送走当前会话：display = 历史 + 新流消息
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -277,6 +278,66 @@ describe("历史会话页：历史回显渲染", () => {
         intentType: "chat",
       });
     });
+  });
+
+  it("M4 历史徽标：CANCELLED run 半截回答回显「已停止生成」徽标（失败现场保留）", async () => {
+    apiMock.getSessionMessages.mockResolvedValue({
+      records: [
+        makeHistoryRow({
+          id: "u-1",
+          role: "USER",
+          content: "被停止的问题",
+          runId: "hrun-cancel",
+          seq: 1,
+        }),
+        makeHistoryRow({
+          id: "a-1",
+          runId: "hrun-cancel",
+          seq: 2,
+          content: "半截回答",
+          runStatus: "CANCELLED",
+        }),
+      ],
+      total: "2",
+      page: 1,
+      size: 200,
+    });
+    renderPage();
+    // 半截正文回显 + 未完成徽标在场（历史侧 CANCELLED 补实时「已停止生成」同款文案）
+    expect(await screen.findByTestId("markdown-view")).toHaveTextContent("半截回答");
+    expect(screen.getByTestId("incomplete-badge-cancelled")).toBeInTheDocument();
+    expect(screen.getByTestId("incomplete-badge-cancelled")).toHaveTextContent("已停止生成");
+    expect(screen.queryByTestId("incomplete-badge-error")).not.toBeInTheDocument();
+  });
+
+  it("M4 历史徽标：ERROR run 回显「生成失败」徽标 + errorMessage tooltip", async () => {
+    apiMock.getSessionMessages.mockResolvedValue({
+      records: [
+        makeHistoryRow({
+          id: "u-1",
+          role: "USER",
+          content: "失败的问题",
+          runId: "hrun-err",
+          seq: 1,
+        }),
+        makeHistoryRow({
+          id: "a-1",
+          runId: "hrun-err",
+          seq: 2,
+          content: "失败前的半截",
+          runStatus: "ERROR",
+          errorMessage: "模型调用失败",
+        }),
+      ],
+      total: "2",
+      page: 1,
+      size: 200,
+    });
+    renderPage();
+    expect(await screen.findByTestId("incomplete-badge-error")).toHaveTextContent("生成失败");
+    // 错误文案经 title 属性透出（tooltip）
+    expect(screen.getByTestId("incomplete-badge-error")).toHaveAttribute("title", "模型调用失败");
+    expect(screen.queryByTestId("incomplete-badge-cancelled")).not.toBeInTheDocument();
   });
 
   it("输入发送走当前会话：display = 历史 + 新流消息（新提问追加其后）", async () => {

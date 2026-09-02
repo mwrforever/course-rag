@@ -9,6 +9,7 @@ import com.commerce.rag.exception.ConcurrentRunException;
 import com.commerce.rag.mapper.ChatRunMapper;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.service.IChatRunService;
+import com.commerce.rag.vo.ChatRunStatusVO;
 import com.commerce.rag.vo.ChatRunVO;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -233,26 +234,26 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
     }
 
     /**
-     * 查会话内已完成 run 的 ID 列表（R1 学生历史消息两步查询第一步）
+     * 查会话内可见（终态）run 的状态列表（M4 历史回显两步查询第一步）
      *
-     * <p>M3 处置：历史回显剔除非 COMPLETED run 的半截内容——调用方
-     * （ChatMessageServiceImpl.findStudentMessagesBySession）以本列表做
-     * run_id IN 过滤，仅保留 USER 行与 COMPLETED run 的非 USER 行。
+     * <p>M4 终态保留口径（D4）：历史回显保留 COMPLETED/CANCELLED/ERROR 三态 run 的
+     * 非 USER 行（取消/失败半截回答全量保留 + 未完成徽标数据源）；QUEUED/ACTIVE run
+     * 行仍不进历史（进行中内容靠续流路径呈现，与 D3 一致）。
      * 与 findStaleActive 同款 runMapper + Wrappers 静态工厂写法（可测性：
-     * 纯 Mockito 可 mock selectList 验证条件），按需取列仅 id。
+     * 纯 Mockito 可 mock selectList 验证条件），按需取列仅 id/status/error_message。
      *
      * @param sessionId 会话 ID（须已通过归属校验）
-     * @return COMPLETED 状态的 runId 列表（无则为空列表，调用方退化为仅查 USER 行）
+     * @return 终态 run 状态列表（runId/status/errorMessage 三列投影；无则空列表，调用方退化为仅查 USER 行）
      */
-    public List<Long> findCompletedRunIds(Long sessionId) {
-        // 两步查询第一步：仅取 COMPLETED run 的 id 列（不取 meta_json 等大字段）
+    public List<ChatRunStatusVO> findVisibleRunStatuses(Long sessionId) {
+        // 两步查询第一步：仅取终态 run 的 id/status/error_message 三列（不取 meta_json 等大字段）
         return runMapper
                 .selectList(Wrappers.<ChatRun>lambdaQuery()
-                        .select(ChatRun::getId)
+                        .select(ChatRun::getId, ChatRun::getStatus, ChatRun::getErrorMessage)
                         .eq(ChatRun::getSessionId, sessionId)
-                        .eq(ChatRun::getStatus, "COMPLETED"))
+                        .in(ChatRun::getStatus, "COMPLETED", "CANCELLED", "ERROR"))
                 .stream()
-                .map(ChatRun::getId)
+                .map(run -> new ChatRunStatusVO(run.getId(), run.getStatus(), run.getErrorMessage()))
                 .toList();
     }
 

@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.record.AttachmentRecord;
+import com.commerce.rag.vo.ChatRunStatusVO;
 import com.commerce.rag.vo.ChatRunVO;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -93,16 +94,16 @@ public interface IChatRunService extends IService<ChatRun> {
     List<AttachmentRecord> findRecentAttachments(Long sessionId, Long excludeRunId, int limit);
 
     /**
-     * 查会话内已完成 run 的 ID 列表（R1 学生历史消息两步查询第一步）
+     * 查会话内可见（终态）run 的状态列表（M4 历史回显两步查询第一步）
      *
-     * <p>M3 处置：历史回显仅保留 USER 行与 COMPLETED run 的非 USER 行，
-     * 取消/异常 run 的半截 assistant 内容（thinking/工具行/正文）剔除，
-     * 与实时对话「已停止生成」标注语义一致。
+     * <p>D4 口径：历史回显保留 COMPLETED/CANCELLED/ERROR 三态 run 的非 USER 行
+     * （取消/失败半截回答全量保留 + 未完成徽标）；QUEUED/ACTIVE run 行仍不进历史
+     * （进行中内容靠续流路径呈现，与 D3 一致）。
      *
      * @param sessionId 会话 ID（须已通过归属校验）
-     * @return COMPLETED 状态的 runId 列表（无则为空列表）
+     * @return 终态 run 状态列表（runId/status/errorMessage 三列投影；无则空列表）
      */
-    List<Long> findCompletedRunIds(Long sessionId);
+    List<ChatRunStatusVO> findVisibleRunStatuses(Long sessionId);
 
     /**
      * 查询滞留的 ACTIVE/QUEUED run（M-8 巡检 + B2-3 QUEUED 扩展）
