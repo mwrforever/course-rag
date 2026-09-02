@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.auth.AuthSessionService;
 import com.commerce.rag.auth.DeviceKickService;
 import com.commerce.rag.auth.TokenService;
@@ -18,6 +19,7 @@ import com.commerce.rag.properties.AuthProperties;
 import com.commerce.rag.record.AuthUserView;
 import com.commerce.rag.service.IRegisterService;
 import com.commerce.rag.service.ISysUserService;
+import com.commerce.rag.vo.MeVO;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.Cookie;
@@ -389,5 +391,47 @@ class AuthControllerTest {
                 .addToBlacklist(anyString(), anyString(), anyLong(), anyLong(), anyString(), any());
         verify(authSessionService, never())
                 .updateLoginRecordOnRefresh(anyLong(), anyString(), anyString(), anyString());
+    }
+
+    // ==================== me() 测试 ====================
+
+    @Test
+    @DisplayName("me → 拦截器已注入 userId 时返回三字段（userId/role/displayName，取库内最新值）")
+    void me_withUserId_returnsIdentity() {
+        when(httpRequest.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(1L);
+        when(sysUserService.findById(1L))
+                .thenReturn(new UserDTO(1L, "teacher01", "张老师", "TEACHER", "ACTIVE", LocalDateTime.now()));
+
+        ApiResponse<MeVO> response = authController.me(httpRequest);
+
+        assertNotNull(response);
+        assertEquals(0, response.code());
+        assertEquals(1L, response.data().userId());
+        assertEquals("TEACHER", response.data().role());
+        assertEquals("张老师", response.data().displayName());
+    }
+
+    @Test
+    @DisplayName("me → 无认证上下文（未登录）返回 401")
+    void me_withoutUserId_throws401() {
+        when(httpRequest.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(null);
+
+        BizException ex = assertThrows(BizException.class, () -> authController.me(httpRequest));
+
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getErrorCode());
+        // 短路：未查库（未登录请求不得触发数据库访问）
+        verify(sysUserService, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("me → 用户已禁用/删除：按未登录处理返回 401（不给禁用账户恢复身份，对齐 B1-2 语义）")
+    void me_disabledUser_throws401() {
+        when(httpRequest.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(1L);
+        when(sysUserService.findById(1L))
+                .thenReturn(new UserDTO(1L, "teacher01", "张老师", "TEACHER", "DISABLED", LocalDateTime.now()));
+
+        BizException ex = assertThrows(BizException.class, () -> authController.me(httpRequest));
+
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getErrorCode());
     }
 }

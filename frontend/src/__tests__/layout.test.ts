@@ -11,8 +11,9 @@ import AdminLayout, {
   navGroups,
   resolvePageKey,
 } from '@/layouts/AdminLayout.vue'
+import { authApi } from '@/lib/api'
 import { createAppRouter } from '@/router'
-import { useAuthStore } from '@/stores/auth'
+import { REFRESH_TOKEN_KEY, useAuthStore } from '@/stores/auth'
 
 import type { UserRole } from '@/lib/types'
 
@@ -27,6 +28,7 @@ import type { UserRole } from '@/lib/types'
  *    视口断点由 CSS 承载，jsdom 不应用样式故按钮可直接交互）
  * 4. 顶栏面包屑（分组/页面标题）与用户下拉（N2 DropdownMenu：Esc/外点关闭 + 退出登录）
  * 5. 路由切换过渡容器与内容区统一限宽
+ * 6. 启动恢复（M10）：refreshToken 在、displayName 空 → 首个导航前 fetchMe 恢复顶栏用户名与角色分组
  */
 
 /** 课程接口调用记录（vi.fn 供「壳不重挂载」回归用例断言取数次数） */
@@ -38,6 +40,10 @@ const courseApiMock = vi.hoisted(() => ({
 /** 仪表盘接口 mock：稳定数据（避免真实 axios 网络调用） */
 vi.mock('@/lib/api', () => ({
   ApiError: class ApiError extends Error {},
+  authApi: {
+    // me 端点 mock（M10 启动恢复）：默认无实现，启动恢复用例内自行 mockResolvedValue
+    me: vi.fn(),
+  },
   dashboardApi: {
     stats: () =>
       Promise.resolve({
@@ -491,6 +497,37 @@ describe('AdminLayout 渲染（白色侧栏 · Edukors 形态）', () => {
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('login'))
     expect(logoutSpy).toHaveBeenCalledTimes(1)
     expect(store.isAuthenticated).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('启动恢复（M10）：refreshToken 在、displayName 空 → 首个导航前 fetchMe 恢复顶栏用户名与角色导航分组', async () => {
+    // 刷新后场景：RT 在 sessionStorage、AT 与身份字段内存态全空——修复前顶栏恒「未登录」、
+    // role=null 按最低权限渲染（超管分组不可见）；启动恢复后两处均正常
+    sessionStorage.setItem(REFRESH_TOKEN_KEY, 'rt-1')
+    vi.mocked(authApi.me).mockResolvedValue({
+      userId: '1001',
+      role: 'SUPER_ADMIN',
+      displayName: '李超管',
+    })
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = createAppRouter()
+
+    // 首个导航触发启动恢复：守卫 await fetchMe（RT 在且 displayName 空时发请求）
+    await router.push('/dashboard')
+    await router.isReady()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const Shell = defineComponent(() => () => h(RouterView))
+    const wrapper = mount(Shell, {
+      global: { plugins: [pinia, router, [VueQueryPlugin, { queryClient }]] },
+    })
+
+    // 顶栏用户名恢复（不再显示「未登录」）
+    await vi.waitFor(() => expect(wrapper.text()).toContain('李超管'))
+    expect(wrapper.text()).not.toContain('未登录')
+    // 角色恢复后超管导航分组正常（role=null 按最低权限渲染的问题一并覆盖）
+    await vi.waitFor(() => expect(wrapper.text()).toContain('审计'))
+    expect(wrapper.text()).toContain('教师管理')
     wrapper.unmount()
   })
 })
