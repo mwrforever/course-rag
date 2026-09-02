@@ -185,6 +185,8 @@ class EnrollmentServiceTest {
 
         verify(courseService).checkOwnership(1L, 7L, false);
         verify(enrollmentMapper).update(isNull(), any());
+        // M9：退课变更选课数据，公开课程缓存区失效
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test
