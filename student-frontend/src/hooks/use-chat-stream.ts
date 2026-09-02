@@ -961,12 +961,18 @@ export function useChatStream(initialSessionId: string | null): {
   }
 
   /**
-   * 取消当前 run：POST /student/chat/{runId}/cancel（尽力而为）。
-   * 终态后再取消后端 409、网络失败等一律静默：流仍会走 end 终态收尾，不污染状态
+   * 取消当前 run（M2 点击即停）：先本地立即收尾（不等后端 end 事件）——
+   * 置 CANCELLED 终态 + 追加「已停止生成」后缀 + 解除流式（输入框恢复可用），
+   * 随后照常 POST cancel（后端 dispose 图流 + 增量行落库 + run 置 CANCELLED）。
+   * 后端 end CANCELLED 到达时被 isTerminal 终态幂等守卫自然消化（不双收尾）。
+   * 取消请求 409（run 恰已终态）/网络失败一律静默：后端终态与历史回显兜底。
    */
   async function cancel(): Promise<void> {
     const runId = stateRef.current.runId;
     if (!runId) return;
+    // 本地立即终态收尾（M2：不等后端 end，后端 dispose/落库异步进行）；
+    // 已终态时 reducer 幂等守卫直接忽略（终态后再点停止不染状态）
+    dispatch({ type: "end", status: "CANCELLED" });
     try {
       await cancelRun(runId);
     } catch {

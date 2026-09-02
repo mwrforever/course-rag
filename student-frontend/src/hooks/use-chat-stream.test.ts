@@ -1358,7 +1358,7 @@ describe("useChatStream 集成", () => {
     expect(st3.error).toBeNull();
   });
 
-  it("cancel：POST runId/cancel 后流以 end CANCELLED 收尾（停止后缀）；终态后再 cancel 的 409 静默", async () => {
+  it("cancel（M2 点击即停）：本地立即终态收尾（不等后端 end）——streaming=false、消息置 CANCELLED+停止后缀、随后照常发 cancelRun；后端 end 迟到幂等消化", async () => {
     const ctrl = controllableSse();
     let cancelCalls = 0;
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1383,22 +1383,29 @@ describe("useChatStream 集成", () => {
     });
     await waitFor(() => expect(result.current.state.runId).toBe("run-1"));
 
+    // When：点击停止——本地立即收尾，不等后端 end 事件
     await act(async () => {
       await result.current.cancel();
     });
+
+    // Then：本地终态即刻落位（streaming=false + CANCELLED + 停止后缀 + 输入框恢复依据）
     expect(cancelCalls).toBe(1);
     const cancelCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/cancel"))!;
     expect(String(cancelCall[0])).toBe("/api/v1/student/chat/run-1/cancel");
     expect((cancelCall[1] as RequestInit).method).toBe("POST");
+    expect(result.current.state.streaming).toBe(false);
+    expect(result.current.state.endedStatus).toBe("CANCELLED");
+    expect(result.current.state.messages[1].endStatus).toBe("CANCELLED");
+    expect(result.current.state.messages[1].text).toBe(`部分回答${STOPPED_SUFFIX}`);
+    expect(result.current.state.error).toBeNull();
 
-    // 服务端侧流继续，直到 end CANCELLED
+    // 后端 end CANCELLED 迟到到达：终态幂等消化（后缀不重复追加、状态不二次变更）
     await act(async () => {
       ctrl.push(frame(3, "end", J({ runId: "run-1", status: "CANCELLED" })));
     });
-    await waitFor(() => expect(result.current.state.endedStatus).toBe("CANCELLED"));
+    expect(result.current.state.endedStatus).toBe("CANCELLED");
     expect(result.current.state.messages[1].text).toBe(`部分回答${STOPPED_SUFFIX}`);
     expect(result.current.state.streaming).toBe(false);
-    expect(result.current.state.error).toBeNull();
 
     // 终态后再 cancel：409 静默（不抛、不染状态）
     await act(async () => {
@@ -1406,6 +1413,7 @@ describe("useChatStream 集成", () => {
     });
     expect(cancelCalls).toBe(2);
     expect(result.current.state.endedStatus).toBe("CANCELLED");
+    expect(result.current.state.streaming).toBe(false);
   });
 
   it("cancel 无 runId（未收到 metadata）不发任何请求", async () => {
