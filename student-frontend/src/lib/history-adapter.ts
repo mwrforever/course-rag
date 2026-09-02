@@ -222,8 +222,9 @@ export function historyAdapter(messages: StudentMessage[]): StreamMessage[] {
 
   for (const row of rows) {
     if (row.role !== "ASSISTANT") {
-      // USER（或未知角色）行按用户消息原样输出（取消 run 的 assistant 行由服务端
-      // 过滤不下发——USER 行可能无后续 AI 消息，独立成条不挂时间轴）
+      // USER（或未知角色）行按用户消息原样输出——M4 起服务端全量下发历史行（含取消/
+      // 错误 run 的 assistant 行），USER 行后无 AI 消息的真实原因是取消/失败发生在首
+      // chunk 前仅落了 USER 行；此时 USER 独立成条、不挂时间轴
       output.push(toUserMessage(row));
       continue;
     }
