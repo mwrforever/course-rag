@@ -13,6 +13,8 @@ import com.commerce.rag.entity.CourseInfo;
 import com.commerce.rag.service.ICourseService;
 import com.commerce.rag.service.IDashboardService;
 import com.commerce.rag.test.IntegrationTestBase;
+import com.commerce.rag.vo.PublicCourseDetailVO;
+import java.time.LocalDate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -59,11 +61,13 @@ class CacheIntegrationTest extends IntegrationTestBase {
     private PublicCourseCacheEvictor publicCourseCacheEvictor;
 
     /**
-     * 本类用例前置：清理课程表与公开课程缓存键（基类只清 chat/auth 相关表，
-     * course_info 残留会干扰公开列表断言；JUnit 5 保证父类 @BeforeEach 先于本方法执行）。
+     * 本类用例前置：清理课程/排期表与公开课程缓存键（基类只清 chat/auth 相关表，
+     * course_info 残留会干扰公开列表断言，course_schedule 残留会干扰详情排期断言；
+     * JUnit 5 保证父类 @BeforeEach 先于本方法执行）。
      */
     @BeforeEach
     void cleanCourseFixture() {
+        jdbcTemplate.update("DELETE FROM course_schedule");
         jdbcTemplate.update("DELETE FROM course_info");
         publicCourseCacheEvictor.evictAll();
     }
@@ -197,5 +201,43 @@ class CacheIntegrationTest extends IntegrationTestBase {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("公开列表应包含课程: " + courseId))
                 .title();
+    }
+
+    @Test
+    @DisplayName("M9 publicCourses 详情缓存：首查按 courseId 落键（LocalDate 排期 JSR310 往返）→ 二查命中")
+    void publicCourseDetailCache_keyedHitWithLocalDateRoundTrip() {
+        // 数据准备：课程 + 一期排期（排期含 LocalDate 字段，验证 JSR310 序列化往返无损）
+        Long courseId = 990003L;
+        Long ownerId = 990004L;
+        jdbcTemplate.update(
+                "INSERT INTO course_info (id, title, rating, status, created_by, deleted)"
+                        + " VALUES (?, ?, 4.5, 'ACTIVE', ?, 0)",
+                courseId,
+                "M9-详情-初始标题",
+                ownerId);
+        jdbcTemplate.update(
+                "INSERT INTO course_schedule (id, course_id, start_date, end_date, schedule_type, location,"
+                        + " capacity, enrolled, status, created_by, deleted)"
+                        + " VALUES (?, ?, ?, ?, 'ONLINE', '线上直播', 200, 35, 'UPCOMING', ?, 0)",
+                990005L,
+                courseId,
+                java.sql.Date.valueOf(LocalDate.of(2026, 9, 1)),
+                java.sql.Date.valueOf(LocalDate.of(2026, 12, 20)),
+                ownerId);
+
+        // 第一段：首查 → DB 命中落缓存，键 publicCourses::{courseId}（详情按 courseId 分键，区别于列表 'all'）
+        PublicCourseDetailVO first = courseService.findPublicCourseById(courseId);
+        assertEquals("M9-详情-初始标题", first.title());
+        assertNotNull(cacheObjectRedisTemplate.opsForValue().get("publicCourses::" + courseId), "首查后详情缓存键应落盘");
+        // LocalDate 排期字段经 JSON 序列化往返无损（缓存模板 JSR310 模块注册有效性）
+        assertEquals(1, first.schedules().size());
+        assertEquals(LocalDate.of(2026, 9, 1), first.schedules().get(0).startDate());
+        assertEquals(LocalDate.of(2026, 12, 20), first.schedules().get(0).endDate());
+
+        // 第二段：DB 直改标题绕过写路径 → 二查仍返回旧标题（详情键命中，未查库）
+        jdbcTemplate.update("UPDATE course_info SET title = ? WHERE id = ?", "M9-详情-DB直改", courseId);
+        PublicCourseDetailVO second = courseService.findPublicCourseById(courseId);
+        assertEquals("M9-详情-初始标题", second.title(), "缓存命中期内应返回旧值（未查库）");
+        assertEquals(LocalDate.of(2026, 9, 1), second.schedules().get(0).startDate(), "命中值仍为反序列化后的缓存排期");
     }
 }
