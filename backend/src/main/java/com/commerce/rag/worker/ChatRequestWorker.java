@@ -551,8 +551,6 @@ public class ChatRequestWorker {
 
         // 流式过程中收集最后 NodeOutput（用于消息持久化）
         AtomicReference<NodeOutput> lastOutput = new AtomicReference<>();
-        // 标记是否已发生错误/取消（防止 doOnComplete 覆盖状态）
-        AtomicBoolean errored = new AtomicBoolean(false);
         // B2-4: 终态事件已推送标记——doOnComplete 推 END 后终态回写（updateStatusWithRetry
         // 3 次耗尽上抛）进入 catch 时，不得再经 handleError 推第二个终态事件（客户端
         // 状态机收到双终态）；compareAndSet 保证 doOnComplete/onErrorResume/catch/取消收尾
@@ -628,7 +626,6 @@ public class ChatRequestWorker {
                         });
                     })
                     .onErrorResume(e -> {
-                        errored.set(true);
                         // P0-7: 与 catch 分支对齐的兜底——handleCancelled/handleError 内部
                         // （bridge.push / updateStatus）再抛异常不得从 Reactor 链传播，
                         // 否则等待点重抛 → 落入 catch 分支二次 handleError（双终态）+ 重复持久化
@@ -782,7 +779,6 @@ public class ChatRequestWorker {
 
         } catch (Exception e) {
             log.error("processRequest 致命错误 runId={}", runId, e);
-            errored.set(true);
             // P0-4b 修复：补齐终态——推送 ERROR 事件 + 持久化已收集消息（与 onErrorResume 分支对齐）。
             // handleError 单独兜底：其内部状态更新失败不得阻断消息持久化（修复审查 finding）
             // B2-4: 终态事件已推送（doOnComplete 的 END / onErrorResume 的终态）时不再推第二个
