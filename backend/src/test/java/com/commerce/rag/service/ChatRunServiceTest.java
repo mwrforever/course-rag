@@ -326,6 +326,47 @@ class ChatRunServiceTest {
         assertTrue(statuses.isEmpty());
     }
 
+    @Test
+    @DisplayName("findActiveRunId → 会话存在活跃 run 时返回其 ID（多会话并继续流锚点）")
+    @SuppressWarnings("unchecked")
+    void findActiveRunId_returnsActiveRunId() {
+        ChatRun active = new ChatRun();
+        active.setId(42L);
+        active.setStatus("ACTIVE");
+        when(runMapper.selectList(any())).thenReturn(List.of(active));
+
+        Long runId = runService.findActiveRunId(1L);
+
+        // Then: 返回活跃 run 的 ID（前端据此发起 GET reconnect 全量回放续流）
+        assertEquals(42L, runId);
+
+        // Then: 查询条件为 session_id + status ∈ {QUEUED, ACTIVE}，投影仅 id 列且 ID 倒序取最近一条
+        ArgumentCaptor<LambdaQueryWrapper<ChatRun>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(runMapper).selectList(captor.capture());
+        LambdaQueryWrapper<ChatRun> wrapper = captor.getValue();
+        String sqlSegment = wrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("session_id"), "应按会话过滤: " + sqlSegment);
+        assertTrue(sqlSegment.contains("status"), "应按状态过滤: " + sqlSegment);
+        Collection<Object> params = wrapper.getParamNameValuePairs().values();
+        assertTrue(params.contains("ACTIVE"), "活跃定义应含 ACTIVE: " + params);
+        assertTrue(params.contains("QUEUED"), "活跃定义应含 QUEUED: " + params);
+        assertTrue(wrapper.getSqlSelect().contains("id"), "投影应仅取 id 列: " + wrapper.getSqlSelect());
+        assertTrue(sqlSegment.contains("ORDER BY id"), "应 ID 倒序取最近一条: " + sqlSegment);
+    }
+
+    @Test
+    @DisplayName("findActiveRunId → 会话无活跃 run 时返回 null（仅剩终态或从未对话）")
+    @SuppressWarnings("unchecked")
+    void findActiveRunId_noActiveRun_returnsNull() {
+        // Given: 无 QUEUED/ACTIVE run（终态 run 或空会话）
+        when(runMapper.selectList(any())).thenReturn(List.of());
+
+        Long runId = runService.findActiveRunId(1L);
+
+        // Then: 返回 null（前端不发起续流，仅历史回显）
+        assertNull(runId);
+    }
+
     // ==================== collectUniqueAttachments 后续轮次附件重建聚合（Task 11，spec §5.1） ====================
     // 说明：findRecentAttachments 的 SQL 获取段走 this.lambdaQuery()（宪法主表内置链式），
     // MP 3.5.12 该链式构建时内窥真实 MapperProxy（MybatisUtils.getMapperProxy），纯 Mockito 无法

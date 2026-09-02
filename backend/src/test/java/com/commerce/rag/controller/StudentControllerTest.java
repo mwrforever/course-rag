@@ -21,6 +21,7 @@ import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.service.IDocumentChunkService;
 import com.commerce.rag.service.IEnrollmentService;
 import com.commerce.rag.stream.ChatStreamEntry;
+import com.commerce.rag.vo.ActiveRunVO;
 import com.commerce.rag.vo.ChatSessionVO;
 import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
@@ -562,6 +563,56 @@ class StudentControllerTest {
         controller.sessionMessages(studentRequest(5L), 1L, 1, 200);
 
         verify(messageService).findStudentMessagesBySession(1L, 1, 200);
+    }
+
+    @Test
+    @DisplayName("活跃 run → 会话存在 QUEUED/ACTIVE run 时返回 runId（多会话并继续流锚点）")
+    void activeRun_returnsActiveRunId() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 5L));
+        when(runService.findActiveRunId(1L)).thenReturn(42L);
+
+        ApiResponse<ActiveRunVO> result = controller.activeRun(studentRequest(5L), 1L);
+
+        assertEquals(0, result.code());
+        assertEquals("42", result.data().runId());
+        // 归属校验通过后才查询活跃 run（先鉴权再取数）
+        verify(runService).findActiveRunId(1L);
+    }
+
+    @Test
+    @DisplayName("活跃 run → 会话无活跃 run 时 data=null（前端不发起续流，仅历史回显）")
+    void activeRun_noActiveRun_returnsNullData() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 5L));
+        when(runService.findActiveRunId(1L)).thenReturn(null);
+
+        ApiResponse<ActiveRunVO> result = controller.activeRun(studentRequest(5L), 1L);
+
+        assertEquals(0, result.code());
+        assertNull(result.data());
+    }
+
+    @Test
+    @DisplayName("活跃 run → 会话不存在抛 404，不触发 run 查询")
+    void activeRun_sessionNotFound_throws404() {
+        when(sessionService.findById(99L)).thenReturn(null);
+
+        BizException ex = assertThrows(BizException.class, () -> controller.activeRun(studentRequest(5L), 99L));
+
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
+        assertEquals("会话不存在", ex.getMessage());
+        verify(runService, never()).findActiveRunId(anyLong());
+    }
+
+    @Test
+    @DisplayName("活跃 run → 非本人会话抛 403（会话语义，与 R1 历史消息先例一致）")
+    void activeRun_notOwner_throws403() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 9L));
+
+        BizException ex = assertThrows(BizException.class, () -> controller.activeRun(studentRequest(5L), 1L));
+
+        assertEquals(HttpStatus.FORBIDDEN.value(), ex.getCode());
+        assertEquals("无权查看此会话", ex.getMessage());
+        verify(runService, never()).findActiveRunId(anyLong());
     }
 
     // ==================== 删除会话（R3 补口 C） ====================

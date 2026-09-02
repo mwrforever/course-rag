@@ -13,8 +13,9 @@
  * 折叠态列表区收敛为「历史」入口：hover 弹浮层（顶部搜索入口 + 最新 10 条，触屏退化 click 切换）。
  *
  * 会话管理（用户拍板：会话在侧边栏单一管理，二次确认契约）：
- * - 增：新建对话无确认（无破坏性、可撤销；流式进行中禁用）——/chat 同路由经
- *   Context 新建信号驱动工作区 reset 干净态（不重挂载），其它路由走 router.push
+ * - 增：新建对话无确认（无破坏性、可撤销）——/chat 同路由经 Context 新建信号驱动
+ *   工作区干净态（2026-09-01 起流式生成中也可新建：旧会话 run 在服务端继续执行，
+ *   切回时经 active-run + reconnect 全量回放续流，见 chat-workspace 注释）
  * - 改：重命名弹窗 RenameDialog（预填标题 + zod 非空≤50 校验 + Enter 提交）
  * - 删：ConfirmDialog 二次确认；后端 409（活跃 run）→ toast「会话正在对话中」；
  *   删除当前激活会话后回 /chat 新对话
@@ -43,7 +44,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatToast } from "@/components/chat/chat-toast";
 import {
-  useChatStreaming,
   useChatStreamingSessionId,
   useRequestNewChat,
 } from "@/components/chat/chat-streaming-context";
@@ -73,9 +73,6 @@ export function ChatSidebar() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, logout, openLoginDialog } = useAuth();
-  // 流式守卫：工作区正在生成时禁用新建对话（同路由 reset 会丢进行中的流视图，
-  // 跳转路径同理）；流式中守卫统一（按钮 disabled + 快捷键忽略）
-  const isStreaming = useChatStreaming();
   // 新建对话信号出口（/chat 同路由：驱动工作区 reset 干净态，不重挂载）
   const requestNewChat = useRequestNewChat();
   // 生成中会话定位（2026-08-27）：对应会话行渲染生成中动画（脉冲点 + 标题闪烁）
@@ -110,32 +107,31 @@ export function ChatSidebar() {
 
   /**
    * 新建对话统一入口（按钮与 Ctrl+K 共用）：
-   * - /chat 同路由：经 Context 新建信号驱动工作区 reset 干净态（不重挂载，Task 13）
+   * - /chat 同路由：经 Context 新建信号驱动工作区 detach 旧流 + reset 干净态（不重挂载）
    * - 其它路由：router.push('/chat') 由页面重挂载天然干净
-   * - 流式进行中：双保险直接返回（按钮 disabled + 此处守卫）
+   * - 多会话并发（2026-09-01 用户拍板）：流式生成中也可新建——旧会话 run 继续在
+   *   服务端执行，切回时经 active-run + reconnect 全量回放续流
    */
   const handleNewChat = useCallback(() => {
-    if (isStreaming) return;
     if (pathname === "/chat") {
       requestNewChat();
     } else {
       router.push("/chat");
     }
-  }, [isStreaming, pathname, requestNewChat, router]);
+  }, [pathname, requestNewChat, router]);
 
   // Ctrl/Cmd+K 新建对话快捷键（kimi 语义；浏览器聚焦输入框时由应用层快捷键先行）
-  // 流式进行中忽略：reset/跳转都会丢失进行中的流视图（chat-workspace 实证注释）
+  // 流式生成中不忽略：多会话并发允许同时开启多个问答（见 handleNewChat 注释）
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        if (isStreaming) return;
         event.preventDefault();
         handleNewChat();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isStreaming, handleNewChat]);
+  }, [handleNewChat]);
 
   // ── 会话历史分页（主列表恒全量；keyword 搜索职责在 SessionSearchDialog 弹窗）──
   // 工作区发送消息后按 SIDEBAR_SESSIONS_QUERY_KEY 失效（新会话即时进列表）
@@ -306,16 +302,14 @@ export function ChatSidebar() {
         )}
       </div>
 
-      {/* 新建对话按钮（折叠为纯图标）；流式中禁用置灰（Task 13 守卫统一）：
-          /chat 同路由经信号 reset 干净态（不重挂载），其它路由跳转 */}
+      {/* 新建对话按钮（折叠为纯图标）；多会话并发（2026-09-01）：流式生成中可用——
+          /chat 同路由经信号 detach+reset 干净态（不重挂载），其它路由跳转 */}
       {collapsed ? (
         <button
           type="button"
           aria-label="新建对话"
           onClick={handleNewChat}
-          disabled={isStreaming}
-          title={isStreaming ? "回答生成中，结束后再新建对话" : undefined}
-          className="mx-auto grid size-9 place-items-center rounded-xl border border-border bg-surface text-brand transition-colors hover:border-brand/40 hover:bg-brand-light focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+          className="mx-auto grid size-9 place-items-center rounded-xl border border-border bg-surface text-brand transition-colors hover:border-brand/40 hover:bg-brand-light focus-visible:ring-2 focus-visible:ring-brand"
         >
           <Plus size={16} weight="bold" aria-hidden />
         </button>
@@ -323,9 +317,7 @@ export function ChatSidebar() {
         <button
           type="button"
           onClick={handleNewChat}
-          disabled={isStreaming}
-          title={isStreaming ? "回答生成中，结束后再新建对话" : undefined}
-          className="mx-2 flex h-10 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-sm text-text transition-colors hover:border-brand/40 hover:bg-brand-light hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+          className="mx-2 flex h-10 shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-sm text-text transition-colors hover:border-brand/40 hover:bg-brand-light hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
         >
           <Plus size={15} weight="bold" aria-hidden className="text-brand" />
           <span className="flex-1 text-left">新建对话</span>

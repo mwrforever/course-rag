@@ -129,4 +129,17 @@ public interface IChatRunService extends IService<ChatRun> {
      * @return true=存在 QUEUED/ACTIVE run；false=仅剩终态 run（COMPLETED/CANCELLED/ERROR）或无 run
      */
     boolean existsActiveRun(Long sessionId);
+
+    /**
+     * 查会话当前活跃 run 的 ID（多会话并发续流锚点，2026-09-01 用户拍板）
+     *
+     * <p>C 端允许同一用户同时开启多会话问答：一个会话在流式生成期间用户可切到其他会话
+     * 继续提问，切回原会话时前端据此 runId 发起 GET reconnect 全量回放续流。
+     * 活跃定义与 existsActiveRun 一致（status ∈ {QUEUED, ACTIVE}）；单会话串行由
+     * uniq_active_run_per_session 唯一索引保证，至多一条，取最近一条即可。
+     *
+     * @param sessionId 会话 ID（须已通过归属校验）
+     * @return 活跃 run 的 ID；无活跃 run 返回 null
+     */
+    Long findActiveRunId(Long sessionId);
 }

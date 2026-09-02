@@ -2024,4 +2024,97 @@ describe("useChatStream 集成", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("resume：切回活跃会话全量回放续流（GET 不带查询参数；metadata 建槽 → delta/end 落终态）", async () => {
+    const resumeCtrl = controllableSse();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/reconnect") && init?.method === "GET") return resumeCtrl.response;
+      throw new Error(`未预期的请求: ${url} ${init?.method}`);
+    });
+    const { result } = renderHook(() => useChatStream("sess-9"));
+
+    // 挂载即续流（页面切回仍有 run 在生成的会话）
+    await act(async () => {
+      await result.current.resume("run-9");
+    });
+    // lastEventId=null → 全量回放（不带查询参数）
+    const getCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === "GET")!;
+    expect(String(getCall[0])).toBe("/api/v1/student/chat/run-9/reconnect");
+
+    // 回放帧：metadata（建槽 + runId/sessionId 落位）→ delta 正文 → end 终态（ring 全量回放续接）
+    await act(async () => {
+      resumeCtrl.push(md("run-9", "sess-9"));
+      resumeCtrl.push(frame(2, "delta", J({ text: "全量回放正文" })));
+      resumeCtrl.push(frame(3, "end", J({ status: "COMPLETED", messageId: "m9" })));
+      resumeCtrl.close();
+    });
+    expect(result.current.state.runId).toBe("run-9");
+    expect(result.current.state.messages[0].text).toBe("全量回放正文");
+    expect(result.current.state.endedStatus).toBe("COMPLETED");
+    expect(result.current.state.streaming).toBe(false);
+  });
+
+  it("resume：已流式时幂等不动作（本会话正在生成，不发起续流请求防顶掉新流）", async () => {
+    const ctrl = controllableSse();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") return ctrl.response;
+      throw new Error(`未预期的请求: ${String(input)}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+    await act(async () => {
+      await result.current.send("你好", []);
+    });
+    await act(async () => {
+      ctrl.push(md());
+    });
+    expect(result.current.state.streaming).toBe(true);
+
+    // 已流式：resume 直接放弃（前端守卫路径=用户已在本会话发起新提问）
+    await act(async () => {
+      await result.current.resume("run-9");
+    });
+    expect(
+      fetchMock.mock.calls.filter((c) => (c[1] as RequestInit)?.method === "GET"),
+    ).toHaveLength(0);
+  });
+
+  it("resume：网络层失败静默放弃（不落 error、run 继续服务端执行、不阻断历史回显）", async () => {
+    fetchMock.mockRejectedValue(new TypeError("网络不可达"));
+    const { result } = renderHook(() => useChatStream("sess-9"));
+
+    await act(async () => {
+      await result.current.resume("run-9");
+    });
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(false);
+    expect(result.current.state.messages).toHaveLength(0);
+  });
+
+  it("detach：停消费循环释放读取器（新建对话干净态；旧流事件不再落态、状态不清）", async () => {
+    const ctrl = controllableSse();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") return ctrl.response;
+      throw new Error(`未预期的请求: ${String(input)}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+    await act(async () => {
+      await result.current.send("你好", []);
+    });
+    await act(async () => {
+      ctrl.push(md());
+    });
+    expect(result.current.state.messages[1].text).toBe("");
+
+    // 离开旧会话前 detach：停旧流消费（不清状态，reset 由调用方承担）
+    await act(async () => {
+      result.current.detach();
+    });
+    // detach 后旧流事件不再落态（gen 失活），状态保持（streaming 仍 true 由 reset 收口）
+    await act(async () => {
+      ctrl.push(frame(2, "delta", J({ text: "旧流残留帧" })));
+    });
+    expect(result.current.state.messages[1].text).toBe("");
+    expect(result.current.state.streaming).toBe(true);
+  });
 });

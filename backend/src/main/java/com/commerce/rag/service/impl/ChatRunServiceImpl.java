@@ -302,4 +302,30 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
                 .in(ChatRun::getStatus, "QUEUED", "ACTIVE")
                 .exists();
     }
+
+    /**
+     * 查会话当前活跃 run 的 ID（多会话并发续流锚点，2026-09-01 用户拍板）
+     *
+     * <p>与 findVisibleRunStatuses 同款 runMapper + Wrappers 静态工厂写法（可测性：
+     * 纯 Mockito 可 mock selectList 验证条件），按需取列仅 id；活跃定义与
+     * existsActiveRun 一致（status ∈ {QUEUED, ACTIVE}），单会话串行由唯一索引
+     * 保证至多一条，ID 倒序取最近一条（防御性：若异常数据出现多条取最新）。
+     *
+     * @param sessionId 会话 ID（须已通过归属校验）
+     * @return 活跃 run 的 ID；无活跃 run 返回 null
+     */
+    @Override
+    public Long findActiveRunId(Long sessionId) {
+        return runMapper
+                .selectList(Wrappers.<ChatRun>lambdaQuery()
+                        .select(ChatRun::getId)
+                        .eq(ChatRun::getSessionId, sessionId)
+                        .in(ChatRun::getStatus, "QUEUED", "ACTIVE")
+                        .orderByDesc(ChatRun::getId)
+                        .last("LIMIT 1"))
+                .stream()
+                .map(ChatRun::getId)
+                .findFirst()
+                .orElse(null);
+    }
 }

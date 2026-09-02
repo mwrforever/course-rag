@@ -777,7 +777,11 @@ public class ChatRequestWorker {
                 throw new IllegalStateException("图执行回调异常: runId=" + runId, failure);
             }
 
-        } catch (Exception e) {
+            // M2 改造后 try 块内唯一 checked 异常源（latch.await 的 InterruptedException）已由
+            // 内层 catch 消化并以 IllegalStateException 重抛，故外层仅 RuntimeException 可达——
+            // 收窄捕获类型消除 SpotBugs REC_CATCH_EXCEPTION 死捕获（编译器保证等价：
+            // 若 try 块出现 checked 异常本行将编译失败，行为零变化）
+        } catch (RuntimeException e) {
             log.error("processRequest 致命错误 runId={}", runId, e);
             // P0-4b 修复：补齐终态——推送 ERROR 事件 + 持久化已收集消息（与 onErrorResume 分支对齐）。
             // handleError 单独兜底：其内部状态更新失败不得阻断消息持久化（修复审查 finding）

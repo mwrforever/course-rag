@@ -6,22 +6,32 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
+import com.commerce.rag.properties.StreamProperties;
+import com.commerce.rag.stream.MemoryStreamBridge;
+import com.commerce.rag.stream.SseEvent;
+import com.commerce.rag.stream.SseEventType;
 import com.commerce.rag.test.IntegrationTestBase;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,6 +39,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +57,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
 /**
@@ -80,6 +92,14 @@ class ChatFlowIntegrationTest extends IntegrationTestBase {
     /** 图 checkpoint saver（M2 取消前滚 checkpoint 断言：thread_id = sessionId 直查） */
     @Autowired
     private BaseCheckpointSaver saver;
+
+    /** 流桥接（M6.1 集成：长流 resume 回放断言在真实 ring 上执行） */
+    @Autowired
+    private MemoryStreamBridge bridge;
+
+    /** 流配置（M6.2 容量断言：真实 application.yml 注入的 ring-buffer-size） */
+    @Autowired
+    private StreamProperties streamProperties;
 
     @BeforeEach
     void setUpChatFlow() {
@@ -264,6 +284,104 @@ class ChatFlowIntegrationTest extends IntegrationTestBase {
             // 释放连接（读取线程为守护线程，服务端关流后自然退出）
             body.close();
         }
+    }
+
+    /**
+     * 长流（事件数 > ring 容量）中断 → resume（lastEventId=0）→ 保留窗口全量回放（M6.1 集成）。
+     *
+     * <p>场景映射（spec §3 根因 / M8 复现路径）：长生成（约 2~4 分钟 >256 事件）期间刷新/切回，
+     * 前端 resume(runId) → reconnectChat(runId, null) → controller 默认 lastEventId=0；修复前
+     * {@code 0 < evictFloor} 直接返回 false → PG 降级 → ACTIVE run 无落库行 → 已生成内容全空，
+     * 修复后钳位到 evictFloor 从最早保留事件回放。
+     *
+     * <p>断言链（真实 Spring 上下文：ring 容量经 application.yml stream.ring-buffer-size 注入）：
+     * <ol>
+     *   <li>容量基线：StreamProperties.ringBufferSize() = 512（M6.2 配置接线证据）；</li>
+     *   <li>push 600 事件（head=600，evictFloor=600-512=88，保留窗口 [89,600]）；</li>
+     *   <li>replayAndSubscribe(runId, 0, emitter) 返回 true，首条 seq=89、共 512 条（M6.1 钳位）；</li>
+     *   <li>回放注册后续接实时：push seq=601 → 续接送达（共 513 条）。</li>
+     * </ol>
+     */
+    @Test
+    @DisplayName("长流（>300 事件）中断 → resume（lastEventId=0）→ 全部保留窗口事件回放（M6.1 集成）")
+    void longStream_resumeReplaysRetainedWindow() throws Exception {
+        // 容量基线（M6.2：256→512）：真实配置注入决定下方保留窗口数学（600-512=88）
+        assertEquals(512, streamProperties.ringBufferSize(), "M6.2：ring 容量应为 512（application.yml 注入）");
+        String runId = "9001";
+        bridge.createRing(runId);
+        try {
+            // 在场订阅者：吸收广播事件并作为「outbox 已排空」的观测点（回放批次入队确定性前提）。
+            // 分块推送（100/块 « 容量 512）+ 逐块等待送达：outbox 积压恒低于容量，
+            // 不触发「队列满摘除订阅者」防御（600 次密集 push 会积满 outbox 致观测点被摘）
+            SseEmitter live = mock(SseEmitter.class);
+            assertTrue(bridge.subscribe(runId, live), "在场订阅应成功（ring 开放）");
+            int delivered = 0;
+            for (int chunkStart = 1; chunkStart <= 600; chunkStart += 100) {
+                for (int seq = chunkStart; seq < chunkStart + 100; seq++) {
+                    bridge.push(
+                            runId,
+                            new SseEvent(
+                                    SseEventType.DELTA,
+                                    seq,
+                                    "{\"text\":\"帧" + seq + "\"}",
+                                    System.currentTimeMillis()));
+                }
+                delivered += 100;
+                int expectedSends = delivered;
+                // 等待本块全部送达（块间无新事件入队，次数精确收敛；此块结束时 outbox 已排空）
+                verify(live, timeout(10_000).times(expectedSends)).send(any(SseEmitter.SseEventBuilder.class));
+            }
+
+            // resume 语义（reconnectChat(runId, null) → controller 默认 lastEventId=0）
+            SseEmitter resumed = mock(SseEmitter.class);
+            assertTrue(
+                    bridge.replayAndSubscribe(runId, 0, resumed),
+                    "M6.1：lastEventId=0 应钳位回放保留窗口，而非 0<evictFloor=88 降级 false");
+
+            // 保留窗口 [89,600] 共 512 条全量回放：首条 = 最早保留事件 seq=89、末条 = head=600
+            verify(resumed, timeout(10_000).times(512)).send(any(SseEmitter.SseEventBuilder.class));
+            verify(resumed, never()).complete();
+            List<String> ids = sentEventIds(resumed);
+            assertEquals(512, ids.size(), "回放事件数应等于保留窗口容量");
+            assertEquals("89", ids.get(0), "回放首条应为最早保留事件 seq=89（evictFloor+1）");
+            assertEquals("600", ids.get(ids.size() - 1), "回放末条应为 head=600");
+
+            // 回放注册后续接实时事件：push seq=601 → resumed 一并收到（总数 513）
+            bridge.push(runId, new SseEvent(SseEventType.DELTA, 601, "{\"text\":\"续接帧\"}", System.currentTimeMillis()));
+            verify(resumed, timeout(10_000).times(513)).send(any(SseEmitter.SseEventBuilder.class));
+        } finally {
+            // 清理专用 ring（防跨用例泄漏投递线程）
+            bridge.removeRing(runId);
+        }
+    }
+
+    /**
+     * 提取 mock emitter 已送达事件的 seqId 序列（反射读取 SseEventBuilder 的 dataToSend——
+     * Spring 6.2 把 id/name/data 拆为多个 DataWithMediaType 部分，取「id:」前缀段解析）。
+     *
+     * @param emitter 已投递完成的 mock emitter（调用前须 verify 等待 send 次数到位）
+     * @return 按送达顺序的 seqId 字符串列表
+     */
+    private List<String> sentEventIds(SseEmitter emitter) throws Exception {
+        List<String> ids = new ArrayList<>();
+        for (var invocation : org.mockito.Mockito.mockingDetails(emitter).getInvocations()) {
+            if (!invocation.getMethod().getName().equals("send") || invocation.getArguments().length == 0) {
+                continue;
+            }
+            Object builder = invocation.getArguments()[0];
+            Field dataField = builder.getClass().getDeclaredField("dataToSend");
+            dataField.setAccessible(true);
+            for (Object part : (java.util.Set<?>) dataField.get(builder)) {
+                Object data = part.getClass().getMethod("getData").invoke(part);
+                // id 段形如 "id:89\nevent:delta\ndata:"——取首个 \n 前数字
+                if (data instanceof String text && text.startsWith("id:")) {
+                    int end = text.indexOf('\n');
+                    ids.add(end < 0 ? text.substring(3) : text.substring(3, end));
+                    break;
+                }
+            }
+        }
+        return ids;
     }
 
     /**

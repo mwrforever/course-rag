@@ -470,6 +470,29 @@ export function reconnectChat(runId: string, lastEventId: number | null): Promis
   return authedFetch(`/student/chat/${runId}/reconnect${query}`, { method: "GET" });
 }
 
+/** 活跃 run 查询响应体（GET /student/chat/session/{sessionId}/active-run 的 data 字段） */
+interface ActiveRunPayload {
+  runId: string | null;
+}
+
+/**
+ * 查会话当前活跃 run（2026-09-01 多会话并发续流）：切回仍有 run 在生成的会话时，
+ * 前端据此 runId 发起 GET reconnect 全量回放续流（恢复进行中回答的实时视图）。
+ * 404/403（会话不存在/非本人）与网络错误一律按 null 处理（无活跃 run 语义，仅历史回显）；
+ * 后端断连不取消 run，只有显式 cancel 才停——runId 在会话归属校验通过后由服务端下发。
+ */
+export async function getActiveRun(sessionId: string): Promise<string | null> {
+  try {
+    const data = await apiFetch<ActiveRunPayload | null>(
+      `/student/chat/session/${sessionId}/active-run`,
+    );
+    return data?.runId ?? null;
+  } catch {
+    // 会话不存在/非本人/网络失败：退化为无活跃 run（历史回显兜底，不阻断页面）
+    return null;
+  }
+}
+
 // ===== 上传通道（XHR：fetch 无法获取上传进度，PERF-10a） =====
 
 /**

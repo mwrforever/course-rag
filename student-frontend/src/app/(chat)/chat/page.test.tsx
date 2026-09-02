@@ -29,6 +29,8 @@ const chatMock = vi.hoisted(() => ({
   send: vi.fn(),
   cancel: vi.fn(),
   reset: vi.fn(),
+  resume: vi.fn(),
+  detach: vi.fn(),
 }));
 /** 数据层 mock：附件上传与反馈 */
 const apiMock = vi.hoisted(() => ({
@@ -53,6 +55,8 @@ vi.mock("@/hooks/use-chat-stream", () => ({
     cancel: chatMock.cancel,
     reconnect: vi.fn(),
     reset: chatMock.reset,
+    resume: chatMock.resume,
+    detach: chatMock.detach,
   }),
 }));
 vi.mock("@/lib/auth-context", () => ({
@@ -129,6 +133,8 @@ beforeEach(() => {
   chatMock.send.mockReset().mockResolvedValue(undefined);
   chatMock.cancel.mockReset().mockResolvedValue(undefined);
   chatMock.reset.mockReset();
+  chatMock.resume.mockReset().mockResolvedValue(undefined);
+  chatMock.detach.mockReset();
   apiMock.uploadAttachments.mockReset();
   apiMock.postFeedback.mockReset().mockResolvedValue(undefined);
   thumbMock.createAttachmentThumbUrl.mockReset().mockResolvedValue(null);
@@ -638,5 +644,34 @@ describe("新对话页：新建对话信号（Task 13 干净态，侧栏按钮�
     expect(urlMock.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
     // 输入干净态：受控 resetKey 驱动清空
     expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+
+  it("信号到达（流式生成中）：detach 旧流 + reset 干净态（多会话并发，2026-09-01 用户拍板）", async () => {
+    // 旧会话正在流式生成（切走新建对话：run 继续服务端执行，事件留 ring 供切回续流）
+    chatMock.state = {
+      ...initialState(),
+      streaming: true,
+      runId: "run-1",
+      sessionId: "sess-1",
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ChatStreamingProvider>
+          <SignalProbe />
+          <NewChatPage />
+        </ChatStreamingProvider>
+      </QueryClientProvider>,
+    );
+    // 发出新建信号（流式进行中也可新建）
+    act(() => requestRef.current());
+    // detach 旧流（停消费循环释放读取器，防旧流事件污染新对话工作区）+ reset 干净态
+    await waitFor(() => {
+      expect(chatMock.detach).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(chatMock.reset).toHaveBeenCalledWith(true);
+    });
+    chatMock.state = initialState();
   });
 });

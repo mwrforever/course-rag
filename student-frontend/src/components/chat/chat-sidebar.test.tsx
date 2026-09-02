@@ -443,7 +443,7 @@ describe("ChatSidebar 折叠与快捷键", () => {
     });
   });
 
-  it("流式进行中：新建对话按钮禁用 + Ctrl+K 守卫不动作，结束后恢复", async () => {
+  it("多会话并发（2026-09-01 用户拍板）：流式生成中新建对话仍可用（按钮不禁用 + Ctrl+K 发信号）", async () => {
     apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
     // 探针：模拟工作区经 Context 上报流式状态 + 观察新建信号计数
     let setStreaming!: (streaming: boolean) => void;
@@ -460,20 +460,23 @@ describe("ChatSidebar 折叠与快捷键", () => {
     );
     const newChat = await screen.findByRole("button", { name: /新建对话/ });
 
+    // 流式生成中（另一会话正在回答）：不再被全局守卫禁用——可同时开启多会话问答
     act(() => setStreaming(true));
-    expect(newChat).toBeDisabled();
-    expect(newChat).toHaveAttribute("title", "回答生成中，结束后再新建对话");
-    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
-    expect(navMock.push).not.toHaveBeenCalled();
-    // 流式中信号不发出（seq 恒为初始 0）
-    expect(seqs.at(-1)).toBe(0);
-
-    // 流结束（或工作区卸载复位）：按钮与快捷键恢复（/chat 路径 → 信号而非跳转）
-    act(() => setStreaming(false));
     expect(newChat).toBeEnabled();
-    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(newChat).not.toHaveAttribute("title", /回答生成中|结束后再新建/);
+
+    // 按钮点击：/chat 同路由发新建信号（seq 自增；不 push）
+    fireEvent.click(newChat);
     await waitFor(() => {
       expect(seqs.at(-1)).toBeGreaterThan(0);
+    });
+    expect(navMock.push).not.toHaveBeenCalled();
+
+    // Ctrl+K：流式生成中同样发信号（不忽略）
+    const seqBefore = seqs.at(-1) ?? 0;
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    await waitFor(() => {
+      expect(seqs.at(-1)).toBeGreaterThan(seqBefore);
     });
     expect(navMock.push).not.toHaveBeenCalled();
   });

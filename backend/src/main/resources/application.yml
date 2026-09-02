@@ -268,8 +268,11 @@ stream:
   response-ttl: 300
   # SSE 心跳间隔（秒）
   heartbeat-interval: 15
-  # 内存 ring buffer 大小
-  ring-buffer-size: 256
+  # 内存 ring buffer 大小（M6.2：256→512——长生成（约 2~4 分钟 >256 事件）刷新/切回时
+  # 驱逐窗口过大触发全空 bug；容量翻倍 + M6.1 钳位回放双保险。注：spec §6 原文
+  # rag.stream.ring-capacity 与本配置同义，项目已有 stream.ring-buffer-size（StreamProperties
+  # 已配置化），不新增重复配置键——偏差已在计划总览登记，回填 spec 注记）
+  ring-buffer-size: 512
 
 # ── 缓存 TTL 配置（宪法 A.5.4：Spring Cache 缓存区与领域缓存 TTL 同源配置化）──
 cache:

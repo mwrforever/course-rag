@@ -1067,6 +1067,13 @@ class ChatStreamEntryTest {
                 .orElseThrow(() -> new AssertionError("应补发 end 事件 payload"));
     }
 
+    /** 反射读取 SseEmitter 的 complete 标志（未挂 handler 前 complete() 仅置位，M6.3 收尾断言用） */
+    private boolean emitterCompleted(SseEmitter emitter) throws Exception {
+        Field field = ResponseBodyEmitter.class.getDeclaredField("complete");
+        field.setAccessible(true);
+        return (boolean) field.get(emitter);
+    }
+
     /** 反射调用 private resolveAssistantMessageId（M2：仅 COMPLETED run 的 assistant 正文行可作反馈目标；
      * PERF-13 后签名为 (runId, knownRun)，传 null 走 run 自查路径——与原单参语义一致） */
     private String invokeResolveAssistantMessageId(String runId) throws Exception {
@@ -1198,6 +1205,36 @@ class ChatStreamEntryTest {
         SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
         assertTrue(endPayloadOf(emitter).contains("\"messageId\":\"777\""), "订阅关闭竞态补发 end 应含 messageId");
+    }
+
+    @Test
+    @DisplayName("M6.3：reconnect PG 降级后 subscribe 恰逢 ring 关闭 → 查终态补发 end 并 complete（既有分支断言补齐）")
+    void reconnect_subscribeFalseAfterPgReplay_sendsTerminalEnd() throws Exception {
+        // Given：ring 回放失败（false）→ PG 降级回放成功（有消息）；首次终态判定时 run 仍
+        // ACTIVE（非终态分支）→ subscribe 恰逢 ring 关闭返回 false → 复查 closedRun 已 COMPLETED
+        // （ChatStreamEntry.java:333-354 既有竞态收尾分支——M6.1/M6.4 续流链路的兜底终点）
+        // findById 三次消费：归属校验(ACTIVE) → 终态判定(ACTIVE) → closedRun 复查(COMPLETED)
+        when(chatRunService.findById(123L))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "ACTIVE", null))
+                .thenReturn(new ChatRunVO(123L, 1L, 123L, "COMPLETED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        // findByRunId 两次消费：PG 降级回放（正文行）→ COMPLETED 终态 end 的 messageId 解析
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "回放正文", null, null, null, 123L, 1, null)))
+                .thenReturn(List.of(new ChatMessageVO(777L, "ASSISTANT", "回放正文", null, null, null, 123L, 1, null)));
+        when(bridge.subscribe(eq("123"), any(SseEmitter.class))).thenReturn(false);
+
+        // When
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
+
+        // Then：emitter 收到 end 事件（payload 含 COMPLETED 终态，承接 PG 回放 lastSeq+1 的 id）
+        // 且被 complete 收尾——客户端状态机经终态收口，不悬挂到 30 分钟超时
+        String endPayload = endPayloadOf(emitter);
+        assertTrue(endPayload.contains("\"status\":\"COMPLETED\""), "补发 end 应携带终态: " + endPayload);
+        assertTrue(emitterCompleted(emitter), "emitter 应被 complete 收尾（M6.3 竞态终点）");
+        verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
     }
 
     // ==================== startHeartbeat() 心跳调度器（真实 scheduler） ====================
