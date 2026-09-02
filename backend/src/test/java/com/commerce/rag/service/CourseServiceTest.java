@@ -216,6 +216,8 @@ class CourseServiceTest {
 
         // Then: 软删完成后触发缓存失效（先写 DB 后失效）
         verify(courseQueryService).evictCourse(1L);
+        // M9：公开课程缓存区同步失效（新课程列表/详情不再含已删课程）
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test
@@ -275,6 +277,8 @@ class CourseServiceTest {
         verify(courseInfoMapper).insert(captor.capture());
         CourseInfo inserted = captor.getValue();
         verify(courseQueryService).evictCourse(inserted.getId());
+        // M9：公开课程缓存区失效（新课程立即可见于 C 端公开列表）
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
         assertEquals("ACTIVE", inserted.getStatus());
         assertEquals(new BigDecimal("0"), inserted.getRating());
         assertEquals(0, inserted.getLearningCount());
@@ -739,6 +743,8 @@ class CourseServiceTest {
 
         verify(courseContentMapper).update(isNull(), any());
         verify(courseQueryService).evictCourse(1L);
+        // M9：内容变更影响公开详情，公开课程缓存区失效
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test
@@ -751,6 +757,8 @@ class CourseServiceTest {
 
         verify(courseContentMapper).insert(any(CourseContent.class));
         verify(courseQueryService).evictCourse(1L);
+        // M9：内容创建同样影响公开详情，公开课程缓存区失效（更新/创建两分支统一出口）
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test

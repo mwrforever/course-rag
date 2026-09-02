@@ -148,6 +148,8 @@ class EnrollmentServiceTest {
         verify(enrollmentService).saveBatch(captor.capture());
         assertEquals(2, captor.getValue().size(), "批量插入应携带 2 条新选课记录");
         verify(enrollmentMapper, never()).insert(any(CourseEnrollment.class));
+        // M9：批量选课变更公开可见数据，公开课程缓存区失效
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test
@@ -168,6 +170,8 @@ class EnrollmentServiceTest {
         verify(enrollmentService).saveBatch(captor.capture());
         assertEquals(1, captor.getValue().size(), "仅 7 号进入新建集合");
         verify(enrollmentMapper, never()).insert(any(CourseEnrollment.class));
+        // M9：重激活 + 新建混合分支同样触发公开课程缓存区失效（写路径统一出口）
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     // ==================== removeStudent ====================
@@ -392,6 +396,8 @@ class EnrollmentServiceTest {
         assertEquals(5L, inserted.getStudentId());
         assertEquals("ACTIVE", inserted.getStatus());
         assertNotNull(inserted.getEnrolledAt(), "插入记录应携带 enrolledAt=now");
+        // M9：购买变更选课数据，公开课程缓存区失效（新购买立即可见于 C 端）
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test
@@ -411,6 +417,8 @@ class EnrollmentServiceTest {
         // 重激活走主表链式 UPDATE，不产生新插入
         verify(enrollmentMapper).update(isNull(), any());
         verify(enrollmentService, never()).save(any(CourseEnrollment.class));
+        // M9：重激活分支同样触发公开课程缓存区失效（与插入分支统一出口）
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test
