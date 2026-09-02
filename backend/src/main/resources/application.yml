@@ -339,6 +339,13 @@ rag:
     search-medium-threshold: 0.5
     multi-source-min: 2
 
+  # ── M3/M7 对话流式链路（ChatStreamProperties；M7 的 stall/retry 项随 T10 落地，此处不提前加）──
+  chat-stream:
+    # SOURCES 就绪有界等待上限（毫秒）：STAGE(generating) 转换点同步消费 sources 容器——
+    # 已就绪（R3 实证必然首轮命中，同线程程序序）紧随 STAGE 推 SOURCES；未就绪等待至多
+    # 该阈值后放行（迟到兜底交 maybePushSources + 前端渲染排序双保险）
+    sources-ready-wait-ms: 2000
+
 # ── 认证安全配置（F#4 双 Token + 设备互踢）──
 auth:
   # JWT 签名密钥（HS256，至少 256 bits）

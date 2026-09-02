@@ -7,12 +7,14 @@ import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
+import com.commerce.rag.bot.graph.LeadAgentGraph;
 import com.commerce.rag.bot.graph.RetrieveNode;
 import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.AgentProperties;
+import com.commerce.rag.properties.ChatStreamProperties;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.record.AssistantEntitySplitter;
@@ -115,6 +117,9 @@ public class ChatRequestWorker {
     private final IChatMessageService chatMessageService;
     private final StreamProperties streamProperties;
     private final WorkerProperties workerProperties;
+    /** 对话流式链路阈值（M3：SOURCES 就绪有界等待上限；M7 stall/retry 项随 T10 扩展） */
+    private final ChatStreamProperties chatStreamProperties;
+
     private final ThreadPoolExecutor runPool;
     /** 安全告警 Hook（BUG-11：run 结束 finally 清理 per-thread 检测状态，取消/异常路径不泄漏） */
     private final WarningHook warningHook;
@@ -158,6 +163,7 @@ public class ChatRequestWorker {
             IChatMessageService chatMessageService,
             StreamProperties streamProperties,
             WorkerProperties workerProperties,
+            ChatStreamProperties chatStreamProperties,
             @Qualifier("runPool") ThreadPoolExecutor runPool,
             WarningHook warningHook,
             AttachmentOrchestrator orchestrator,
@@ -173,6 +179,7 @@ public class ChatRequestWorker {
         this.chatMessageService = chatMessageService;
         this.streamProperties = streamProperties;
         this.workerProperties = workerProperties;
+        this.chatStreamProperties = chatStreamProperties;
         this.runPool = runPool;
         this.warningHook = warningHook;
         this.orchestrator = orchestrator;
@@ -622,11 +629,23 @@ public class ChatRequestWorker {
                     .doOnNext(chunk -> {
                         // 取消检测
                         checkCancelled(runIdStr);
-                        // B3-5：检索来源就绪后补推 SOURCES 事件（首个回答 token 前，一次性）
+                        // STAGE 阶段跃迁（M3：STAGE(generating) 事件落位点即 SOURCES 前置锚——
+                        // 仅 retrieveNode 完成触发的转换在事件落位后紧随同步消费 sources 容器，
+                        // 保证 SOURCES 早于本 run 全部 generating 内容事件（THINKING/DELTA/TOOL_CALL）；
+                        // QU 直达（chat/unknown 意图）与 reactAgent 首 chunk 兜底（QU 降级路径）触发源
+                        // sink 恒空，跳过等待直接放行——R3 实证收窄，避免白等拖慢首 token）
+                        List<SseEvent> stageEvents = transformer.transformStages(chunk, runState);
+                        boolean awaitSourcesAtTransition = generatingTransitionFromRetrieve(chunk, stageEvents);
+                        for (SseEvent stageEvent : stageEvents) {
+                            bridge.push(runIdStr, stageEvent);
+                            if (awaitSourcesAtTransition) {
+                                // STAGE(generating) 落位后、放行该 chunk 的内容事件前：SOURCES 前置（M3 主保证）
+                                awaitSourcesAndPush(runIdStr, runState, config, sourcesPushed);
+                            }
+                        }
+                        // 迟到兜底（M3 服务端次保证）：等待超时放行/触发源跳过等待后，
+                        // sources 就绪的后续 chunk 处仍补推（CAS 保证仅推一次，逻辑保留不动）
                         maybePushSources(runIdStr, runState, config, sourcesPushed);
-                        // STAGE 阶段跃迁：QU 完成→检索/生成、retrieveNode 完成→生成、
-                        // reactAgent 首个模型 chunk→生成兜底（RunState CAS 保证每阶段仅一次）
-                        transformer.transformStages(chunk, runState).forEach(e -> bridge.push(runIdStr, e));
                         // 记录最后输出（用于持久化）
                         lastOutput.set(chunk);
                         // transform → 推送点同步累积（Task 5：先累积后推送，不改 transformer 纯函数性；
@@ -1746,6 +1765,104 @@ public class ChatRequestWorker {
     // ========================================================================
     // 辅助方法
     // ========================================================================
+
+    /**
+     * 判定本 chunk 是否触发「需等待 sources 的 STAGE(generating) 转换」（M3 主保证的门控，
+     * R3 实证收窄）。
+     *
+     * <p>等待仅施加于 retrieveNode 完成触发的转换——R3 实证 sourcesSink.set（RetrieveNode
+     * apply 线程 join 检索后）与本 doOnNext 读取为同线程程序序连续执行（全链零线程切换），
+     * 该转换点单次读取即命中，有界等待仅防御性冗余；QU 直达 generating（chat/unknown 意图，
+     * 未检索）与 reactAgent 首 chunk 兜底（仅 QU 降级路径触发，同样未检索）触发源 sink 恒空，
+     * 等待必超时白等拖慢首 token，均跳过等待直接放行（迟到兜底交
+     * {@link #maybePushSources} 与前端渲染排序双保险）。
+     *
+     * @param chunk       图流单 chunk（node() 取触发节点名）
+     * @param stageEvents transformStages 为本 chunk 产出的阶段事件（可能为空）
+     * @return true = STAGE(generating) 由 retrieveNode 完成触发，落位后需执行 SOURCES 前置等待
+     */
+    private boolean generatingTransitionFromRetrieve(NodeOutput chunk, List<SseEvent> stageEvents) {
+        if (!LeadAgentGraph.NODE_RETRIEVE.equals(chunk.node())) {
+            return false;
+        }
+        return stageEvents.stream()
+                .anyMatch(
+                        e -> e.type() == SseEventType.STAGE && SseEventTransformer.STAGE_GENERATING.equals(stageOf(e)));
+    }
+
+    /**
+     * 解析 STAGE 事件的 stage 键（M3：判定跃迁目标是否 generating）。
+     *
+     * <p>每 run 至多 2 个 STAGE 事件，JSON 解析开销可忽略；坏 JSON 返回 null 不参与判定
+     * （等价于非 generating，跳过等待走迟到兜底）。
+     *
+     * @param event STAGE 事件（payload 为 {@code {"stage":..., "label":...}} JSON）
+     * @return stage 键值（如 "generating"）；payload 无该键或解析失败返回 null
+     */
+    private String stageOf(SseEvent event) {
+        try {
+            return objectMapper.readTree(event.payload()).path("stage").asText(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * SOURCES 前置推送（M3 主保证）：STAGE(generating) 转换点同步消费 sources 容器。
+     *
+     * <p>已推送（CAS 置位）直接返回；首轮无条件读取（R3 实证：retrieveNode 完成触发的转换点
+     * sink 必然已就绪——同线程程序序，单次读取即命中，实际不进入等待循环）；未就绪时按
+     * {@code rag.chat-stream.sources-ready-wait-ms} 有界等待（50ms 轮询，防御性冗余——覆盖
+     * 极端形态下的亚秒级回填）；等待内就绪 → 推 SOURCES（紧随 STAGE(generating)、先于首个
+     * 内容事件）；超时 → 放行（无来源场景即空检索命中的正常出口；迟到兜底交
+     * {@link #maybePushSources} 与前端渲染排序）。中断视为放行（不阻断流）。
+     *
+     * @param runIdStr       Run 唯一标识（ring 键）
+     * @param runState       SSE 事件序列状态（seqId 递增）
+     * @param config         RunnableConfig（worker 原实例，来源经 {@link #readRetrievalSources} 双通道读取）
+     * @param sourcesPushed  本 run 的 SOURCES 已推送标记（CAS 保证仅推一次）
+     */
+    private void awaitSourcesAndPush(
+            String runIdStr,
+            SseEventTransformer.RunState runState,
+            RunnableConfig config,
+            AtomicBoolean sourcesPushed) {
+        if (sourcesPushed.get()) {
+            return;
+        }
+        long deadline = System.currentTimeMillis() + chatStreamProperties.sourcesReadyWaitMs();
+        while (true) {
+            Object sources = readRetrievalSources(config);
+            if (sources instanceof List<?> list && !list.isEmpty()) {
+                if (sourcesPushed.compareAndSet(false, true)) {
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("sources", list);
+                    bridge.push(
+                            runIdStr,
+                            new SseEvent(
+                                    SseEventType.SOURCES,
+                                    runState.nextSeq(),
+                                    toJson(payload),
+                                    System.currentTimeMillis()));
+                    log.info("已前置推送 SOURCES 事件（STAGE(generating) 转换点）: runId={}, 来源数={}", runIdStr, list.size());
+                }
+                return;
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                break;
+            }
+            try {
+                // 50ms 轮询粒度：覆盖亚秒级回填竞态，不放大首 token 延迟
+                Thread.sleep(50L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        // 超时放行：无来源（空检索命中）或极端迟到场景不推 SOURCES，后续 chunk 由
+        // maybePushSources 兜底（迟到场景），前端渲染排序为最终防线
+        log.debug("SOURCES 等待超时放行（未就绪或无来源）: runId={}", runIdStr);
+    }
 
     /**
      * 补推 SOURCES 事件（B3-5，契约补齐——docs/plans/2026-07-16-frontend-design.md §1.6.4
