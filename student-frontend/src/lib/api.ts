@@ -453,6 +453,26 @@ export function postChat(req: ChatRequest): Promise<Response> {
   return authedFetch("/student/chat", { method: "POST", body: JSON.stringify(req) });
 }
 
+/**
+ * M5: 消息级重放（EDIT 编辑最后一条用户消息重答 / REGENERATE 重新生成最后一条回答）
+ *
+ * 返回原始 Response 交由上层 ReadableStream 手写 SSE 解析器消费（与 postChat 同款）；
+ * 401 时自动单飞刷新后重放；409（正在回答/位置校验/目标失效）由上层 toast 处理。
+ *
+ * @param sessionId 会话 id（归属校验在后端完成，非本人 403）
+ * @param body      重放体（mode 白名单 EDIT/REGENERATE；query 编辑后新问题，REGENERATE 可空；
+ *                  targetRunId 目标 run——编辑用户消息的下一条 AI 回答 runId / 重生成目标回答 runId）
+ */
+export function replayChat(
+  sessionId: string,
+  body: { mode: "EDIT" | "REGENERATE"; query?: string; targetRunId: string },
+): Promise<Response> {
+  return authedFetch(`/student/chat/session/${sessionId}/replay`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 /** 取消正在生成的 run（run 终态后后端 409，由调用方静默吞） */
 export function cancelRun(runId: string): Promise<void> {
   return apiFetch<void>(`/student/chat/${runId}/cancel`, { method: "POST" });

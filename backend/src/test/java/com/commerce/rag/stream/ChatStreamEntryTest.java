@@ -4,7 +4,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.alibaba.cloud.ai.graph.RunnableConfig;
+import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
+import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
 import com.commerce.rag.auth.AuthInterceptor;
+import com.commerce.rag.dto.ChatReplayRequest;
 import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.properties.StreamProperties;
@@ -26,6 +30,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
@@ -41,6 +46,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
@@ -88,6 +95,9 @@ class ChatStreamEntryTest {
 
     @Mock
     private ObjectMapper objectMapper;
+
+    @Mock
+    private BaseCheckpointSaver saver;
 
     @InjectMocks
     private ChatStreamEntry entry;
@@ -1235,6 +1245,304 @@ class ChatStreamEntryTest {
         assertTrue(endPayload.contains("\"status\":\"COMPLETED\""), "补发 end 应携带终态: " + endPayload);
         assertTrue(emitterCompleted(emitter), "emitter 应被 complete 收尾（M6.3 竞态终点）");
         verify(bridge).subscribe(eq("123"), any(SseEmitter.class));
+    }
+
+    // ==================== replay() 测试（M5 消息级重放） ====================
+
+    /** replay 会话（id=456 归属用户 123）的归属 stub */
+    private void stubOwnedSession() {
+        when(chatSessionService.findById(456L))
+                .thenReturn(new ChatSessionVO(456L, 123L, "会话", "ACTIVE", null, null, null));
+    }
+
+    /**
+     * 构造 __START__ checkpoint（R2 锚点方案测试事实源）
+     *
+     * @param messages START 快照的 messages（调用方给出「pre-run 状态 + 本轮用户消息」形态）
+     */
+    private Checkpoint startCheckpoint(List<Object> messages) {
+        Map<String, Object> state = new HashMap<>();
+        state.put("messages", messages);
+        return Checkpoint.builder()
+                .id("start-cp-id")
+                .state(state)
+                .nodeId("__START__")
+                .nextNodeId("queryUnderstanding")
+                .build();
+    }
+
+    /** 目标 run（id=900，会话 456，用户 123，终态）的归属 stub */
+    private void stubTargetRun() {
+        when(chatRunService.findById(900L)).thenReturn(new ChatRunVO(900L, 456L, 123L, "COMPLETED", null));
+    }
+
+    /** 目标 run 的 USER 行（content=原问题文本，锚点归属校验 + REGENERATE query 回填依据） */
+    private List<ChatMessageVO> userRow(String query) {
+        return List.of(new ChatMessageVO(1L, "USER", query, null, null, null, 900L, 0, null));
+    }
+
+    @Test
+    @DisplayName("replay EDIT 全流程：checkpoint 回滚去掉末位用户消息 + 软删目标 run 起全部行 + 新 run XADD 携带新 query 与 replayMode")
+    void replay_edit_fullFlow() throws Exception {
+        // Given: 归属会话 + 目标 run 为最后 run（位置/活跃校验通过）+ START 快照含 3 条消息
+        stubOwnedSession();
+        stubTargetRun();
+        when(chatRunService.existsRunAfter(456L, 900L)).thenReturn(false);
+        when(chatRunService.existsActiveRun(456L)).thenReturn(false);
+        when(saver.list(any(RunnableConfig.class)))
+                .thenReturn(List.of(
+                        startCheckpoint(List.of(
+                                new UserMessage("上一轮问题"), new AssistantMessage("上一轮回答"), new UserMessage("原问题"))),
+                        startCheckpoint(List.of(new UserMessage("上一轮问题")))));
+        when(chatMessageService.findByRunId(900L)).thenReturn(userRow("原问题"));
+        when(chatRunService.prepareReplayRun(456L, 123L, "EDIT", 900L))
+                .thenReturn(new ChatRunVO(901L, 456L, 123L, "QUEUED", null));
+
+        // When: EDIT 重放（新问题文本）
+        SseEmitter emitter = entry.replay(
+                mockRequestWithUserId(123L), mockResponse, 456L, new ChatReplayRequest("EDIT", "新问题", 900L));
+
+        // Then ① checkpoint 回滚：写新 checkpoint 载「START 快照去除末位用户消息」的状态
+        // （红线①：写入 config 不带 checkPointId——put 走 push 分支纯 INSERT 不删旧行）
+        ArgumentCaptor<RunnableConfig> configCaptor = ArgumentCaptor.forClass(RunnableConfig.class);
+        ArgumentCaptor<Checkpoint> cpCaptor = ArgumentCaptor.forClass(Checkpoint.class);
+        verify(saver).put(configCaptor.capture(), cpCaptor.capture());
+        assertTrue(
+                configCaptor.getValue().checkPointId().isEmpty(),
+                "回滚写入 config 严禁带 checkPointId（会 DELETE 旧 checkpoint 毁审计）");
+        Checkpoint rollbackCp = cpCaptor.getValue();
+        assertNotEquals("start-cp-id", rollbackCp.getId(), "回滚 checkpoint 必须是新 UUID，不覆盖锚点");
+        assertEquals("__START__", rollbackCp.getNodeId(), "nodeId 沿用锚点值");
+        List<?> rollbackMessages = (List<?>) rollbackCp.getState().get("messages");
+        assertEquals(2, rollbackMessages.size(), "EDIT 回滚去掉末位用户消息，保留 pre-run 两条");
+        assertTrue(rollbackMessages.get(0) instanceof UserMessage, "首条应为上一轮用户消息");
+        assertEquals("上一轮问题", ((UserMessage) rollbackMessages.get(0)).getText());
+        assertTrue(rollbackMessages.get(1) instanceof AssistantMessage, "次条应为上一轮回答");
+        assertEquals("上一轮回答", ((AssistantMessage) rollbackMessages.get(1)).getText());
+
+        // Then ② 软删事务：消息行软删 + run 软删与新 run（EDIT 模式）
+        verify(chatMessageService).softDeleteFromRun(456L, 900L);
+        verify(chatRunService).prepareReplayRun(456L, 123L, "EDIT", 900L);
+
+        // Then ③ 流式链路：新 run 901 的 ring/subscribe/XADD（消息体带新 query + replayMode 标记）
+        verify(bridge).createRing("901");
+        verify(bridge).subscribe(eq("901"), any(SseEmitter.class));
+        ArgumentCaptor<Map<String, String>> xaddCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(streamOps).add(eq("test-stream"), xaddCaptor.capture());
+        assertEquals("新问题", xaddCaptor.getValue().get("query"));
+        assertEquals("EDIT", xaddCaptor.getValue().get("replayMode"));
+        assertEquals("901", xaddCaptor.getValue().get("runId"));
+        verify(chatSessionService).updateLastMessageAt(456L);
+        assertNotNull(emitter);
+    }
+
+    @Test
+    @DisplayName("replay REGENERATE：checkpoint 载 START 快照原样（保留原用户消息）+ XADD 消息体 replayMode=REGENERATE 且 query 回填原问题")
+    void replay_regenerate_flagsXaddMessage() throws Exception {
+        // Given: 校验全通过，START 快照 = 上一轮回答 + 原问题（REGENERATE 锚点原样保留）
+        stubOwnedSession();
+        stubTargetRun();
+        when(chatRunService.existsRunAfter(456L, 900L)).thenReturn(false);
+        when(chatRunService.existsActiveRun(456L)).thenReturn(false);
+        when(saver.list(any(RunnableConfig.class)))
+                .thenReturn(List.of(startCheckpoint(List.of(new AssistantMessage("上一轮回答"), new UserMessage("原问题")))));
+        when(chatMessageService.findByRunId(900L)).thenReturn(userRow("原问题"));
+        when(chatRunService.prepareReplayRun(456L, 123L, "REGENERATE", 900L))
+                .thenReturn(new ChatRunVO(902L, 456L, 123L, "QUEUED", null));
+
+        // When: REGENERATE 重放（无新 query）
+        entry.replay(mockRequestWithUserId(123L), mockResponse, 456L, new ChatReplayRequest("REGENERATE", null, 900L));
+
+        // Then ① checkpoint 回滚：新 checkpoint messages = START 快照原样（含原用户消息，
+        // 新 run 图输入 messages 置空后从该点续跑重新生成）
+        ArgumentCaptor<Checkpoint> cpCaptor = ArgumentCaptor.forClass(Checkpoint.class);
+        verify(saver).put(any(RunnableConfig.class), cpCaptor.capture());
+        List<?> rollbackMessages = (List<?>) cpCaptor.getValue().getState().get("messages");
+        assertEquals(2, rollbackMessages.size(), "REGENERATE 锚点原样保留（含原用户消息）");
+        assertTrue(rollbackMessages.get(1) instanceof UserMessage, "末位应为原用户消息");
+        assertEquals("原问题", ((UserMessage) rollbackMessages.get(1)).getText());
+
+        // Then ② XADD：replayMode=REGENERATE；query 为服务端回填的原问题文本（USER 行持久化依据）
+        verify(chatMessageService).softDeleteFromRun(456L, 900L);
+        verify(chatRunService).prepareReplayRun(456L, 123L, "REGENERATE", 900L);
+        ArgumentCaptor<Map<String, String>> xaddCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(streamOps).add(eq("test-stream"), xaddCaptor.capture());
+        assertEquals("REGENERATE", xaddCaptor.getValue().get("replayMode"));
+        assertEquals("原问题", xaddCaptor.getValue().get("query"), "REGENERATE 的 query 回填原问题（供消息行持久化）");
+    }
+
+    @Test
+    @DisplayName("replay EDIT 首条消息：START 快照仅 1 条用户消息 → 回滚到空 messages（等价全新会话）")
+    void replay_editFirstMessage_rollsBackToEmptyMessages() throws Exception {
+        stubOwnedSession();
+        stubTargetRun();
+        when(chatRunService.existsRunAfter(456L, 900L)).thenReturn(false);
+        when(chatRunService.existsActiveRun(456L)).thenReturn(false);
+        when(saver.list(any(RunnableConfig.class)))
+                .thenReturn(List.of(startCheckpoint(List.of(new UserMessage("唯一问题")))));
+        when(chatMessageService.findByRunId(900L)).thenReturn(userRow("唯一问题"));
+        when(chatRunService.prepareReplayRun(456L, 123L, "EDIT", 900L))
+                .thenReturn(new ChatRunVO(903L, 456L, 123L, "QUEUED", null));
+
+        entry.replay(mockRequestWithUserId(123L), mockResponse, 456L, new ChatReplayRequest("EDIT", "改后的问题", 900L));
+
+        // 回滚 state messages 为空（R2 边界：首条消息 EDIT 等价全新会话）
+        ArgumentCaptor<Checkpoint> cpCaptor = ArgumentCaptor.forClass(Checkpoint.class);
+        verify(saver).put(any(RunnableConfig.class), cpCaptor.capture());
+        assertTrue(((List<?>) cpCaptor.getValue().getState().get("messages")).isEmpty(), "首条消息 EDIT 回滚到空 messages");
+    }
+
+    @Test
+    @DisplayName("replay → 目标 run 非该 session 最后一 run（其后有 deleted=0 run）→ 409 且不软删不入队（D5 位置校验）")
+    void replay_targetNotLastRun_conflict() throws Exception {
+        stubOwnedSession();
+        stubTargetRun();
+        when(chatRunService.existsRunAfter(456L, 900L)).thenReturn(true);
+
+        BizException ex = assertThrows(
+                BizException.class,
+                () -> entry.replay(
+                        mockRequestWithUserId(123L),
+                        mockResponse,
+                        456L,
+                        new ChatReplayRequest("REGENERATE", null, 900L)));
+
+        assertEquals(409, ex.getCode());
+        assertTrue(ex.getMessage().contains("最后一条"));
+        // 校验失败必须发生在任何副作用之前：不软删、不回滚 checkpoint、不入队
+        verify(chatMessageService, never()).softDeleteFromRun(anyLong(), anyLong());
+        verify(chatRunService, never()).prepareReplayRun(anyLong(), anyLong(), anyString(), anyLong());
+        verify(saver, never()).put(any(RunnableConfig.class), any(Checkpoint.class));
+        verify(streamOps, never()).add(anyString(), any(Map.class));
+    }
+
+    @Test
+    @DisplayName("replay → 目标 run 已软删（重复 replay，findById 过 @TableLogic 返回 null）→ 409")
+    void replay_softDeletedTarget_conflict() {
+        stubOwnedSession();
+        when(chatRunService.findById(900L)).thenReturn(null);
+
+        BizException ex = assertThrows(
+                BizException.class,
+                () -> entry.replay(
+                        mockRequestWithUserId(123L), mockResponse, 456L, new ChatReplayRequest("EDIT", "新问题", 900L)));
+
+        assertEquals(409, ex.getCode());
+        verify(chatMessageService, never()).softDeleteFromRun(anyLong(), anyLong());
+        verify(streamOps, never()).add(anyString(), any(Map.class));
+    }
+
+    @Test
+    @DisplayName("replay → 会话存在 ACTIVE/QUEUED run → 409「正在回答中」且无任何副作用")
+    void replay_activeRunExists_conflict() throws Exception {
+        stubOwnedSession();
+        stubTargetRun();
+        when(chatRunService.existsRunAfter(456L, 900L)).thenReturn(false);
+        when(chatRunService.existsActiveRun(456L)).thenReturn(true);
+
+        BizException ex = assertThrows(
+                BizException.class,
+                () -> entry.replay(
+                        mockRequestWithUserId(123L),
+                        mockResponse,
+                        456L,
+                        new ChatReplayRequest("REGENERATE", null, 900L)));
+
+        assertEquals(409, ex.getCode());
+        assertTrue(ex.getMessage().contains("正在回答中"));
+        verify(chatMessageService, never()).softDeleteFromRun(anyLong(), anyLong());
+        verify(saver, never()).put(any(RunnableConfig.class), any(Checkpoint.class));
+    }
+
+    @Test
+    @DisplayName("replay → 非本人会话 403 / 会话不存在 404 / EDIT 空 query 400 / mode 白名单外 400")
+    void replay_ownershipAndValidation() {
+        // 会话不存在 → 404
+        when(chatSessionService.findById(456L)).thenReturn(null);
+        BizException notFound = assertThrows(
+                BizException.class,
+                () -> entry.replay(
+                        mockRequestWithUserId(123L), mockResponse, 456L, new ChatReplayRequest("EDIT", "新问题", 900L)));
+        assertEquals(404, notFound.getCode());
+
+        // 非本人会话 → 403
+        when(chatSessionService.findById(456L))
+                .thenReturn(new ChatSessionVO(456L, 999L, "他人会话", "ACTIVE", null, null, null));
+        BizException forbidden = assertThrows(
+                BizException.class,
+                () -> entry.replay(
+                        mockRequestWithUserId(123L), mockResponse, 456L, new ChatReplayRequest("EDIT", "新问题", 900L)));
+        assertEquals(403, forbidden.getCode());
+
+        // EDIT 空 query → 400
+        stubOwnedSession();
+        BizException blankQuery = assertThrows(
+                BizException.class,
+                () -> entry.replay(
+                        mockRequestWithUserId(123L), mockResponse, 456L, new ChatReplayRequest("EDIT", "  ", 900L)));
+        assertEquals(400, blankQuery.getCode());
+
+        // mode 白名单外 → 400
+        BizException badMode = assertThrows(
+                BizException.class,
+                () -> entry.replay(
+                        mockRequestWithUserId(123L), mockResponse, 456L, new ChatReplayRequest("FOO", "x", 900L)));
+        assertEquals(400, badMode.getCode());
+    }
+
+    @Test
+    @DisplayName("replay → 历史 checkpoint 无 __START__（目标 run 图启动前失败/会话无 checkpoint）→ 409 不软删")
+    void replay_noStartCheckpoint_conflict() throws Exception {
+        stubOwnedSession();
+        stubTargetRun();
+        when(chatRunService.existsRunAfter(456L, 900L)).thenReturn(false);
+        when(chatRunService.existsActiveRun(456L)).thenReturn(false);
+        // 仅有一条非 __START__ checkpoint（目标 run 未写 __START__，如附件阶段失败）
+        when(saver.list(any(RunnableConfig.class)))
+                .thenReturn(List.of(Checkpoint.builder()
+                        .id("mid-cp")
+                        .state(Map.of("messages", List.of(new UserMessage("任意"))))
+                        .nodeId("queryUnderstanding")
+                        .nextNodeId("retrieve")
+                        .build()));
+
+        BizException ex = assertThrows(
+                BizException.class,
+                () -> entry.replay(
+                        mockRequestWithUserId(123L),
+                        mockResponse,
+                        456L,
+                        new ChatReplayRequest("REGENERATE", null, 900L)));
+
+        assertEquals(409, ex.getCode());
+        // 锚点不可得时不执行软删（防数据与 checkpoint 脱节）
+        verify(chatMessageService, never()).softDeleteFromRun(anyLong(), anyLong());
+        verify(chatRunService, never()).prepareReplayRun(anyLong(), anyLong(), anyString(), anyLong());
+    }
+
+    @Test
+    @DisplayName("replay → __START__ 锚点归属校验失败（末位用户消息与目标 run 原问题不匹配）→ 409 不软删")
+    void replay_anchorOwnershipMismatch_conflict() throws Exception {
+        stubOwnedSession();
+        stubTargetRun();
+        when(chatRunService.existsRunAfter(456L, 900L)).thenReturn(false);
+        when(chatRunService.existsActiveRun(456L)).thenReturn(false);
+        // 定位到的 __START__ 属于上一 run（目标 run 图启动前失败）：末位用户消息 ≠ 目标原问题
+        when(saver.list(any(RunnableConfig.class)))
+                .thenReturn(List.of(startCheckpoint(List.of(new UserMessage("上一 run 的问题")))));
+        when(chatMessageService.findByRunId(900L)).thenReturn(userRow("目标 run 的原问题"));
+
+        BizException ex = assertThrows(
+                BizException.class,
+                () -> entry.replay(
+                        mockRequestWithUserId(123L),
+                        mockResponse,
+                        456L,
+                        new ChatReplayRequest("REGENERATE", null, 900L)));
+
+        assertEquals(409, ex.getCode());
+        verify(chatMessageService, never()).softDeleteFromRun(anyLong(), anyLong());
+        verify(saver, never()).put(any(RunnableConfig.class), any(Checkpoint.class));
     }
 
     // ==================== startHeartbeat() 心跳调度器（真实 scheduler） ====================

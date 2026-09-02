@@ -141,7 +141,8 @@ export function ChatWorkspace({
   const setStreaming = useSetChatStreaming();
   // 新建对话信号（Task 13）：侧栏 /chat 同路由按钮经 Context 发出，本组件消费执行干净态
   const newChatSeq = useChatNewChatSeq();
-  const { state, send, cancel, reconnect, reset, resume, detach } = useChatStream(initialSessionId);
+  const { state, send, cancel, reconnect, reset, resume, detach, replay } =
+    useChatStream(initialSessionId);
 
   // ── 受控输入（Task 13）：工作区持有输入值，新建信号经 resetKey 驱动清空 ──
   // 初值取 /chat?q= 快速提问预填（仅新对话页；预填不自动发送，避免误发）
@@ -452,6 +453,37 @@ export function ChatWorkspace({
     void sendQuery(query, records).catch((error: unknown) => notify(chatErrorText(error)));
   }
 
+  // ── M5 编辑/重新生成提交流：本地回滚由 hook.replay 在响应 200 后执行；
+  // 失败 toast 不动本地（服务端软删未发生，两侧一致无需恢复）──
+  // replay 成功后失效历史查询（refetch 对齐服务端软删——replay_rollback 只作用于流式
+  // state.messages，历史回显侧（history props）的消息须由 refetch 移除软删行）
+  const handleEdit = useCallback(
+    async (message: StreamMessage, newText: string, targetRunId: string) => {
+      try {
+        await replay("EDIT", newText, targetRunId);
+        if (state.sessionId) {
+          void queryClient.invalidateQueries({ queryKey: ["session-messages", state.sessionId] });
+        }
+      } catch (error) {
+        notify(chatErrorText(error));
+      }
+    },
+    [replay, notify, state.sessionId, queryClient],
+  );
+  const handleRegenerate = useCallback(
+    async (runId: string) => {
+      try {
+        await replay("REGENERATE", null, runId);
+        if (state.sessionId) {
+          void queryClient.invalidateQueries({ queryKey: ["session-messages", state.sessionId] });
+        }
+      } catch (error) {
+        notify(chatErrorText(error));
+      }
+    },
+    [replay, notify, state.sessionId, queryClient],
+  );
+
   // ── 渲染状态：上下文条标题 / 空态文案 / 历史回显 ──
   const contextTitle = title ?? (variant === "new" ? "新对话" : "历史会话");
   // carry3：课程入口携带 courseId（返回按钮直达课程工作台）；课程名仍由 course 参数承担面包屑
@@ -553,6 +585,8 @@ export function ChatWorkspace({
             sessionId={state.sessionId ?? ""}
             attachmentBlobUrls={blobUrls}
             onNotify={notify}
+            onEdit={handleEdit}
+            onRegenerate={handleRegenerate}
           />
         )}
 

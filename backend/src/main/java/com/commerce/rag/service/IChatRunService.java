@@ -142,4 +142,39 @@ public interface IChatRunService extends IService<ChatRun> {
      * @return 活跃 run 的 ID；无活跃 run 返回 null
      */
     Long findActiveRunId(Long sessionId);
+
+    /**
+     * 判定会话内目标 run 之后是否还存在未删除的 run（M5 replay 位置校验）
+     *
+     * <p>D5 位置约束：编辑/重新生成仅允许作用于最后一个 run——checkpoint 线性结构
+     * 决定回滚该 run 必然回滚其后内容，限制位置避免「后面内容突然消失」。
+     * 雪花 ID 时序递增，「之后」以 id 大小判定；@TableLogic 自动附加 deleted=0，
+     * 已软删的 run（此前 replay 产物）不参与判定。
+     *
+     * @param sessionId    会话 ID（须已通过归属校验）
+     * @param targetRunId  目标 run ID
+     * @return true=目标 run 之后仍有 deleted=0 的 run（位置校验失败，调用方抛 409）；
+     *         false=目标 run 为该会话最后一个未删除 run
+     */
+    boolean existsRunAfter(Long sessionId, Long targetRunId);
+
+    /**
+     * replay 事务方法（M5，spec D2）：软删目标 run 行并创建新 QUEUED run
+     *
+     * <p>软删范围按模式区分——EDIT=目标 run 及其后全部 run（D5 位置校验已保证
+     * 其后无未删除 run，范围条件 ge 仅为覆盖历史软删行的防御性冗余）；
+     * REGENERATE=仅目标 run。均走 MP 逻辑删除（deleted=1 保留审计），
+     * checkpoint 历史不动（审计留痕，B.5.4）。
+     *
+     * <p>并发边界：与新 run 创建的非原子窗口由 uniq_active_run_per_session 唯一索引
+     * 兜底（活跃校验前置后并发 INSERT 冲突抛 ConcurrentRunException 由全局 409）。
+     *
+     * @param sessionId    会话 ID（归属校验已通过）
+     * @param userId       当前用户 ID（新 run 归属）
+     * @param mode         重放模式（EDIT / REGENERATE）
+     * @param targetRunId  目标 run ID（归属与软删校验已通过）
+     * @return 新建的 QUEUED run 视图对象
+     * @throws com.commerce.rag.exception.ConcurrentRunException 并发窗口内会话已有活跃 run
+     */
+    ChatRunVO prepareReplayRun(Long sessionId, Long userId, String mode, Long targetRunId);
 }

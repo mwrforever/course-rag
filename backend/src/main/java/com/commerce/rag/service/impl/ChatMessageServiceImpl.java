@@ -279,4 +279,26 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
                 Wrappers.<ChatMessage>lambdaQuery().eq(ChatMessage::getRunId, runId);
         return messageMapper.selectCount(wrapper);
     }
+
+    /**
+     * 软删会话内指定 run 起的全部消息行（M5 replay，语义详见接口 javadoc）
+     *
+     * <p>本 service 主表走内置链式（this.lambdaUpdate().remove()）批量逻辑删除
+     * （@TableLogic 置 deleted=1 保留审计）；EDIT 与 REGENERATE 统一为
+     * 「runId >= fromRunId」范围（REGENERATE 时目标即最后一个 run，范围等价单 run）。
+     *
+     * @param sessionId 会话 ID（归属校验已通过）
+     * @param fromRunId 起始 run ID（含，= replay 目标 run）
+     */
+    @Override
+    @Transactional
+    public void softDeleteFromRun(Long sessionId, Long fromRunId) {
+        // 批量逻辑删除：session 内 runId >= fromRunId 的全部行（软删保留审计，历史查询经
+        // @TableLogic 自动过滤，新 run 行不受影响）
+        this.lambdaUpdate()
+                .eq(ChatMessage::getSessionId, sessionId)
+                .ge(ChatMessage::getRunId, fromRunId)
+                .remove();
+        log.info("replay 软删消息行: sessionId={}, fromRunId={}", sessionId, fromRunId);
+    }
 }

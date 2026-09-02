@@ -426,6 +426,10 @@ public class ChatRequestWorker {
         String sessionIdStr = body.get("sessionId");
         String userIdStr = body.get("userId");
         String userQuery = body.get("query");
+        // M5 重放语义标记：REGENERATE 时图输入 messages 置空（checkpoint 已含原用户消息，
+        // 图从回滚点续跑重新生成）；EDIT/普通发送不特判（新 query 正常组装 UserMessage）。
+        // REGENERATE 的 query 为服务端回填的原问题文本，仅供 chat_message USER 行持久化
+        String replayMode = body.getOrDefault("replayMode", "");
 
         Long runId;
         Long sessionId;
@@ -547,7 +551,15 @@ public class ChatRequestWorker {
 
         // 构建 SAA 图输入（messages 列表）
         Map<String, Object> inputs = new HashMap<>();
-        inputs.put("messages", List.of(new UserMessage(quQuery)));
+        if ("REGENERATE".equals(replayMode)) {
+            // M5 重新生成：图输入 messages 置空（AppendStrategy 空列表为 no-op）——初始上下文
+            // 完全来自 replay 回滚 checkpoint（已含原用户消息，quQuery 形态含 caption 前缀），
+            // 图从该点续跑重新生成；新 run 的 __START__ checkpoint 由图自行写入
+            inputs.put("messages", List.of());
+        } else {
+            // 普通发送 / M5 编辑（EDIT 回滚 checkpoint 不含目标用户消息，新 query 按新输入组装）
+            inputs.put("messages", List.of(new UserMessage(quQuery)));
+        }
 
         // 流式过程中收集最后 NodeOutput（用于消息持久化）
         AtomicReference<NodeOutput> lastOutput = new AtomicReference<>();

@@ -2773,4 +2773,75 @@ class ChatRequestWorkerTest {
         // 中断分支不重抛异常，消息持久化兜底仍执行
         verify(chatMessageService, atLeastOnce()).batchInsert(anyList());
     }
+
+    // ==================== M5 replay：replayMode 解析与图输入组装 ====================
+
+    @Test
+    @DisplayName("replay REGENERATE — XADD 消息体带 replayMode=REGENERATE 时图输入 messages 置空（从回滚 checkpoint 续跑）")
+    @SuppressWarnings("unchecked")
+    void processRequest_replayRegenerate_emptyMessagesInput() throws Exception {
+        // Given: REGENERATE 重放消息（query 为服务端回填的原问题文本，仅供 USER 行持久化）
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+        MapRecord<String, Object, Object> record = createMockRecordWithBody(Map.of(
+                "runId",
+                "100",
+                "sessionId",
+                "200",
+                "userId",
+                "300",
+                "query",
+                "原问题",
+                "attachments",
+                "[]",
+                "replayMode",
+                "REGENERATE"));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 图输入 messages 为空列表（checkpoint 已含原用户消息，图从回滚点续跑重新生成）
+        ArgumentCaptor<Map<String, Object>> inputsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(compiledGraph).stream(inputsCaptor.capture(), any(RunnableConfig.class));
+        List<?> messages = (List<?>) inputsCaptor.getValue().get("messages");
+        assertTrue(messages.isEmpty(), "REGENERATE 图输入 messages 必须为空（由回滚 checkpoint 承载上下文）");
+        // run 正常收敛 COMPLETED（REGENERATE 特判仅影响输入组装，不影响终态链路）
+        verify(chatRunService).updateStatus(100L, "COMPLETED");
+    }
+
+    @Test
+    @DisplayName("replay EDIT / 普通发送 — 图输入 messages 为 UserMessage(query)（不特判）")
+    @SuppressWarnings("unchecked")
+    void processRequest_replayEditOrNormal_assemblesUserMessageInput() throws Exception {
+        // Given: EDIT 重放消息（query 为编辑后的新问题文本）
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+        MapRecord<String, Object, Object> record = createMockRecordWithBody(Map.of(
+                "runId",
+                "100",
+                "sessionId",
+                "200",
+                "userId",
+                "300",
+                "query",
+                "编辑后的新问题",
+                "attachments",
+                "[]",
+                "replayMode",
+                "EDIT"));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: EDIT 与普通发送同路径——图输入按新 query 组装 UserMessage（回滚 checkpoint
+        // 不含目标用户消息，新消息作为本轮输入正常进入上下文）
+        ArgumentCaptor<Map<String, Object>> inputsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(compiledGraph).stream(inputsCaptor.capture(), any(RunnableConfig.class));
+        List<?> messages = (List<?>) inputsCaptor.getValue().get("messages");
+        assertEquals(1, messages.size());
+        assertTrue(messages.get(0) instanceof UserMessage, "EDIT/普通发送图输入应为 UserMessage");
+        assertEquals("编辑后的新问题", ((UserMessage) messages.get(0)).getText());
+    }
 }

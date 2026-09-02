@@ -498,4 +498,35 @@ class ChatMessageServiceTest {
         assertEquals(4, body.seq(), "正文行占实体 seq 末位");
         assertEquals("RAG 讲义", body.sources().get(0).docTitle(), "正文行 sources 取实体行 sources_json（来源卡不回归）");
     }
+
+    // ==================== M5 replay：消息行软删 ====================
+
+    @Test
+    @DisplayName("softDeleteFromRun → session 内 runId >= fromRunId 的消息行逻辑删除（wrapper 携带范围条件）")
+    void softDeleteFromRun_marksRowsDeleted() throws Exception {
+        // 链式 remove() 依赖继承字段（baseMapper/entityClass），预置后 baseMapper.delete 可被 mock 驱动
+        java.lang.reflect.Field baseMapper =
+                com.baomidou.mybatisplus.extension.repository.CrudRepository.class.getDeclaredField("baseMapper");
+        baseMapper.setAccessible(true);
+        baseMapper.set(messageService, messageMapper);
+        java.lang.reflect.Field entityClass =
+                com.baomidou.mybatisplus.extension.repository.AbstractRepository.class.getDeclaredField("entityClass");
+        entityClass.setAccessible(true);
+        entityClass.set(messageService, ChatMessage.class);
+        when(messageMapper.delete(any())).thenReturn(3);
+
+        messageService.softDeleteFromRun(456L, 900L);
+
+        // 范围逻辑删除：链式 remove 产生 LambdaUpdateWrapper，session_id 等值 + run_id >= fromRunId
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ChatMessage>> captor =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper.class);
+        verify(messageMapper).delete(captor.capture());
+        String sqlSegment = captor.getValue().getSqlSegment();
+        assertTrue(sqlSegment.contains("session_id"), "软删应按会话过滤: " + sqlSegment);
+        assertTrue(sqlSegment.contains("run_id"), "软删应按 runId>=fromRunId 范围过滤: " + sqlSegment);
+        Collection<Object> params = captor.getValue().getParamNameValuePairs().values();
+        assertTrue(params.contains(456L), "会话参数应为入参 sessionId");
+        assertTrue(params.contains(900L), "应携带起始 runId 作范围参数");
+    }
 }

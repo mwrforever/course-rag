@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.dto.ApiResponse;
+import com.commerce.rag.dto.ChatReplayRequest;
 import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.dto.CreateSessionRequest;
 import com.commerce.rag.dto.PageResponse;
@@ -684,5 +685,37 @@ class StudentControllerTest {
         var result = controller.chatStream(req, resp, chatRequest);
 
         assertSame(emitter, result);
+    }
+
+    // ==================== M5 消息级重放端点（转发 ChatStreamEntry.replay） ====================
+
+    @Test
+    @DisplayName("replay → 转发 ChatStreamEntry.replay 并原样返回 emitter")
+    void replay_forwardsToChatStreamEntry() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        ChatReplayRequest replayRequest = new ChatReplayRequest("EDIT", "改后的问题", 900L);
+        SseEmitter emitter = mock(SseEmitter.class);
+        when(chatStreamEntry.replay(req, resp, 456L, replayRequest)).thenReturn(emitter);
+
+        var result = controller.replay(req, resp, 456L, replayRequest);
+
+        assertSame(emitter, result);
+        verify(chatStreamEntry).replay(req, resp, 456L, replayRequest);
+    }
+
+    @Test
+    @DisplayName("replay → 编排层校验失败（403/404/409）异常透传（全局异常处理器统一转 HTTP 状态码）")
+    void replay_propagatesBizException() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        ChatReplayRequest replayRequest = new ChatReplayRequest("REGENERATE", null, 900L);
+        // 编排层（ChatStreamEntry.replay）归属/位置/活跃校验失败抛 BizException，controller 零捕获透传
+        when(chatStreamEntry.replay(req, resp, 456L, replayRequest))
+                .thenThrow(new BizException(ErrorCode.FORBIDDEN, "无权操作此会话"));
+
+        BizException ex = assertThrows(BizException.class, () -> controller.replay(req, resp, 456L, replayRequest));
+
+        assertEquals(403, ex.getCode());
     }
 }

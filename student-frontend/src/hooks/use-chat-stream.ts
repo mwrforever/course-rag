@@ -31,7 +31,7 @@
  *   流消费循环经世代号（gen）失活，避免重连/卸载后旧循环写入新状态
  */
 import { useEffect, useReducer, useRef } from "react";
-import { ApiError, cancelRun, postChat, reconnectChat } from "../lib/api";
+import { ApiError, cancelRun, postChat, reconnectChat, replayChat } from "../lib/api";
 import { warn as logWarn } from "../lib/logger";
 import { createSseParser } from "../lib/sse-parser";
 import {
@@ -156,7 +156,8 @@ export type ChatAction =
       seq?: number | null;
     }
   | { type: "reconnect" }
-  | { type: "reset"; clearSession?: boolean };
+  | { type: "reset"; clearSession?: boolean }
+  | { type: "replay_rollback"; targetRunId: string; keepUserMessage: boolean };
 
 // ===== 常量 =====
 
@@ -306,6 +307,20 @@ function findAssistantIndex(messages: StreamMessage[], runId: string): number {
     if (messages[i].role === "assistant" && messages[i].id === runId) return i;
   }
   return -1;
+}
+
+/**
+ * 定位 EDIT 回滚起点：目标 AI 回答（id===targetRunId）前一条用户消息的下标——
+ * 该用户消息即被编辑对象，回滚移除「该用户消息及其后全部」。
+ * 找不到配对（目标回答不在本地状态，如历史回显消息或脏 targetRunId）返回
+ * messages.length（防御性：slice(0, length) 保留全部，交由历史 refetch 对齐）。
+ * 导出纯函数供单测直接断言（M5）。
+ */
+export function findEditStartIndex(messages: StreamMessage[], targetRunId: string): number {
+  const answerIndex = findAssistantIndex(messages, targetRunId);
+  if (answerIndex <= 0) return messages.length;
+  const prev = messages[answerIndex - 1];
+  return prev.role === "user" ? answerIndex - 1 : messages.length;
 }
 
 /**
@@ -523,6 +538,28 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
       // 清空（Task 13 新建对话干净态：下一次 send 的 sessionId=null → 后端建新会话）
       return createInitialState(action.clearSession ? null : state.sessionId);
     }
+    case "replay_rollback": {
+      // M5 本地回滚（仅 replay 响应 200 后派发；失败路径不动本地状态）：
+      // - REGENERATE（keepUserMessage=true）：仅移除目标 AI 回答（id===targetRunId），用户消息保留；
+      // - EDIT：移除目标用户消息（其后紧跟 targetRunId AI 回答的那条）及其后全部内容，
+      //   随后由调用方 dispatch send 落位新消息。历史回显侧（history props）的消息不经本
+      //   状态机管理，由工作区在 replay 成功后失效历史查询以 refetch 对齐服务端软删。
+      // 回滚即进入新一轮：清错误/终态/锚点，runId 待新流 metadata 落位
+      const messages = action.keepUserMessage
+        ? state.messages.filter(
+            (msg) => !(msg.role === "assistant" && msg.id === action.targetRunId),
+          )
+        : state.messages.slice(0, findEditStartIndex(state.messages, action.targetRunId));
+      return {
+        ...state,
+        messages,
+        streaming: true,
+        error: null,
+        endedStatus: null,
+        runId: null,
+        lastEventId: null,
+      };
+    }
     default: {
       // 未知/已废弃动作（如对齐设计稿后不再消费的 stage/query_plan）：原样返回不落状态
       // （2026-08-30 防御：sseEventToAction 已过滤，此处兜底防未来事件类型误入）
@@ -719,6 +756,8 @@ export function useChatStream(initialSessionId: string | null): {
   resume: (runId: string) => Promise<void>;
   /** 脱离当前流（新建对话干净态）：停消费循环释放读取器，不清状态（2026-09-01） */
   detach: () => void;
+  /** 消息级重放（M5）：EDIT 编辑重答 / REGENERATE 重新生成；200 后本地回滚 + 流接管 */
+  replay: (mode: "EDIT" | "REGENERATE", query: string | null, targetRunId: string) => Promise<void>;
 } {
   const [state, dispatch] = useReducer(chatReducer, initialSessionId, createInitialState);
   // 最新状态镜像：供 send/cancel/reconnect 等异步回调读取（闭包捕获首渲染实例，经 ref 拿最新值）
@@ -1003,6 +1042,50 @@ export function useChatStream(initialSessionId: string | null): {
   }
 
   /**
+   * 消息级重放（M5）：POST replay → 响应 200 后本地回滚 + 流接管。
+   * - REGENERATE：回滚移除目标 AI 回答（用户消息保留），新流直接接续重新生成；
+   * - EDIT：回滚移除目标用户消息及其后全部，随后 dispatch send 落位编辑后的新消息；
+   * - 失败（409 正在回答/位置校验/目标失效等）：不动本地状态，向上抛 ApiError
+   *   由上层 toast（服务端软删未发生，本地与服务端一致无需恢复）。
+   *
+   * @param mode       重放模式（EDIT / REGENERATE）
+   * @param query      EDIT 的新问题文本；REGENERATE 传 null（服务端回填原问题）
+   * @param targetRunId 目标 run ID（EDIT=被编辑消息的下一条 AI 回答 runId；REGENERATE=被重生成回答 runId）
+   */
+  async function replay(
+    mode: "EDIT" | "REGENERATE",
+    query: string | null,
+    targetRunId: string,
+  ): Promise<void> {
+    let response: Response;
+    try {
+      response = await replayChat(stateRef.current.sessionId ?? "", {
+        mode,
+        query: query ?? undefined,
+        targetRunId,
+      });
+    } catch (error) {
+      // 发送阶段 401（api 层单飞刷新失败已全局登出）：落 auth 分级供页面感知
+      if (error instanceof ApiError && error.code === 401) {
+        dispatch({ type: "error", kind: "auth", message: error.message });
+      }
+      throw error;
+    }
+    if (!response.ok) {
+      // 409（正在回答/位置校验/目标失效重复 replay）等：本地状态不动，向上抛供 toast
+      throw await toApiError(response);
+    }
+    // 200：服务端已软删 + checkpoint 已回滚——本地回滚对齐（REGENERATE 保留用户消息）
+    dispatch({ type: "replay_rollback", targetRunId, keepUserMessage: mode === "REGENERATE" });
+    if (mode === "EDIT" && query) {
+      // EDIT 新消息落位（send 动作：追加用户消息并重置 run 级锚点）
+      dispatch({ type: "send", id: nextLocalId(), query, attachments: [] });
+    }
+    // 新 run 的事件流接管（世代切换，旧读取循环失活）
+    startStream(response);
+  }
+
+  /**
    * 多会话并发续流（2026-09-01 用户拍板）：从其他会话切回仍有活跃 run 的会话时，
    * 以全量回放（lastEventId=null）重建当前 run 的事件流并续接实时事件——
    * C 端允许同一用户同时开启多会话问答，会话在服务端继续执行（断连不取消），
@@ -1091,5 +1174,6 @@ export function useChatStream(initialSessionId: string | null): {
     reset: (clearSession?: boolean) => dispatch({ type: "reset", clearSession }),
     resume,
     detach,
+    replay,
   };
 }

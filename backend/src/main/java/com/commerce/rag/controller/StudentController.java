@@ -3,6 +3,7 @@ package com.commerce.rag.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.dto.ApiResponse;
+import com.commerce.rag.dto.ChatReplayRequest;
 import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.dto.CreateSessionRequest;
 import com.commerce.rag.dto.PageResponse;
@@ -230,6 +231,33 @@ public class StudentController {
     public SseEmitter chatStream(
             HttpServletRequest request, HttpServletResponse response, @RequestBody ChatRequest chatRequest) {
         return chatStreamEntry.chat(request, response, chatRequest);
+    }
+
+    // ==================== 消息级重放（M5：编辑/重新生成） ====================
+
+    /**
+     * 消息级重放（M5，spec D2/D5）：编辑最后一条用户消息重答（EDIT）/
+     * 重新生成最后一条回答（REGENERATE），返回新 run 的 SSE 流。
+     *
+     * <p>编排与校验（归属 403/404、mode 白名单 400、目标 run 失效与位置/活跃校验 409、
+     * checkpoint __START__ 锚点定位回滚、软删事务、XADD 携带 replayMode）全部在
+     * {@link ChatStreamEntry#replay}；角色门禁同本类（STUDENT）。
+     *
+     * @param request       请求（AuthInterceptor 注入的用户属性）
+     * @param response      响应（SSE 防代理缓冲头透传）
+     * @param sessionId     会话 ID（路径参数）
+     * @param replayRequest 重放请求（mode/query/targetRunId，Bean Validation 校验失败 400）
+     * @return 新 run 的 SSE 事件流
+     * @throws BizException 400 参数非法；403 非本人会话；404 会话不存在；
+     *                      409 目标失效/位置校验/正在回答中/上下文不可用
+     */
+    @PostMapping("/chat/session/{sessionId}/replay")
+    public SseEmitter replay(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            @PathVariable Long sessionId,
+            @Valid @RequestBody ChatReplayRequest replayRequest) {
+        return chatStreamEntry.replay(request, response, sessionId, replayRequest);
     }
 
     // ==================== 历史消息（R1 补口 A） ====================

@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Run 生命周期服务 —— 管理 chat_run 表的状态流转
@@ -327,5 +328,60 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
                 .map(ChatRun::getId)
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * 判定会话内目标 run 之后是否还存在未删除的 run（M5 replay 位置校验，语义详见接口 javadoc）
+     *
+     * <p>本 service 主表走内置链式（this.lambdaQuery）+ exists() 短路探存（仅发
+     * selectCount 不取行）；@TableLogic 自动附加 deleted=0，历史软删行不参与判定。
+     *
+     * @param sessionId   会话 ID
+     * @param targetRunId 目标 run ID
+     * @return true=目标 run 之后仍有未删除 run；false=目标 run 为最后一个
+     */
+    @Override
+    public boolean existsRunAfter(Long sessionId, Long targetRunId) {
+        // 位置校验探存：ID 大于目标 run 的未删除 run 存在即位置校验失败（调用方抛 409）
+        return this.lambdaQuery()
+                .eq(ChatRun::getSessionId, sessionId)
+                .gt(ChatRun::getId, targetRunId)
+                .exists();
+    }
+
+    /**
+     * replay 事务方法（M5，spec D2）：软删目标 run 行 + 创建新 QUEUED run
+     *
+     * <p>软删范围：EDIT=目标 run 及其后全部（D5 保证其后无未删除 run，ge 为防御性冗余）；
+     * REGENERATE=仅目标 run（deleteById）。均走 @TableLogic 逻辑删除（deleted=1
+     * 保留审计），checkpoint 历史不动。事务边界（A.4.12）：本方法 @Transactional
+     * 最小边界覆盖「软删 + 建 run」两步原子；消息行软删（IChatMessageService.
+     * softDeleteFromRun）在调用方先行提交——两方法分属不同 service（互注会成环，
+     * B.2.2 禁止），中间态崩溃窗口由 replay 幂等收敛（软删幂等 + 位置校验拦截重复）。
+     *
+     * @param sessionId   会话 ID
+     * @param userId      当前用户 ID
+     * @param mode        重放模式（EDIT / REGENERATE）
+     * @param targetRunId 目标 run ID
+     * @return 新建的 QUEUED run 视图对象
+     * @throws ConcurrentRunException 并发窗口内会话已有活跃 run（唯一索引冲突）
+     */
+    @Override
+    @Transactional
+    public ChatRunVO prepareReplayRun(Long sessionId, Long userId, String mode, Long targetRunId) {
+        // M5 软删（D2）：EDIT → 目标 run 及其后全部；REGENERATE → 仅目标 run。
+        // 链式 remove() 走 @TableLogic 逻辑删除（UPDATE deleted=1，保留审计行）
+        if ("EDIT".equals(mode)) {
+            this.lambdaUpdate()
+                    .eq(ChatRun::getSessionId, sessionId)
+                    .ge(ChatRun::getId, targetRunId)
+                    .remove();
+        } else {
+            this.removeById(targetRunId);
+        }
+        log.info("replay 软删历史 run 行: sessionId={}, mode={}, targetRunId={}", sessionId, mode, targetRunId);
+        // 新 run（QUEUED）：并发窗口由 uniq_active_run_per_session 兜底
+        // （DataIntegrityViolationException → ConcurrentRunException → 全局 409）
+        return createRun(sessionId, userId);
     }
 }

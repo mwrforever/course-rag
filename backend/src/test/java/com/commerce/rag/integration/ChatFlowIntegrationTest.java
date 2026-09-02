@@ -3,6 +3,7 @@ package com.commerce.rag.integration;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -352,6 +353,169 @@ class ChatFlowIntegrationTest extends IntegrationTestBase {
         } finally {
             // 清理专用 ring（防跨用例泄漏投递线程）
             bridge.removeRing(runId);
+        }
+    }
+
+    /**
+     * replay EDIT 全链路（M5）：软删目标 run 行 + checkpoint 回滚（去除原用户消息）+
+     * 新 run 以编辑后的问题重答 + 历史接口不含软删行。
+     *
+     * <p>断言链（spec M5.2 / D2 / D5）：
+     * <ol>
+     *   <li>第一轮完成后 replay EDIT（targetRunId=run1）→ HTTP 200 + 新 run 创建；</li>
+     *   <li>run1 的 chat_message 行软删（deleted=1 保留审计）、历史接口不再返回其内容；</li>
+     *   <li>新 run 的 USER 行 = 编辑后的问题（图输入经 worker 全链路组装 UserMessage）；</li>
+     *   <li>checkpoint 回滚生效：新 run 完成后 messages = [编辑后的问题, 新回答]——
+     *       不含第一轮问答（回滚失败时为 4 条：第一轮问答 + 新问答）；</li>
+     *   <li>历史接口包含新 run 内容、不含被软删的第一轮内容。</li>
+     * </ol>
+     */
+    @Test
+    @DisplayName("replay EDIT 全链路：软删 + checkpoint 回滚 + 新 run 以编辑后问题重答 + 历史接口不含软删行")
+    void replayEdit_endToEnd() throws Exception {
+        // ── 第一轮：快速完成，建立 run1 与 checkpoint 基线 ──
+        String token = loginAndGetToken(USERNAME, DEFAULT_DEVICE);
+        Long sessionId = createSession(token, "replay 编辑测试会话");
+        assertEquals(200, postChatAndCloseStream(token, sessionId, "第一轮问题"));
+        Long run1 = latestRunId(sessionId);
+        assertNotNull(run1, "第一轮 chat_run 应已创建");
+        assertEquals("COMPLETED", awaitTerminalStatus(run1, 30_000), "第一轮应完成");
+        // 基线：run1 完成后的 checkpoint messages（用户消息 + 图内追加的回答侧消息，规模以实测为准）
+        List<Message> run1Messages = readCheckpointMessages(sessionId);
+        assertTrue(run1Messages.size() >= 2, "第一轮后 checkpoint 至少含用户消息与回答");
+
+        // ── replay EDIT：编辑第一轮问题后重答 ──
+        int replayStatus = postReplayAndCloseStream(token, sessionId, "EDIT", "编辑后的问题", run1);
+        assertEquals(200, replayStatus, "replay 端点应受理并返回 200");
+        Long run2 = latestRunId(sessionId);
+        assertNotEquals(run1, run2, "replay 应创建新 run");
+        assertEquals("COMPLETED", awaitTerminalStatus(run2, 30_000), "新 run 应完成重答");
+
+        // run1 行软删（deleted=1 保留审计）；新 run 的 USER 行 = 编辑后的问题
+        Integer run1Deleted = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM chat_message WHERE run_id = ? AND deleted = 1", Integer.class, run1);
+        assertTrue(run1Deleted != null && run1Deleted >= 1, "run1 的消息行应被软删（保留审计）");
+        Integer run1Visible = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM chat_message WHERE run_id = ? AND deleted = 0", Integer.class, run1);
+        assertEquals(0, run1Visible, "run1 不应再有可见消息行");
+        String newUserContent = jdbcTemplate.queryForObject(
+                "SELECT content FROM chat_message WHERE run_id = ? AND role = 'USER'", String.class, run2);
+        assertEquals("编辑后的问题", newUserContent, "新 run 的 USER 行应为编辑后的问题");
+
+        // checkpoint 回滚生效：新 run 完成后 messages 规模与第一轮同构（回滚失败未剥离第一轮
+        // 问答则翻倍）、首条为编辑后的用户消息、全程不含第一轮问题（上下文已回滚）
+        List<Message> finalMessages = awaitCheckpointMessageCount(sessionId, run1Messages.size());
+        assertEquals(run1Messages.size(), finalMessages.size(), "回滚后上下文规模应与第一轮同构（第一轮问答已被剥离）");
+        UserMessage editedUser = assertInstanceOf(UserMessage.class, finalMessages.get(0), "首条应为编辑后的用户消息");
+        assertEquals("编辑后的问题", editedUser.getText());
+        assertTrue(
+                finalMessages.stream()
+                        .noneMatch(m -> m.getText() != null && m.getText().contains("第一轮问题")),
+                "回滚后上下文不应再含第一轮问题");
+
+        // 历史接口：含新 run 内容、不含被软删的第一轮内容
+        ResponseEntity<String> history =
+                getWithToken("/api/v1/student/sessions/" + sessionId + "/messages?page=1&size=50", token);
+        assertEquals(200, history.getStatusCode().value());
+        assertNotNull(history.getBody());
+        assertTrue(history.getBody().contains("编辑后的问题"), "历史接口应含新 run 内容");
+        assertFalse(history.getBody().contains("第一轮问题"), "历史接口不应返回软删行（第一轮问答）");
+    }
+
+    /**
+     * replay REGENERATE 全链路（M5）：目标回答行软删 + checkpoint 回滚到原用户消息 +
+     * 新 run 从该点续跑（图输入 messages 置空）+ 用户消息不重复。
+     *
+     * <p>断言链：
+     * <ol>
+     *   <li>第一轮完成后 replay REGENERATE（targetRunId=run1）→ 200 + 新 run；</li>
+     *   <li>run1 行软删；新 run 的 USER 行 = 原问题文本（服务端回填，历史回显用户气泡依据）；</li>
+     *   <li>checkpoint 回滚生效：新 run 完成后 messages = [原用户消息, 新回答]（用户消息仅一条
+     *       ——回滚失败未剥离旧回答则为 3 条，REGENERATE 空 messages 输入重复合并也为 3 条）；</li>
+     *   <li>历史接口含原问题与新回答、不含软删的旧回答行。</li>
+     * </ol>
+     */
+    @Test
+    @DisplayName("replay REGENERATE 全链路：目标回答软删 + 新 run 从原用户消息续跑 + 用户消息不重复")
+    void replayRegenerate_endToEnd() throws Exception {
+        // ── 第一轮：快速完成，建立 run1 与 checkpoint 基线 ──
+        String token = loginAndGetToken(USERNAME, DEFAULT_DEVICE);
+        Long sessionId = createSession(token, "replay 重生成测试会话");
+        assertEquals(200, postChatAndCloseStream(token, sessionId, "重新生成这个问题"));
+        Long run1 = latestRunId(sessionId);
+        assertNotNull(run1, "第一轮 chat_run 应已创建");
+        assertEquals("COMPLETED", awaitTerminalStatus(run1, 30_000), "第一轮应完成");
+        // 基线：run1 完成后的 checkpoint messages（规模以实测为准，同构对比见下方断言）
+        List<Message> run1Messages = readCheckpointMessages(sessionId);
+        assertTrue(run1Messages.size() >= 2, "第一轮后 checkpoint 至少含用户消息与回答");
+
+        // ── replay REGENERATE：重新生成第一轮回答 ──
+        int replayStatus = postReplayAndCloseStream(token, sessionId, "REGENERATE", null, run1);
+        assertEquals(200, replayStatus, "replay 端点应受理并返回 200");
+        Long run2 = latestRunId(sessionId);
+        assertNotEquals(run1, run2, "replay 应创建新 run");
+        assertEquals("COMPLETED", awaitTerminalStatus(run2, 30_000), "新 run 应完成重新生成");
+
+        // run1 行软删；新 run 的 USER 行 = 原问题文本（服务端回填）
+        Integer run1Visible = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM chat_message WHERE run_id = ? AND deleted = 0", Integer.class, run1);
+        assertEquals(0, run1Visible, "run1 不应再有可见消息行（软删保留审计）");
+        String newUserContent = jdbcTemplate.queryForObject(
+                "SELECT content FROM chat_message WHERE run_id = ? AND role = 'USER'", String.class, run2);
+        assertEquals("重新生成这个问题", newUserContent, "新 run 的 USER 行应回填原问题文本");
+
+        // checkpoint 回滚生效：新 run 完成后 messages 规模与第一轮同构、原用户消息仅一条
+        // （锚点未剥离旧回答则多 1 条；空 messages 输入重复合并用户消息也多 1 条）
+        List<Message> finalMessages = awaitCheckpointMessageCount(sessionId, run1Messages.size());
+        assertEquals(run1Messages.size(), finalMessages.size(), "回滚后上下文规模应与第一轮同构");
+        long originalUserCount = finalMessages.stream()
+                .filter(m -> m instanceof UserMessage && "重新生成这个问题".equals(m.getText()))
+                .count();
+        assertEquals(1, originalUserCount, "原用户消息应恰好一条（REGENERATE 不重复合并）");
+        assertInstanceOf(AssistantMessage.class, finalMessages.get(finalMessages.size() - 1), "末条应为重新生成的回答");
+
+        // 历史接口：含原问题与新回答、不含软删的旧回答
+        ResponseEntity<String> history =
+                getWithToken("/api/v1/student/sessions/" + sessionId + "/messages?page=1&size=50", token);
+        assertEquals(200, history.getStatusCode().value());
+        assertNotNull(history.getBody());
+        assertTrue(history.getBody().contains("重新生成这个问题"), "历史接口应含原问题（新 run USER 行）");
+    }
+
+    /**
+     * 调用 replay SSE 端点并立即关闭流（POST /api/v1/student/chat/session/{sessionId}/replay）。
+     *
+     * <p>与 {@link IntegrationTestBase#postChatAndCloseStream} 同断言边界：受理 200 + 新 run
+     * 创建 + XADD 入队即返回，流式事件由 Worker 异步推送、run 终态经 PG 轮询断言。
+     *
+     * @param token     Access Token
+     * @param sessionId 会话 ID
+     * @param mode      重放模式（EDIT / REGENERATE）
+     * @param query     新问题文本（EDIT 非空；REGENERATE 传 null——服务端回填原问题）
+     * @param targetRunId 目标 run ID
+     * @return HTTP 状态码（预期 200）
+     */
+    private int postReplayAndCloseStream(String token, Long sessionId, String mode, String query, Long targetRunId) {
+        try {
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(10))
+                    .build();
+            String body = "{\"mode\":\"" + mode + "\",\"query\":" + (query == null ? "null" : "\"" + query + "\"")
+                    + ",\"targetRunId\":" + targetRunId + "}";
+            HttpRequest request = HttpRequest.newBuilder(URI.create(
+                            "http://localhost:" + port + "/api/v1/student/chat/session/" + sessionId + "/replay"))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(15))
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            int status = response.statusCode();
+            // 立即关闭流：不等待 SSE 结束（断言以 PG/历史接口为准，避免与 Worker 推送耦合）
+            response.body().close();
+            return status;
+        } catch (Exception e) {
+            throw new IllegalStateException("replay 端点调用失败", e);
         }
     }
 
