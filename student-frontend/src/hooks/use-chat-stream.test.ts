@@ -197,6 +197,31 @@ describe("chatReducer 纯函数", () => {
     expect(s.runId).toBe("run-9");
   });
 
+  it("H3 锚点（M8 切回场景）：回放 metadata 的 sessionId 以服务端为准覆盖 initialSessionId，且仅改写本状态实例", () => {
+    // 串台排查结论固化（spec M8 调研剩余项 H3）：reducer 层语义 = metadata 携带的
+    // sessionId 是唯一权威（切回会话的回放流重建归属，服务端误发他人会话 id 时也以
+    // 服务端为准）；工作区间的隔离由 key={sessionId} 重挂载承载——即使串台发生，
+    // 污染也只落在本 hook 实例的 state 内，不越界改写其他实例（入参不可变是单实例
+    // 侧锚点）。E2E multi-session 第三用例（互切不串入）为整链路复核。
+    const before = createInitialState("sess-B");
+    const next = chatReducer(before, {
+      type: "metadata",
+      runId: "run-A",
+      sessionId: "sess-A",
+      model: "m",
+      seq: 1,
+    });
+    // 服务端值为准：归属与 run 锚点均随事件落位
+    expect(next.sessionId).toBe("sess-A");
+    expect(next.runId).toBe("run-A");
+    expect(next.messages).toHaveLength(1);
+    expect(next.messages[0]).toMatchObject({ role: "assistant", id: "run-A" });
+    expect(next.lastEventId).toBe(1);
+    // 入参不被原地污染（B 实例原状态保持：隔离语义的不可变侧锚点）
+    expect(before.sessionId).toBe("sess-B");
+    expect(before.messages).toHaveLength(0);
+  });
+
   it("用例2 thinking（时间线改版）：同 stage 多 delta 合并一节点多行；thinking_end 置节点 ended", () => {
     let s = streamingWithAi({ messages: [aiMsg()] });
     s = chatReducer(s, { type: "thinking", delta: "先检索", stage: "understanding" });

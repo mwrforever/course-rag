@@ -16,6 +16,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NewChatPage from "./page";
+import { ChatWorkspace } from "./chat-workspace";
 import { SIDEBAR_SESSIONS_QUERY_KEY } from "@/components/chat/chat-sidebar";
 import { ChatStreamingProvider, useRequestNewChat } from "@/components/chat/chat-streaming-context";
 import { ApiError } from "@/lib/api";
@@ -672,6 +673,61 @@ describe("新对话页：新建对话信号（Task 13 干净态，侧栏按钮�
     await waitFor(() => {
       expect(chatMock.reset).toHaveBeenCalledWith(true);
     });
+    chatMock.state = initialState();
+  });
+
+  it("双会话并发下新建信号：仅当前工作区 reset，另一会话 run 不受影响（H4 竞态补测）", async () => {
+    // spec M8 调研剩余项 H4：newChatSeq → reset(true) 在多会话并发下的误清竞态——
+    // A 工作区（/chat）流式中触发新建信号，reset 只落在本工作区实例（seq 比对一次性
+    // 消费）；随后挂载的 B 会话工作区（/chat/sess-B）带活跃 run 续流入口不受污染，
+    // 也不重放 A 页已消费的信号（新实例 seq 重新对齐，无残留触发）
+    chatMock.state = {
+      ...initialState(),
+      streaming: true,
+      runId: "run-A",
+      sessionId: "sess-A",
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { unmount } = render(
+      <QueryClientProvider client={client}>
+        <ChatStreamingProvider>
+          <SignalProbe />
+          <NewChatPage />
+        </ChatStreamingProvider>
+      </QueryClientProvider>,
+    );
+    // A 流式中发新建信号：detach + reset(true) 各一次（本工作区干净态收口）
+    act(() => requestRef.current());
+    await waitFor(() => {
+      expect(chatMock.reset).toHaveBeenCalledWith(true);
+    });
+    await waitFor(() => {
+      expect(chatMock.detach).toHaveBeenCalled();
+    });
+    expect(chatMock.reset).toHaveBeenCalledTimes(1);
+    // 离开 A（detach 已停消费循环；sess-A 的 run 继续服务端执行，事件留 ring）
+    unmount();
+    chatMock.reset.mockClear();
+    chatMock.detach.mockClear();
+    chatMock.resume.mockClear();
+
+    // B：另一会话工作区随后挂载（/chat/sess-B），active-run 命中 → resume 续流仍可用
+    chatMock.state = { ...initialState(), sessionId: "sess-B" };
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <ChatStreamingProvider>
+          <ChatWorkspace initialSessionId="sess-B" variant="continue" resumeRunId="run-B" />
+        </ChatStreamingProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(chatMock.resume).toHaveBeenCalledWith("run-B");
+    });
+    // 误清断言：B 工作区不重放 A 页已消费的新建信号（无残留 detach/reset 触发）
+    expect(chatMock.reset).not.toHaveBeenCalled();
+    expect(chatMock.detach).not.toHaveBeenCalled();
     chatMock.state = initialState();
   });
 });
