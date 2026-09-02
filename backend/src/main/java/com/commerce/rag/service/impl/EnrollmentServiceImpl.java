@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.commerce.rag.cache.PublicCourseCacheEvictor;
 import com.commerce.rag.convert.EnrollmentConverter;
 import com.commerce.rag.convert.StudentConverter;
 import com.commerce.rag.dto.CourseDTO;
@@ -57,6 +58,8 @@ public class EnrollmentServiceImpl extends ServiceImpl<CourseEnrollmentMapper, C
     private final EnrollmentConverter enrollmentConverter;
     /** 学生端转换器 —— 学生课程视图对象转换（toCourseVO），转换器跨层共用合法 */
     private final StudentConverter studentConverter;
+    /** 公开课程缓存失效（M9/PERF-21：购买/选课可见性变更后 afterCommit 清空 publicCourses 缓存区） */
+    private final PublicCourseCacheEvictor publicCourseCacheEvictor;
 
     /**
      * 查询课程的已选学生列表
@@ -148,6 +151,8 @@ public class EnrollmentServiceImpl extends ServiceImpl<CourseEnrollmentMapper, C
             this.saveBatch(toCreate);
         }
         int added = toReactivate.size() + toCreate.size();
+        // M9 公开课程缓存失效：批量选课变更购买可见性相关数据（事务内写库完成后挂 afterCommit 失效）
+        publicCourseCacheEvictor.evictAllAfterCommit();
         log.info("批量添加选课: courseId={}, requested={}, added={}", courseId, studentIds.size(), added);
         return added;
     }
@@ -171,6 +176,8 @@ public class EnrollmentServiceImpl extends ServiceImpl<CourseEnrollmentMapper, C
         if (rows == 0) {
             throw new BizException(ErrorCode.NOT_FOUND, "选课记录不存在");
         }
+        // M9 公开课程缓存失效：退课变更购买可见性相关数据（先写 DB 后失效）
+        publicCourseCacheEvictor.evictAllAfterCommit();
         log.info("移除学生: courseId={}, studentId={}, operator={}", courseId, studentId, currentUserId);
     }
 
@@ -272,6 +279,9 @@ public class EnrollmentServiceImpl extends ServiceImpl<CourseEnrollmentMapper, C
             // 已 ACTIVE → 幂等直接返回成功，不产生任何写（重复调用不重复插行）
             log.info("学生购买课程幂等命中（已购）: courseId={}, userId={}", courseId, studentId);
         }
+        // M9 公开课程缓存失效：购买变更选课数据（事务内写库完成后挂 afterCommit 失效；幂等命中
+        // 分支无写库，多一次 clear 无害——公开缓存区重建代价低，保持写路径统一出口）
+        publicCourseCacheEvictor.evictAllAfterCommit();
         return new CoursePurchaseVO(courseId, "ACTIVE", true);
     }
 

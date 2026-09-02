@@ -2,6 +2,9 @@ package com.commerce.rag.config;
 
 import com.commerce.rag.cache.DashboardCacheEvictor;
 import com.commerce.rag.properties.CacheTtlProperties;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -50,29 +53,52 @@ public class CacheConfig {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(factory);
         template.setKeySerializer(RedisSerializer.string());
-        template.setValueSerializer(new GenericJackson2JsonRedisSerializer());
+        template.setValueSerializer(jsonSerializer());
         template.setHashKeySerializer(RedisSerializer.string());
-        template.setHashValueSerializer(new GenericJackson2JsonRedisSerializer());
+        template.setHashValueSerializer(jsonSerializer());
         template.afterPropertiesSet();
         return template;
     }
 
     /**
-     * Spring Cache 管理器（dashboard 统计三缓存区，TTL 按模块配置化）
+     * 构建 JSON 值序列化器（default typing + java.time 支持）
      *
-     * <p>键序列化 string、值 JSON 含类型（POJO 缓存往返一致）；缓存区 TTL 统一取自
-     * {@code cache.ttl.dashboard-stats}（perf P2-3 决策窗口 60 秒，写方失效钩子与窗口联动）。
+     * <p>default typing 形态与 {@code GenericJackson2JsonRedisSerializer} 内建默认完全一致
+     * （{@code EVERYTHING + As.PROPERTY} 即 @class 属性 + NullValue 空值占位），另注册
+     * JavaTimeModule——M9/PERF-21 公开课程详情 VO 含 LocalDate 排期字段，无 JSR310 模块时
+     * 序列化直接抛 InvalidDefinitionException（java 8 date/time 不支持）。
+     */
+    private static GenericJackson2JsonRedisSerializer jsonSerializer() {
+        ObjectMapper mapper = new ObjectMapper();
+        // java.time 支持（LocalDate/LocalDateTime 等，覆盖公开课程排期与实体时间戳字段）
+        mapper.registerModule(new JavaTimeModule());
+        // NullValue（@Cacheable 空值占位）序列化注册，与内建默认一致
+        GenericJackson2JsonRedisSerializer.registerNullValueSerializer(mapper, null);
+        // default typing：@class 属性形态，与内建默认一致（POJO 往返类型还原）
+        mapper.activateDefaultTyping(
+                mapper.getPolymorphicTypeValidator(), ObjectMapper.DefaultTyping.EVERYTHING, JsonTypeInfo.As.PROPERTY);
+        return new GenericJackson2JsonRedisSerializer(mapper);
+    }
+
+    /**
+     * Spring Cache 管理器（dashboard 统计三缓存区 + 公开课程缓存区，TTL 按模块配置化）
+     *
+     * <p>键序列化 string、值 JSON 含类型（POJO 缓存往返一致）；dashboard 三缓存区 TTL 取自
+     * {@code cache.ttl.dashboard-stats}（perf P2-3 决策窗口 60 秒，写方失效钩子与窗口联动）；
+     * publicCourses 公开课程缓存区 TTL 取自 {@code cache.ttl.public-courses}
+     * （M9/PERF-21：公开列表+详情，60 秒窗口，写路径经 PublicCourseCacheEvictor afterCommit 失效联动）。
      */
     @Bean
     public RedisCacheManager redisCacheManager(RedisConnectionFactory factory, CacheTtlProperties cacheTtlProperties) {
         RedisCacheConfiguration defaults = RedisCacheConfiguration.defaultCacheConfig()
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(RedisSerializer.string()))
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(
-                        new GenericJackson2JsonRedisSerializer()));
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer()));
         Map<String, RedisCacheConfiguration> byName = new HashMap<>();
         for (String name : DashboardCacheEvictor.CACHE_NAMES) {
             byName.put(name, defaults.entryTtl(cacheTtlProperties.dashboardStats()));
         }
+        // M9/PERF-21：公开课程缓存区（简单场景 @Cacheable，TTL 配置化注册，禁止注解硬编码）
+        byName.put("publicCourses", defaults.entryTtl(cacheTtlProperties.publicCourses()));
         return RedisCacheManager.builder(factory)
                 .cacheDefaults(defaults)
                 .withInitialCacheConfigurations(byName)

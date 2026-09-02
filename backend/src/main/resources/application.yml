@@ -278,6 +278,8 @@ cache:
     course-query: 5m
     # dashboard 统计三缓存区（@Cacheable 注解化，perf P2-3 决策窗口 60 秒兜底）
     dashboard-stats: 60s
+    # 公开课程缓存区（M9/PERF-21：公开列表+详情，写路径 afterCommit 失效联动）
+    public-courses: 60s
 
 # ── Agent 配置（F#1 + F#3）──
 rag:

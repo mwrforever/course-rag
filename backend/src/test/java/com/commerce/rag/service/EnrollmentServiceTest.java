@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.repository.AbstractRepository;
 import com.baomidou.mybatisplus.extension.repository.CrudRepository;
+import com.commerce.rag.cache.PublicCourseCacheEvictor;
 import com.commerce.rag.convert.EnrollmentConverter;
 import com.commerce.rag.convert.EnrollmentConverterImpl;
 import com.commerce.rag.convert.StudentConverter;
@@ -69,6 +70,10 @@ class EnrollmentServiceTest {
     /** 课程主表 mapper（purchaseCourse 跨 service 链式查询载体，真实链式 wrapper 绑定此 mock） */
     @Mock
     private CourseInfoMapper courseInfoMapper;
+
+    /** 公开课程缓存失效器（M9：Mock——购买/选课写路径失效钩子仅需不抛异常） */
+    @Mock
+    private PublicCourseCacheEvictor publicCourseCacheEvictor;
 
     @Spy
     private EnrollmentConverter enrollmentConverter = new EnrollmentConverterImpl();

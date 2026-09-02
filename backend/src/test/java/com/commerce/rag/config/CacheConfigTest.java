@@ -31,15 +31,18 @@ class CacheConfigTest {
     }
 
     @Test
-    @DisplayName("RedisCacheManager：三统计缓存区 TTL 配置化注册（60 秒窗口，perf P2-3 决策联动）")
+    @DisplayName("RedisCacheManager：三统计缓存区 + publicCourses 缓存区 TTL 配置化注册（60 秒窗口，M9 联动）")
     void redisCacheManager_ttlPerCacheName() {
-        CacheTtlProperties ttl = new CacheTtlProperties(Duration.ofMinutes(5), Duration.ofSeconds(60));
+        CacheTtlProperties ttl =
+                new CacheTtlProperties(Duration.ofMinutes(5), Duration.ofSeconds(60), Duration.ofSeconds(60));
         CacheManager manager = cacheConfig.redisCacheManager(mock(RedisConnectionFactory.class), ttl);
 
         for (String name : DashboardCacheEvictor.CACHE_NAMES) {
             RedisCache cache = (RedisCache) manager.getCache(name);
             assertThat(cache).as("缓存区 %s 应注册", name).isNotNull();
         }
+        // M9：公开课程缓存区同经 cacheConfigurations 注册（TTL 取自 publicCourses 组件）
+        assertThat(manager.getCache("publicCourses")).as("公开课程缓存区应注册").isNotNull();
         // 未注册缓存区：不经 withInitialCacheConfigurations 也由 cacheDefaults 兜底可用
         assertThat(manager.getCache("unknown")).isNotNull();
     }

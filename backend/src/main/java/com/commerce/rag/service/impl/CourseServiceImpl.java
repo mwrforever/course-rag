@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.commerce.rag.cache.DashboardCacheEvictor;
+import com.commerce.rag.cache.PublicCourseCacheEvictor;
 import com.commerce.rag.convert.CourseConverter;
 import com.commerce.rag.convert.PublicCourseConverter;
 import com.commerce.rag.dto.CourseDTO;
@@ -36,12 +37,14 @@ import com.commerce.rag.vo.PublicCourseVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -99,6 +102,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
     /** Dashboard 统计缓存失效（Spring Cache 注解化的写方统一出口，先写 DB 后失效——一致性铁律） */
     private final DashboardCacheEvictor dashboardCacheEvictor;
 
+    /** 公开课程缓存失效（M9/PERF-21：写路径 afterCommit 统一清空 publicCourses 缓存区） */
+    private final PublicCourseCacheEvictor publicCourseCacheEvictor;
+
     /** 课程域配置（报名链接生成基址 course.enroll-base-url） */
     private final CourseProperties courseProperties;
 
@@ -152,6 +158,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
         course.setEnrollmentLink(enrollmentLink);
         // 新建课程影响搜索列表可见性，失效该课程相关缓存键——afterCommit（提交后失效，见方法注释）
         evictCourseCacheAfterCommit(course.getId());
+        // M9 公开课程缓存失效：新课程立即可见于 C 端公开列表（afterCommit 语义同上）
+        publicCourseCacheEvictor.evictAllAfterCommit();
         log.info(
                 "创建课程: courseId={}, title={}, createdBy={}, enrollmentLink={}",
                 course.getId(),
@@ -262,14 +270,15 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
     /**
      * 查询公开课程列表（C 端公开接口，未登录可访问）
      *
-     * <p>仅返回 ACTIVE 状态课程（@TableLogic 自动过滤已删除），按评分降序；
-     * 课程数据量小且低频，不做缓存——避免引入写路径失效链路
-     * （课程增删改后前端重新拉取即得最新值）。
+     * <p>仅返回 ACTIVE 状态课程（@TableLogic 自动过滤已删除），按评分降序。
+     * M9/PERF-21：{@code @Cacheable publicCourses}（60s TTL 经 cache.ttl.public-courses 配置化注册），
+     * 写路径经 PublicCourseCacheEvictor afterCommit 失效（先写 DB 后失效——一致性铁律）。
      *
      * <p>契约 C.2.1：投影补 price 列（价格转为 C 端公开展示字段，列表卡片展示）。
      *
      * @return 公开课程视图对象列表（仅对外信息字段，含价格）
      */
+    @Cacheable(cacheNames = "publicCourses", key = "'all'")
     public List<PublicCourseVO> findPublicCourses() {
         log.info("查询公开课程列表");
         // 本 service 主表操作：内置链式查询 + 精确投影（A.4.3 / A.4.4）
@@ -288,7 +297,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
                 .eq(CourseInfo::getStatus, "ACTIVE")
                 .orderByDesc(CourseInfo::getRating)
                 .list();
-        return courses.stream().map(publicCourseConverter::toVO).toList();
+        // M9：收集为 ArrayList 落缓存——Stream.toList() 的 JDK 不可变 ListN 为 final 类型，
+        // JSON default typing 对 final 集合省略类型 id，缓存值序列化/反序列化不对称（读取即抛异常）
+        return courses.stream().map(publicCourseConverter::toVO).collect(Collectors.toCollection(ArrayList::new));
     }
 
     /**
@@ -298,10 +309,14 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
      * （@TableLogic 自动过滤已删除）→ 不存在即 404（课程不存在/已下架/已删除统一文案，不泄露存在性）
      * → 查询课程排期（course_schedule，开课日期升序，可为空列表）→ MapStruct 转公开详情 VO。
      *
+     * <p>M9/PERF-21：{@code @Cacheable publicCourses}（按 courseId 分键，TTL 经
+     * cache.ttl.public-courses 配置化注册），写路径经 PublicCourseCacheEvictor afterCommit 失效。
+     *
      * @param courseId 课程 ID（路径参数，不可空）
      * @return 公开课程详情 VO（含 price 与 schedules 排期列表）
      * @throws BizException 404 课程不存在、已逻辑删除或 status 非 ACTIVE
      */
+    @Cacheable(cacheNames = "publicCourses", key = "#courseId")
     public PublicCourseDetailVO findPublicCourseById(Long courseId) {
         log.info("查询公开课程详情: courseId={}", courseId);
         CourseInfo course = this.lambdaQuery()
@@ -379,6 +394,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
         courseInfoMapper.update(null, wrapper);
         // 课程信息变更影响详情与搜索排序，失效该课程相关缓存键（先写 DB 后失效）
         courseQueryService.evictCourse(courseId);
+        // M9 公开课程缓存失效：标题/价格等公开字段变更后清空公开缓存区
+        publicCourseCacheEvictor.evictAllAfterCommit();
         log.info("更新课程: courseId={}, operator={}", courseId, currentUserId);
     }
 
@@ -463,6 +480,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
             // 统计失效：课程专属 PENDING 分片已软删，影响 pendingChunkCount（M-2 新增项）
             dashboardCacheEvictor.evictAll();
         });
+        // M9 公开课程缓存失效：软删课程不再可见于 C 端公开列表/详情（afterCommit 语义同上）
+        publicCourseCacheEvictor.evictAllAfterCommit();
         log.info("级联软删课程: courseId={}, operator={}", courseId, currentUserId);
     }
 
@@ -513,6 +532,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
             }
         }
         int added = toCreate.size();
+        // M9 公开课程缓存失效：授课教师变更影响公开详情（事务内批插完成后挂 afterCommit 失效）
+        publicCourseCacheEvictor.evictAllAfterCommit();
         log.info("添加教师: courseId={}, teacherIds={}, added={}", courseId, teacherIds, added);
     }
 
@@ -530,6 +551,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
                 .in(CourseTeacher::getTeacherId, teacherIds)
                 .set(CourseTeacher::getDeleted, System.currentTimeMillis());
         courseTeacherMapper.update(null, wrapper);
+        // M9 公开课程缓存失效：移除授课教师影响公开详情展示（先写 DB 后失效）
+        publicCourseCacheEvictor.evictAllAfterCommit();
         log.info("移除教师: courseId={}, teacherIds={}", courseId, teacherIds);
     }
 
@@ -573,6 +596,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
         doUpdateContent(courseId, contentType, content);
         // 内容变更影响学生端内容读取，失效该课程相关缓存键（先写 DB 后失效）
         courseQueryService.evictCourse(courseId);
+        // M9 公开课程缓存失效：详情页 intro/syllabus 等 Tab 内容随公开详情下发
+        publicCourseCacheEvictor.evictAllAfterCommit();
         log.info("更新课程内容: courseId={}, contentType={}", courseId, contentType);
     }
 
@@ -636,6 +661,8 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
         }
         // 全部 Tab 落库后按 courseId 统一失效（先写 DB 后失效；批内中途被缓存的读最终一致）
         courseQueryService.evictCourse(courseId);
+        // M9 公开课程缓存失效：批量内容变更后清空公开缓存区（与单 Tab 路径同构）
+        publicCourseCacheEvictor.evictAllAfterCommit();
         log.info("批量更新课程内容: courseId={}, tabCount={}", courseId, contents.size());
     }
 

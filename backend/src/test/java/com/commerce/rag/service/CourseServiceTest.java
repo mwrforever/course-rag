@@ -1,5 +1,6 @@
 package com.commerce.rag.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -9,6 +10,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.repository.AbstractRepository;
 import com.baomidou.mybatisplus.extension.repository.CrudRepository;
 import com.commerce.rag.cache.DashboardCacheEvictor;
+import com.commerce.rag.cache.PublicCourseCacheEvictor;
 import com.commerce.rag.convert.CourseConverterImpl;
 import com.commerce.rag.convert.PublicCourseConverterImpl;
 import com.commerce.rag.dto.CourseDTO;
@@ -48,6 +50,7 @@ import org.mockito.Captor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionAttribute;
@@ -95,6 +98,10 @@ class CourseServiceTest {
     @Mock
     private DashboardCacheEvictor dashboardCacheEvictor;
 
+    /** 公开课程缓存失效器（M9：Mock——写路径失效钩子仅需不抛异常） */
+    @Mock
+    private PublicCourseCacheEvictor publicCourseCacheEvictor;
+
     /** saveBatch 批插参数捕获器（P1-9：批插内容等价断言） */
     @Captor
     private ArgumentCaptor<List<CourseTeacher>> batchCaptor;
@@ -131,6 +138,7 @@ class CourseServiceTest {
                 new CourseConverterImpl(),
                 courseQueryService,
                 dashboardCacheEvictor,
+                publicCourseCacheEvictor,
                 COURSE_PROPERTIES);
     }
 
@@ -330,6 +338,7 @@ class CourseServiceTest {
                 new CourseConverterImpl(),
                 courseQueryService,
                 dashboardCacheEvictor,
+                publicCourseCacheEvictor,
                 new CourseProperties("http://localhost:3000/", new CourseProperties.Cover(List.of("png"), 5)));
         // 链式字段须注入本测试另行构造的实例（非 setUp 的 courseService）
         injectChainFields(service);
@@ -538,6 +547,20 @@ class CourseServiceTest {
 
         assertEquals(404, ex.getCode());
         assertTrue(ex.getMessage().contains("课程不存在或已下架"));
+    }
+
+    @Test
+    @DisplayName(
+            "M9: findPublicCourses/findPublicCourseById → @Cacheable 声明 publicCourses 缓存区（TTL 由 CacheConfig 配置化注册）")
+    void publicCourseQueries_annotatedWithPublicCoursesCache() throws NoSuchMethodException {
+        Method list = CourseServiceImpl.class.getMethod("findPublicCourses");
+        Method detail = CourseServiceImpl.class.getMethod("findPublicCourseById", Long.class);
+        // 缓存区名注解声明（TTL 不硬编码在注解——由 cache.ttl.public-courses 经 CacheConfig 注册）
+        assertThat(list.getAnnotation(Cacheable.class).cacheNames()).contains("publicCourses");
+        assertThat(detail.getAnnotation(Cacheable.class).cacheNames()).contains("publicCourses");
+        // 详情按 courseId 分键；列表无参固定键
+        assertThat(list.getAnnotation(Cacheable.class).key()).isEqualTo("'all'");
+        assertThat(detail.getAnnotation(Cacheable.class).key()).isEqualTo("#courseId");
     }
 
     @Test

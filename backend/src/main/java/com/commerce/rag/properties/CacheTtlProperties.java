@@ -11,10 +11,13 @@ import org.springframework.validation.annotation.Validated;
  * <p>绑定 application.yml 中 cache.ttl 配置块，由 CacheConfig 注册。
  * 默认值与 Caffeine 时代一致：课程查询 5 分钟、dashboard 统计 60 秒（perf P2-2/P2-3 决策窗口，改动需同步写方失效钩子）。
  *
- * @param courseQuery   课程查询领域缓存 TTL（CourseQueryCacheService 用，默认 5 分钟）
+ * @param courseQuery    课程查询领域缓存 TTL（CourseQueryCacheService 用，默认 5 分钟）
  * @param dashboardStats dashboard 统计三缓存区 TTL（@Cacheable 注解化，默认 60 秒兜底）
+ * @param publicCourses  公开课程缓存区 TTL（M9/PERF-21：公开列表+详情，默认 60 秒决策窗口，写路径 afterCommit 失效联动）
  */
 @Validated
 @ConfigurationProperties(prefix = "cache.ttl")
 public record CacheTtlProperties(
-        @DefaultValue("5m") Duration courseQuery, @DefaultValue("60s") Duration dashboardStats) {}
+        @DefaultValue("5m") Duration courseQuery,
+        @DefaultValue("60s") Duration dashboardStats,
+        @DefaultValue("60s") Duration publicCourses) {}
