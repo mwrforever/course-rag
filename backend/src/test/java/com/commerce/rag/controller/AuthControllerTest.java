@@ -434,4 +434,15 @@ class AuthControllerTest {
 
         assertEquals(ErrorCode.UNAUTHORIZED, ex.getErrorCode());
     }
+
+    @Test
+    @DisplayName("me → 用户已不存在（findById 返回 null）：按未登录处理返回 401（覆盖 user == null 首析取项）")
+    void me_userDeleted_throws401() {
+        when(httpRequest.getAttribute(AuthInterceptor.ATTR_USER_ID)).thenReturn(1L);
+        when(sysUserService.findById(1L)).thenReturn(null);
+
+        BizException ex = assertThrows(BizException.class, () -> authController.me(httpRequest));
+
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getErrorCode());
+    }
 }
