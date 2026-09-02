@@ -590,8 +590,10 @@ export function ChatWorkspace({
           />
         )}
 
-        {/* 消息尾错误横幅（设计 §1.5.4 error 事件）：分级操作：retryable=重试（手动重连）
-             replay_failed=重新提问（清空对话引导重问）；auth 由全局登出流承接，仅展示文案 */}
+        {/* 消息尾错误横幅（设计 §1.5.4 error 事件）：分级操作：retryable=重试（手动重连）+
+             重新生成（M7：runId 保留时复用 M5 REGENERATE replay 整轮重开——判死重试耗尽/
+             有产出失败保留现场后的手动恢复入口）；replay_failed=重新提问（清空对话引导重问）；
+             auth 由全局登出流承接，仅展示文案 */}
         {state.error ? (
           <div
             role="alert"
@@ -607,6 +609,21 @@ export function ChatWorkspace({
                   className="shrink-0 rounded-lg border border-danger/30 bg-surface px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger"
                 >
                   重试
+                </button>
+              ) : null}
+              {state.error.kind === "retryable" && state.runId ? (
+                /* M7：ERROR 终态 reducer 不清 runId（error/end 分支均保留）——据其发起
+                   REGENERATE replay（服务端软删回滚 + 新 run 重新生成；正在回答中/目标失效
+                   等 409 由 handleRegenerate 的 toast 分级承接） */
+                <button
+                  type="button"
+                  data-testid="error-regenerate"
+                  onClick={() => {
+                    if (state.runId) void handleRegenerate(state.runId);
+                  }}
+                  className="shrink-0 rounded-lg border border-danger/30 bg-surface px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger"
+                >
+                  重新生成
                 </button>
               ) : null}
               {state.error.kind === "replay_failed" ? (

@@ -2,13 +2,14 @@ import { test, expect } from "@playwright/test";
 import { mockApi, login, mockChatStream, frame } from "./helpers/sse-route";
 
 /**
- * SSE 生命周期 E2E（整合 spec §3.2：cancel / 409 / reconnect / REPLAY_FAILED）
+ * SSE 生命周期 E2E（整合 spec §3.2：cancel / 409 / reconnect / REPLAY_FAILED / M7 错误卡）
  *
  * - cancel：发送后按钮 morph「停止生成」→ 点击 → POST {runId}/cancel 请求到达
  * - 409：二次发送冲突 → toast「当前会话正在回答中」
  * - reconnect：EOF 未终态触发断流路径（Task11 修复：EOF 即断流，无需等 30s）→
  *   GET reconnect?lastEventId= 携带锚点 → 续流渲染
  * - REPLAY_FAILED：重连返回 error 帧 → 「重新提问」引导
+ * - M7 错误卡「重新生成」：error 终态 → 横幅入口 → POST replay REGENERATE → 新回答流式
  * （删除 409 语义随 /sessions 页下线迁移至侧边栏删除路径，由 chat-sidebar E2E/单测覆盖）
  */
 
@@ -158,6 +159,51 @@ test.describe("SSE 生命周期", () => {
     await expect(page.getByText(/半截回答.*已停止生成/)).toBeVisible();
     // CANCELLED 无 messageId：无反馈按钮（仅复制）
     await expect(page.getByRole("button", { name: "有用" })).toBeHidden();
+    await expect(page.getByRole("button", { name: "复制回答" })).toBeVisible();
+  });
+
+  test("错误卡「重新生成」入口：run ERROR 后点击 → POST replay REGENERATE → 新回答流式（M7+M5）", async ({
+    page,
+  }) => {
+    // route-mock：首轮流推 error 终态（服务端判死重试耗尽/有产出失败的保留现场形态）→
+    // 错误横幅出现 → 点击 error-regenerate → 断言 replay 请求体 {mode, targetRunId} →
+    // replay 流接管渲染新回答（web-first 断言，无固定 sleep）
+    await mockChatStream(
+      page,
+      frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
+        frame("delta", { text: "半截回答" }, 2) +
+        frame("error", { runId: "9001", message: "网络连接中断，请重试" }, 3),
+      { delayMs: 300 },
+    );
+    let replayBody: string | null = null;
+    await page.route("**/api/v1/student/chat/session/77/replay", async (route) => {
+      replayBody = route.request().postData() ?? null;
+      await route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "text/event-stream;charset=UTF-8" },
+        body:
+          frame("metadata", { runId: "9002", sessionId: "77", model: "qwen3.8-max" }, 1) +
+          frame("delta", { text: "重新生成的完整回答" }, 2) +
+          frame("end", { runId: "9002", status: "COMPLETED", messageId: "5002" }, 3),
+      });
+    });
+
+    await login(page, "/");
+    await page.goto("/chat");
+    await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
+    await page.getByRole("button", { name: "发送" }).click();
+    // 错误横幅出现（error 帧落位 state.error；runId 保留 → 重新生成入口渲染）
+    await expect(page.getByText("网络连接中断，请重试")).toBeVisible({ timeout: 8_000 });
+    const regenerate = page.getByTestId("error-regenerate");
+    await expect(regenerate).toBeVisible();
+    await regenerate.click();
+    // replay 请求体断言：REGENERATE 携带目标 runId（poll 通过后 replayBody 必非空，?? "" 仅过类型）
+    await expect.poll(() => replayBody).toBeTruthy();
+    const parsed = JSON.parse(replayBody ?? "") as { mode: string; targetRunId: string };
+    expect(parsed.mode).toBe("REGENERATE");
+    expect(parsed.targetRunId).toBe("9001");
+    // 新流渲染：replay 200 → replay_rollback 移除旧回答 → 新 run 流式接续
+    await expect(page.getByText("重新生成的完整回答")).toBeVisible({ timeout: 8_000 });
     await expect(page.getByRole("button", { name: "复制回答" })).toBeVisible();
   });
 });

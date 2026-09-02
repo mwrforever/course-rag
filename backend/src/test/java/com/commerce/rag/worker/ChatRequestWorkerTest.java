@@ -45,6 +45,7 @@ import com.commerce.rag.stream.ThinkingPusher;
 import com.commerce.rag.vo.ChatRunVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Duration;
@@ -186,6 +187,14 @@ class ChatRequestWorkerTest {
      * 需要小阈值验证「等待不阻塞流」，默认 2000ms 会拖慢用例且无法区分阈值是否生效）
      */
     private ChatRequestWorker buildWorker(long sourcesReadyWaitMs) {
+        return buildWorker(new ChatStreamProperties(sourcesReadyWaitMs, 45_000L, 3, 2_000L));
+    }
+
+    /**
+     * 按完整对话流配置重建被测 worker（M7 判死/重试用例：stall 阈值与退避需要调小、
+     * N3-1 文案映射用例需要关闭自动重试保持「一次性 ERROR」路径，见各用例注明）
+     */
+    private ChatRequestWorker buildWorker(ChatStreamProperties properties) {
         return new ChatRequestWorker(
                 redisTemplate,
                 compiledGraph,
@@ -196,7 +205,7 @@ class ChatRequestWorkerTest {
                 chatMessageService,
                 streamProperties,
                 workerProperties,
-                new ChatStreamProperties(sourcesReadyWaitMs),
+                properties,
                 runPool,
                 warningHook,
                 orchestrator,
@@ -2335,6 +2344,9 @@ class ChatRequestWorkerTest {
     @Test
     @DisplayName("N3-1: 网络断连类异常 → ERROR 文案「网络连接中断，请重试」（原文 Connection reset 不外发）")
     void processRequest_networkError_messageMappedToChinese() throws Exception {
+        // M7 既有用例核对处置：IOException 无产出在新行为下将触发自动重试（耗尽约 6s 且
+        // 路径变长）——本用例主题是文案映射，重建 autoRetryMax=0 worker 保持一次性 ERROR
+        worker = buildWorker(new ChatStreamProperties(2000, 45_000L, 0, 2_000L));
         when(compiledGraph.stream(any(), any(RunnableConfig.class)))
                 .thenReturn(Flux.error(new java.io.IOException("Connection reset by peer")));
 
@@ -2346,6 +2358,9 @@ class ChatRequestWorkerTest {
     @Test
     @DisplayName("N3-1: 超时类异常 → ERROR 文案「模型服务响应超时，请稍后重试」（原文 timed out 不外发）")
     void processRequest_timeoutError_messageMappedToChinese() throws Exception {
+        // M7 既有用例核对处置：同上——SocketTimeoutException 属可重试类，重建
+        // autoRetryMax=0 worker 保持文案映射用例的一次性 ERROR 路径
+        worker = buildWorker(new ChatStreamProperties(2000, 45_000L, 0, 2_000L));
         when(compiledGraph.stream(any(), any(RunnableConfig.class)))
                 .thenReturn(Flux.error(new java.net.SocketTimeoutException("Read timed out")));
 
@@ -2363,6 +2378,142 @@ class ChatRequestWorkerTest {
         invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
 
         assertErrorEventMessageMapped("服务暂时不可用，请稍后重试", "Internal engine failure");
+    }
+
+    // ==================== M7 判死与自动重试（RG4：per-chunk idle 判死 + 无产出整轮重试） ====================
+
+    @Test
+    @DisplayName("M7 判死：chunk 间隔超阈值 → TimeoutException 重试耗尽 → ERROR 终态「模型服务响应超时」")
+    void stallBetweenChunks_retriesExhaustedToTimeoutError() throws Exception {
+        // 阈值调小：判死 1000ms（@Min(1000) 允许的最小值——计划骨架的 100ms 与 @Min(1000)
+        // 冲突，取下限）+ 退避 100ms，4 次尝试总耗时约 4.7s 可控
+        worker = buildWorker(new ChatStreamProperties(2000, 1_000L, 3, 100L));
+        NodeOutput c1 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        // 节点名非 __START__（普通段配额 = stallTimeoutMs=1000ms）
+        lenient().when(c1.node()).thenReturn("queryUnderstandingNode");
+        // 首 chunk 到达后静默：per-chunk idle 判死（任意相邻两信号间隔超阈值）
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.just(c1).concatWith(Flux.never()));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // 1 + 3 次尝试全部判死 → 保留现场转 ERROR（D1：无产出全败）
+        verify(compiledGraph, times(4)).stream(any(), any(RunnableConfig.class));
+        verify(chatRunService).updateStatus(100L, "ERROR");
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        List<SseEvent> terminals = pushed.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.ERROR || e.type() == SseEventType.END)
+                .toList();
+        assertEquals(1, terminals.size(), "判死重试耗尽仅一个终态事件（RETRYABLE 尝试不推终态）: " + terminals);
+        assertEquals(SseEventType.ERROR, terminals.get(0).type(), "终态应为 ERROR 事件");
+        assertTrue(
+                terminals.get(0).payload().contains("模型服务响应超时"),
+                "判死终态应为超时中文映射: " + terminals.get(0).payload());
+    }
+
+    @Test
+    @DisplayName("M7 自动重试：无产出两次断流（IOException）第三次成功 → 同 run COMPLETED（事件流不重开）")
+    void noOutputFailure_retriesWithinRun_toCompleted() throws Exception {
+        worker = buildWorker(new ChatStreamProperties(2000, 45_000L, 3, 100L));
+        NodeOutput c1 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(
+                        Flux.error(new IOException("Connection reset by peer")),
+                        Flux.error(new IOException("Connection reset by peer")),
+                        Flux.just(c1));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // 前两次断流、第三次成功：图流共执行 3 次（同 run 整轮重开）
+        verify(compiledGraph, times(3)).stream(any(), any(RunnableConfig.class));
+        verify(chatRunService).updateStatus(100L, "COMPLETED");
+        verify(chatRunService, never()).updateStatus(100L, "ERROR");
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        // METADATA 仅一次：重试在同一 run 事件流上续推（runState/seq 连续不重置）
+        assertEquals(
+                1,
+                pushed.getAllValues().stream()
+                        .filter(e -> e.type() == SseEventType.METADATA)
+                        .count(),
+                "重试不得重开事件流（METADATA 仅一次）");
+        List<SseEvent> terminals = pushed.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.ERROR || e.type() == SseEventType.END)
+                .toList();
+        assertEquals(1, terminals.size(), "重试恢复仅一个终态事件: " + terminals);
+        assertEquals(SseEventType.END, terminals.get(0).type(), "最终终态应为 END");
+        assertTrue(terminals.get(0).payload().contains("COMPLETED"), "END 应携带 COMPLETED");
+    }
+
+    @Test
+    @DisplayName("M7 有产出失败（首 delta 后断流）→ 不自动重试：单次尝试保留现场转 ERROR（D1）")
+    void producedOutput_failureKeepsErrorWithoutRetry() throws Exception {
+        worker = buildWorker(new ChatStreamProperties(2000, 45_000L, 3, 100L));
+        NodeOutput c1 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        // transform 产出 DELTA——真实 transformer 发送 DELTA 事件时会置位 runState.deltaSent
+        // （hasProduced 五信号之一），stub 模拟同款行为
+        when(transformer.transform(any(NodeOutput.class), any(), any(AssistantMessageSink.class)))
+                .thenAnswer(invocation -> {
+                    invocation
+                            .getArgument(1, SseEventTransformer.RunState.class)
+                            .markDeltaSent();
+                    return List.of(deltaEvent("首段正文"));
+                });
+        // 首 delta 推送后断流（IOException——可重试类异常，但已产出 → 不重试）
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.just(c1).concatWith(Flux.error(new IOException("Connection reset by peer"))));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // 有产出失败：仅 1 次尝试（D1：避免重试覆盖已渲染内容）
+        verify(compiledGraph, times(1)).stream(any(), any(RunnableConfig.class));
+        verify(chatRunService).updateStatus(100L, "ERROR");
+        // 保留现场增量落库：正文行 = 已推送 delta（终态落库 ≡ 已推送事件序列不变量）
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(msgCaptor.capture());
+        ChatMessage bodyRow = msgCaptor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("有产出失败应落库累加器正文行"));
+        assertEquals("首段正文", bodyRow.getContent(), "失败现场正文行 = 已推送 delta");
+    }
+
+    @Test
+    @DisplayName("M7 退避序列：初始 2s 指数 ×2 封顶 30s（retryBackoffMsOf 纯函数直测，默认配置）")
+    void backoffSequence_exponentialCapped() {
+        // setUp 默认 worker（retryBackoffMs=2000 默认配置）——确定性断言序列，不做计时
+        // 断言（elapsed 测量 flaky，禁入 CI）
+        long[] expected = {2_000L, 4_000L, 8_000L, 16_000L, 30_000L, 30_000L};
+        for (int attempt = 1; attempt <= expected.length; attempt++) {
+            assertEquals(expected[attempt - 1], worker.retryBackoffMsOf(attempt), "第 " + attempt + " 次失败后的退避时长");
+        }
+    }
+
+    @Test
+    @DisplayName("M7 3 次全败（无产出）→ 保留现场转 ERROR：仅 USER 行落库（无产出无增量行）")
+    void allRetriesExhausted_errorWithUserRowOnly() throws Exception {
+        worker = buildWorker(new ChatStreamProperties(2000, 45_000L, 3, 100L));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new IOException("Connection reset by peer")));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // 1 + 3 次尝试全部断流 → 耗尽收尾
+        verify(compiledGraph, times(4)).stream(any(), any(RunnableConfig.class));
+        verify(chatRunService).updateStatus(100L, "ERROR");
+        // 无产出全败：仅 USER 行落库（RETRYABLE 尝试不落库，耗尽后一次性增量落库）
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService, times(1)).batchInsert(msgCaptor.capture());
+        List<ChatMessage> rows = msgCaptor.getValue();
+        assertEquals(1, rows.size(), "无产出全败仅落 USER 行: " + rows);
+        assertEquals("USER", rows.get(0).getRole());
+        assertEquals("你好", rows.get(0).getContent());
     }
 
     // ==================== processRequest 边界分支 ====================
@@ -2812,7 +2963,8 @@ class ChatRequestWorkerTest {
                 chatMessageService,
                 streamProperties,
                 workerProperties,
-                new ChatStreamProperties(2000),
+                // M7 后属性类扩为四字段（stall/retry 取生产默认值）
+                new ChatStreamProperties(2000, 45_000L, 3, 2_000L),
                 runPool,
                 warningHook,
                 orchestrator,

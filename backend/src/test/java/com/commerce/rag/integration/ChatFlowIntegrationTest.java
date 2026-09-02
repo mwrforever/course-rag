@@ -23,6 +23,7 @@ import com.commerce.rag.test.IntegrationTestBase;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
@@ -480,6 +481,81 @@ class ChatFlowIntegrationTest extends IntegrationTestBase {
         assertEquals(200, history.getStatusCode().value());
         assertNotNull(history.getBody());
         assertTrue(history.getBody().contains("重新生成这个问题"), "历史接口应含原问题（新 run USER 行）");
+    }
+
+    /**
+     * M7 判死重试集成（真实 Spring 上下文 + Testcontainers PG/Redis + 真实 SAA 图执行）：
+     * stub 模型前两次调用在 reactAgent 段立即断流（IOException）、第三次成功 → 同 run
+     * 自动重试恢复 → END COMPLETED + 正文落库完整 + checkpoint 用户消息不重复。
+     *
+     * <p>mock 分发（chatModel.stream 按调用到达序）：QU 与 reactAgent 交替消费——
+     * QU 段统一用无 reasoning 的非 JSON 输出（静默完成 + 降级 unknown 不拒答，保证
+     * hasProduced 五信号全空——QU reasoning 会经 ThinkingPusher 直推构成产出导致不可重试）；
+     * reactAgent 段前两次 Flux.error(IOException)（连接级断流，N3 实证的即时 RST 形态）、
+     * 第三次正常完成。
+     *
+     * <p>断言链（spec M7.2 / R4 处理点 c）：
+     * <ol>
+     *   <li>SSE 客户端收到 end COMPLETED 终态（重试期间无 ERROR 终态、无重复终态）；</li>
+     *   <li>chat_message 落库 USER 行 + 含完整回答的 assistant 行（重试成功走正常完成路径，
+     *       陈旧 QU 捕获被处理点 d 定向清除、不产生重复实体行）；</li>
+     *   <li>checkpoint 用户消息恰好一条（处理点 c：重试前 pre-run 快照回滚生效——失败
+     *       尝试的 __START__ 合并被剥离；回滚失效则同 inputs 重试重复合并为多条）。</li>
+     * </ol>
+     */
+    @Test
+    @DisplayName("判死重试集成：stub 模型首两次断流、第三次成功 → 前端最终看到完整回答（M7）")
+    void stallRetry_recoversOnThirdAttempt() throws Exception {
+        String token = loginAndGetToken(USERNAME, DEFAULT_DEVICE);
+        Long sessionId = createSession(token, "判死重试测试会话");
+
+        // QU 段统一响应：无 reasoning、content 非 JSON → QU 降级 unknown（无思考推送，
+        // hasProduced 保持 false，reactAgent 断流可重试）
+        ChatResponse quSilent = new ChatResponse(List.of(
+                new Generation(AssistantMessage.builder().content("非JSON输出").build())));
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(
+                        // 尝试 1：QU 静默完成 → reactAgent 断流（无产出 → RETRYABLE）
+                        Flux.just(quSilent),
+                        Flux.error(new IOException("模拟连接中断")),
+                        // 尝试 2（退避 + pre-run 快照回滚后）：QU 静默完成 → reactAgent 再断流
+                        Flux.just(quSilent),
+                        Flux.error(new IOException("模拟连接中断")),
+                        // 尝试 3：QU 静默完成 → reactAgent 成功完整回答
+                        Flux.just(quSilent),
+                        Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage("第三次尝试成功的完整回答"))))));
+
+        // 打开 SSE 流并后台读取（断言以「客户端实际收到的事件」为事实源）
+        InputStream body = postChatKeepStream(token, sessionId, "判死重试问题");
+        try {
+            SseStreamReader reader = new SseStreamReader(objectMapper);
+            reader.start(body);
+            // 两次断流退避（默认 2s/4s）+ 三次图执行，30s 预算内收敛终态
+            assertTrue(reader.awaitTerminal(30_000), "重试后应收到终态事件；已收到事件: " + reader.eventNames());
+            assertEquals("COMPLETED", reader.terminalStatus(), "终态应为 COMPLETED（自动重试恢复）: " + reader.terminalStatus());
+
+            Long runId = latestRunId(sessionId);
+            assertNotNull(runId, "chat_run 应已创建");
+            assertEquals("COMPLETED", awaitTerminalStatus(runId, 30_000), "run 终态应为 COMPLETED（同 run 重试不换 runId）");
+
+            // 正文落库完整：assistant 行含第三次成功回答（重试成功走正常完成路径）
+            awaitRowCount(
+                    "SELECT COUNT(*) FROM chat_message WHERE run_id = ? AND content LIKE '%第三次尝试成功的完整回答%'",
+                    runId, 1, "重试成功的完整回答应落库 assistant 行");
+            awaitRowCount(
+                    "SELECT COUNT(*) FROM chat_message WHERE run_id = ? AND role = 'USER'", runId, 1, "重试成功应落库本轮用户消息行");
+
+            // 处理点 c：重试回滚后 checkpoint 用户消息恰好一条（不回滚则失败尝试的
+            // __START__ 合并残留，重试重复合并为多条）
+            List<Message> finalMessages = awaitCheckpointMessageCount(sessionId, 2);
+            long userCount = finalMessages.stream()
+                    .filter(m -> m instanceof UserMessage && "判死重试问题".equals(m.getText()))
+                    .count();
+            assertEquals(1, userCount, "重试回滚后用户消息应恰好一条（重复合并即回滚失效）: " + finalMessages.size() + " 条");
+        } finally {
+            // 释放连接（读取线程为守护线程，服务端关流后自然退出）
+            body.close();
+        }
     }
 
     /**

@@ -32,6 +32,8 @@ const chatMock = vi.hoisted(() => ({
   reset: vi.fn(),
   resume: vi.fn(),
   detach: vi.fn(),
+  /** M5/M7：消息级重放（错误卡「重新生成」入口消费） */
+  replay: vi.fn(),
 }));
 /** 数据层 mock：附件上传与反馈 */
 const apiMock = vi.hoisted(() => ({
@@ -58,6 +60,7 @@ vi.mock("@/hooks/use-chat-stream", () => ({
     reset: chatMock.reset,
     resume: chatMock.resume,
     detach: chatMock.detach,
+    replay: chatMock.replay,
   }),
 }));
 vi.mock("@/lib/auth-context", () => ({
@@ -136,6 +139,7 @@ beforeEach(() => {
   chatMock.reset.mockReset();
   chatMock.resume.mockReset().mockResolvedValue(undefined);
   chatMock.detach.mockReset();
+  chatMock.replay.mockReset().mockResolvedValue(undefined);
   apiMock.uploadAttachments.mockReset();
   apiMock.postFeedback.mockReset().mockResolvedValue(undefined);
   thumbMock.createAttachmentThumbUrl.mockReset().mockResolvedValue(null);
@@ -729,5 +733,37 @@ describe("新对话页：新建对话信号（Task 13 干净态，侧栏按钮�
     expect(chatMock.reset).not.toHaveBeenCalled();
     expect(chatMock.detach).not.toHaveBeenCalled();
     chatMock.state = initialState();
+  });
+});
+
+describe("新对话页：M7 错误卡「重新生成」入口", () => {
+  it("流错误且 runId 保留 → 横幅出现「重新生成」，点击触发 replay(REGENERATE, runId)", async () => {
+    // ERROR 终态形态：reducer error 分支不清 runId（end 分支同样保留）——横幅据此
+    // 挂载 M5 REGENERATE 入口（spec M7.3/D1：判死重试耗尽/有产出失败保留现场后的
+    // 手动整轮重开）
+    chatMock.state = {
+      ...initialState(),
+      sessionId: "sess-1",
+      runId: "9001",
+      messages: [makeAssistant({ id: "9001" })],
+      error: { kind: "retryable", message: "模型服务响应超时，请稍后重试" },
+    };
+    renderPage();
+    const regenerate = screen.getByTestId("error-regenerate");
+    expect(regenerate).toBeVisible();
+    fireEvent.click(regenerate);
+    await waitFor(() => {
+      expect(chatMock.replay).toHaveBeenCalledWith("REGENERATE", null, "9001");
+    });
+  });
+
+  it("无 runId（发送前的流错误）→ 不渲染「重新生成」入口", () => {
+    // runId 未落位时无从定位目标 run——入口不出现（replay 需要 targetRunId）
+    chatMock.state = {
+      ...initialState(),
+      error: { kind: "retryable", message: "连接中断，请重试" },
+    };
+    renderPage();
+    expect(screen.queryByTestId("error-regenerate")).not.toBeInTheDocument();
   });
 });
