@@ -297,8 +297,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseInfoMapper, CourseInfo>
                 .eq(CourseInfo::getStatus, "ACTIVE")
                 .orderByDesc(CourseInfo::getRating)
                 .list();
-        // M9：收集为 ArrayList 落缓存——Stream.toList() 的 JDK 不可变 ListN 为 final 类型，
-        // JSON default typing 对 final 集合省略类型 id，缓存值序列化/反序列化不对称（读取即抛异常）
+        // M9：收集为 ArrayList 落缓存——Stream.toList() 的 ListN 为 final 类型，default typing 会写入其
+        // 类型 id，但反序列化无法构造该 package-private 不可变内部类（无可用构造器，读取即抛异常）；
+        // 改用 ArrayList 保证序列化往返对称
         return courses.stream().map(publicCourseConverter::toVO).collect(Collectors.toCollection(ArrayList::new));
     }
 
