@@ -3,12 +3,14 @@
 /**
  * 课程助手左侧栏（UI 重构 2026-08-25：kimi 式对话应用壳；会话管理化 2026-08-26；
  * 2026-08-29 Task 13 弹窗化：行内编辑 → RenameDialog、搜索框 → SessionSearchPanel
- * 浮层、新建对话 Link → button 信号化）
+ * 浮层、新建对话 Link → button 信号化；2026-09-02 M1：收起态逐会话图标 → 历史
+ * 入口 hover 浮层（最新 10 条）、搜索统一 SessionSearchDialog 弹窗、内嵌面板下线）
  *
  * 结构（对齐 kimi 设计稿 assets/kimi.css 侧边栏）：品牌区 → 新建对话按钮（Ctrl+K 快捷键）
- * → 会话搜索浮层面板（聚焦弹出结果列表）→ 会话历史列表（分页加载、当前会话激活态、
+ * → 会话搜索入口（M1 弹窗化）→ 会话历史列表（分页加载、当前会话激活态、
  * hover 行操作：重命名 / 删除）→ 底部用户区（渐变头像 + 显示名 + 退出）。
- * 折叠态 260px↔64px 宽度过渡（200ms），偏好经 localStorage 持久化（kimi 语义）。
+ * 折叠态 260px↔64px 宽度过渡（200ms），偏好经 localStorage 持久化（kimi 语义）；
+ * 折叠态列表区收敛为「历史」入口：hover 弹浮层（最新 10 条 + 搜索入口，触屏退化 click 切换）。
  *
  * 会话管理（用户拍板：会话在侧边栏单一管理，二次确认契约）：
  * - 增：新建对话无确认（无破坏性、可撤销；流式进行中禁用）——/chat 同路由经
@@ -16,7 +18,8 @@
  * - 改：重命名弹窗 RenameDialog（预填标题 + zod 非空≤50 校验 + Enter 提交）
  * - 删：ConfirmDialog 二次确认；后端 409（活跃 run）→ toast「会话正在对话中」；
  *   删除当前激活会话后回 /chat 新对话
- * - 查：SessionSearchPanel 浮层（keyword 防抖查询 + 点击跳转；主列表恒全量分页）
+ * - 查：SessionSearchDialog 统一弹窗（M1：keyword 防抖 + 滚动分页 + 点击跳转；
+ *   主列表恒全量分页；收起态浮层内搜索入口同接此弹窗）
  * - 登出：ConfirmDialog 二次确认（用户拍板）
  *
  * 职责：纯导航壳，不承载业务状态；会话定位能力由 /chat/[id] 承担。
@@ -25,6 +28,8 @@ import {
   CaretLeft,
   CaretRight,
   ChatCircleText,
+  ClockCounterClockwise,
+  MagnifyingGlass,
   PencilSimple,
   Plus,
   SignIn,
@@ -32,7 +37,7 @@ import {
   Sparkle,
   Trash,
 } from "@phosphor-icons/react";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -43,7 +48,7 @@ import {
   useRequestNewChat,
 } from "@/components/chat/chat-streaming-context";
 import { RenameDialog } from "@/components/chat/rename-dialog";
-import { SessionSearchPanel } from "@/components/chat/session-search-panel";
+import { SessionSearchDialog, relativeTime } from "@/components/chat/session-search-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ApiError, deleteSession, getSessions, updateSessionTitle } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -55,6 +60,8 @@ const COLLAPSE_STORAGE_KEY = "cc.chat-sidebar.collapsed";
 export const SIDEBAR_SESSIONS_QUERY_KEY = ["chat-sidebar-sessions"] as const;
 /** 会话列表每页容量（分页加载，加载更多逐页追加） */
 const SIDEBAR_SESSION_PAGE_SIZE = 20;
+/** 收起态历史浮层容量（M1：最新 10 条，spec M1.1） */
+const RECENT_POPOVER_SIZE = 10;
 /** toast 展示时长（毫秒），到时自动消失） */
 const TOAST_DURATION_MS = 2400;
 
@@ -77,6 +84,9 @@ export function ChatSidebar() {
   const [loggingOut, setLoggingOut] = useState(false);
   // 登出二次确认（用户拍板：登出必须确认）
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  // ── M1 收起态交互：历史浮层展开态 + 统一搜索弹窗开关 ──
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [searchDialogOpen, setSearchDialogOpen] = useState(false);
 
   // 折叠态初始化：读取本地偏好（SSR / 隐私模式降级展开态），切换时写回
   useEffect(() => {
@@ -127,7 +137,7 @@ export function ChatSidebar() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isStreaming, handleNewChat]);
 
-  // ── 会话历史分页（主列表恒全量；keyword 搜索职责在 SessionSearchPanel 浮层）──
+  // ── 会话历史分页（主列表恒全量；keyword 搜索职责在 SessionSearchDialog 弹窗）──
   // 工作区发送消息后按 SIDEBAR_SESSIONS_QUERY_KEY 失效（新会话即时进列表）
   const sessionsQuery = useInfiniteQuery({
     queryKey: [...SIDEBAR_SESSIONS_QUERY_KEY],
@@ -143,6 +153,18 @@ export function ChatSidebar() {
   const sessions = useMemo(
     () => sessionsQuery.data?.pages.flatMap((page) => page.records) ?? [],
     [sessionsQuery.data],
+  );
+
+  // ── M1 收起态浮层数据源：最新 10 条（复用主列表 key 前缀，工作区写入/改名/删除
+  //    后的前缀失效联动覆盖本查询）；仅收起态启用，展开态主列表已承载数据不重复请求 ──
+  const recentSessionsQuery = useQuery({
+    queryKey: [...SIDEBAR_SESSIONS_QUERY_KEY, "recent10"],
+    queryFn: () => getSessions(1, RECENT_POPOVER_SIZE),
+    enabled: collapsed,
+  });
+  const recentSessions = useMemo(
+    () => recentSessionsQuery.data?.records ?? [],
+    [recentSessionsQuery.data],
   );
 
   // ── 轻量 toast（侧栏级状态：改名/删除分级提示，定时自动消失）──
@@ -313,122 +335,173 @@ export function ChatSidebar() {
         </button>
       )}
 
-      {/* 会话搜索浮层面板（仅展开态，Task 13）：聚焦弹出结果列表，主列表不再过滤 */}
+      {/* 会话搜索入口（M1 弹窗化：统一打开 SessionSearchDialog，内嵌面板下线） */}
       {!collapsed ? (
-        <div className="mx-2 mt-2 shrink-0">
-          <SessionSearchPanel />
-        </div>
+        <button
+          type="button"
+          onClick={() => setSearchDialogOpen(true)}
+          className="mx-2 mt-2 flex h-9 shrink-0 items-center gap-2 rounded-xl px-3 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:ring-2 focus-visible:ring-brand"
+        >
+          <MagnifyingGlass size={15} aria-hidden />
+          <span className="flex-1 text-left">搜索会话</span>
+        </button>
       ) : null}
 
-      {/* 会话历史区 */}
-      {!collapsed ? (
-        <p className="shrink-0 px-4 pt-4 pb-1.5 text-xs text-subtle">会话历史</p>
-      ) : (
-        <div className="h-3" />
-      )}
-      <nav aria-label="会话历史" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        {sessionsQuery.isPending ? (
-          <div data-testid="sessions-skeleton" aria-busy="true" className="space-y-1.5 pt-1">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div
-                key={index}
-                className={`h-9 animate-pulse rounded-lg bg-surface-2 ${collapsed ? "" : "mx-1"}`}
-              />
-            ))}
-          </div>
-        ) : sessions.length === 0 ? (
-          !collapsed ? (
-            // 主列表恒全量（keyword 搜索在浮层内）：空态即无任何会话
-            <p className="px-2.5 py-2 text-xs text-subtle">还没有会话，开始一段对话吧</p>
-          ) : null
-        ) : (
-          <>
-            <div className="space-y-0.5">
-              {sessions.map((session) => {
-                const active = session.id === activeSessionId;
-                const href = `/chat/${session.id}`;
-                return (
-                  <div
-                    key={session.id}
-                    data-testid="sidebar-session-item"
-                    className={`group flex h-9 items-center rounded-lg transition-colors ${
-                      collapsed ? "justify-center" : "gap-0 pr-1"
-                    } ${
-                      active
-                        ? "bg-brand-soft font-medium text-brand-strong"
-                        : "text-muted hover:bg-surface-2 hover:text-text"
-                    }`}
-                  >
-                    <Link
-                      href={href}
-                      title={session.title}
-                      className={`flex h-full min-w-0 flex-1 items-center rounded-lg ${
-                        collapsed ? "justify-center" : "gap-2.5 px-2.5"
-                      } focus-visible:ring-2 focus-visible:ring-brand`}
-                    >
-                      {/* 生成中动画（2026-08-27）：该会话正在流式生成时脉冲点 + 图标换旋转指示 */}
-                      {session.id === streamingSessionId ? (
-                        <>
-                          <span
-                            data-testid="session-generating-dot"
-                            aria-label="回答生成中"
-                            className="size-1.5 shrink-0 animate-pulse rounded-full bg-brand motion-reduce:animate-none"
-                          />
-                          <ChatCircleText
-                            size={16}
-                            aria-hidden
-                            className="shrink-0 animate-pulse text-brand motion-reduce:animate-none"
-                          />
-                        </>
-                      ) : (
-                        <ChatCircleText size={16} aria-hidden className="shrink-0" />
-                      )}
-                      {!collapsed ? (
-                        <span className="min-w-0 flex-1 truncate text-sm">{session.title}</span>
-                      ) : null}
-                    </Link>
-                    {/* 行操作（仅展开态 hover 显示）：重命名（弹窗）/ 删除（二次确认） */}
-                    {!collapsed ? (
-                      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                        <button
-                          type="button"
-                          aria-label={`编辑会话标题 ${session.title}`}
-                          onClick={() => setRenameTarget(session)}
-                          className="grid size-6 place-items-center rounded-md text-subtle transition-colors hover:bg-surface-2 hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
-                        >
-                          <PencilSimple size={13} aria-hidden />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`删除会话 ${session.title}`}
-                          onClick={() => setDeleteTarget(session)}
-                          className="grid size-6 place-items-center rounded-md text-subtle transition-colors hover:bg-surface-2 hover:text-danger focus-visible:ring-2 focus-visible:ring-danger"
-                        >
-                          <Trash size={13} aria-hidden />
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-            {/* 分页「加载更多」：无下一页不渲染 */}
-            {!collapsed && sessionsQuery.hasNextPage ? (
-              <div className="px-1 pt-1.5">
-                <button
-                  type="button"
-                  onClick={() => void sessionsQuery.fetchNextPage()}
-                  disabled={sessionsQuery.isFetchingNextPage}
-                  data-testid="sidebar-load-more"
-                  className="w-full rounded-lg border border-border bg-surface py-1.5 text-xs font-medium text-muted transition-colors hover:border-brand/40 hover:text-brand-strong disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-brand"
+      {/* 会话历史区（M1：展开态 = 分组标题 + 分页列表；收起态 = 「历史」入口 + 浮层） */}
+      {collapsed ? (
+        // 收起态（M1）：逐会话图标信息量低 → 单个「历史」入口 + hover 浮层（最新 10 条）+ 搜索入口。
+        // enter 挂包裹层与按钮、leave 只挂包裹层：浮层是包裹层的 DOM 子树，鼠标自按钮滑入
+        // 浮层不触发 leave（mouseleave 按 DOM 包含判定）；浮层贴边 left-full（无外间距空隙，
+        // 空隙会成为离开包裹层的命中死角导致浮层提前卸载）；click 切换兜底触屏（无 hover 场景）
+        <div
+          className="relative shrink-0 px-2 py-2"
+          onMouseEnter={() => setHistoryOpen(true)}
+          onMouseLeave={() => setHistoryOpen(false)}
+        >
+          <button
+            type="button"
+            data-testid="collapsed-history-entry"
+            aria-label="历史会话"
+            aria-expanded={historyOpen}
+            onMouseEnter={() => setHistoryOpen(true)}
+            onClick={() => setHistoryOpen((prev) => !prev)}
+            className="mx-auto grid size-9 place-items-center rounded-xl text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <ClockCounterClockwise size={17} aria-hidden />
+          </button>
+          {historyOpen ? (
+            <div
+              data-testid="collapsed-history-popover"
+              className="absolute left-full top-0 z-40 w-64 rounded-xl border border-border bg-surface p-2 shadow-lg"
+            >
+              <p className="px-2 pb-1.5 text-xs text-subtle">最近会话</p>
+              {recentSessions.map((session) => (
+                <Link
+                  key={session.id}
+                  href={`/chat/${session.id}`}
+                  data-testid="popover-session-item"
+                  onClick={() => setHistoryOpen(false)}
+                  className={`flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors ${
+                    session.id === activeSessionId
+                      ? "bg-brand-soft font-medium text-brand-strong"
+                      : "text-muted hover:bg-surface-2 hover:text-text"
+                  }`}
                 >
-                  {sessionsQuery.isFetchingNextPage ? "加载中…" : "加载更多"}
-                </button>
+                  <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                  <span className="shrink-0 text-xs text-subtle">
+                    {relativeTime(String(session.lastMessageAt ?? session.createdAt))}
+                  </span>
+                </Link>
+              ))}
+              {/* 搜索入口：打开统一搜索弹窗 */}
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryOpen(false);
+                  setSearchDialogOpen(true);
+                }}
+                className="mt-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                <MagnifyingGlass size={14} aria-hidden /> 搜索会话
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <>
+          <p className="shrink-0 px-4 pt-4 pb-1.5 text-xs text-subtle">会话历史</p>
+          <nav aria-label="会话历史" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+            {sessionsQuery.isPending ? (
+              <div data-testid="sessions-skeleton" aria-busy="true" className="space-y-1.5 pt-1">
+                {Array.from({ length: 4 }, (_, index) => (
+                  <div key={index} className="h-9 mx-1 animate-pulse rounded-lg bg-surface-2" />
+                ))}
               </div>
-            ) : null}
-          </>
-        )}
-      </nav>
+            ) : sessions.length === 0 ? (
+              // 主列表恒全量（keyword 搜索在弹窗内）：空态即无任何会话
+              <p className="px-2.5 py-2 text-xs text-subtle">还没有会话，开始一段对话吧</p>
+            ) : (
+              <>
+                <div className="space-y-0.5">
+                  {sessions.map((session) => {
+                    const active = session.id === activeSessionId;
+                    const href = `/chat/${session.id}`;
+                    return (
+                      <div
+                        key={session.id}
+                        data-testid="sidebar-session-item"
+                        className={`group flex h-9 items-center gap-0 rounded-lg pr-1 transition-colors ${
+                          active
+                            ? "bg-brand-soft font-medium text-brand-strong"
+                            : "text-muted hover:bg-surface-2 hover:text-text"
+                        }`}
+                      >
+                        <Link
+                          href={href}
+                          title={session.title}
+                          className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 focus-visible:ring-2 focus-visible:ring-brand"
+                        >
+                          {/* 生成中动画（2026-08-27）：该会话正在流式生成时脉冲点 + 图标换旋转指示 */}
+                          {session.id === streamingSessionId ? (
+                            <>
+                              <span
+                                data-testid="session-generating-dot"
+                                aria-label="回答生成中"
+                                className="size-1.5 shrink-0 animate-pulse rounded-full bg-brand motion-reduce:animate-none"
+                              />
+                              <ChatCircleText
+                                size={16}
+                                aria-hidden
+                                className="shrink-0 animate-pulse text-brand motion-reduce:animate-none"
+                              />
+                            </>
+                          ) : (
+                            <ChatCircleText size={16} aria-hidden className="shrink-0" />
+                          )}
+                          <span className="min-w-0 flex-1 truncate text-sm">{session.title}</span>
+                        </Link>
+                        {/* 行操作（hover 显示）：重命名（弹窗）/ 删除（二次确认） */}
+                        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                          <button
+                            type="button"
+                            aria-label={`编辑会话标题 ${session.title}`}
+                            onClick={() => setRenameTarget(session)}
+                            className="grid size-6 place-items-center rounded-md text-subtle transition-colors hover:bg-surface-2 hover:text-brand-strong focus-visible:ring-2 focus-visible:ring-brand"
+                          >
+                            <PencilSimple size={13} aria-hidden />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`删除会话 ${session.title}`}
+                            onClick={() => setDeleteTarget(session)}
+                            className="grid size-6 place-items-center rounded-md text-subtle transition-colors hover:bg-surface-2 hover:text-danger focus-visible:ring-2 focus-visible:ring-danger"
+                          >
+                            <Trash size={13} aria-hidden />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* 分页「加载更多」：无下一页不渲染 */}
+                {sessionsQuery.hasNextPage ? (
+                  <div className="px-1 pt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void sessionsQuery.fetchNextPage()}
+                      disabled={sessionsQuery.isFetchingNextPage}
+                      data-testid="sidebar-load-more"
+                      className="w-full rounded-lg border border-border bg-surface py-1.5 text-xs font-medium text-muted transition-colors hover:border-brand/40 hover:text-brand-strong disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-brand"
+                    >
+                      {sessionsQuery.isFetchingNextPage ? "加载中…" : "加载更多"}
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </nav>
+        </>
+      )}
 
       {/* 底部用户区：已登录 = 渐变头像 + 显示名 + 退出（二次确认）；未登录 = 登录入口（2026-08-26） */}
       {user ? (
@@ -504,6 +577,9 @@ export function ChatSidebar() {
         onConfirm={() => void handleLogout()}
         onCancel={() => setLogoutConfirmOpen(false)}
       />
+      {/* 统一搜索弹窗（M1：展开态搜索按钮 + 收起态浮层搜索入口共接；portal 挂 body；
+          挂侧栏组件级 → (chat) layout 常驻跨路由保持，点击结果经 onClose 关闭） */}
+      <SessionSearchDialog open={searchDialogOpen} onClose={() => setSearchDialogOpen(false)} />
       <ChatToast message={toast} />
     </aside>
   );

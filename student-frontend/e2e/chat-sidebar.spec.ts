@@ -3,10 +3,11 @@ import { mockApi, login } from "./helpers/sse-route";
 
 /**
  * 课程助手侧栏 E2E（会话管理化 2026-08-26：侧栏承载会话增删改查；
- * 2026-08-29 Task 13 弹窗化：改名 → RenameDialog、搜索 → 浮层面板）
+ * 2026-08-29 Task 13 弹窗化：改名 → RenameDialog、搜索 → 浮层面板；
+ * 2026-09-02 M1：收起态历史浮层（最新 10 条）+ 搜索统一弹窗滚动分页，内嵌面板下线）
  *
  * - 会话历史渲染 + 折叠/展开持久化（原契约保留）
- * - 查：搜索浮层面板（聚焦弹出、keyword 防抖请求、空态、Esc 关闭；主列表恒全量）
+ * - 查（M1）：收起态历史入口 hover 浮层跳转；搜索弹窗 keyword 防抖 + 滚动分页
  * - 改：重命名弹窗（预填标题 + 空标题校验拦截 + PATCH 后列表显示新标题）
  * - 删：二次确认删除（DELETE 后列表为空态）
  * - 登出：二次确认后回首页
@@ -48,40 +49,80 @@ test.describe("课程助手侧栏", () => {
     await expect(page.getByTestId("chat-sidebar")).toHaveClass(/w-64/);
   });
 
-  test("查：搜索浮层聚焦弹出，keyword 防抖请求 + 空态，Esc 关闭（Task 13）", async ({ page }) => {
-    // 带 keyword 的请求返回空（搜索语义由测试内覆盖；主列表仍回全量）
+  test("M1：收起态历史入口浮层展示最近会话可跳转；搜索弹窗 keyword 过滤 + 滚动分页", async ({
+    page,
+  }) => {
+    // 会话池：「其它会话 A」置顶（空关键字首页含它，keyword 过滤后消失——防抖切换锚点）+
+    // 22 条「检索」+ 13 条「其它」（共 36；keyword 过滤前后总数可区分：22 ≠ 36）；
+    // 内存分页 mock（keyword 过滤 + page/size 切片），侧栏主列表/浮层/弹窗查询共用
+    const pool = [
+      {
+        id: "2000",
+        title: "其它会话 A",
+        status: "ACTIVE",
+        lastMessageAt: null,
+        createdAt: "2026-08-24T09:20:00",
+      },
+      ...Array.from({ length: 35 }, (_, index) => ({
+        id: String(1000 + index),
+        title: index < 22 ? `检索会话 ${index + 1}` : `其它会话 ${index - 21}`,
+        status: "ACTIVE" as const,
+        lastMessageAt: null,
+        createdAt: "2026-08-24T09:20:00",
+      })),
+    ];
     await page.route("**/api/v1/student/sessions?**", async (route) => {
-      const url = route.request().url();
-      if (new URL(url).searchParams.has("keyword")) {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            code: 0,
-            message: "success",
-            data: { records: [], total: "0", page: 1, size: 20 },
-          }),
-        });
-      } else {
-        await route.fallback();
-      }
+      const url = new URL(route.request().url());
+      const pageNum = Number(url.searchParams.get("page") ?? "1");
+      const size = Number(url.searchParams.get("size") ?? "20");
+      const keyword = url.searchParams.get("keyword");
+      const matched = keyword ? pool.filter((s) => s.title.includes(keyword)) : pool;
+      const start = (pageNum - 1) * size;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: 0,
+          message: "success",
+          data: {
+            records: matched.slice(start, start + size),
+            total: String(matched.length),
+            page: pageNum,
+            size,
+          },
+        }),
+      });
     });
     await goChat(page);
-    await expect(page.getByTestId("sidebar-session-item")).toHaveCount(1);
-    // 未聚焦：浮层不渲染；聚焦：浮层弹出（结果列表容器在场）
-    await expect(page.getByTestId("session-search-dropdown")).toHaveCount(0);
-    await page.getByTestId("sidebar-session-search").focus();
-    await expect(page.getByTestId("session-search-dropdown")).toBeVisible();
-    // 输入关键词：防抖后空结果 → 浮层空态文案（主列表不受 keyword 影响，仍全量 1 条）
-    await page.getByTestId("sidebar-session-search").fill("不存在的");
-    await expect(page.getByTestId("session-search-empty")).toHaveText(
-      /没有找到「不存在的」相关会话/,
-    );
-    await expect(page.getByTestId("sidebar-session-item")).toHaveCount(1);
-    // Esc：浮层关闭（输入保留）
-    await page.keyboard.press("Escape");
-    await expect(page.getByTestId("session-search-dropdown")).toHaveCount(0);
-    await expect(page.getByTestId("sidebar-session-search")).toHaveValue("不存在的");
+
+    // ── 收起态：历史入口 hover 浮层 ──
+    await page.getByRole("button", { name: "收起侧栏" }).click();
+    await page.getByTestId("collapsed-history-entry").hover();
+    const popover = page.getByTestId("collapsed-history-popover");
+    await expect(popover).toBeVisible();
+    // 浮层 = 最新 10 条（getSessions(1, 10) 首页）
+    await expect(popover.getByTestId("popover-session-item")).toHaveCount(10);
+    // 点击条目（首条 = 池顶「其它会话 A」）：跳转 /chat/{id} 且浮层关闭
+    await popover.getByTestId("popover-session-item").first().click();
+    await expect(page).toHaveURL(/\/chat\/2000$/);
+    await expect(popover).toHaveCount(0);
+
+    // ── 展开态：搜索按钮 → 统一弹窗（keyword 防抖过滤 + 滚动分页）──
+    await page.getByRole("button", { name: "展开侧栏" }).click();
+    await page.getByRole("button", { name: "搜索会话" }).click();
+    const dialog = page.getByTestId("session-search-dialog");
+    await expect(dialog).toBeVisible();
+    // 首页（空关键字全量）含「其它会话 A」锚点：以此确认防抖前后的查询切换
+    await expect(dialog.getByText("其它会话 A")).toBeVisible();
+    // 输入关键字：防抖 300ms 后按 keyword 查询 → 锚点条目被过滤（keyword 生效的确证）
+    await page.getByTestId("session-search-input").fill("检索");
+    await expect(dialog.getByText("其它会话 A")).toHaveCount(0);
+    await expect(dialog.getByTestId("search-result-item")).toHaveCount(20);
+    // 滚动接近底部：节流 200ms 后追加第二页 → 22 条（keyword 生效：全量应为 36）
+    await page.getByTestId("session-search-results").evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect(dialog.getByTestId("search-result-item")).toHaveCount(22);
   });
 
   test("改：重命名弹窗预填旧标题 → 空标题校验拦截 → 保存后列表刷新（Task 13）", async ({
