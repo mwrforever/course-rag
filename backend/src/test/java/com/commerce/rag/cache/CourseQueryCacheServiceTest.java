@@ -48,7 +48,8 @@ class CourseQueryCacheServiceTest {
         ops = mock(ValueOperations.class);
         when(redisTemplate.opsForValue()).thenReturn(ops);
         service = new CourseQueryCacheService(
-                redisTemplate, new CacheTtlProperties(Duration.ofMinutes(5), Duration.ofSeconds(60)));
+                redisTemplate,
+                new CacheTtlProperties(Duration.ofMinutes(5), Duration.ofSeconds(60), Duration.ofSeconds(60)));
     }
 
     @Test

@@ -14,6 +14,7 @@ import type { LoginResponse } from '@/lib/types'
  * 2. login：成功写入登录态；STUDENT 角色登录提示无权限且不落凭据；接口失败仅上抛
  * 3. logout：调登出接口（幂等容错）+ 清凭据
  * 4. refreshOnce 单飞：并发调用仅发一次 refresh 请求，成功后旋转 RT
+ * 5. fetchMe 启动恢复（M10）：单飞、无副作用（不动 AT/RT）、401/网络错误静默不清凭据
  */
 
 // 完全 mock api 模块（不用 importOriginal：api.ts 与 auth store 存在模块循环引用，
@@ -35,6 +36,7 @@ vi.mock('@/lib/api', () => ({
     login: vi.fn(),
     refresh: vi.fn(),
     logout: vi.fn(),
+    me: vi.fn(),
   },
 }))
 
@@ -233,5 +235,63 @@ describe('认证 store：refreshOnce 单飞', () => {
 
     await expect(auth.refreshOnce()).rejects.toThrow()
     expect(authApi.refresh).not.toHaveBeenCalled()
+  })
+})
+
+describe('认证 store：fetchMe 启动恢复（M10）', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('refreshToken 在且 displayName 为空：恢复 userId/role/displayName，不动 AT/RT（无副作用）', async () => {
+    const auth = useAuthStore()
+    auth.refreshToken = 'rt-x'
+    vi.mocked(authApi.me).mockResolvedValue({ userId: '1', role: 'TEACHER', displayName: '张老师' })
+
+    await auth.fetchMe()
+
+    expect(authApi.me).toHaveBeenCalledTimes(1)
+    expect(auth.userId).toBe('1')
+    expect(auth.role).toBe('TEACHER')
+    expect(auth.displayName).toBe('张老师')
+    // 无副作用：me 端点不签发 Token，前端不伪造 AT、不旋转 RT
+    expect(auth.accessToken).toBeNull()
+    expect(auth.refreshToken).toBe('rt-x')
+  })
+
+  it('并发调用共享单飞 promise（仅发一次 me 请求）；401/网络错误静默不清凭据', async () => {
+    const auth = useAuthStore()
+    auth.refreshToken = 'rt-x'
+    vi.mocked(authApi.me).mockResolvedValue({ userId: '1', role: 'TEACHER', displayName: '张老师' })
+
+    // 两个调用几乎同时发起：共享同一 promise（单飞去重，与 refreshOnce 同款模式）
+    await Promise.all([auth.fetchMe(), auth.fetchMe()])
+
+    expect(authApi.me).toHaveBeenCalledTimes(1)
+    expect(auth.displayName).toBe('张老师')
+
+    // 失败静默：模拟身份仍空的下次启动，me 401 → 不 reject、不登出、不清凭据
+    auth.displayName = null
+    vi.mocked(authApi.me).mockRejectedValueOnce(new ApiError(401, '未登录', 401))
+    await expect(auth.fetchMe()).resolves.toBeUndefined()
+    expect(auth.isAuthenticated).toBe(true)
+    expect(auth.refreshToken).toBe('rt-x')
+    expect(auth.displayName).toBeNull()
+  })
+
+  it('无 refreshToken 或 displayName 已恢复：直接跳过，不发 me 请求', async () => {
+    const auth = useAuthStore()
+
+    // 无 RT（未登录）：跳过
+    await auth.fetchMe()
+    expect(authApi.me).not.toHaveBeenCalled()
+
+    // 身份已恢复（displayName 非空，如刚登录）：跳过
+    auth.refreshToken = 'rt-x'
+    auth.displayName = '张老师'
+    await auth.fetchMe()
+    expect(authApi.me).not.toHaveBeenCalled()
   })
 })

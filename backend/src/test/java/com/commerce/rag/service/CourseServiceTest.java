@@ -1,5 +1,6 @@
 package com.commerce.rag.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -9,6 +10,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.repository.AbstractRepository;
 import com.baomidou.mybatisplus.extension.repository.CrudRepository;
 import com.commerce.rag.cache.DashboardCacheEvictor;
+import com.commerce.rag.cache.PublicCourseCacheEvictor;
 import com.commerce.rag.convert.CourseConverterImpl;
 import com.commerce.rag.convert.PublicCourseConverterImpl;
 import com.commerce.rag.dto.CourseDTO;
@@ -48,6 +50,7 @@ import org.mockito.Captor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionAttribute;
@@ -95,6 +98,10 @@ class CourseServiceTest {
     @Mock
     private DashboardCacheEvictor dashboardCacheEvictor;
 
+    /** 公开课程缓存失效器（M9：Mock——写路径失效钩子仅需不抛异常） */
+    @Mock
+    private PublicCourseCacheEvictor publicCourseCacheEvictor;
+
     /** saveBatch 批插参数捕获器（P1-9：批插内容等价断言） */
     @Captor
     private ArgumentCaptor<List<CourseTeacher>> batchCaptor;
@@ -131,6 +138,7 @@ class CourseServiceTest {
                 new CourseConverterImpl(),
                 courseQueryService,
                 dashboardCacheEvictor,
+                publicCourseCacheEvictor,
                 COURSE_PROPERTIES);
     }
 
@@ -208,6 +216,8 @@ class CourseServiceTest {
 
         // Then: 软删完成后触发缓存失效（先写 DB 后失效）
         verify(courseQueryService).evictCourse(1L);
+        // M9：公开课程缓存区同步失效（新课程列表/详情不再含已删课程）
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test
@@ -267,6 +277,8 @@ class CourseServiceTest {
         verify(courseInfoMapper).insert(captor.capture());
         CourseInfo inserted = captor.getValue();
         verify(courseQueryService).evictCourse(inserted.getId());
+        // M9：公开课程缓存区失效（新课程立即可见于 C 端公开列表）
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
         assertEquals("ACTIVE", inserted.getStatus());
         assertEquals(new BigDecimal("0"), inserted.getRating());
         assertEquals(0, inserted.getLearningCount());
@@ -330,6 +342,7 @@ class CourseServiceTest {
                 new CourseConverterImpl(),
                 courseQueryService,
                 dashboardCacheEvictor,
+                publicCourseCacheEvictor,
                 new CourseProperties("http://localhost:3000/", new CourseProperties.Cover(List.of("png"), 5)));
         // 链式字段须注入本测试另行构造的实例（非 setUp 的 courseService）
         injectChainFields(service);
@@ -541,6 +554,20 @@ class CourseServiceTest {
     }
 
     @Test
+    @DisplayName(
+            "M9: findPublicCourses/findPublicCourseById → @Cacheable 声明 publicCourses 缓存区（TTL 由 CacheConfig 配置化注册）")
+    void publicCourseQueries_annotatedWithPublicCoursesCache() throws NoSuchMethodException {
+        Method list = CourseServiceImpl.class.getMethod("findPublicCourses");
+        Method detail = CourseServiceImpl.class.getMethod("findPublicCourseById", Long.class);
+        // 缓存区名注解声明（TTL 不硬编码在注解——由 cache.ttl.public-courses 经 CacheConfig 注册）
+        assertThat(list.getAnnotation(Cacheable.class).cacheNames()).contains("publicCourses");
+        assertThat(detail.getAnnotation(Cacheable.class).cacheNames()).contains("publicCourses");
+        // 详情按 courseId 分键；列表无参固定键
+        assertThat(list.getAnnotation(Cacheable.class).key()).isEqualTo("'all'");
+        assertThat(detail.getAnnotation(Cacheable.class).key()).isEqualTo("#courseId");
+    }
+
+    @Test
     @DisplayName("findPage → 全条件筛选分页（返回 DTO 分页）")
     void findPage_withFilters() {
         Page<CourseInfo> page = new Page<>(1, 20);
@@ -640,6 +667,8 @@ class CourseServiceTest {
         batched.forEach(ct -> assertEquals(1L, ct.getCourseId()));
         // 逐条 insert 已被批插取代
         verify(courseTeacherMapper, never()).insert(any(CourseTeacher.class));
+        // M9：授课教师变更影响公开详情，公开课程缓存区失效
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test
@@ -680,6 +709,8 @@ class CourseServiceTest {
         courseService.removeTeachers(1L, List.of(2L, 3L), 7L, false);
 
         verify(courseTeacherMapper).update(isNull(), any());
+        // M9：移除授课教师影响公开详情，公开课程缓存区失效
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test
@@ -716,6 +747,8 @@ class CourseServiceTest {
 
         verify(courseContentMapper).update(isNull(), any());
         verify(courseQueryService).evictCourse(1L);
+        // M9：内容变更影响公开详情，公开课程缓存区失效
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test
@@ -728,6 +761,8 @@ class CourseServiceTest {
 
         verify(courseContentMapper).insert(any(CourseContent.class));
         verify(courseQueryService).evictCourse(1L);
+        // M9：内容创建同样影响公开详情，公开课程缓存区失效（更新/创建两分支统一出口）
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test
@@ -761,6 +796,8 @@ class CourseServiceTest {
         verify(courseContentMapper, times(2)).insert(any(CourseContent.class));
         // PERF-22：校验收敛到循环外后，逐 Tab 不再各自失效——仅循环后兜底失效 1 次
         verify(courseQueryService, times(1)).evictCourse(1L);
+        // M9：内容批量变更影响公开详情，公开课程缓存区失效
+        verify(publicCourseCacheEvictor).evictAllAfterCommit();
     }
 
     @Test

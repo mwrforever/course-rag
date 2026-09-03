@@ -1,13 +1,15 @@
 /**
- * 课程助手对话侧栏测试（UI 重构 2026-08-25 新增组件；2026-08-29 弹窗化改版）
+ * 课程助手对话侧栏测试（UI 重构 2026-08-25 新增组件；2026-08-29 弹窗化改版；
+ * 2026-09-02 M1：收起态历史浮层 + 统一搜索弹窗，内嵌搜索面板下线）
  *
  * 覆盖：品牌/新建对话入口（button + 新建信号/跳转双路径）、会话历史渲染与激活态、
  * 空态与骨架、折叠切换（宽度类 + localStorage 持久化）、Ctrl+K 快捷键、
- * 改名弹窗（RenameDialog 化）、删除/登出二次确认、用户区。
+ * 改名弹窗（RenameDialog 化）、删除/登出二次确认、用户区、
+ * M1 收起态（历史入口 hover 浮层最新 10 条 / 触屏 click 切换 / 搜索弹窗接线）。
  *
  * 说明：jsdom 无 App Router 上下文，next/navigation 用最小 mock；
  * motion 未在侧栏使用（纯 Tailwind 过渡），无需动画 mock。
- * 搜索浮层（SessionSearchPanel）行为由独立测试文件覆盖，此处不重复。
+ * 搜索弹窗（SessionSearchDialog）行为由独立测试文件覆盖，此处只断言侧栏接线。
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -359,7 +361,7 @@ describe("ChatSidebar 折叠与快捷键", () => {
     expect(window.localStorage.getItem("cc.chat-sidebar.collapsed")).toBe("0");
   });
 
-  it("折叠偏好持久化：localStorage=1 时初始即折叠（会话条目仅图标）", async () => {
+  it("折叠偏好持久化：localStorage=1 时初始即折叠（列表区收敛为历史入口）", async () => {
     window.localStorage.setItem("cc.chat-sidebar.collapsed", "1");
     apiMock.getSessions.mockResolvedValue({
       records: [makeSession({ id: "s1", title: "会话一" })],
@@ -371,10 +373,9 @@ describe("ChatSidebar 折叠与快捷键", () => {
     await waitFor(() => {
       expect(screen.getByTestId("chat-sidebar")).toHaveClass("w-16");
     });
-    // 折叠态条目：仅图标链接（标题文字隐藏；data-testid 位于行容器，链接经 querySelector 取）
-    const item = await screen.findByTestId("sidebar-session-item");
-    const link = item.querySelector("a");
-    expect(link).toHaveAttribute("href", "/chat/s1");
+    // M1 收起态：会话列表区整体替换为单个历史入口（逐会话图标行与标题不再渲染）
+    expect(screen.getByTestId("collapsed-history-entry")).toBeInTheDocument();
+    expect(screen.queryAllByTestId("sidebar-session-item")).toHaveLength(0);
     expect(screen.queryByText("会话一")).not.toBeInTheDocument();
   });
 
@@ -442,7 +443,7 @@ describe("ChatSidebar 折叠与快捷键", () => {
     });
   });
 
-  it("流式进行中：新建对话按钮禁用 + Ctrl+K 守卫不动作，结束后恢复", async () => {
+  it("多会话并发（2026-09-01 用户拍板）：流式生成中新建对话仍可用（按钮不禁用 + Ctrl+K 发信号）", async () => {
     apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
     // 探针：模拟工作区经 Context 上报流式状态 + 观察新建信号计数
     let setStreaming!: (streaming: boolean) => void;
@@ -459,20 +460,23 @@ describe("ChatSidebar 折叠与快捷键", () => {
     );
     const newChat = await screen.findByRole("button", { name: /新建对话/ });
 
+    // 流式生成中（另一会话正在回答）：不再被全局守卫禁用——可同时开启多会话问答
     act(() => setStreaming(true));
-    expect(newChat).toBeDisabled();
-    expect(newChat).toHaveAttribute("title", "回答生成中，结束后再新建对话");
-    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
-    expect(navMock.push).not.toHaveBeenCalled();
-    // 流式中信号不发出（seq 恒为初始 0）
-    expect(seqs.at(-1)).toBe(0);
-
-    // 流结束（或工作区卸载复位）：按钮与快捷键恢复（/chat 路径 → 信号而非跳转）
-    act(() => setStreaming(false));
     expect(newChat).toBeEnabled();
-    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(newChat).not.toHaveAttribute("title", /回答生成中|结束后再新建/);
+
+    // 按钮点击：/chat 同路由发新建信号（seq 自增；不 push）
+    fireEvent.click(newChat);
     await waitFor(() => {
       expect(seqs.at(-1)).toBeGreaterThan(0);
+    });
+    expect(navMock.push).not.toHaveBeenCalled();
+
+    // Ctrl+K：流式生成中同样发信号（不忽略）
+    const seqBefore = seqs.at(-1) ?? 0;
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    await waitFor(() => {
+      expect(seqs.at(-1)).toBeGreaterThan(seqBefore);
     });
     expect(navMock.push).not.toHaveBeenCalled();
   });
@@ -481,5 +485,82 @@ describe("ChatSidebar 折叠与快捷键", () => {
     apiMock.getSessions.mockReturnValue(new Promise(() => {}));
     renderSidebar();
     expect(screen.getByTestId("sessions-skeleton")).toBeInTheDocument();
+  });
+});
+
+describe("ChatSidebar 收起态历史浮层与搜索弹窗（M1）", () => {
+  it("收起态：会话列表区替换为单个历史入口图标，hover 弹出最新 10 条会话浮层", async () => {
+    window.localStorage.setItem("cc.chat-sidebar.collapsed", "1");
+    // 浮层数据源 getSessions(1, 10)：按 size 区分浮层（10 条）与主列表请求
+    apiMock.getSessions.mockImplementation((page: number, size: number) => {
+      const count = size === 10 ? 10 : 12;
+      return Promise.resolve({
+        records: Array.from({ length: count }, (_, index) =>
+          makeSession({ id: `p${index}`, title: `历史会话 ${index}` }),
+        ),
+        total: String(count),
+        page,
+        size,
+      });
+    });
+    renderSidebar("/chat/p3");
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sidebar")).toHaveClass("w-16");
+    });
+    // 会话列表区整体下线：不再渲染逐会话图标行
+    expect(screen.queryAllByTestId("sidebar-session-item")).toHaveLength(0);
+    const entry = screen.getByTestId("collapsed-history-entry");
+    expect(entry).toHaveAttribute("aria-label", "历史会话");
+    // hover 弹出浮层：最新 10 条（标题 + 相对时间）
+    fireEvent.mouseEnter(entry);
+    const items = await screen.findAllByTestId("popover-session-item");
+    expect(items).toHaveLength(10);
+    expect(items[0]).toHaveTextContent("历史会话 0");
+    // makeSession createdAt = 1 分钟前 → 相对时间渲染
+    expect(items[0]).toHaveTextContent("1 分钟前");
+    // 激活态高亮：当前会话 p3 行命中 bg-brand-soft
+    const activeItem = items.find((el) => el.getAttribute("href") === "/chat/p3");
+    expect(activeItem).toHaveClass("bg-brand-soft");
+    // 点击条目：跳转目标由 href 承载（jsdom 下 next/link 不真导航），浮层关闭
+    expect(items[0]).toHaveAttribute("href", "/chat/p0");
+    fireEvent.click(items[0]);
+    expect(screen.queryByTestId("collapsed-history-popover")).not.toBeInTheDocument();
+  });
+
+  it("收起态触屏退化：click 切换浮层（无 hover 依赖）", async () => {
+    window.localStorage.setItem("cc.chat-sidebar.collapsed", "1");
+    apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 10 });
+    renderSidebar();
+    const entry = await screen.findByTestId("collapsed-history-entry");
+    fireEvent.click(entry);
+    expect(screen.getByTestId("collapsed-history-popover")).toBeInTheDocument();
+    fireEvent.click(entry);
+    expect(screen.queryByTestId("collapsed-history-popover")).not.toBeInTheDocument();
+  });
+
+  it("收起态浮层搜索入口：打开统一搜索弹窗并收起浮层，遮罩点击关闭", async () => {
+    window.localStorage.setItem("cc.chat-sidebar.collapsed", "1");
+    apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 10 });
+    renderSidebar();
+    fireEvent.click(await screen.findByTestId("collapsed-history-entry"));
+    // 浮层内搜索入口：打开统一弹窗且浮层收起
+    fireEvent.click(screen.getByRole("button", { name: "搜索会话" }));
+    expect(screen.queryByTestId("collapsed-history-popover")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("session-search-dialog")).toBeInTheDocument();
+    // 遮罩点击关闭
+    fireEvent.click(screen.getByRole("button", { name: "关闭搜索" }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("session-search-dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("展开态：搜索按钮打开统一搜索弹窗（内嵌搜索面板下线）", async () => {
+    apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
+    renderSidebar();
+    // 内嵌面板已下线：不渲染旧面板根节点，改为搜索入口按钮
+    const searchEntry = await screen.findByRole("button", { name: "搜索会话" });
+    expect(screen.queryByTestId("session-search-panel")).toBeNull();
+    fireEvent.click(searchEntry);
+    expect(await screen.findByTestId("session-search-dialog")).toBeInTheDocument();
   });
 });

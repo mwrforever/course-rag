@@ -20,6 +20,7 @@ import org.springframework.http.ResponseEntity;
  *   <li>密码错误登录 → 401（BizException → GlobalExceptionHandler 真实 HTTP 状态）</li>
  *   <li>STUDENT 访问管理端端点 → 403（@PreAuthorize hasAnyRole('SUPER_ADMIN','TEACHER') 拒绝）</li>
  *   <li>SUPER_ADMIN 访问管理端端点 → 200（角色门禁放行）</li>
+ *   <li>me 端点鉴权（M10/R5）：无 token → 401 / 带 token → 200 身份三字段（排除精确化回归锁）</li>
  * </ol>
  *
  * <p>管理端端点选取 GET /api/v1/admin/courses（AdminCourseController 列表，空表返回空分页，不依赖业务数据）。
@@ -79,5 +80,44 @@ class SecurityIntegrationTest extends IntegrationTestBase {
         ResponseEntity<String> response = getWithToken("/api/v1/admin/courses", token);
         assertEquals(200, response.getStatusCode().value(), "SUPER_ADMIN 访问管理端端点应 200");
         assertTrue(response.getBody() != null && response.getBody().contains("\"code\":0"), "管理端列表应返回业务码 0");
+    }
+
+    /**
+     * 无 token 访问 GET /api/v1/auth/me → 401（M10/R5：AuthConfig 排除已精确化为五端点白名单，
+     * me 不在排除列表、必走 AuthInterceptor 鉴权——回归锁，防排除模式回退通配后 me 裸奔）。
+     */
+    @Test
+    void 无令牌访问me端点返回401() {
+        ResponseEntity<String> response = getWithToken("/api/v1/auth/me", null);
+        assertEquals(401, response.getStatusCode().value(), "无 token 访问 me 端点应 401（走拦截器鉴权）");
+        assertTrue(response.getBody() != null && response.getBody().contains("\"code\":401"), "401 响应体应包含 code=401");
+    }
+
+    /**
+     * 带 token 访问 GET /api/v1/auth/me → 200 且返回身份三字段（userId/role/displayName）。
+     *
+     * <p>userId 断言取预置用户 ID（Long → String 全局序列化契约，前端 MeResponse.userId 为 string）；
+     * 预置用户 displayName=username（IntegrationTestBase.registerUser 契约）。
+     */
+    @Test
+    void 带令牌访问me端点返回身份三字段() {
+        Long adminId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE username = ?", Long.class, ADMIN);
+        String token = loginAndGetToken(ADMIN, DEFAULT_DEVICE);
+
+        ResponseEntity<String> response = getWithToken("/api/v1/auth/me", token);
+
+        assertEquals(200, response.getStatusCode().value(), "带 token 访问 me 端点应 200");
+        JsonNode body;
+        try {
+            body = objectMapper.readTree(response.getBody());
+        } catch (Exception e) {
+            throw new IllegalStateException("me 响应 JSON 解析失败: " + response.getBody(), e);
+        }
+        assertEquals(0, body.get("code").asInt(), "me 应返回业务码 0");
+        JsonNode data = body.get("data");
+        assertTrue(data != null && data.isObject(), "me 响应应包含 data 对象");
+        assertEquals(adminId.toString(), data.get("userId").asText(), "userId 应为预置用户 ID（Long 序列化为 string）");
+        assertEquals("SUPER_ADMIN", data.get("role").asText(), "role 应为预置角色");
+        assertEquals(ADMIN, data.get("displayName").asText(), "displayName 应为预置显示名（=username）");
     }
 }

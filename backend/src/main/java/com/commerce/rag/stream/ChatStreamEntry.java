@@ -1,6 +1,10 @@
 package com.commerce.rag.stream;
 
+import com.alibaba.cloud.ai.graph.RunnableConfig;
+import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
+import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
 import com.commerce.rag.auth.AuthInterceptor;
+import com.commerce.rag.dto.ChatReplayRequest;
 import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.exception.BizException;
 import com.commerce.rag.exception.ErrorCode;
@@ -21,9 +25,12 @@ import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -31,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -44,6 +52,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  *   <li>POST /api/v1/student/chat — 发起对话，返回 SseEmitter</li>
  *   <li>POST /api/v1/student/chat/{runId}/cancel — 取消正在执行的 run</li>
  *   <li>GET /api/v1/student/chat/{runId}/reconnect — 断线重连</li>
+ *   <li>POST /api/v1/student/chat/session/{sessionId}/replay — 消息级重放（M5 编辑/重新生成）</li>
  * </ol>
  *
  * <p>鉴权：通过 AuthInterceptor 注入的 request attribute 获取已认证用户 ID。
@@ -76,6 +85,8 @@ public class ChatStreamEntry {
     private final StringRedisTemplate redisTemplate;
     private final StreamProperties streamProperties;
     private final ObjectMapper objectMapper;
+    /** checkpoint saver（M5 replay 定位与回滚：__START__ 锚点枚举 + 回滚写入；单例 Bean） */
+    private final BaseCheckpointSaver saver;
 
     /** 心跳定时器线程池 */
     private ScheduledExecutorService scheduler;
@@ -363,6 +374,276 @@ public class ChatStreamEntry {
 
         log.info("断线重连成功: runId={}, lastEventId={}", runId, lastEventId);
         return emitter;
+    }
+
+    // ========================================================================
+    // POST /api/v1/student/chat/session/{sessionId}/replay — 消息级重放（M5）
+    // ========================================================================
+
+    /**
+     * 消息级重放入口（M5，spec D2/D5）：编辑最后一条用户消息重答（EDIT）/
+     * 重新生成最后一条回答（REGENERATE）。
+     *
+     * <p>编排流程（校验前置、副作用事务化、任何校验失败都在软删发生前中止）：
+     * <ol>
+     *   <li>会话归属校验（404 不存在 / 403 非本人，与 chat() 先例一致）</li>
+     *   <li>mode 白名单校验（400）；EDIT 时 query 非空校验（400）</li>
+     *   <li>targetRun 归属与软删校验：run 属于该 session 且未软删
+     *       （{@code findById} 过 @TableLogic，重复 replay 已软删 → null → 409 防重）</li>
+     *   <li>位置校验（D5）：目标 run 之后无 deleted=0 run（否则 409）</li>
+     *   <li>活跃校验：session 无 QUEUED/ACTIVE run（否则 409「正在回答中」；
+     *       uniq_active_run_per_session 兜底并发窗口）</li>
+     *   <li>checkpoint 定位与回滚（R2 实证 {@code __START__} 锚点方案）：
+     *       写新 checkpoint 载目标状态（thread_id 不变、纯 INSERT 不删历史，红线①）；
+     *       定位失败抛 409——锚点不可得时不执行软删（防数据与 checkpoint 脱节）</li>
+     *   <li>软删事务：消息行软删（softDeleteFromRun）+ run 行软删与新 QUEUED run
+     *       创建（prepareReplayRun，事务内原子）</li>
+     *   <li>复用 chat() 的流式链路：createRing → subscribe → XADD（消息体携带
+     *       replayMode 语义标记；EDIT 带新 query，REGENERATE 带原问题文本供消息行
+     *       持久化）→ 心跳 → 更新会话最后消息时间</li>
+     * </ol>
+     *
+     * @param httpRequest  请求（AuthInterceptor 注入的用户属性，非 null）
+     * @param httpResponse 响应（SSE 防代理缓冲头，见 applyNoProxyBufferHeaders）
+     * @param sessionId    会话 ID（路径参数）
+     * @param request      重放请求（mode/query/targetRunId，Bean Validation 已过）
+     * @return SSE 流（新 run 的事件流，复用 chat() 的 ring→subscribe→XADD 链路）
+     * @throws BizException 400 参数非法（mode 白名单外 / EDIT 空 query）；
+     *         403 非本人会话；404 会话不存在；409 目标 run 失效 / 位置校验失败 /
+     *         正在回答中 / checkpoint 锚点不可得
+     */
+    public SseEmitter replay(
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse,
+            Long sessionId,
+            ChatReplayRequest request) {
+        Long userId = AuthInterceptor.getCurrentUserId(httpRequest);
+        // ① 会话归属校验（与 chat()/R1 历史消息先例一致：404 不存在 / 403 非本人）
+        ChatSessionVO session = chatSessionService.findById(sessionId);
+        if (session == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "会话不存在");
+        }
+        if (!session.userId().equals(userId)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权操作此会话");
+        }
+        // ② 模式与参数校验（Bean Validation 之外的业务条件：EDIT 必带非空 query）
+        boolean isEdit = "EDIT".equals(request.mode());
+        if (!isEdit && !"REGENERATE".equals(request.mode())) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "mode 仅支持 EDIT / REGENERATE");
+        }
+        if (isEdit && (request.query() == null || request.query().isBlank())) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "EDIT 模式必须携带新问题文本");
+        }
+        // ③ 目标 run 归属与软删校验：findById 过 @TableLogic——已软删（重复 replay）返回
+        //    null，非本会话 run 同样拒绝（409 语义：目标消息已失效，提示刷新）
+        ChatRunVO targetRun = chatRunService.findById(request.targetRunId());
+        if (targetRun == null || !targetRun.sessionId().equals(sessionId)) {
+            throw new BizException(ErrorCode.CONFLICT, "目标消息已失效，请刷新后重试");
+        }
+        // ④ 位置校验（D5）：目标 run 之后无未删除 run（EDIT/REGENERATE 均限最后一条）
+        if (chatRunService.existsRunAfter(sessionId, request.targetRunId())) {
+            throw new BizException(ErrorCode.CONFLICT, "仅支持对最后一条消息执行编辑或重新生成");
+        }
+        // ⑤ 活跃校验：正在回答中拒绝（校验后并发窗口由 uniq_active_run_per_session 兜底）
+        if (chatRunService.existsActiveRun(sessionId)) {
+            throw new BizException(ErrorCode.CONFLICT, "正在回答中，请稍后操作");
+        }
+        // ⑥ checkpoint 定位与回滚（红线①：写入 config 不带 checkPointId，纯 INSERT 不删历史）；
+        //    定位/校验失败抛 409，此时软删尚未发生，会话数据无损
+        String targetUserQuery = rollbackCheckpointBeforeRun(sessionId, isEdit, request.targetRunId());
+        // ⑦ 软删事务：消息行先行软删（EDIT 与 REGENERATE 统一 runId>=targetRunId 范围——
+        //    REGENERATE 时目标即最后一个 run，范围等价仅目标 run），run 软删与新 run 同事务
+        chatMessageService.softDeleteFromRun(sessionId, request.targetRunId());
+        ChatRunVO run = chatRunService.prepareReplayRun(sessionId, userId, request.mode(), request.targetRunId());
+        String runId = run.id().toString();
+        // ⑧ 复用 chat() 的流式链路（ring → subscribe → XADD → 心跳；先订阅再入队不丢事件）
+        SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT);
+        applyNoProxyBufferHeaders(httpResponse);
+        bridge.createRing(runId);
+        bridge.subscribe(runId, emitter);
+        Map<String, String> message = new LinkedHashMap<>();
+        message.put("runId", runId);
+        message.put("sessionId", sessionId.toString());
+        message.put("userId", userId.toString());
+        // EDIT：新问题文本作为 query（worker 组装 UserMessage 图输入）；
+        // REGENERATE：携带目标 run 落库的原问题文本——图输入 messages 置空（checkpoint 已含
+        // 原用户消息，由 replayMode 标记驱动 worker 特判），query 仅供 chat_message USER 行持久化
+        message.put("query", isEdit ? request.query() : targetUserQuery);
+        message.put("attachments", "[]");
+        // replay 语义标记：worker 据此把图输入组装为空 messages（从回滚 checkpoint 续跑重新生成）
+        message.put("replayMode", request.mode());
+        try {
+            redisTemplate.opsForStream().add(streamProperties.requestStream(), message);
+            // BUG-14 同款：XADD 成功后注册取消条目（生命周期「入队 → processRequest.finally 清理」）
+            worker.registerPendingRun(runId);
+        } catch (Exception e) {
+            // 入队失败回滚 run 状态（解除 uniq_active_run_per_session 锁死）+ 清理 ring（P0-4c）
+            log.error("replay XADD 入队失败，回滚 run: runId={}", runId, e);
+            try {
+                chatRunService.updateStatus(run.id(), "ERROR");
+            } catch (Exception dbEx) {
+                log.error("replay XADD 失败后回滚 run 状态失败: runId={}", runId, dbEx);
+            } finally {
+                bridge.removeRing(runId);
+            }
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "消息队列暂不可用，请稍后重试");
+        }
+        // ⑨ 心跳 + 会话最后消息时间（与 chat() 收尾一致）
+        startHeartbeat(emitter);
+        chatSessionService.updateLastMessageAt(sessionId);
+        log.info(
+                "replay 发起: sessionId={}, mode={}, targetRunId={}, newRunId={}",
+                sessionId,
+                request.mode(),
+                request.targetRunId(),
+                runId);
+        return emitter;
+    }
+
+    /**
+     * checkpoint 定位与回滚（M5，R2 实证 {@code __START__} 锚点方案，spec D2）
+     *
+     * <p><b>依赖单实例部署</b>（多实例待 TASK.md §1 拍板）：PostgresSaver 继承
+     * MemorySaver 的进程内缓存（loadedCheckpoints 非空不再读 PG），跨实例 replay
+     * 定位失效——本方法假定 saver 单例与本 JVM 内一致。
+     *
+     * <p>定位算法（Checkpoint 类无时间戳字段，时间戳二分不可行——R2 实证）：
+     * <ol>
+     *   <li>按 threadId（=sessionId）经 {@code saver.list(config)} 枚举历史 checkpoint，
+     *       顺序新→旧（MemorySaver addFirst / PG 载入 ORDER BY saved_at DESC）；</li>
+     *   <li>从头向旧走遇到的<b>第一条 {@code nodeId="__START__"}</b> 即目标 run 的 START
+     *       （每个新 run 开始时 MainGraphExecutor 写一条；D5 位置校验已保证目标 = 最后一个
+     *       run，无更晚 run 的 checkpoint 混入）。START checkpoint 为写入时深拷贝快照
+     *       （addCheckpoint 经 cloneState），state = pre-run 状态 + 已合并本轮用户消息
+     *       （quQuery 形态即 caption 前缀形态），不受后续运行原地 append 污染；</li>
+     *   <li>锚点归属校验：START state 的最后一条消息应为 UserMessage 且文本以目标 run 落库的
+     *       原问题结尾（quQuery = caption 前缀 + 原问题，endsWith 成立）——不匹配说明目标
+     *       run 图启动前失败（无 __START__，定位到的是上一 run 的 START），抛 409 拒绝
+     *       （防错误锚点导致回滚到错误轮次）；</li>
+     *   <li>构造回滚 checkpoint（红线①：写入 config <b>严禁带 checkPointId</b>——带
+     *       checkPointId 的 put 走替换分支会 DELETE 旧 checkpoint 行毁审计历史；无
+     *       checkPointId 的 put 为 push 分支纯 INSERT）：
+     *       <ul>
+     *         <li>REGENERATE：新 checkpoint 载 START 快照原样（messages 含原用户消息），
+     *             新 run 图输入 {@code {messages: []}} 从该点续跑重新生成；</li>
+     *         <li>EDIT：新 checkpoint 载「START 快照去掉末位用户消息」的状态（= pre-run
+     *             上下文，不含目标用户消息；首条消息 EDIT 时 messages 为空，等价全新会话），
+     *             新 run 图输入 {@code {messages: [UserMessage(新问题)]}} 经 worker 全链路组装。
+     *             不直接取「START 之前更旧的一条 checkpoint」——该条作为 run 启动基线时其
+     *             messages 列表被 AppendStrategy 原地追加污染（进程内缓存视图含本轮消息），
+     *             START 深拷贝快照去除末位才是干净等价物；</li>
+     *       </ul>新 checkpoint 新 UUID、nodeId/nextNodeId 沿用 START 值（worker 新 run 的
+     *       config 无 checkPointId/HUMAN_FEEDBACK（红线②），仅以 state 为初始上下文）。 </li>
+     * </ol>
+     *
+     * @param sessionId   会话 ID（归属校验已通过）
+     * @param isEdit      true=EDIT（锚点去掉末位用户消息）；false=REGENERATE（锚点原样）
+     * @param targetRunId 目标 run ID（位置/软删校验已通过）
+     * @return 目标 run 落库的原问题文本（REGENERATE 时供 XADD query 供消息行持久化；
+     *         EDIT 场景调用方使用新 query，返回值不消费）
+     * @throws BizException 409 无历史 checkpoint / 无 {@code __START__} / 锚点归属校验
+     *         失败（目标 run 图启动前失败）/ saver 访问异常——锚点不可得时不执行软删
+     */
+    private String rollbackCheckpointBeforeRun(Long sessionId, boolean isEdit, Long targetRunId) {
+        // 目标 run 落库的 USER 行原文（归属校验事实源 + REGENERATE 的 query 回填）
+        String targetUserQuery = findRunUserQuery(targetRunId);
+        try {
+            // 仅 threadId 定位（红线①：不带 checkPointId/HUMAN_FEEDBACK metadata，红线②同源）
+            RunnableConfig config =
+                    RunnableConfig.builder().threadId(sessionId.toString()).build();
+            // 按 threadId 枚举历史 checkpoint（顺序新→旧，R2 实证）
+            Checkpoint startCp = null;
+            for (Checkpoint cp : saver.list(config)) {
+                // 从最新向旧走：第一条 __START__ 即目标 run 的 START（D5 保证无更晚 run）
+                if ("__START__".equals(cp.getNodeId())) {
+                    startCp = cp;
+                    break;
+                }
+            }
+            if (startCp == null) {
+                // 无 __START__：目标 run 图启动前失败或会话无 checkpoint——锚点不可得，拒绝
+                log.warn(
+                        "replay checkpoint 定位失败（无 __START__ 锚点）: sessionId={}, targetRunId={}", sessionId, targetRunId);
+                throw new BizException(ErrorCode.CONFLICT, "消息上下文不可用，无法执行编辑或重新生成");
+            }
+            // 锚点归属校验 + 末位用户消息提取（startMessages 为 START 深拷贝快照，安全读取）
+            List<Object> startMessages = readStateMessages(startCp);
+            if (startMessages.isEmpty()
+                    || !(startMessages.get(startMessages.size() - 1) instanceof UserMessage lastUser)) {
+                throw new BizException(ErrorCode.CONFLICT, "消息上下文不可用，无法执行编辑或重新生成");
+            }
+            // quQuery = caption 前缀 + 原问题 → endsWith 成立即归属目标 run；不匹配 = 定位到
+            // 上一 run 的 START（目标 run 未写 __START__），拒绝防错误回滚
+            if (targetUserQuery == null || !lastUser.getText().endsWith(targetUserQuery)) {
+                log.warn(
+                        "replay checkpoint 锚点归属校验失败（疑似目标 run 图启动前失败）: sessionId={}, targetRunId={}",
+                        sessionId,
+                        targetRunId);
+                throw new BizException(ErrorCode.CONFLICT, "消息上下文不可用，无法执行编辑或重新生成");
+            }
+            // 构造回滚 state：容器级拷贝 + messages 列表拷贝（EDIT 去除末位用户消息 = pre-run 上下文）
+            Map<String, Object> rollbackState = new HashMap<>(startCp.getState());
+            List<Object> rollbackMessages = new ArrayList<>(startMessages);
+            if (isEdit) {
+                // 首条消息 EDIT：去除后 messages 为空，等价全新会话（R2 边界）
+                rollbackMessages.remove(rollbackMessages.size() - 1);
+            }
+            rollbackState.put("messages", rollbackMessages);
+            // 新 checkpoint 新 UUID 载锚点 state/nodeId/nextNodeId；put 走 push 分支纯 INSERT
+            // 不删历史（红线①，沿用 forwardRollCheckpoint 写入模式）；thread_id 不变
+            Checkpoint rollbackCp = Checkpoint.builder()
+                    .id(UUID.randomUUID().toString())
+                    .state(rollbackState)
+                    .nodeId(startCp.getNodeId())
+                    .nextNodeId(startCp.getNextNodeId())
+                    .build();
+            saver.put(config, rollbackCp);
+            log.info(
+                    "replay checkpoint 回滚: sessionId={}, targetRunId={}, mode={}, startCheckpointId={}, rollbackCheckpointId={}, rollbackMessages={}",
+                    sessionId,
+                    targetRunId,
+                    isEdit ? "EDIT" : "REGENERATE",
+                    startCp.getId(),
+                    rollbackCp.getId(),
+                    rollbackMessages.size());
+            return targetUserQuery;
+        } catch (BizException e) {
+            // 业务 409 原样上抛（锚点不可得，软删未发生）
+            throw e;
+        } catch (Exception e) {
+            // saver 访问异常（PG/序列化故障）：锚点不可得，拒绝执行（防数据与 checkpoint 脱节）
+            log.error("replay checkpoint 回滚失败: sessionId={}, targetRunId={}", sessionId, targetRunId, e);
+            throw new BizException(ErrorCode.CONFLICT, "消息上下文不可用，无法执行编辑或重新生成");
+        }
+    }
+
+    /**
+     * 读取 checkpoint state 的 messages 列表（防御性降级空列表）
+     *
+     * @param checkpoint checkpoint（非 null）
+     * @return messages 列表（state 无 messages 键或类型不符时为空列表）
+     */
+    private List<Object> readStateMessages(Checkpoint checkpoint) {
+        Object messages = checkpoint.getState().get("messages");
+        if (messages instanceof List<?> list) {
+            return new ArrayList<>(list);
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * 查目标 run 落库的 USER 行原文（锚点归属校验 + REGENERATE 的 query 回填）
+     *
+     * @param targetRunId 目标 run ID
+     * @return 用户问题原文（quQuery 的 caption 后缀部分）；无 USER 行时 null
+     */
+    private String findRunUserQuery(Long targetRunId) {
+        // findByRunId 按 seq 升序返回 run 全部行，USER 行 seq 恒 0（persistMessages 首行）
+        return chatMessageService.findByRunId(targetRunId).stream()
+                .filter(msg -> "USER".equals(msg.role()))
+                .map(ChatMessageVO::content)
+                .findFirst()
+                .orElse(null);
     }
 
     // ========================================================================

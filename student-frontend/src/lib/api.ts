@@ -453,6 +453,26 @@ export function postChat(req: ChatRequest): Promise<Response> {
   return authedFetch("/student/chat", { method: "POST", body: JSON.stringify(req) });
 }
 
+/**
+ * M5: 消息级重放（EDIT 编辑最后一条用户消息重答 / REGENERATE 重新生成最后一条回答）
+ *
+ * 返回原始 Response 交由上层 ReadableStream 手写 SSE 解析器消费（与 postChat 同款）；
+ * 401 时自动单飞刷新后重放；409（正在回答/位置校验/目标失效）由上层 toast 处理。
+ *
+ * @param sessionId 会话 id（归属校验在后端完成，非本人 403）
+ * @param body      重放体（mode 白名单 EDIT/REGENERATE；query 编辑后新问题，REGENERATE 可空；
+ *                  targetRunId 目标 run——编辑用户消息的下一条 AI 回答 runId / 重生成目标回答 runId）
+ */
+export function replayChat(
+  sessionId: string,
+  body: { mode: "EDIT" | "REGENERATE"; query?: string; targetRunId: string },
+): Promise<Response> {
+  return authedFetch(`/student/chat/session/${sessionId}/replay`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 /** 取消正在生成的 run（run 终态后后端 409，由调用方静默吞） */
 export function cancelRun(runId: string): Promise<void> {
   return apiFetch<void>(`/student/chat/${runId}/cancel`, { method: "POST" });
@@ -468,6 +488,29 @@ export function cancelRun(runId: string): Promise<void> {
 export function reconnectChat(runId: string, lastEventId: number | null): Promise<Response> {
   const query = lastEventId === null ? "" : `?lastEventId=${lastEventId}`;
   return authedFetch(`/student/chat/${runId}/reconnect${query}`, { method: "GET" });
+}
+
+/** 活跃 run 查询响应体（GET /student/chat/session/{sessionId}/active-run 的 data 字段） */
+interface ActiveRunPayload {
+  runId: string | null;
+}
+
+/**
+ * 查会话当前活跃 run（2026-09-01 多会话并发续流）：切回仍有 run 在生成的会话时，
+ * 前端据此 runId 发起 GET reconnect 全量回放续流（恢复进行中回答的实时视图）。
+ * 404/403（会话不存在/非本人）与网络错误一律按 null 处理（无活跃 run 语义，仅历史回显）；
+ * 后端断连不取消 run，只有显式 cancel 才停——runId 在会话归属校验通过后由服务端下发。
+ */
+export async function getActiveRun(sessionId: string): Promise<string | null> {
+  try {
+    const data = await apiFetch<ActiveRunPayload | null>(
+      `/student/chat/session/${sessionId}/active-run`,
+    );
+    return data?.runId ?? null;
+  } catch {
+    // 会话不存在/非本人/网络失败：退化为无活跃 run（历史回显兜底，不阻断页面）
+    return null;
+  }
 }
 
 // ===== 上传通道（XHR：fetch 无法获取上传进度，PERF-10a） =====

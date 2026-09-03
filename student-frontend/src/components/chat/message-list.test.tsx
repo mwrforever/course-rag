@@ -30,6 +30,10 @@ vi.mock("@/lib/api", async (importOriginal) => {
   };
 });
 
+const clipboardMock = vi.hoisted(() => ({ copyToClipboard: vi.fn() }));
+vi.mock("@/lib/clipboard", () => clipboardMock);
+
+import { copyToClipboard } from "@/lib/clipboard";
 import { MessageList, shouldStickToBottom } from "./message-list";
 import type { StreamMessage } from "@/hooks/use-chat-stream";
 import type { RetrievalSource, TimelineNode } from "@/lib/types";
@@ -93,7 +97,12 @@ const TIMELINE: TimelineNode[] = [
 
 function renderList(
   messages: StreamMessage[],
-  overrides: { streaming?: boolean; blobUrls?: Record<string, string> } = {},
+  overrides: {
+    streaming?: boolean;
+    blobUrls?: Record<string, string>;
+    onEdit?: (message: StreamMessage, newText: string, targetRunId: string) => void;
+    onRegenerate?: (runId: string) => void;
+  } = {},
 ) {
   // 独立 QueryClient（retry 关闭）：召回抽屉懒加载 useQuery 需要 Provider，用例间不共享缓存
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -105,6 +114,8 @@ function renderList(
         sessionId="s-1"
         attachmentBlobUrls={overrides.blobUrls ?? {}}
         onNotify={onNotify}
+        onEdit={overrides.onEdit}
+        onRegenerate={overrides.onRegenerate}
       />
     </QueryClientProvider>,
   );
@@ -112,6 +123,8 @@ function renderList(
 
 beforeEach(() => {
   apiMock.postFeedback.mockReset().mockResolvedValue(undefined);
+  // M5 复制链默认成功（个别用例自行覆盖实现断言降级分支）
+  clipboardMock.copyToClipboard.mockReset().mockResolvedValue(true);
   onNotify.mockReset();
 });
 
@@ -299,4 +312,124 @@ it("AI 消息渲染 model 徽标（metadata.model 透出，E2E 实证修订后�
 it("model 为空时不渲染徽标（降级回放无 metadata 场景）", () => {
   const { container } = renderList([makeAssistant({ model: null })]);
   expect(container.querySelector('[data-testid="model-badge"]')).toBeNull();
+});
+
+describe("MessageList M5 消息级操作（编辑/重新生成）", () => {
+  it("用户消息操作区：复制图标恒可用，点击走降级复制链并 toast", async () => {
+    const copyMock = vi.fn().mockResolvedValue(true);
+    vi.mocked(copyToClipboard).mockImplementation(copyMock);
+    renderList([makeUser()]);
+    fireEvent.click(screen.getByTestId("user-copy-button"));
+    await vi.waitFor(() => {
+      expect(copyMock).toHaveBeenCalledWith("什么是 RAG？");
+      expect(onNotify).toHaveBeenCalledWith("已复制");
+    });
+  });
+
+  it("编辑图标可用条件（M5.1）：最后一条用户消息且非生成中可用；生成中置灰；中间历史消息置灰", () => {
+    const onEdit = vi.fn();
+    const first = makeUser({ id: "u-1", content: "第一问" });
+    const firstAnswer = makeAssistant({ id: "run-1", text: "第一答", endStatus: "COMPLETED" });
+    const second = makeUser({ id: "u-2", content: "第二问" });
+    const secondAnswer = makeAssistant({ id: "run-2", text: "第二答", endStatus: "COMPLETED" });
+    // 非生成中：最后一条用户消息（第二问）可编辑，中间（第一问）置灰
+    const { rerender } = renderList([first, firstAnswer, second, secondAnswer], { onEdit });
+    const editButtons = screen.getAllByTestId("user-edit-button") as HTMLButtonElement[];
+    expect(editButtons).toHaveLength(2);
+    expect(editButtons[0].disabled).toBe(true);
+    expect(editButtons[1].disabled).toBe(false);
+
+    // 生成中：最后一条用户消息的编辑入口也置灰（编辑须等回答终态）
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    rerender(
+      <QueryClientProvider client={client}>
+        <MessageList
+          messages={[first, firstAnswer, second, secondAnswer]}
+          streaming={true}
+          sessionId="s-1"
+          attachmentBlobUrls={{}}
+          onNotify={onNotify}
+          onEdit={onEdit}
+        />
+      </QueryClientProvider>,
+    );
+    const streamingButtons = screen.getAllByTestId("user-edit-button") as HTMLButtonElement[];
+    expect(streamingButtons[1].disabled).toBe(true);
+  });
+
+  it("编辑流：点击编辑原位替换为编辑框，提交携带配对回答 runId，取消恢复气泡", () => {
+    const onEdit = vi.fn();
+    const user = makeUser({ id: "u-1", content: "原问题" });
+    const answer = makeAssistant({
+      id: "run-1",
+      text: "回答",
+      endStatus: "COMPLETED",
+      messageId: "m1",
+    });
+    renderList([user, answer], { onEdit });
+
+    fireEvent.click(screen.getByTestId("user-edit-button"));
+    expect(screen.getByTestId("message-edit-box")).toBeInTheDocument();
+
+    // 修改文本后提交：onEdit 上抛（被编辑消息、新文本、配对 AI 回答 runId=replay 目标）
+    fireEvent.change(screen.getByTestId("message-edit-input"), { target: { value: "改后的问题" } });
+    fireEvent.click(screen.getByTestId("message-edit-submit"));
+    expect(onEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "u-1" }),
+      "改后的问题",
+      "run-1",
+    );
+    // 提交后编辑框退出，恢复气泡渲染
+    expect(screen.queryByTestId("message-edit-box")).not.toBeInTheDocument();
+    expect(screen.getByTestId("user-bubble")).toBeInTheDocument();
+
+    // 取消路径：重新进入编辑后取消恢复原文
+    fireEvent.click(screen.getByTestId("user-edit-button"));
+    fireEvent.click(screen.getByTestId("message-edit-cancel"));
+    expect(screen.queryByTestId("message-edit-box")).not.toBeInTheDocument();
+    expect(screen.getByTestId("user-bubble")).toBeInTheDocument();
+  });
+
+  it("重新生成图标可用条件（D5）：仅最后一条已终态回答可用，中间终态回答置灰；未终态不渲染", () => {
+    const onRegenerate = vi.fn();
+    const user1 = makeUser({ id: "u-1" });
+    const midAnswer = makeAssistant({
+      id: "run-1",
+      text: "第一答",
+      endStatus: "COMPLETED",
+      messageId: "m1",
+    });
+    const user2 = makeUser({ id: "u-2" });
+    const lastAnswer = makeAssistant({
+      id: "run-2",
+      text: "第二答",
+      endStatus: "COMPLETED",
+      messageId: "m2",
+    });
+    renderList([user1, midAnswer, user2, lastAnswer], { onRegenerate });
+
+    const buttons = screen.getAllByTestId("regenerate-button") as HTMLButtonElement[];
+    expect(buttons).toHaveLength(2);
+    // D5：中间回答置灰（回滚会连带吞掉其后内容），仅最后一条可用
+    expect(buttons[0].disabled).toBe(true);
+    expect(buttons[1].disabled).toBe(false);
+
+    // 点击可用入口：上抛被重生成回答的 runId
+    fireEvent.click(buttons[1]);
+    expect(onRegenerate).toHaveBeenCalledWith("run-2");
+  });
+
+  it("未终态回答不渲染重新生成入口（生成中/无 endStatus）", () => {
+    const onRegenerate = vi.fn();
+    renderList([makeUser(), makeAssistant({ text: "进行中" })], { onRegenerate });
+    expect(screen.queryByTestId("regenerate-button")).not.toBeInTheDocument();
+  });
+
+  it("onEdit/onRegenerate 未提供（旧调用方）：M5 图标入口不渲染（复制除外）", () => {
+    renderList([makeUser(), makeAssistant({ text: "答", endStatus: "COMPLETED", messageId: "m" })]);
+    expect(screen.queryByTestId("regenerate-button")).not.toBeInTheDocument();
+    // 编辑按钮按 M5 形态恒渲染但置灰（无处理器时不可进入编辑态）
+    const editButton = screen.getByTestId("user-edit-button") as HTMLButtonElement;
+    expect(editButton.disabled).toBe(true);
+  });
 });

@@ -109,4 +109,22 @@ public class AssistantMessageSink {
     public synchronized List<AssistantMessageCapture> snapshot() {
         return new ArrayList<>(captures);
     }
+
+    /**
+     * 定向清除指定阶段的全部捕获与思考累积（M7 处理点 d：重试前清理陈旧 QU 捕获）。
+     *
+     * <p>背景：无产出失败的自动重试会重跑 QU 节点——失败尝试若恰在 QU 完成点捕获过消息
+     * （QU 无 reasoning 输出的边缘形态，thinkingPusher 为空不构成产出），不清除则重试
+     * 轮的新捕获与之叠加，最终落库出现重复 QU 实体行。定向按 stage 清除而非全量 reset：
+     * attachments 阶段（caption 捕获发生在重试循环之前的附件编排，不重跑）与 generating
+     * 阶段（有 DELTA/TOOL_CALL 即不重试）的捕获必须保留，全量清会造成真实数据丢失。
+     *
+     * @param stage 待清除的阶段键（understanding；null 按空串键清除，与 capture 归组口径一致）
+     */
+    public synchronized void clearStage(String stage) {
+        String key = stage == null ? "" : stage;
+        captures.removeIf(capture -> key.equals(capture.stage()));
+        reasoningByStage.remove(key);
+        lastReasoningByStage.remove(key);
+    }
 }

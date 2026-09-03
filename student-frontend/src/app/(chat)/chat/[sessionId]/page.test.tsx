@@ -6,7 +6,10 @@
  * - 历史消息拉取 getSessionMessages(sessionId, 1, 200) → historyAdapter 回显：
  *   用户附件 chips 无缩略图（G8 降级图标）、思考卡、来源卡、工具卡、正文、反馈操作栏
  * - 历史加载中 → 骨架；加载失败 → 横幅 + 重试闭环；空历史 → 「继续提问」空态
+ * - M4 历史徽标：CANCELLED/ERROR run 半截回答回显未完成徽标（+ errorMessage tooltip）
  * - 输入发送走当前会话：display = 历史 + 新流消息
+ * - 多会话并发续流（2026-09-01 用户拍板）：getActiveRun 命中 → resume 全量回放续流；
+ *   无活跃 run / 查询失败 → 纯历史回显不续流
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -22,10 +25,13 @@ const chatMock = vi.hoisted(() => ({
   state: {} as ChatStreamState,
   send: vi.fn(),
   cancel: vi.fn(),
+  resume: vi.fn(),
+  detach: vi.fn(),
 }));
-/** 数据层 mock：历史消息接口 */
+/** 数据层 mock：历史消息 + 活跃 run 接口 */
 const apiMock = vi.hoisted(() => ({
   getSessionMessages: vi.fn(),
+  getActiveRun: vi.fn(),
   postFeedback: vi.fn(),
 }));
 /** 路由 mock：历史会话不应触发 replace */
@@ -43,6 +49,8 @@ vi.mock("@/hooks/use-chat-stream", () => ({
       send: chatMock.send,
       cancel: chatMock.cancel,
       reconnect: vi.fn(),
+      resume: chatMock.resume,
+      detach: chatMock.detach,
     };
   },
 }));
@@ -54,6 +62,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     getSessionMessages: apiMock.getSessionMessages,
+    getActiveRun: apiMock.getActiveRun,
     postFeedback: apiMock.postFeedback,
   };
 });
@@ -115,7 +124,10 @@ beforeEach(() => {
   chatMock.state = initialState();
   chatMock.send.mockReset().mockResolvedValue(undefined);
   chatMock.cancel.mockReset().mockResolvedValue(undefined);
+  chatMock.resume.mockReset().mockResolvedValue(undefined);
+  chatMock.detach.mockReset();
   apiMock.getSessionMessages.mockReset().mockResolvedValue(emptyPage());
+  apiMock.getActiveRun.mockReset().mockResolvedValue(null);
   apiMock.postFeedback.mockReset().mockResolvedValue(undefined);
   routerMock.replace.mockReset();
   authMock.useAuth.mockReset();
@@ -279,6 +291,66 @@ describe("历史会话页：历史回显渲染", () => {
     });
   });
 
+  it("M4 历史徽标：CANCELLED run 半截回答回显「已停止生成」徽标（失败现场保留）", async () => {
+    apiMock.getSessionMessages.mockResolvedValue({
+      records: [
+        makeHistoryRow({
+          id: "u-1",
+          role: "USER",
+          content: "被停止的问题",
+          runId: "hrun-cancel",
+          seq: 1,
+        }),
+        makeHistoryRow({
+          id: "a-1",
+          runId: "hrun-cancel",
+          seq: 2,
+          content: "半截回答",
+          runStatus: "CANCELLED",
+        }),
+      ],
+      total: "2",
+      page: 1,
+      size: 200,
+    });
+    renderPage();
+    // 半截正文回显 + 未完成徽标在场（历史侧 CANCELLED 补实时「已停止生成」同款文案）
+    expect(await screen.findByTestId("markdown-view")).toHaveTextContent("半截回答");
+    expect(screen.getByTestId("incomplete-badge-cancelled")).toBeInTheDocument();
+    expect(screen.getByTestId("incomplete-badge-cancelled")).toHaveTextContent("已停止生成");
+    expect(screen.queryByTestId("incomplete-badge-error")).not.toBeInTheDocument();
+  });
+
+  it("M4 历史徽标：ERROR run 回显「生成失败」徽标 + errorMessage tooltip", async () => {
+    apiMock.getSessionMessages.mockResolvedValue({
+      records: [
+        makeHistoryRow({
+          id: "u-1",
+          role: "USER",
+          content: "失败的问题",
+          runId: "hrun-err",
+          seq: 1,
+        }),
+        makeHistoryRow({
+          id: "a-1",
+          runId: "hrun-err",
+          seq: 2,
+          content: "失败前的半截",
+          runStatus: "ERROR",
+          errorMessage: "模型调用失败",
+        }),
+      ],
+      total: "2",
+      page: 1,
+      size: 200,
+    });
+    renderPage();
+    expect(await screen.findByTestId("incomplete-badge-error")).toHaveTextContent("生成失败");
+    // 错误文案经 title 属性透出（tooltip）
+    expect(screen.getByTestId("incomplete-badge-error")).toHaveAttribute("title", "模型调用失败");
+    expect(screen.queryByTestId("incomplete-badge-cancelled")).not.toBeInTheDocument();
+  });
+
   it("输入发送走当前会话：display = 历史 + 新流消息（新提问追加其后）", async () => {
     apiMock.getSessionMessages.mockResolvedValue({
       records: [makeHistoryRow({ id: "hm-1", runId: "hrun-1", seq: 1, content: "历史回答" })],
@@ -318,5 +390,59 @@ describe("历史会话页：历史回显渲染", () => {
     expect(flow).toHaveTextContent("历史回答");
     expect(screen.getByTestId("user-message")).toHaveTextContent("接着问");
     expect(routerMock.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe("历史会话页：多会话并发续流（2026-09-01 用户拍板）", () => {
+  it("有活跃 run：getActiveRun 命中 → resume(runId) 全量回放续流", async () => {
+    apiMock.getActiveRun.mockResolvedValue("run-42");
+    renderPage();
+    await waitFor(() => {
+      expect(apiMock.getActiveRun).toHaveBeenCalledWith("s-1");
+    });
+    // 工作区经 resumeRunId prop 触发续流（restore 进行中回答的实时视图）
+    await waitFor(() => {
+      expect(chatMock.resume).toHaveBeenCalledWith("run-42");
+    });
+  });
+
+  it("无活跃 run：不发起续流（纯历史回显，仅拉历史消息）", async () => {
+    apiMock.getActiveRun.mockResolvedValue(null);
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-workspace")).toBeInTheDocument();
+    });
+    // 页面不会因为刷新/重渲染重复调用 resume
+    expect(chatMock.resume).not.toHaveBeenCalled();
+  });
+
+  it("活跃 run 查询失败：退化为纯历史回显，不阻断页面（404/403/网络错误统一按无活跃处理）", async () => {
+    apiMock.getActiveRun.mockRejectedValue(new ApiError(404, "会话不存在"));
+    renderPage();
+    // 历史仍正常回显（续流失败不阻断页面）
+    expect(await screen.findByText("继续提问")).toBeInTheDocument();
+    expect(chatMock.resume).not.toHaveBeenCalled();
+  });
+
+  it("M6.4 占位：活跃 run 存在且历史为空 → 渲染「正在继续生成…」占位（续流窗口期不像坏了）", async () => {
+    // getSessionMessages 默认空页（beforeEach）+ getActiveRun 命中 → 回放尚未送达任何帧，
+    // 消息区应为续流占位而非普通「继续提问」空态
+    apiMock.getActiveRun.mockResolvedValue("run-42");
+    renderPage();
+    const placeholder = await screen.findByTestId("resume-placeholder");
+    expect(placeholder).toHaveTextContent("正在继续生成");
+    // 普通空态的问候与建议 chip 不与占位并存（占位优先于普通空态渲染）
+    expect(screen.queryByText("继续提问")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("suggestion-chip")).not.toBeInTheDocument();
+  });
+
+  it("M6.4 静默降级：active-run 查询失败 → 无占位无报错，纯历史回显", async () => {
+    // resume 失败静默降级为「仅历史展示 + 不报错」：查询失败统一 null（api 层契约），
+    // 占位不渲染、无 error banner，页面回到普通空态
+    apiMock.getActiveRun.mockRejectedValue(new TypeError("网络不可达"));
+    renderPage();
+    expect(await screen.findByText("继续提问")).toBeInTheDocument();
+    expect(screen.queryByTestId("resume-placeholder")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

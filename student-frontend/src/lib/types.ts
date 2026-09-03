@@ -205,6 +205,8 @@ export interface SessionItem {
  * R1 学生历史消息（StudentMessageVO；messageType: null=正文 / thinking / TOOL_CALL /
  * TOOL_RESULT / query_plan；intentType 存量可 null；thinkingStage 为 thinking 行的
  * 思考阶段键，历史存量行无该列值时为 null——前端降级按 generating 渲染）
+ * M4：runStatus/errorMessage 仅终态 run（COMPLETED/CANCELLED/ERROR）的非 USER 行
+ * 下发（取消/失败半截回答全量保留 + 未完成徽标数据源）；USER 行与存量旧行两字段缺省
  */
 export interface StudentMessage {
   id: string;
@@ -219,6 +221,10 @@ export interface StudentMessage {
   createdAt: string;
   sources: RetrievalSource[];
   attachments: AttachmentRecord[];
+  /** 所属 run 终态（M4：COMPLETED/CANCELLED/ERROR；后端仅终态 run 的非 USER 行下发，可空） */
+  runStatus?: string | null;
+  /** run 错误信息（M4：仅 runStatus=ERROR 行下发，可空） */
+  errorMessage?: string | null;
 }
 
 /** J8 对话请求（ChatRequest；sessionId null=新建会话，query 必填非空，attachments 可 null） */

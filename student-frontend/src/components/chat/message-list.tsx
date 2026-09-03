@@ -25,21 +25,23 @@
  * 击穿 memo）。PERF-05 补齐：末条流式行内部 ChainTimeline 的 sources 亦以独立
  * props 传入（不再行内闭包捕获），delta 期间时间轴子树整轴跳过重渲染。
  */
-import { FileText, Sparkle } from "@phosphor-icons/react";
+import { ArrowClockwise, Copy, FileText, PencilSimple, Sparkle } from "@phosphor-icons/react";
 import { memo, useCallback, useState } from "react";
 import { ChainTimeline } from "./chain-timeline";
 import { FeedbackBar } from "./feedback-bar";
 import { MarkdownView } from "./markdown-view";
+import { MessageEditBox } from "./message-edit-box";
 import { RetrievalDrawer } from "./retrieval-drawer";
 import { ToolResultDrawer } from "./tool-result-drawer";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { StreamMessage } from "@/hooks/use-chat-stream";
 import type { AttachmentRecord, TimelineToolNode } from "@/lib/types";
 
 /** 消息流组件 props */
 export interface MessageListProps {
-  /** 全部消息（用户 + AI，按时间序） */
+  /** 全部消息（用户 + AI，按时间序；历史回显与流式合并后的展示全集） */
   messages: StreamMessage[];
-  /** 是否正在生成（打字光标挂载依据） */
+  /** 是否正在生成（打字光标挂载依据；M5 编辑/重生成入口的置灰依据） */
   streaming: boolean;
   /** 当前会话 id（操作栏反馈请求体；新会话 metadata 到达后非空） */
   sessionId: string;
@@ -47,6 +49,13 @@ export interface MessageListProps {
   attachmentBlobUrls: Record<string, string>;
   /** 提示回调（复制/反馈 toast，页面统一呈现） */
   onNotify(message: string): void;
+  /**
+   * M5 编辑提交（可选，缺省不渲染编辑入口）：message=被编辑用户消息、
+   * newText=编辑后文本、targetRunId=配对 AI 回答的 runId（replay 端点定位目标 run）
+   */
+  onEdit?: (message: StreamMessage, newText: string, targetRunId: string) => void;
+  /** M5 重新生成（可选，缺省不渲染入口）：targetRunId=被重生成回答的 runId（D5 仅最后一条终态可用） */
+  onRegenerate?: (runId: string) => void;
 }
 
 /** 智能吸底滚动判定阈值（仅距底 80px 内才跟随，用户上翻阅读时不强制拉动） */
@@ -134,24 +143,64 @@ interface UserMessageRowProps {
   message: StreamMessage;
   /** 附件记录 url → blob URL 映射（附件发送时才变化） */
   blobUrls: Record<string, string>;
+  /** M5 编辑可用（=最后一条用户消息且非生成中且配对回答存在；置灰依据） */
+  canEdit: boolean;
+  /** M5 复制回调（稳定引用；toast 由上层统一呈现） */
+  onCopy: (text: string) => void;
+  /** M5 点击编辑（进入编辑态；稳定引用）；onEdit 未提供时编辑入口不渲染 */
+  onEditClick: (message: StreamMessage) => void;
 }
 
 /**
  * 用户消息行（memo，Task 14）：右对齐 bubble 气泡 + 附件 chips + 纯文本正文
+ * + M5 操作区（复制/编辑图标，hover 浮现；编辑仅最后一条用户消息可用）
  */
-const UserMessageRow = memo(function UserMessageRow({ message, blobUrls }: UserMessageRowProps) {
+const UserMessageRow = memo(function UserMessageRow({
+  message,
+  blobUrls,
+  canEdit,
+  onCopy,
+  onEditClick,
+}: UserMessageRowProps) {
   return (
-    <div data-testid="user-message" className="flex justify-end">
-      <div
-        data-testid="user-bubble"
-        // 用户气泡：暖白 bubble 底 + 右下角小圆角（site 形状锁唯一例外）
-        className="max-w-[70%] rounded-[18px] rounded-br-[8px] bg-bubble px-4 py-2.5"
-      >
-        {message.attachments.length > 0 ? (
-          <UserAttachmentChips attachments={message.attachments} blobUrls={blobUrls} />
-        ) : null}
-        {/* 用户消息纯文本渲染（防 XSS，不经过 Markdown） */}
-        <p className="text-[15px] leading-7 whitespace-pre-wrap break-words">{message.content}</p>
+    <div data-testid="user-message" className="group flex justify-end">
+      <div className="flex max-w-[70%] flex-col items-end">
+        <div
+          data-testid="user-bubble"
+          // 用户气泡：暖白 bubble 底 + 右下角小圆角（site 形状锁唯一例外）
+          className="max-w-full rounded-[18px] rounded-br-[8px] bg-bubble px-4 py-2.5"
+        >
+          {message.attachments.length > 0 ? (
+            <UserAttachmentChips attachments={message.attachments} blobUrls={blobUrls} />
+          ) : null}
+          {/* 用户消息纯文本渲染（防 XSS，不经过 Markdown） */}
+          <p className="text-[15px] leading-7 whitespace-pre-wrap break-words">{message.content}</p>
+        </div>
+        {/* M5 操作区：复制（恒可用）+ 编辑（仅最后一条用户消息且非生成中，其余置灰）；hover 浮现 */}
+        <div className="mt-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <button
+            type="button"
+            aria-label="复制"
+            data-testid="user-copy-button"
+            onClick={() => onCopy(message.content)}
+            className="grid size-7 place-items-center rounded-lg text-subtle transition-colors hover:bg-surface-2 hover:text-brand-strong"
+          >
+            <Copy size={14} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label="编辑"
+            data-testid="user-edit-button"
+            disabled={!canEdit}
+            title={
+              canEdit ? "编辑这条消息并重新回答" : "仅支持编辑最后一条消息，且需回答结束后操作"
+            }
+            onClick={() => onEditClick(message)}
+            className="grid size-7 place-items-center rounded-lg text-subtle transition-colors hover:bg-surface-2 hover:text-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <PencilSimple size={14} aria-hidden />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -167,8 +216,12 @@ interface AssistantMessageRowProps {
   isLast: boolean;
   /** 当前会话 id（操作栏反馈请求体） */
   sessionId: string;
+  /** M5 重新生成可用（= 最后一条已终态回答，D5；其余置灰） */
+  canRegenerate: boolean;
   /** 提示回调（复制/反馈 toast，页面统一呈现；useCallback 稳定引用） */
   onNotify(message: string): void;
+  /** M5 重新生成回调（稳定引用）；未提供时不渲染入口 */
+  onRegenerate: ((runId: string) => void) | null;
   /** 打开召回抽屉（稳定引用：连同 sources 数组原样透传给 ChainTimeline，PERF-05） */
   onOpenSources(sources: StreamMessage["sources"]): void;
   /** 打开工具结果抽屉（稳定引用；2026-08-30 工具结果侧栏展示） */
@@ -186,7 +239,9 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
   streaming,
   isLast,
   sessionId,
+  canRegenerate,
   onNotify,
+  onRegenerate,
   onOpenSources,
   onOpenTool,
 }: AssistantMessageRowProps) {
@@ -252,9 +307,28 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
             ) : null}
           </div>
         ) : null}
+        {/* M4 未完成徽标：历史回显侧 CANCELLED/ERROR 回答（实时链路已有后缀/横幅，此处历史侧补；
+            ERROR 徽标携带 errorMessage tooltip（取自 chat_run.error_message） */}
+        {message.endStatus === "CANCELLED" ? (
+          <span
+            data-testid="incomplete-badge-cancelled"
+            className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-subtle"
+          >
+            已停止生成
+          </span>
+        ) : null}
+        {message.endStatus === "ERROR" ? (
+          <span
+            data-testid="incomplete-badge-error"
+            title={message.errorMessage ?? undefined}
+            className="rounded-full bg-danger/10 px-2 py-0.5 text-xs text-danger"
+          >
+            生成失败
+          </span>
+        ) : null}
         {/* 操作栏：end 后浮现（200ms fade-in，transform/opacity，reduced-motion 静态） */}
         {message.endStatus !== null ? (
-          <div className="animate-fade-in motion-reduce:animate-none">
+          <div className="animate-fade-in motion-reduce:animate-none flex items-center gap-3">
             <FeedbackBar
               sessionId={sessionId}
               messageId={message.messageId}
@@ -263,6 +337,20 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
               intentType={message.intentType}
               onNotify={onNotify}
             />
+            {/* M5 重新生成（D5：仅最后一条已终态回答可用，其余置灰防「后面内容突然消失」） */}
+            {onRegenerate ? (
+              <button
+                type="button"
+                aria-label="重新生成"
+                data-testid="regenerate-button"
+                disabled={!canRegenerate}
+                title={canRegenerate ? "重新生成这条回答" : "仅支持重新生成最后一条回答"}
+                onClick={() => onRegenerate(message.id)}
+                className="grid size-7 place-items-center rounded-lg text-subtle transition-colors hover:bg-surface-2 hover:text-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ArrowClockwise size={14} aria-hidden />
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -273,6 +361,9 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
 /**
  * 对话消息流（用户气泡 + AI 整栏复合块 + 召回抽屉）
  *
+ * M5 接线：用户消息操作区（复制/编辑）与 AI 回答操作区（重新生成）经 props 注入；
+ * 编辑态行内替换为 MessageEditBox（editingId 状态提升至本组件）。
+ *
  * @param props 见 MessageListProps
  */
 export function MessageList({
@@ -281,11 +372,15 @@ export function MessageList({
   sessionId,
   attachmentBlobUrls,
   onNotify,
+  onEdit,
+  onRegenerate,
 }: MessageListProps) {
   // 召回抽屉状态：打开时持有该消息的来源列表（一次只开一条消息的抽屉）
   const [drawerSources, setDrawerSources] = useState<StreamMessage["sources"] | null>(null);
   // 工具结果抽屉状态：打开时持有该工具节点（2026-08-30 工具结果侧栏展示）
   const [drawerTool, setDrawerTool] = useState<TimelineToolNode | null>(null);
+  // M5 编辑态：正在编辑的用户消息 id（null=无；编辑框原位替换该行气泡）
+  const [editingId, setEditingId] = useState<string | null>(null);
   // 抽屉开关稳定引用（Task 14：逐帧新闭包会击穿消息行 memo）
   const openDrawer = useCallback(
     (sources: StreamMessage["sources"]) => setDrawerSources(sources),
@@ -294,23 +389,76 @@ export function MessageList({
   const closeDrawer = useCallback(() => setDrawerSources(null), []);
   const openToolDrawer = useCallback((tool: TimelineToolNode) => setDrawerTool(tool), []);
   const closeToolDrawer = useCallback(() => setDrawerTool(null), []);
+  // M5 复制回调（稳定引用）：降级链结果转 toast 文案（clipboard.ts 两级降级）
+  const copyText = useCallback(
+    (text: string) => {
+      void copyToClipboard(text).then((ok) => onNotify(ok ? "已复制" : "复制失败，请手动复制"));
+    },
+    [onNotify],
+  );
+  // M5 编辑入口/收尾（稳定引用）：点击进入编辑态；提交先退编辑态再上抛（配对 runId 由渲染点计算）
+  const enterEdit = useCallback((message: StreamMessage) => setEditingId(message.id), []);
+  const submitEdit = useCallback(
+    (message: StreamMessage, pairedRunId: string) => (newText: string) => {
+      setEditingId(null);
+      onEdit?.(message, newText, pairedRunId);
+    },
+    [onEdit],
+  );
 
   // 末条消息定位（打字光标与 running 态判定；身份比对，引用稳定）
   const last = messages.at(-1);
+  // M5 定位：最后一条用户消息（编辑可用）与最后一条 AI 回答（重新生成可用，D5）
+  let lastUser: StreamMessage | undefined;
+  let lastAssistant: StreamMessage | undefined;
+  for (const message of messages) {
+    if (message.role === "user") lastUser = message;
+    else lastAssistant = message;
+  }
 
   return (
     <div data-testid="message-flow" className="mx-auto w-full max-w-[840px] space-y-8 px-6 py-8">
-      {messages.map((message) =>
+      {messages.map((message, index) =>
         message.role === "user" ? (
-          <UserMessageRow key={message.id} message={message} blobUrls={attachmentBlobUrls} />
+          message.id === editingId ? (
+            // M5 编辑态：原位替换用户气泡为行内编辑框（初始值=原问题；取消恢复原文）
+            <MessageEditBox
+              key={`edit-${message.id}`}
+              initialValue={message.content}
+              streaming={streaming}
+              onSubmit={submitEdit(
+                message,
+                messages[index + 1]?.role === "assistant" ? messages[index + 1].id : "",
+              )}
+              onCancel={() => setEditingId(null)}
+            />
+          ) : (
+            <UserMessageRow
+              key={message.id}
+              message={message}
+              blobUrls={attachmentBlobUrls}
+              // 编辑条件（M5.1）：最后一条用户消息 + 非生成中 + 下一条为配对 AI 回答（replay 目标 run）
+              canEdit={
+                message === lastUser &&
+                !streaming &&
+                messages[index + 1]?.role === "assistant" &&
+                onEdit !== undefined
+              }
+              onCopy={copyText}
+              onEditClick={enterEdit}
+            />
+          )
         ) : (
           <AssistantMessageRow
             key={message.id}
             message={message}
             streaming={streaming}
             isLast={message === last}
+            // 重新生成条件（D5）：最后一条 AI 回答且已终态（endStatus!==null），其余置灰
+            canRegenerate={message === lastAssistant && message.endStatus !== null && !streaming}
             sessionId={sessionId}
             onNotify={onNotify}
+            onRegenerate={onRegenerate ?? null}
             onOpenSources={openDrawer}
             onOpenTool={openToolDrawer}
           />

@@ -268,8 +268,11 @@ stream:
   response-ttl: 300
   # SSE 心跳间隔（秒）
   heartbeat-interval: 15
-  # 内存 ring buffer 大小
-  ring-buffer-size: 256
+  # 内存 ring buffer 大小（M6.2：256→512——长生成（约 2~4 分钟 >256 事件）刷新/切回时
+  # 驱逐窗口过大触发全空 bug；容量翻倍 + M6.1 钳位回放双保险。注：spec §6 原文
+  # rag.stream.ring-capacity 与本配置同义，项目已有 stream.ring-buffer-size（StreamProperties
+  # 已配置化），不新增重复配置键——偏差已在计划总览登记，回填 spec 注记）
+  ring-buffer-size: 512
 
 # ── 缓存 TTL 配置（宪法 A.5.4：Spring Cache 缓存区与领域缓存 TTL 同源配置化）──
 cache:
@@ -278,6 +281,8 @@ cache:
     course-query: 5m
     # dashboard 统计三缓存区（@Cacheable 注解化，perf P2-3 决策窗口 60 秒兜底）
     dashboard-stats: 60s
+    # 公开课程缓存区（M9/PERF-21：公开列表+详情，写路径 afterCommit 失效联动）
+    public-courses: 60s
 
 # ── Agent 配置（F#1 + F#3）──
 rag:
@@ -333,6 +338,21 @@ rag:
     search-high-threshold: 0.8
     search-medium-threshold: 0.5
     multi-source-min: 2
+
+  # ── M3/M7 对话流式链路（ChatStreamProperties）──
+  chat-stream:
+    # SOURCES 就绪有界等待上限（毫秒）：STAGE(generating) 转换点同步消费 sources 容器——
+    # 已就绪（R3 实证必然首轮命中，同线程程序序）紧随 STAGE 推 SOURCES；未就绪等待至多
+    # 该阈值后放行（迟到兜底交 maybePushSources + 前端渲染排序双保险）
+    sources-ready-wait-ms: 2000
+    # M7/D1：主 agent 流 per-chunk idle 判死阈值（毫秒）——任意两次事件间隔超时即判死；
+    # 仅约束普通段（检索/生成/工具执行），QU 段（__START__ 之后）固定 65s 配额
+    # （QU 预算 60s + 余量，worker 内常量），QU 阻塞不受本值影响
+    stall-timeout-ms: 45000
+    # M7/D1：无产出失败自动整轮重试上限（判死/连接级断流且本轮无任何产出时同 run 重开图流）
+    auto-retry-max: 3
+    # M7：重试退避初始值（毫秒，指数 ×2 封顶 30s）
+    retry-backoff-ms: 2000
 
 # ── 认证安全配置（F#4 双 Token + 设备互踢）──
 auth:

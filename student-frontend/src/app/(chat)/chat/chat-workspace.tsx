@@ -68,6 +68,17 @@ export interface ChatWorkspaceProps {
   title?: string;
   /** 历史回显（continue 形态）：与流式消息拼接展示（回显在前、新消息在后） */
   history?: HistoryReplay;
+  /**
+   * 活跃 run 续流锚点（2026-09-01 多会话并发）：切回仍有 run 在生成的会话时，
+   * 页面经 GET active-run 拿到 runId 传入，工作区全量回放续流恢复实时视图。
+   */
+  resumeRunId?: string | null;
+  /**
+   * 续流占位标记（M6.4）：活跃 run 存在且历史为空（回放尚未送达任何帧）时，
+   * 消息区渲染「正在继续生成…」占位，避免续流窗口期看起来像坏了；
+   * resume 失败静默降级为普通空态（占位随 active-run 查询结果消失）。
+   */
+  resumingPlaceholder?: boolean;
 }
 
 /** 建议提问（新对话问候与续会话占位共用，点击即发送） */
@@ -114,7 +125,14 @@ export function ChatSkeleton() {
  *
  * @param props 见 ChatWorkspaceProps
  */
-export function ChatWorkspace({ initialSessionId, variant, title, history }: ChatWorkspaceProps) {
+export function ChatWorkspace({
+  initialSessionId,
+  variant,
+  title,
+  history,
+  resumeRunId,
+  resumingPlaceholder,
+}: ChatWorkspaceProps) {
   const searchParams = useSearchParams();
   const { user } = useAuth();
   // 快速提问预填：首页快问框提交带 ?q=，仅新对话页生效（预填不自动发送，避免误发）
@@ -123,7 +141,8 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   const setStreaming = useSetChatStreaming();
   // 新建对话信号（Task 13）：侧栏 /chat 同路由按钮经 Context 发出，本组件消费执行干净态
   const newChatSeq = useChatNewChatSeq();
-  const { state, send, cancel, reconnect, reset } = useChatStream(initialSessionId);
+  const { state, send, cancel, reconnect, reset, resume, detach, replay } =
+    useChatStream(initialSessionId);
 
   // ── 受控输入（Task 13）：工作区持有输入值，新建信号经 resetKey 驱动清空 ──
   // 初值取 /chat?q= 快速提问预填（仅新对话页；预填不自动发送，避免误发）
@@ -197,12 +216,14 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
   );
 
   // ── 新建对话信号消费（Task 13）：侧栏按钮 seq 自增 → 干净态 ──
-  // 清流式（clearSession=true 连会话归属清空，下次发送建新会话）+ 附件 chips 与
-  // blob 全量 revoke + 预览弹窗收起 + 输入清空（resetKey 驱动）；URL 不变不重挂载
+  // 2026-09-01 多会话并发：先 detach 旧流（停消费循环，旧会话 run 在服务端继续执行、
+  // 事件留 ring 供切回时 resume 续流），再清流式/附件/输入（clearSession=true 连会话
+  // 归属清空，下次发送建新会话）；URL 不变不重挂载
   const lastNewChatSeq = useRef(newChatSeq);
   useEffect(() => {
     if (lastNewChatSeq.current === newChatSeq) return;
     lastNewChatSeq.current = newChatSeq;
+    detach();
     reset(true);
     // 附件干净态：pending chips（原图与缩略均 revoke）与消息内 blob 映射全部 revoke 后清空
     pendings.forEach((item) => {
@@ -219,7 +240,17 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
     // 输入干净态：resetKey 自增驱动 ChatInput 清空
     setInputResetKey((key) => key + 1);
     // pendings 入 deps 仅取最新值：seq 未变时守卫直接返回，无重复执行
-  }, [newChatSeq, reset, pendings]);
+  }, [newChatSeq, reset, detach, pendings]);
+
+  // ── 活跃 run 续流（2026-09-01 多会话并发）：切回正在生成的会话 → 全量回放恢复实时视图 ──
+  // 页面端 active-run 查询命中（该会话仍有 QUEUED/ACTIVE run）后传入 runId；幂等：
+  // 同 runId 只 resume 一次（ref 守卫），已流式/已终态由 hook 内部守卫兜底
+  const lastResumeRunId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!resumeRunId || resumeRunId === lastResumeRunId.current) return;
+    lastResumeRunId.current = resumeRunId;
+    void resume(resumeRunId);
+  }, [resumeRunId, resume]);
 
   // ── 智能吸底滚动：仅距底 80px 内跟随（用户上翻阅读不打扰）──
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -422,6 +453,37 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
     void sendQuery(query, records).catch((error: unknown) => notify(chatErrorText(error)));
   }
 
+  // ── M5 编辑/重新生成提交流：本地回滚由 hook.replay 在响应 200 后执行；
+  // 失败 toast 不动本地（服务端软删未发生，两侧一致无需恢复）──
+  // replay 成功后失效历史查询（refetch 对齐服务端软删——replay_rollback 只作用于流式
+  // state.messages，历史回显侧（history props）的消息须由 refetch 移除软删行）
+  const handleEdit = useCallback(
+    async (message: StreamMessage, newText: string, targetRunId: string) => {
+      try {
+        await replay("EDIT", newText, targetRunId);
+        if (state.sessionId) {
+          void queryClient.invalidateQueries({ queryKey: ["session-messages", state.sessionId] });
+        }
+      } catch (error) {
+        notify(chatErrorText(error));
+      }
+    },
+    [replay, notify, state.sessionId, queryClient],
+  );
+  const handleRegenerate = useCallback(
+    async (runId: string) => {
+      try {
+        await replay("REGENERATE", null, runId);
+        if (state.sessionId) {
+          void queryClient.invalidateQueries({ queryKey: ["session-messages", state.sessionId] });
+        }
+      } catch (error) {
+        notify(chatErrorText(error));
+      }
+    },
+    [replay, notify, state.sessionId, queryClient],
+  );
+
   // ── 渲染状态：上下文条标题 / 空态文案 / 历史回显 ──
   const contextTitle = title ?? (variant === "new" ? "新对话" : "历史会话");
   // carry3：课程入口携带 courseId（返回按钮直达课程工作台）；课程名仍由 course 参数承担面包屑
@@ -484,6 +546,16 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
           <div className="mx-auto w-full max-w-[840px] px-6 py-8">
             <SectionError onRetry={history.retry} />
           </div>
+        ) : resumingPlaceholder && isEmpty ? (
+          // M6.4：续流进行中且历史为空——「正在继续生成…」占位（避免看起来像坏了；
+          // resume 失败静默降级为空态：占位优先于普通空态渲染，回放首帧到达即让位消息流）
+          <div
+            className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center"
+            data-testid="resume-placeholder"
+          >
+            <AiBadge />
+            <p className="text-sm text-muted">正在继续生成…</p>
+          </div>
         ) : isEmpty ? (
           // 空态：AI 徽标 + 问候/继续提问 + 建议提问 chip（设计 §1.7 Empty）
           <div className="flex h-full flex-col items-center justify-center gap-5 px-6 text-center">
@@ -513,11 +585,15 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
             sessionId={state.sessionId ?? ""}
             attachmentBlobUrls={blobUrls}
             onNotify={notify}
+            onEdit={handleEdit}
+            onRegenerate={handleRegenerate}
           />
         )}
 
-        {/* 消息尾错误横幅（设计 §1.5.4 error 事件）：分级操作：retryable=重试（手动重连）
-             replay_failed=重新提问（清空对话引导重问）；auth 由全局登出流承接，仅展示文案 */}
+        {/* 消息尾错误横幅（设计 §1.5.4 error 事件）：分级操作：retryable=重试（手动重连）+
+             重新生成（M7：runId 保留时复用 M5 REGENERATE replay 整轮重开——判死重试耗尽/
+             有产出失败保留现场后的手动恢复入口）；replay_failed=重新提问（清空对话引导重问）；
+             auth 由全局登出流承接，仅展示文案 */}
         {state.error ? (
           <div
             role="alert"
@@ -533,6 +609,21 @@ export function ChatWorkspace({ initialSessionId, variant, title, history }: Cha
                   className="shrink-0 rounded-lg border border-danger/30 bg-surface px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger"
                 >
                   重试
+                </button>
+              ) : null}
+              {state.error.kind === "retryable" && state.runId ? (
+                /* M7：ERROR 终态 reducer 不清 runId（error/end 分支均保留）——据其发起
+                   REGENERATE replay（服务端软删回滚 + 新 run 重新生成；正在回答中/目标失效
+                   等 409 由 handleRegenerate 的 toast 分级承接） */
+                <button
+                  type="button"
+                  data-testid="error-regenerate"
+                  onClick={() => {
+                    if (state.runId) void handleRegenerate(state.runId);
+                  }}
+                  className="shrink-0 rounded-lg border border-danger/30 bg-surface px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger"
+                >
+                  重新生成
                 </button>
               ) : null}
               {state.error.kind === "replay_failed" ? (

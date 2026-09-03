@@ -208,7 +208,14 @@ async function request<T>(config: AxiosRequestConfig): Promise<T> {
   return response.data as T
 }
 
-/** 认证域（设计 §3.1：login/refresh/logout 三端点） */
+/** /auth/me 响应（M10 启动恢复）：userId 为 string（Long 序列化铁律） */
+export interface MeResponse {
+  userId: string
+  role: UserRole
+  displayName: string
+}
+
+/** 认证域（设计 §3.1：login/refresh/logout 三端点 + M10 me 身份查询） */
 export const authApi = {
   /** 登录：username+密码，deviceType 缺省 WEB_DESKTOP（后端实测缺省值兜底）；成功写 httpOnly cookie */
   login: (data: LoginRequest) =>
@@ -222,6 +229,11 @@ export const authApi = {
     request<LoginResponse>({ method: 'post', url: '/auth/refresh', data }),
   /** 登出：幂等（失败不阻塞本地清理，store 层容错） */
   logout: () => request<void>({ method: 'post', url: '/auth/logout' }),
+  /**
+   * 查询当前登录用户身份（M10 启动恢复）：无副作用端点（不旋转 RT、不写库）。
+   * isAuthRequestConfig 判定 url 含 '/auth/' → me 401 不触发刷新重放，静默语义正确
+   */
+  me: () => request<MeResponse>({ method: 'get', url: '/auth/me' }),
 }
 
 /** 知识库域（AdminKnowledgeBaseController）：两角色可进，教师限己建 */

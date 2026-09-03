@@ -65,4 +65,21 @@ public interface IChatMessageService extends IService<ChatMessage> {
      * @return 消息数量
      */
     long countByRunId(Long runId);
+
+    /**
+     * 软删会话内指定 run 起的全部消息行（M5 replay，spec D2）
+     *
+     * <p>EDIT / REGENERATE 回滚的消息行软删入口：按 {@code session_id = ? AND
+     * run_id >= ?} 批量逻辑删除（deleted=1 保留审计，@TableLogic 自动附加原
+     * deleted=0 条件）；REGENERATE 传入 targetRunId 时因 D5 位置校验保证目标即
+     * 最后一个 run，范围条件等价于仅目标 run 的行。checkpoint 历史不动（审计留痕）。
+     *
+     * <p>事务边界（A.4.12）：本方法自带 @Transactional 最小边界；与
+     * IChatRunService.prepareReplayRun 的 run 行软删不在同一事务（两 service 互注
+     * 成环禁止，B.2.2），中间态崩溃窗口由 replay 幂等收敛（软删幂等）。
+     *
+     * @param sessionId 会话 ID（归属校验已通过）
+     * @param fromRunId 起始 run ID（含，= replay 目标 run）
+     */
+    void softDeleteFromRun(Long sessionId, Long fromRunId);
 }

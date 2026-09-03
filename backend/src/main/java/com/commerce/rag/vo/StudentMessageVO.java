@@ -30,6 +30,10 @@ import java.util.List;
  * @param createdAt   创建时间（ISO-8601 字符串输出）
  * @param sources     引用来源列表（服务端解析，非法 JSON 兜底 []）
  * @param attachments 用户消息附件列表（assistant 行恒 []）
+ * @param runStatus   所属 run 终态（M4：COMPLETED/CANCELLED/ERROR，仅终态 run 的非 USER 行下发；
+ *                    USER 行与进行中 run 的行恒 null——接口演进只加字段，A.3.6）
+ * @param errorMessage run 错误信息（M4：仅 runStatus=ERROR 行下发，前端「生成失败」徽标
+ *                    tooltip 数据源，取自 chat_run.error_message；其余行恒 null）
  * @author commerce-rag
  */
 public record StudentMessageVO(
@@ -43,4 +47,6 @@ public record StudentMessageVO(
         Integer seq,
         LocalDateTime createdAt,
         List<RetrievalSource> sources,
-        List<AttachmentRecord> attachments) {}
+        List<AttachmentRecord> attachments,
+        String runStatus,
+        String errorMessage) {}

@@ -95,10 +95,6 @@
 > 逐项现状与建议详见 `docs/progress/2026-08-31-项目风险扫描修复.md`「待用户决策」节与终验报告。拍板后按常规
 > 流程立项，完成即删本节对应行。
 
-- [ ] **N3-② ERROR run 刷新后回答消失**：assistant 半截过滤为 M3 拍板契约（findCompletedRunIds 仅保留 COMPLETED run）——是否保留失败现场属产品决策
-- [ ] **N3-③ 流式链路零重试**：主对话流式调用（OpenAiChatModel.internalStream）无 RetryTemplate，单次连接 reset 即整 run 失败——是否加受控重试/备选模型切换属设计变更（retry 配置化本体已修）
-- [ ] **N3-④ 主 agent 流无 per-chunk 超时**：仅 blockLast 5min 兜底、失败静默窗口 ~15s——「静默多久判死」阈值与失败语义需拍板
-- [ ] **PERF-21 公开课程端点缓存**：现「不做缓存」为显式注释决策；分层预审已过（Spring Cache + 60s TTL + afterCommit），拍板即可实施
 - [ ] **PERF-26 课程中心切 tab/排序交错入场动效**：2026-08-31 改版拍板意图——需 Profiler 证实卡顿 + 用户确认视觉等价后立项
 - [ ] **PERF-20 激进异步化**：保守方案已修；完全异步化引入检索可见性窗口，推翻 2026-08-15「同步语义」裁决须重新拍板
 - [ ] **BUG-25 C 端 7 页面全 CSR 收缩**：全 CSR 为设计拍板形态、与宪法 C.1.3 张力——确认后逐页收缩 "use client"

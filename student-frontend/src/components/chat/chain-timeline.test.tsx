@@ -148,3 +148,70 @@ describe("ChainTimeline 交互", () => {
     );
   });
 });
+
+describe("ChainTimeline M3 渲染排序兜底（sources 前置，不依赖到达序）", () => {
+  it("sources 节点迟到（到达序在末位）→ 渲染仍排在思考/工具节点之前（M3 前端兜底）", () => {
+    // 服务端主保证之外的迟到 SOURCES：到达序最末，渲染层归一后必须前置
+    const lateSourcesTimeline: TimelineNode[] = [
+      { kind: "thinking", stage: "generating", lines: ["思考"], ended: true },
+      {
+        kind: "tool",
+        toolCallId: "t1",
+        toolName: "searchKnowledge",
+        input: null,
+        status: "success",
+        output: "",
+      },
+      { kind: "sources", sources: [SOURCE] },
+    ];
+    const { container } = render(
+      <ChainTimeline
+        timeline={lateSourcesTimeline}
+        active={false}
+        sources={[SOURCE]}
+        onOpenSources={() => {}}
+        onOpenTool={() => {}}
+      />,
+    );
+    const steps = Array.from(container.querySelectorAll(".chain-step")) as HTMLElement[];
+    expect(steps).toHaveLength(3);
+    // DOM 顺序断言：sources-step 是 chain-timeline 的第一个步骤节点，思考/工具随后
+    expect(steps[0]).toHaveAttribute("data-testid", "sources-step");
+    expect(steps[1]).toHaveAttribute("data-testid", "thinking-step");
+    expect(steps[2]).toHaveAttribute("data-testid", "tool-step");
+    // 纯渲染排序不改 state：传入数组本身保持原到达序（末位仍为 sources）
+    expect(lateSourcesTimeline[2].kind).toBe("sources");
+  });
+
+  it("sources 已在首位或无 sources 节点 → 渲染保持原序（无重排副作用）", () => {
+    // sources 已在首位：原序渲染（排序兜底为 no-op）
+    const { container: firstBox } = render(
+      <ChainTimeline
+        timeline={FULL_TIMELINE.slice(1)}
+        active={false}
+        sources={[SOURCE]}
+        onOpenSources={() => {}}
+        onOpenTool={() => {}}
+      />,
+    );
+    const firstSteps = Array.from(firstBox.querySelectorAll(".chain-step")) as HTMLElement[];
+    expect(firstSteps).toHaveLength(3);
+    expect(firstSteps[0]).toHaveAttribute("data-testid", "sources-step");
+    expect(firstSteps[1]).toHaveAttribute("data-testid", "thinking-step");
+    // 无 sources 节点：纯思考序列原样渲染（与上一 render 合计 2 个 thinking-step）
+    const noSources: TimelineNode[] = [
+      { kind: "thinking", stage: "generating", lines: ["思考"], ended: true },
+    ];
+    const { container: noneBox } = render(
+      <ChainTimeline
+        timeline={noSources}
+        active={false}
+        sources={[]}
+        onOpenSources={() => {}}
+        onOpenTool={() => {}}
+      />,
+    );
+    expect(noneBox.querySelectorAll(".chain-step")).toHaveLength(1);
+    expect(screen.getAllByTestId("thinking-step")).toHaveLength(2);
+  });
+});

@@ -204,6 +204,21 @@ export function createAppRouter() {
     routes,
   })
 
+  /** 启动身份恢复是否已执行（M10：仅本路由实例首个导航前执行一次） */
+  let bootstrapped = false
+
+  /**
+   * 启动身份恢复（M10）：刷新后 AT cookie 兜底放行请求 → 无 401 → 身份字段不恢复。
+   * 首个路由解析前 await fetchMe（RT 在且 displayName 空时才发请求），失败静默；
+   * 身份先于守卫裁决恢复，角色门禁可读到最新 role（不再依赖 role=null 放行兜底）。
+   */
+  async function ensureBootstrapped(): Promise<void> {
+    if (bootstrapped) return
+    bootstrapped = true
+    const auth = useAuthStore()
+    await auth.fetchMe()
+  }
+
   /**
    * 全局前置守卫（设计 §3.1 B 端 beforeEach，三态）：
    *
@@ -212,9 +227,12 @@ export function createAppRouter() {
    * 3. 角色门禁：meta.roles 白名单不匹配 → ForbiddenView（403 页）
    *
    * 边界说明：刷新页面后 AT 丢失、role=null（RT 仍在）时角色门禁放行，
-   * 由 api 层静默刷新恢复角色或后端 403 兜底，避免刷新即被误挡。
+   * 由 api 层静默刷新恢复角色或后端 403 兜底，避免刷新即被误挡
+   * （M10 起首个导航前已先经 fetchMe 恢复身份，正常路径下 role 在场）。
    */
-  router.beforeEach((to) => {
+  router.beforeEach(async (to) => {
+    // 启动恢复：仅首个导航前执行一次（await 保证身份先恢复再走三态裁决）
+    await ensureBootstrapped()
     const auth = useAuthStore()
 
     // 公开路由：仅登录页/403 页/404 页；已登录访问登录页 → 仪表盘

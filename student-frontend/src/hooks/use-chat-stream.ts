@@ -31,7 +31,7 @@
  *   流消费循环经世代号（gen）失活，避免重连/卸载后旧循环写入新状态
  */
 import { useEffect, useReducer, useRef } from "react";
-import { ApiError, cancelRun, postChat, reconnectChat } from "../lib/api";
+import { ApiError, cancelRun, postChat, reconnectChat, replayChat } from "../lib/api";
 import { warn as logWarn } from "../lib/logger";
 import { createSseParser } from "../lib/sse-parser";
 import {
@@ -100,6 +100,11 @@ export interface StreamMessage {
    * 实时流消息无此字段，FeedbackBar 按 hasSources 推断）
    */
   intentType?: string | null;
+  /**
+   * 历史回显侧 run 错误信息（M4：ERROR 徽标 tooltip 文案来源，取自 chat_run.error_message；
+   * 实时流为 null——实时错误走页面横幅 error 分级，不落在消息上）
+   */
+  errorMessage?: string | null;
 }
 
 /** 对话流整体状态（useChatStream 暴露给页面的全部状态面） */
@@ -151,7 +156,8 @@ export type ChatAction =
       seq?: number | null;
     }
   | { type: "reconnect" }
-  | { type: "reset"; clearSession?: boolean };
+  | { type: "reset"; clearSession?: boolean }
+  | { type: "replay_rollback"; targetRunId: string; keepUserMessage: boolean };
 
 // ===== 常量 =====
 
@@ -301,6 +307,20 @@ function findAssistantIndex(messages: StreamMessage[], runId: string): number {
     if (messages[i].role === "assistant" && messages[i].id === runId) return i;
   }
   return -1;
+}
+
+/**
+ * 定位 EDIT 回滚起点：目标 AI 回答（id===targetRunId）前一条用户消息的下标——
+ * 该用户消息即被编辑对象，回滚移除「该用户消息及其后全部」。
+ * 找不到配对（目标回答不在本地状态，如历史回显消息或脏 targetRunId）返回
+ * messages.length（防御性：slice(0, length) 保留全部，交由历史 refetch 对齐）。
+ * 导出纯函数供单测直接断言（M5）。
+ */
+export function findEditStartIndex(messages: StreamMessage[], targetRunId: string): number {
+  const answerIndex = findAssistantIndex(messages, targetRunId);
+  if (answerIndex <= 0) return messages.length;
+  const prev = messages[answerIndex - 1];
+  return prev.role === "user" ? answerIndex - 1 : messages.length;
 }
 
 /**
@@ -518,6 +538,28 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
       // 清空（Task 13 新建对话干净态：下一次 send 的 sessionId=null → 后端建新会话）
       return createInitialState(action.clearSession ? null : state.sessionId);
     }
+    case "replay_rollback": {
+      // M5 本地回滚（仅 replay 响应 200 后派发；失败路径不动本地状态）：
+      // - REGENERATE（keepUserMessage=true）：仅移除目标 AI 回答（id===targetRunId），用户消息保留；
+      // - EDIT：移除目标用户消息（其后紧跟 targetRunId AI 回答的那条）及其后全部内容，
+      //   随后由调用方 dispatch send 落位新消息。历史回显侧（history props）的消息不经本
+      //   状态机管理，由工作区在 replay 成功后失效历史查询以 refetch 对齐服务端软删。
+      // 回滚即进入新一轮：清错误/终态/锚点，runId 待新流 metadata 落位
+      const messages = action.keepUserMessage
+        ? state.messages.filter(
+            (msg) => !(msg.role === "assistant" && msg.id === action.targetRunId),
+          )
+        : state.messages.slice(0, findEditStartIndex(state.messages, action.targetRunId));
+      return {
+        ...state,
+        messages,
+        streaming: true,
+        error: null,
+        endedStatus: null,
+        runId: null,
+        lastEventId: null,
+      };
+    }
     default: {
       // 未知/已废弃动作（如对齐设计稿后不再消费的 stage/query_plan）：原样返回不落状态
       // （2026-08-30 防御：sseEventToAction 已过滤，此处兜底防未来事件类型误入）
@@ -710,6 +752,12 @@ export function useChatStream(initialSessionId: string | null): {
   cancel: () => Promise<void>;
   reconnect: () => Promise<void>;
   reset: (clearSession?: boolean) => void;
+  /** 多会话并继续流：切回活跃 run 会话时全量回放续流（2026-09-01 用户拍板） */
+  resume: (runId: string) => Promise<void>;
+  /** 脱离当前流（新建对话干净态）：停消费循环释放读取器，不清状态（2026-09-01） */
+  detach: () => void;
+  /** 消息级重放（M5）：EDIT 编辑重答 / REGENERATE 重新生成；200 后本地回滚 + 流接管 */
+  replay: (mode: "EDIT" | "REGENERATE", query: string | null, targetRunId: string) => Promise<void>;
 } {
   const [state, dispatch] = useReducer(chatReducer, initialSessionId, createInitialState);
   // 最新状态镜像：供 send/cancel/reconnect 等异步回调读取（闭包捕获首渲染实例，经 ref 拿最新值）
@@ -718,6 +766,8 @@ export function useChatStream(initialSessionId: string | null): {
   const genRef = useRef(0);
   // 重连周期互斥：断流计时触发与手动重试不并发跑两条退避链
   const reconnectBusyRef = useRef(false);
+  // 多会话续流互斥：同一时刻至多一条 resume 请求在途（防止重复续流双击顶掉新流）
+  const resumeBusyRef = useRef(false);
   // 断流计时器句柄（30s 无任何行触发重连或错误分级）
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 当前读取器句柄：新流接管/卸载时 cancel 释放旧流
@@ -961,12 +1011,18 @@ export function useChatStream(initialSessionId: string | null): {
   }
 
   /**
-   * 取消当前 run：POST /student/chat/{runId}/cancel（尽力而为）。
-   * 终态后再取消后端 409、网络失败等一律静默：流仍会走 end 终态收尾，不污染状态
+   * 取消当前 run（M2 点击即停）：先本地立即收尾（不等后端 end 事件）——
+   * 置 CANCELLED 终态 + 追加「已停止生成」后缀 + 解除流式（输入框恢复可用），
+   * 随后照常 POST cancel（后端 dispose 图流 + 增量行落库 + run 置 CANCELLED）。
+   * 后端 end CANCELLED 到达时被 isTerminal 终态幂等守卫自然消化（不双收尾）。
+   * 取消请求 409（run 恰已终态）/网络失败一律静默：后端终态与历史回显兜底。
    */
   async function cancel(): Promise<void> {
     const runId = stateRef.current.runId;
     if (!runId) return;
+    // 本地立即终态收尾（M2：不等后端 end，后端 dispose/落库异步进行）；
+    // 已终态时 reducer 幂等守卫直接忽略（终态后再点停止不染状态）
+    dispatch({ type: "end", status: "CANCELLED" });
     try {
       await cancelRun(runId);
     } catch {
@@ -983,6 +1039,119 @@ export function useChatStream(initialSessionId: string | null): {
     if (!current.runId || current.endedStatus !== null) return;
     dispatch({ type: "reconnect" });
     await runReconnect();
+  }
+
+  /**
+   * 消息级重放（M5）：POST replay → 响应 200 后本地回滚 + 流接管。
+   * - REGENERATE：回滚移除目标 AI 回答（用户消息保留），新流直接接续重新生成；
+   * - EDIT：回滚移除目标用户消息及其后全部，随后 dispatch send 落位编辑后的新消息；
+   * - 失败（409 正在回答/位置校验/目标失效等）：不动本地状态，向上抛 ApiError
+   *   由上层 toast（服务端软删未发生，本地与服务端一致无需恢复）。
+   *
+   * @param mode       重放模式（EDIT / REGENERATE）
+   * @param query      EDIT 的新问题文本；REGENERATE 传 null（服务端回填原问题）
+   * @param targetRunId 目标 run ID（EDIT=被编辑消息的下一条 AI 回答 runId；REGENERATE=被重生成回答 runId）
+   */
+  async function replay(
+    mode: "EDIT" | "REGENERATE",
+    query: string | null,
+    targetRunId: string,
+  ): Promise<void> {
+    let response: Response;
+    try {
+      response = await replayChat(stateRef.current.sessionId ?? "", {
+        mode,
+        query: query ?? undefined,
+        targetRunId,
+      });
+    } catch (error) {
+      // 发送阶段 401（api 层单飞刷新失败已全局登出）：落 auth 分级供页面感知
+      if (error instanceof ApiError && error.code === 401) {
+        dispatch({ type: "error", kind: "auth", message: error.message });
+      }
+      throw error;
+    }
+    if (!response.ok) {
+      // 409（正在回答/位置校验/目标失效重复 replay）等：本地状态不动，向上抛供 toast
+      throw await toApiError(response);
+    }
+    // 200：服务端已软删 + checkpoint 已回滚——本地回滚对齐（REGENERATE 保留用户消息）
+    dispatch({ type: "replay_rollback", targetRunId, keepUserMessage: mode === "REGENERATE" });
+    if (mode === "EDIT" && query) {
+      // EDIT 新消息落位（send 动作：追加用户消息并重置 run 级锚点）
+      dispatch({ type: "send", id: nextLocalId(), query, attachments: [] });
+    }
+    // 新 run 的事件流接管（世代切换，旧读取循环失活）
+    startStream(response);
+  }
+
+  /**
+   * 多会话并发续流（2026-09-01 用户拍板）：从其他会话切回仍有活跃 run 的会话时，
+   * 以全量回放（lastEventId=null）重建当前 run 的事件流并续接实时事件——
+   * C 端允许同一用户同时开启多会话问答，会话在服务端继续执行（断连不取消），
+   * 切回即经本方法把进行中回答的实时视图恢复。
+   *
+   * <p>一次性尽力而为（不复用 runReconnect 的 BUG-18 竞态守卫——那是为「runId 已在
+   * 状态中」的中途重连设计的，fresh mount 场景 runId 尚未落位会误中止）：
+   * <ul>
+   *   <li>网络失败 / 服务端拒绝（run 已终结/归属失效）：静默放弃不落业务错误——
+   *       run 继续在服务端执行，切出再切回可重试续流，完成态由历史回显承接；</li>
+   *   <li>请求在途竞态：用户已发起新流（streaming 置位）或已有其他 run 落位时
+   *       丢弃响应体放弃接管（防旧回放流顶掉新流的 gen）；</li>
+   *   <li>幂等守卫：已流式/已终态/续流请求在途时不动作。</li>
+   * </ul>
+   *
+   * @param runId 活跃 run ID（GET /student/chat/session/{sessionId}/active-run 下发）
+   */
+  async function resume(runId: string): Promise<void> {
+    const current = stateRef.current;
+    if (current.streaming || current.endedStatus !== null || resumeBusyRef.current) return;
+    resumeBusyRef.current = true;
+    try {
+      let response: Response;
+      try {
+        response = await reconnectChat(runId, null);
+      } catch {
+        // 网络层失败：run 继续在服务端执行，本次续流放弃（切出切回可重试）
+        logWarn(`[对话流] 活跃 run 续流请求失败（网络层），放弃本次续流: runId=${runId}`);
+        return;
+      }
+      if (!response.ok) {
+        // 服务端拒绝（run 已终结/归属失效）：静默放弃，完成态经历史回显兜底
+        logWarn(
+          `[对话流] 活跃 run 续流被拒，放弃本次续流: runId=${runId}, status=${response.status}`,
+        );
+        return;
+      }
+      const after = stateRef.current;
+      // 在途竞态：用户已发起新流（streaming 置位）或已有其他 run 落位 → 本次续流作废
+      if (
+        after.streaming ||
+        (after.runId !== null && after.runId !== runId) ||
+        after.endedStatus !== null
+      ) {
+        void response.body?.cancel().catch(() => {});
+        logWarn(`[对话流] 活跃 run 续流在途被新流取代，放弃接管: runId=${runId}`);
+        return;
+      }
+      // 竞态通过：清错误 + 恢复流式（与断流重连「reconnect」动作同款语义），新流接管
+      dispatch({ type: "reconnect" });
+      startStream(response);
+    } finally {
+      resumeBusyRef.current = false;
+    }
+  }
+
+  /**
+   * 脱离当前流（2026-09-01 多会话并发）：停掉正在消费的 SSE 循环并释放读取器，不清状态。
+   * 用于「流式生成中新建对话」——旧会话的 run 继续在服务端执行（断连不取消事件照常
+   * 写入 ring），切回该会话时经 resume 全量回放续流；新对话工作区不再被旧流事件污染。
+   */
+  function detach(): void {
+    genRef.current += 1;
+    clearStallTimer();
+    void readerRef.current?.cancel().catch(() => {});
+    readerRef.current = null;
   }
 
   // 卸载清理：世代失活流循环、清除断流计时、释放读取器
@@ -1003,5 +1172,8 @@ export function useChatStream(initialSessionId: string | null): {
     // 重新提问入口：清空消息/流式/错误/终态/锚点；clearSession=true 连会话归属
     // 一并清空（新建对话干净态），由 REPLAY_FAILED 横幅与侧栏新建信号调用
     reset: (clearSession?: boolean) => dispatch({ type: "reset", clearSession }),
+    resume,
+    detach,
+    replay,
   };
 }

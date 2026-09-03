@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppRouter, routes } from '@/router'
 import { REFRESH_TOKEN_KEY, useAuthStore } from '@/stores/auth'
@@ -259,6 +259,53 @@ describe('路由守卫（三态）', () => {
     await router.isReady()
 
     expect(router.currentRoute.value.name).toBe('not-found')
+  })
+})
+
+describe('路由守卫：启动身份恢复（M10）', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    setActivePinia(createPinia())
+  })
+
+  it('首个导航前 await fetchMe：恢复完成前不放行导航，且整个路由生命周期仅执行一次', async () => {
+    // 刷新后场景：RT 在 sessionStorage、身份字段空（displayName=null）
+    sessionStorage.setItem(REFRESH_TOKEN_KEY, 'rt-x')
+    const auth = useAuthStore()
+    const router = createAppRouter()
+    let release!: () => void
+    const fetchMeSpy = vi
+      .spyOn(auth, 'fetchMe')
+      .mockImplementation(() => new Promise<void>((resolve) => (release = resolve)))
+
+    // 发起导航：守卫进入启动恢复 → await fetchMe 挂起（导航未完成）
+    const navigation = router.push('/dashboard')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(fetchMeSpy).toHaveBeenCalledTimes(1)
+    expect(router.currentRoute.value.name).not.toBe('dashboard')
+
+    // 恢复完成后导航放行（身份先恢复、守卫后裁决——role 已在场供角色门禁读取）
+    release()
+    await navigation
+    await router.isReady()
+    expect(router.currentRoute.value.name).toBe('dashboard')
+
+    // 二次导航不再触发启动恢复（仅首个导航前执行一次）
+    await router.push('/courses')
+    await router.isReady()
+    expect(fetchMeSpy).toHaveBeenCalledTimes(1)
+    expect(router.currentRoute.value.name).toBe('courses')
+  })
+
+  it('身份已恢复（displayName 非空）：启动恢复直接跳过，守卫行为不受影响', async () => {
+    useAuthStore().setAuth(buildPayload('TEACHER'))
+    const router = createAppRouter()
+
+    await router.push('/teachers')
+    await router.isReady()
+
+    // setAuth 已带角色：角色门禁正常裁决（TEACHER 访问超管页被拒），启动恢复跳过不产生干扰
+    expect(router.currentRoute.value.name).toBe('forbidden')
   })
 })
 

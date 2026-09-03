@@ -16,6 +16,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NewChatPage from "./page";
+import { ChatWorkspace } from "./chat-workspace";
 import { SIDEBAR_SESSIONS_QUERY_KEY } from "@/components/chat/chat-sidebar";
 import { ChatStreamingProvider, useRequestNewChat } from "@/components/chat/chat-streaming-context";
 import { ApiError } from "@/lib/api";
@@ -29,6 +30,10 @@ const chatMock = vi.hoisted(() => ({
   send: vi.fn(),
   cancel: vi.fn(),
   reset: vi.fn(),
+  resume: vi.fn(),
+  detach: vi.fn(),
+  /** M5/M7：消息级重放（错误卡「重新生成」入口消费） */
+  replay: vi.fn(),
 }));
 /** 数据层 mock：附件上传与反馈 */
 const apiMock = vi.hoisted(() => ({
@@ -53,6 +58,9 @@ vi.mock("@/hooks/use-chat-stream", () => ({
     cancel: chatMock.cancel,
     reconnect: vi.fn(),
     reset: chatMock.reset,
+    resume: chatMock.resume,
+    detach: chatMock.detach,
+    replay: chatMock.replay,
   }),
 }));
 vi.mock("@/lib/auth-context", () => ({
@@ -129,6 +137,9 @@ beforeEach(() => {
   chatMock.send.mockReset().mockResolvedValue(undefined);
   chatMock.cancel.mockReset().mockResolvedValue(undefined);
   chatMock.reset.mockReset();
+  chatMock.resume.mockReset().mockResolvedValue(undefined);
+  chatMock.detach.mockReset();
+  chatMock.replay.mockReset().mockResolvedValue(undefined);
   apiMock.uploadAttachments.mockReset();
   apiMock.postFeedback.mockReset().mockResolvedValue(undefined);
   thumbMock.createAttachmentThumbUrl.mockReset().mockResolvedValue(null);
@@ -638,5 +649,121 @@ describe("新对话页：新建对话信号（Task 13 干净态，侧栏按钮�
     expect(urlMock.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
     // 输入干净态：受控 resetKey 驱动清空
     expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+
+  it("信号到达（流式生成中）：detach 旧流 + reset 干净态（多会话并发，2026-09-01 用户拍板）", async () => {
+    // 旧会话正在流式生成（切走新建对话：run 继续服务端执行，事件留 ring 供切回续流）
+    chatMock.state = {
+      ...initialState(),
+      streaming: true,
+      runId: "run-1",
+      sessionId: "sess-1",
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ChatStreamingProvider>
+          <SignalProbe />
+          <NewChatPage />
+        </ChatStreamingProvider>
+      </QueryClientProvider>,
+    );
+    // 发出新建信号（流式进行中也可新建）
+    act(() => requestRef.current());
+    // detach 旧流（停消费循环释放读取器，防旧流事件污染新对话工作区）+ reset 干净态
+    await waitFor(() => {
+      expect(chatMock.detach).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(chatMock.reset).toHaveBeenCalledWith(true);
+    });
+    chatMock.state = initialState();
+  });
+
+  it("双会话并发下新建信号：仅当前工作区 reset，另一会话 run 不受影响（H4 竞态补测）", async () => {
+    // spec M8 调研剩余项 H4：newChatSeq → reset(true) 在多会话并发下的误清竞态——
+    // A 工作区（/chat）流式中触发新建信号，reset 只落在本工作区实例（seq 比对一次性
+    // 消费）；随后挂载的 B 会话工作区（/chat/sess-B）带活跃 run 续流入口不受污染，
+    // 也不重放 A 页已消费的信号（新实例 seq 重新对齐，无残留触发）
+    chatMock.state = {
+      ...initialState(),
+      streaming: true,
+      runId: "run-A",
+      sessionId: "sess-A",
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { unmount } = render(
+      <QueryClientProvider client={client}>
+        <ChatStreamingProvider>
+          <SignalProbe />
+          <NewChatPage />
+        </ChatStreamingProvider>
+      </QueryClientProvider>,
+    );
+    // A 流式中发新建信号：detach + reset(true) 各一次（本工作区干净态收口）
+    act(() => requestRef.current());
+    await waitFor(() => {
+      expect(chatMock.reset).toHaveBeenCalledWith(true);
+    });
+    await waitFor(() => {
+      expect(chatMock.detach).toHaveBeenCalled();
+    });
+    expect(chatMock.reset).toHaveBeenCalledTimes(1);
+    // 离开 A（detach 已停消费循环；sess-A 的 run 继续服务端执行，事件留 ring）
+    unmount();
+    chatMock.reset.mockClear();
+    chatMock.detach.mockClear();
+    chatMock.resume.mockClear();
+
+    // B：另一会话工作区随后挂载（/chat/sess-B），active-run 命中 → resume 续流仍可用
+    chatMock.state = { ...initialState(), sessionId: "sess-B" };
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <ChatStreamingProvider>
+          <ChatWorkspace initialSessionId="sess-B" variant="continue" resumeRunId="run-B" />
+        </ChatStreamingProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(chatMock.resume).toHaveBeenCalledWith("run-B");
+    });
+    // 误清断言：B 工作区不重放 A 页已消费的新建信号（无残留 detach/reset 触发）
+    expect(chatMock.reset).not.toHaveBeenCalled();
+    expect(chatMock.detach).not.toHaveBeenCalled();
+    chatMock.state = initialState();
+  });
+});
+
+describe("新对话页：M7 错误卡「重新生成」入口", () => {
+  it("流错误且 runId 保留 → 横幅出现「重新生成」，点击触发 replay(REGENERATE, runId)", async () => {
+    // ERROR 终态形态：reducer error 分支不清 runId（end 分支同样保留）——横幅据此
+    // 挂载 M5 REGENERATE 入口（spec M7.3/D1：判死重试耗尽/有产出失败保留现场后的
+    // 手动整轮重开）
+    chatMock.state = {
+      ...initialState(),
+      sessionId: "sess-1",
+      runId: "9001",
+      messages: [makeAssistant({ id: "9001" })],
+      error: { kind: "retryable", message: "模型服务响应超时，请稍后重试" },
+    };
+    renderPage();
+    const regenerate = screen.getByTestId("error-regenerate");
+    expect(regenerate).toBeVisible();
+    fireEvent.click(regenerate);
+    await waitFor(() => {
+      expect(chatMock.replay).toHaveBeenCalledWith("REGENERATE", null, "9001");
+    });
+  });
+
+  it("无 runId（发送前的流错误）→ 不渲染「重新生成」入口", () => {
+    // runId 未落位时无从定位目标 run——入口不出现（replay 需要 targetRunId）
+    chatMock.state = {
+      ...initialState(),
+      error: { kind: "retryable", message: "连接中断，请重试" },
+    };
+    renderPage();
+    expect(screen.queryByTestId("error-regenerate")).not.toBeInTheDocument();
   });
 });

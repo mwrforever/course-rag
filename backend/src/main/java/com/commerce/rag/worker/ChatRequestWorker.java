@@ -7,12 +7,14 @@ import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
+import com.commerce.rag.bot.graph.LeadAgentGraph;
 import com.commerce.rag.bot.graph.RetrieveNode;
 import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryPlan;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.AgentProperties;
+import com.commerce.rag.properties.ChatStreamProperties;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.record.AssistantEntitySplitter;
@@ -48,9 +50,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -77,6 +81,7 @@ import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 
 /**
@@ -85,8 +90,12 @@ import reactor.core.publisher.Mono;
  * <p>职责：
  * <ol>
  *   <li>后台守护线程轮询 Redis Stream（XREADGROUP），将消息分发到 runPool 执行</li>
- *   <li>每个 run：pre-run 快照 → 状态 ACTIVE → SAA 图流式执行 → Transformer → Bridge</li>
- *   <li>取消检测：{@code ConcurrentHashMap<runId, AtomicBoolean>} + doOnNext 检查点</li>
+ *   <li>每个 run：pre-run 快照 → 状态 ACTIVE → SAA 图流式执行（Transformer → Bridge）</li>
+ *   <li>取消（M2）：标志位置位 + 立刻 dispose 图流订阅（取消传播至上游连接）+ 主动唤醒
+ *       终态等待，worker 线程统一收尾 CANCELLED 终态；doOnNext 检查点为兜底通道</li>
+ *   <li>判死与自动重试（M7）：图流逐项超时工厂（per-chunk idle 判死，QU 段 65s / 其余段
+ *       stall-timeout-ms）；判死/连接级断流且本轮无产出时同 run 整轮重开至多
+ *       auto-retry-max 次（重试前回滚 pre-run 快照）；有产出失败不重试保留现场</li>
  *   <li>Pending 回收：定时扫描 XPENDING → XCLAIM 超时租约</li>
  *   <li>消息持久化：run 结束后批量 INSERT chat_message</li>
  * </ol>
@@ -103,6 +112,20 @@ public class ChatRequestWorker {
 
     private static final Logger log = LoggerFactory.getLogger(ChatRequestWorker.class);
 
+    /**
+     * M7/R4 修正 A：QU 段（__START__ 之后）逐项超时配额（毫秒）——QU 预算 60s + 5s 余量。
+     * 不入配置（spec §6 仅 stall-timeout-ms 一项判死阈值）：整链单值 timeout 会误判健康的
+     * 慢 QU（QU 思考经 ThinkingPusher 直推不经图流，无法重置链上计时器），故按节点分段，
+     * QU 段配额跟随 QU 预算推导为常量。
+     */
+    private static final long QU_SEGMENT_TIMEOUT_MS = 65_000L;
+
+    /** M7：重试退避封顶（毫秒，spec M7.2：初始 2s 指数 ×2 封顶 30s；初始值配置化） */
+    private static final long RETRY_BACKOFF_CAP_MS = 30_000L;
+
+    /** M7 处理点 b：退避期间取消检查粒度（毫秒）——分段睡眠每 100ms 查一次取消标志 */
+    private static final long RETRY_CANCEL_CHECK_INTERVAL_MS = 100L;
+
     private final StringRedisTemplate redisTemplate;
     private final CompiledGraph compiledGraph;
     private final BaseCheckpointSaver saver;
@@ -112,6 +135,9 @@ public class ChatRequestWorker {
     private final IChatMessageService chatMessageService;
     private final StreamProperties streamProperties;
     private final WorkerProperties workerProperties;
+    /** 对话流式链路阈值（M3：SOURCES 就绪有界等待；M7：per-chunk 判死 + 自动重试退避） */
+    private final ChatStreamProperties chatStreamProperties;
+
     private final ThreadPoolExecutor runPool;
     /** 安全告警 Hook（BUG-11：run 结束 finally 清理 per-thread 检测状态，取消/异常路径不泄漏） */
     private final WarningHook warningHook;
@@ -125,6 +151,19 @@ public class ChatRequestWorker {
     private final String agentModel;
     /** per-run 取消标记 */
     private final ConcurrentHashMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
+
+    /** run 级图流订阅句柄（M2 取消立即性：cancel 置位标志后立刻 dispose，取消传播至上游 DashScope 连接） */
+    private final ConcurrentHashMap<String, Disposable> runDisposables = new ConcurrentHashMap<>();
+
+    /**
+     * run 级取消收尾 Runnable（M2/R1-a 主动唤醒）：R1 实证 dispose 先行时 onComplete/onError
+     * 均静默丢弃（无任何回调），processRequest 的终态等待（latch）必须由 cancel 路径调用本
+     * 收尾主动唤醒（与 doFinally(CANCEL) 构成双唤醒通道，先到先醒）；终态收尾本身统一由
+     * worker 线程在等待返回后按 terminalPushed CAS 认领执行，防双终态/漏终态，也避免取消
+     * 线程与 worker finally 清理（removeRing/注册表移除）竞争丢 END 事件。
+     * 生命周期与 cancelFlags 同界（processRequest.finally 清理）。
+     */
+    private final ConcurrentHashMap<String, Runnable> cancelFinishers = new ConcurrentHashMap<>();
 
     /** Consumer 运行标志 */
     private volatile boolean running = false;
@@ -142,6 +181,7 @@ public class ChatRequestWorker {
             IChatMessageService chatMessageService,
             StreamProperties streamProperties,
             WorkerProperties workerProperties,
+            ChatStreamProperties chatStreamProperties,
             @Qualifier("runPool") ThreadPoolExecutor runPool,
             WarningHook warningHook,
             AttachmentOrchestrator orchestrator,
@@ -157,6 +197,7 @@ public class ChatRequestWorker {
         this.chatMessageService = chatMessageService;
         this.streamProperties = streamProperties;
         this.workerProperties = workerProperties;
+        this.chatStreamProperties = chatStreamProperties;
         this.runPool = runPool;
         this.warningHook = warningHook;
         this.orchestrator = orchestrator;
@@ -394,11 +435,13 @@ public class ChatRequestWorker {
      *   <li>附件处理（有附件先推 STAGE(attachments)，阶段可见）</li>
      *   <li>pre-run 快照: saver.get(config) → 容器级浅拷贝</li>
      *   <li>更新 run 状态: QUEUED → ACTIVE + 推送 STAGE(understanding)</li>
-     *   <li>执行 SAA 图流: compiledGraph.stream(inputs, config)（doOnNext 内按节点完成
-     *       chunk 推 STAGE 跃迁 + SOURCES + 内容事件）</li>
-     *   <li>onErrorResume: 取消/异常处理</li>
+     *   <li>执行 SAA 图流: compiledGraph.stream(inputs, config)（M2 显式订阅 + latch 等待终态，
+     *       订阅句柄注册 runDisposables 供 cancel 立刻 dispose；M7 外提为受控自动重试尝试循环
+     *       ——链上逐项超时工厂判死，判死/断流且无产出时同 run 重开至多 auto-retry-max 次，
+     *       doOnNext 内按节点完成 chunk 推 STAGE 跃迁 + SOURCES + 内容事件）</li>
+     *   <li>onErrorResume: 取消/可重试分流/异常处理（M7 三分流）</li>
      *   <li>doOnComplete: END 事件 + 批量持久化</li>
-     *   <li>finally: bridge.removeRing + cancelFlags.remove + XACK</li>
+     *   <li>finally: bridge.removeRing + cancelFlags/runDisposables/cancelFinishers 清理</li>
      * </ol>
      */
     private void processRequest(MapRecord<String, Object, Object> message) {
@@ -409,6 +452,10 @@ public class ChatRequestWorker {
         String sessionIdStr = body.get("sessionId");
         String userIdStr = body.get("userId");
         String userQuery = body.get("query");
+        // M5 重放语义标记：REGENERATE 时图输入 messages 置空（checkpoint 已含原用户消息，
+        // 图从回滚点续跑重新生成）；EDIT/普通发送不特判（新 query 正常组装 UserMessage）。
+        // REGENERATE 的 query 为服务端回填的原问题文本，仅供 chat_message USER 行持久化
+        String replayMode = body.getOrDefault("replayMode", "");
 
         Long runId;
         Long sessionId;
@@ -530,15 +577,22 @@ public class ChatRequestWorker {
 
         // 构建 SAA 图输入（messages 列表）
         Map<String, Object> inputs = new HashMap<>();
-        inputs.put("messages", List.of(new UserMessage(quQuery)));
+        if ("REGENERATE".equals(replayMode)) {
+            // M5 重新生成：图输入 messages 置空（AppendStrategy 空列表为 no-op）——初始上下文
+            // 完全来自 replay 回滚 checkpoint（已含原用户消息，quQuery 形态含 caption 前缀），
+            // 图从该点续跑重新生成；新 run 的 __START__ checkpoint 由图自行写入
+            inputs.put("messages", List.of());
+        } else {
+            // 普通发送 / M5 编辑（EDIT 回滚 checkpoint 不含目标用户消息，新 query 按新输入组装）
+            inputs.put("messages", List.of(new UserMessage(quQuery)));
+        }
 
         // 流式过程中收集最后 NodeOutput（用于消息持久化）
         AtomicReference<NodeOutput> lastOutput = new AtomicReference<>();
-        // 标记是否已发生错误/取消（防止 doOnComplete 覆盖状态）
-        AtomicBoolean errored = new AtomicBoolean(false);
         // B2-4: 终态事件已推送标记——doOnComplete 推 END 后终态回写（updateStatusWithRetry
         // 3 次耗尽上抛）进入 catch 时，不得再经 handleError 推第二个终态事件（客户端
-        // 状态机收到双终态）；compareAndSet 保证 doOnComplete/onErrorResume/catch 三路径仅一个生效
+        // 状态机收到双终态）；compareAndSet 保证 doOnComplete/onErrorResume/catch/取消收尾
+        // （M2）四路径仅一个生效
         AtomicBoolean terminalPushed = new AtomicBoolean(false);
         // B2-4: 消息已持久化标记——doOnComplete 落库成功后终态回写失败进入 catch 时，
         // 跳过二次 persistMessages（重复落库防线，另有 V13 (run_id,seq) 唯一索引兜底）
@@ -546,6 +600,10 @@ public class ChatRequestWorker {
         // B3-5: SOURCES 事件已推送标记——检索来源 metadata 就绪后首个 chunk 处推一次
         // （CAS 保证 doOnNext 多次触发仅推送一次；chat/unknown 意图无来源则不推）
         AtomicBoolean sourcesPushed = new AtomicBoolean(false);
+        // M7: TOOL_CALL 事件已推送标记（hasProduced 五信号之一，R4 判定式）——doOnNext 内
+        // transform 产出含 TOOL_CALL 事件即置位；run 级单例跨重试尝试共享（重试轮的工具调用
+        // 同样构成产出，防重试覆盖已渲染内容）
+        AtomicBoolean toolProduced = new AtomicBoolean(false);
 
         // 1. pre-run 快照（在 try 之前捕获：captureSnapshot 内部异常已兜底返回 null；
         //    单次赋值保持 effectively final，供 onErrorResume/doOnComplete lambda 捕获，
@@ -576,106 +634,146 @@ public class ChatRequestWorker {
                     truncateText(userQuery, 50),
                     truncateText(attachmentsJson, 80));
 
-            // 4. 执行 SAA 图流
-            compiledGraph.stream(inputs, config)
-                    .doOnNext(chunk -> {
-                        // 取消检测
-                        checkCancelled(runIdStr);
-                        // B3-5：检索来源就绪后补推 SOURCES 事件（首个回答 token 前，一次性）
-                        maybePushSources(runIdStr, runState, config, sourcesPushed);
-                        // STAGE 阶段跃迁：QU 完成→检索/生成、retrieveNode 完成→生成、
-                        // reactAgent 首个模型 chunk→生成兜底（RunState CAS 保证每阶段仅一次）
-                        transformer.transformStages(chunk, runState).forEach(e -> bridge.push(runIdStr, e));
-                        // 记录最后输出（用于持久化）
-                        lastOutput.set(chunk);
-                        // transform → 推送点同步累积（Task 5：先累积后推送，不改 transformer 纯函数性；
-                        // assistantSink：FINISHED 模型输出结束点捕获主 agent 调用，消息实体化 spec §3.2）
-                        List<SseEvent> events = transformer.transform(chunk, runState, assistantSink);
-                        events.forEach(e -> {
-                            deltaAccumulator.accumulate(e);
-                            bridge.push(runIdStr, e);
-                        });
-                    })
-                    .onErrorResume(e -> {
-                        errored.set(true);
-                        // P0-7: 与 catch 分支对齐的兜底——handleCancelled/handleError 内部
-                        // （bridge.push / updateStatus）再抛异常不得从 Reactor 链传播，
-                        // 否则 blockLast 抛出 → 落入 catch 分支二次 handleError（双终态）+ 重复持久化
-                        // B2-4: compareAndSet 占位终态——后续 catch 分支不再推第二个终态
-                        if (terminalPushed.compareAndSet(false, true)) {
-                            try {
-                                if (isCancelledError(e)) {
-                                    handleCancelled(runIdStr, runId, runState, config, snapshot);
-                                } else {
-                                    handleError(runIdStr, runId, runState, e);
-                                }
-                            } catch (Exception errorEx) {
-                                log.error("onErrorResume 分支终态处理失败 runId={}", runId, errorEx);
-                            }
-                        }
-                        // 持久化已收集的消息（游标 = pre-run checkpoint 消息数，只落本轮新增）；
-                        // R2：错误终态不带 messageId，返回的 assistantMessageId 在此分支不消费；
-                        // 来源=取消/错误路径（Task 5）：正文/思考以 delta 累加器优先（与前端已渲染一致）
-                        persistMessages(
-                                runId,
-                                sessionId,
-                                userQuery,
-                                attachmentsJson,
-                                readSourcesJson(config),
-                                snapshot != null ? snapshot.historyMessageCount() : 0,
-                                lastOutput.get(),
-                                thinkingPusher,
-                                deltaAccumulator,
-                                assistantSink,
-                                true);
-                        return Mono.empty();
-                    })
-                    .doOnComplete(() -> {
-                        if (errored.get()) {
-                            // 错误/取消已在 onErrorResume 处理，跳过正常完成逻辑
-                            return;
-                        }
-                        // 先持久化消息、再推 END + 写 COMPLETED 终态——
-                        // 「run 终态 = 数据已完整落库」语义（chat_message 与状态非原子，
-                        // 先状态后落库会让外部观察者在终态可见时查到空消息表）
-                        // R2 补口 B：落库返回 assistant 正文行回填 ID，END 事件据此携带 messageId；
-                        // 来源=正常完成路径（Task 5）：state 汇总为权威，delta 累加器不参与
-                        PersistOutcome outcome = persistMessages(
-                                runId,
-                                sessionId,
-                                userQuery,
-                                attachmentsJson,
-                                readSourcesJson(config),
-                                snapshot != null ? snapshot.historyMessageCount() : 0,
-                                lastOutput.get(),
-                                thinkingPusher,
-                                deltaAccumulator,
-                                assistantSink,
-                                false);
-                        persisted.set(outcome.persisted());
-                        // 图执行完成可观测性（dev 定位）：最终回答正文摘要（截断，禁打完整响应体）
-                        String finalAnswer = deltaAccumulator.text();
-                        log.info(
-                                "图执行完成: runId={}, 回答={}字, 预览={}",
-                                runIdStr,
-                                finalAnswer.length(),
-                                truncateText(finalAnswer, 200));
-                        // B2-4: 先占位终态标记再调 handleCompleted——其推 END 后 updateStatusWithRetry
-                        // 若耗尽上抛，catch 分支据此跳过第二个终态事件（客户端只认首个终态）
-                        terminalPushed.set(true);
-                        handleCompleted(runIdStr, runId, runState, outcome.assistantMessageId());
-                        // 偏好提取异步触发（spec §7.6：run 完成、SSE 已发送完后异步，不阻塞用户响应；
-                        // 仅 COMPLETED 触发——error/cancel 路径不提取）
-                        triggerPreferenceExtraction(userId, lastOutput.get());
-                        // 经历记忆提取异步触发（spec §8.4：与偏好同一触发点仅 run COMPLETED 后、
-                        // 独立任务独立 prompt、共用防抖队列；error/cancel 路径不触发）
-                        triggerEpisodicExtraction(userId, sessionId, lastOutput.get());
-                    })
-                    .blockLast(Duration.ofMinutes(5));
+            // 4. 执行 SAA 图流（M7：外提为受控自动重试尝试循环——单次尝试保持 M2 显式订阅 +
+            //    latch 等待结构，订阅句柄注册 runDisposables 供 cancel 立刻 dispose；
+            //    5 分钟 latch 超时总兜底语义不变）
+            GraphRunContext ctx = new GraphRunContext(
+                    runIdStr,
+                    runId,
+                    sessionId,
+                    userId,
+                    userQuery,
+                    attachmentsJson,
+                    config,
+                    runState,
+                    snapshot,
+                    inputs,
+                    lastOutput,
+                    deltaAccumulator,
+                    thinkingPusher,
+                    assistantSink,
+                    terminalPushed,
+                    persisted,
+                    sourcesPushed,
+                    toolProduced);
 
-        } catch (Exception e) {
+            // ── M7：受控自动重试循环（D1/R4）──
+            // 触发条件：判死（TimeoutException）或连接级断流（IOException，cause 链判定），
+            // 且本轮 hasProduced=false（无 THINKING/DELTA/TOOL_CALL/SOURCES 推送——含 QU
+            // thinking，即仅覆盖「极早期失败」，正是 N3 实证的 DashScope 即时 RST 场景）。
+            // 重试 = 同 run 重新执行 graph.stream（runState seq 计数器连续不重置，前端事件
+            // 幂等 merge 已论证支持重复事件）；有产出失败不重试（避免覆盖已渲染内容，D1）；
+            // 全部尝试耗尽保留现场转 ERROR（无产出则仅 USER 行落库）。
+            // 与 spring.ai.retry（blocking 层 RetryTemplate）语义区分：本层在 worker 编排
+            // 流式整轮重开——DashScope 调用若在阻塞层已被 RetryTemplate 消化则本层不触发，
+            // 流式层断连（响应已建立后 RST）不经 RetryTemplate，正是本循环覆盖对象，两者不叠加。
+            int maxAttempts = 1 + chatStreamProperties.autoRetryMax();
+            Throwable retryExhaustedFailure = null;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                // 处理点 b（循环头）：退避唤醒后先查取消——退避期间上一轮订阅已终结，
+                // cancel() 的 dispose 与唤醒句柄均指向已失效对象，不检查则带着取消标志
+                // 开起新尝试（取消延迟可达退避上限 30s）；检测到取消走取消收尾
+                if (attempt > 1 && isCancelled(runIdStr)) {
+                    finishCancelledDuringRetry(ctx);
+                    return;
+                }
+                StreamAttemptResult result = executeGraphStreamOnce(ctx);
+                if (result.outcome() != StreamAttemptOutcome.RETRYABLE) {
+                    // SUCCEEDED（落库 + END COMPLETED + 记忆提取）/ CANCELLED /
+                    // NON_RETRYABLE（handleError + 增量落库）——终态均已在尝试内按原路径处理完毕
+                    return;
+                }
+                // RETRYABLE：末次尝试不再退避，直接落入循环后的全败收尾
+                if (attempt == maxAttempts) {
+                    retryExhaustedFailure = result.failure();
+                    break;
+                }
+                long backoff = retryBackoffMsOf(attempt);
+                log.warn(
+                        "流式失败且本轮无产出，准备自动重试: runId={}, 第 {}/{} 次重试, 退避={}ms, 异常类={}, 异常消息={}",
+                        runIdStr,
+                        attempt,
+                        maxAttempts - 1,
+                        backoff,
+                        result.failure().getClass().getSimpleName(),
+                        result.failure().getMessage());
+                // 处理点 b（退避期间）：分段睡眠每 100ms 检查取消标志——退避期订阅已终结，
+                // cancel 无 dispose 句柄可触发，不检查则取消延迟可达退避上限 30s
+                boolean cancelledDuringBackoff = false;
+                try {
+                    long deadline = System.currentTimeMillis() + backoff;
+                    while (System.currentTimeMillis() < deadline) {
+                        if (isCancelled(runIdStr)) {
+                            cancelledDuringBackoff = true;
+                            break;
+                        }
+                        Thread.sleep(Math.min(deadline - System.currentTimeMillis(), RETRY_CANCEL_CHECK_INTERVAL_MS));
+                    }
+                } catch (InterruptedException ie) {
+                    // 中断（停机）：恢复标志后按重试耗尽收尾，不再开新尝试
+                    Thread.currentThread().interrupt();
+                    retryExhaustedFailure = result.failure();
+                    break;
+                }
+                if (cancelledDuringBackoff) {
+                    finishCancelledDuringRetry(ctx);
+                    return;
+                }
+                // 处理点 c：重试前回滚 pre-run 快照——失败尝试已把本轮用户消息合并进
+                // __START__ checkpoint（无条件写入 + messages AppendStrategy 不去重），
+                // 不回滚则同 inputs 重试用户消息重复一份
+                rollbackCheckpointBeforeRetry(runIdStr, config, snapshot);
+                // 处理点 d：定向清除陈旧 QU 捕获（understanding 阶段）——失败尝试的 QU 捕获
+                // 若不清除会混入最终落库（重复实体行）；attachments 阶段（重试不重跑附件编排）
+                // 与 generating 阶段（有 DELTA/TOOL_CALL 即不重试）保留不动
+                assistantSink.clearStage(SseEventTransformer.STAGE_UNDERSTANDING);
+                log.info("自动重试开始: runId={}, 第 {} 次尝试（共 {} 次）", runIdStr, attempt + 1, maxAttempts);
+            }
+            // 全败（无产出重试耗尽，M7/D1）：保留现场转 ERROR——经 handleError 推 ERROR 终态
+            // （userFacingErrorMessage 对 TimeoutException/IOException 已有超时/断连中文映射）
+            // + persistMessages 增量落库（无产出则仅 USER 行；处理点 a：RETRYABLE 尝试从未
+            // 占用 terminalPushed/persisted，此处首次认领）
+            // 不变式断言：maxAttempts = 1 + autoRetryMax ≥ 1（auto-retry-max 启动期 @Min(0) 校验）
+            // 保证循环至少执行一次，RETRYABLE 末次尝试必经上方赋值分支 break 到达此处——
+            // requireNonNull 兼作 SpotBugs NP_NULL_ON_SOME_PATH 防护（其数据流不读 @Validated 约束）
+            Objects.requireNonNull(retryExhaustedFailure, "重试耗尽收尾前末次失败必已赋值（maxAttempts≥1）");
+            log.error(
+                    "无产出自动重试耗尽，run 转ERROR: runId={}, 总尝试次数={}, 末次异常类={}, 异常消息={}",
+                    runId,
+                    maxAttempts,
+                    retryExhaustedFailure.getClass().getName(),
+                    retryExhaustedFailure.getMessage());
+            if (terminalPushed.compareAndSet(false, true)) {
+                try {
+                    handleError(runIdStr, runId, runState, retryExhaustedFailure);
+                } catch (Exception errorEx) {
+                    log.error("重试耗尽后 handleError 执行失败 runId={}", runId, errorEx);
+                }
+            } else {
+                log.warn("终态事件已推送，跳过重试耗尽后的二次终态处理: runId={}", runIdStr);
+            }
+            if (!persisted.get()) {
+                PersistOutcome exhaustedOutcome = persistMessages(
+                        runId,
+                        sessionId,
+                        userQuery,
+                        attachmentsJson,
+                        readSourcesJson(config),
+                        snapshot != null ? snapshot.historyMessageCount() : 0,
+                        lastOutput.get(),
+                        thinkingPusher,
+                        deltaAccumulator,
+                        assistantSink,
+                        true);
+                persisted.set(exhaustedOutcome.persisted());
+            }
+
+            // M2 改造后 try 块内唯一 checked 异常源（latch.await 的 InterruptedException）已由
+            // 内层 catch 消化并以 IllegalStateException 重抛，故外层仅 RuntimeException 可达——
+            // 收窄捕获类型消除 SpotBugs REC_CATCH_EXCEPTION 死捕获（编译器保证等价：
+            // 若 try 块出现 checked 异常本行将编译失败，行为零变化）
+        } catch (RuntimeException e) {
             log.error("processRequest 致命错误 runId={}", runId, e);
-            errored.set(true);
             // P0-4b 修复：补齐终态——推送 ERROR 事件 + 持久化已收集消息（与 onErrorResume 分支对齐）。
             // handleError 单独兜底：其内部状态更新失败不得阻断消息持久化（修复审查 finding）
             // B2-4: 终态事件已推送（doOnComplete 的 END / onErrorResume 的终态）时不再推第二个
@@ -713,10 +811,591 @@ public class ChatRequestWorker {
         } finally {
             bridge.removeRing(runIdStr);
             cancelFlags.remove(runIdStr);
+            // M2：清理 run 级订阅句柄与取消收尾注册（生命周期与 cancelFlags 同界，run 终止即失效）
+            runDisposables.remove(runIdStr);
+            cancelFinishers.remove(runIdStr);
             // BUG-11：任何路径（含取消/异常）都清理 WarningHook per-thread 检测状态——
             // 原实现仅自然结束/软停清理，取消与异常终止的 run 使 DetectionState 常驻至会话结束
             warningHook.cleanupSession(sessionIdStr);
         }
+    }
+
+    // ========================================================================
+    // M7 判死与自动重试（RG4：per-chunk idle 判死 + 无产出整轮重试）
+    // ========================================================================
+
+    /** M7：单次图流尝试的终局分类（尝试循环分流依据） */
+    private enum StreamAttemptOutcome {
+        /** 正常完成（END COMPLETED + 落库 + 记忆提取已在 doOnComplete 处理） */
+        SUCCEEDED,
+        /** 已取消（终态已在尝试内/等待收尾点处理） */
+        CANCELLED,
+        /** 判死/连接级断流且本轮无产出（未推终态未落库，可整轮重开） */
+        RETRYABLE,
+        /** 不可重试失败（handleError + 增量落库已在 onErrorResume 处理） */
+        NON_RETRYABLE
+    }
+
+    /**
+     * M7：单次图流尝试结果。
+     *
+     * @param outcome 终局分类
+     * @param failure 失败异常（仅 RETRYABLE/NON_RETRYABLE 携带——全败收尾 handleError 与
+     *                重试日志消费；SUCCEEDED/CANCELLED 恒 null）
+     */
+    private record StreamAttemptResult(StreamAttemptOutcome outcome, Throwable failure) {
+
+        static StreamAttemptResult succeeded() {
+            return new StreamAttemptResult(StreamAttemptOutcome.SUCCEEDED, null);
+        }
+
+        static StreamAttemptResult cancelled() {
+            return new StreamAttemptResult(StreamAttemptOutcome.CANCELLED, null);
+        }
+
+        static StreamAttemptResult retryable(Throwable failure) {
+            return new StreamAttemptResult(StreamAttemptOutcome.RETRYABLE, failure);
+        }
+
+        static StreamAttemptResult nonRetryable(Throwable failure) {
+            return new StreamAttemptResult(StreamAttemptOutcome.NON_RETRYABLE, failure);
+        }
+    }
+
+    /**
+     * M7：run 级共享执行上下文（跨重试尝试共享的装载载体——processRequest 图执行段外提为
+     * 尝试循环后，18 个共享引用收敛为单一参数传递）。
+     *
+     * <p>共享语义：runState（seq 连续不重置）、deltaAccumulator/thinkingPusher/assistantSink
+     * （产出事实源）、terminalPushed/persisted（run 级终态认领单例——RETRYABLE 分流必须在
+     * CAS 认领之前拦截，保证重试轮可无痕重开）、sourcesPushed/toolProduced（hasProduced
+     * 判定信号）、lastOutput（持久化 state 事实源）。
+     *
+     * @param runIdStr         Run 唯一标识（字符串，ring 键）
+     * @param runId            Run ID（Long）
+     * @param sessionId        会话 ID
+     * @param userId           用户 ID（记忆提取硬隔离键）
+     * @param userQuery        本轮用户问题原文（增量落库 USER 行）
+     * @param attachmentsJson  本轮输入附件 JSON（落库）
+     * @param config           RunnableConfig（threadId + 瞬时注入通道；无 checkPointId——红线②）
+     * @param runState         SSE 事件序列状态（seq 计数器 + 六去重标志）
+     * @param snapshot         pre-run 快照（可为 null——全新会话首 run 或快照降级）
+     * @param inputs           SAA 图输入（messages 组装）
+     * @param lastOutput       最后 NodeOutput 收集器（流式输出，持久化 state 事实源）
+     * @param deltaAccumulator 正文/思考 delta 累加器
+     * @param thinkingPusher   QU/caption 思考推送通道（hasProduced 信号之一）
+     * @param assistantSink    LLM 调用捕获容器（正常完成路径实体行事实源）
+     * @param terminalPushed   终态事件已推送标记（run 级 CAS 认领单例）
+     * @param persisted        消息已持久化标记（run 级防二次落库）
+     * @param sourcesPushed    SOURCES 已推送标记（hasProduced 信号之一）
+     * @param toolProduced     TOOL_CALL 已推送标记（hasProduced 信号之一，M7 新增）
+     */
+    private record GraphRunContext(
+            String runIdStr,
+            Long runId,
+            Long sessionId,
+            Long userId,
+            String userQuery,
+            String attachmentsJson,
+            RunnableConfig config,
+            SseEventTransformer.RunState runState,
+            RunSnapshot snapshot,
+            Map<String, Object> inputs,
+            AtomicReference<NodeOutput> lastOutput,
+            DeltaAccumulator deltaAccumulator,
+            ThinkingPusher thinkingPusher,
+            AssistantMessageSink assistantSink,
+            AtomicBoolean terminalPushed,
+            AtomicBoolean persisted,
+            AtomicBoolean sourcesPushed,
+            AtomicBoolean toolProduced) {}
+
+    /**
+     * M7：单次图流尝试（T4 显式订阅结构原样外提 + M7 三个差异点）。
+     *
+     * <p>差异点（相对 T4 结构）：
+     * <ol>
+     *   <li>链头追加逐项超时工厂（R4 修正 A）：per-chunk idle 判死按刚发射 chunk 的节点
+     *       分段配额——首信号与 {@code __START__} 之后（QU 段）给 65s（QU 预算 60s + 余量，
+     *       QU 思考经 ThinkingPusher 直推不经图流无法重置计时器），其余段（检索/生成/工具
+     *       执行）给 stallTimeoutMs；语义 = 任意相邻两信号间隔超时即 TimeoutException 且
+     *       向上游 cancel（与 dispose 同断连路径）；5 分钟 latch 总兜底仍在；</li>
+     *   <li>doOnNext 内 transform 产出含 TOOL_CALL 事件时置位 toolProduced（hasProduced
+     *       五信号的工具维度）；</li>
+     *   <li>onErrorResume 三分流（R4 处理点 a/e）：取消（含取消标志直判纠偏）→ 原取消路径；
+     *       判死/连接级断流且 !hasProduced → RETRYABLE（在 terminalPushed CAS 认领之前
+     *       拦截——不推终态、不落库、不占用认领位，重试轮可无痕重开）；其余 → 原
+     *       handleError + 增量落库路径。</li>
+     * </ol>
+     *
+     * @param ctx run 级共享上下文（跨尝试共享；latch/回调异常通道/终局分类为 per-attempt 局部）
+     * @return 尝试终局（含失败异常）；latch 中断/5 分钟兜底超时以 IllegalStateException 上抛
+     *         （与原语义一致，交由外层 catch 收敛）
+     */
+    private StreamAttemptResult executeGraphStreamOnce(GraphRunContext ctx) {
+        String runIdStr = ctx.runIdStr();
+        Long runId = ctx.runId();
+        SseEventTransformer.RunState runState = ctx.runState();
+        AtomicBoolean terminalPushed = ctx.terminalPushed();
+        // 等待终态（subscribe 惰性启动由本行等待承接；5 分钟总兜底超时与原 blockLast 一致）
+        CountDownLatch streamDone = new CountDownLatch(1);
+        // 经订阅错误通道回传的回调异常（doOnComplete 尾段等未经 onErrorResume 消化的
+        // 异常）：收集后在等待点重抛落入外层 catch——等价原 blockLast 的异常传播语义
+        AtomicReference<Throwable> reactorFailure = new AtomicReference<>();
+        // 本尝试终局分类（onErrorResume/doOnComplete 设置；RETRYABLE 吞错后的空完成信号
+        // 到达 doOnComplete 时据此让位）
+        AtomicReference<StreamAttemptResult> attemptResult = new AtomicReference<>();
+        // M2/R1-a 取消主动收尾（唤醒通道）：R1 实证 dispose 先行时 onComplete/onError 均
+        // 静默丢弃（无任何回调），worker 线程的 latch 等待必须由 cancel 路径主动唤醒；
+        // 终态收尾统一由 worker 线程在等待返回后按 terminalPushed CAS 认领执行（与本
+        // Runnable/doOnComplete/onErrorResume 互斥，防双终态/漏终态）
+        Runnable cancelFinisher = streamDone::countDown;
+
+        Disposable subscription = compiledGraph.stream(ctx.inputs(), ctx.config())
+                // ── M7/R4 修正 A：逐项超时工厂（per-chunk idle 判死）──
+                // 首信号配额取 QU 段预算（订阅 → __START__/首 chunk 为快速段，65s 上限不
+                // 误杀）；此后按刚发射 chunk 的 node() 分段：__START__ 之后（QU 段）65s
+                // （QU 预算 60s + 余量），其余段（检索/生成/工具执行）stallTimeoutMs——
+                // 超时 = 任意相邻两信号间隔超阈值，TimeoutException 落入下方 onErrorResume
+                .timeout(
+                        Mono.delay(Duration.ofMillis(QU_SEGMENT_TIMEOUT_MS)),
+                        chunk -> Mono.delay(stallTimeoutOf(chunk.node())))
+                .doOnNext(chunk -> {
+                    // 取消检测
+                    checkCancelled(runIdStr);
+                    // STAGE 阶段跃迁（M3：STAGE(generating) 事件落位点即 SOURCES 前置锚——
+                    // 仅 retrieveNode 完成触发的转换在事件落位后紧随同步消费 sources 容器，
+                    // 保证 SOURCES 早于本 run 全部 generating 内容事件（THINKING/DELTA/TOOL_CALL）；
+                    // QU 直达（chat/unknown 意图）与 reactAgent 首 chunk 兜底（QU 降级路径）触发源
+                    // sink 恒空，跳过等待直接放行——R3 实证收窄，避免白等拖慢首 token）
+                    List<SseEvent> stageEvents = transformer.transformStages(chunk, runState);
+                    boolean awaitSourcesAtTransition = generatingTransitionFromRetrieve(chunk, stageEvents);
+                    for (SseEvent stageEvent : stageEvents) {
+                        bridge.push(runIdStr, stageEvent);
+                        if (awaitSourcesAtTransition) {
+                            // STAGE(generating) 落位后、放行该 chunk 的内容事件前：SOURCES 前置（M3 主保证）
+                            awaitSourcesAndPush(runIdStr, runState, ctx.config(), ctx.sourcesPushed());
+                        }
+                    }
+                    // 迟到兜底（M3 服务端次保证）：等待超时放行/触发源跳过等待后，
+                    // sources 就绪的后续 chunk 处仍补推（CAS 保证仅推一次，逻辑保留不动）
+                    maybePushSources(runIdStr, runState, ctx.config(), ctx.sourcesPushed());
+                    // 记录最后输出（用于持久化）
+                    ctx.lastOutput().set(chunk);
+                    // transform → 推送点同步累积（Task 5：先累积后推送，不改 transformer 纯函数性；
+                    // assistantSink：FINISHED 模型输出结束点捕获主 agent 调用，消息实体化 spec §3.2）
+                    List<SseEvent> events = transformer.transform(chunk, runState, ctx.assistantSink());
+                    // M7：transform 产出含 TOOL_CALL 事件即置位产出标记（hasProduced 五信号
+                    // 之一）——后续失败不再自动重试，避免覆盖已渲染的工具调用内容
+                    if (events.stream().anyMatch(e -> e.type() == SseEventType.TOOL_CALL)) {
+                        ctx.toolProduced().set(true);
+                    }
+                    events.forEach(e -> {
+                        ctx.deltaAccumulator().accumulate(e);
+                        bridge.push(runIdStr, e);
+                    });
+                })
+                .onErrorResume(e -> {
+                    // P0-7: 与 catch 分支对齐的兜底——handleCancelled/handleError 内部
+                    // （bridge.push / updateStatus）再抛异常不得从 Reactor 链传播，
+                    // 否则等待点重抛 → 落入 catch 分支二次 handleError（双终态）+ 重复持久化
+                    // M7 处理点 e：先查取消标志——cancel() 置位与流错误在途的微秒级竞态下，
+                    // 到达本回调的错误可能不是 CancelledException 包装；按取消标志纠偏归类，
+                    // 避免把用户主动取消误报为 ERROR 终态
+                    if (isCancelled(runIdStr) || isCancelledError(e)) {
+                        // B2-4: compareAndSet 占位终态——后续 catch 分支不再推第二个终态
+                        if (terminalPushed.compareAndSet(false, true)) {
+                            try {
+                                handleCancelled(runIdStr, runId, runState, ctx.config(), ctx.deltaAccumulator());
+                            } catch (Exception errorEx) {
+                                log.error("onErrorResume 取消终态处理失败 runId={}", runId, errorEx);
+                            }
+                        }
+                        // 持久化已收集的消息（游标 = pre-run checkpoint 消息数，只落本轮新增）；
+                        // 取消路径增量落库（Task 5：正文/思考以 delta 累加器优先，与前端已渲染一致）
+                        persistMessages(
+                                runId,
+                                ctx.sessionId(),
+                                ctx.userQuery(),
+                                ctx.attachmentsJson(),
+                                readSourcesJson(ctx.config()),
+                                ctx.snapshot() != null ? ctx.snapshot().historyMessageCount() : 0,
+                                ctx.lastOutput().get(),
+                                ctx.thinkingPusher(),
+                                ctx.deltaAccumulator(),
+                                ctx.assistantSink(),
+                                true);
+                        attemptResult.set(StreamAttemptResult.cancelled());
+                        return Mono.empty();
+                    }
+                    // M7 处理点 a：RETRYABLE 分流必须在 terminalPushed CAS 认领之前拦截
+                    // （terminalPushed/persisted 为 run 级单例、跨尝试共享）——判死/连接级
+                    // 断流且本轮无产出：不推终态事件、不落库、不占用认领位，交由尝试循环
+                    // 退避后整轮重开（重试期间 run 仍 ACTIVE，客户端事件幂等 merge 消化重复帧）
+                    if (isRetryableStreamFailure(e)
+                            && !hasProduced(runState, ctx.thinkingPusher(), ctx.sourcesPushed(), ctx.toolProduced())) {
+                        log.warn(
+                                "流式失败且本轮无产出，判定可重试: runId={}, 异常类={}, 异常消息={}",
+                                runIdStr,
+                                e.getClass().getSimpleName(),
+                                e.getMessage());
+                        attemptResult.set(StreamAttemptResult.retryable(e));
+                        return Mono.empty();
+                    }
+                    // 原路径：不可重试失败——handleError 推 ERROR 终态 + 增量落库
+                    // B2-4: compareAndSet 占位终态——后续 catch 分支不再推第二个终态
+                    if (terminalPushed.compareAndSet(false, true)) {
+                        try {
+                            handleError(runIdStr, runId, runState, e);
+                        } catch (Exception errorEx) {
+                            log.error("onErrorResume 分支终态处理失败 runId={}", runId, errorEx);
+                        }
+                    }
+                    // 持久化已收集的消息（游标 = pre-run checkpoint 消息数，只落本轮新增）；
+                    // R2：错误终态不带 messageId，返回的 assistantMessageId 在此分支不消费；
+                    // 来源=取消/错误路径（Task 5）：正文/思考以 delta 累加器优先（与前端已渲染一致）
+                    persistMessages(
+                            runId,
+                            ctx.sessionId(),
+                            ctx.userQuery(),
+                            ctx.attachmentsJson(),
+                            readSourcesJson(ctx.config()),
+                            ctx.snapshot() != null ? ctx.snapshot().historyMessageCount() : 0,
+                            ctx.lastOutput().get(),
+                            ctx.thinkingPusher(),
+                            ctx.deltaAccumulator(),
+                            ctx.assistantSink(),
+                            true);
+                    attemptResult.set(StreamAttemptResult.nonRetryable(e));
+                    return Mono.empty();
+                })
+                .doOnComplete(() -> {
+                    // M7：onErrorResume 吞掉错误后 Mono.empty() 的完成信号会到达本回调——
+                    // RETRYABLE 分流不占用 terminalPushed，必须在此让位（否则判死/断流会被
+                    // 误收尾为 COMPLETED）；CANCELLED/NON_RETRYABLE 已在分支内认领，同样让位
+                    if (attemptResult.get() != null) {
+                        return;
+                    }
+                    // M2/R1-b：dispose 与完成的竞态——流恰已 onComplete 时终态回调正常到达，
+                    // 已取消则跳过正常完成逻辑、不认领终态（doFinally 唤醒后由 worker 线程
+                    // 在等待返回处统一走取消终态），防把取消误报为 COMPLETED、防漏终态
+                    if (isCancelled(runIdStr)) {
+                        return;
+                    }
+                    // B2-4/M2: 前置 CAS 认领终态——认领失败 = 终态已由 onErrorResume 处理，
+                    // 本回调直接返回（原「先落库后置位」在取消竞态下会与取消收尾双终态，改为先认领）
+                    if (!terminalPushed.compareAndSet(false, true)) {
+                        return;
+                    }
+                    // 先持久化消息、再推 END + 写 COMPLETED 终态——
+                    // 「run 终态 = 数据已完整落库」语义（chat_message 与状态非原子，
+                    // 先状态后落库会让外部观察者在终态可见时查到空消息表）
+                    // R2 补口 B：落库返回 assistant 正文行回填 ID，END 事件据此携带 messageId；
+                    // 来源=正常完成路径（Task 5）：state 汇总为权威，delta 累加器不参与
+                    PersistOutcome outcome = persistMessages(
+                            runId,
+                            ctx.sessionId(),
+                            ctx.userQuery(),
+                            ctx.attachmentsJson(),
+                            readSourcesJson(ctx.config()),
+                            ctx.snapshot() != null ? ctx.snapshot().historyMessageCount() : 0,
+                            ctx.lastOutput().get(),
+                            ctx.thinkingPusher(),
+                            ctx.deltaAccumulator(),
+                            ctx.assistantSink(),
+                            false);
+                    ctx.persisted().set(outcome.persisted());
+                    // 图执行完成可观测性（dev 定位）：最终回答正文摘要（截断，禁打完整响应体）
+                    String finalAnswer = ctx.deltaAccumulator().text();
+                    log.info(
+                            "图执行完成: runId={}, 回答={}字, 预览={}",
+                            runIdStr,
+                            finalAnswer.length(),
+                            truncateText(finalAnswer, 200));
+                    // 终态标记已在回调入口 CAS 认领（M2）——handleCompleted 推 END 后
+                    // updateStatusWithRetry 若耗尽上抛（经错误通道重抛入 catch），catch 分支
+                    // 据已认领标记跳过第二个终态事件（客户端只认首个终态）
+                    handleCompleted(runIdStr, runId, runState, outcome.assistantMessageId());
+                    // 偏好提取异步触发（spec §7.6：run 完成、SSE 已发送完后异步，不阻塞用户响应；
+                    // 仅 COMPLETED 触发——error/cancel 路径不提取）
+                    triggerPreferenceExtraction(ctx.userId(), ctx.lastOutput().get());
+                    // 经历记忆提取异步触发（spec §8.4：与偏好同一触发点仅 run COMPLETED 后、
+                    // 独立任务独立 prompt、共用防抖队列；error/cancel 路径不触发）
+                    triggerEpisodicExtraction(
+                            ctx.userId(), ctx.sessionId(), ctx.lastOutput().get());
+                    attemptResult.set(StreamAttemptResult.succeeded());
+                })
+                .doFinally(signal -> streamDone.countDown())
+                .subscribe(null, reactorFailure::set);
+
+        runDisposables.put(runIdStr, subscription);
+        cancelFinishers.put(runIdStr, cancelFinisher);
+        // 注册后补检：取消可能落在订阅建立前（排队/附件/QU 阶段——cancel() 时无句柄可
+        // dispose；或上一尝试失败后的退避窗口），此刻主动 dispose + 收尾，兑现「取消立即
+        // 生效不等首个 chunk 检查点」
+        if (isCancelled(runIdStr)) {
+            Disposable registered = runDisposables.get(runIdStr);
+            if (registered != null && !registered.isDisposed()) {
+                registered.dispose();
+                log.info("注册后发现 run 已取消，立即 dispose 图流订阅: runId={}", runIdStr);
+            }
+            Runnable finisher = cancelFinishers.get(runIdStr);
+            if (finisher != null) {
+                finisher.run();
+            }
+        }
+
+        boolean finished;
+        try {
+            finished = streamDone.await(5, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            subscription.dispose();
+            throw new IllegalStateException("图执行等待被中断: runId=" + runId, e);
+        }
+        if (!finished) {
+            subscription.dispose();
+            throw new IllegalStateException("图执行总时长超时（timeout on graph stream, 5 分钟兜底）: runId=" + runId);
+        }
+        // M2/R1-a 取消终态统一收尾点：dispose 先行（doFinally(CANCEL)/取消收尾双通道唤醒）
+        // 或 R1-b 完成竞态（doOnComplete 见取消标记主动让位）时，终态尚未被认领——
+        // 由本线程 CAS 认领后补齐取消终态 + 增量落库；认领失败 = 终态已由
+        // onErrorResume/doOnComplete 处理（互斥不双终态）
+        if (isCancelled(runIdStr) && terminalPushed.compareAndSet(false, true)) {
+            try {
+                handleCancelled(runIdStr, runId, runState, ctx.config(), ctx.deltaAccumulator());
+            } catch (Exception cancelEx) {
+                log.error("取消收尾终态处理失败 runId={}", runId, cancelEx);
+            }
+            // 取消终态同样需要增量行落库（终态落库 ≡ 已推送事件序列不变量）；
+            // persisted 标记与正常完成路径同口径（防 catch 分支二次落库）
+            try {
+                PersistOutcome cancelOutcome = persistMessages(
+                        runId,
+                        ctx.sessionId(),
+                        ctx.userQuery(),
+                        ctx.attachmentsJson(),
+                        readSourcesJson(ctx.config()),
+                        ctx.snapshot() != null ? ctx.snapshot().historyMessageCount() : 0,
+                        ctx.lastOutput().get(),
+                        ctx.thinkingPusher(),
+                        ctx.deltaAccumulator(),
+                        ctx.assistantSink(),
+                        true);
+                ctx.persisted().set(cancelOutcome.persisted());
+            } catch (Exception persistEx) {
+                log.error("取消收尾增量落库失败 runId={}", runId, persistEx);
+            }
+            attemptResult.compareAndSet(null, StreamAttemptResult.cancelled());
+        }
+        // 回调通道异常重抛（等价原 blockLast 把 doOnComplete 尾段异常抛给外层 catch 的语义）
+        Throwable failure = reactorFailure.get();
+        if (failure != null) {
+            if (failure instanceof RuntimeException runtimeFailure) {
+                throw runtimeFailure;
+            }
+            throw new IllegalStateException("图执行回调异常: runId=" + runId, failure);
+        }
+        // 理论兜底：doFinally 唤醒必有终局（complete/error 分支已设置、cancel 分支由上方取消
+        // 收尾补位）——不可达时按成功处理（终态已认领的场景误判不影响既有收尾）
+        StreamAttemptResult result = attemptResult.get();
+        return result != null ? result : StreamAttemptResult.succeeded();
+    }
+
+    /**
+     * M7 处理点 b：退避期间检测到取消的收尾（退避期上一轮订阅已终结，取消无法经 dispose/
+     * 唤醒通道生效，仅能靠分段睡眠的标志检查捕获）——与尝试内取消收尾同口径：CAS 认领
+     * 终态后推 CANCELLED 终态 + 增量落库（终态落库 ≡ 已推送事件序列不变量）。
+     *
+     * @param ctx run 级共享上下文
+     */
+    private void finishCancelledDuringRetry(GraphRunContext ctx) {
+        if (ctx.terminalPushed().compareAndSet(false, true)) {
+            try {
+                handleCancelled(ctx.runIdStr(), ctx.runId(), ctx.runState(), ctx.config(), ctx.deltaAccumulator());
+            } catch (Exception cancelEx) {
+                log.error("退避期间取消的终态处理失败 runId={}", ctx.runId(), cancelEx);
+            }
+            try {
+                PersistOutcome cancelOutcome = persistMessages(
+                        ctx.runId(),
+                        ctx.sessionId(),
+                        ctx.userQuery(),
+                        ctx.attachmentsJson(),
+                        readSourcesJson(ctx.config()),
+                        ctx.snapshot() != null ? ctx.snapshot().historyMessageCount() : 0,
+                        ctx.lastOutput().get(),
+                        ctx.thinkingPusher(),
+                        ctx.deltaAccumulator(),
+                        ctx.assistantSink(),
+                        true);
+                ctx.persisted().set(cancelOutcome.persisted());
+            } catch (Exception persistEx) {
+                log.error("退避期间取消的增量落库失败 runId={}", ctx.runId(), persistEx);
+            }
+            log.info("退避期间检测到取消，按 CANCELLED 终态收尾: runId={}", ctx.runIdStr());
+        }
+    }
+
+    /**
+     * M7 处理点 c：重试前回滚 pre-run 快照（写一条载 pre-run 状态的新 checkpoint）。
+     *
+     * <p>背景（R4 新发现）：每次尝试的 {@code __START__} checkpoint 无条件写入且 messages
+     * AppendStrategy 不去重——失败尝试已把本轮用户消息（可能还有 QU 侧追加消息）合并进
+     * checkpoint；同 inputs 直接重试会把用户消息重复一份。回滚使最新 checkpoint 恢复
+     * pre-run 状态，重试轮经 getInitialState 重新合并恰好一份。
+     *
+     * <p>写入模式（红线①，与 T8 rollbackCheckpointBeforeRun / M2 forwardRollCheckpoint
+     * 同源）：config 不带 checkPointId → put 走 push 分支<b>纯 INSERT 不删旧行</b>（失败
+     * 尝试的 __START__/节点 checkpoint 全部保留为审计历史）；nodeId/nextNodeId 沿用 pre-run
+     * 值（worker config 无 checkPointId/HUMAN_FEEDBACK——红线②，图按新 run 语义从初始节点
+     * 重跑，checkpoint 仅作上下文载体）。
+     *
+     * <p>状态来源两分支：pre-run 快照可用 → 顶层 Map 重拷贝 + messages 按捕获时游标
+     * {@code historyMessageCount} 截断（快照的 messages 列表与 checkpoint 原实例共享引用，
+     * 图执行期可能被 AppendStrategy 原地追加污染——T8 实证——截断恢复 pre-run 视图）；
+     * 快照不可得（全新会话首 run / 快照降级 null）→ 定位失败尝试的 {@code __START__}
+     * checkpoint（threadId 枚举新→旧第一条，本 run 为该会话最后 run 无更晚混入），其
+     * state 截断 messages 至 0 等价 pre-run 默认状态；两者皆不可得（图未写过任何
+     * checkpoint）则无需回滚。回滚失败仅记 warn 容忍继续重试（风险 = 上下文重复用户
+     * 消息，比中断对话轻；可经错误卡「重新生成」replay 兜底）。
+     *
+     * @param runIdStr Run 唯一标识（日志）
+     * @param config   RunnableConfig（threadId 定位 checkpoint；无 checkPointId——红线①）
+     * @param snapshot pre-run 快照（可为 null）
+     */
+    private void rollbackCheckpointBeforeRetry(String runIdStr, RunnableConfig config, RunSnapshot snapshot) {
+        try {
+            Map<String, Object> rollbackState;
+            String nodeId;
+            String nextNodeId;
+            if (snapshot != null) {
+                // 分支一：pre-run 快照可用——messages 按捕获时游标截断（防失败尝试的原地追加污染）
+                List<Object> truncatedMessages = new ArrayList<>();
+                Object messagesObj = snapshot.state().get("messages");
+                if (messagesObj instanceof List<?> messagesList) {
+                    int keep = Math.min(snapshot.historyMessageCount(), messagesList.size());
+                    for (int i = 0; i < keep; i++) {
+                        truncatedMessages.add(messagesList.get(i));
+                    }
+                }
+                rollbackState = new HashMap<>(snapshot.state());
+                rollbackState.put("messages", truncatedMessages);
+                nodeId = snapshot.nodeId();
+                nextNodeId = snapshot.nextNodeId();
+            } else {
+                // 分支二：快照不可得（全新会话首 run）——定位失败尝试的 __START__，
+                // 截断 messages 至 0 = pre-run 默认状态（__START__ 写于任何节点执行前）
+                Checkpoint startCp = locateStartCheckpoint(config);
+                if (startCp == null) {
+                    log.info("重试前无需回滚 checkpoint（图未写入任何 checkpoint）: runId={}", runIdStr);
+                    return;
+                }
+                rollbackState = new HashMap<>(startCp.getState());
+                rollbackState.put("messages", new ArrayList<>());
+                nodeId = startCp.getNodeId();
+                nextNodeId = startCp.getNextNodeId();
+            }
+            // 新 checkpoint 新 UUID 载回滚状态；put 走 push 分支纯 INSERT（红线①）
+            Checkpoint rollbackCp = Checkpoint.builder()
+                    .id(UUID.randomUUID().toString())
+                    .state(rollbackState)
+                    .nodeId(nodeId)
+                    .nextNodeId(nextNodeId)
+                    .build();
+            saver.put(config, rollbackCp);
+            log.info(
+                    "重试前回滚 pre-run 快照（纯 INSERT 保留审计）: runId={}, rollbackCheckpointId={}, stateKeys={}",
+                    runIdStr,
+                    rollbackCp.getId(),
+                    rollbackState.size());
+        } catch (Exception e) {
+            log.warn("重试前 checkpoint 回滚失败（容忍继续重试，风险=上下文重复用户消息）: runId={}, err={}", runIdStr, e.getMessage());
+        }
+    }
+
+    /**
+     * 定位 threadId 最新一条 {@code __START__} checkpoint（M7 重试回滚分支二复用 T8 定位法）。
+     *
+     * @param config RunnableConfig（仅 threadId 定位，不带 checkPointId）
+     * @return 最新 __START__ checkpoint；无任何 __START__ 时 null（图未启动写入）
+     */
+    private Checkpoint locateStartCheckpoint(RunnableConfig config) {
+        for (Checkpoint cp : saver.list(config)) {
+            if ("__START__".equals(cp.getNodeId())) {
+                return cp;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * M7/R4 修正 A：按刚发射 chunk 的节点取逐项超时配额。
+     *
+     * @param node chunk 节点名（可为 null——未知节点按普通段配额）
+     * @return 该段允许的最大静默时长
+     */
+    private Duration stallTimeoutOf(String node) {
+        // __START__ 之后是 QU 段（阻塞 LLM，预算 60s，思考经 ThinkingPusher 直推不经图流
+        // 无法重置计时器）——配额给 65s（预算 + 5s 余量）；其余段（检索/生成/工具执行）
+        // 用 stallTimeoutMs（reactAgent 内工具执行段同样无 chunk，受本阈值约束属预期，
+        // 5 分钟总兜底仍在）
+        return Duration.ofMillis(
+                "__START__".equals(node) ? QU_SEGMENT_TIMEOUT_MS : chatStreamProperties.stallTimeoutMs());
+    }
+
+    /**
+     * M7：第 attempt 次失败后的退避时长（初始 retryBackoffMs 指数 ×2，封顶 30s）。
+     *
+     * @param attempt 失败的尝试序号（从 1 起）
+     * @return 退避毫秒数
+     */
+    long retryBackoffMsOf(int attempt) {
+        return Math.min(chatStreamProperties.retryBackoffMs() * (1L << (attempt - 1)), RETRY_BACKOFF_CAP_MS);
+    }
+
+    /**
+     * M7：判定流式失败是否属于可重试类（判死 / 连接级断流）。
+     *
+     * <p>覆盖 TimeoutException（逐项超时判死）与 IOException（连接 reset/断流——含
+     * reactor-netty 断连异常经 Spring AI/WebClient 包装后的 cause 链内层形态）；沿 cause
+     * 链溯源（限自引用防护，与 {@link #isCancelledError} 同款遍历）。非可重试类（业务
+     * 异常/网关 4xx 等）直接走原 ERROR 路径。
+     *
+     * @param e onErrorResume 收到的异常
+     * @return true = 判死或连接级断流（重试还需满足 !hasProduced）
+     */
+    private static boolean isRetryableStreamFailure(Throwable e) {
+        for (Throwable t = e; t != null && t != t.getCause(); t = t.getCause()) {
+            if (t instanceof TimeoutException || t instanceof IOException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * M7/R4：本轮是否已有产出（D1 自动重试触发条件的反义）——五信号任一即有产出：
+     * DELTA/THINKING 已推（runState 标志，真实 transformer 发送点置位）、QU/caption 思考
+     * 有累积（ThinkingPusher 缓冲——含 QU thinking，spec M7.2）、SOURCES 已推、TOOL_CALL
+     * 已推（worker doOnNext 置位）。不纳入 STAGE/QUERY_PLAN（R4 拍板：不属 D1 四维）。
+     *
+     * @param runState       run 级 SSE 状态（DELTA/THINKING 已发标志）
+     * @param thinkingPusher per-run 思考推送通道（QU/caption 思考累积缓冲）
+     * @param sourcesPushed  SOURCES 已推送标记
+     * @param toolProduced   TOOL_CALL 已推送标记
+     * @return true = 本轮已有产出（失败时不再自动重试，保留现场转 ERROR）
+     */
+    private static boolean hasProduced(
+            SseEventTransformer.RunState runState,
+            ThinkingPusher thinkingPusher,
+            AtomicBoolean sourcesPushed,
+            AtomicBoolean toolProduced) {
+        return runState.isDeltaSent()
+                || runState.isThinkingSent()
+                || thinkingPusher.accumulated().values().stream().anyMatch(value -> value != null && !value.isBlank())
+                || sourcesPushed.get()
+                || toolProduced.get();
     }
 
     // ========================================================================
@@ -776,7 +1455,15 @@ public class ChatRequestWorker {
      * <p>BUG-14：改用 computeIfPresent 仅对已注册（排队/执行中）的 run 置位——
      * 条目不存在说明 run 未在执行或已完成（其 finally 已清理），置位是 no-op，
      * 消除原 computeIfAbsent 对已完成 run 重建残留条目的 TOCTOU 泄漏。
-     * 置位后下次取消检查点（doOnNext/检索 join 前/附件批循环）抛出 CancelledException。
+     *
+     * <p>M2 取消立即性（R1 实证）：置位后<b>立刻 dispose 图流订阅</b>——reactor cancel
+     * 信号沿算子链传播并关闭上游 DashScope 流式 SSE 连接（不等 chunk 边界检查点，主 agent
+     * 单次 LLM 调用 8~18s 内即时生效）；随后调用 per-run 取消收尾 Runnable 主动唤醒
+     * processRequest 的终态等待——R1 实证 dispose 先行时 onComplete/onError 均静默丢弃
+     * （无任何回调），不唤醒将挂满 5 分钟兜底超时误走 ERROR；终态收尾由 worker 线程在等待
+     * 返回处按 terminalPushed CAS 认领统一执行。订阅未注册（run 排队/附件/图启动前阶段）
+     * 时无句柄可 dispose，靠后续检查点或注册后补检生效。边界：QU/检索 join 等同步段为
+     * 软取消（跑完但结果丢弃，不可中断），属预期边界。
      */
     public void cancel(String runId) {
         // 仅当条目已存在（run 排队/执行中）时原子置位；run 不在执行中则记录后忽略
@@ -784,6 +1471,19 @@ public class ChatRequestWorker {
             f.set(true);
             return f;
         });
+        // M2 取消立即性：立刻 dispose 图流订阅（取消传播至上游连接，不等 chunk 边界检查点）
+        Disposable subscription = runDisposables.get(runId);
+        if (subscription != null && !subscription.isDisposed()) {
+            subscription.dispose();
+            log.info("已 dispose 图流订阅（取消传播至上游）: runId={}", runId);
+        }
+        // R1-a 主动唤醒：唤醒 worker 终态等待（终态收尾由 worker 线程在等待返回处按
+        // terminalPushed CAS 认领统一执行——与 doOnComplete/onErrorResume 互斥不双终态，
+        // 且 END 推送先于 worker finally 的 removeRing，事件不丢）
+        Runnable finisher = cancelFinishers.get(runId);
+        if (finisher != null) {
+            finisher.run();
+        }
         if (flag != null) {
             log.info("请求取消 run: runId={}", runId);
         } else {
@@ -805,9 +1505,11 @@ public class ChatRequestWorker {
      * 但 SAA 1.1.2.0 API 中 {@link BaseCheckpointSaver} 无 {@code getTuple} 方法
      * （该 API 属于 LangGraph4j 原生接口，SAA 未暴露）。此处使用 {@code saver.get(config)}
      * 替代，返回 {@code Optional<Checkpoint>}，功能等价。
-     * 浅拷贝通过 {@code new HashMap<>(state)} 实现——SAA 1.1.2.0 实证图执行期不原地修改
-     * checkpoint state，浅拷贝即可满足回滚隔离，且保留 Message 类型（P1-3；原 JSON 深拷贝
-     * 经无多态注册的 ObjectMapper 会把 Message 反序列化为 LinkedHashMap，类型破坏）。
+     * 浅拷贝通过 {@code new HashMap<>(state)} 实现——该容器级浅拷贝仅顶层 Map 独立，messages
+     * 列表与 checkpoint 原实例共享引用、图执行期会被 AppendStrategy 原地 addAll 追加污染
+     * （T8/T10 字节码实证，与 rollbackCheckpointBeforeRetry javadoc 同口径），消费方（重试
+     * 回滚）按 historyMessageCount 游标截断剥离污染；浅拷贝仍保留 Message 类型（P1-3；原
+     * JSON 深拷贝经无多态注册的 ObjectMapper 会把 Message 反序列化为 LinkedHashMap，类型破坏）。
      * 快照失败降级（记 warn 不阻塞 run）。
      *
      * @param runId  Run 唯一标识
@@ -822,9 +1524,11 @@ public class ChatRequestWorker {
                 return null;
             }
             Checkpoint cp = opt.get();
-            // P1-3: 容器级浅拷贝替代 JSON 深拷贝——SAA 1.1.2.0 实证（OverAllState.updateState
-            // 用 Stream.collect 产新 Map、AppendStrategy 用 new ArrayList 产新 List）图执行期
-            // 不原地修改 checkpoint state，顶层 Map 独立即可保证快照安全，且 Message 类型 100% 保留
+            // P1-3: 容器级浅拷贝替代 JSON 深拷贝——仅顶层 Map 独立（OverAllState.updateState
+            // 用 Stream.collect 产新 Map），messages 列表与 checkpoint 原实例共享引用，图执行期会被
+            // AppendStrategy 对 old 列表原地 addAll 追加污染（T8/T10 字节码实证，与上方
+            // rollbackCheckpointBeforeRetry javadoc 同口径）；消费方（重试回滚）按快照捕获的
+            // historyMessageCount 游标截断剥离污染，浅拷贝且保留 Message 类型
             // （JSON 往返会经无多态注册的 ObjectMapper 把 Message 反序列化为 LinkedHashMap，类型破坏）
             Map<String, Object> stateCopy = new HashMap<>(cp.getState());
             // 计算持久化游标：pre-run checkpoint 中 messages 列表长度（P0-4a 去重）
@@ -1416,61 +2120,88 @@ public class ChatRequestWorker {
     }
 
     /**
-     * 处理取消：CANCELLED END 事件 + 状态 CANCELLED + checkpoint 回滚。
+     * 处理取消：CANCELLED END 事件 + 状态 CANCELLED + 前滚补写 checkpoint。
      *
-     * <p>设计文档 §3.4 要求：取消后"写新 checkpoint，恢复 pendingWrites，不删旧 checkpoint"。
-     * 使用 pre-run 快照（RunSnapshot）恢复到执行前的状态。
+     * <p>M2/D6（R1-4 实证修正）：取消不再回滚 pre-run 快照——回滚会把本轮用户消息与半截
+     * 回复一并抹掉，与「下一轮 run 上下文包含已停止生成的半截内容」不变量冲突（业界一致，
+     * ChatGPT 同行为）。改为<b>前滚补写</b>：R1 实证流式中途取消时当前流式节点 checkpoint
+     * 完全不写（写在 concatWith 尾部、仅正常 onComplete 才执行），saver.get 恢复至最后已
+     * 完成节点边界、messages 不含半截 AI 回复——故显式取当前 state、追加半截
+     * AssistantMessage（已推 delta 拼接）后写入新 checkpoint；无任何已推送 delta 时无内容
+     * 可前滚，跳过写入仅原样收口。pre-run 快照机制本身保留（M5 编辑/重新生成复用）。
+     * 半截内容另经 chat_message 增量行落库供前端渲染（M4 口径），两路径独立。
      *
-     * @param runIdStr Run 唯一标识（字符串）
-     * @param runId    Run ID（Long）
-     * @param runState SSE 事件序列状态
-     * @param config   RunnableConfig（含 threadId，用于 checkpoint 写入）
-     * @param snapshot pre-run 快照（可能为 null，快照失败时降级）
+     * @param runIdStr         Run 唯一标识（字符串）
+     * @param runId            Run ID（Long）
+     * @param runState         SSE 事件序列状态
+     * @param config           RunnableConfig（含 threadId，前滚 checkpoint 读写定位）
+     * @param deltaAccumulator per-run 正文/思考 delta 累加器（半截正文事实源；可为 null）
      */
     private void handleCancelled(
             String runIdStr,
             Long runId,
             SseEventTransformer.RunState runState,
             RunnableConfig config,
-            RunSnapshot snapshot) {
+            DeltaAccumulator deltaAccumulator) {
         String payload = toJson(Map.of("runId", runIdStr, "status", "CANCELLED"));
         bridge.push(runIdStr, new SseEvent(SseEventType.END, runState.nextSeq(), payload, System.currentTimeMillis()));
         updateStatusWithRetry(runId, "CANCELLED");
-
-        // 回滚 checkpoint：写新 checkpoint（新 id/ts），恢复快照状态，不删旧 checkpoint
-        if (snapshot != null) {
-            rollbackCheckpoint(config, snapshot);
-        } else {
-            log.warn("取消时无 pre-run 快照可用，跳过回滚: runId={}", runIdStr);
-        }
-
-        log.info("Run 已取消: runId={}", runId);
+        forwardRollCheckpoint(runIdStr, config, deltaAccumulator);
+        log.info("Run 已取消（checkpoint 前滚保留半截内容，不回滚）: runId={}", runId);
     }
 
     /**
-     * 回滚 checkpoint —— 使用 pre-run 快照恢复状态
+     * 前滚补写 checkpoint（M2/R1-4）：当前 checkpoint state 的 messages 追加半截
+     * AssistantMessage 后写入新 checkpoint（新 id/ts，不删旧 checkpoint），节点游标沿用
+     * 当前值——下一轮 run 从同一边界续跑，仅上下文多出半截内容。
      *
-     * <p>设计文档 §3.4：写新 checkpoint（新 id/ts），恢复 pendingWrites，不删旧 checkpoint。
+     * <p>写入模式复用原取消回滚的构造方式（M5 将以 replay 编排公共方法形态重建）。失败仅记
+     * warn 不阻断取消终态（半截内容仍有 chat_message 增量行兜底，下一轮上下文缺失可容忍）。
      *
-     * @param config   RunnableConfig（含 threadId）
-     * @param snapshot pre-run 快照
+     * @param runIdStr         Run 唯一标识
+     * @param config           RunnableConfig（threadId 定位 checkpoint）
+     * @param deltaAccumulator per-run delta 累加器（半截正文 = 已推送 DELTA 拼接；可为 null）
      */
-    private void rollbackCheckpoint(RunnableConfig config, RunSnapshot snapshot) {
+    private void forwardRollCheckpoint(String runIdStr, RunnableConfig config, DeltaAccumulator deltaAccumulator) {
         try {
+            String halfText = deltaAccumulator == null ? "" : deltaAccumulator.text();
+            if (halfText == null || halfText.isBlank()) {
+                // 无任何已推送 delta：无半截内容可前滚，原样收口不写 checkpoint（D6 不回滚）
+                log.info("取消时无已推送 delta，跳过 checkpoint 前滚: runId={}", runIdStr);
+                return;
+            }
+            Optional<Checkpoint> currentOpt = saver.get(config);
+            if (currentOpt.isEmpty()) {
+                // 理论不可达（有 delta 必经 reactAgent，此前 QU 等节点已完成并写 checkpoint）；
+                // 防御性原样收口，不构造缺失上下文的新 checkpoint
+                log.warn("取消时无历史 checkpoint 可前滚，跳过: runId={}", runIdStr);
+                return;
+            }
+            Checkpoint current = currentOpt.get();
+            // 容器级浅拷贝 + ArrayList 拷贝追加（P1-3：Message 类型不经 JSON 往返，100% 保留）
+            Map<String, Object> state = new HashMap<>(current.getState());
+            List<Object> messages = new ArrayList<>();
+            Object messagesObj = state.get("messages");
+            if (messagesObj instanceof List<?> messageList) {
+                messages.addAll(messageList);
+            }
+            // 追加半截 AssistantMessage（正文 = 已推送 DELTA 拼接，与前端已渲染一致）
+            messages.add(new AssistantMessage(halfText));
+            state.put("messages", messages);
             Checkpoint newCp = Checkpoint.builder()
                     .id(UUID.randomUUID().toString())
-                    .state(snapshot.state())
-                    .nodeId(snapshot.nodeId())
-                    .nextNodeId(snapshot.nextNodeId())
+                    .state(state)
+                    .nodeId(current.getNodeId())
+                    .nextNodeId(current.getNextNodeId())
                     .build();
             saver.put(config, newCp);
             log.info(
-                    "取消后回滚 checkpoint: runId={}, oldCheckpointId={}, newCheckpointId={}",
-                    snapshot.runId(),
-                    snapshot.checkpointId(),
+                    "取消后前滚 checkpoint（messages 追加半截 AssistantMessage）: runId={}, 追加字数={}, newCheckpointId={}",
+                    runIdStr,
+                    halfText.length(),
                     newCp.getId());
         } catch (Exception e) {
-            log.warn("取消后回滚 checkpoint 失败: runId={}, err={}", snapshot.runId(), e.getMessage());
+            log.warn("取消后前滚 checkpoint 失败（不阻断取消终态）: runId={}, err={}", runIdStr, e.getMessage());
         }
     }
 
@@ -1576,6 +2307,104 @@ public class ChatRequestWorker {
     // ========================================================================
     // 辅助方法
     // ========================================================================
+
+    /**
+     * 判定本 chunk 是否触发「需等待 sources 的 STAGE(generating) 转换」（M3 主保证的门控，
+     * R3 实证收窄）。
+     *
+     * <p>等待仅施加于 retrieveNode 完成触发的转换——R3 实证 sourcesSink.set（RetrieveNode
+     * apply 线程 join 检索后）与本 doOnNext 读取为同线程程序序连续执行（全链零线程切换），
+     * 该转换点单次读取即命中，有界等待仅防御性冗余；QU 直达 generating（chat/unknown 意图，
+     * 未检索）与 reactAgent 首 chunk 兜底（仅 QU 降级路径触发，同样未检索）触发源 sink 恒空，
+     * 等待必超时白等拖慢首 token，均跳过等待直接放行（迟到兜底交
+     * {@link #maybePushSources} 与前端渲染排序双保险）。
+     *
+     * @param chunk       图流单 chunk（node() 取触发节点名）
+     * @param stageEvents transformStages 为本 chunk 产出的阶段事件（可能为空）
+     * @return true = STAGE(generating) 由 retrieveNode 完成触发，落位后需执行 SOURCES 前置等待
+     */
+    private boolean generatingTransitionFromRetrieve(NodeOutput chunk, List<SseEvent> stageEvents) {
+        if (!LeadAgentGraph.NODE_RETRIEVE.equals(chunk.node())) {
+            return false;
+        }
+        return stageEvents.stream()
+                .anyMatch(
+                        e -> e.type() == SseEventType.STAGE && SseEventTransformer.STAGE_GENERATING.equals(stageOf(e)));
+    }
+
+    /**
+     * 解析 STAGE 事件的 stage 键（M3：判定跃迁目标是否 generating）。
+     *
+     * <p>每 run 至多 2 个 STAGE 事件，JSON 解析开销可忽略；坏 JSON 返回 null 不参与判定
+     * （等价于非 generating，跳过等待走迟到兜底）。
+     *
+     * @param event STAGE 事件（payload 为 {@code {"stage":..., "label":...}} JSON）
+     * @return stage 键值（如 "generating"）；payload 无该键或解析失败返回 null
+     */
+    private String stageOf(SseEvent event) {
+        try {
+            return objectMapper.readTree(event.payload()).path("stage").asText(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * SOURCES 前置推送（M3 主保证）：STAGE(generating) 转换点同步消费 sources 容器。
+     *
+     * <p>已推送（CAS 置位）直接返回；首轮无条件读取（R3 实证：retrieveNode 完成触发的转换点
+     * sink 必然已就绪——同线程程序序，单次读取即命中，实际不进入等待循环）；未就绪时按
+     * {@code rag.chat-stream.sources-ready-wait-ms} 有界等待（50ms 轮询，防御性冗余——覆盖
+     * 极端形态下的亚秒级回填）；等待内就绪 → 推 SOURCES（紧随 STAGE(generating)、先于首个
+     * 内容事件）；超时 → 放行（无来源场景即空检索命中的正常出口；迟到兜底交
+     * {@link #maybePushSources} 与前端渲染排序）。中断视为放行（不阻断流）。
+     *
+     * @param runIdStr       Run 唯一标识（ring 键）
+     * @param runState       SSE 事件序列状态（seqId 递增）
+     * @param config         RunnableConfig（worker 原实例，来源经 {@link #readRetrievalSources} 双通道读取）
+     * @param sourcesPushed  本 run 的 SOURCES 已推送标记（CAS 保证仅推一次）
+     */
+    private void awaitSourcesAndPush(
+            String runIdStr,
+            SseEventTransformer.RunState runState,
+            RunnableConfig config,
+            AtomicBoolean sourcesPushed) {
+        if (sourcesPushed.get()) {
+            return;
+        }
+        long deadline = System.currentTimeMillis() + chatStreamProperties.sourcesReadyWaitMs();
+        while (true) {
+            Object sources = readRetrievalSources(config);
+            if (sources instanceof List<?> list && !list.isEmpty()) {
+                if (sourcesPushed.compareAndSet(false, true)) {
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("sources", list);
+                    bridge.push(
+                            runIdStr,
+                            new SseEvent(
+                                    SseEventType.SOURCES,
+                                    runState.nextSeq(),
+                                    toJson(payload),
+                                    System.currentTimeMillis()));
+                    log.info("已前置推送 SOURCES 事件（STAGE(generating) 转换点）: runId={}, 来源数={}", runIdStr, list.size());
+                }
+                return;
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                break;
+            }
+            try {
+                // 50ms 轮询粒度：覆盖亚秒级回填竞态，不放大首 token 延迟
+                Thread.sleep(50L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        // 超时放行：无来源（空检索命中）或极端迟到场景不推 SOURCES，后续 chunk 由
+        // maybePushSources 兜底（迟到场景），前端渲染排序为最终防线
+        log.debug("SOURCES 等待超时放行（未就绪或无来源）: runId={}", runIdStr);
+    }
 
     /**
      * 补推 SOURCES 事件（B3-5，契约补齐——docs/plans/2026-07-16-frontend-design.md §1.6.4

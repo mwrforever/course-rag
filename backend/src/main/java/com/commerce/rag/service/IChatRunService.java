@@ -3,6 +3,7 @@ package com.commerce.rag.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.commerce.rag.entity.ChatRun;
 import com.commerce.rag.record.AttachmentRecord;
+import com.commerce.rag.vo.ChatRunStatusVO;
 import com.commerce.rag.vo.ChatRunVO;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -93,16 +94,16 @@ public interface IChatRunService extends IService<ChatRun> {
     List<AttachmentRecord> findRecentAttachments(Long sessionId, Long excludeRunId, int limit);
 
     /**
-     * 查会话内已完成 run 的 ID 列表（R1 学生历史消息两步查询第一步）
+     * 查会话内可见（终态）run 的状态列表（M4 历史回显两步查询第一步）
      *
-     * <p>M3 处置：历史回显仅保留 USER 行与 COMPLETED run 的非 USER 行，
-     * 取消/异常 run 的半截 assistant 内容（thinking/工具行/正文）剔除，
-     * 与实时对话「已停止生成」标注语义一致。
+     * <p>D4 口径：历史回显保留 COMPLETED/CANCELLED/ERROR 三态 run 的非 USER 行
+     * （取消/失败半截回答全量保留 + 未完成徽标）；QUEUED/ACTIVE run 行仍不进历史
+     * （进行中内容靠续流路径呈现，与 D3 一致）。
      *
      * @param sessionId 会话 ID（须已通过归属校验）
-     * @return COMPLETED 状态的 runId 列表（无则为空列表）
+     * @return 终态 run 状态列表（runId/status/errorMessage 三列投影；无则空列表）
      */
-    List<Long> findCompletedRunIds(Long sessionId);
+    List<ChatRunStatusVO> findVisibleRunStatuses(Long sessionId);
 
     /**
      * 查询滞留的 ACTIVE/QUEUED run（M-8 巡检 + B2-3 QUEUED 扩展）
@@ -128,4 +129,52 @@ public interface IChatRunService extends IService<ChatRun> {
      * @return true=存在 QUEUED/ACTIVE run；false=仅剩终态 run（COMPLETED/CANCELLED/ERROR）或无 run
      */
     boolean existsActiveRun(Long sessionId);
+
+    /**
+     * 查会话当前活跃 run 的 ID（多会话并发续流锚点，2026-09-01 用户拍板）
+     *
+     * <p>C 端允许同一用户同时开启多会话问答：一个会话在流式生成期间用户可切到其他会话
+     * 继续提问，切回原会话时前端据此 runId 发起 GET reconnect 全量回放续流。
+     * 活跃定义与 existsActiveRun 一致（status ∈ {QUEUED, ACTIVE}）；单会话串行由
+     * uniq_active_run_per_session 唯一索引保证，至多一条，取最近一条即可。
+     *
+     * @param sessionId 会话 ID（须已通过归属校验）
+     * @return 活跃 run 的 ID；无活跃 run 返回 null
+     */
+    Long findActiveRunId(Long sessionId);
+
+    /**
+     * 判定会话内目标 run 之后是否还存在未删除的 run（M5 replay 位置校验）
+     *
+     * <p>D5 位置约束：编辑/重新生成仅允许作用于最后一个 run——checkpoint 线性结构
+     * 决定回滚该 run 必然回滚其后内容，限制位置避免「后面内容突然消失」。
+     * 雪花 ID 时序递增，「之后」以 id 大小判定；@TableLogic 自动附加 deleted=0，
+     * 已软删的 run（此前 replay 产物）不参与判定。
+     *
+     * @param sessionId    会话 ID（须已通过归属校验）
+     * @param targetRunId  目标 run ID
+     * @return true=目标 run 之后仍有 deleted=0 的 run（位置校验失败，调用方抛 409）；
+     *         false=目标 run 为该会话最后一个未删除 run
+     */
+    boolean existsRunAfter(Long sessionId, Long targetRunId);
+
+    /**
+     * replay 事务方法（M5，spec D2）：软删目标 run 行并创建新 QUEUED run
+     *
+     * <p>软删范围按模式区分——EDIT=目标 run 及其后全部 run（D5 位置校验已保证
+     * 其后无未删除 run，范围条件 ge 仅为覆盖历史软删行的防御性冗余）；
+     * REGENERATE=仅目标 run。均走 MP 逻辑删除（deleted=1 保留审计），
+     * checkpoint 历史不动（审计留痕，B.5.4）。
+     *
+     * <p>并发边界：与新 run 创建的非原子窗口由 uniq_active_run_per_session 唯一索引
+     * 兜底（活跃校验前置后并发 INSERT 冲突抛 ConcurrentRunException 由全局 409）。
+     *
+     * @param sessionId    会话 ID（归属校验已通过）
+     * @param userId       当前用户 ID（新 run 归属）
+     * @param mode         重放模式（EDIT / REGENERATE）
+     * @param targetRunId  目标 run ID（归属与软删校验已通过）
+     * @return 新建的 QUEUED run 视图对象
+     * @throws com.commerce.rag.exception.ConcurrentRunException 并发窗口内会话已有活跃 run
+     */
+    ChatRunVO prepareReplayRun(Long sessionId, Long userId, String mode, Long targetRunId);
 }

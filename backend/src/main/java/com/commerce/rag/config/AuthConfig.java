@@ -32,9 +32,18 @@ public class AuthConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // 公开前缀（/api/v1/public/**）与认证端点一并免拦截：无 token 可访问的 C 端浏览接口
+        // 公开前缀（/api/v1/public/**）与认证端点一并免拦截：无 token 可访问的 C 端浏览接口。
+        // R5 实证（M10）：原 "/api/v1/auth/**" 通配排除会连带放行 /api/v1/auth/me——
+        // me 必须走鉴权（校验 AT + 注入 userId），改为精确路径排除；
+        // logout 保持免拦截是设计如此（AT 已过期仍可吊销 RT）；无其他 register 子路径。
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/api/v1/**")
-                .excludePathPatterns("/api/v1/auth/**", "/api/v1/public/**");
+                .excludePathPatterns(
+                        "/api/v1/auth/login",
+                        "/api/v1/auth/register/code",
+                        "/api/v1/auth/register",
+                        "/api/v1/auth/refresh",
+                        "/api/v1/auth/logout",
+                        "/api/v1/public/**");
     }
 }

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.dto.ApiResponse;
+import com.commerce.rag.dto.ChatReplayRequest;
 import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.dto.CreateSessionRequest;
 import com.commerce.rag.dto.PageResponse;
@@ -21,6 +22,7 @@ import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.service.IDocumentChunkService;
 import com.commerce.rag.service.IEnrollmentService;
 import com.commerce.rag.stream.ChatStreamEntry;
+import com.commerce.rag.vo.ActiveRunVO;
 import com.commerce.rag.vo.ChatSessionVO;
 import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
@@ -447,7 +449,8 @@ class StudentControllerTest {
                 LocalDateTime.of(2026, 8, 15, 9, 0));
     }
 
-    /** 构造带解析后 sources/attachments 的学生消息 VO（模拟 service 出参；thinkingStage 见时间线改版用例） */
+    /** 构造带解析后 sources/attachments 的学生消息 VO（模拟 service 出参；thinkingStage 见时间线改版用例；
+     *  M4 runStatus/errorMessage 仅终态行由 service 下发，controller 层测试构造用例不涉及——恒 null） */
     private StudentMessageVO studentMessageVO(Long id, String role) {
         return new StudentMessageVO(
                 id,
@@ -460,7 +463,9 @@ class StudentControllerTest {
                 1,
                 LocalDateTime.of(2026, 8, 15, 9, 1),
                 List.of(new RetrievalSource("101", "RAG 讲义", "Ch3 > 3.2", 0.87)),
-                List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1024L)));
+                List.of(new AttachmentRecord("image", "0/a.png", "a.png", 1024L)),
+                null,
+                null);
     }
 
     @Test
@@ -480,7 +485,9 @@ class StudentControllerTest {
                 2,
                 LocalDateTime.of(2026, 8, 15, 9, 1),
                 List.of(),
-                List.of());
+                List.of(),
+                null,
+                null);
         paged.setRecords(List.of(studentMessageVO(1L, "USER"), studentMessageVO(2L, "ASSISTANT"), thinkingRow));
         paged.setTotal(3);
         when(messageService.findStudentMessagesBySession(1L, 1, 200)).thenReturn(paged);
@@ -559,6 +566,56 @@ class StudentControllerTest {
         verify(messageService).findStudentMessagesBySession(1L, 1, 200);
     }
 
+    @Test
+    @DisplayName("活跃 run → 会话存在 QUEUED/ACTIVE run 时返回 runId（多会话并继续流锚点）")
+    void activeRun_returnsActiveRunId() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 5L));
+        when(runService.findActiveRunId(1L)).thenReturn(42L);
+
+        ApiResponse<ActiveRunVO> result = controller.activeRun(studentRequest(5L), 1L);
+
+        assertEquals(0, result.code());
+        assertEquals("42", result.data().runId());
+        // 归属校验通过后才查询活跃 run（先鉴权再取数）
+        verify(runService).findActiveRunId(1L);
+    }
+
+    @Test
+    @DisplayName("活跃 run → 会话无活跃 run 时 data=null（前端不发起续流，仅历史回显）")
+    void activeRun_noActiveRun_returnsNullData() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 5L));
+        when(runService.findActiveRunId(1L)).thenReturn(null);
+
+        ApiResponse<ActiveRunVO> result = controller.activeRun(studentRequest(5L), 1L);
+
+        assertEquals(0, result.code());
+        assertNull(result.data());
+    }
+
+    @Test
+    @DisplayName("活跃 run → 会话不存在抛 404，不触发 run 查询")
+    void activeRun_sessionNotFound_throws404() {
+        when(sessionService.findById(99L)).thenReturn(null);
+
+        BizException ex = assertThrows(BizException.class, () -> controller.activeRun(studentRequest(5L), 99L));
+
+        assertEquals(HttpStatus.NOT_FOUND.value(), ex.getCode());
+        assertEquals("会话不存在", ex.getMessage());
+        verify(runService, never()).findActiveRunId(anyLong());
+    }
+
+    @Test
+    @DisplayName("活跃 run → 非本人会话抛 403（会话语义，与 R1 历史消息先例一致）")
+    void activeRun_notOwner_throws403() {
+        when(sessionService.findById(1L)).thenReturn(chatSessionVO(1L, 9L));
+
+        BizException ex = assertThrows(BizException.class, () -> controller.activeRun(studentRequest(5L), 1L));
+
+        assertEquals(HttpStatus.FORBIDDEN.value(), ex.getCode());
+        assertEquals("无权查看此会话", ex.getMessage());
+        verify(runService, never()).findActiveRunId(anyLong());
+    }
+
     // ==================== 删除会话（R3 补口 C） ====================
 
     @Test
@@ -628,5 +685,37 @@ class StudentControllerTest {
         var result = controller.chatStream(req, resp, chatRequest);
 
         assertSame(emitter, result);
+    }
+
+    // ==================== M5 消息级重放端点（转发 ChatStreamEntry.replay） ====================
+
+    @Test
+    @DisplayName("replay → 转发 ChatStreamEntry.replay 并原样返回 emitter")
+    void replay_forwardsToChatStreamEntry() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        ChatReplayRequest replayRequest = new ChatReplayRequest("EDIT", "改后的问题", 900L);
+        SseEmitter emitter = mock(SseEmitter.class);
+        when(chatStreamEntry.replay(req, resp, 456L, replayRequest)).thenReturn(emitter);
+
+        var result = controller.replay(req, resp, 456L, replayRequest);
+
+        assertSame(emitter, result);
+        verify(chatStreamEntry).replay(req, resp, 456L, replayRequest);
+    }
+
+    @Test
+    @DisplayName("replay → 编排层校验失败（403/404/409）异常透传（全局异常处理器统一转 HTTP 状态码）")
+    void replay_propagatesBizException() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        ChatReplayRequest replayRequest = new ChatReplayRequest("REGENERATE", null, 900L);
+        // 编排层（ChatStreamEntry.replay）归属/位置/活跃校验失败抛 BizException，controller 零捕获透传
+        when(chatStreamEntry.replay(req, resp, 456L, replayRequest))
+                .thenThrow(new BizException(ErrorCode.FORBIDDEN, "无权操作此会话"));
+
+        BizException ex = assertThrows(BizException.class, () -> controller.replay(req, resp, 456L, replayRequest));
+
+        assertEquals(403, ex.getCode());
     }
 }

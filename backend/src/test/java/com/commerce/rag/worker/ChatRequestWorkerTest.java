@@ -14,6 +14,7 @@ import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
 import com.alibaba.cloud.ai.graph.streaming.OutputType;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.commerce.rag.bot.IntentType;
+import com.commerce.rag.bot.graph.LeadAgentGraph;
 import com.commerce.rag.bot.graph.RetrieveNode;
 import com.commerce.rag.bot.hook.WarningHook;
 import com.commerce.rag.bot.rewrite.QueryPlan;
@@ -21,6 +22,7 @@ import com.commerce.rag.bot.rewrite.QueryPlanFilters;
 import com.commerce.rag.entity.ChatMessage;
 import com.commerce.rag.exception.CancelledException;
 import com.commerce.rag.properties.AgentProperties;
+import com.commerce.rag.properties.ChatStreamProperties;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
 import com.commerce.rag.record.AssistantMessageCapture;
@@ -43,6 +45,7 @@ import com.commerce.rag.stream.ThinkingPusher;
 import com.commerce.rag.vo.ChatRunVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Duration;
@@ -51,6 +54,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
@@ -81,6 +85,7 @@ import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 
 /**
@@ -138,24 +143,8 @@ class ChatRequestWorkerTest {
     @BeforeEach
     void setUp() throws Exception {
         streamProperties = new StreamProperties("chat:request", "chat-workers", 10, 2000, 300, 15, 256);
-
-        worker = new ChatRequestWorker(
-                redisTemplate,
-                compiledGraph,
-                saver,
-                transformer,
-                bridge,
-                chatRunService,
-                chatMessageService,
-                streamProperties,
-                workerProperties,
-                runPool,
-                warningHook,
-                orchestrator,
-                memoryExtractionPipeline,
-                new ObjectMapper(),
-                // 主对话模型 qwen3.8-max（原测试语义，runLimit 取兜底值 15）经属性类注入
-                new AgentProperties(15, "qwen3.8-max"));
+        // M3：SOURCES 等待阈值默认 2000ms（与生产配置一致；超时放行用例本地重建小阈值 worker）
+        worker = buildWorker(2000);
 
         // 公共 stub：saver.get 返回空 Optional（无历史 checkpoint）
         lenient().when(saver.get(any(RunnableConfig.class))).thenReturn(Optional.empty());
@@ -191,6 +180,39 @@ class ChatRequestWorkerTest {
         // 公共 stub：updateStatus 默认命中 1 行（BUG-01 后返回影响行数，0 行=状态机守卫拒绝迁移；
         // 正常流程用例均期望迁移成功，个别用例自行覆盖为 0 验证短路）
         lenient().when(chatRunService.updateStatus(anyLong(), anyString())).thenReturn(1);
+    }
+
+    /**
+     * 按指定 SOURCES 等待阈值重建被测 worker（复用本测试类共享 mock；M3 超时放行用例
+     * 需要小阈值验证「等待不阻塞流」，默认 2000ms 会拖慢用例且无法区分阈值是否生效）
+     */
+    private ChatRequestWorker buildWorker(long sourcesReadyWaitMs) {
+        return buildWorker(new ChatStreamProperties(sourcesReadyWaitMs, 45_000L, 3, 2_000L));
+    }
+
+    /**
+     * 按完整对话流配置重建被测 worker（M7 判死/重试用例：stall 阈值与退避需要调小、
+     * N3-1 文案映射用例需要关闭自动重试保持「一次性 ERROR」路径，见各用例注明）
+     */
+    private ChatRequestWorker buildWorker(ChatStreamProperties properties) {
+        return new ChatRequestWorker(
+                redisTemplate,
+                compiledGraph,
+                saver,
+                transformer,
+                bridge,
+                chatRunService,
+                chatMessageService,
+                streamProperties,
+                workerProperties,
+                properties,
+                runPool,
+                warningHook,
+                orchestrator,
+                memoryExtractionPipeline,
+                new ObjectMapper(),
+                // 主对话模型 qwen3.8-max（原测试语义，runLimit 取兜底值 15）经属性类注入
+                new AgentProperties(15, "qwen3.8-max"));
     }
 
     @AfterEach
@@ -250,6 +272,14 @@ class ChatRequestWorkerTest {
         Field f = ChatRequestWorker.class.getDeclaredField("cancelFlags");
         f.setAccessible(true);
         return (ConcurrentHashMap<String, AtomicBoolean>) f.get(worker);
+    }
+
+    /** 通过反射获取 runDisposables（M2 run 级图流订阅句柄注册表，dispose 立即性断言依据） */
+    @SuppressWarnings("unchecked")
+    private ConcurrentHashMap<String, Disposable> getRunDisposables() throws Exception {
+        Field f = ChatRequestWorker.class.getDeclaredField("runDisposables");
+        f.setAccessible(true);
+        return (ConcurrentHashMap<String, Disposable>) f.get(worker);
     }
 
     /** 通过反射调用 private persistMessages（无 thinkingPusher 场景：不落 understanding 阶段思考行）
@@ -518,6 +548,101 @@ class ChatRequestWorkerTest {
         // spec §7.6/§8.4：非 COMPLETED 终态（cancel）不触发偏好/经历提取
         verify(memoryExtractionPipeline, never()).submit(any(), any());
         verify(memoryExtractionPipeline, never()).submitEpisodic(any(), any(), any());
+    }
+
+    // ==================== M2 取消语义（RG2）：dispose 立即性 + 主动收尾 + 前滚 checkpoint ====================
+
+    @Test
+    @DisplayName("M2 取消立即性 — cancel 立刻 dispose 图流订阅（不等 chunk 边界），主动收尾收敛 CANCELLED（非 ERROR、非 5 分钟挂起）")
+    void cancel_disposesSubscriptionImmediately_andConvergesCancelled() throws Exception {
+        // Given：图流挂起（Flux.never 模拟主 agent 单次 LLM 调用 8~18s 的流式中途），
+        // processRequest 在独立线程执行（图执行段经 latch 等待终态，测试主线程驱动 cancel）
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.never());
+        worker.registerPendingRun("100");
+        Thread runner = new Thread(() -> {
+            try {
+                invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        runner.start();
+
+        // 等待订阅句柄注册（注册完成前 cancel 无 dispose 目标，属排队/图启动前窗口）
+        ConcurrentHashMap<String, Disposable> disposables = getRunDisposables();
+        long deadline = System.currentTimeMillis() + 5_000;
+        while (!disposables.containsKey("100") && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue(disposables.containsKey("100"), "图流订阅应已注册到 runDisposables");
+        Disposable subscription = disposables.get("100");
+        assertFalse(subscription.isDisposed(), "订阅注册后应处于活跃状态");
+
+        // When：cancel（此时无任何 chunk 到达——不等 chunk 边界检查点）
+        worker.cancel("100");
+
+        // Then ①：订阅立刻被 dispose（reactor cancel 传播至上游连接，取消立即生效）
+        assertTrue(subscription.isDisposed(), "cancel 必须立刻 dispose 订阅，不等 chunk 边界");
+        // Then ②：dispose 先行时 onComplete/onError 均静默——主动收尾必须唤醒 worker 等待，
+        // run 收敛 CANCELLED（而非挂满 5 分钟兜底超时误走 ERROR）
+        runner.join(10_000);
+        assertFalse(runner.isAlive(), "取消收尾必须主动唤醒等待线程（禁止悬挂至兜底超时）");
+        verify(chatRunService).updateStatus(100L, "CANCELLED");
+        verify(chatRunService, never()).updateStatus(100L, "ERROR");
+        // Then ③：终态事件恰好一个（END CANCELLED，无双终态）
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        List<SseEvent> terminalEvents = evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.END || e.type() == SseEventType.ERROR)
+                .toList();
+        assertEquals(1, terminalEvents.size(), "终态事件应仅一个: " + terminalEvents);
+        assertEquals(SseEventType.END, terminalEvents.get(0).type(), "取消终态应为 END(CANCELLED)");
+        assertTrue(terminalEvents.get(0).payload().contains("CANCELLED"));
+    }
+
+    @Test
+    @DisplayName("M2/R1-b 竞态 — 流恰已 onComplete 且取消标记已置位：doOnComplete 改走取消终态（CANCELLED 而非 COMPLETED）")
+    @SuppressWarnings("unchecked")
+    void completedWithCancelFlag_routesToCancelledTerminal() throws Exception {
+        // Given：chunk1 产出一条 delta 后取消标记置位、随后流正常 complete——
+        // 模拟 dispose 未抢先于完成的竞态分支（终态回调正常到达 doOnComplete）
+        NodeOutput c1 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        when(transformer.transform(any(NodeOutput.class), any(), any(AssistantMessageSink.class)))
+                .thenReturn(List.of(deltaEvent("生成到一半的")));
+        // 提前取注册表引用（lambda 内不可抛检查异常）；条目在下方 registerPendingRun 后才存在，
+        // 置位发生在 subscribe 执行期（invokeProcessRequest 内），时序安全
+        ConcurrentHashMap<String, AtomicBoolean> flags = getCancelFlags();
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.create(sink -> {
+            sink.next(c1);
+            // chunk1 已推送后置位取消标记（等价 cancel() 置位与完成的竞态窗口）
+            flags.get("100").set(true);
+            sink.complete();
+        }));
+        worker.registerPendingRun("100");
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // Then：终态 = CANCELLED（而非 COMPLETED），且终态事件恰好一个（收尾互斥不双终态）
+        verify(chatRunService).updateStatus(100L, "CANCELLED");
+        verify(chatRunService, never()).updateStatus(100L, "COMPLETED");
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        List<SseEvent> terminalEvents = evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.END || e.type() == SseEventType.ERROR)
+                .toList();
+        assertEquals(1, terminalEvents.size(), "doOnComplete 取消终态与取消收尾互斥，仅一个终态: " + terminalEvents);
+        assertEquals(SseEventType.END, terminalEvents.get(0).type());
+        assertTrue(terminalEvents.get(0).payload().contains("CANCELLED"));
+        // 落库走取消增量路径：正文行 = 已推送 delta（终态落库 ≡ 已推送事件序列不变量）
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService, times(1)).batchInsert(msgCaptor.capture());
+        ChatMessage bodyRow = msgCaptor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("取消终态应存在累加器正文行"));
+        assertEquals("生成到一半的", bodyRow.getContent(), "取消终态落库正文 = 已推送 delta");
     }
 
     // ==================== processRequest 异常流程 ====================
@@ -1144,12 +1269,12 @@ class ChatRequestWorkerTest {
         verify(chatMessageService).batchInsert(anyList());
     }
 
-    // ==================== P1-3 取消回滚 checkpoint 类型保留 ====================
+    // ==================== M2/D6：取消不回滚 checkpoint + 前滚补写（R1-4 实证修正） ====================
 
     @Test
-    @DisplayName("取消回滚 — 快照 messages 元素保留 Message 类型（P1-3 容器级浅拷贝）")
-    void rollbackCheckpoint_preservesMessageTypes() throws Exception {
-        // Given: saver.get 返回含真实 Spring AI Message 的 checkpoint（第二轮对话场景）
+    @DisplayName("M2/D6 — 取消终态不回滚 pre-run 快照：无已推送 delta 时原样收口，saver.put 不被调用")
+    void cancelTerminal_noDelta_neverWritesCheckpoint() throws Exception {
+        // Given：saver.get 返回含真实 Spring AI Message 的 pre-run checkpoint（第二轮对话场景）
         Checkpoint cp = Checkpoint.builder()
                 .id("cp-1")
                 .state(Map.of("messages", List.of(new UserMessage("历史问题"), new AssistantMessage("历史回答"))))
@@ -1158,7 +1283,7 @@ class ChatRequestWorkerTest {
                 .build();
         when(saver.get(any(RunnableConfig.class))).thenReturn(Optional.of(cp));
 
-        // 取消路径：执行前注册（模拟入队）并置取消标记，首个 chunk 触发 CancelledException
+        // 取消发生在任何 delta 推送之前（transform 恒空事件）：首个 chunk 检查点抛取消异常
         worker.registerPendingRun("100");
         worker.cancel("100");
         NodeOutput mockChunk = mock(NodeOutput.class);
@@ -1169,14 +1294,56 @@ class ChatRequestWorkerTest {
         // When
         invokeProcessRequest(record);
 
-        // Then: 回滚写入的 checkpoint state 中 messages 元素仍是 Message 子类（非 LinkedHashMap）
+        // Then：取消终态正常收敛，但 checkpoint 既不回滚 pre-run 快照、也无半截内容可前滚——
+        // saver.put 完全不被调用（D6：取消不回滚；无 delta 时跳过追加仅原样收口）
+        verify(chatRunService).updateStatus(100L, "CANCELLED");
+        verify(saver, never()).put(any(RunnableConfig.class), any(Checkpoint.class));
+    }
+
+    @Test
+    @DisplayName("M2/R1-4 — 前滚补写 checkpoint：取消时把半截 AssistantMessage 追加进当前 checkpoint（不回滚 pre-run 快照）")
+    void cancelTerminal_withDelta_forwardRollsCheckpointWithHalfAssistantMessage() throws Exception {
+        // Given：pre-run checkpoint 已有 2 条历史消息；流式 chunk1 推送 delta 后中途取消
+        Checkpoint cp = Checkpoint.builder()
+                .id("cp-1")
+                .state(Map.of("messages", List.of(new UserMessage("历史问题"), new AssistantMessage("历史回答"))))
+                .nodeId("node-1")
+                .nextNodeId("node-2")
+                .build();
+        when(saver.get(any(RunnableConfig.class))).thenReturn(Optional.of(cp));
+
+        NodeOutput c1 = mock(NodeOutput.class);
+        NodeOutput c2 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        lenient().when(c2.state()).thenReturn(null);
+        when(transformer.transform(any(NodeOutput.class), any(), any(AssistantMessageSink.class)))
+                .thenReturn(List.of(deltaEvent("生成到一半的")));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.create(sink -> {
+            sink.next(c1);
+            // chunk1 已推送（半截正文已进累加器）后取消：chunk2 检查点抛 CancelledException
+            worker.cancel("100");
+            sink.next(c2);
+            sink.complete();
+        }));
+        worker.registerPendingRun("100");
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // Then：run 收敛 CANCELLED，且前滚写入恰好一个 checkpoint——
+        // messages = pre-run 2 条 + 追加的半截 AssistantMessage（R1-4：流式节点 checkpoint
+        // 完全不写，须显式前滚才能兑现「下一轮上下文包含半截内容」）
+        verify(chatRunService).updateStatus(100L, "CANCELLED");
         ArgumentCaptor<Checkpoint> cpCaptor = ArgumentCaptor.forClass(Checkpoint.class);
-        verify(saver).put(any(RunnableConfig.class), cpCaptor.capture());
+        verify(saver, times(1)).put(any(RunnableConfig.class), cpCaptor.capture());
         Checkpoint newCp = cpCaptor.getValue();
         List<?> messages = (List<?>) newCp.getState().get("messages");
-        assertEquals(2, messages.size());
-        assertTrue(messages.get(0) instanceof UserMessage, "回滚后 messages[0] 应为 UserMessage");
-        assertTrue(messages.get(1) instanceof AssistantMessage, "回滚后 messages[1] 应为 AssistantMessage");
+        assertEquals(3, messages.size(), "前滚 = pre-run messages + 半截消息（回滚则为 2 条）");
+        // P1-3 类型保留（容器级浅拷贝 + ArrayList 追加，Message 类型不经 JSON 往返）
+        assertTrue(messages.get(0) instanceof UserMessage, "messages[0] 应为 UserMessage");
+        assertTrue(messages.get(1) instanceof AssistantMessage, "messages[1] 应为 AssistantMessage");
+        assertTrue(messages.get(2) instanceof AssistantMessage, "半截内容应以 AssistantMessage 进入下一轮上下文");
+        assertEquals("生成到一半的", ((AssistantMessage) messages.get(2)).getText());
     }
 
     // ==================== B3-5：SOURCES 事件 + sourcesJson 真实来源 ====================
@@ -1370,6 +1537,211 @@ class ChatRequestWorkerTest {
 
         assertTrue(json.contains("学习方法FAQ"), "sink 未写回时应回退读取 metadata 键值");
         assertTrue(json.contains("c2"), "回退值应含 chunkId");
+    }
+
+    // ==================== M3 检索时序契约：SOURCES 前置 STAGE(generating) 转换点（2026-09-01 修复批次） ====================
+
+    /** 构造 STAGE(generating) 事件（M3 帧序用例：payload 与生产 transformStages 产出同构） */
+    private SseEvent generatingStageEvent() {
+        return new SseEvent(
+                SseEventType.STAGE, 2, "{\"stage\":\"generating\",\"label\":\"正在生成回答\"}", System.currentTimeMillis());
+    }
+
+    /**
+     * 模拟 RetrieveNode 写回检索来源：经 worker 注册进 config.metadata 的 sink 容器 set
+     * （生产链路主通道，T7 修复；M3 用例在图流 answer 内调用以控制 sink 就绪时机）
+     */
+    @SuppressWarnings("unchecked")
+    private void seedSourcesSink(RunnableConfig config, List<RetrievalSource> sources) {
+        config.metadata().ifPresent(m -> {
+            Object sinkRef = m.get(RetrieveNode.KEY_SOURCES_SINK);
+            if (sinkRef instanceof AtomicReference<?> ref) {
+                ((AtomicReference<Object>) ref).set(sources);
+            }
+        });
+    }
+
+    @Test
+    @DisplayName(
+            "M3 帧序契约 — retrieveNode 触发 STAGE(generating) 且 sink 已就绪：SOURCES 紧随 STAGE(generating)、先于首个 DELTA（契约固化锚点，当前链路确定性通过）")
+    void sourcesReady_pushedBetweenStageAndFirstDelta() throws Exception {
+        // Given：retrieveNode 完成 chunk（触发 STAGE(generating) 跃迁）→ reactAgent 首 chunk（产正文 delta）；
+        // sink.set 先于完成 chunk 发射（R3 实证：同线程程序序连续执行，竞态窗口=0）
+        NodeOutput retrieveChunk = mock(NodeOutput.class);
+        when(retrieveChunk.node()).thenReturn(LeadAgentGraph.NODE_RETRIEVE);
+        lenient().when(retrieveChunk.state()).thenReturn(null);
+        NodeOutput generatingChunk = mock(NodeOutput.class);
+        lenient().when(generatingChunk.state()).thenReturn(null);
+
+        when(transformer.transformStages(eq(retrieveChunk), any())).thenReturn(List.of(generatingStageEvent()));
+        when(transformer.transform(eq(generatingChunk), any(), any(AssistantMessageSink.class)))
+                .thenReturn(List.of(deltaEvent("引用资料的回答")));
+
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenAnswer(inv -> {
+            RunnableConfig config = inv.getArgument(1);
+            // 模拟 RetrieveNode：join 检索后、返回完成 chunk 前写 sink（生产链路同线程程序序）
+            seedSourcesSink(config, List.of(new RetrievalSource("c1", "高等数学讲义", "第一章", 0.9)));
+            return Flux.just(retrieveChunk, generatingChunk);
+        });
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "高等数学怎么学"));
+
+        // Then：bridge.push 帧序 = STAGE(generating) → SOURCES → DELTA（M3 SSE 事件序契约）
+        InOrder inOrder = inOrder(bridge);
+        inOrder.verify(bridge)
+                .push(
+                        eq("100"),
+                        argThat(e ->
+                                e.type() == SseEventType.STAGE && e.payload().contains("\"generating\"")));
+        inOrder.verify(bridge).push(eq("100"), argThat(e -> e.type() == SseEventType.SOURCES));
+        inOrder.verify(bridge).push(eq("100"), argThat(e -> e.type() == SseEventType.DELTA));
+        // SOURCES payload 含来源字段（与 maybePushSources 同款最小可用结构）
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        SseEvent sourcesEvent = evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.SOURCES)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应推送 SOURCES 事件"));
+        assertTrue(sourcesEvent.payload().contains("高等数学讲义"), "SOURCES payload 应含来源文档标题");
+    }
+
+    @Test
+    @DisplayName("M3 防御性等待 — sink 在等待窗口内才就绪（200ms 异步回填）：SOURCES 仍前置首个 DELTA")
+    void sourcesLateWithinWait_stillPushedBeforeContent() throws Exception {
+        // Given：默认阈值 2000ms；sink 由另一线程延迟 200ms 写回（模拟亚秒级异步回填竞态，
+        // R3 实证生产链路不可达——本用例锁死防御性等待循环的行为契约）
+        NodeOutput retrieveChunk = mock(NodeOutput.class);
+        when(retrieveChunk.node()).thenReturn(LeadAgentGraph.NODE_RETRIEVE);
+        lenient().when(retrieveChunk.state()).thenReturn(null);
+        NodeOutput generatingChunk = mock(NodeOutput.class);
+        lenient().when(generatingChunk.state()).thenReturn(null);
+
+        when(transformer.transformStages(eq(retrieveChunk), any())).thenReturn(List.of(generatingStageEvent()));
+        when(transformer.transform(eq(generatingChunk), any(), any(AssistantMessageSink.class)))
+                .thenReturn(List.of(deltaEvent("窗口内就绪的回答")));
+
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenAnswer(inv -> {
+            RunnableConfig config = inv.getArgument(1);
+            CompletableFuture.delayedExecutor(200, TimeUnit.MILLISECONDS)
+                    .execute(() -> seedSourcesSink(config, List.of(new RetrievalSource("c1", "课程讲义", "第1章", 0.9))));
+            return Flux.just(retrieveChunk, generatingChunk);
+        });
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "知识库问题"));
+
+        // Then：等待窗口内就绪 → SOURCES 仍紧随 STAGE(generating)、先于 DELTA
+        InOrder inOrder = inOrder(bridge);
+        inOrder.verify(bridge)
+                .push(
+                        eq("100"),
+                        argThat(e ->
+                                e.type() == SseEventType.STAGE && e.payload().contains("\"generating\"")));
+        inOrder.verify(bridge).push(eq("100"), argThat(e -> e.type() == SseEventType.SOURCES));
+        inOrder.verify(bridge).push(eq("100"), argThat(e -> e.type() == SseEventType.DELTA));
+    }
+
+    @Test
+    @DisplayName("M3 超时放行 — sink 恒空且阈值 50ms：等待不阻塞流，DELTA 照常推送且无 SOURCES（迟到兜底交前端）")
+    void sourcesNeverReady_timesOutAndReleasesContent() throws Exception {
+        // Given：本地重建 worker（阈值 50ms）；空检索命中场景 sink 恒空——等待必超时放行
+        worker = buildWorker(50);
+        NodeOutput retrieveChunk = mock(NodeOutput.class);
+        when(retrieveChunk.node()).thenReturn(LeadAgentGraph.NODE_RETRIEVE);
+        lenient().when(retrieveChunk.state()).thenReturn(null);
+        NodeOutput generatingChunk = mock(NodeOutput.class);
+        lenient().when(generatingChunk.state()).thenReturn(null);
+
+        when(transformer.transformStages(eq(retrieveChunk), any())).thenReturn(List.of(generatingStageEvent()));
+        when(transformer.transform(eq(generatingChunk), any(), any(AssistantMessageSink.class)))
+                .thenReturn(List.of(deltaEvent("超时放行后的回答")));
+
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.just(retrieveChunk, generatingChunk));
+
+        // When
+        long start = System.currentTimeMillis();
+        invokeProcessRequest(createMockRecord("100", "200", "300", "知识库问题"));
+        long elapsed = System.currentTimeMillis() - start;
+
+        // Then：按配置阈值放行（50ms 级），不得拖满默认 2000ms
+        assertTrue(elapsed < 1500, "超时放行应按配置阈值（50ms）执行，实际耗时 " + elapsed + "ms");
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        List<SseEvent> pushed = evtCaptor.getAllValues();
+        assertTrue(pushed.stream().anyMatch(e -> e.type() == SseEventType.DELTA), "超时放行后首个 DELTA 必须照常推送");
+        assertTrue(pushed.stream().noneMatch(e -> e.type() == SseEventType.SOURCES), "sink 恒空不得推送 SOURCES 事件");
+    }
+
+    @Test
+    @DisplayName("M3 QU 直达（chat 意图）— 跳过等待：STAGE(generating) 后直接推 DELTA，无 2s 首 token 延迟")
+    void chatIntent_quDirectTransition_skipsWait() throws Exception {
+        // Given：默认阈值 2000ms（若误入等待循环，耗时必 ≥2s 且断言失败）；chat 意图 QU 完成
+        // 直接产 STAGE(generating)，检索未发生 sink 恒空
+        NodeOutput quChunk = mock(NodeOutput.class);
+        when(quChunk.node()).thenReturn(LeadAgentGraph.NODE_QUERY_UNDERSTANDING);
+        lenient().when(quChunk.state()).thenReturn(null);
+        NodeOutput generatingChunk = mock(NodeOutput.class);
+        lenient().when(generatingChunk.state()).thenReturn(null);
+
+        when(transformer.transformStages(eq(quChunk), any())).thenReturn(List.of(generatingStageEvent()));
+        when(transformer.transform(eq(generatingChunk), any(), any(AssistantMessageSink.class)))
+                .thenReturn(List.of(deltaEvent("直接对话回答")));
+
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(quChunk, generatingChunk));
+
+        // When
+        long start = System.currentTimeMillis();
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+        long elapsed = System.currentTimeMillis() - start;
+
+        // Then：无 2s 延迟（QU 直达 generating 触发源跳过等待，R3 ②）
+        assertTrue(elapsed < 500, "chat 意图 QU 直达 generating 必须跳过等待，实际耗时 " + elapsed + "ms");
+        // 帧序：STAGE(generating) → DELTA；无 SOURCES（chat 意图无检索来源）
+        InOrder inOrder = inOrder(bridge);
+        inOrder.verify(bridge)
+                .push(
+                        eq("100"),
+                        argThat(e ->
+                                e.type() == SseEventType.STAGE && e.payload().contains("\"generating\"")));
+        inOrder.verify(bridge).push(eq("100"), argThat(e -> e.type() == SseEventType.DELTA));
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        assertTrue(
+                evtCaptor.getAllValues().stream().noneMatch(e -> e.type() == SseEventType.SOURCES),
+                "chat 意图无检索来源不得推送 SOURCES 事件");
+    }
+
+    @Test
+    @DisplayName("M3 reactAgent 首 chunk 兜底（QU 降级路径）— 跳过等待直接放行（sink 恒空不白等 2s，R3 ②）")
+    void reactAgentFallbackTransition_skipsWait() throws Exception {
+        // Given：默认阈值 2000ms；QU plan 缺失（降级）时 reactAgent 首个模型 chunk 兜底触发
+        // STAGE(generating)——该路径未经检索 sink 恒空，等待必超时，须跳过
+        NodeOutput fallbackChunk = mock(NodeOutput.class);
+        when(fallbackChunk.node()).thenReturn(LeadAgentGraph.NODE_REACT_AGENT);
+        lenient().when(fallbackChunk.state()).thenReturn(null);
+
+        when(transformer.transformStages(eq(fallbackChunk), any())).thenReturn(List.of(generatingStageEvent()));
+        when(transformer.transform(eq(fallbackChunk), any(), any(AssistantMessageSink.class)))
+                .thenReturn(List.of(deltaEvent("降级兜底的回答")));
+
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(fallbackChunk));
+
+        // When
+        long start = System.currentTimeMillis();
+        invokeProcessRequest(createMockRecord("100", "200", "300", "知识库问题"));
+        long elapsed = System.currentTimeMillis() - start;
+
+        // Then：无 2s 延迟 + STAGE(generating) → DELTA 帧序保持（兜底转换点同样先阶段后内容）
+        assertTrue(elapsed < 500, "reactAgent 兜底触发源必须跳过等待，实际耗时 " + elapsed + "ms");
+        InOrder inOrder = inOrder(bridge);
+        inOrder.verify(bridge)
+                .push(
+                        eq("100"),
+                        argThat(e ->
+                                e.type() == SseEventType.STAGE && e.payload().contains("\"generating\"")));
+        inOrder.verify(bridge).push(eq("100"), argThat(e -> e.type() == SseEventType.DELTA));
     }
 
     // ==================== 思考事件推送通道注册（2026-08-28 对话流式时间线改版） ====================
@@ -1972,6 +2344,9 @@ class ChatRequestWorkerTest {
     @Test
     @DisplayName("N3-1: 网络断连类异常 → ERROR 文案「网络连接中断，请重试」（原文 Connection reset 不外发）")
     void processRequest_networkError_messageMappedToChinese() throws Exception {
+        // M7 既有用例核对处置：IOException 无产出在新行为下将触发自动重试（耗尽约 6s 且
+        // 路径变长）——本用例主题是文案映射，重建 autoRetryMax=0 worker 保持一次性 ERROR
+        worker = buildWorker(new ChatStreamProperties(2000, 45_000L, 0, 2_000L));
         when(compiledGraph.stream(any(), any(RunnableConfig.class)))
                 .thenReturn(Flux.error(new java.io.IOException("Connection reset by peer")));
 
@@ -1983,6 +2358,9 @@ class ChatRequestWorkerTest {
     @Test
     @DisplayName("N3-1: 超时类异常 → ERROR 文案「模型服务响应超时，请稍后重试」（原文 timed out 不外发）")
     void processRequest_timeoutError_messageMappedToChinese() throws Exception {
+        // M7 既有用例核对处置：同上——SocketTimeoutException 属可重试类，重建
+        // autoRetryMax=0 worker 保持文案映射用例的一次性 ERROR 路径
+        worker = buildWorker(new ChatStreamProperties(2000, 45_000L, 0, 2_000L));
         when(compiledGraph.stream(any(), any(RunnableConfig.class)))
                 .thenReturn(Flux.error(new java.net.SocketTimeoutException("Read timed out")));
 
@@ -2000,6 +2378,142 @@ class ChatRequestWorkerTest {
         invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
 
         assertErrorEventMessageMapped("服务暂时不可用，请稍后重试", "Internal engine failure");
+    }
+
+    // ==================== M7 判死与自动重试（RG4：per-chunk idle 判死 + 无产出整轮重试） ====================
+
+    @Test
+    @DisplayName("M7 判死：chunk 间隔超阈值 → TimeoutException 重试耗尽 → ERROR 终态「模型服务响应超时」")
+    void stallBetweenChunks_retriesExhaustedToTimeoutError() throws Exception {
+        // 阈值调小：判死 1000ms（@Min(1000) 允许的最小值——计划骨架的 100ms 与 @Min(1000)
+        // 冲突，取下限）+ 退避 100ms，4 次尝试总耗时约 4.7s 可控
+        worker = buildWorker(new ChatStreamProperties(2000, 1_000L, 3, 100L));
+        NodeOutput c1 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        // 节点名非 __START__（普通段配额 = stallTimeoutMs=1000ms）
+        lenient().when(c1.node()).thenReturn("queryUnderstandingNode");
+        // 首 chunk 到达后静默：per-chunk idle 判死（任意相邻两信号间隔超阈值）
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.just(c1).concatWith(Flux.never()));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // 1 + 3 次尝试全部判死 → 保留现场转 ERROR（D1：无产出全败）
+        verify(compiledGraph, times(4)).stream(any(), any(RunnableConfig.class));
+        verify(chatRunService).updateStatus(100L, "ERROR");
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        List<SseEvent> terminals = pushed.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.ERROR || e.type() == SseEventType.END)
+                .toList();
+        assertEquals(1, terminals.size(), "判死重试耗尽仅一个终态事件（RETRYABLE 尝试不推终态）: " + terminals);
+        assertEquals(SseEventType.ERROR, terminals.get(0).type(), "终态应为 ERROR 事件");
+        assertTrue(
+                terminals.get(0).payload().contains("模型服务响应超时"),
+                "判死终态应为超时中文映射: " + terminals.get(0).payload());
+    }
+
+    @Test
+    @DisplayName("M7 自动重试：无产出两次断流（IOException）第三次成功 → 同 run COMPLETED（事件流不重开）")
+    void noOutputFailure_retriesWithinRun_toCompleted() throws Exception {
+        worker = buildWorker(new ChatStreamProperties(2000, 45_000L, 3, 100L));
+        NodeOutput c1 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(
+                        Flux.error(new IOException("Connection reset by peer")),
+                        Flux.error(new IOException("Connection reset by peer")),
+                        Flux.just(c1));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // 前两次断流、第三次成功：图流共执行 3 次（同 run 整轮重开）
+        verify(compiledGraph, times(3)).stream(any(), any(RunnableConfig.class));
+        verify(chatRunService).updateStatus(100L, "COMPLETED");
+        verify(chatRunService, never()).updateStatus(100L, "ERROR");
+        ArgumentCaptor<SseEvent> pushed = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeastOnce()).push(eq("100"), pushed.capture());
+        // METADATA 仅一次：重试在同一 run 事件流上续推（runState/seq 连续不重置）
+        assertEquals(
+                1,
+                pushed.getAllValues().stream()
+                        .filter(e -> e.type() == SseEventType.METADATA)
+                        .count(),
+                "重试不得重开事件流（METADATA 仅一次）");
+        List<SseEvent> terminals = pushed.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.ERROR || e.type() == SseEventType.END)
+                .toList();
+        assertEquals(1, terminals.size(), "重试恢复仅一个终态事件: " + terminals);
+        assertEquals(SseEventType.END, terminals.get(0).type(), "最终终态应为 END");
+        assertTrue(terminals.get(0).payload().contains("COMPLETED"), "END 应携带 COMPLETED");
+    }
+
+    @Test
+    @DisplayName("M7 有产出失败（首 delta 后断流）→ 不自动重试：单次尝试保留现场转 ERROR（D1）")
+    void producedOutput_failureKeepsErrorWithoutRetry() throws Exception {
+        worker = buildWorker(new ChatStreamProperties(2000, 45_000L, 3, 100L));
+        NodeOutput c1 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        // transform 产出 DELTA——真实 transformer 发送 DELTA 事件时会置位 runState.deltaSent
+        // （hasProduced 五信号之一），stub 模拟同款行为
+        when(transformer.transform(any(NodeOutput.class), any(), any(AssistantMessageSink.class)))
+                .thenAnswer(invocation -> {
+                    invocation
+                            .getArgument(1, SseEventTransformer.RunState.class)
+                            .markDeltaSent();
+                    return List.of(deltaEvent("首段正文"));
+                });
+        // 首 delta 推送后断流（IOException——可重试类异常，但已产出 → 不重试）
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.just(c1).concatWith(Flux.error(new IOException("Connection reset by peer"))));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // 有产出失败：仅 1 次尝试（D1：避免重试覆盖已渲染内容）
+        verify(compiledGraph, times(1)).stream(any(), any(RunnableConfig.class));
+        verify(chatRunService).updateStatus(100L, "ERROR");
+        // 保留现场增量落库：正文行 = 已推送 delta（终态落库 ≡ 已推送事件序列不变量）
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService).batchInsert(msgCaptor.capture());
+        ChatMessage bodyRow = msgCaptor.getValue().stream()
+                .filter(m -> "ASSISTANT".equals(m.getRole()) && m.getMessageType() == null)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("有产出失败应落库累加器正文行"));
+        assertEquals("首段正文", bodyRow.getContent(), "失败现场正文行 = 已推送 delta");
+    }
+
+    @Test
+    @DisplayName("M7 退避序列：初始 2s 指数 ×2 封顶 30s（retryBackoffMsOf 纯函数直测，默认配置）")
+    void backoffSequence_exponentialCapped() {
+        // setUp 默认 worker（retryBackoffMs=2000 默认配置）——确定性断言序列，不做计时
+        // 断言（elapsed 测量 flaky，禁入 CI）
+        long[] expected = {2_000L, 4_000L, 8_000L, 16_000L, 30_000L, 30_000L};
+        for (int attempt = 1; attempt <= expected.length; attempt++) {
+            assertEquals(expected[attempt - 1], worker.retryBackoffMsOf(attempt), "第 " + attempt + " 次失败后的退避时长");
+        }
+    }
+
+    @Test
+    @DisplayName("M7 3 次全败（无产出）→ 保留现场转 ERROR：仅 USER 行落库（无产出无增量行）")
+    void allRetriesExhausted_errorWithUserRowOnly() throws Exception {
+        worker = buildWorker(new ChatStreamProperties(2000, 45_000L, 3, 100L));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class)))
+                .thenReturn(Flux.error(new IOException("Connection reset by peer")));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // 1 + 3 次尝试全部断流 → 耗尽收尾
+        verify(compiledGraph, times(4)).stream(any(), any(RunnableConfig.class));
+        verify(chatRunService).updateStatus(100L, "ERROR");
+        // 无产出全败：仅 USER 行落库（RETRYABLE 尝试不落库，耗尽后一次性增量落库）
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
+        verify(chatMessageService, times(1)).batchInsert(msgCaptor.capture());
+        List<ChatMessage> rows = msgCaptor.getValue();
+        assertEquals(1, rows.size(), "无产出全败仅落 USER 行: " + rows);
+        assertEquals("USER", rows.get(0).getRole());
+        assertEquals("你好", rows.get(0).getContent());
     }
 
     // ==================== processRequest 边界分支 ====================
@@ -2437,7 +2951,7 @@ class ChatRequestWorkerTest {
 
     // ==================== 其它私有方法边界 ====================
 
-    /** 构造使用指定 ObjectMapper 的 worker（用于序列化失败分支） */
+    /** 构造使用指定 ObjectMapper 的 worker（用于序列化失败分支；M3 阈值取默认同款 2000ms） */
     private ChatRequestWorker newWorker(ObjectMapper mapper) {
         return new ChatRequestWorker(
                 redisTemplate,
@@ -2449,6 +2963,8 @@ class ChatRequestWorkerTest {
                 chatMessageService,
                 streamProperties,
                 workerProperties,
+                // M7 后属性类扩为四字段（stall/retry 取生产默认值）
+                new ChatStreamProperties(2000, 45_000L, 3, 2_000L),
                 runPool,
                 warningHook,
                 orchestrator,
@@ -2458,9 +2974,9 @@ class ChatRequestWorkerTest {
     }
 
     @Test
-    @DisplayName("handleCancelled → checkpoint 回滚失败仅记 warn，取消终态不受影响")
-    void handleCancelled_rollbackFails_degrades() throws Exception {
-        // saver.get 返回快照 → 回滚写入 checkpoint 时抛异常
+    @DisplayName("handleCancelled → 前滚补写 checkpoint 失败仅记 warn，取消终态不受影响")
+    void handleCancelled_forwardRollFails_degrades() throws Exception {
+        // saver.get 返回当前 checkpoint → 前滚写入（追加半截消息）时抛异常
         Checkpoint cp = Checkpoint.builder()
                 .id("cp-1")
                 .state(Map.of("messages", List.of(new UserMessage("历史问题"))))
@@ -2471,20 +2987,28 @@ class ChatRequestWorkerTest {
         doThrow(new RuntimeException("checkpoint 写入失败"))
                 .when(saver)
                 .put(any(RunnableConfig.class), any(Checkpoint.class));
-
-        // 取消前先注册条目（模拟 BUG-14 入队注册生命周期）
+        // 流式 chunk1 推送半截 delta 后中途取消（chunk2 检查点抛 CancelledException）——
+        // 有已推送 delta 才会触发前滚写入分支
+        NodeOutput c1 = mock(NodeOutput.class);
+        NodeOutput c2 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        lenient().when(c2.state()).thenReturn(null);
+        when(transformer.transform(any(NodeOutput.class), any(), any(AssistantMessageSink.class)))
+                .thenReturn(List.of(deltaEvent("半截回答")));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.create(sink -> {
+            sink.next(c1);
+            worker.cancel("100");
+            sink.next(c2);
+            sink.complete();
+        }));
         worker.registerPendingRun("100");
-        worker.cancel("100");
-        NodeOutput mockChunk = mock(NodeOutput.class);
-        lenient().when(mockChunk.state()).thenReturn(null);
-        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
 
         MapRecord<String, Object, Object> record = createMockRecord("100", "200", "300", "你好");
 
         // When
         invokeProcessRequest(record);
 
-        // Then: 回滚失败被吞并，取消流程仍完成终态
+        // Then: 前滚失败被吞并，取消流程仍完成终态
         verify(chatRunService).updateStatus(100L, "CANCELLED");
     }
 
@@ -2618,5 +3142,76 @@ class ChatRequestWorkerTest {
         assertFalse(runner[0].isAlive(), "processRequest 应在中断处理后正常返回");
         // 中断分支不重抛异常，消息持久化兜底仍执行
         verify(chatMessageService, atLeastOnce()).batchInsert(anyList());
+    }
+
+    // ==================== M5 replay：replayMode 解析与图输入组装 ====================
+
+    @Test
+    @DisplayName("replay REGENERATE — XADD 消息体带 replayMode=REGENERATE 时图输入 messages 置空（从回滚 checkpoint 续跑）")
+    @SuppressWarnings("unchecked")
+    void processRequest_replayRegenerate_emptyMessagesInput() throws Exception {
+        // Given: REGENERATE 重放消息（query 为服务端回填的原问题文本，仅供 USER 行持久化）
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+        MapRecord<String, Object, Object> record = createMockRecordWithBody(Map.of(
+                "runId",
+                "100",
+                "sessionId",
+                "200",
+                "userId",
+                "300",
+                "query",
+                "原问题",
+                "attachments",
+                "[]",
+                "replayMode",
+                "REGENERATE"));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: 图输入 messages 为空列表（checkpoint 已含原用户消息，图从回滚点续跑重新生成）
+        ArgumentCaptor<Map<String, Object>> inputsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(compiledGraph).stream(inputsCaptor.capture(), any(RunnableConfig.class));
+        List<?> messages = (List<?>) inputsCaptor.getValue().get("messages");
+        assertTrue(messages.isEmpty(), "REGENERATE 图输入 messages 必须为空（由回滚 checkpoint 承载上下文）");
+        // run 正常收敛 COMPLETED（REGENERATE 特判仅影响输入组装，不影响终态链路）
+        verify(chatRunService).updateStatus(100L, "COMPLETED");
+    }
+
+    @Test
+    @DisplayName("replay EDIT / 普通发送 — 图输入 messages 为 UserMessage(query)（不特判）")
+    @SuppressWarnings("unchecked")
+    void processRequest_replayEditOrNormal_assemblesUserMessageInput() throws Exception {
+        // Given: EDIT 重放消息（query 为编辑后的新问题文本）
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+        MapRecord<String, Object, Object> record = createMockRecordWithBody(Map.of(
+                "runId",
+                "100",
+                "sessionId",
+                "200",
+                "userId",
+                "300",
+                "query",
+                "编辑后的新问题",
+                "attachments",
+                "[]",
+                "replayMode",
+                "EDIT"));
+
+        // When
+        invokeProcessRequest(record);
+
+        // Then: EDIT 与普通发送同路径——图输入按新 query 组装 UserMessage（回滚 checkpoint
+        // 不含目标用户消息，新消息作为本轮输入正常进入上下文）
+        ArgumentCaptor<Map<String, Object>> inputsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(compiledGraph).stream(inputsCaptor.capture(), any(RunnableConfig.class));
+        List<?> messages = (List<?>) inputsCaptor.getValue().get("messages");
+        assertEquals(1, messages.size());
+        assertTrue(messages.get(0) instanceof UserMessage, "EDIT/普通发送图输入应为 UserMessage");
+        assertEquals("编辑后的新问题", ((UserMessage) messages.get(0)).getText());
     }
 }

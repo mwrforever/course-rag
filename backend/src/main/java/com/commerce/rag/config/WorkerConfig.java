@@ -1,5 +1,6 @@
 package com.commerce.rag.config;
 
+import com.commerce.rag.properties.ChatStreamProperties;
 import com.commerce.rag.properties.StreamProperties;
 import com.commerce.rag.properties.WorkerProperties;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -19,11 +20,12 @@ import org.springframework.context.annotation.Configuration;
  * 由调用方回写 run=ERROR——M-8：原 CallerRunsPolicy 会让消费者线程内联执行整个 run，
  * 消费循环停摆，Redis Stream 所有新对话滞留；拒绝策略 + 状态回写保证消费循环永不阻塞）。
  *
- * <p>同时注册 {@link StreamProperties} 和 {@link WorkerProperties} 两个
- * {@code @ConfigurationProperties} record 为 Spring Bean。
+ * <p>同时注册 {@link WorkerProperties}、{@link StreamProperties} 和
+ * {@link ChatStreamProperties}（M3 对话流式链路阈值，2026-09-01 修复批次追加）
+ * 三个 {@code @ConfigurationProperties} record 为 Spring Bean。
  */
 @Configuration
-@EnableConfigurationProperties({WorkerProperties.class, StreamProperties.class})
+@EnableConfigurationProperties({WorkerProperties.class, StreamProperties.class, ChatStreamProperties.class})
 public class WorkerConfig {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerConfig.class);

@@ -15,6 +15,7 @@ import com.commerce.rag.mapper.ChatRunMapper;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.service.impl.ChatRunServiceImpl;
 import com.commerce.rag.test.MybatisPlusTestHelper;
+import com.commerce.rag.vo.ChatRunStatusVO;
 import com.commerce.rag.vo.ChatRunVO;
 import java.lang.reflect.Field;
 import java.time.LocalDateTime;
@@ -264,30 +265,106 @@ class ChatRunServiceTest {
     }
 
     @Test
-    @DisplayName("findCompletedRunIds → 查会话内 COMPLETED run 的 ID 列表（按需取列，R1 历史消息两步查询第一步）")
+    @DisplayName("findVisibleRunStatuses → 返回 COMPLETED/CANCELLED/ERROR 三态 run（含 errorMessage），QUEUED/ACTIVE 不返回")
     @SuppressWarnings("unchecked")
-    void findCompletedRunIds_returnsCompletedRunIdsOnly() {
+    void findVisibleRunStatuses_returnsTerminalRunsOnly() {
+        // Given: SQL 过滤后仅返回三态终态 run（QUEUED/ACTIVE 被 IN 条件挡在库侧，不进历史）
         ChatRun completed = new ChatRun();
-        completed.setId(10L);
+        completed.setId(9001L);
         completed.setStatus("COMPLETED");
-        when(runMapper.selectList(any())).thenReturn(List.of(completed));
+        ChatRun cancelled = new ChatRun();
+        cancelled.setId(9002L);
+        cancelled.setStatus("CANCELLED");
+        ChatRun errored = new ChatRun();
+        errored.setId(9003L);
+        errored.setStatus("ERROR");
+        errored.setErrorMessage("模型调用超时");
+        when(runMapper.selectList(any())).thenReturn(List.of(completed, cancelled, errored));
 
-        List<Long> runIds = runService.findCompletedRunIds(1L);
+        List<ChatRunStatusVO> statuses = runService.findVisibleRunStatuses(1L);
 
-        // Then: 仅返回 runId 列表（供消息表 run_id IN 过滤，剔除取消/异常 run 的半截内容）
-        assertEquals(List.of(10L), runIds);
+        // Then: 三态 run 均返回且字段透传（M4：取消/失败半截回答全量保留 + 徽标数据源）
+        assertEquals(
+                List.of(
+                        new ChatRunStatusVO(9001L, "COMPLETED", null),
+                        new ChatRunStatusVO(9002L, "CANCELLED", null),
+                        new ChatRunStatusVO(9003L, "ERROR", "模型调用超时")),
+                statuses);
 
-        // Then: 查询条件为 session_id + status=COMPLETED，投影仅 id 列
+        // Then: 查询条件为 session_id + status IN (COMPLETED,CANCELLED,ERROR)，投影仅三列
+        // （徽标数据源不取 meta_json 等大字段）
+        ArgumentCaptor<LambdaQueryWrapper<ChatRun>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(runMapper).selectList(captor.capture());
+        LambdaQueryWrapper<ChatRun> wrapper = captor.getValue();
+        String sqlSegment = wrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("session_id"), "应按会话过滤: " + sqlSegment);
+        assertTrue(sqlSegment.toUpperCase().contains("IN"), "终态口径应为 IN (COMPLETED,CANCELLED,ERROR): " + sqlSegment);
+        String sqlSelect = wrapper.getSqlSelect();
+        assertTrue(sqlSelect.contains("id"), "投影应含 id 列: " + sqlSelect);
+        assertTrue(sqlSelect.contains("status"), "投影应含 status 列: " + sqlSelect);
+        assertTrue(sqlSelect.contains("error_message"), "投影应含 error_message 列: " + sqlSelect);
+        assertFalse(sqlSelect.contains("meta_json"), "不应取 meta_json 等大字段");
+        Collection<Object> params = wrapper.getParamNameValuePairs().values();
+        assertTrue(params.contains("COMPLETED"), "终态集合应含 COMPLETED");
+        assertTrue(params.contains("CANCELLED"), "终态集合应含 CANCELLED（M4 取消半截回答保留）");
+        assertTrue(params.contains("ERROR"), "终态集合应含 ERROR（M4 失败半截回答保留）");
+        assertFalse(params.contains("QUEUED"), "QUEUED 为进行中状态不应进入口径（D3：进行中靠续流呈现）");
+        assertFalse(params.contains("ACTIVE"), "ACTIVE 为进行中状态不应进入口径（D3：进行中靠续流呈现）");
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(1L), "会话参数应为入参 sessionId");
+    }
+
+    @Test
+    @DisplayName("findVisibleRunStatuses → 无终态 run 返回空列表（调用方退化为仅 USER 行）")
+    void findVisibleRunStatuses_empty() {
+        // Given: 会话内全部 run 仍在 QUEUED/ACTIVE 进行中（无终态行返回）
+        when(runMapper.selectList(any())).thenReturn(List.of());
+
+        List<ChatRunStatusVO> statuses = runService.findVisibleRunStatuses(1L);
+
+        // Then: 返回空列表而非 null，调用方据此退化为仅查 USER 行
+        assertNotNull(statuses);
+        assertTrue(statuses.isEmpty());
+    }
+
+    @Test
+    @DisplayName("findActiveRunId → 会话存在活跃 run 时返回其 ID（多会话并继续流锚点）")
+    @SuppressWarnings("unchecked")
+    void findActiveRunId_returnsActiveRunId() {
+        ChatRun active = new ChatRun();
+        active.setId(42L);
+        active.setStatus("ACTIVE");
+        when(runMapper.selectList(any())).thenReturn(List.of(active));
+
+        Long runId = runService.findActiveRunId(1L);
+
+        // Then: 返回活跃 run 的 ID（前端据此发起 GET reconnect 全量回放续流）
+        assertEquals(42L, runId);
+
+        // Then: 查询条件为 session_id + status ∈ {QUEUED, ACTIVE}，投影仅 id 列且 ID 倒序取最近一条
         ArgumentCaptor<LambdaQueryWrapper<ChatRun>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(runMapper).selectList(captor.capture());
         LambdaQueryWrapper<ChatRun> wrapper = captor.getValue();
         String sqlSegment = wrapper.getSqlSegment();
         assertTrue(sqlSegment.contains("session_id"), "应按会话过滤: " + sqlSegment);
         assertTrue(sqlSegment.contains("status"), "应按状态过滤: " + sqlSegment);
+        Collection<Object> params = wrapper.getParamNameValuePairs().values();
+        assertTrue(params.contains("ACTIVE"), "活跃定义应含 ACTIVE: " + params);
+        assertTrue(params.contains("QUEUED"), "活跃定义应含 QUEUED: " + params);
         assertTrue(wrapper.getSqlSelect().contains("id"), "投影应仅取 id 列: " + wrapper.getSqlSelect());
-        assertFalse(wrapper.getSqlSelect().contains("meta_json"), "不应取 meta_json 等大字段");
-        assertTrue(wrapper.getParamNameValuePairs().containsValue("COMPLETED"), "状态参数应为 COMPLETED");
-        assertTrue(wrapper.getParamNameValuePairs().containsValue(1L), "会话参数应为入参 sessionId");
+        assertTrue(sqlSegment.contains("ORDER BY id"), "应 ID 倒序取最近一条: " + sqlSegment);
+    }
+
+    @Test
+    @DisplayName("findActiveRunId → 会话无活跃 run 时返回 null（仅剩终态或从未对话）")
+    @SuppressWarnings("unchecked")
+    void findActiveRunId_noActiveRun_returnsNull() {
+        // Given: 无 QUEUED/ACTIVE run（终态 run 或空会话）
+        when(runMapper.selectList(any())).thenReturn(List.of());
+
+        Long runId = runService.findActiveRunId(1L);
+
+        // Then: 返回 null（前端不发起续流，仅历史回显）
+        assertNull(runId);
     }
 
     // ==================== collectUniqueAttachments 后续轮次附件重建聚合（Task 11，spec §5.1） ====================
@@ -436,5 +513,79 @@ class ChatRunServiceTest {
         assertFalse(exists);
         // 查询仍发出（确认 false 来自 DB 判空而非异常短路）
         verify(runMapper).selectCount(any());
+    }
+
+    // ==================== M5 replay：位置校验 + 软删并建新 run ====================
+
+    @Test
+    @DisplayName("existsRunAfter → 目标 run 之后存在未删除 run 时返回 true（D5 位置校验数据源）")
+    void existsRunAfter_detectsNewerRuns() throws Exception {
+        // Given: 会话内存在 ID 大于目标 run 的未删除 run（selectCount 命中 1 行）
+        injectChainFields();
+        when(runMapper.selectCount(any())).thenReturn(1L);
+
+        // When
+        boolean exists = runService.existsRunAfter(1L, 900L);
+
+        // Then: 位置校验失败（调用方据此抛 409）
+        assertTrue(exists);
+        // 查询条件为 session_id 等值 + id > targetRunId（@TableLogic 自动附加 deleted=0）
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<LambdaQueryWrapper<ChatRun>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(runMapper).selectCount(captor.capture());
+        String sqlSegment = captor.getValue().getSqlSegment();
+        assertTrue(sqlSegment.contains("session_id"), "应按会话过滤: " + sqlSegment);
+        assertTrue(sqlSegment.contains("id"), "应按目标 run ID 大小过滤: " + sqlSegment);
+        Collection<Object> params = captor.getValue().getParamNameValuePairs().values();
+        assertTrue(params.contains(1L), "会话参数应为入参 sessionId");
+        assertTrue(params.contains(900L), "应携带目标 run ID 作大于比较参数");
+    }
+
+    @Test
+    @DisplayName("existsRunAfter → 目标 run 为会话最后一个未删除 run 时返回 false（位置校验放行）")
+    void existsRunAfter_targetIsLastRun_returnsFalse() throws Exception {
+        injectChainFields();
+        when(runMapper.selectCount(any())).thenReturn(0L);
+
+        assertFalse(runService.existsRunAfter(1L, 900L));
+
+        verify(runMapper).selectCount(any());
+    }
+
+    @Test
+    @DisplayName("prepareReplayRun EDIT → 软删目标 run 起全部行（session 过滤 + id>=target 范围删除）+ 创建新 QUEUED run")
+    void prepareReplayRun_editSoftDeletesAndCreates() throws Exception {
+        injectChainFields();
+
+        ChatRunVO result = runService.prepareReplayRun(1L, 5L, "EDIT", 900L);
+
+        // Then: 范围软删（链式 remove 产生 LambdaUpdateWrapper，携带 session_id 等值 + id >= targetRunId）
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<LambdaUpdateWrapper<ChatRun>> deleteCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(runMapper).delete(deleteCaptor.capture());
+        String sqlSegment = deleteCaptor.getValue().getSqlSegment();
+        assertTrue(sqlSegment.contains("session_id"), "EDIT 软删应按会话过滤: " + sqlSegment);
+        assertTrue(sqlSegment.contains("id"), "EDIT 软删应按 id>=targetRunId 范围过滤: " + sqlSegment);
+        // Then: 新 run 创建（QUEUED）
+        ArgumentCaptor<ChatRun> insertCaptor = ArgumentCaptor.forClass(ChatRun.class);
+        verify(runMapper).insert(insertCaptor.capture());
+        assertEquals(1L, result.sessionId());
+        assertEquals(5L, result.userId());
+        assertEquals("QUEUED", result.status());
+    }
+
+    @Test
+    @DisplayName("prepareReplayRun REGENERATE → 仅软删目标 run 单行（deleteById）+ 创建新 QUEUED run")
+    void prepareReplayRun_regenerateDeletesTargetOnly() throws Exception {
+        // removeById（IService 能力）同样经 getBaseMapper 分发，需预置继承字段
+        injectChainFields();
+        ChatRunVO result = runService.prepareReplayRun(1L, 5L, "REGENERATE", 900L);
+
+        // Then: 仅目标 run 单行软删（不走范围 wrapper）
+        verify(runMapper).deleteById(900L);
+        verify(runMapper, never()).delete(any());
+        // Then: 新 run 创建
+        verify(runMapper).insert(any(ChatRun.class));
+        assertEquals("QUEUED", result.status());
     }
 }

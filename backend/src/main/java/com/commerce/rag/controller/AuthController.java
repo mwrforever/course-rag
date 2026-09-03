@@ -19,6 +19,7 @@ import com.commerce.rag.record.AuthUserView;
 import com.commerce.rag.record.RegisterResult;
 import com.commerce.rag.service.IRegisterService;
 import com.commerce.rag.service.ISysUserService;
+import com.commerce.rag.vo.MeVO;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,6 +30,7 @@ import java.time.ZoneId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -44,6 +46,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>POST /api/v1/auth/register — 学员注册第二步：校验验证码并开户（成功即自动签发会话）</li>
  *   <li>POST /api/v1/auth/refresh — 刷新 AT（RT → 新 AT+RT）</li>
  *   <li>POST /api/v1/auth/logout — 登出（jti 入黑名单 + cookie 清除）</li>
+ *   <li>GET /api/v1/auth/me — 查询当前登录用户身份（M10 B 端刷新后登录态恢复）</li>
  * </ul>
  *
  * <p>分层约束：login_record 的创建/刷新更新/登出吊销编排下沉至
@@ -292,6 +295,34 @@ public class AuthController {
         clearCookie(httpResponse);
 
         return ApiResponse.ok();
+    }
+
+    /**
+     * 查询当前登录用户身份（M10 B 端刷新后登录态恢复）
+     *
+     * <p>执行流程：AuthInterceptor 注入的 userId attribute（本端点走拦截器鉴权——R5 实证后
+     * AuthConfig 已精确排除 login/register/refresh/logout，me 不在排除列表）→ 查用户最新
+     * 角色/昵称（角色可能被管理员变更，取库内最新值而非 token claim）→ 返回身份三字段。
+     * 无副作用：不旋转 RT、不写审计、不发新 Token。
+     *
+     * @param httpRequest 请求（AuthInterceptor 注入的用户属性）
+     * @return 身份视图 {userId, role, displayName}
+     * @throws BizException 401 未登录（无认证上下文），或用户已删除/禁用（按未登录处理，
+     *         不给禁用账户恢复身份，与刷新路径 B1-2 拒绝语义一致）
+     */
+    @GetMapping("/me")
+    public ApiResponse<MeVO> me(HttpServletRequest httpRequest) {
+        Long userId = AuthInterceptor.getCurrentUserId(httpRequest);
+        if (userId == null) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "未登录");
+        }
+        UserDTO user = sysUserService.findById(userId);
+        if (user == null || !"ACTIVE".equalsIgnoreCase(String.valueOf(user.status()))) {
+            // 用户已删除/禁用：按未登录处理（与刷新路径 B1-2 语义一致，不给禁用账户恢复身份）
+            throw new BizException(ErrorCode.UNAUTHORIZED, "登录状态已失效");
+        }
+        log.info("查询当前用户身份: userId={}", userId);
+        return ApiResponse.ok(new MeVO(user.id(), user.role(), user.displayName()));
     }
 
     // ========================================================================

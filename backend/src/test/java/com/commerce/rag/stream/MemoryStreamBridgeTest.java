@@ -81,15 +81,29 @@ class MemoryStreamBridgeTest {
 
     /** 轮询等待投递队列排空（3s 超时） */
     private void awaitOutboxDrained(String runId) throws InterruptedException {
+        awaitOutboxDrained(bridge, runId);
+    }
+
+    /** 轮询等待指定 bridge 的投递队列排空（3s 超时；M6.1 用例的局部小容量 bridge 场景） */
+    private void awaitOutboxDrained(MemoryStreamBridge target, String runId) throws InterruptedException {
         long deadline = System.currentTimeMillis() + 3000;
         while (System.currentTimeMillis() < deadline) {
-            int pending = bridge.outboxPending(runId);
+            int pending = target.outboxPending(runId);
             if (pending <= 0) {
                 return;
             }
             Thread.sleep(50);
         }
         fail("等待投递队列排空超时: runId=" + runId);
+    }
+
+    /**
+     * 构造指定 ring 容量的局部 bridge（M6.1 用例：小容量触发驱逐窗口，
+     * 不与全局 BUFFER_SIZE=256 耦合，保证断言数学可读：head=10/capacity=4 → 保留窗口 [7,10]）
+     */
+    private MemoryStreamBridge newBridge(int ringCapacity) {
+        StreamProperties props = new StreamProperties("chat:request", "chat-workers", 10, 2000, 300, 15, ringCapacity);
+        return new MemoryStreamBridge(props, chatRunService);
     }
 
     /**
@@ -577,25 +591,73 @@ class MemoryStreamBridgeTest {
     }
 
     @Test
-    @DisplayName("replayAndSubscribe 覆盖 — lastEventId 太旧（含 seq=1 已被环绕驱逐）返回 false 且不注册")
-    void replayAndSubscribe_tooOld_returnsFalseAndNotRegister() throws Exception {
-        SseEmitter mockEmitter = mock(SseEmitter.class);
-        bridge.createRing("run1");
-        // 推入 BUFFER_SIZE+1 个事件（seq 1..257）：head=257，evictFloor=257-256=1（覆盖边界，
-        // 收口④命名——驱逐下限），seq=1 已被 seq=257 环绕覆盖
-        for (int i = 1; i <= BUFFER_SIZE + 1; i++) {
-            bridge.push("run1", event(i));
+    @DisplayName("M6.1：lastEventId=0 且已驱逐（head>capacity）→ 回放保留窗口全量（不再 0<evictFloor 降级 false）")
+    void replayAndSubscribe_zeroLastEventIdWithEviction_replaysRetainedWindow() throws Exception {
+        // Given：capacity=4 局部小 ring，push seq=1..10（head=10，evictFloor=max(0,10-4)=6，
+        // 保留窗口 seq∈[7,10]）——模拟长生成（事件数 > capacity）后刷新/切回，前端
+        // resume(runId) 走 reconnectChat(runId, null) → controller 默认 lastEventId=0
+        // （SSE 惯例「全量回放」）
+        MemoryStreamBridge smallBridge = newBridge(4);
+        smallBridge.createRing("run-m61");
+        for (long seq = 1; seq <= 10; seq++) {
+            smallBridge.push("run-m61", event(seq));
         }
-        awaitOutboxDrained("run1");
+        awaitOutboxDrained(smallBridge, "run-m61");
 
-        // lastEventId=0 需回放 seq=1 起 → 小于 evictFloor → 已被驱逐 → false（降级 PG）
-        boolean result = bridge.replayAndSubscribe("run1", 0, mockEmitter);
+        // When：lastEventId=0 全量回放请求
+        SseEmitter reconnected = mock(SseEmitter.class);
+        boolean result = smallBridge.replayAndSubscribe("run-m61", 0, reconnected);
 
-        assertFalse(result);
-        // 未注册：后续 push 不送达
-        bridge.push("run1", event(BUFFER_SIZE + 2));
-        awaitOutboxDrained("run1");
-        verify(mockEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+        // Then：返回 true——修复前 0 < evictFloor=6 直接 false → PG 降级 → ACTIVE run
+        // 无落库行 → 仅订阅不重放 → 切回/刷新后已生成内容全空（spec §3 根因，M8 同源）；
+        // 修复后钳位到 evictFloor 从最早保留事件回放，送达 seq=7..10 四条
+        assertTrue(result, "M6.1：lastEventId=0 应钳位回放保留窗口，而非降级返回 false");
+        awaitSendCount(reconnected, 4);
+        assertEquals(List.of("7", "8", "9", "10"), sentEventIds(reconnected), "应从最早保留事件（seq=7）起全量回放");
+    }
+
+    @Test
+    @DisplayName("M6.1：lastEventId 在保留窗口内 → 精确定位续传（正数路径现状语义不变）")
+    void replayAndSubscribe_withinWindow_locatesPrecisely() throws Exception {
+        // Given：capacity=4，push seq=1..10（保留窗口 [7,10]），客户端已收到 seq=8
+        MemoryStreamBridge smallBridge = newBridge(4);
+        smallBridge.createRing("run-m61");
+        for (long seq = 1; seq <= 10; seq++) {
+            smallBridge.push("run-m61", event(seq));
+        }
+        awaitOutboxDrained(smallBridge, "run-m61");
+
+        // When：lastEventId=8（窗口内正数断点）
+        SseEmitter reconnected = mock(SseEmitter.class);
+        boolean result = smallBridge.replayAndSubscribe("run-m61", 8, reconnected);
+
+        // Then：精确定位回放 seq=9,10（M6.1 钳位仅放开 lastEventId<=0，正数定位不动）
+        assertTrue(result);
+        awaitSendCount(reconnected, 2);
+        assertEquals(List.of("9", "10"), sentEventIds(reconnected), "窗口内断点应精确定位续传");
+    }
+
+    @Test
+    @DisplayName("M6.1：lastEventId>0 且 < evictFloor → 仍降级返回 false 且不注册（既有校验不动）")
+    void replayAndSubscribe_stalePositiveId_stillDegrades() throws Exception {
+        // Given：capacity=4，push seq=1..10（evictFloor=6），正数断点 seq=3 已被环形覆盖驱逐
+        MemoryStreamBridge smallBridge = newBridge(4);
+        smallBridge.createRing("run-m61");
+        for (long seq = 1; seq <= 10; seq++) {
+            smallBridge.push("run-m61", event(seq));
+        }
+        awaitOutboxDrained(smallBridge, "run-m61");
+
+        // When：lastEventId=3（0 < 3 < evictFloor=6）
+        SseEmitter reconnected = mock(SseEmitter.class);
+        boolean result = smallBridge.replayAndSubscribe("run-m61", 3, reconnected);
+
+        // Then：返回 false（走 PG 降级——stale 正数断点语义保持：调用方按既有降级链路处理）
+        assertFalse(result, "正数 stale 断点仍应降级返回 false（M6.1 仅放开 lastEventId<=0）");
+        // 未注册：后续 push 不送达（承接原「太旧不注册」用例的回归价值）
+        smallBridge.push("run-m61", event(11));
+        awaitOutboxDrained(smallBridge, "run-m61");
+        verify(reconnected, never()).send(any(SseEmitter.SseEventBuilder.class));
     }
 
     @Test

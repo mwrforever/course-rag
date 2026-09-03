@@ -385,6 +385,15 @@ public class MemoryStreamBridge {
                     // head = 已见最大事件 seqId（2026-08-29 ring 收口①：push 直取产生方事件号，
                     // 初值 0=尚无事件），回放区间上界
                     long currentHead = head.get();
+                    // M6.1（D3/§3 根因）：lastEventId<=0 = SSE 惯例「全量回放」——前端 resume(runId) 走
+                    // reconnectChat(runId, null) → controller 默认 lastEventId=0；长生成（事件数 > capacity）
+                    // 时 0 < evictFloor 成立，原实现直接返回 false → PG 降级 → ACTIVE run 无落库行 →
+                    // 仅订阅不重放 → 切回/刷新后已生成内容全空。修复：钳位到 evictFloor，从最早保留
+                    // 事件回放（窗口 [evictFloor+1, head]）；已被驱逐的更早事件由 run 终态落库后的
+                    // 历史接口完整补齐（M4 口径），刷新瞬间短暂缺失可接受（spec M6.5）。
+                    if (lastEventId <= 0) {
+                        lastEventId = Math.max(0, currentHead - capacity);
+                    }
                     // evictFloor（驱逐下限，2026-08-29 收口④命名）：ring 内最旧保底序号 - 1——
                     // lastEventId 小于它即该事件已被环形覆盖驱逐，ring 无法回放需降级 PG
                     long evictFloor = Math.max(0, currentHead - capacity);

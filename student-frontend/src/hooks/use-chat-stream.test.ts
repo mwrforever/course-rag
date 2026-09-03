@@ -23,6 +23,7 @@ import { ApiError } from "../lib/api";
 import {
   chatReducer,
   createInitialState,
+  findEditStartIndex,
   sseEventToAction,
   STOPPED_SUFFIX,
   useChatStream,
@@ -195,6 +196,31 @@ describe("chatReducer 纯函数", () => {
     const s = chatReducer(s0, { type: "metadata", runId: "run-9", sessionId: "", model: "m" });
     expect(s.sessionId).toBe("sess-0");
     expect(s.runId).toBe("run-9");
+  });
+
+  it("H3 锚点（M8 切回场景）：回放 metadata 的 sessionId 以服务端为准覆盖 initialSessionId，且仅改写本状态实例", () => {
+    // 串台排查结论固化（spec M8 调研剩余项 H3）：reducer 层语义 = metadata 携带的
+    // sessionId 是唯一权威（切回会话的回放流重建归属，服务端误发他人会话 id 时也以
+    // 服务端为准）；工作区间的隔离由 key={sessionId} 重挂载承载——即使串台发生，
+    // 污染也只落在本 hook 实例的 state 内，不越界改写其他实例（入参不可变是单实例
+    // 侧锚点）。E2E multi-session 第三用例（互切不串入）为整链路复核。
+    const before = createInitialState("sess-B");
+    const next = chatReducer(before, {
+      type: "metadata",
+      runId: "run-A",
+      sessionId: "sess-A",
+      model: "m",
+      seq: 1,
+    });
+    // 服务端值为准：归属与 run 锚点均随事件落位
+    expect(next.sessionId).toBe("sess-A");
+    expect(next.runId).toBe("run-A");
+    expect(next.messages).toHaveLength(1);
+    expect(next.messages[0]).toMatchObject({ role: "assistant", id: "run-A" });
+    expect(next.lastEventId).toBe(1);
+    // 入参不被原地污染（B 实例原状态保持：隔离语义的不可变侧锚点）
+    expect(before.sessionId).toBe("sess-B");
+    expect(before.messages).toHaveLength(0);
   });
 
   it("用例2 thinking（时间线改版）：同 stage 多 delta 合并一节点多行；thinking_end 置节点 ended", () => {
@@ -1358,7 +1384,7 @@ describe("useChatStream 集成", () => {
     expect(st3.error).toBeNull();
   });
 
-  it("cancel：POST runId/cancel 后流以 end CANCELLED 收尾（停止后缀）；终态后再 cancel 的 409 静默", async () => {
+  it("cancel（M2 点击即停）：本地立即终态收尾（不等后端 end）——streaming=false、消息置 CANCELLED+停止后缀、随后照常发 cancelRun；后端 end 迟到幂等消化", async () => {
     const ctrl = controllableSse();
     let cancelCalls = 0;
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1383,22 +1409,29 @@ describe("useChatStream 集成", () => {
     });
     await waitFor(() => expect(result.current.state.runId).toBe("run-1"));
 
+    // When：点击停止——本地立即收尾，不等后端 end 事件
     await act(async () => {
       await result.current.cancel();
     });
+
+    // Then：本地终态即刻落位（streaming=false + CANCELLED + 停止后缀 + 输入框恢复依据）
     expect(cancelCalls).toBe(1);
     const cancelCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/cancel"))!;
     expect(String(cancelCall[0])).toBe("/api/v1/student/chat/run-1/cancel");
     expect((cancelCall[1] as RequestInit).method).toBe("POST");
+    expect(result.current.state.streaming).toBe(false);
+    expect(result.current.state.endedStatus).toBe("CANCELLED");
+    expect(result.current.state.messages[1].endStatus).toBe("CANCELLED");
+    expect(result.current.state.messages[1].text).toBe(`部分回答${STOPPED_SUFFIX}`);
+    expect(result.current.state.error).toBeNull();
 
-    // 服务端侧流继续，直到 end CANCELLED
+    // 后端 end CANCELLED 迟到到达：终态幂等消化（后缀不重复追加、状态不二次变更）
     await act(async () => {
       ctrl.push(frame(3, "end", J({ runId: "run-1", status: "CANCELLED" })));
     });
-    await waitFor(() => expect(result.current.state.endedStatus).toBe("CANCELLED"));
+    expect(result.current.state.endedStatus).toBe("CANCELLED");
     expect(result.current.state.messages[1].text).toBe(`部分回答${STOPPED_SUFFIX}`);
     expect(result.current.state.streaming).toBe(false);
-    expect(result.current.state.error).toBeNull();
 
     // 终态后再 cancel：409 静默（不抛、不染状态）
     await act(async () => {
@@ -1406,6 +1439,7 @@ describe("useChatStream 集成", () => {
     });
     expect(cancelCalls).toBe(2);
     expect(result.current.state.endedStatus).toBe("CANCELLED");
+    expect(result.current.state.streaming).toBe(false);
   });
 
   it("cancel 无 runId（未收到 metadata）不发任何请求", async () => {
@@ -2015,5 +2049,369 @@ describe("useChatStream 集成", () => {
       ctrl.push(frame(2, "delta", J({ text: "卸载后帧" })));
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("resume：切回活跃会话全量回放续流（GET 不带查询参数；metadata 建槽 → delta/end 落终态）", async () => {
+    const resumeCtrl = controllableSse();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/reconnect") && init?.method === "GET") return resumeCtrl.response;
+      throw new Error(`未预期的请求: ${url} ${init?.method}`);
+    });
+    const { result } = renderHook(() => useChatStream("sess-9"));
+
+    // 挂载即续流（页面切回仍有 run 在生成的会话）
+    await act(async () => {
+      await result.current.resume("run-9");
+    });
+    // lastEventId=null → 全量回放（不带查询参数）
+    const getCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === "GET")!;
+    expect(String(getCall[0])).toBe("/api/v1/student/chat/run-9/reconnect");
+
+    // 回放帧：metadata（建槽 + runId/sessionId 落位）→ delta 正文 → end 终态（ring 全量回放续接）
+    await act(async () => {
+      resumeCtrl.push(md("run-9", "sess-9"));
+      resumeCtrl.push(frame(2, "delta", J({ text: "全量回放正文" })));
+      resumeCtrl.push(frame(3, "end", J({ status: "COMPLETED", messageId: "m9" })));
+      resumeCtrl.close();
+    });
+    expect(result.current.state.runId).toBe("run-9");
+    expect(result.current.state.messages[0].text).toBe("全量回放正文");
+    expect(result.current.state.endedStatus).toBe("COMPLETED");
+    expect(result.current.state.streaming).toBe(false);
+  });
+
+  it("resume：已流式时幂等不动作（本会话正在生成，不发起续流请求防顶掉新流）", async () => {
+    const ctrl = controllableSse();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") return ctrl.response;
+      throw new Error(`未预期的请求: ${String(input)}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+    await act(async () => {
+      await result.current.send("你好", []);
+    });
+    await act(async () => {
+      ctrl.push(md());
+    });
+    expect(result.current.state.streaming).toBe(true);
+
+    // 已流式：resume 直接放弃（前端守卫路径=用户已在本会话发起新提问）
+    await act(async () => {
+      await result.current.resume("run-9");
+    });
+    expect(
+      fetchMock.mock.calls.filter((c) => (c[1] as RequestInit)?.method === "GET"),
+    ).toHaveLength(0);
+  });
+
+  it("resume：网络层失败静默放弃（不落 error、run 继续服务端执行、不阻断历史回显）", async () => {
+    fetchMock.mockRejectedValue(new TypeError("网络不可达"));
+    const { result } = renderHook(() => useChatStream("sess-9"));
+
+    await act(async () => {
+      await result.current.resume("run-9");
+    });
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(false);
+    expect(result.current.state.messages).toHaveLength(0);
+  });
+
+  it("resume：服务端拒绝（run 已终结/归属失效，非 2xx）静默放弃（不落 error、不接管流，完成态由历史回显兜底）", async () => {
+    fetchMock.mockResolvedValue(jsonRes(409, { code: 409, message: "Run 已终结" }));
+    const { result } = renderHook(() => useChatStream("sess-9"));
+
+    await act(async () => {
+      await result.current.resume("run-9");
+    });
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(false);
+    expect(result.current.state.messages).toHaveLength(0);
+    // 拒绝后不重试（切出再切回才可重试续流）：仅一次 GET reconnect
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/v1/student/chat/run-9/reconnect");
+  });
+
+  it("resume：请求在途被新提问取代（streaming 已置位）→ 丢弃响应体放弃接管（不顶掉新流）", async () => {
+    // 新提问的流（可控且保持挂起：send 落位后 streaming 持续由新流持有）
+    const sendCtrl = controllableSse();
+    // 续流回放响应（延迟兑现：兑现时新流已建立，本次续流应作废）
+    let resolveReconnect: ((r: Response) => void) | null = null;
+    const reconnectPending = new Promise<Response>((resolve) => {
+      resolveReconnect = resolve;
+    });
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/student/chat") && init?.method === "POST") return sendCtrl.response;
+      if (url.includes("/reconnect") && init?.method === "GET") return reconnectPending;
+      throw new Error(`未预期的请求: ${url} ${init?.method}`);
+    });
+    const { result } = renderHook(() => useChatStream("sess-9"));
+
+    // 续流请求在途（GET 已发出未兑现）
+    let resumePromise: Promise<void> | null = null;
+    act(() => {
+      resumePromise = result.current.resume("run-9");
+    });
+
+    // 在途期间用户发起新提问：用户消息落位 + streaming 置位（新流建立）
+    await act(async () => {
+      await result.current.send("切回后立刻新提问", []);
+    });
+    expect(result.current.state.streaming).toBe(true);
+
+    // 续流响应到达：已被新流取代 → 丢弃响应体放弃接管（不 dispatch reconnect、不清 streaming）
+    const resumeCtrl = controllableSse();
+    const cancelSpy = vi.spyOn(resumeCtrl.response.body!, "cancel");
+    await act(async () => {
+      resolveReconnect!(resumeCtrl.response);
+      await resumePromise;
+    });
+    expect(cancelSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(true);
+
+    // 新流继续持有状态：已作废的 run-9 回放帧不落态，新流 metadata/delta 正常落位
+    await act(async () => {
+      resumeCtrl.push(md("run-9", "sess-9"));
+      sendCtrl.push(md("run-new", "sess-9"));
+      sendCtrl.push(frame(2, "delta", J({ text: "新流正文" })));
+    });
+    expect(result.current.state.runId).toBe("run-new");
+    expect(result.current.state.messages[1].text).toBe("新流正文");
+  });
+
+  it("detach：停消费循环释放读取器（新建对话干净态；旧流事件不再落态、状态不清）", async () => {
+    const ctrl = controllableSse();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") return ctrl.response;
+      throw new Error(`未预期的请求: ${String(input)}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+    await act(async () => {
+      await result.current.send("你好", []);
+    });
+    await act(async () => {
+      ctrl.push(md());
+    });
+    expect(result.current.state.messages[1].text).toBe("");
+
+    // 离开旧会话前 detach：停旧流消费（不清状态，reset 由调用方承担）
+    await act(async () => {
+      result.current.detach();
+    });
+    // detach 后旧流事件不再落态（gen 失活），状态保持（streaming 仍 true 由 reset 收口）
+    await act(async () => {
+      ctrl.push(frame(2, "delta", J({ text: "旧流残留帧" })));
+    });
+    expect(result.current.state.messages[1].text).toBe("");
+    expect(result.current.state.streaming).toBe(true);
+  });
+});
+
+// ===== M5 消息级重放：replay_rollback / findEditStartIndex / replay() =====
+
+describe("M5 replay_rollback 纯函数", () => {
+  /** 构造一轮完整问答（u1 → run-1）+ 第二问（u2 → run-2）的多轮消息列表 */
+  function twoRounds(): StreamMessage[] {
+    return [
+      userMsg({ id: "u-1", content: "第一问" }),
+      aiMsg({ id: "run-1", text: "第一答", endStatus: "COMPLETED" }),
+      userMsg({ id: "u-2", content: "第二问" }),
+      aiMsg({ id: "run-2", text: "第二答", endStatus: "COMPLETED" }),
+    ];
+  }
+
+  it("REGENERATE：仅移除目标 AI 回答（id===targetRunId），用户消息保留", () => {
+    const s0 = {
+      ...createInitialState("sess-1"),
+      messages: twoRounds(),
+      endedStatus: "COMPLETED" as const,
+    };
+    const s = chatReducer(s0, {
+      type: "replay_rollback",
+      targetRunId: "run-2",
+      keepUserMessage: true,
+    });
+    // 目标回答移除，其用户消息（第二问）保留，前一轮不动
+    expect(s.messages.map((m) => m.id)).toEqual(["u-1", "run-1", "u-2"]);
+    // 回滚即进入新一轮：流式置位、终态/锚点清零（runId 待新流 metadata 落位）
+    expect(s.streaming).toBe(true);
+    expect(s.endedStatus).toBeNull();
+    expect(s.runId).toBeNull();
+    expect(s.lastEventId).toBeNull();
+  });
+
+  it("EDIT：移除目标用户消息及其后全部（含目标回答）", () => {
+    const s0 = { ...createInitialState("sess-1"), messages: twoRounds() };
+    const s = chatReducer(s0, {
+      type: "replay_rollback",
+      targetRunId: "run-2",
+      keepUserMessage: false,
+    });
+    // 第二问 + 第二答一并移除（其后内容本就不存在；保留第一轮）
+    expect(s.messages.map((m) => m.id)).toEqual(["u-1", "run-1"]);
+    expect(s.streaming).toBe(true);
+    expect(s.error).toBeNull();
+  });
+
+  it("findEditStartIndex：定位目标回答前一条用户消息下标；未配对/首条防御返回 length", () => {
+    const messages = twoRounds();
+    // run-2 前一条是 u-2 → 下标 2（含其后全部移除的起点）
+    expect(findEditStartIndex(messages, "run-2")).toBe(2);
+    expect(findEditStartIndex(messages, "run-1")).toBe(0);
+    // 未配对 targetRunId（历史回显消息不在本地状态/脏值）：防御返回 length（保留全部）
+    expect(findEditStartIndex(messages, "run-x")).toBe(messages.length);
+    // 回答是首条消息（无前置用户消息）：防御返回 length
+    expect(findEditStartIndex([aiMsg({ id: "run-solo" })], "run-solo")).toBe(1);
+  });
+});
+
+describe("M5 replay() 生命周期", () => {
+  it("replay EDIT 200：本地移除目标用户消息及其后内容 + 新消息落位 + 新流接管", async () => {
+    // 第一轮先经 send 完成（建立 sess-1 上下文与两轮消息）
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") {
+        return sseResponse([
+          md("run-1", "sess-1"),
+          frame(2, "delta", J({ text: "第一答" })),
+          frame(3, "end", J({ runId: "run-1", status: "COMPLETED", messageId: "m1" })),
+        ]);
+      }
+      if (String(input).endsWith("/replay")) {
+        return sseResponse([
+          md("run-9", "sess-1"),
+          frame(2, "delta", J({ text: "改后的答" })),
+          frame(3, "end", J({ runId: "run-9", status: "COMPLETED", messageId: "m9" })),
+        ]);
+      }
+      throw new Error(`未预期的请求: ${String(input)}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+    await act(async () => {
+      await result.current.send("原问题", []);
+    });
+    await waitFor(() => expect(result.current.state.endedStatus).toBe("COMPLETED"));
+    expect(result.current.state.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(result.current.state.messages[0].content).toBe("原问题");
+
+    // EDIT replay：POST /replay 携带 mode/query/targetRunId
+    await act(async () => {
+      await result.current.replay("EDIT", "改后的问题", "run-1");
+    });
+    const [replayUrl, replayInit] = fetchMock.mock.calls.at(-1)!;
+    expect(String(replayUrl)).toBe("/api/v1/student/chat/session/sess-1/replay");
+    expect(JSON.parse(String(replayInit?.body))).toEqual({
+      mode: "EDIT",
+      query: "改后的问题",
+      targetRunId: "run-1",
+    });
+    // 本地回滚 + 新消息落位 + 新流接管：旧问答移除、新用户消息与 run-9 回答渲染
+    await waitFor(() => expect(result.current.state.endedStatus).toBe("COMPLETED"));
+    expect(result.current.state.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(result.current.state.messages[0].content).toBe("改后的问题");
+    expect(result.current.state.messages[1]).toMatchObject({ id: "run-9", text: "改后的答" });
+    expect(result.current.state.runId).toBe("run-9");
+  });
+
+  it("replay REGENERATE 200：目标回答移除、用户消息保留、新流直接接续", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") {
+        return sseResponse([
+          md("run-1", "sess-1"),
+          frame(2, "delta", J({ text: "旧回答" })),
+          frame(3, "end", J({ runId: "run-1", status: "COMPLETED", messageId: "m1" })),
+        ]);
+      }
+      if (String(input).endsWith("/replay")) {
+        return sseResponse([
+          md("run-2", "sess-1"),
+          frame(2, "delta", J({ text: "新回答" })),
+          frame(3, "end", J({ runId: "run-2", status: "COMPLETED", messageId: "m2" })),
+        ]);
+      }
+      throw new Error(`未预期的请求: ${String(input)}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+    await act(async () => {
+      await result.current.send("原问题", []);
+    });
+    await waitFor(() => expect(result.current.state.endedStatus).toBe("COMPLETED"));
+
+    await act(async () => {
+      await result.current.replay("REGENERATE", null, "run-1");
+    });
+    const [, replayInit] = fetchMock.mock.calls.at(-1)!;
+    // REGENERATE 不带 query（服务端回填原问题）
+    expect(JSON.parse(String(replayInit?.body))).toEqual({
+      mode: "REGENERATE",
+      targetRunId: "run-1",
+    });
+    // 用户消息保留（本地 id 不变，不依赖模块级递增序号断言）、新回答替换旧回答
+    const keptUserId = result.current.state.messages[0].id;
+    await waitFor(() => expect(result.current.state.endedStatus).toBe("COMPLETED"));
+    expect(result.current.state.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(result.current.state.messages[0].id).toBe(keptUserId);
+    expect(result.current.state.messages[0].content).toBe("原问题");
+    expect(result.current.state.messages[1].text).toBe("新回答");
+  });
+
+  it("replay 409（正在回答/位置校验失败）：本地状态不动，向上抛 ApiError 供 toast", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/student/chat") && init?.method === "POST") {
+        return sseResponse([
+          md("run-1", "sess-1"),
+          frame(2, "delta", J({ text: "完整回答" })),
+          frame(3, "end", J({ runId: "run-1", status: "COMPLETED", messageId: "m1" })),
+        ]);
+      }
+      if (String(input).endsWith("/replay")) {
+        return jsonRes(409, { code: 409, message: "正在回答中，请稍后操作" });
+      }
+      throw new Error(`未预期的请求: ${String(input)}`);
+    });
+    const { result } = renderHook(() => useChatStream(null));
+    await act(async () => {
+      await result.current.send("原问题", []);
+    });
+    await waitFor(() => expect(result.current.state.endedStatus).toBe("COMPLETED"));
+    const before = result.current.state;
+
+    // 409：向上抛 ApiError（上层 toast），本地消息/终态/锚点全部不动
+    await act(async () => {
+      await expect(result.current.replay("REGENERATE", null, "run-1")).rejects.toMatchObject({
+        code: 409,
+        message: "正在回答中，请稍后操作",
+      });
+    });
+    expect(result.current.state.messages).toBe(before.messages);
+    expect(result.current.state.endedStatus).toBe("COMPLETED");
+    expect(result.current.state.streaming).toBe(false);
+    expect(result.current.state.error).toBeNull();
+  });
+
+  it("replay 发送阶段 401（刷新失败已全局登出）：error auth 分级 + replay reject（本地消息不动）", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/auth/refresh")) {
+        return jsonRes(401, { code: 401, message: "Refresh Token 无效或已过期" });
+      }
+      return jsonRes(401, { code: 401, message: "令牌无效或已过期" });
+    });
+    const { result } = renderHook(() => useChatStream("sess-1"));
+    const err = await act(async () =>
+      result.current.replay("EDIT", "改后的问题", "run-1").catch((e: unknown) => e),
+    );
+    // 发送阶段失败向上抛 ApiError(401)（与 send 401 同款语义，上层感知登出）
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).code).toBe(401);
+    expect(String(fetchMock.mock.calls.at(-1)![0])).toBe(
+      "/api/v1/student/chat/session/sess-1/replay",
+    );
+    // auth 分级落位供页面感知（api 层单飞刷新失败已全局登出）
+    expect(result.current.state.error?.kind).toBe("auth");
+    // 本地消息不动（replay_rollback 未发生，与服务端一致无需恢复）
+    expect(result.current.state.messages).toHaveLength(0);
+    expect(result.current.state.streaming).toBe(false);
   });
 });

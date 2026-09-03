@@ -16,7 +16,8 @@ const ADMIN_ROLES: readonly UserRole[] = ['TEACHER', 'SUPER_ADMIN']
  *
  * 管理端凭据存储策略（设计 §3.1）：AT 仅内存（后端同时写 httpOnly cookie 兜底通道），
  * RT 存 sessionStorage（key `b_rt`，关浏览器即清）。刷新页面后 AT 丢失、RT 仍在：
- * isAuthenticated 保持 true，由 api 层首次 401 静默 refresh 恢复完整登录态。
+ * isAuthenticated 保持 true，由 api 层首次 401 静默 refresh 恢复完整登录态；
+ * 身份字段（displayName/role）经 fetchMe 启动恢复（M10，见路由守卫 ensureBootstrapped）。
  *
  * 线程安全注意：refreshOnce 模块级单飞 promise 由主线程事件循环调度，无并发竞争；
  * 并发 401 场景（api 拦截器）共享同一 promise 保证仅发一次 refresh 请求。
@@ -32,6 +33,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   /** 单飞刷新共享 promise：并发 401 只发一次 refresh（api 拦截器复用此入口） */
   let refreshing: Promise<LoginResponse> | null = null
+
+  /** me 请求单飞共享 promise：启动恢复多入口并发只发一次（与 refreshOnce 同款模式） */
+  let meFetching: Promise<void> | null = null
 
   /** 登录态判定：AT 或 RT 任一存在即视为已登录（AT 丢失可由静默刷新恢复） */
   const isAuthenticated = computed(() => Boolean(accessToken.value) || Boolean(refreshToken.value))
@@ -128,6 +132,37 @@ export const useAuthStore = defineStore('auth', () => {
     return refreshing
   }
 
+  /**
+   * 启动恢复当前用户身份（M10：刷新后 RT 在 sessionStorage、AT cookie 兜底放行
+   * 首个请求 → 无 401 → refreshOnce 永不触发 → displayName 恒 null 的修复）
+   *
+   * 行为契约：仅恢复 userId/role/displayName 三字段，不写 AT/RT（me 无副作用）；
+   * 401/网络错误静默吞（cookie 有效则必然 200；失效则保持未恢复态由后续 401 流程登出）。
+   *
+   * @returns 永不 reject（失败静默）
+   */
+  function fetchMe(): Promise<void> {
+    // 前置门：无 RT（未登录）或身份已恢复（如刚登录）时跳过，不发请求
+    if (!refreshToken.value || displayName.value !== null) return Promise.resolve()
+    if (!meFetching) {
+      meFetching = authApi
+        .me()
+        .then((payload) => {
+          userId.value = payload.userId
+          role.value = payload.role
+          displayName.value = payload.displayName
+        })
+        .catch(() => {
+          // 静默：401（cookie 失效）/网络错误不登出不跳转（spec M10.2 决策）
+        })
+        .finally(() => {
+          // 无论成败均释放单飞引用：下次启动恢复可重新发起
+          meFetching = null
+        })
+    }
+    return meFetching
+  }
+
   return {
     accessToken,
     refreshToken,
@@ -140,5 +175,6 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     logout,
     refreshOnce,
+    fetchMe,
   }
 })

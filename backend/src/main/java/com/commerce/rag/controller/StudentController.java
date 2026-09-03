@@ -3,6 +3,7 @@ package com.commerce.rag.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.commerce.rag.auth.AuthInterceptor;
 import com.commerce.rag.dto.ApiResponse;
+import com.commerce.rag.dto.ChatReplayRequest;
 import com.commerce.rag.dto.ChatRequest;
 import com.commerce.rag.dto.CreateSessionRequest;
 import com.commerce.rag.dto.PageResponse;
@@ -15,6 +16,7 @@ import com.commerce.rag.service.IChatSessionService;
 import com.commerce.rag.service.IDocumentChunkService;
 import com.commerce.rag.service.IEnrollmentService;
 import com.commerce.rag.stream.ChatStreamEntry;
+import com.commerce.rag.vo.ActiveRunVO;
 import com.commerce.rag.vo.ChatSessionVO;
 import com.commerce.rag.vo.ChunkBriefVO;
 import com.commerce.rag.vo.ChunkContextVO;
@@ -231,6 +233,33 @@ public class StudentController {
         return chatStreamEntry.chat(request, response, chatRequest);
     }
 
+    // ==================== 消息级重放（M5：编辑/重新生成） ====================
+
+    /**
+     * 消息级重放（M5，spec D2/D5）：编辑最后一条用户消息重答（EDIT）/
+     * 重新生成最后一条回答（REGENERATE），返回新 run 的 SSE 流。
+     *
+     * <p>编排与校验（归属 403/404、mode 白名单 400、目标 run 失效与位置/活跃校验 409、
+     * checkpoint __START__ 锚点定位回滚、软删事务、XADD 携带 replayMode）全部在
+     * {@link ChatStreamEntry#replay}；角色门禁同本类（STUDENT）。
+     *
+     * @param request       请求（AuthInterceptor 注入的用户属性）
+     * @param response      响应（SSE 防代理缓冲头透传）
+     * @param sessionId     会话 ID（路径参数）
+     * @param replayRequest 重放请求（mode/query/targetRunId，Bean Validation 校验失败 400）
+     * @return 新 run 的 SSE 事件流
+     * @throws BizException 400 参数非法；403 非本人会话；404 会话不存在；
+     *                      409 目标失效/位置校验/正在回答中/上下文不可用
+     */
+    @PostMapping("/chat/session/{sessionId}/replay")
+    public SseEmitter replay(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            @PathVariable Long sessionId,
+            @Valid @RequestBody ChatReplayRequest replayRequest) {
+        return chatStreamEntry.replay(request, response, sessionId, replayRequest);
+    }
+
     // ==================== 历史消息（R1 补口 A） ====================
 
     /**
@@ -267,6 +296,40 @@ public class StudentController {
         IPage<StudentMessageVO> paged = messageService.findStudentMessagesBySession(sessionId, page, size);
         return ApiResponse.ok(new PageResponse<>(
                 paged.getRecords(), paged.getTotal(), (int) paged.getCurrent(), (int) paged.getSize()));
+    }
+
+    // ==================== 会话活跃 run（多会话并继续流，2026-09-01 用户拍板） ====================
+
+    /**
+     * 查会话当前活跃 run 的 ID（多会话并继续流锚点）
+     *
+     * <p>C 端允许同一用户同时开启多会话问答——一个会话流式生成期间用户可切到其他会话
+     * 继续提问，切回原会话时前端以此端点拿到活跃 runId 后发起 GET reconnect 全量回放，
+     * 恢复进行中回答的实时视图（run 继续在服务端执行，断连不取消，只有显式 cancel 才停）。
+     *
+     * <p>归属校验与 R1 历史消息先例一致（404 不存在 / 403 非本人）；活跃定义与
+     * uniq_active_run_per_session 一致（status ∈ {QUEUED, ACTIVE}），单会话串行
+     * 由该唯一索引保证至多一条。
+     *
+     * @param request   请求（AuthInterceptor 注入的用户属性）
+     * @param sessionId 会话 ID（路径参数）
+     * @return 活跃 run 视图（data.runId=run ID 字符串；无活跃 run 时 data=null）
+     * @throws BizException 404 会话不存在；403 非本人会话
+     */
+    @GetMapping("/chat/session/{sessionId}/active-run")
+    public ApiResponse<ActiveRunVO> activeRun(HttpServletRequest request, @PathVariable Long sessionId) {
+        Long userId = AuthInterceptor.getCurrentUserId(request);
+        // 归属校验：selectById 自动过 @TableLogic 软删，已删除会话按不存在处理（幂等 404）
+        ChatSessionVO session = sessionService.findById(sessionId);
+        if (session == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "会话不存在");
+        }
+        // 会话语义 403：非本人会话拒绝查询（与 R1 历史消息「无权查看此会话」先例一致）
+        if (!session.userId().equals(userId)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权查看此会话");
+        }
+        Long runId = runService.findActiveRunId(sessionId);
+        return ApiResponse.ok(runId == null ? null : new ActiveRunVO(runId.toString()));
     }
 
     // ==================== 删除会话（R3 补口 C） ====================

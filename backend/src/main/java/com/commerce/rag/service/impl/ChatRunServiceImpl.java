@@ -9,6 +9,7 @@ import com.commerce.rag.exception.ConcurrentRunException;
 import com.commerce.rag.mapper.ChatRunMapper;
 import com.commerce.rag.record.AttachmentRecord;
 import com.commerce.rag.service.IChatRunService;
+import com.commerce.rag.vo.ChatRunStatusVO;
 import com.commerce.rag.vo.ChatRunVO;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -22,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Run 生命周期服务 —— 管理 chat_run 表的状态流转
@@ -233,26 +235,26 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
     }
 
     /**
-     * 查会话内已完成 run 的 ID 列表（R1 学生历史消息两步查询第一步）
+     * 查会话内可见（终态）run 的状态列表（M4 历史回显两步查询第一步）
      *
-     * <p>M3 处置：历史回显剔除非 COMPLETED run 的半截内容——调用方
-     * （ChatMessageServiceImpl.findStudentMessagesBySession）以本列表做
-     * run_id IN 过滤，仅保留 USER 行与 COMPLETED run 的非 USER 行。
+     * <p>M4 终态保留口径（D4）：历史回显保留 COMPLETED/CANCELLED/ERROR 三态 run 的
+     * 非 USER 行（取消/失败半截回答全量保留 + 未完成徽标数据源）；QUEUED/ACTIVE run
+     * 行仍不进历史（进行中内容靠续流路径呈现，与 D3 一致）。
      * 与 findStaleActive 同款 runMapper + Wrappers 静态工厂写法（可测性：
-     * 纯 Mockito 可 mock selectList 验证条件），按需取列仅 id。
+     * 纯 Mockito 可 mock selectList 验证条件），按需取列仅 id/status/error_message。
      *
      * @param sessionId 会话 ID（须已通过归属校验）
-     * @return COMPLETED 状态的 runId 列表（无则为空列表，调用方退化为仅查 USER 行）
+     * @return 终态 run 状态列表（runId/status/errorMessage 三列投影；无则空列表，调用方退化为仅查 USER 行）
      */
-    public List<Long> findCompletedRunIds(Long sessionId) {
-        // 两步查询第一步：仅取 COMPLETED run 的 id 列（不取 meta_json 等大字段）
+    public List<ChatRunStatusVO> findVisibleRunStatuses(Long sessionId) {
+        // 两步查询第一步：仅取终态 run 的 id/status/error_message 三列（不取 meta_json 等大字段）
         return runMapper
                 .selectList(Wrappers.<ChatRun>lambdaQuery()
-                        .select(ChatRun::getId)
+                        .select(ChatRun::getId, ChatRun::getStatus, ChatRun::getErrorMessage)
                         .eq(ChatRun::getSessionId, sessionId)
-                        .eq(ChatRun::getStatus, "COMPLETED"))
+                        .in(ChatRun::getStatus, "COMPLETED", "CANCELLED", "ERROR"))
                 .stream()
-                .map(ChatRun::getId)
+                .map(run -> new ChatRunStatusVO(run.getId(), run.getStatus(), run.getErrorMessage()))
                 .toList();
     }
 
@@ -300,5 +302,86 @@ public class ChatRunServiceImpl extends ServiceImpl<ChatRunMapper, ChatRun> impl
                 .eq(ChatRun::getSessionId, sessionId)
                 .in(ChatRun::getStatus, "QUEUED", "ACTIVE")
                 .exists();
+    }
+
+    /**
+     * 查会话当前活跃 run 的 ID（多会话并发续流锚点，2026-09-01 用户拍板）
+     *
+     * <p>与 findVisibleRunStatuses 同款 runMapper + Wrappers 静态工厂写法（可测性：
+     * 纯 Mockito 可 mock selectList 验证条件），按需取列仅 id；活跃定义与
+     * existsActiveRun 一致（status ∈ {QUEUED, ACTIVE}），单会话串行由唯一索引
+     * 保证至多一条，ID 倒序取最近一条（防御性：若异常数据出现多条取最新）。
+     *
+     * @param sessionId 会话 ID（须已通过归属校验）
+     * @return 活跃 run 的 ID；无活跃 run 返回 null
+     */
+    @Override
+    public Long findActiveRunId(Long sessionId) {
+        return runMapper
+                .selectList(Wrappers.<ChatRun>lambdaQuery()
+                        .select(ChatRun::getId)
+                        .eq(ChatRun::getSessionId, sessionId)
+                        .in(ChatRun::getStatus, "QUEUED", "ACTIVE")
+                        .orderByDesc(ChatRun::getId)
+                        .last("LIMIT 1"))
+                .stream()
+                .map(ChatRun::getId)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * 判定会话内目标 run 之后是否还存在未删除的 run（M5 replay 位置校验，语义详见接口 javadoc）
+     *
+     * <p>本 service 主表走内置链式（this.lambdaQuery）+ exists() 短路探存（仅发
+     * selectCount 不取行）；@TableLogic 自动附加 deleted=0，历史软删行不参与判定。
+     *
+     * @param sessionId   会话 ID
+     * @param targetRunId 目标 run ID
+     * @return true=目标 run 之后仍有未删除 run；false=目标 run 为最后一个
+     */
+    @Override
+    public boolean existsRunAfter(Long sessionId, Long targetRunId) {
+        // 位置校验探存：ID 大于目标 run 的未删除 run 存在即位置校验失败（调用方抛 409）
+        return this.lambdaQuery()
+                .eq(ChatRun::getSessionId, sessionId)
+                .gt(ChatRun::getId, targetRunId)
+                .exists();
+    }
+
+    /**
+     * replay 事务方法（M5，spec D2）：软删目标 run 行 + 创建新 QUEUED run
+     *
+     * <p>软删范围：EDIT=目标 run 及其后全部（D5 保证其后无未删除 run，ge 为防御性冗余）；
+     * REGENERATE=仅目标 run（deleteById）。均走 @TableLogic 逻辑删除（deleted=1
+     * 保留审计），checkpoint 历史不动。事务边界（A.4.12）：本方法 @Transactional
+     * 最小边界覆盖「软删 + 建 run」两步原子；消息行软删（IChatMessageService.
+     * softDeleteFromRun）在调用方先行提交——两方法分属不同 service（互注会成环，
+     * B.2.2 禁止），中间态崩溃窗口由 replay 幂等收敛（软删幂等 + 位置校验拦截重复）。
+     *
+     * @param sessionId   会话 ID
+     * @param userId      当前用户 ID
+     * @param mode        重放模式（EDIT / REGENERATE）
+     * @param targetRunId 目标 run ID
+     * @return 新建的 QUEUED run 视图对象
+     * @throws ConcurrentRunException 并发窗口内会话已有活跃 run（唯一索引冲突）
+     */
+    @Override
+    @Transactional
+    public ChatRunVO prepareReplayRun(Long sessionId, Long userId, String mode, Long targetRunId) {
+        // M5 软删（D2）：EDIT → 目标 run 及其后全部；REGENERATE → 仅目标 run。
+        // 链式 remove() 走 @TableLogic 逻辑删除（UPDATE deleted=1，保留审计行）
+        if ("EDIT".equals(mode)) {
+            this.lambdaUpdate()
+                    .eq(ChatRun::getSessionId, sessionId)
+                    .ge(ChatRun::getId, targetRunId)
+                    .remove();
+        } else {
+            this.removeById(targetRunId);
+        }
+        log.info("replay 软删历史 run 行: sessionId={}, mode={}, targetRunId={}", sessionId, mode, targetRunId);
+        // 新 run（QUEUED）：并发窗口由 uniq_active_run_per_session 兜底
+        // （DataIntegrityViolationException → ConcurrentRunException → 全局 409）
+        return createRun(sessionId, userId);
     }
 }
