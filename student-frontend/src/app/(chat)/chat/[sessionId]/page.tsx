@@ -12,9 +12,10 @@
  *   run（切走期间仍服务端执行的进行中回答），有则把 runId 传给工作区 resume 全量回放
  */
 import { useQuery } from "@tanstack/react-query";
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { ChatSkeleton, ChatWorkspace } from "../chat-workspace";
+import { useUnmarkChatStreaming } from "@/components/chat/chat-streaming-context";
 import { historyAdapter } from "@/lib/history-adapter";
 import { getActiveRun, getSessionMessages } from "@/lib/api";
 
@@ -42,6 +43,14 @@ export default function SessionChatPage() {
     () => historyAdapter(historyQuery.data?.records ?? []),
     [historyQuery.data],
   );
+  // 重访校正（2026-09-03 生成中标记自愈链路一环）：active-run 查询落定且无活跃 run →
+  // 清除该会话可能滞留的生成中标记（切走期间 run 已结束、侧栏 30s 轮询未及清理时即时校正）
+  const unmarkStreaming = useUnmarkChatStreaming();
+  useEffect(() => {
+    if (activeRunQuery.isSuccess && activeRunQuery.data == null) {
+      unmarkStreaming(params.sessionId);
+    }
+  }, [activeRunQuery.isSuccess, activeRunQuery.data, params.sessionId, unmarkStreaming]);
 
   return (
     <Suspense fallback={<ChatSkeleton />}>

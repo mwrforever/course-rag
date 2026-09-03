@@ -36,7 +36,11 @@ import { AttachmentPreviewDialog } from "@/components/chat/attachment-preview-di
 import { ChatInput, chatErrorText } from "@/components/chat/chat-input";
 import { ChatToast } from "@/components/chat/chat-toast";
 import { SIDEBAR_SESSIONS_QUERY_KEY } from "@/components/chat/chat-sidebar";
-import { useChatNewChatSeq, useSetChatStreaming } from "@/components/chat/chat-streaming-context";
+import {
+  useChatNewChatSeq,
+  useMarkChatStreaming,
+  useUnmarkChatStreaming,
+} from "@/components/chat/chat-streaming-context";
 import { MessageList, shouldStickToBottom } from "@/components/chat/message-list";
 import { SectionError } from "@/components/section-error";
 import { useChatStream, type StreamMessage } from "@/hooks/use-chat-stream";
@@ -138,7 +142,11 @@ export function ChatWorkspace({
   // 快速提问预填：首页快问框提交带 ?q=，仅新对话页生效（预填不自动发送，避免误发）
   const quickQuery = searchParams.get("q");
   const queryClient = useQueryClient();
-  const setStreaming = useSetChatStreaming();
+  // ── 流式标记上报（2026-09-03 多会话集合化）：streaming 且会话归属已落位 → 标记该
+  //    会话生成中（侧栏脉冲动画）；本会话 run 到达本地终态 → 清除。切走/新建（卸载或
+  //    detach+reset）不清标记——run 在服务端继续执行，由侧栏轮询与重访校正兜底 ──
+  const markStreaming = useMarkChatStreaming();
+  const unmarkStreaming = useUnmarkChatStreaming();
   // 新建对话信号（Task 13）：侧栏 /chat 同路由按钮经 Context 发出，本组件消费执行干净态
   const newChatSeq = useChatNewChatSeq();
   const { state, send, cancel, reconnect, reset, resume, detach, replay } =
@@ -150,12 +158,17 @@ export function ChatWorkspace({
   const [inputResetKey, setInputResetKey] = useState(0);
 
   // ── 流式状态上报 (chat) 布局 Context：侧栏据守卫 Ctrl+K/新建对话（防跳转丢流），
-  // 并携带会话 id 供侧栏对应会话行渲染生成中动画（2026-08-27）──
+  // 并标记生成中会话供侧栏行渲染生成中动画（2026-08-27；2026-09-03 集合化）──
   useEffect(() => {
-    setStreaming(state.streaming, state.sessionId);
-    // 卸载/导航离开时复位，避免侧栏残留流式守卫态
-    return () => setStreaming(false);
-  }, [state.streaming, state.sessionId, setStreaming]);
+    if (!state.sessionId) return;
+    if (state.endedStatus !== null) {
+      // 本地终态（完成/停止/失败）：run 已收尾，清除本会话生成中标记；
+      // 断流 error 不在此列——run 仍在服务端执行，标记保留由侧栏轮询兜底
+      unmarkStreaming(state.sessionId);
+    } else if (state.streaming) {
+      markStreaming(state.sessionId);
+    }
+  }, [state.streaming, state.sessionId, state.endedStatus, markStreaming, unmarkStreaming]);
 
   // ── 会话归属落位即失效侧栏历史缓存 ──
   // (chat) 组布局常驻 → QueryClient 长活，侧栏查询无 refetch 触发点；

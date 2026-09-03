@@ -162,10 +162,11 @@ public class MemoryStreamBridge {
     /**
      * 查 run 终态并构建 end 事件 payload（BUG-04：deliverReplay closed 分支补发终态用）。
      *
-     * <p>payload 格式对齐 ChatStreamEntry subscribe-false 补发分支：COMPLETED 显式携带
-     * {@code messageId:null}（R2 契约可空容忍——本竞态窗口即时收尾，反馈目标可经刷新回放获取）；
-     * CANCELLED/ERROR 不带 messageId 键（半截内容不作反馈目标）；run 非终态（终态回写失败的
-     * 极端窗口）返回 null——调用方仅 complete，客户端重连后经 PG/降级路径补偿。
+     * <p>payload 格式对齐 ChatStreamEntry subscribe-false 补发分支：COMPLETED/CANCELLED 显式
+     * 携带 {@code messageId:null}（R2 契约可空容忍——2026-09-03 停止态改版起 CANCELLED 同样
+     * 携 messageId 键；本竞态窗口无法即时解析正文行 id，反馈目标可经刷新回放获取）；ERROR
+     * 不带 messageId 键（失败内容不作反馈目标）；run 非终态（终态回写失败的极端窗口）返回
+     * null——调用方仅 complete，客户端重连后经 PG/降级路径补偿。
      *
      * @param runId Run 唯一标识（字符串）
      * @return end 事件 payload JSON；run 不存在/非终态/查询异常返回 null
@@ -178,8 +179,9 @@ public class MemoryStreamBridge {
             }
             // runId/status 均为服务端白名单值（数字 ID + 枚举状态），手工拼接安全（与 ChatStreamEntry 同款）
             return switch (run.status()) {
-                case "COMPLETED" -> "{\"runId\":\"" + runId + "\",\"status\":\"COMPLETED\",\"messageId\":null}";
-                case "CANCELLED", "ERROR" -> "{\"runId\":\"" + runId + "\",\"status\":\"" + run.status() + "\"}";
+                case "COMPLETED", "CANCELLED" -> "{\"runId\":\"" + runId + "\",\"status\":\"" + run.status()
+                        + "\",\"messageId\":null}";
+                case "ERROR" -> "{\"runId\":\"" + runId + "\",\"status\":\"ERROR\"}";
                 default -> null;
             };
         } catch (Exception e) {

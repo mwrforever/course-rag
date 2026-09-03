@@ -25,7 +25,6 @@ import {
   createInitialState,
   findEditStartIndex,
   sseEventToAction,
-  STOPPED_SUFFIX,
   useChatStream,
 } from "./use-chat-stream";
 import type { ChatStreamState, StreamMessage } from "./use-chat-stream";
@@ -529,14 +528,38 @@ describe("chatReducer 纯函数", () => {
     expect(s.endedStatus).toBe("COMPLETED");
   });
 
-  it("用例7 扩展：end CANCELLED 追加「已停止生成」后缀", () => {
+  it("用例7 扩展：end CANCELLED 不改正文（停止提示由消息列表底部小字渲染）且透传 messageId", () => {
+    // 2026-09-03 停止态拍板：正文不再追加「已停止生成」后缀；messageId 透传
+    // （停止后反馈入口保留——后端取消落库回填的半截正文行 id）
     const s = chatReducer(streamingWithAi({ messages: [aiMsg()] }), {
       type: "end",
       status: "CANCELLED",
+      messageId: "msg-9",
     });
-    expect(s.messages[0].text).toBe(`回答一部分${STOPPED_SUFFIX}`);
+    expect(s.messages[0].text).toBe("回答一部分");
     expect(s.messages[0].endStatus).toBe("CANCELLED");
+    expect(s.messages[0].messageId).toBe("msg-9");
     expect(s.endedStatus).toBe("CANCELLED");
+  });
+
+  it("2026-09-03 停止态：本地 CANCELLED 收尾后，后端 END CANCELLED 携 messageId 补录（仅补 id 幂等）", () => {
+    // cancel() 先本地派发 end CANCELLED（无 id），后端 dispose→落库→END CANCELLED（携 id）
+    // 随后到达——终态幂等守卫放行 id 补录；重复补录/无 id 原引用返回
+    let s = chatReducer(streamingWithAi({ messages: [aiMsg()] }), {
+      type: "end",
+      status: "CANCELLED",
+    });
+    expect(s.messages[0].messageId).toBeNull();
+    s = chatReducer(s, { type: "end", status: "CANCELLED", messageId: "msg-late" });
+    expect(s.messages[0].messageId).toBe("msg-late");
+    expect(s.endedStatus).toBe("CANCELLED");
+    // 已补录后重复到达：原引用返回（不再变更）
+    const patched = s;
+    s = chatReducer(s, { type: "end", status: "CANCELLED", messageId: "msg-late-2" });
+    expect(s).toBe(patched);
+    // 无 id 的重复 CANCELLED end：原引用返回
+    s = chatReducer(s, { type: "end", status: "CANCELLED" });
+    expect(s).toBe(patched);
   });
 
   it("用例7 扩展：end ERROR 落终态并带 retryable 分级（错误横幅依据）", () => {
@@ -776,7 +799,7 @@ describe("chatReducer 纯函数", () => {
     expect(s.lastEventId).toBe(7);
   });
 
-  it("纯函数：冻结入参不被修改（metadata 建槽 / thinking 时间轴合并 / CANCELLED 后缀均不可变更新）", () => {
+  it("纯函数：冻结入参不被修改（metadata 建槽 / thinking 时间轴合并 / CANCELLED 终态均不可变更新）", () => {
     // 深层冻结：readonly 形态仅供本用例断言原对象未被修改（reducer 若可变更新会直接抛错）
     const s0 = Object.freeze({
       ...createInitialState(null),
@@ -785,7 +808,7 @@ describe("chatReducer 纯函数", () => {
     }) as unknown as ChatStreamState;
     const s1 = chatReducer(s0, { type: "metadata", runId: "run-1", sessionId: "s1", model: "m" });
     const s2 = chatReducer(s1, { type: "thinking", delta: "补充", stage: "generating" });
-    const s3 = chatReducer(s2, { type: "end", status: "CANCELLED" });
+    const s3 = chatReducer(s2, { type: "end", status: "CANCELLED", messageId: "m9" });
     // 原对象未被任何一步修改（若 reducer 可变更新，冻结会直接抛错）
     expect(s0.messages[0].text).toBe("回答一部分");
     expect(s1.messages[0].text).toBe("回答一部分");
@@ -794,7 +817,10 @@ describe("chatReducer 纯函数", () => {
       lines: ["补充"],
       ended: false,
     });
-    expect(s3.messages[0].text).toBe(`回答一部分${STOPPED_SUFFIX}`);
+    // CANCELLED 不再改正文（2026-09-03 停止态拍板），仅落终态与 messageId
+    expect(s3.messages[0].text).toBe("回答一部分");
+    expect(s3.messages[0].endStatus).toBe("CANCELLED");
+    expect(s3.messages[0].messageId).toBe("m9");
   });
 });
 
@@ -1357,7 +1383,7 @@ describe("useChatStream 集成", () => {
     expect(st2.runId).toBe("run-2");
     expect(st2.sessionId).toBe("sess-1");
 
-    // 第三轮 end CANCELLED：停止后缀落在第三轮自己的消息上，前两轮不被污染
+    // 第三轮 end CANCELLED：终态落在第三轮自己的消息上（正文不变更），前两轮不被污染
     await act(async () => {
       await result.current.send("再问", []);
     });
@@ -1366,16 +1392,19 @@ describe("useChatStream 集成", () => {
         frame(1, "metadata", J({ runId: "run-3", sessionId: "sess-1", model: "m1" })),
       );
       streams[2].push(frame(2, "delta", J({ text: "部分回答" })));
-      streams[2].push(frame(3, "end", J({ runId: "run-3", status: "CANCELLED" })));
+      streams[2].push(
+        frame(3, "end", J({ runId: "run-3", status: "CANCELLED", messageId: "msg-3" })),
+      );
     });
     await waitFor(() => expect(result.current.state.endedStatus).toBe("CANCELLED"));
     const st3 = result.current.state;
     expect(st3.messages).toHaveLength(6);
     expect(st3.messages[5]).toMatchObject({
       id: "run-3",
-      text: `部分回答${STOPPED_SUFFIX}`,
+      // 2026-09-03 停止态拍板：正文不追加后缀；messageId 透传（停止后反馈入口）
+      text: "部分回答",
       endStatus: "CANCELLED",
-      messageId: null,
+      messageId: "msg-3",
     });
     // 第二轮不受第三轮 CANCELLED 影响（正文无后缀、反馈 id 仍是 msg-2）
     expect(st3.messages[3]).toMatchObject({ id: "run-2", text: "第二轮回答", messageId: "msg-2" });
@@ -1384,7 +1413,7 @@ describe("useChatStream 集成", () => {
     expect(st3.error).toBeNull();
   });
 
-  it("cancel（M2 点击即停）：本地立即终态收尾（不等后端 end）——streaming=false、消息置 CANCELLED+停止后缀、随后照常发 cancelRun；后端 end 迟到幂等消化", async () => {
+  it("cancel（M2 点击即停）：本地立即终态收尾（不等后端 end）——streaming=false、消息置 CANCELLED（正文不变更）、随后照常发 cancelRun；后端 end 迟到补录 messageId", async () => {
     const ctrl = controllableSse();
     let cancelCalls = 0;
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1414,7 +1443,7 @@ describe("useChatStream 集成", () => {
       await result.current.cancel();
     });
 
-    // Then：本地终态即刻落位（streaming=false + CANCELLED + 停止后缀 + 输入框恢复依据）
+    // Then：本地终态即刻落位（streaming=false + CANCELLED + 正文原样 + 输入框恢复依据）
     expect(cancelCalls).toBe(1);
     const cancelCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/cancel"))!;
     expect(String(cancelCall[0])).toBe("/api/v1/student/chat/run-1/cancel");
@@ -1422,15 +1451,20 @@ describe("useChatStream 集成", () => {
     expect(result.current.state.streaming).toBe(false);
     expect(result.current.state.endedStatus).toBe("CANCELLED");
     expect(result.current.state.messages[1].endStatus).toBe("CANCELLED");
-    expect(result.current.state.messages[1].text).toBe(`部分回答${STOPPED_SUFFIX}`);
+    // 2026-09-03 停止态拍板：正文不追加「已停止生成」后缀（提示由消息列表底部小字渲染）
+    expect(result.current.state.messages[1].text).toBe("部分回答");
     expect(result.current.state.error).toBeNull();
 
-    // 后端 end CANCELLED 迟到到达：终态幂等消化（后缀不重复追加、状态不二次变更）
+    // 后端 end CANCELLED 迟到到达（携取消落库回填的半截正文行 id）：终态幂等消化 +
+    // messageId 补录（停止后反馈入口依据，正文不再变更）
     await act(async () => {
-      ctrl.push(frame(3, "end", J({ runId: "run-1", status: "CANCELLED" })));
+      ctrl.push(
+        frame(3, "end", J({ runId: "run-1", status: "CANCELLED", messageId: "msg-cancelled" })),
+      );
     });
     expect(result.current.state.endedStatus).toBe("CANCELLED");
-    expect(result.current.state.messages[1].text).toBe(`部分回答${STOPPED_SUFFIX}`);
+    expect(result.current.state.messages[1].text).toBe("部分回答");
+    expect(result.current.state.messages[1].messageId).toBe("msg-cancelled");
     expect(result.current.state.streaming).toBe(false);
 
     // 终态后再 cancel：409 静默（不抛、不染状态）

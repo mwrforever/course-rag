@@ -9,7 +9,8 @@
  *   工具步骤点击开工具结果抽屉
  * - 流式空窗三点脉冲（时间轴与正文皆空）
  * - 流式打字光标（streaming 时存在）
- * - 「已停止生成」后缀由 hook 追加，UI 按 endedStatus 渲染（不重复）
+ * - 「停止」提示（2026-09-03 图 4 拍板）：CANCELLED 终态正文不拼后缀，操作栏之后
+ *   渲染整块底部小字（stopped-hint）；反馈入口不隐藏
  * - 智能吸底滚动判定纯函数（仅底部 80px 内跟随）
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -255,18 +256,42 @@ describe("MessageList AI 消息组合与顺序", () => {
 });
 
 describe("MessageList 终态与操作栏", () => {
-  it("CANCELLED：正文尾部渲染「已停止生成」后缀（按 endedStatus，不重复）", () => {
-    // hook 契约：CANCELLED 终态已在 text 追加后缀，UI 剥离后按 endedStatus 渲染唯一一份
+  it("CANCELLED：正文保持原样（无后缀拼接），操作栏下方整块底部渲染小字提示（图 4）", () => {
+    // 2026-09-03 停止态拍板：正文不再拼「已停止生成」；提示为操作栏之后的小字
+    //（非标签/徽章样式）；操作栏（复制/反馈/重新生成）照常浮现不被隐藏
     const cancelled = makeAssistant({
-      text: "回答到这里被中断已停止生成",
+      text: "回答到这里被中断",
       endStatus: "CANCELLED",
-      messageId: null,
+      messageId: "msg-cancelled",
     });
     renderList([cancelled]);
     const body = screen.getByTestId("markdown-view");
     expect(body).toHaveTextContent("回答到这里被中断");
-    expect(body).toHaveTextContent("已停止生成");
-    expect(body.textContent!.match(/已停止生成/g)).toHaveLength(1);
+    // 正文不含提示文案（提示独立于正文渲染）
+    expect(body.textContent).not.toContain("已停止");
+    // 小字提示存在且位于操作栏（feedback-bar）之后（DOM 顺序断言）
+    const hint = screen.getByTestId("stopped-hint");
+    expect(hint).toHaveTextContent("这条消息已停止");
+    expect(hint.className).toContain("text-xs");
+    const bar = screen.getByTestId("feedback-bar");
+    expect(hint.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    // 反馈入口保留（CANCELLED 携 id）：有用/无用照常渲染
+    expect(screen.getByRole("button", { name: /有用/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /无用/ })).toBeInTheDocument();
+    // 旧徽标形态下线
+    expect(screen.queryByTestId("incomplete-badge-cancelled")).not.toBeInTheDocument();
+  });
+
+  it("CANCELLED 无 messageId（降级窗口）：操作栏仅复制、小字提示仍渲染", () => {
+    const cancelled = makeAssistant({
+      text: "半截",
+      endStatus: "CANCELLED",
+      messageId: null,
+    });
+    renderList([cancelled]);
+    expect(screen.getByTestId("stopped-hint")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /有用/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /复制/ })).toBeInTheDocument();
   });
 
   it("COMPLETED：end 后操作栏浮现（复制 + 有用 + 无用），反馈请求携带 messageId", async () => {

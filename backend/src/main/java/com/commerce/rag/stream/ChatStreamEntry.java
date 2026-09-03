@@ -285,13 +285,14 @@ public class ChatStreamEntry {
                     if (!bridge.subscribe(runId, emitter)) {
                         ChatRunVO closedRun = chatRunService.findById(Long.parseLong(runId));
                         if (closedRun != null && isTerminalStatus(closedRun.status())) {
-                            // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（M2：解析方法复查
-                            // run 状态——PERF-13 复用已查 closedRun，免重复查询）；CANCELLED/ERROR
-                            // 不带 messageId（半截内容不作反馈目标）
-                            String payload = "COMPLETED".equals(closedRun.status())
-                                    ? buildEndPayload(
-                                            runId, closedRun.status(), resolveAssistantMessageId(runId, closedRun))
-                                    : buildEndPayload(runId, closedRun.status());
+                            // R2 补口 B + 2026-09-03 停止态改版：COMPLETED/CANCELLED 终态补
+                            // assistant 正文行 messageId（M2：解析方法复查 run 状态——PERF-13
+                            // 复用已查 closedRun，免重复查询；CANCELLED 半截正文行同样可反馈）；
+                            // ERROR 不带 messageId（失败内容不作反馈目标）
+                            String payload = "ERROR".equals(closedRun.status())
+                                    ? buildEndPayload(runId, closedRun.status())
+                                    : buildEndPayload(
+                                            runId, closedRun.status(), resolveAssistantMessageId(runId, closedRun));
                             try {
                                 emitter.send(SseEmitter.event()
                                         .name(SseEventType.END.getEventName())
@@ -322,12 +323,12 @@ public class ChatStreamEntry {
             // 否则新 emitter 收不到 end，前端状态机永久停在"生成中"
             ChatRunVO run = chatRunService.findById(Long.parseLong(runId));
             if (run != null && isTerminalStatus(run.status())) {
-                // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（PERF-13：M2 状态过滤
-                // 与正文行扫描均在已查 run + PG 回放消息上比对，免重复查询）；CANCELLED/ERROR
-                // 不带 messageId 键
-                String payload = "COMPLETED".equals(run.status())
-                        ? buildEndPayload(runId, run.status(), resolveAssistantMessageId(run, replay.messages()))
-                        : buildEndPayload(runId, run.status());
+                // R2 补口 B + 2026-09-03 停止态改版：COMPLETED/CANCELLED 终态补 assistant 正文行
+                // messageId（PERF-13：M2 状态过滤与正文行扫描均在已查 run + PG 回放消息上比对，
+                // 免重复查询；CANCELLED 半截正文行同样可反馈）；ERROR 不带 messageId
+                String payload = "ERROR".equals(run.status())
+                        ? buildEndPayload(runId, run.status())
+                        : buildEndPayload(runId, run.status(), resolveAssistantMessageId(run, replay.messages()));
                 try {
                     emitter.send(SseEmitter.event()
                             .id(String.valueOf(replay.lastSeq() + 1))
@@ -346,11 +347,12 @@ public class ChatStreamEntry {
             if (!bridge.subscribe(runId, emitter)) {
                 ChatRunVO closedRun = chatRunService.findById(Long.parseLong(runId));
                 if (closedRun != null && isTerminalStatus(closedRun.status())) {
-                    // R2 补口 B：COMPLETED 终态补 assistant 正文行 messageId（M2 状态过滤——
-                    // PERF-13 复用已查 closedRun）；CANCELLED/ERROR 不带 messageId 键
-                    String payload = "COMPLETED".equals(closedRun.status())
-                            ? buildEndPayload(runId, closedRun.status(), resolveAssistantMessageId(runId, closedRun))
-                            : buildEndPayload(runId, closedRun.status());
+                    // R2 补口 B + 2026-09-03 停止态改版：COMPLETED/CANCELLED 终态补 assistant
+                    // 正文行 messageId（M2 状态过滤——PERF-13 复用已查 closedRun；CANCELLED
+                    // 半截正文行同样可反馈）；ERROR 不带 messageId
+                    String payload = "ERROR".equals(closedRun.status())
+                            ? buildEndPayload(runId, closedRun.status())
+                            : buildEndPayload(runId, closedRun.status(), resolveAssistantMessageId(runId, closedRun));
                     try {
                         emitter.send(SseEmitter.event()
                                 .id(String.valueOf(replay.lastSeq() + 1))
@@ -835,24 +837,26 @@ public class ChatStreamEntry {
      * <p>按 run_id 查消息表，反向扫描最后一条 role=ASSISTANT 且 messageType==null 的正文行
      * （最终回答，跳过 thinking/TOOL_* 行），ID 字符串化返回（与 runId 字符串风格一致）。
      *
-     * <p>审核修正 M2（强制）：必须校验 run.status==COMPLETED 才返回 ID——取消/异常路径的
-     * 半截 assistant 正文行虽已落库，但不得作为反馈目标（与实时路径「CANCELLED/ERROR 终态
-     * 不带 messageId」语义对齐）。异常/未落库窗口返回 null（正常降级，前端 {@code messageId?} 可空容忍）。
+     * <p>审核修正 M2（2026-09-03 停止态改版放宽）：必须校验 run 终态才返回 ID——
+     * COMPLETED/CANCELLED run 的 assistant 正文行（含取消路径的半截正文行）可作反馈目标
+     * （停止后点赞点踩保留，图 4 拍板）；ERROR 终态不得作为反馈目标。异常/未落库窗口
+     * 返回 null（正常降级，前端 {@code messageId?} 可空容忍）。
      *
      * <p>PERF-13（2026-08-31）：降级路径 run 已在手时复用传入（免 run 复查），messages 仍自查
      * （无既有可复用列表的调用点）；run/messages 均在手时直接走纯比对重载，全程零额外查询
      * （降级路径 4 次 DB 往返收敛为 2 次）。
      *
      * @param runId    Run 唯一标识（字符串，归属校验已通过）
-     * @param knownRun 调用方已查询的 run（非 null 时复用，M2 状态过滤在该对象上比对；null 时自查）
-     * @return assistant 正文行消息 ID 字符串；run 非 COMPLETED / 无正文行 / 查询异常时返回 null
+     * @param knownRun 调用方已查询的 run（非 null 时复用，终态过滤在该对象上比对；null 时自查）
+     * @return assistant 正文行消息 ID 字符串；run 非 COMPLETED/CANCELLED / 无正文行 / 查询异常时返回 null
      */
     private String resolveAssistantMessageId(String runId, ChatRunVO knownRun) {
         try {
             Long runIdLong = Long.parseLong(runId);
-            // M2 状态过滤：仅 COMPLETED run 的 assistant 正文行可作反馈目标（knownRun 非空时免查）
+            // M2 状态过滤（2026-09-03 放宽）：COMPLETED/CANCELLED run 的正文行可作反馈目标
+            // （CANCELLED 半截回答同样开放反馈；ERROR 排除）
             ChatRunVO run = knownRun != null ? knownRun : chatRunService.findById(runIdLong);
-            if (run == null || !"COMPLETED".equals(run.status())) {
+            if (!isFeedbackEligibleStatus(run)) {
                 return null;
             }
             List<ChatMessageVO> messages = chatMessageService.findByRunId(runIdLong);
@@ -866,15 +870,15 @@ public class ChatStreamEntry {
 
     /**
      * 解析 assistant 正文行消息 ID 的纯比对重载（PERF-13）——在既有 run/messages 上完成
-     * M2 状态过滤与反向扫描，不产生任何 DB 查询；调用方保证对象新鲜度
+     * 终态过滤与反向扫描，不产生任何 DB 查询；调用方保证对象新鲜度
      * （同一降级流程内已查数据，run 终态为最终态无并发漂移）。
      *
-     * @param run      已查询的 run（M2 过滤对象；null 或非 COMPLETED 返回 null）
+     * @param run      已查询的 run（终态过滤对象；null 或非 COMPLETED/CANCELLED 返回 null）
      * @param messages 已查询的消息列表（按 seq 升序；null/空返回 null）
      * @return assistant 正文行消息 ID 字符串；无正文行时返回 null
      */
     private String resolveAssistantMessageId(ChatRunVO run, List<ChatMessageVO> messages) {
-        if (run == null || !"COMPLETED".equals(run.status())) {
+        if (!isFeedbackEligibleStatus(run)) {
             return null;
         }
         if (messages == null || messages.isEmpty()) {
@@ -891,27 +895,39 @@ public class ChatStreamEntry {
     }
 
     /**
-     * 构建 end 事件 payload（R2 补口 B，CANCELLED/ERROR 终态变体——不带 messageId 键）。
+     * 反馈目标终态判定（M2 2026-09-03 放宽）：COMPLETED/CANCELLED run 的 assistant 正文行
+     * 可作反馈目标（取消路径半截正文行开放反馈，图 4 停止态拍板）；ERROR/非终态/null 排除。
+     *
+     * @param run run 视图（可 null）
+     * @return true=COMPLETED/CANCELLED（可反馈）
+     */
+    private boolean isFeedbackEligibleStatus(ChatRunVO run) {
+        return run != null && ("COMPLETED".equals(run.status()) || "CANCELLED".equals(run.status()));
+    }
+
+    /**
+     * 构建 end 事件 payload（R2 补口 B，ERROR 终态变体——不带 messageId 键）。
      *
      * <p>runId/status 均来自服务端白名单值（数字 ID + 枚举状态），手工拼接安全。
      *
      * @param runId  Run 唯一标识（字符串）
-     * @param status run 终态（CANCELLED/ERROR）
-     * @return {@code {"runId":"...","status":"..."}}（无 messageId 键——半截内容不作反馈目标）
+     * @param status run 终态（ERROR）
+     * @return {"runId":"...","status":"..."}（无 messageId 键——失败内容不作反馈目标）
      */
     private String buildEndPayload(String runId, String status) {
         return "{\"runId\":\"" + runId + "\",\"status\":\"" + status + "\"}";
     }
 
     /**
-     * 构建 end 事件 payload（R2 补口 B，COMPLETED 终态变体——追加 messageId 字段）。
+     * 构建 end 事件 payload（R2 补口 B，COMPLETED/CANCELLED 终态变体——追加 messageId 字段；
+     * 2026-09-03 停止态改版：CANCELLED 亦携带，停止后反馈入口保留）。
      *
      * <p>messageId 恒字符串或显式 null（异常/未落库窗口无法解析时 null，前端可空容忍）。
      *
      * @param runId      Run 唯一标识（字符串）
-     * @param status     run 终态（COMPLETED）
+     * @param status     run 终态（COMPLETED/CANCELLED）
      * @param messageId assistant 正文行消息 ID 字符串（可为 null）
-     * @return {@code {"runId":"...","status":"...","messageId":"..."|null}}
+     * @return {"runId":"...","status":"...","messageId":"..."|null}
      */
     private String buildEndPayload(String runId, String status, String messageId) {
         return "{\"runId\":\"" + runId + "\",\"status\":\"" + status + "\",\"messageId\":"

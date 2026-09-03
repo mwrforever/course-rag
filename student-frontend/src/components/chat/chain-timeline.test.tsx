@@ -149,9 +149,32 @@ describe("ChainTimeline 交互", () => {
   });
 });
 
-describe("ChainTimeline M3 渲染排序兜底（sources 前置，不依赖到达序）", () => {
-  it("sources 节点迟到（到达序在末位）→ 渲染仍排在思考/工具节点之前（M3 前端兜底）", () => {
-    // 服务端主保证之外的迟到 SOURCES：到达序最末，渲染层归一后必须前置
+describe("ChainTimeline 渲染序（2026-09-03 拍板：严格按事件到达序，不重排）", () => {
+  it("正常序（理解思考 → sources → generating 思考）按到达序渲染——检索卡不排首位", () => {
+    // 服务端 M3 契约保证 SOURCES 先于 generating 内容、后于 understanding 思考：
+    // 到达序即触发序，渲染层不再做任何「sources 强制前置」重排（旧兜底会把检索卡
+    // 排到意图理解思考卡之前，与服务端真实触发序矛盾）
+    const { container } = render(
+      <ChainTimeline
+        timeline={FULL_TIMELINE}
+        active={false}
+        sources={[SOURCE]}
+        onOpenSources={() => {}}
+        onOpenTool={() => {}}
+      />,
+    );
+    const steps = Array.from(container.querySelectorAll(".chain-step")) as HTMLElement[];
+    expect(steps).toHaveLength(4);
+    // DOM 顺序断言：understanding 思考卡第一、sources 第二——检索不可能出现在首位
+    expect(steps[0]).toHaveAttribute("data-testid", "thinking-step");
+    expect(steps[1]).toHaveAttribute("data-testid", "sources-step");
+    expect(steps[2]).toHaveAttribute("data-testid", "thinking-step");
+    expect(steps[3]).toHaveAttribute("data-testid", "tool-step");
+  });
+
+  it("sources 节点迟到（到达序在末位）→ 按到达序渲染在末位（不前置、不改传入数组）", () => {
+    // 迟到 SOURCES（服务端 2s 有界缓冲超时放行的罕见场景）：按到达序渲染——
+    // 用户拍板「按时间触发顺序渲染」，渲染层归一重排已移除
     const lateSourcesTimeline: TimelineNode[] = [
       { kind: "thinking", stage: "generating", lines: ["思考"], ended: true },
       {
@@ -175,34 +198,18 @@ describe("ChainTimeline M3 渲染排序兜底（sources 前置，不依赖到达
     );
     const steps = Array.from(container.querySelectorAll(".chain-step")) as HTMLElement[];
     expect(steps).toHaveLength(3);
-    // DOM 顺序断言：sources-step 是 chain-timeline 的第一个步骤节点，思考/工具随后
-    expect(steps[0]).toHaveAttribute("data-testid", "sources-step");
-    expect(steps[1]).toHaveAttribute("data-testid", "thinking-step");
-    expect(steps[2]).toHaveAttribute("data-testid", "tool-step");
-    // 纯渲染排序不改 state：传入数组本身保持原到达序（末位仍为 sources）
+    // DOM 顺序断言：与传入到达序一致（sources 末位），无重排
+    expect(steps[0]).toHaveAttribute("data-testid", "thinking-step");
+    expect(steps[1]).toHaveAttribute("data-testid", "tool-step");
+    expect(steps[2]).toHaveAttribute("data-testid", "sources-step");
     expect(lateSourcesTimeline[2].kind).toBe("sources");
   });
 
-  it("sources 已在首位或无 sources 节点 → 渲染保持原序（无重排副作用）", () => {
-    // sources 已在首位：原序渲染（排序兜底为 no-op）
-    const { container: firstBox } = render(
-      <ChainTimeline
-        timeline={FULL_TIMELINE.slice(1)}
-        active={false}
-        sources={[SOURCE]}
-        onOpenSources={() => {}}
-        onOpenTool={() => {}}
-      />,
-    );
-    const firstSteps = Array.from(firstBox.querySelectorAll(".chain-step")) as HTMLElement[];
-    expect(firstSteps).toHaveLength(3);
-    expect(firstSteps[0]).toHaveAttribute("data-testid", "sources-step");
-    expect(firstSteps[1]).toHaveAttribute("data-testid", "thinking-step");
-    // 无 sources 节点：纯思考序列原样渲染（与上一 render 合计 2 个 thinking-step）
+  it("无 sources 节点 → 纯思考序列原样渲染", () => {
     const noSources: TimelineNode[] = [
       { kind: "thinking", stage: "generating", lines: ["思考"], ended: true },
     ];
-    const { container: noneBox } = render(
+    const { container } = render(
       <ChainTimeline
         timeline={noSources}
         active={false}
@@ -211,7 +218,10 @@ describe("ChainTimeline M3 渲染排序兜底（sources 前置，不依赖到达
         onOpenTool={() => {}}
       />,
     );
-    expect(noneBox.querySelectorAll(".chain-step")).toHaveLength(1);
-    expect(screen.getAllByTestId("thinking-step")).toHaveLength(2);
+    expect(container.querySelectorAll(".chain-step")).toHaveLength(1);
+    expect(container.querySelectorAll(".chain-step")[0]).toHaveAttribute(
+      "data-testid",
+      "thinking-step",
+    );
   });
 });

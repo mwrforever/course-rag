@@ -19,15 +19,18 @@ import { ChatSidebar } from "./chat-sidebar";
 import {
   ChatStreamingProvider,
   useChatNewChatSeq,
-  useSetChatStreaming,
+  useMarkChatStreaming,
+  useUnmarkChatStreaming,
 } from "./chat-streaming-context";
 import type { SessionItem } from "@/lib/types";
 
-/** 数据层 mock：getSessions 会话列表（骨架/空/正常态）+ 重命名/删除（会话管理用例） */
+/** 数据层 mock：getSessions 会话列表（骨架/空/正常态）+ 重命名/删除（会话管理用例）
+ *  + getActiveRun（2026-09-03 生成中标记自愈核对） */
 const apiMock = vi.hoisted(() => ({
   getSessions: vi.fn(),
   updateSessionTitle: vi.fn(),
   deleteSession: vi.fn(),
+  getActiveRun: vi.fn(),
 }));
 /** 认证 mock：displayName / logout 可切 */
 const authMock = vi.hoisted(() => ({ useAuth: vi.fn() }));
@@ -46,6 +49,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
     getSessions: apiMock.getSessions,
     updateSessionTitle: apiMock.updateSessionTitle,
     deleteSession: apiMock.deleteSession,
+    getActiveRun: apiMock.getActiveRun,
   };
 });
 vi.mock("@/lib/auth-context", () => ({ useAuth: () => authMock.useAuth() }));
@@ -88,12 +92,20 @@ function renderSidebar(pathname = "/chat") {
   );
 }
 
-/** 流式状态探针：把 Provider 的 setStreaming 暴露给用例（模拟 ChatWorkspace 上报） */
-function StreamingProbe({ onReady }: { onReady: (set: (streaming: boolean) => void) => void }) {
-  const setStreaming = useSetChatStreaming();
+/** 流式标记探针：把 Provider 的 mark/unmark 暴露给用例（模拟 ChatWorkspace 上报，2026-09-03 集合化） */
+function StreamingProbe({
+  onReady,
+}: {
+  onReady: (api: {
+    mark: (sessionId: string) => void;
+    unmark: (sessionId: string) => void;
+  }) => void;
+}) {
+  const mark = useMarkChatStreaming();
+  const unmark = useUnmarkChatStreaming();
   useEffect(() => {
-    onReady(setStreaming);
-  }, [onReady, setStreaming]);
+    onReady({ mark, unmark });
+  }, [onReady, mark, unmark]);
   return null;
 }
 
@@ -110,6 +122,8 @@ beforeEach(() => {
   apiMock.getSessions.mockReset();
   apiMock.updateSessionTitle.mockReset();
   apiMock.deleteSession.mockReset();
+  // 默认核实命中活跃 run（标记保留）；自愈用例按需覆盖为 null
+  apiMock.getActiveRun.mockReset().mockResolvedValue("run-live");
   authMock.useAuth.mockReset();
   navMock.push.mockReset();
   navMock.clear.mockReset();
@@ -346,6 +360,119 @@ describe("ChatSidebar 会话管理（增删改查）", () => {
   });
 });
 
+describe("ChatSidebar 生成中标记（2026-09-03 集合化：切走/新建不清标记 + 核实自愈）", () => {
+  /** 分页响应构造（total 为 Long→string） */
+  function pageOf(records: SessionItem[], total: number) {
+    return { records, total: String(total), page: 1, size: 20 };
+  }
+
+  /** Provider + 探针 + 侧栏渲染（生成中标记用例共用） */
+  function renderWithProbe() {
+    let api: { mark: (sessionId: string) => void; unmark: (sessionId: string) => void };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ChatStreamingProvider>
+          <StreamingProbe
+            onReady={(handlers) => {
+              api = handlers;
+            }}
+          />
+          <ChatSidebar />
+        </ChatStreamingProvider>
+      </QueryClientProvider>,
+    );
+    return {
+      view,
+      mark: (id: string) => act(() => api!.mark(id)),
+      unmark: (id: string) => act(() => api!.unmark(id)),
+    };
+  }
+
+  it("标记集合命中会话行渲染脉冲点；多会话并发可并存（集合语义）", async () => {
+    apiMock.getSessions.mockResolvedValue(
+      pageOf(
+        [makeSession({ id: "s1", title: "会话一" }), makeSession({ id: "s2", title: "会话二" })],
+        2,
+      ),
+    );
+    const { mark } = renderWithProbe();
+    const first = await screen.findByRole("link", { name: /会话一/ });
+    expect(
+      first
+        .closest('[data-testid="sidebar-session-item"]')!
+        .querySelector('[data-testid="session-generating-dot"]'),
+    ).toBeNull();
+
+    // 标记 s1（模拟工作区 streaming 上报）：仅 s1 行出现脉冲点
+    mark("s1");
+    const rowOne = screen
+      .getByRole("link", { name: /会话一/ })
+      .closest('[data-testid="sidebar-session-item"]') as HTMLElement;
+    const rowTwo = screen
+      .getByRole("link", { name: /会话二/ })
+      .closest('[data-testid="sidebar-session-item"]') as HTMLElement;
+    expect(rowOne.querySelector('[data-testid="session-generating-dot"]')).not.toBeNull();
+    expect(rowTwo.querySelector('[data-testid="session-generating-dot"]')).toBeNull();
+
+    // 再标记 s2（多会话并发）：两行同时挂脉冲点
+    mark("s2");
+    expect(rowTwo.querySelector('[data-testid="session-generating-dot"]')).not.toBeNull();
+  });
+
+  it("自愈：标记后核实无活跃 run（active-run 返回 null）→ 清标记、脉冲点消失", async () => {
+    // 标记出现即核实一次（30s 周期外的即时核对路径）：run 已结束 → 标记不滞留
+    apiMock.getActiveRun.mockResolvedValue(null);
+    apiMock.getSessions.mockResolvedValue(pageOf([makeSession({ id: "s1", title: "会话一" })], 1));
+    const { mark } = renderWithProbe();
+    await screen.findByRole("link", { name: /会话一/ });
+    mark("s1");
+    await waitFor(() => {
+      expect(apiMock.getActiveRun).toHaveBeenCalledWith("s1");
+    });
+    await waitFor(() => {
+      const row = screen
+        .getByRole("link", { name: /会话一/ })
+        .closest('[data-testid="sidebar-session-item"]') as HTMLElement;
+      expect(row.querySelector('[data-testid="session-generating-dot"]')).toBeNull();
+    });
+  });
+
+  it("自愈：核实命中活跃 run → 标记保留；核实请求失败不清标记（下轮兜底）", async () => {
+    apiMock.getSessions.mockResolvedValue(pageOf([makeSession({ id: "s1", title: "会话一" })], 1));
+    const { mark } = renderWithProbe();
+    await screen.findByRole("link", { name: /会话一/ });
+    // 命中活跃 run（beforeEach 默认 run-live）：标记保留
+    mark("s1");
+    await waitFor(() => {
+      expect(apiMock.getActiveRun).toHaveBeenCalledWith("s1");
+    });
+    let row = screen
+      .getByRole("link", { name: /会话一/ })
+      .closest('[data-testid="sidebar-session-item"]') as HTMLElement;
+    expect(row.querySelector('[data-testid="session-generating-dot"]')).not.toBeNull();
+
+    // 核实请求失败（网络异常）：标记不清（保留下轮核对）
+    apiMock.getActiveRun.mockRejectedValue(new Error("网络抖动"));
+    row = screen
+      .getByRole("link", { name: /会话一/ })
+      .closest('[data-testid="sidebar-session-item"]') as HTMLElement;
+    expect(row.querySelector('[data-testid="session-generating-dot"]')).not.toBeNull();
+  });
+
+  it("清除标记（本地终态上报）：脉冲点即时消失（工作区 end 后路径）", async () => {
+    apiMock.getSessions.mockResolvedValue(pageOf([makeSession({ id: "s1", title: "会话一" })], 1));
+    const { mark, unmark } = renderWithProbe();
+    await screen.findByRole("link", { name: /会话一/ });
+    mark("s1");
+    unmark("s1");
+    const row = screen
+      .getByRole("link", { name: /会话一/ })
+      .closest('[data-testid="sidebar-session-item"]') as HTMLElement;
+    expect(row.querySelector('[data-testid="session-generating-dot"]')).toBeNull();
+  });
+});
+
 describe("ChatSidebar 折叠与快捷键", () => {
   it("折叠切换：收起为 w-16 图标态，偏好写回 localStorage，展开恢复", async () => {
     apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
@@ -445,14 +572,18 @@ describe("ChatSidebar 折叠与快捷键", () => {
 
   it("多会话并发（2026-09-01 用户拍板）：流式生成中新建对话仍可用（按钮不禁用 + Ctrl+K 发信号）", async () => {
     apiMock.getSessions.mockResolvedValue({ records: [], total: "0", page: 1, size: 20 });
-    // 探针：模拟工作区经 Context 上报流式状态 + 观察新建信号计数
-    let setStreaming!: (streaming: boolean) => void;
+    // 探针：模拟工作区经 Context 标记某会话生成中 + 观察新建信号计数
+    let markStreaming!: (sessionId: string) => void;
     const seqs: number[] = [];
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
         <ChatStreamingProvider>
-          <StreamingProbe onReady={(set) => (setStreaming = set)} />
+          <StreamingProbe
+            onReady={({ mark }) => {
+              markStreaming = mark;
+            }}
+          />
           <NewChatSeqProbe onChange={(seq) => seqs.push(seq)} />
           <ChatSidebar />
         </ChatStreamingProvider>
@@ -461,7 +592,7 @@ describe("ChatSidebar 折叠与快捷键", () => {
     const newChat = await screen.findByRole("button", { name: /新建对话/ });
 
     // 流式生成中（另一会话正在回答）：不再被全局守卫禁用——可同时开启多会话问答
-    act(() => setStreaming(true));
+    act(() => markStreaming("s-other"));
     expect(newChat).toBeEnabled();
     expect(newChat).not.toHaveAttribute("title", /回答生成中|结束后再新建/);
 

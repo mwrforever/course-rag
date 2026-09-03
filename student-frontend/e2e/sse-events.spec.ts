@@ -226,11 +226,12 @@ test.describe("SSE 事件逐类", () => {
     await expect(page.getByText("阶段之后的正文。")).toBeVisible();
   });
 
-  test("检索时序契约（M3）：sources 帧迟到（晚于思考/正文帧到达）→ sources 步骤仍渲染在思考之前", async ({
+  test("检索时序（2026-09-03 拍板）：sources 帧迟到（晚于思考/正文帧到达）→ 按到达序渲染在思考之后（不前置）", async ({
     page,
   }) => {
     // route-mock 模拟服务端主保证失效的最坏形态：sources 帧晚于 thinking/delta 到达——
-    // 前端渲染排序兜底必须把检索步骤前置（web-first 断言 DOM 顺序，不依赖到达序）
+    // 2026-09-03 用户拍板「按时间触发顺序渲染」：渲染层不再重排（原 M3 前置兜底下线），
+    // 迟到 sources 按到达序落在思考之后（web-first 断言 DOM 顺序）
     await mockChatStream(
       page,
       frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
@@ -256,14 +257,14 @@ test.describe("SSE 事件逐类", () => {
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    // 步骤就绪后按几何位置断言：sources-step 必须位于 thinking-step 之前（M3 兜底）
+    // 步骤就绪后按几何位置断言：thinking-step 在前、迟到 sources-step 在后（到达序）
     const sourcesStep = page.getByTestId("sources-step");
     await expect(sourcesStep).toBeVisible();
     const thinkingStep = page.getByTestId("thinking-step");
     await expect(thinkingStep).toBeVisible();
     const sourcesBox = await sourcesStep.boundingBox();
     const thinkingBox = await thinkingStep.boundingBox();
-    expect(sourcesBox && thinkingBox && sourcesBox.y < thinkingBox.y).toBeTruthy();
+    expect(sourcesBox && thinkingBox && thinkingBox.y < sourcesBox.y).toBeTruthy();
     // 正文照常渲染于时间轴之后（链式结构完整性）
     await expect(page.getByText("引用资料的回答正文。")).toBeVisible();
   });

@@ -241,6 +241,14 @@ class ChatFlowIntegrationTest extends IntegrationTestBase {
             Long run2 = latestRunId(sessionId);
             assertNotNull(run2, "第二轮 chat_run 应已创建");
 
+            // 2026-09-03 多会话并发历史可见：run 进行中（ACTIVE，尚未取消）USER 行已由
+            // worker 认领时提前落库——用户切走再切回会话，历史回显即可见本次提问
+            awaitRowCount(
+                    "SELECT COUNT(*) FROM chat_message WHERE run_id = ? AND role = 'USER'",
+                    run2,
+                    1,
+                    "run 进行中用户消息行应已提前落库（认领即写，2026-09-03）");
+
             // 下发取消（M2：worker 立刻 dispose 图流订阅 + 主动唤醒终态收尾——reactAgent 流永不完成，
             // 不取消将悬挂至 5 分钟兜底超时误走 ERROR）
             HttpHeaders headers = new HttpHeaders();

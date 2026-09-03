@@ -1,10 +1,13 @@
 "use client";
 
 /**
- * 链式时间轴容器（2026-08-28 时间线改版，设计稿 .chain 复刻；2026-08-30 对齐设计稿）
+ * 链式时间轴容器（2026-08-28 时间线改版，设计稿 .chain 复刻；2026-08-30 对齐设计稿；
+ * 2026-09-03 渲染序拍板修订）
  *
- * 一根渐变竖线串联全部步骤：StreamMessage.timeline 逐节点渲染——渲染前经 M3 排序兜底
- * （sources 节点强制前置思考/工具节点，不依赖 SSE 到达序；迟到 SOURCES 兜底）——
+ * 一根渐变竖线串联全部步骤：StreamMessage.timeline 逐节点渲染——**严格按事件到达序**
+ * （= 服务端触发序，2026-09-03 用户拍板：检索卡不可能排在首位——意图理解思考恒先于
+ * 检索；M3 服务端契约保证 SOURCES 先于 generating 内容事件，前端不再做「sources 强制
+ * 前置」重排兜底，历史回显 historyAdapter 亦按行序重建，两侧同构）——
  * - thinking 节点 → ThinkingStep（Brain → 绿勾，mask 收起展开；按 LLM 调用拆分，
  *   主 agent 每次模型调用一块思考卡）
  * - sources 节点 → 检索步骤（MagnifyingGlass + 虚线雷达环；完成文案「已检索 N 篇相关资料」，
@@ -18,7 +21,7 @@
  * 节点（「未识别意图」/重写查询清单）——设计稿无对应元素，前端不再渲染。
  */
 import { MagnifyingGlass, Wrench } from "@phosphor-icons/react";
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback } from "react";
 import { OpStep, summarizeOutput, toolNameLabel } from "./op-step";
 import { ThinkingStep } from "./thinking-step";
 import type { RetrievalSource, TimelineNode, TimelineToolNode } from "@/lib/types";
@@ -75,21 +78,13 @@ export const ChainTimeline = memo(function ChainTimeline({
   // 来源步骤点击回调（PERF-05）：依赖仅稳定引用（onOpenSources 调用方 useCallback、
   // sources 数组随事件到达才换引用），保证时间轴自身 memo 不被内部闭包击穿
   const openSources = useCallback(() => onOpenSources(sources), [onOpenSources, sources]);
-  // M3 前端兜底：渲染层归一——sources 节点强制排在思考/工具节点之前（不依赖到达序；
-  // 服务端 STAGE(generating) 转换点主保证之外的迟到 SOURCES 由此兜底；纯渲染排序不改
-  // state，历史回显 historyAdapter 的原位插入语义不受影响）
-  const orderedTimeline = useMemo(() => {
-    const sourcesNodes = timeline.filter((node) => node.kind === "sources");
-    // 无 sources 或 sources 已在首位：原序返回（引用不变，memo 链路零开销）
-    if (sourcesNodes.length === 0 || timeline[0].kind === "sources") {
-      return timeline;
-    }
-    return [...sourcesNodes, ...timeline.filter((node) => node.kind !== "sources")];
-  }, [timeline]);
-  const lastIndex = orderedTimeline.length - 1;
+  // 2026-09-03 渲染序拍板修订：timeline 即事件到达序（reducer 按到达序 push/merge、
+  // historyAdapter 按行序重建），直接渲染——不做任何重排（原 M3「sources 强制前置」
+  // 兜底会把检索卡排到意图理解思考卡之前，与服务端真实触发序矛盾）
+  const lastIndex = timeline.length - 1;
   return (
     <div data-testid="chain-timeline" className="chain-timeline">
-      {orderedTimeline.map((node, index) => {
+      {timeline.map((node, index) => {
         const running = isNodeRunning(node, index === lastIndex, active);
         switch (node.kind) {
           case "thinking":

@@ -145,7 +145,37 @@ test.describe("SSE 生命周期", () => {
     await expect(page.getByRole("button", { name: "重新提问" })).toBeVisible();
   });
 
-  test("CANCELLED 终态：已停止生成后缀且无反馈入口", async ({ page }) => {
+  test("CANCELLED 终态（2026-09-03 停止态拍板）：正文无后缀、底部小字提醒、反馈入口保留", async ({
+    page,
+  }) => {
+    await mockChatStream(
+      page,
+      frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
+        frame("delta", { text: "半截回答" }, 2) +
+        // 后端取消落库回填半截正文行 id → END CANCELLED 携带（停止后反馈入口依据）
+        frame("end", { runId: "9001", status: "CANCELLED", messageId: "5009" }, 3),
+    );
+    await login(page, "/");
+    await page.goto("/chat");
+    await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
+    await page.getByRole("button", { name: "发送" }).click();
+    // 正文原样（不再拼「已停止生成」后缀）
+    await expect(page.getByTestId("markdown-view")).toHaveText("半截回答");
+    // 整块内容最底部小字提醒（操作栏之后，非标签/徽章样式）
+    await expect(page.getByTestId("stopped-hint")).toHaveText("这条消息已停止");
+    const hintBox = await page.getByTestId("stopped-hint").boundingBox();
+    const barBox = await page.getByTestId("feedback-bar").boundingBox();
+    expect(hintBox && barBox && barBox.y < hintBox.y).toBeTruthy();
+    // 反馈入口保留（CANCELLED 携 messageId）：有用/无用/复制/重新生成均在场
+    await expect(page.getByRole("button", { name: "复制回答" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "有用" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "无用" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "重新生成" })).toBeVisible();
+    // 旧徽标形态下线
+    await expect(page.getByTestId("incomplete-badge-cancelled")).toHaveCount(0);
+  });
+
+  test("CANCELLED 无 messageId（降级窗口）：仅复制无反馈，小字提醒仍在", async ({ page }) => {
     await mockChatStream(
       page,
       frame("metadata", { runId: "9001", sessionId: "77", model: "qwen3.8-max" }, 1) +
@@ -156,8 +186,7 @@ test.describe("SSE 生命周期", () => {
     await page.goto("/chat");
     await page.getByPlaceholder("输入你的问题，Enter 发送，Shift+Enter 换行").fill("提问");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText(/半截回答.*已停止生成/)).toBeVisible();
-    // CANCELLED 无 messageId：无反馈按钮（仅复制）
+    await expect(page.getByTestId("stopped-hint")).toBeVisible();
     await expect(page.getByRole("button", { name: "有用" })).toBeHidden();
     await expect(page.getByRole("button", { name: "复制回答" })).toBeVisible();
   });
