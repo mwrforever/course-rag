@@ -682,13 +682,13 @@ a:hover .read-link::after {
 
 /* ===== 链式时间轴组件族（2026-08-28 时间线改版：设计稿 .chain 体系逐元素复刻，
    令牌映射 gold→--color-gold 族 / green→--color-success / 纸面→surface 族） ===== */
-/* 链容器：一根渐变竖线串联全部步骤；align-items:flex-start 保证节点与头部行
-   钉在顶部原位——展开内容后不被居中漂移（设计稿关键结构注释） */
+/* 链容器：一根渐变竖线串联全部步骤；子步骤默认 stretch 铺满整行——
+   2026-09-03 用户拍板：思考/检索/工具卡统一区域宽度（卡片不随短行内容收缩、
+   展开思考卡的内滚动条严格贴内容区右缘），纵向由 flex-direction:column 自然堆叠 */
 .chain-timeline {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   animation: var(--animate-chain-rise);
 }
 .chain-timeline::before {
@@ -944,8 +944,9 @@ a:hover .read-link::after {
   color: var(--color-gold-deep);
   padding: 0 1px;
 }
+/* 完成态箭头：紧跟完成文案右侧（2026-09-03 随卡片铺满整行调整——原 margin-left:auto
+   在窄卡下等价紧跟文案，铺满后会把箭头推到行末与文案脱节，故改为常规流式排布） */
 .chain-op-go {
-  margin-left: auto;
   flex: none;
   width: 15px;
   height: 15px;
