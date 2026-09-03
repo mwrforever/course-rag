@@ -785,16 +785,16 @@ class ChatRequestWorkerTest {
         // When: 游标=2（历史 2 条）
         invokePersistMessages(1L, 1L, "本轮问题", "[]", "[]", 2, lastOutput, null, null, sink, false);
 
-        // Then: 仅持久化本轮——USER + 主 agent 实体行 + TOOL_RESULT 行（历史 assistant 不得重插）
+        // Then: 仅持久化本轮——主 agent 实体行 + TOOL_RESULT 行（历史 assistant 不得重插；
+        // USER 行 2026-09-03 起由 run 认领时 saveUserMessageRow 提前落库，不进本批）
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
         verify(chatMessageService).batchInsert(captor.capture());
         List<ChatMessage> inserted = captor.getValue();
-        assertEquals(3, inserted.size(), "USER + 实体行 + TOOL_RESULT 行");
-        assertEquals("USER", inserted.get(0).getRole());
-        ChatMessage entityRow = inserted.get(1);
+        assertEquals(2, inserted.size(), "实体行 + TOOL_RESULT 行");
+        ChatMessage entityRow = inserted.get(0);
         assertEquals("assistant", entityRow.getMessageType(), "正常路径落 assistant 实体行");
         assertTrue(entityRow.getContent().contains("\"text\":\"本轮回答\""), "实体行 content 应含正文");
-        assertEquals("TOOL_RESULT", inserted.get(2).getMessageType(), "TOOL_RESULT 保持独立事件行");
+        assertEquals("TOOL_RESULT", inserted.get(1).getMessageType(), "TOOL_RESULT 保持独立事件行");
         assertTrue(inserted.stream().noneMatch(r -> "历史回答".equals(r.getContent())), "游标之前的历史消息不得重插");
     }
 
@@ -824,16 +824,16 @@ class ChatRequestWorkerTest {
         // When
         invokePersistMessages(1L, 2L, "高等数学怎么学", "[]", "[]", 0, lastOutput, null, null, sink, false);
 
-        // Then: 行序 user(0) → QU 实体(2) → caption 实体(3) → 主 agent 实体(5)
+        // Then: 行序 QU 实体(2) → caption 实体(3) → 主 agent 实体(5)（USER 行已由 run 认领时
+        // 提前落库不进本批，seq 计数仍从 1 起——实体 seq 与旧口径一致）
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
         verify(chatMessageService).batchInsert(captor.capture());
         List<ChatMessage> rows = captor.getValue();
-        assertEquals(4, rows.size(), "USER + 三条实体行（增量 thinking/query_plan 行不再单独落库）");
-        assertEquals("USER", rows.get(0).getRole());
-        assertEquals(0, rows.get(0).getSeq().intValue());
+        assertEquals(3, rows.size(), "三条实体行（增量 thinking/query_plan 行不再单独落库）");
+        assertTrue(rows.stream().noneMatch(r -> "USER".equals(r.getRole())), "USER 行不进 persistMessages 批");
 
         // QU 实体：stage=understanding、reasoning 全文、text=query_plan payload JSON、seq=拆行末位(2)
-        ChatMessage quRow = rows.get(1);
+        ChatMessage quRow = rows.get(0);
         assertEquals("assistant", quRow.getMessageType());
         assertNull(quRow.getThinkingStage(), "实体行 thinking_stage 列必须为 null（stage 在 content JSON 内）");
         assertEquals(2, quRow.getSeq().intValue(), "QU 实体拆 2 VO（thinking+query_plan），seq 取末位");
@@ -847,7 +847,7 @@ class ChatRequestWorkerTest {
         assertEquals("[]", quRow.getSourcesJson(), "QU 实体 sources 恒空数组");
 
         // caption 实体：stage=attachments、text=描述（单 VO → seq=3）
-        ChatMessage captionRow = rows.get(2);
+        ChatMessage captionRow = rows.get(1);
         assertEquals("assistant", captionRow.getMessageType());
         assertEquals(3, captionRow.getSeq().intValue(), "caption 实体拆 1 VO，seq 即自身");
         assertTrue(captionRow.getContent().contains("\"stage\":\"attachments\""));
@@ -855,7 +855,7 @@ class ChatRequestWorkerTest {
         assertEquals("[]", captionRow.getSourcesJson());
 
         // 主 agent 实体：stage=generating、reasoning+text 齐全、seq=拆行末位(5)、意图标注、sources 保持 []
-        ChatMessage mainRow = rows.get(3);
+        ChatMessage mainRow = rows.get(2);
         assertEquals("assistant", mainRow.getMessageType());
         assertEquals(5, mainRow.getSeq().intValue(), "主 agent 实体拆 2 VO（thinking+正文），seq=3+2-1");
         assertTrue(mainRow.getContent().contains("\"stage\":\"generating\""));
@@ -898,12 +898,12 @@ class ChatRequestWorkerTest {
         // When
         invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, null, sink, false);
 
-        // Then: 期望 seq 分配（事件序）——user(0) → QU 实体(block 1-2) → 主1实体(block 3-5)
+        // Then: 期望 seq 分配（事件序）——QU 实体(block 1-2) → 主1实体(block 3-5)
         // → TOOL_RESULT(6,7) → 主2实体(block 8-9)；TOOL_RESULT 穿插于两轮主 agent 实体行之间
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
         verify(chatMessageService).batchInsert(captor.capture());
         List<ChatMessage> rows = captor.getValue();
-        assertEquals(6, rows.size(), "USER + QU实体 + 主1实体 + 2×TOOL_RESULT + 主2实体");
+        assertEquals(5, rows.size(), "QU实体 + 主1实体 + 2×TOOL_RESULT + 主2实体");
 
         ChatMessage mainRound1 = rows.stream()
                 .filter(r -> r.getContent().contains("call-1") && r.getContent().contains("toolCalls"))
@@ -1002,27 +1002,36 @@ class ChatRequestWorkerTest {
 
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
         verify(chatMessageService).batchInsert(captor.capture());
-        ChatMessage entityRow = captor.getValue().get(1);
+        ChatMessage entityRow = captor.getValue().get(0);
         assertEquals("assistant", entityRow.getMessageType());
         assertTrue(entityRow.getSourcesJson().contains("高等数学讲义"), "主 agent 实体行应落真实检索来源");
     }
 
     @Test
-    @DisplayName("persistMessages 正常路径 — sink 无捕获时仅用户行（无实体行、无增量行，幂等语义不回归）")
+    @DisplayName("persistMessages 正常路径 — sink 无捕获时无行可落（USER 行已提前落库，空批不调 batchInsert）")
     @SuppressWarnings("unchecked")
-    void persistMessages_noCaptures_userRowOnly() throws Exception {
+    void persistMessages_noCaptures_emptyBatch() throws Exception {
         NodeOutput lastOutput = mock(NodeOutput.class);
         when(lastOutput.state()).thenReturn(null);
 
         invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
 
-        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
-        verify(chatMessageService).batchInsert(captor.capture());
-        List<ChatMessage> rows = captor.getValue();
-        assertEquals(1, rows.size(), "无捕获仅用户行");
-        assertEquals("USER", rows.get(0).getRole());
-        assertTrue(rows.stream().noneMatch(r -> "query_plan".equals(r.getMessageType())));
-        assertTrue(rows.stream().noneMatch(r -> "thinking".equals(r.getMessageType())));
+        // 2026-09-03 起 USER 行移至 run 认领时提前落库（saveUserMessageRow）：
+        // 无 assistant 侧内容（首 chunk 前失败等）→ 空批不产生 batchInsert 调用
+        verify(chatMessageService, never()).batchInsert(anyList());
+    }
+
+    @Test
+    @DisplayName("processRequest 认领 run — 用户消息行提前落库（2026-09-03 切走再切回历史可见）")
+    void processRequest_userRowPersistedOnClaim() throws Exception {
+        NodeOutput mockChunk = mock(NodeOutput.class);
+        lenient().when(mockChunk.state()).thenReturn(null);
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.just(mockChunk));
+
+        invokeProcessRequest(createMockRecord("100", "200", "300", "带附件的问题"));
+
+        // 认领（ACTIVE）后即落 USER 行：runId/sessionId/原文/附件 JSON 四要素齐备
+        verify(chatMessageService).saveUserMessageRow(100L, 200L, "带附件的问题", "[]");
     }
 
     // ==================== Task 5：取消/错误路径 delta 累加器落库（不变量） ====================
@@ -1218,12 +1227,13 @@ class ChatRequestWorkerTest {
 
         invokePersistMessages(1L, 2L, "问题", "[]", "[]", 0, lastOutput, null, acc, sink, false);
 
-        // Then: 实体行取 sink 捕获且单行（累加器不产生第二行、无增量正文行）
+        // Then: 实体行取 sink 捕获且单行（累加器不产生第二行、无增量正文行；
+        // USER 行已由 run 认领时提前落库，不进本批）
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
         verify(chatMessageService).batchInsert(captor.capture());
         List<ChatMessage> rows = captor.getValue();
-        assertEquals(2, rows.size(), "USER + 主 agent 实体行（累加器不参与）");
-        ChatMessage entityRow = rows.get(1);
+        assertEquals(1, rows.size(), "主 agent 实体行（累加器不参与）");
+        ChatMessage entityRow = rows.get(0);
         assertEquals("assistant", entityRow.getMessageType());
         assertTrue(entityRow.getContent().contains("\"text\":\"实体正文\""));
         assertTrue(
@@ -1254,7 +1264,7 @@ class ChatRequestWorkerTest {
     // ==================== catch 分支 handleError 失败兜底（P0-4b 复合故障） ====================
 
     @Test
-    @DisplayName("catch 分支 handleError 失败 → 仍持久化用户消息（P0-4b 复合故障兜底）")
+    @DisplayName("catch 分支 handleError 失败 → 仍不阻断持久化链路（P0-4b 复合故障兜底；USER 行已认领时提前落库）")
     void processRequest_handleErrorFails_stillPersists() throws Exception {
         // Given: 图流启动即抛异常（进入 catch 分支），且 updateStatus(ERROR) 抛异常模拟 handleError 内部失败
         when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenThrow(new RuntimeException("图流启动失败"));
@@ -1265,8 +1275,10 @@ class ChatRequestWorkerTest {
         // When
         invokeProcessRequest(record);
 
-        // Then: handleError 失败不阻断持久化——用户消息仍批量落库
-        verify(chatMessageService).batchInsert(anyList());
+        // Then: handleError 失败不阻断——用户消息行已由认领时 saveUserMessageRow 提前落库
+        // （catch 分支无 assistant 侧产出，batchInsert 空批不调用）
+        verify(chatMessageService).saveUserMessageRow(100L, 200L, "你好", "[]");
+        verify(chatMessageService, never()).batchInsert(anyList());
     }
 
     // ==================== M2/D6：取消不回滚 checkpoint + 前滚补写（R1-4 实证修正） ====================
@@ -2028,16 +2040,21 @@ class ChatRequestWorkerTest {
         assertEquals(1, terminalEvents.size(), "终态事件应仅推送一次，实际: " + terminalEvents);
         assertEquals(SseEventType.END, terminalEvents.get(0).type(), "首个（唯一）终态应为 END(COMPLETED)");
         assertTrue(terminalEvents.get(0).payload().contains("COMPLETED"));
-        // Then: doOnComplete 已成功落库（1 次），catch 分支不再二次 persistMessages 重复落库
-        verify(chatMessageService, times(1)).batchInsert(anyList());
+        // Then: doOnComplete 与 catch 分支均无重复落库（本场景无 assistant 产出，两路径均空批；
+        // 用户消息行已由认领时提前落库——恰好验证空批路径不产生 batchInsert 调用）
+        verify(chatMessageService, never()).batchInsert(anyList());
+        verify(chatMessageService, times(1)).saveUserMessageRow(100L, 200L, "你好", "[]");
         // Then: 不再经 handleError 回写 ERROR（客户端已见 COMPLETED，DB 滞留 ACTIVE 由 M-8 巡检兜底收敛）
         verify(chatRunService, never()).updateStatus(100L, "ERROR");
     }
 
     @Test
-    @DisplayName("persistMessages → 批量插入撞 (run_id,seq) 唯一索引按已落库幂等处理（B2-4 数据层兜底）")
+    @DisplayName("persistMessages → 唯一索引冲突按已落库处理（幂等跳过，调用方不重试）")
     void persistMessages_uniqueIndexConflict_treatedAsPersisted() throws Exception {
-        // Given: 本批消息已落库（重复调用场景），唯一索引拒绝重复插入
+        // Given: 本批消息已落库（重复调用场景），唯一索引拒绝重复插入；实体行在批内确保
+        // batchInsert 真实被调用（USER 行移出批次后空 state 不再触发插入）
+        AssistantMessageSink sink = new AssistantMessageSink();
+        sink.capture("generating", "思考", "最终回答", List.of());
         NodeOutput lastOutput = mock(NodeOutput.class);
         when(lastOutput.state()).thenReturn(null);
         doThrow(new DataIntegrityViolationException("重复键违反唯一约束 uniq_chat_message_run_seq"))
@@ -2045,7 +2062,8 @@ class ChatRequestWorkerTest {
                 .batchInsert(anyList());
 
         // When: 幂等跳过、不外抛异常，persisted=true（已落库，调用方不再重试）
-        PersistOutcome outcome = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
+        PersistOutcome outcome =
+                invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, null, sink, false);
 
         assertTrue(outcome.persisted(), "唯一索引冲突应按已落库处理（幂等跳过）");
         assertNull(outcome.assistantMessageId(), "幂等跳过分支本批未新落库，无回填 ID（END 事件 messageId 降级 null）");
@@ -2055,11 +2073,15 @@ class ChatRequestWorkerTest {
     @Test
     @DisplayName("persistMessages → 非冲突 DB 异常返回 false（可由 catch 分支重试补落库）")
     void persistMessages_genericDbFailure_returnFalseForRetry() throws Exception {
+        // Given: 实体行在批内（batchInsert 真实被调用），抛非冲突 DB 异常
+        AssistantMessageSink sink = new AssistantMessageSink();
+        sink.capture("generating", "思考", "最终回答", List.of());
         NodeOutput lastOutput = mock(NodeOutput.class);
         when(lastOutput.state()).thenReturn(null);
         doThrow(new RuntimeException("连接池耗尽")).when(chatMessageService).batchInsert(anyList());
 
-        PersistOutcome outcome = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
+        PersistOutcome outcome =
+                invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, null, sink, false);
 
         // 落库失败且非幂等冲突 → persisted=false，允许 catch 分支重试（消息未落库，重试无害）
         assertFalse(outcome.persisted());
@@ -2098,22 +2120,23 @@ class ChatRequestWorkerTest {
         PersistOutcome outcome =
                 invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, null, sink, false);
 
-        // Then: 落库行序 [USER, 主 agent 实体行]，反向扫描应命中实体行（messageType=="assistant"）
+        // Then: 落库行序 [主 agent 实体行]（USER 行已移出批次），反向扫描命中实体行
         assertTrue(outcome.persisted(), "正常落库应返回 persisted=true");
-        assertEquals(9001L, outcome.assistantMessageId(), "应返回最后一条 assistant 实体行的回填 ID");
+        assertEquals(9000L, outcome.assistantMessageId(), "应返回唯一 assistant 实体行的回填 ID");
     }
 
     @Test
-    @DisplayName("R2 persistMessages → 异常中断仅用户消息场景：assistantMessageId 为 null、persisted 仍 true")
+    @DisplayName("R2 persistMessages → 异常中断无产出场景：空批不落库，persisted 仍 true")
     void persistMessages_无assistant正文时返回null() throws Exception {
-        // Given: 流式异常中断无 chunk 输出（lastOutput=null）→ 仅落用户消息
+        // Given: 流式异常中断无 chunk 输出（lastOutput=null）→ 无 assistant 侧行可落
+        // （USER 行已由 run 认领时提前落库，不进本批）
         // When
         PersistOutcome outcome = invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, null);
 
-        // Then: 用户消息落库成功仍视为 persisted；无 assistant 正文行 → ID 为 null（END 事件 messageId 显式 null）
-        assertTrue(outcome.persisted(), "用户消息落库成功仍视为 persisted");
+        // Then: 空批视为已处理；无 assistant 正文行 → ID 为 null（END 事件 messageId 显式 null）
+        assertTrue(outcome.persisted(), "空批视为已处理（用户消息行已提前落库）");
         assertNull(outcome.assistantMessageId(), "无 assistant 正文行时 ID 为 null");
-        verify(chatMessageService).batchInsert(anyList());
+        verify(chatMessageService, never()).batchInsert(anyList());
     }
 
     @Test
@@ -2144,7 +2167,7 @@ class ChatRequestWorkerTest {
         invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
 
         // Then: END payload 含 messageId 字符串（先落库回填 ID、后推 END 的时序保证反馈目标可用；
-        // USER=7000、实体行=7001）
+        // 实体行=7000——本批首行即实体行，USER 行已由认领时提前落库）
         ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
         verify(bridge, atLeast(2)).push(eq("100"), evtCaptor.capture());
         SseEvent endEvent = evtCaptor.getAllValues().stream()
@@ -2153,13 +2176,13 @@ class ChatRequestWorkerTest {
                 .orElseThrow(() -> new AssertionError("正常完成应推送 END 事件"));
         assertTrue(endEvent.payload().contains("\"status\":\"COMPLETED\""), "终态应为 COMPLETED");
         assertTrue(
-                endEvent.payload().contains("\"messageId\":\"7001\""),
+                endEvent.payload().contains("\"messageId\":\"7000\""),
                 "END payload 应含 assistant 实体行落库 ID（字符串）: " + endEvent.payload());
     }
 
     @Test
-    @DisplayName("R2 取消路径 → END(CANCELLED) 事件不含 messageId 键（半截内容不作反馈目标）")
-    void 取消路径END事件不含messageId() throws Exception {
+    @DisplayName("R2/2026-09-03 停止态 — 取消路径 END(CANCELLED) 携 messageId 键（无正文时显式 null，反馈目标可空容忍）")
+    void 取消路径END事件携带messageId键() throws Exception {
         // Given: run 起步前注册（模拟入队）并置取消标记，首个 chunk 触发 CancelledException
         worker.registerPendingRun("100");
         worker.cancel("100");
@@ -2170,8 +2193,8 @@ class ChatRequestWorkerTest {
         // When
         invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
 
-        // Then: CANCELLED 终态 payload 仅 runId/status，无 messageId 键
-        // （时序上先于落库 + 语义上半截回答不得作为反馈目标）
+        // Then: CANCELLED 终态 payload 携带 messageId 键（2026-09-03 停止态拍板：停止后反馈
+        // 入口保留——落库先行，END 携半截正文行 id；本用例无任何正文/思考 → 显式 null）
         ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
         verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
         SseEvent endEvent = evtCaptor.getAllValues().stream()
@@ -2179,7 +2202,55 @@ class ChatRequestWorkerTest {
                 .reduce((first, second) -> second)
                 .orElseThrow(() -> new AssertionError("取消路径应推送 END 事件"));
         assertTrue(endEvent.payload().contains("\"status\":\"CANCELLED\""), "终态应为 CANCELLED");
-        assertFalse(endEvent.payload().contains("messageId"), "CANCELLED 终态不得携带 messageId 键");
+        assertTrue(
+                endEvent.payload().contains("\"messageId\":null"),
+                "无正文行时 END(CANCELLED) 应显式携带 messageId:null: " + endEvent.payload());
+    }
+
+    @Test
+    @DisplayName("R2/2026-09-03 停止态 — 有半截正文时 END(CANCELLED) 携落库回填的正文行 id（停止后可反馈）")
+    @SuppressWarnings("unchecked")
+    void 取消路径END事件携带落库正文行id() throws Exception {
+        // Given: chunk1 推送一条 DELTA 后取消——落库正文行（累加器前缀）回填雪花 ID 供 END 携带
+        doAnswer(inv -> {
+                    List<ChatMessage> inserted = inv.getArgument(0);
+                    long id = 8000L;
+                    for (ChatMessage m : inserted) {
+                        m.setId(id++);
+                    }
+                    return null;
+                })
+                .when(chatMessageService)
+                .batchInsert(anyList());
+        NodeOutput c1 = mock(NodeOutput.class);
+        NodeOutput c2 = mock(NodeOutput.class);
+        lenient().when(c1.state()).thenReturn(null);
+        lenient().when(c2.state()).thenReturn(null);
+        when(transformer.transform(any(NodeOutput.class), any(), any(AssistantMessageSink.class)))
+                .thenReturn(List.of(deltaEvent("生成到一半的")))
+                .thenReturn(List.of(deltaEvent("被取消的部分")));
+        when(compiledGraph.stream(any(), any(RunnableConfig.class))).thenReturn(Flux.create(sink -> {
+            sink.next(c1);
+            worker.cancel("100");
+            sink.next(c2);
+            sink.complete();
+        }));
+        worker.registerPendingRun("100");
+
+        // When
+        invokeProcessRequest(createMockRecord("100", "200", "300", "你好"));
+
+        // Then: END(CANCELLED) 携带半截正文行落库 ID（8000）——落库先行 + END 后推的时序保证
+        verify(chatRunService).updateStatus(100L, "CANCELLED");
+        ArgumentCaptor<SseEvent> evtCaptor = ArgumentCaptor.forClass(SseEvent.class);
+        verify(bridge, atLeast(1)).push(eq("100"), evtCaptor.capture());
+        SseEvent endEvent = evtCaptor.getAllValues().stream()
+                .filter(e -> e.type() == SseEventType.END)
+                .reduce((first, second) -> second)
+                .orElseThrow(() -> new AssertionError("取消路径应推送 END 事件"));
+        assertTrue(
+                endEvent.payload().contains("\"messageId\":\"8000\""),
+                "END(CANCELLED) 应携半截正文行落库 ID: " + endEvent.payload());
     }
 
     @Test
@@ -2197,7 +2268,8 @@ class ChatRequestWorkerTest {
         // When
         invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, null, sink, false);
 
-        // Then: 主 agent 实体行 intent_type 写入规范名小写；用户行不写（意图仅标注 AI 回答）
+        // Then: 主 agent 实体行 intent_type 写入规范名小写；用户行已由 run 认领时提前落库
+        // （不进本批，意图仅标注 AI 回答的口径不变）
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
         verify(chatMessageService).batchInsert(captor.capture());
         ChatMessage assistantRow = captor.getValue().stream()
@@ -2205,11 +2277,9 @@ class ChatRequestWorkerTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("应存在主 agent 实体行"));
         assertEquals("knowledge_question", assistantRow.getIntentType(), "intent_type 应写入规范名小写");
-        ChatMessage userRow = captor.getValue().stream()
-                .filter(m -> "USER".equals(m.getRole()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("应存在用户消息行"));
-        assertNull(userRow.getIntentType(), "用户行不写意图");
+        assertTrue(
+                captor.getValue().stream().noneMatch(m -> "USER".equals(m.getRole())),
+                "USER 行不进 persistMessages 批（意图仅标注 AI 回答，用户行走 saveUserMessageRow）");
     }
 
     // ==================== 巡检覆盖滞留 QUEUED（B2-3） ====================
@@ -2495,7 +2565,7 @@ class ChatRequestWorkerTest {
     }
 
     @Test
-    @DisplayName("M7 3 次全败（无产出）→ 保留现场转 ERROR：仅 USER 行落库（无产出无增量行）")
+    @DisplayName("M7 3 次全败（无产出）→ 保留现场转 ERROR：无增量行（用户消息已认领时提前落库）")
     void allRetriesExhausted_errorWithUserRowOnly() throws Exception {
         worker = buildWorker(new ChatStreamProperties(2000, 45_000L, 3, 100L));
         when(compiledGraph.stream(any(), any(RunnableConfig.class)))
@@ -2506,14 +2576,10 @@ class ChatRequestWorkerTest {
         // 1 + 3 次尝试全部断流 → 耗尽收尾
         verify(compiledGraph, times(4)).stream(any(), any(RunnableConfig.class));
         verify(chatRunService).updateStatus(100L, "ERROR");
-        // 无产出全败：仅 USER 行落库（RETRYABLE 尝试不落库，耗尽后一次性增量落库）
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
-        verify(chatMessageService, times(1)).batchInsert(msgCaptor.capture());
-        List<ChatMessage> rows = msgCaptor.getValue();
-        assertEquals(1, rows.size(), "无产出全败仅落 USER 行: " + rows);
-        assertEquals("USER", rows.get(0).getRole());
-        assertEquals("你好", rows.get(0).getContent());
+        // 无产出全败：无增量行落库（空批不调 batchInsert）；用户消息行已由认领时
+        // saveUserMessageRow 提前落库（进行中即可见，2026-09-03）
+        verify(chatMessageService, never()).batchInsert(anyList());
+        verify(chatMessageService).saveUserMessageRow(100L, 200L, "你好", "[]");
     }
 
     // ==================== processRequest 边界分支 ====================
@@ -2533,8 +2599,10 @@ class ChatRequestWorkerTest {
         // When
         invokeProcessRequest(record);
 
-        // Then: 终态处理失败被吞并，消息持久化兜底仍执行
-        verify(chatMessageService).batchInsert(anyList());
+        // Then: 终态处理失败被吞并，用户消息行兜底仍在（认领时已提前落库；
+        // 无 assistant 产出 → 空批不调 batchInsert）
+        verify(chatMessageService).saveUserMessageRow(100L, 200L, "你好", "[]");
+        verify(chatMessageService, never()).batchInsert(anyList());
     }
 
     @Test
@@ -2585,14 +2653,9 @@ class ChatRequestWorkerTest {
 
         // Then: 业务入口表 chat_run 落 attachments_json（合法 JSON 原样透传）
         verify(chatRunService).updateAttachments(100L, attachmentsJson);
-        // 渲染/审计表 chat_message 用户消息行落 attachments_json（spec §5.1 双存决策）
-        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
-        verify(chatMessageService).batchInsert(captor.capture());
-        ChatMessage userMsg = captor.getValue().stream()
-                .filter(m -> "USER".equals(m.getRole()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("应含用户消息行"));
-        assertEquals(attachmentsJson, userMsg.getAttachmentsJson());
+        // 渲染/审计表 chat_message 用户消息行落 attachments_json（spec §5.1 双存决策；
+        // 2026-09-03 起用户行由认领时 saveUserMessageRow 提前落库，不进 persistMessages 批）
+        verify(chatMessageService).saveUserMessageRow(100L, 200L, "这张图里是什么", attachmentsJson);
     }
 
     @Test
@@ -2616,13 +2679,8 @@ class ChatRequestWorkerTest {
 
         // Then: 非法 JSON 归一为空数组，双表均落 []
         verify(chatRunService).updateAttachments(100L, "[]");
-        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
-        verify(chatMessageService).batchInsert(captor.capture());
-        ChatMessage userMsg = captor.getValue().stream()
-                .filter(m -> "USER".equals(m.getRole()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("应含用户消息行"));
-        assertEquals("[]", userMsg.getAttachmentsJson());
+        // 用户消息行（提前落库）同样归一 []
+        verify(chatMessageService).saveUserMessageRow(100L, 200L, "这是什么附件", "[]");
     }
 
     @Test
@@ -2640,13 +2698,8 @@ class ChatRequestWorkerTest {
 
         // Then: 无附件时双表均落 []
         verify(chatRunService).updateAttachments(100L, "[]");
-        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
-        verify(chatMessageService).batchInsert(captor.capture());
-        ChatMessage userMsg = captor.getValue().stream()
-                .filter(m -> "USER".equals(m.getRole()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("应含用户消息行"));
-        assertEquals("[]", userMsg.getAttachmentsJson());
+        // 用户消息行（提前落库）同样默认 []
+        verify(chatMessageService).saveUserMessageRow(100L, 200L, "你好", "[]");
     }
 
     // ==================== 附件处理与 QU caption 拼装（Task 9，spec §5.1/§5.3） ====================
@@ -2717,15 +2770,9 @@ class ChatRequestWorkerTest {
         // Then: 当前消息已带附件 → 不触发 chat_run 历史重建（Task 11 重建仅覆盖后续无附件轮次）
         verify(chatRunService, never()).findRecentAttachments(anyLong(), anyLong(), anyInt());
 
-        // Then: 持久化用户消息仍为原文（不带 caption 前缀，chat_message 渲染/审计不回显图片标注）
-        ArgumentCaptor<List<ChatMessage>> msgCaptor = ArgumentCaptor.forClass(List.class);
-        verify(chatMessageService).batchInsert(msgCaptor.capture());
-        ChatMessage userMsg = msgCaptor.getValue().stream()
-                .filter(m -> "USER".equals(m.getRole()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("应含用户消息行"));
-        assertEquals("这张图里是什么", userMsg.getContent());
-        assertEquals(attachmentsJson, userMsg.getAttachmentsJson());
+        // Then: 持久化用户消息仍为原文（不带 caption 前缀，chat_message 渲染/审计不回显图片标注；
+        // 2026-09-03 起用户行由认领时 saveUserMessageRow 提前落库）
+        verify(chatMessageService).saveUserMessageRow(100L, 200L, "这张图里是什么", attachmentsJson);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -2889,24 +2936,27 @@ class ChatRequestWorkerTest {
         // When: 取消/错误路径（abnormalPath=true，无累加器 → 回退 state 汇总）
         invokePersistMessages(1L, 1L, "本轮问题", "[]", "[]", 0, lastOutput, null, null, null, true);
 
-        // Then: 仅落库本轮 USER 查询 + ASSISTANT 补充回答，不重复 USER
+        // Then: 仅落库本轮 ASSISTANT 补充回答（USER 行已由认领时提前落库，不重复落）
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
         verify(chatMessageService).batchInsert(captor.capture());
         List<ChatMessage> inserted = captor.getValue();
-        assertEquals(2, inserted.size());
-        assertEquals("USER", inserted.get(0).getRole());
-        assertEquals("补充回答", inserted.get(1).getContent());
+        assertEquals(1, inserted.size());
+        assertEquals("补充回答", inserted.get(0).getContent());
+        assertTrue(inserted.stream().noneMatch(m -> "USER".equals(m.getRole())), "USER 行不得重复落库");
     }
 
     @Test
     @DisplayName("persistMessages → 批量插入失败被吞并，不阻断 run")
     void persistMessages_batchInsertFailure_swallowed() throws Exception {
         doThrow(new RuntimeException("数据库不可用")).when(chatMessageService).batchInsert(anyList());
+        // 实体行在批内（USER 行移出后空 state 不再触发插入，须有 sink 捕获）
+        AssistantMessageSink sink = new AssistantMessageSink();
+        sink.capture("generating", "思考", "回答", List.of());
         NodeOutput lastOutput = mock(NodeOutput.class);
         when(lastOutput.state()).thenReturn(null);
 
         // 不抛异常即验证通过（异常在 persistMessages 内部被吞并）
-        invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput);
+        invokePersistMessages(1L, 1L, "问题", "[]", "[]", 0, lastOutput, null, null, sink, false);
         verify(chatMessageService).batchInsert(anyList());
     }
 
@@ -3140,8 +3190,9 @@ class ChatRequestWorkerTest {
         runner[0].join(5000);
 
         assertFalse(runner[0].isAlive(), "processRequest 应在中断处理后正常返回");
-        // 中断分支不重抛异常，消息持久化兜底仍执行
-        verify(chatMessageService, atLeastOnce()).batchInsert(anyList());
+        // 中断分支不重抛异常；用户消息行已由认领时提前落库（本场景无 assistant 产出，
+        // persistMessages 空批不产生 batchInsert 调用）
+        verify(chatMessageService, times(1)).saveUserMessageRow(100L, 200L, "你好", "[]");
     }
 
     // ==================== M5 replay：replayMode 解析与图输入组装 ====================

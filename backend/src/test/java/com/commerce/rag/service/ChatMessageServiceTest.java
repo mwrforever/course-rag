@@ -29,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 /**
  * IChatMessageService 单元测试 —— 消息批量持久化与查询
@@ -83,6 +84,41 @@ class ChatMessageServiceTest {
         assertEquals("[{\"doc\":1}]", msg1.getSourcesJson());
         assertEquals("[]", msg2.getSourcesJson());
         verify(messageService).saveBatch(List.of(msg1, msg2));
+    }
+
+    @Test
+    @DisplayName("saveUserMessageRow → USER 行 seq=0 四要素齐备（2026-09-03 run 认领时提前落库）")
+    void saveUserMessageRow_buildsUserRow() {
+        doReturn(true).when(messageService).save(any(ChatMessage.class));
+
+        messageService.saveUserMessageRow(100L, 200L, "问题原文", "[{\"url\":\"u1\"}]");
+
+        ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(messageService).save(captor.capture());
+        ChatMessage row = captor.getValue();
+        assertEquals(100L, row.getRunId());
+        assertEquals(200L, row.getSessionId());
+        assertEquals("USER", row.getRole());
+        assertEquals("问题原文", row.getContent());
+        assertEquals(0, row.getSeq().intValue(), "USER 行恒 seq=0（persistMessages 的 assistant 行从 1 起）");
+        assertEquals("[]", row.getSourcesJson());
+        assertEquals("[{\"url\":\"u1\"}]", row.getAttachmentsJson());
+    }
+
+    @Test
+    @DisplayName("saveUserMessageRow → attachmentsJson 空/null 兜底 []；唯一索引冲突幂等跳过不重试")
+    void saveUserMessageRow_blankAttachmentsAndIdempotentConflict() {
+        doReturn(true).when(messageService).save(any(ChatMessage.class));
+        messageService.saveUserMessageRow(100L, 200L, "问题", null);
+        ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(messageService).save(captor.capture());
+        assertEquals("[]", captor.getValue().getAttachmentsJson(), "attachmentsJson null 兜底空数组");
+
+        // (run_id, seq=0) 唯一索引冲突（迟到队列重投递）= 已落库，吞异常按已处理，不向上抛
+        doThrow(new DataIntegrityViolationException("dup key"))
+                .when(messageService)
+                .save(any(ChatMessage.class));
+        assertDoesNotThrow(() -> messageService.saveUserMessageRow(100L, 200L, "问题", "[]"));
     }
 
     @Test

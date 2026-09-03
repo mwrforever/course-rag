@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -75,6 +76,41 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
         }
         this.saveBatch(messages);
         log.info("批量插入消息: count={}", messages.size());
+    }
+
+    /**
+     * 用户消息行提前落库（2026-09-03 多会话并发历史可见修复）
+     *
+     * <p>执行流程：构造 USER 行（seq=0，attachments_json 携带本轮附件列表——spec §5.1
+     * 双存决策口径与 persistMessages 原用户行一致）→ 单条 save（雪花 ID 自动填充）。
+     *
+     * <p>幂等防御：迟到队列重投递等场景下 (run_id, seq=0) 命中 V13 唯一索引冲突
+     * （DataIntegrityViolationException）= 该行已落库，按已处理跳过（warn 记录），
+     * 调用方不得重试。
+     *
+     * @param runId           Run ID（worker 已认领置 ACTIVE 的 run）
+     * @param sessionId       会话 ID
+     * @param query           用户问题原文（不加 caption 前缀）
+     * @param attachmentsJson 附件 JSON 数组字符串（空/null 兜底 "[]"）
+     */
+    @Override
+    public void saveUserMessageRow(Long runId, Long sessionId, String query, String attachmentsJson) {
+        ChatMessage userMsg = new ChatMessage();
+        userMsg.setSessionId(sessionId);
+        userMsg.setRunId(runId);
+        userMsg.setRole("USER");
+        userMsg.setContent(query);
+        userMsg.setSeq(0);
+        userMsg.setSourcesJson("[]");
+        // attachments_json：空/null 兜底 "[]"（列 NOT NULL 口径与批量插入一致）
+        userMsg.setAttachmentsJson(attachmentsJson == null || attachmentsJson.isBlank() ? "[]" : attachmentsJson);
+        try {
+            this.save(userMsg);
+            log.info("用户消息行提前落库: runId={}, sessionId={}", runId, sessionId);
+        } catch (DataIntegrityViolationException e) {
+            // (run_id, seq=0) 唯一索引冲突 = 已落库（迟到队列重投递等），幂等跳过不重试
+            log.warn("用户消息行已落库（(run_id,seq) 唯一索引冲突），幂等跳过: runId={}", runId);
+        }
     }
 
     /**

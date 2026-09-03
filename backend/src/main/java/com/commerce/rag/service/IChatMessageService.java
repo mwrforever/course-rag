@@ -24,6 +24,24 @@ public interface IChatMessageService extends IService<ChatMessage> {
     void batchInsert(List<ChatMessage> messages);
 
     /**
+     * 用户消息行提前落库（2026-09-03 多会话并发历史可见修复）
+     *
+     * <p>worker 认领 run（置 ACTIVE）后立即写入 USER 行（seq=0），使进行中 run 的
+     * 提问即时进入历史回显——用户切走再切回会话时，本次发送的需求与历史不再缺失
+     * （半截回答内容仍由续流回放呈现，D3 口径不变）。run 结束时 persistMessages
+     * 不再重复插入 USER 行（seq 从 1 起）。
+     *
+     * <p>幂等：(run_id, seq=0) 命中 V13 唯一索引冲突（迟到队列重投递等场景）按已
+     * 落库处理，跳过不重试。
+     *
+     * @param runId           Run ID
+     * @param sessionId       会话 ID
+     * @param query           用户问题原文（不加 caption 前缀，与原 persistMessages 口径一致）
+     * @param attachmentsJson 附件 JSON 数组字符串（已归一合法，缺省 "[]"）
+     */
+    void saveUserMessageRow(Long runId, Long sessionId, String query, String attachmentsJson);
+
+    /**
      * 按 run_id 查询消息（按 seq 升序），用于降级重组和前端历史回放
      *
      * @param runId Run ID

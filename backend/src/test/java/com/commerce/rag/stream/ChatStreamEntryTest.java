@@ -1108,13 +1108,25 @@ class ChatStreamEntryTest {
     }
 
     @Test
-    @DisplayName("R2 resolveAssistantMessageId → run 非 COMPLETED（M2）返回 null 且不查消息表（半截内容不作反馈目标）")
-    void resolveAssistantMessageId_非COMPLETED状态_返回null() throws Exception {
-        // CANCELLED run 的半截 assistant 行虽已落库，但不得作为反馈目标（M2 状态过滤）
-        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "CANCELLED", null));
+    @DisplayName("R2/2026-09-03 停止态 — resolveAssistantMessageId：ERROR run 返回 null 不查消息表（失败内容不作反馈目标）")
+    void resolveAssistantMessageId_非反馈目标终态_返回null() throws Exception {
+        // 2026-09-03 放宽后口径：COMPLETED/CANCELLED 可反馈；ERROR/ACTIVE 仍排除
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "ERROR", null));
 
-        assertNull(invokeResolveAssistantMessageId("123"), "非 COMPLETED run 必须返回 null（M2）");
+        assertNull(invokeResolveAssistantMessageId("123"), "ERROR run 必须返回 null（不作反馈目标）");
         verify(chatMessageService, never()).findByRunId(anyLong());
+    }
+
+    @Test
+    @DisplayName("R2/2026-09-03 停止态 — resolveAssistantMessageId：CANCELLED run 取最后一条正文行 ID（半截回答可反馈）")
+    void resolveAssistantMessageId_cancelledRun_返回半截正文行ID() throws Exception {
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "CANCELLED", null));
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(
+                        new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, null, 123L, 1, null),
+                        new ChatMessageVO(777L, "ASSISTANT", "半截回答", null, null, null, 123L, 2, null)));
+
+        assertEquals("777", invokeResolveAssistantMessageId("123"), "CANCELLED 半截正文行应可作反馈目标");
     }
 
     @Test
@@ -1147,8 +1159,8 @@ class ChatStreamEntryTest {
     }
 
     @Test
-    @DisplayName("R2 reconnect PG 回放成功 + run CANCELLED → 补发 end 不含 messageId 键")
-    void reconnect_terminalRunCancelled_endPayloadHasNoMessageId() throws Exception {
+    @DisplayName("R2/2026-09-03 停止态 — reconnect run CANCELLED → 补发 end 携半截正文行 messageId")
+    void reconnect_terminalRunCancelled_endPayloadCarriesMessageId() throws Exception {
         when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "CANCELLED", null));
         when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
                 .thenReturn(false);
@@ -1157,8 +1169,25 @@ class ChatStreamEntryTest {
 
         SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
 
-        // CANCELLED 终态 payload 与既有格式一致（仅 runId/status），不带 messageId 键
-        assertEquals("{\"runId\":\"123\",\"status\":\"CANCELLED\"}", endPayloadOf(emitter));
+        // 2026-09-03 停止态拍板：CANCELLED 半截正文行同样可作反馈目标 → 补发 end 携 messageId
+        assertEquals("{\"runId\":\"123\",\"status\":\"CANCELLED\",\"messageId\":\"777\"}", endPayloadOf(emitter));
+    }
+
+    @Test
+    @DisplayName("R2/2026-09-03 停止态 — reconnect run CANCELLED 无正文行 → 补发 end 的 messageId 显式 null")
+    void reconnect_terminalRunCancelled_noBodyRow_endMessageIdExplicitNull() throws Exception {
+        when(chatRunService.findById(123L)).thenReturn(new ChatRunVO(123L, 1L, 123L, "CANCELLED", null));
+        when(bridge.replayAndSubscribe(eq("123"), eq(0L), any(SseEmitter.class)))
+                .thenReturn(false);
+        // 仅 thinking 行（半截正文缺失）：反馈目标不可解析 → 显式 null（前端可空容忍）
+        when(chatMessageService.findByRunId(123L))
+                .thenReturn(List.of(new ChatMessageVO(6L, "ASSISTANT", "思考", "thinking", null, null, 123L, 1, null)));
+
+        SseEmitter emitter = entry.reconnect("123", 0L, mockRequestWithUserId(123L), mockResponse);
+
+        assertTrue(
+                endPayloadOf(emitter).contains("\"messageId\":null"),
+                "CANCELLED 无正文行时 messageId 应显式 null: " + endPayloadOf(emitter));
     }
 
     @Test

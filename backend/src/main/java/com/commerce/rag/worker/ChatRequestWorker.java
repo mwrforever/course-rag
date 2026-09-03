@@ -622,6 +622,12 @@ public class ChatRequestWorker {
             // 2.1 落库本次输入附件（业务入口表，spec §5.1 双存决策；紧随 ACTIVE 写入，保证入口数据不丢）
             chatRunService.updateAttachments(runId, attachmentsJson);
 
+            // 2.2 用户消息行提前落库（2026-09-03 多会话并发历史可见修复）：run 认领即写
+            // USER 行（seq=0 幂等），进行中 run 的提问即时进入历史回显——用户切走再切回
+            // 会话时本次发送的需求与历史不再缺失；半截回答内容仍由续流回放呈现（D3 口径
+            // 不变），run 结束时 persistMessages 不再重复插入 USER 行（seq 从 1 起）
+            chatMessageService.saveUserMessageRow(runId, sessionId, userQuery, attachmentsJson);
+
             // 3. 阶段事件：意图理解（覆盖 QU 阻塞 LLM 的静默窗口——QU 在图内执行，
             //    无 chunk 可观测，此处在图启动前推送；QU 完成后的阶段跃迁由 doOnNext
             //    的 transformStages 按节点完成 chunk 驱动）
@@ -996,35 +1002,19 @@ public class ChatRequestWorker {
                     });
                 })
                 .onErrorResume(e -> {
-                    // P0-7: 与 catch 分支对齐的兜底——handleCancelled/handleError 内部
-                    // （bridge.push / updateStatus）再抛异常不得从 Reactor 链传播，
+                    // P0-7: 与 catch 分支对齐的兜底——finishCancelled/handleError 内部
+                    // （bridge.push / updateStatus / 落库）异常不得从 Reactor 链传播，
                     // 否则等待点重抛 → 落入 catch 分支二次 handleError（双终态）+ 重复持久化
                     // M7 处理点 e：先查取消标志——cancel() 置位与流错误在途的微秒级竞态下，
                     // 到达本回调的错误可能不是 CancelledException 包装；按取消标志纠偏归类，
                     // 避免把用户主动取消误报为 ERROR 终态
                     if (isCancelled(runIdStr) || isCancelledError(e)) {
-                        // B2-4: compareAndSet 占位终态——后续 catch 分支不再推第二个终态
+                        // B2-4: compareAndSet 占位终态——后续 catch 分支不再推第二个终态；
+                        // finishCancelled 统一收尾（落库→END 携 messageId→状态回写→checkpoint
+                        // 前滚，内部各步独立 try/catch 不向 Reactor 链传播——P0-7）
                         if (terminalPushed.compareAndSet(false, true)) {
-                            try {
-                                handleCancelled(runIdStr, runId, runState, ctx.config(), ctx.deltaAccumulator());
-                            } catch (Exception errorEx) {
-                                log.error("onErrorResume 取消终态处理失败 runId={}", runId, errorEx);
-                            }
+                            finishCancelled(ctx);
                         }
-                        // 持久化已收集的消息（游标 = pre-run checkpoint 消息数，只落本轮新增）；
-                        // 取消路径增量落库（Task 5：正文/思考以 delta 累加器优先，与前端已渲染一致）
-                        persistMessages(
-                                runId,
-                                ctx.sessionId(),
-                                ctx.userQuery(),
-                                ctx.attachmentsJson(),
-                                readSourcesJson(ctx.config()),
-                                ctx.snapshot() != null ? ctx.snapshot().historyMessageCount() : 0,
-                                ctx.lastOutput().get(),
-                                ctx.thinkingPusher(),
-                                ctx.deltaAccumulator(),
-                                ctx.assistantSink(),
-                                true);
                         attemptResult.set(StreamAttemptResult.cancelled());
                         return Mono.empty();
                     }
@@ -1159,33 +1149,11 @@ public class ChatRequestWorker {
         }
         // M2/R1-a 取消终态统一收尾点：dispose 先行（doFinally(CANCEL)/取消收尾双通道唤醒）
         // 或 R1-b 完成竞态（doOnComplete 见取消标记主动让位）时，终态尚未被认领——
-        // 由本线程 CAS 认领后补齐取消终态 + 增量落库；认领失败 = 终态已由
+        // 由本线程 CAS 认领后统一收尾（落库→END 携 messageId→状态回写→checkpoint 前滚，
+        // 2026-09-03 收敛为 finishCancelled 单方法）；认领失败 = 终态已由
         // onErrorResume/doOnComplete 处理（互斥不双终态）
         if (isCancelled(runIdStr) && terminalPushed.compareAndSet(false, true)) {
-            try {
-                handleCancelled(runIdStr, runId, runState, ctx.config(), ctx.deltaAccumulator());
-            } catch (Exception cancelEx) {
-                log.error("取消收尾终态处理失败 runId={}", runId, cancelEx);
-            }
-            // 取消终态同样需要增量行落库（终态落库 ≡ 已推送事件序列不变量）；
-            // persisted 标记与正常完成路径同口径（防 catch 分支二次落库）
-            try {
-                PersistOutcome cancelOutcome = persistMessages(
-                        runId,
-                        ctx.sessionId(),
-                        ctx.userQuery(),
-                        ctx.attachmentsJson(),
-                        readSourcesJson(ctx.config()),
-                        ctx.snapshot() != null ? ctx.snapshot().historyMessageCount() : 0,
-                        ctx.lastOutput().get(),
-                        ctx.thinkingPusher(),
-                        ctx.deltaAccumulator(),
-                        ctx.assistantSink(),
-                        true);
-                ctx.persisted().set(cancelOutcome.persisted());
-            } catch (Exception persistEx) {
-                log.error("取消收尾增量落库失败 runId={}", runId, persistEx);
-            }
+            finishCancelled(ctx);
             attemptResult.compareAndSet(null, StreamAttemptResult.cancelled());
         }
         // 回调通道异常重抛（等价原 blockLast 把 doOnComplete 尾段异常抛给外层 catch 的语义）
@@ -1205,34 +1173,13 @@ public class ChatRequestWorker {
     /**
      * M7 处理点 b：退避期间检测到取消的收尾（退避期上一轮订阅已终结，取消无法经 dispose/
      * 唤醒通道生效，仅能靠分段睡眠的标志检查捕获）——与尝试内取消收尾同口径：CAS 认领
-     * 终态后推 CANCELLED 终态 + 增量落库（终态落库 ≡ 已推送事件序列不变量）。
+     * 终态后经 finishCancelled 统一收尾（落库→END 携 messageId→状态回写→checkpoint 前滚）。
      *
      * @param ctx run 级共享上下文
      */
     private void finishCancelledDuringRetry(GraphRunContext ctx) {
         if (ctx.terminalPushed().compareAndSet(false, true)) {
-            try {
-                handleCancelled(ctx.runIdStr(), ctx.runId(), ctx.runState(), ctx.config(), ctx.deltaAccumulator());
-            } catch (Exception cancelEx) {
-                log.error("退避期间取消的终态处理失败 runId={}", ctx.runId(), cancelEx);
-            }
-            try {
-                PersistOutcome cancelOutcome = persistMessages(
-                        ctx.runId(),
-                        ctx.sessionId(),
-                        ctx.userQuery(),
-                        ctx.attachmentsJson(),
-                        readSourcesJson(ctx.config()),
-                        ctx.snapshot() != null ? ctx.snapshot().historyMessageCount() : 0,
-                        ctx.lastOutput().get(),
-                        ctx.thinkingPusher(),
-                        ctx.deltaAccumulator(),
-                        ctx.assistantSink(),
-                        true);
-                ctx.persisted().set(cancelOutcome.persisted());
-            } catch (Exception persistEx) {
-                log.error("退避期间取消的增量落库失败 runId={}", ctx.runId(), persistEx);
-            }
+            finishCancelled(ctx);
             log.info("退避期间检测到取消，按 CANCELLED 终态收尾: runId={}", ctx.runIdStr());
         }
     }
@@ -1572,7 +1519,8 @@ public class ChatRequestWorker {
      *
      * <p>消息来源（正常路径）：
      * <ol>
-     *   <li>用户查询 → ChatMessage(role=USER)</li>
+     *   <li>用户查询 → ChatMessage(role=USER)：2026-09-03 起移至 worker 认领 run 时提前
+     *       落库（{@code saveUserMessageRow}，seq=0），本方法不再插入 USER 行</li>
      *   <li>assistant 实体行 ← AssistantMessageSink 捕获（QU 流式聚合完成点 / caption 调用
      *       完成点 / transformer FINISHED 模型输出结束点，spec §3.2）</li>
      *   <li>TOOL_RESULT 行 ← 最终图状态 messages 中的 ToolResponseMessage</li>
@@ -1619,23 +1567,18 @@ public class ChatRequestWorker {
             AssistantMessageSink assistantSink,
             boolean abnormalPath) {
         List<ChatMessage> messages = new ArrayList<>();
-        int seq = 0;
+        // seq 从 1 起：0 已由 run 认领时的提前 USER 行占用（saveUserMessageRow，2026-09-03）
+        int seq = 1;
 
         // R2 意图落库修复：从最终 state 的查询计划取意图规范名小写（修复 intent_type 恒 NULL；
         // 无计划（异常中断/QU 未写入）返回 null，实体行 intent_type 保持 null——存量行不受影响）
         QueryPlan queryPlan = resolveQueryPlan(lastOutput);
         String intentType = queryPlan == null ? null : queryPlan.intent().code();
 
-        // 1. 用户消息（携带本轮附件列表，供前端渲染/审计回放 —— spec §5.1 双存决策）
-        ChatMessage userMsg = new ChatMessage();
-        userMsg.setSessionId(sessionId);
-        userMsg.setRunId(runId);
-        userMsg.setRole("USER");
-        userMsg.setContent(userQuery);
-        userMsg.setSeq(seq++);
-        userMsg.setSourcesJson("[]");
-        userMsg.setAttachmentsJson(attachmentsJson);
-        messages.add(userMsg);
+        // 注：用户消息行不在本方法插入——2026-09-03 起由 worker 认领 run 时提前落库
+        // （saveUserMessageRow，seq=0 幂等），进行中 run 的提问即时可进历史回显；
+        // 本方法只落 assistant 侧行（实体行/增量行），userQuery/attachmentsJson 参数
+        // 保留供 cancel 路径的 checkpoint 前滚等消费，不再落 USER 行
 
         if (abnormalPath) {
             // ====================================================================
@@ -1876,7 +1819,8 @@ public class ChatRequestWorker {
                 return new PersistOutcome(false, null);
             }
         }
-        // 无消息需落库（防御分支：用户消息恒存在，正常不达此处）——视为已处理
+        // 无消息需落库（2026-09-03 起可正常到达：首 chunk 前取消/失败仅剩已提前落库的
+        // USER 行，本方法无 assistant 侧行可写）——视为已处理
         return new PersistOutcome(true, null);
     }
 
@@ -2120,34 +2064,79 @@ public class ChatRequestWorker {
     }
 
     /**
-     * 处理取消：CANCELLED END 事件 + 状态 CANCELLED + 前滚补写 checkpoint。
+     * 处理取消终态收尾（M2/R1-a 尝试内取消 + M7 处理点 b 退避期取消共用；2026-09-03 重排序）。
      *
-     * <p>M2/D6（R1-4 实证修正）：取消不再回滚 pre-run 快照——回滚会把本轮用户消息与半截
-     * 回复一并抹掉，与「下一轮 run 上下文包含已停止生成的半截内容」不变量冲突（业界一致，
-     * ChatGPT 同行为）。改为<b>前滚补写</b>：R1 实证流式中途取消时当前流式节点 checkpoint
-     * 完全不写（写在 concatWith 尾部、仅正常 onComplete 才执行），saver.get 恢复至最后已
-     * 完成节点边界、messages 不含半截 AI 回复——故显式取当前 state、追加半截
-     * AssistantMessage（已推 delta 拼接）后写入新 checkpoint；无任何已推送 delta 时无内容
-     * 可前滚，跳过写入仅原样收口。pre-run 快照机制本身保留（M5 编辑/重新生成复用）。
-     * 半截内容另经 chat_message 增量行落库供前端渲染（M4 口径），两路径独立。
+     * <p>收尾顺序（2026-09-03 停止态拍板修订——停止后反馈入口保留）：
+     * <ol>
+     *   <li><b>增量行落库先行</b>（终态落库 ≡ 已推送事件序列不变量）：落库返回半截正文行
+     *       id（PersistOutcome.assistantMessageId），供 END 事件携带；</li>
+     *   <li><b>END CANCELLED 事件携可空 messageId</b>（未落库/无正文行/幂等跳过时 null，
+     *       前端可空容忍）：客户端本地已先行 CANCELLED 收尾（M2 点击即停），后到的本事件
+     *       由前端终态幂等守卫消化并补录 messageId（反馈按钮的渲染依据）；</li>
+     *   <li><b>run 状态回写 CANCELLED</b>；</li>
+     *   <li><b>checkpoint 前滚补写</b>（M2/D6 R1-4 实证修正：取消不回滚 pre-run 快照——
+     *       回滚会把本轮用户消息与半截回复一并抹掉，与「下一轮 run 上下文包含已停止生成
+     *       的半截内容」不变量冲突（业界一致，ChatGPT 同行为）；R1 实证流式中途取消时
+     *       当前流式节点 checkpoint 完全不写，故显式取当前 state、追加半截
+     *       AssistantMessage（已推 delta 拼接）后写入新 checkpoint；无任何已推送 delta 时
+     *       无内容可前滚，跳过写入仅原样收口）。</li>
+     * </ol>
+     * 各步骤独立 try/catch 互不阻断（终态推送/状态回写/落库/前滚任一失败不吞掉其余步骤），
+     * persisted 标记与正常完成路径同口径（防 catch 分支二次落库）。
      *
-     * @param runIdStr         Run 唯一标识（字符串）
-     * @param runId            Run ID（Long）
-     * @param runState         SSE 事件序列状态
-     * @param config           RunnableConfig（含 threadId，前滚 checkpoint 读写定位）
-     * @param deltaAccumulator per-run 正文/思考 delta 累加器（半截正文事实源；可为 null）
+     * @param ctx run 级共享上下文（落库所需全部 per-run 事实源与终态认领标记）
      */
-    private void handleCancelled(
-            String runIdStr,
-            Long runId,
-            SseEventTransformer.RunState runState,
-            RunnableConfig config,
-            DeltaAccumulator deltaAccumulator) {
-        String payload = toJson(Map.of("runId", runIdStr, "status", "CANCELLED"));
-        bridge.push(runIdStr, new SseEvent(SseEventType.END, runState.nextSeq(), payload, System.currentTimeMillis()));
-        updateStatusWithRetry(runId, "CANCELLED");
-        forwardRollCheckpoint(runIdStr, config, deltaAccumulator);
-        log.info("Run 已取消（checkpoint 前滚保留半截内容，不回滚）: runId={}", runId);
+    private void finishCancelled(GraphRunContext ctx) {
+        // ① 增量行落库先行：取半截正文行 id 供 END 携带（失败仅置 null 降级，不阻断终态）
+        PersistOutcome outcome = null;
+        try {
+            outcome = persistMessages(
+                    ctx.runId(),
+                    ctx.sessionId(),
+                    ctx.userQuery(),
+                    ctx.attachmentsJson(),
+                    readSourcesJson(ctx.config()),
+                    ctx.snapshot() != null ? ctx.snapshot().historyMessageCount() : 0,
+                    ctx.lastOutput().get(),
+                    ctx.thinkingPusher(),
+                    ctx.deltaAccumulator(),
+                    ctx.assistantSink(),
+                    true);
+            ctx.persisted().set(outcome.persisted());
+        } catch (Exception persistEx) {
+            log.error("取消收尾增量落库失败 runId={}", ctx.runId(), persistEx);
+        }
+        // ② END CANCELLED 携带 messageId（2026-09-03：停止后反馈入口；Jackson 序列化含
+        //    显式 null，与 ChatStreamEntry buildEndPayload 的 {"messageId":null} 口径一致）
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("runId", ctx.runIdStr());
+            payload.put("status", "CANCELLED");
+            payload.put(
+                    "messageId",
+                    outcome == null || outcome.assistantMessageId() == null
+                            ? null
+                            : outcome.assistantMessageId().toString());
+            bridge.push(
+                    ctx.runIdStr(),
+                    new SseEvent(
+                            SseEventType.END, ctx.runState().nextSeq(), toJson(payload), System.currentTimeMillis()));
+        } catch (Exception pushEx) {
+            log.error("取消终态 END 推送失败 runId={}", ctx.runId(), pushEx);
+        }
+        // ③ run 状态回写 CANCELLED（重试内聚于 updateStatusWithRetry）
+        try {
+            updateStatusWithRetry(ctx.runId(), "CANCELLED");
+        } catch (Exception statusEx) {
+            log.error("取消状态回写失败 runId={}", ctx.runId(), statusEx);
+        }
+        // ④ checkpoint 前滚补写（失败仅 warn，chat_message 增量行兜底）
+        try {
+            forwardRollCheckpoint(ctx.runIdStr(), ctx.config(), ctx.deltaAccumulator());
+        } catch (Exception rollEx) {
+            log.error("取消 checkpoint 前滚失败 runId={}", ctx.runId(), rollEx);
+        }
+        log.info("Run 已取消（落库→END 携 messageId→状态回写→checkpoint 前滚）: runId={}", ctx.runIdStr());
     }
 
     /**
