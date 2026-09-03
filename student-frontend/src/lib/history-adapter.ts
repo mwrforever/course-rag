@@ -21,10 +21,10 @@
  *     （空串同一谓词按到达顺序配对，与实时 chatReducer 语义一致）；无配对忽略
  *   - 2026-08-30 对齐设计稿：query_plan 行不再建节点（重写正文/意图胶囊不回前端展示；
  *     数据仍落库供审计）
- * - M4（2026-09-01 问题修复）：终态三态口径——runStatus 随行透传，CANCELLED/ERROR run
- *   的半截回答全量保留并落对应终态（「已停止生成 / 生成失败」徽标数据源），旧数据无
- *   runStatus 保持 COMPLETED 向后兼容；run 无任何内容行（仅 query_plan 等不回显行）
- *   剔除空 AI 消息占位（不渲染空回答）
+ * - M4（2026-09-01 问题修复）+ 2026-09-03 停止态改版：终态三态口径——runStatus 随行
+ *   透传，CANCELLED/ERROR run 的半截回答全量保留并落对应终态（CANCELLED 底部小字提示 /
+ *   ERROR 徽标数据源），旧数据无 runStatus 保持 COMPLETED 向后兼容；run 无任何内容行
+ *   （仅 query_plan 等不回显行）剔除空 AI 消息占位（不渲染空回答）
  */
 import { STAGE_KEYS, type StreamMessage } from "@/hooks/use-chat-stream";
 import {

@@ -23,7 +23,7 @@
  * - run 级 error 事件与 error 状态分流：retryable（run 级 ERROR / 连接中断）/
  *   replay_failed（重连 REPLAY_FAILED）/ auth（发送阶段 401 刷新失败）
  * - tool_result 按 toolCallId 配对；空串容错按到达顺序（索引兜底）配对
- * - CANCELLED 终态在正文追加「已停止生成」后缀（设计 §1.5.4 end 行）
+ * - CANCELLED 终态不改正文（停止提示由消息列表内容块底部小字渲染，2026-09-03 拍板）
  * - 409 不落状态（streaming 保持、error 保持 null），由上层 toast（设计 §3.2）
  * - M10：reconnect 降级回放不含 metadata/sources，本状态机天然容忍（已建槽不重复、
  *   来源卡不重复渲染），无需特判
@@ -81,7 +81,7 @@ export interface StreamMessage {
   attachments: AttachmentRecord[];
   /** metadata.model（模型名，连接前为 null；reconnect 降级回放无 metadata 时保持原值） */
   model: string | null;
-  /** delta 累积正文（CANCELLED 终态追加「已停止生成」后缀） */
+  /** delta 累积正文（终态不追加停止提示——由消息列表底部小字渲染，2026-09-03） */
   text: string;
   /** 来源卡数据（仅 knowledge_question 意图发送，不得假设必有；M10 降级重放不更新） */
   sources: RetrievalSource[];
@@ -93,7 +93,7 @@ export interface StreamMessage {
   timeline: TimelineNode[];
   /** 终态（end 事件后非 null；操作栏/反馈按钮浮现依据） */
   endStatus: EndStatus | null;
-  /** end COMPLETED 的 messageId（反馈接口唯一来源；CANCELLED/ERROR 为 null） */
+  /** 终态 messageId（反馈接口唯一来源；2026-09-03 起 CANCELLED 亦携带半截正文行 id，ERROR 为 null） */
   messageId: string | null;
   /**
    * 意图透传（仅历史回显填充：StudentMessage.intentType 直通，可能为存量 unknown；
@@ -160,9 +160,6 @@ export type ChatAction =
   | { type: "replay_rollback"; targetRunId: string; keepUserMessage: boolean };
 
 // ===== 常量 =====
-
-/** CANCELLED 终态追加到正文的停止后缀（设计 §1.5.4 end 行） */
-export const STOPPED_SUFFIX = "已停止生成";
 
 /** 断流判定窗口：无任何行（含心跳）30s 即触发重连或错误分级 */
 const STALL_TIMEOUT_MS = 30_000;
@@ -325,7 +322,8 @@ export function findEditStartIndex(messages: StreamMessage[], targetRunId: strin
 
 /**
  * 以不可变方式更新最后一条 AI 消息；不存在 AI 消息时原样返回传入状态
- * （无槽时的防御性忽略：reconnect 降级回放不含 metadata 的边缘场景不崩溃不建槽）
+ * （无槽时的防御性忽略：reconnect 降级回放不含 metadata 的边缘场景不崩溃不建槽）；
+ * update 返回原消息引用（无变化）时整体保持原状态引用（终态后补录幂等锚点）
  */
 function updateLastAssistant(
   state: ChatStreamState,
@@ -334,8 +332,11 @@ function updateLastAssistant(
   for (let i = state.messages.length - 1; i >= 0; i--) {
     const msg = state.messages[i];
     if (msg.role !== "assistant") continue;
+    const next = update(msg);
+    // 更新未产生变化（如 messageId 已补录后的重复 end）：原状态引用返回
+    if (next === msg) return state;
     const messages = state.messages.slice();
-    messages[i] = update(msg);
+    messages[i] = next;
     return { ...state, messages };
   }
   return state;
@@ -503,8 +504,25 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
       };
     }
     case "end": {
-      // end：首个终态幂等落位（COMPLETED 记 messageId / CANCELLED 追加停止后缀 / ERROR 分级）
-      if (isTerminal(state)) return state;
+      // end：首个终态幂等落位（COMPLETED/CANCELLED 记 messageId / ERROR 分级）
+      // 2026-09-03 停止态拍板修订：CANCELLED 不再向正文追加「已停止生成」后缀——
+      // 停止提示由消息列表在内容块底部以小字渲染（图 4 设计）；且停止后反馈入口保留，
+      // messageId 透传（后端取消落库回填的半截正文行 id）
+      if (isTerminal(state)) {
+        // 终态后 CANCELLED end 的 id 补录：cancel() 已本地先行收尾（无 messageId），后端
+        // dispose → 落库 → END CANCELLED（携 id）随后到达——仅补 messageId 不做状态转移，
+        // 维持终态幂等；无 id 或已补录时原引用返回
+        if (
+          state.endedStatus === "CANCELLED" &&
+          action.status === "CANCELLED" &&
+          action.messageId
+        ) {
+          return updateLastAssistant(state, (msg) =>
+            msg.messageId ? msg : { ...msg, messageId: action.messageId ?? null },
+          );
+        }
+        return state;
+      }
       const next = applySeq(state, action.seq);
       if (action.status === "ERROR") {
         return updateLastAssistant(
@@ -519,10 +537,11 @@ export function chatReducer(state: ChatStreamState, action: ChatAction): ChatStr
       }
       return updateLastAssistant(
         { ...next, streaming: false, endedStatus: action.status },
-        (msg) =>
-          action.status === "COMPLETED"
-            ? { ...msg, endStatus: "COMPLETED", messageId: action.messageId ?? null }
-            : { ...msg, endStatus: "CANCELLED", text: msg.text + STOPPED_SUFFIX },
+        (msg) => ({
+          ...msg,
+          endStatus: action.status,
+          messageId: action.messageId ?? null,
+        }),
       );
     }
     case "reconnect": {
@@ -1012,7 +1031,7 @@ export function useChatStream(initialSessionId: string | null): {
 
   /**
    * 取消当前 run（M2 点击即停）：先本地立即收尾（不等后端 end 事件）——
-   * 置 CANCELLED 终态 + 追加「已停止生成」后缀 + 解除流式（输入框恢复可用），
+   * 置 CANCELLED 终态（不改正文，停止提示由消息列表底部小字渲染）+ 解除流式（输入框恢复可用），
    * 随后照常 POST cancel（后端 dispose 图流 + 增量行落库 + run 置 CANCELLED）。
    * 后端 end CANCELLED 到达时被 isTerminal 终态幂等守卫自然消化（不双收尾）。
    * 取消请求 409（run 恰已终态）/网络失败一律静默：后端终态与历史回显兜底。

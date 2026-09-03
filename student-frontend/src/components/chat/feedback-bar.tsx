@@ -4,19 +4,19 @@
  * 消息操作栏（复制 + 有用/无用反馈，设计 §1.5.4 + D9 锁定语义）
  *
  * - end 后浮现（由 message-list 控制透明度过渡，本组件只管内容与交互）
- * - 复制：CANCELLED 终态文本带「已停止生成」后缀，复制前剥离后缀（carry2），
- *   再经 copyToClipboard（clipboard API + execCommand 降级，BUG-27）写入纯回答正文
+ * - 复制：正文原样复制（2026-09-03 停止态改版后 CANCELLED 不再拼后缀，无需剥离），
+ *   经 copyToClipboard（clipboard API + execCommand 降级，BUG-27）写入纯回答正文
  *   + toast「已复制」；两条路径均失败提示手动复制
  * - 反馈：POST /student/feedbacks {sessionId, messageId, isLiked, intentType?}
  *   intentType 优先取历史回显透传的真实意图；缺省按「本 run 是否出现 sources」
  *   推断（有 → knowledge_question，无 → chat）
  * - 一次选择后锁定（UNIQUE(user_id,message_id) 约束语义，不提供撤销）；
  *   提交失败时解锁并提示重试
- * - messageId 为 null（CANCELLED/ERROR 终态）不渲染反馈按钮，仅保留复制
+ * - messageId 为 null（ERROR 终态 / 取消落库降级窗口）不渲染反馈按钮，仅保留复制；
+ *   CANCELLED 终态 2026-09-03 起携带半截正文行 id，反馈入口保留（图 4 设计）
  */
 import { Copy, ThumbsDown, ThumbsUp } from "@phosphor-icons/react";
 import { useState } from "react";
-import { STOPPED_SUFFIX } from "@/hooks/use-chat-stream";
 import { postFeedback } from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
 
@@ -24,11 +24,11 @@ import { copyToClipboard } from "@/lib/clipboard";
 export interface FeedbackBarProps {
   /** 会话 id（反馈请求体；新会话 metadata 到达后必有值） */
   sessionId: string;
-  /** end COMPLETED 的 messageId（反馈唯一来源；CANCELLED/ERROR 为 null） */
+  /** 终态 messageId（反馈唯一来源；CANCELLED 亦携带半截正文行 id，ERROR/降级窗口为 null） */
   messageId: string | null;
   /** 本 run 是否出现 sources（intentType 推断依据） */
   hasSources: boolean;
-  /** AI 回答正文（复制内容；CANCELLED 终态含「已停止生成」后缀，复制时剥离） */
+  /** AI 回答正文（复制内容；终态不拼停止提示，原样复制） */
   text: string;
   /** 历史回显透传的真实意图（knowledge_question/chat/存量 unknown；缺省按 hasSources 推断） */
   intentType?: string | null;
@@ -81,13 +81,11 @@ export function FeedbackBar({
   const locked = choice !== null;
   const canFeedback = messageId !== null && messageId !== "" && sessionId !== "";
 
-  /** 复制回答正文到剪贴板 + 提示（CANCELLED 终态剥离「已停止生成」后缀，carry2） */
+  /** 复制回答正文到剪贴板 + 提示（正文终态不含停止提示，原样复制） */
   async function copyAnswer() {
-    // 后缀由 useChatStream 在 CANCELLED 终态追加进 text；复制内容应为纯回答正文
-    const copyText = text.endsWith(STOPPED_SUFFIX) ? text.slice(0, -STOPPED_SUFFIX.length) : text;
     // BUG-27 降级：非安全上下文 clipboard 不可用时回退 execCommand；两条路径均
     // 失败 toast 提示手动复制（此前 void 调用下异常静默、按钮无响应）
-    if (await copyToClipboard(copyText)) {
+    if (await copyToClipboard(text)) {
       onNotify("已复制");
     } else {
       onNotify("复制失败，请手动复制");

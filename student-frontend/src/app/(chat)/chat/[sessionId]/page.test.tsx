@@ -291,7 +291,7 @@ describe("历史会话页：历史回显渲染", () => {
     });
   });
 
-  it("M4 历史徽标：CANCELLED run 半截回答回显「已停止生成」徽标（失败现场保留）", async () => {
+  it("M4/2026-09-03 停止态：CANCELLED run 半截回答回显底部小字「这条消息已停止」（徽标下线）", async () => {
     apiMock.getSessionMessages.mockResolvedValue({
       records: [
         makeHistoryRow({
@@ -314,11 +314,13 @@ describe("历史会话页：历史回显渲染", () => {
       size: 200,
     });
     renderPage();
-    // 半截正文回显 + 未完成徽标在场（历史侧 CANCELLED 补实时「已停止生成」同款文案）
+    // 半截正文回显 + 操作栏之后的小字提示（图 4 设计：非徽标样式、反馈入口不隐藏）
     expect(await screen.findByTestId("markdown-view")).toHaveTextContent("半截回答");
-    expect(screen.getByTestId("incomplete-badge-cancelled")).toBeInTheDocument();
-    expect(screen.getByTestId("incomplete-badge-cancelled")).toHaveTextContent("已停止生成");
+    expect(screen.getByTestId("stopped-hint")).toHaveTextContent("这条消息已停止");
+    expect(screen.queryByTestId("incomplete-badge-cancelled")).not.toBeInTheDocument();
     expect(screen.queryByTestId("incomplete-badge-error")).not.toBeInTheDocument();
+    // 历史行 messageId 透传（正文行 id）→ 反馈按钮在场（停止后反馈保留）
+    expect(screen.getByRole("button", { name: /有用/ })).toBeInTheDocument();
   });
 
   it("M4 历史徽标：ERROR run 回显「生成失败」徽标 + errorMessage tooltip", async () => {

@@ -15,8 +15,9 @@
  *   （METADATA 已到、首个内容事件 thinking/sources/tool/delta 未到的极短窗口；
  *   后端 METADATA 已前移至附件处理前）
  * - 流式打字光标（1s 循环，仅最后一条 AI 消息且 streaming 时挂载）
- * - 「已停止生成」后缀：hook 已在 text 追加（Task 11 契约），本组件直接渲染唯一一份；
- *   复制时由 FeedbackBar 剥离后缀（carry2）
+ * - 「停止」提示（2026-09-03 图 4 拍板）：CANCELLED 终态不向正文拼「已停止生成」，
+ *   改为整块内容最底部（操作栏之后）渲染小字「这条消息已停止」；反馈入口保留
+ *   （FeedbackBar 复制/有用/无用 + 重新生成，见下）
  * - end 后操作栏 200ms fade-in（transform/opacity，reduced-motion 静态）
  *
  * 渲染性能契约（Task 14）：消息行拆 memo——reducer 不可变更新只改变末条消息对象
@@ -231,8 +232,8 @@ interface AssistantMessageRowProps {
 /**
  * AI 消息行（memo，Task 14）：徽标头像 → 模型徽标 → ChainTimeline → 答案块 → 操作栏
  *
- * 「已停止生成」后缀由 hook 在 CANCELLED 终态追加进 text（Task 11 契约），本组件
- * 直接渲染正文即可，UI 侧不再重复拼接。
+ * 「停止」提示（2026-09-03 拍板）：CANCELLED 终态正文保持原样（hook 不拼后缀），
+ * 本组件在内容块底部以小字渲染唯一一份提示。
  */
 const AssistantMessageRow = memo(function AssistantMessageRow({
   message,
@@ -307,16 +308,8 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
             ) : null}
           </div>
         ) : null}
-        {/* M4 未完成徽标：历史回显侧 CANCELLED/ERROR 回答（实时链路已有后缀/横幅，此处历史侧补；
-            ERROR 徽标携带 errorMessage tooltip（取自 chat_run.error_message） */}
-        {message.endStatus === "CANCELLED" ? (
-          <span
-            data-testid="incomplete-badge-cancelled"
-            className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-subtle"
-          >
-            已停止生成
-          </span>
-        ) : null}
+        {/* M4 未完成徽标：历史回显侧 ERROR 回答（携带 errorMessage tooltip，取自
+            chat_run.error_message）；CANCELLED 不再用徽标（2026-09-03 改底部小字，见下） */}
         {message.endStatus === "ERROR" ? (
           <span
             data-testid="incomplete-badge-error"
@@ -352,6 +345,14 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
               </button>
             ) : null}
           </div>
+        ) : null}
+        {/* 2026-09-03 停止提示（图 4 设计）：CANCELLED 终态在整块内容最底部（操作栏之后）
+            渲染小字提醒——不入正文、不做标签/徽章样式、不隐藏反馈与重新生成入口；
+            实时停止与历史回显 CANCELLED 行同走本分支 */}
+        {message.endStatus === "CANCELLED" ? (
+          <p data-testid="stopped-hint" className="text-xs text-subtle">
+            这条消息已停止
+          </p>
         ) : null}
       </div>
     </div>

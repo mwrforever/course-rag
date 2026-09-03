@@ -1,14 +1,15 @@
 /**
- * 消息操作栏（复制 + 反馈）测试（Task 12 TDD 先行用例 + Task 13 carry2/carry 适配）
+ * 消息操作栏（复制 + 反馈）测试（Task 12 TDD 先行用例 + Task 13 carry 适配）
  *
  * 覆盖（设计 §1.5.4 消息操作栏 + D9 反馈锁定）：
- * - 复制：clipboard 写入 AI 回答正文 + toast「已复制」；CANCELLED 终态文本
- *   带「已停止生成」后缀时剥离后缀再复制（carry2 注释与行为对齐）
+ * - 复制：clipboard 写入 AI 回答正文 + toast「已复制」（2026-09-03 停止态改版后
+ *   CANCELLED 终态正文不再拼后缀，原样复制无剥离逻辑）
  * - 反馈请求体 {sessionId, messageId, isLiked, intentType?}：
  *   intentType 由「本 run 是否出现 sources」推断（有 → knowledge_question，无 → chat）；
  *   历史回显透传真实 intentType 时优先使用（非法值回退推断）
  * - 一次选择后锁定（UNIQUE(user_id,message_id) 语义，不提供撤销）
- * - messageId 为 null（CANCELLED/ERROR 终态）不渲染反馈按钮，仅保留复制
+ * - messageId 为 null（ERROR 终态/取消落库降级窗口）不渲染反馈按钮，仅保留复制；
+ *   CANCELLED 携 id（2026-09-03 停止态拍板）反馈入口保留
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +18,6 @@ const apiMock = vi.hoisted(() => ({ postFeedback: vi.fn() }));
 vi.mock("@/lib/api", () => ({ postFeedback: apiMock.postFeedback }));
 
 import { FeedbackBar, inferIntentType } from "./feedback-bar";
-import { STOPPED_SUFFIX } from "@/hooks/use-chat-stream";
 
 const onNotify = vi.fn();
 /** jsdom 无 clipboard API：注入可控 writeText */
@@ -105,19 +105,11 @@ describe("FeedbackBar 复制", () => {
     delete (document as unknown as Record<string, unknown>).execCommand;
   });
 
-  it("carry2：CANCELLED 终态文本带「已停止生成」后缀 → 复制前剥离后缀", async () => {
-    renderBar({ text: `回答内容${STOPPED_SUFFIX}` });
+  it("2026-09-03 停止态：CANCELLED 终态正文原样复制（后缀机制已下线，无剥离逻辑）", async () => {
+    renderBar({ text: "回答到一半的内容" });
     fireEvent.click(screen.getByRole("button", { name: /复制/ }));
     await vi.waitFor(() => {
-      expect(clipboardWriteText).toHaveBeenCalledWith("回答内容");
-    });
-  });
-
-  it("carry2：正文恰好以「已停止生成」结尾（非 CANCELLED 追加场景）不误剥离", async () => {
-    renderBar({ text: "回答正文" });
-    fireEvent.click(screen.getByRole("button", { name: /复制/ }));
-    await vi.waitFor(() => {
-      expect(clipboardWriteText).toHaveBeenCalledWith("回答正文");
+      expect(clipboardWriteText).toHaveBeenCalledWith("回答到一半的内容");
     });
   });
 });
@@ -216,11 +208,24 @@ describe("FeedbackBar 反馈与锁定", () => {
     });
   });
 
-  it("messageId 为 null（CANCELLED/ERROR）：不展示反馈按钮，仅保留复制", () => {
+  it("messageId 为 null（ERROR 终态/取消落库降级窗口）：不展示反馈按钮，仅保留复制", () => {
     renderBar({ messageId: null });
     expect(screen.queryByRole("button", { name: /有用/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /无用/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /复制/ })).toBeInTheDocument();
+  });
+
+  it("2026-09-03 停止态：CANCELLED 终态携带 messageId → 反馈按钮照常渲染可提交", async () => {
+    renderBar({ messageId: "msg-cancelled" });
+    fireEvent.click(screen.getByRole("button", { name: /有用/ }));
+    await vi.waitFor(() => {
+      expect(apiMock.postFeedback).toHaveBeenCalledWith({
+        sessionId: "s-1",
+        messageId: "msg-cancelled",
+        isLiked: true,
+        intentType: "chat",
+      });
+    });
   });
 
   it("intentType 透传：历史回显携带真实意图时优先使用（覆盖 hasSources 推断）", async () => {
