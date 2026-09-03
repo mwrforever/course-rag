@@ -1500,9 +1500,11 @@ public class ChatRequestWorker {
      * 但 SAA 1.1.2.0 API 中 {@link BaseCheckpointSaver} 无 {@code getTuple} 方法
      * （该 API 属于 LangGraph4j 原生接口，SAA 未暴露）。此处使用 {@code saver.get(config)}
      * 替代，返回 {@code Optional<Checkpoint>}，功能等价。
-     * 浅拷贝通过 {@code new HashMap<>(state)} 实现——SAA 1.1.2.0 实证图执行期不原地修改
-     * checkpoint state，浅拷贝即可满足回滚隔离，且保留 Message 类型（P1-3；原 JSON 深拷贝
-     * 经无多态注册的 ObjectMapper 会把 Message 反序列化为 LinkedHashMap，类型破坏）。
+     * 浅拷贝通过 {@code new HashMap<>(state)} 实现——该容器级浅拷贝仅顶层 Map 独立，messages
+     * 列表与 checkpoint 原实例共享引用、图执行期会被 AppendStrategy 原地 addAll 追加污染
+     * （T8/T10 字节码实证，与 rollbackCheckpointBeforeRetry javadoc 同口径），消费方（重试
+     * 回滚）按 historyMessageCount 游标截断剥离污染；浅拷贝仍保留 Message 类型（P1-3；原
+     * JSON 深拷贝经无多态注册的 ObjectMapper 会把 Message 反序列化为 LinkedHashMap，类型破坏）。
      * 快照失败降级（记 warn 不阻塞 run）。
      *
      * @param runId  Run 唯一标识
@@ -1517,9 +1519,11 @@ public class ChatRequestWorker {
                 return null;
             }
             Checkpoint cp = opt.get();
-            // P1-3: 容器级浅拷贝替代 JSON 深拷贝——SAA 1.1.2.0 实证（OverAllState.updateState
-            // 用 Stream.collect 产新 Map、AppendStrategy 用 new ArrayList 产新 List）图执行期
-            // 不原地修改 checkpoint state，顶层 Map 独立即可保证快照安全，且 Message 类型 100% 保留
+            // P1-3: 容器级浅拷贝替代 JSON 深拷贝——仅顶层 Map 独立（OverAllState.updateState
+            // 用 Stream.collect 产新 Map），messages 列表与 checkpoint 原实例共享引用，图执行期会被
+            // AppendStrategy 对 old 列表原地 addAll 追加污染（T8/T10 字节码实证，与上方
+            // rollbackCheckpointBeforeRetry javadoc 同口径）；消费方（重试回滚）按快照捕获的
+            // historyMessageCount 游标截断剥离污染，浅拷贝且保留 Message 类型
             // （JSON 往返会经无多态注册的 ObjectMapper 把 Message 反序列化为 LinkedHashMap，类型破坏）
             Map<String, Object> stateCopy = new HashMap<>(cp.getState());
             // 计算持久化游标：pre-run checkpoint 中 messages 列表长度（P0-4a 去重）
