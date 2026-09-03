@@ -3,11 +3,13 @@ import { test, expect } from "@playwright/test";
 import { mockApi, login, mockChatStream, frame } from "./helpers/sse-route";
 
 /**
- * 链式时间轴 E2E（2026-08-28 时间线改版核心交付，Task 15a；2026-08-30 对齐设计稿）
+ * 链式时间轴 E2E（2026-08-28 时间线改版核心交付，Task 15a；2026-08-30 对齐设计稿；
+ * 2026-09-03 渲染序拍板修订）
  *
- * - 渲染序：sources 前置（M3 渲染排序兜底，不依赖到达序）→ thinking → tool → 答案正文
- *   按竖线串联，节点先于正文（stage/query_plan 帧后端照发、前端忽略——
- *   「正在生成回答」「未识别意图」不再展示）
+ * - 渲染序：严格按事件到达序（=服务端触发序，2026-09-03 用户拍板：检索卡不可能排
+ *   首位——理解思考恒先于检索；M3「sources 强制前置」前端兜底已移除）→ thinking →
+ *   sources → tool → 答案正文按竖线串联，节点先于正文（stage/query_plan 帧后端
+ *   照发、前端忽略——「正在生成回答」「未识别意图」不再展示）
  * - 折叠：思考步骤默认收起（末行可见），点击头部展开全量思考行
  * - 抽屉：检索步骤点击打开召回抽屉（片段卡承载 docTitle；正文按 id 懒加载回查 PG）；
  *   工具步骤点击打开工具结果抽屉（结构化卡片 + 原始 JSON 折叠）
@@ -51,7 +53,7 @@ test.describe("链式时间轴", () => {
     frame("delta", { text: "答案正文开始。" }, 8) +
     frame("end", { runId: "9001", status: "COMPLETED", messageId: "5001" }, 9);
 
-  test("渲染序：sources 前置（M3 兜底，不依赖到达序），思考/工具按到达序挂链，均位于答案正文之前（stage/query_plan 帧被忽略）", async ({
+  test("渲染序：严格按事件到达序（理解思考 → sources → tool → 正文；M3 前置兜底已移除，检索卡不排首位；stage/query_plan 帧被忽略）", async ({
     page,
   }) => {
     // 事件流中混入 stage/query_plan 帧（后端照发），断言前端忽略不渲染
@@ -96,11 +98,11 @@ test.describe("链式时间轴", () => {
     await expect(page.getByText("正在生成回答")).toHaveCount(0);
     await expect(page.getByTestId("query-plan-step")).toHaveCount(0);
 
-    // M3 渲染排序兜底：sources 强制前置（本用例到达序 sources 在 thinking 之后，渲染层归一前置）；
-    // 其余节点到达序逐对校验：sources < thinking < tool < 正文
+    // 2026-09-03 渲染序拍板：严格按到达序逐对校验——thinking < sources < tool < 正文
+    //（检索卡位于理解思考之后，不可能出现在首位）
     const boxes = await Promise.all([
-      sources.boundingBox(),
       thinking.boundingBox(),
+      sources.boundingBox(),
       tool.boundingBox(),
       page.getByTestId("markdown-view").boundingBox(),
     ]);
