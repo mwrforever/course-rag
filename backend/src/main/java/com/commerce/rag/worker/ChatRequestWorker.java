@@ -50,6 +50,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -732,6 +733,10 @@ public class ChatRequestWorker {
             // （userFacingErrorMessage 对 TimeoutException/IOException 已有超时/断连中文映射）
             // + persistMessages 增量落库（无产出则仅 USER 行；处理点 a：RETRYABLE 尝试从未
             // 占用 terminalPushed/persisted，此处首次认领）
+            // 不变式断言：maxAttempts = 1 + autoRetryMax ≥ 1（auto-retry-max 启动期 @Min(0) 校验）
+            // 保证循环至少执行一次，RETRYABLE 末次尝试必经上方赋值分支 break 到达此处——
+            // requireNonNull 兼作 SpotBugs NP_NULL_ON_SOME_PATH 防护（其数据流不读 @Validated 约束）
+            Objects.requireNonNull(retryExhaustedFailure, "重试耗尽收尾前末次失败必已赋值（maxAttempts≥1）");
             log.error(
                     "无产出自动重试耗尽，run 转ERROR: runId={}, 总尝试次数={}, 末次异常类={}, 异常消息={}",
                     runId,
