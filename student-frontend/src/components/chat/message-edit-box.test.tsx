@@ -29,6 +29,16 @@ function renderBox(overrides: { initialValue?: string; streaming?: boolean } = {
 }
 
 describe("MessageEditBox 编辑态交互（M5）", () => {
+  it("2026-09-03 全宽卡片形态：与内容展示区同宽（w-full，非 70% 窄气泡）+ 取消/发送按钮组", () => {
+    // 用户拍板（图 2/图 3）：编辑输入框与内容区同宽，按钮组贴卡片右下角
+    renderBox();
+    const box = screen.getByTestId("message-edit-box");
+    expect(box.className).toContain("w-full");
+    expect(box.className).not.toContain("max-w-[70%]");
+    expect(screen.getByTestId("message-edit-cancel")).toHaveTextContent("取消");
+    expect(screen.getByTestId("message-edit-submit")).toHaveTextContent("发送");
+  });
+
   it("初始值 = 原问题：逐字一致时发送置灰；修改后解禁", () => {
     const { onSubmit } = renderBox({ initialValue: "原问题" });
 
