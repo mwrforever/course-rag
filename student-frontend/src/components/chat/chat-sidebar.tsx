@@ -44,13 +44,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatToast } from "@/components/chat/chat-toast";
 import {
-  useChatStreamingSessionId,
+  useChatStreamingSessionIds,
   useRequestNewChat,
+  useUnmarkChatStreaming,
 } from "@/components/chat/chat-streaming-context";
 import { RenameDialog } from "@/components/chat/rename-dialog";
 import { SessionSearchDialog, relativeTime } from "@/components/chat/session-search-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { ApiError, deleteSession, getSessions, updateSessionTitle } from "@/lib/api";
+import { ApiError, deleteSession, getActiveRun, getSessions, updateSessionTitle } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { SessionItem } from "@/lib/types";
 
@@ -62,6 +63,8 @@ export const SIDEBAR_SESSIONS_QUERY_KEY = ["chat-sidebar-sessions"] as const;
 const SIDEBAR_SESSION_PAGE_SIZE = 20;
 /** 收起态历史浮层容量（M1：最新 10 条，spec M1.1） */
 const RECENT_POPOVER_SIZE = 10;
+/** 生成中标记自愈核对间隔（毫秒）：对标记集合逐会话查 active-run，run 已结束即清标记 */
+const GENERATING_VERIFY_INTERVAL_MS = 30_000;
 /** toast 展示时长（毫秒），到时自动消失） */
 const TOAST_DURATION_MS = 2400;
 
@@ -75,8 +78,40 @@ export function ChatSidebar() {
   const { user, logout, openLoginDialog } = useAuth();
   // 新建对话信号出口（/chat 同路由：驱动工作区 reset 干净态，不重挂载）
   const requestNewChat = useRequestNewChat();
-  // 生成中会话定位（2026-08-27）：对应会话行渲染生成中动画（脉冲点 + 标题闪烁）
-  const streamingSessionId = useChatStreamingSessionId();
+  // 生成中会话集合（2026-09-03 集合化）：多会话并发下可多个会话同时挂生成中动画
+  const streamingSessionIds = useChatStreamingSessionIds();
+  const unmarkStreaming = useUnmarkChatStreaming();
+  // 标记集合稳定键（排序拼接）：集合内容不变时 effect 不重挂（避免逐渲染重建轮询）
+  const streamingKey = useMemo(
+    () => [...streamingSessionIds].sort().join(","),
+    [streamingSessionIds],
+  );
+  // ── 生成中标记自愈（2026-09-03）：切走/新建不清标记（run 服务端继续执行），但 run
+  //    结束后标记必须消失——对标记集合逐会话核对 GET active-run（标记出现即核一次 +
+  //    30s 周期核对），无活跃 run 即清；查询失败保留标记（下次核对兜底）──
+  useEffect(() => {
+    if (streamingKey === "") return;
+    const ids = streamingKey.split(",");
+    let cancelled = false;
+    const verify = async () => {
+      const results = await Promise.allSettled(ids.map((id) => getActiveRun(id)));
+      if (cancelled) return;
+      ids.forEach((id, index) => {
+        const result = results[index];
+        // 落定且无活跃 run → run 已结束（或从未开始），清除滞留标记；
+        // rejected（网络/服务异常）保留标记，下轮核对兜底
+        if (result.status === "fulfilled" && result.value == null) {
+          unmarkStreaming(id);
+        }
+      });
+    };
+    void verify();
+    const timer = setInterval(() => void verify(), GENERATING_VERIFY_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [streamingKey, unmarkStreaming]);
   const [collapsed, setCollapsed] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   // 登出二次确认（用户拍板：登出必须确认）
@@ -433,8 +468,9 @@ export function ChatSidebar() {
                           title={session.title}
                           className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 focus-visible:ring-2 focus-visible:ring-brand"
                         >
-                          {/* 生成中动画（2026-08-27）：该会话正在流式生成时脉冲点 + 图标换旋转指示 */}
-                          {session.id === streamingSessionId ? (
+                          {/* 生成中动画（2026-08-27；2026-09-03 集合化）：会话在生成中
+                              集合（多会话并发可多个）时脉冲点 + 图标换旋转指示 */}
+                          {streamingSessionIds.has(session.id) ? (
                             <>
                               <span
                                 data-testid="session-generating-dot"
