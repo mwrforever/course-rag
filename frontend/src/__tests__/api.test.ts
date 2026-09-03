@@ -400,6 +400,25 @@ describe('api client：接口函数拼装', () => {
     expect(config.method).toBe('post')
   })
 
+  it('authApi.me：GET /auth/me 查询当前登录身份并解包 MeResponse（M10 启动恢复）', async () => {
+    // me 为无副作用端点（不旋转 RT、不写库），启动恢复用身份三元组重建内存登录态；
+    // userId 为 Long 序列化铁律下的 string（MockRoute 通用适配器回 null 无法验解包，独立装路由）
+    const mePayload = { userId: '1001', role: 'TEACHER', displayName: '测试教师' }
+    installMockAdapter([
+      {
+        match: (c) => c.url?.includes('/auth/me') ?? false,
+        respond: () => ok(mePayload),
+      },
+    ])
+
+    const me = await authApi.me()
+    // 成功通道解包 ApiResponse：仅剩业务数据，userId 保持 string
+    expect(me).toEqual(mePayload)
+    const config = lastCall('/auth/me')
+    expect(config.method).toBe('get')
+    expect(config.url).toBe('/auth/me')
+  })
+
   it('knowledgeBaseApi：CRUD 方法/路径/参数正确', async () => {
     await knowledgeBaseApi.list({ page: 2, size: 10, keyword: '课' })
     let config = lastCall('/admin/knowledge-bases')
