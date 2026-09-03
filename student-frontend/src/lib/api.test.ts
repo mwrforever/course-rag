@@ -544,6 +544,34 @@ describe("SSE 重连端点", () => {
   });
 });
 
+describe("活跃 run 查询端点（M6.4 多会话并发续流）", () => {
+  it("getActiveRun：GET active-run 并解包 runId（切回仍有 run 在生成的会话时续流入口）", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValue(res(200, { code: 0, message: "ok", data: { runId: "run-9" } }));
+    await expect(api.getActiveRun("sess-9")).resolves.toBe("run-9");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("/api/v1/student/chat/session/sess-9/active-run");
+    // 认证通道与 fetch 通道同口径（cookie 凭证兜底）
+    expect((init as RequestInit).credentials).toBe("include");
+  });
+
+  it("getActiveRun：无活跃 run 容错返回 null（runId=null 与 data 空体两形态）", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValueOnce(res(200, { code: 0, message: "ok", data: { runId: null } }));
+    await expect(api.getActiveRun("sess-9")).resolves.toBeNull();
+    fetchMock.mockResolvedValueOnce(res(200, { code: 0, message: "ok", data: null }));
+    await expect(api.getActiveRun("sess-9")).resolves.toBeNull();
+  });
+
+  it("getActiveRun：会话不存在/非本人（404）与网络失败一律退化 null（不阻断历史回显）", async () => {
+    const api = await freshApi();
+    fetchMock.mockResolvedValueOnce(res(404, { code: 404, message: "会话不存在" }));
+    await expect(api.getActiveRun("sess-x")).resolves.toBeNull();
+    fetchMock.mockRejectedValueOnce(new TypeError("网络不可达"));
+    await expect(api.getActiveRun("sess-9")).resolves.toBeNull();
+  });
+});
+
 describe("业务端点契约", () => {
   it("公开课程详情/资料库/分片上下文/会话系列端点 URL 与方法正确", async () => {
     const api = await freshApi();

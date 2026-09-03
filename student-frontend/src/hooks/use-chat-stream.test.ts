@@ -2117,6 +2117,70 @@ describe("useChatStream 集成", () => {
     expect(result.current.state.messages).toHaveLength(0);
   });
 
+  it("resume：服务端拒绝（run 已终结/归属失效，非 2xx）静默放弃（不落 error、不接管流，完成态由历史回显兜底）", async () => {
+    fetchMock.mockResolvedValue(jsonRes(409, { code: 409, message: "Run 已终结" }));
+    const { result } = renderHook(() => useChatStream("sess-9"));
+
+    await act(async () => {
+      await result.current.resume("run-9");
+    });
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(false);
+    expect(result.current.state.messages).toHaveLength(0);
+    // 拒绝后不重试（切出再切回才可重试续流）：仅一次 GET reconnect
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/v1/student/chat/run-9/reconnect");
+  });
+
+  it("resume：请求在途被新提问取代（streaming 已置位）→ 丢弃响应体放弃接管（不顶掉新流）", async () => {
+    // 新提问的流（可控且保持挂起：send 落位后 streaming 持续由新流持有）
+    const sendCtrl = controllableSse();
+    // 续流回放响应（延迟兑现：兑现时新流已建立，本次续流应作废）
+    let resolveReconnect: ((r: Response) => void) | null = null;
+    const reconnectPending = new Promise<Response>((resolve) => {
+      resolveReconnect = resolve;
+    });
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/student/chat") && init?.method === "POST") return sendCtrl.response;
+      if (url.includes("/reconnect") && init?.method === "GET") return reconnectPending;
+      throw new Error(`未预期的请求: ${url} ${init?.method}`);
+    });
+    const { result } = renderHook(() => useChatStream("sess-9"));
+
+    // 续流请求在途（GET 已发出未兑现）
+    let resumePromise: Promise<void> | null = null;
+    act(() => {
+      resumePromise = result.current.resume("run-9");
+    });
+
+    // 在途期间用户发起新提问：用户消息落位 + streaming 置位（新流建立）
+    await act(async () => {
+      await result.current.send("切回后立刻新提问", []);
+    });
+    expect(result.current.state.streaming).toBe(true);
+
+    // 续流响应到达：已被新流取代 → 丢弃响应体放弃接管（不 dispatch reconnect、不清 streaming）
+    const resumeCtrl = controllableSse();
+    const cancelSpy = vi.spyOn(resumeCtrl.response.body!, "cancel");
+    await act(async () => {
+      resolveReconnect!(resumeCtrl.response);
+      await resumePromise;
+    });
+    expect(cancelSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.streaming).toBe(true);
+
+    // 新流继续持有状态：已作废的 run-9 回放帧不落态，新流 metadata/delta 正常落位
+    await act(async () => {
+      resumeCtrl.push(md("run-9", "sess-9"));
+      sendCtrl.push(md("run-new", "sess-9"));
+      sendCtrl.push(frame(2, "delta", J({ text: "新流正文" })));
+    });
+    expect(result.current.state.runId).toBe("run-new");
+    expect(result.current.state.messages[1].text).toBe("新流正文");
+  });
+
   it("detach：停消费循环释放读取器（新建对话干净态；旧流事件不再落态、状态不清）", async () => {
     const ctrl = controllableSse();
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -2324,5 +2388,30 @@ describe("M5 replay() 生命周期", () => {
     expect(result.current.state.endedStatus).toBe("COMPLETED");
     expect(result.current.state.streaming).toBe(false);
     expect(result.current.state.error).toBeNull();
+  });
+
+  it("replay 发送阶段 401（刷新失败已全局登出）：error auth 分级 + replay reject（本地消息不动）", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/auth/refresh")) {
+        return jsonRes(401, { code: 401, message: "Refresh Token 无效或已过期" });
+      }
+      return jsonRes(401, { code: 401, message: "令牌无效或已过期" });
+    });
+    const { result } = renderHook(() => useChatStream("sess-1"));
+    const err = await act(async () =>
+      result.current.replay("EDIT", "改后的问题", "run-1").catch((e: unknown) => e),
+    );
+    // 发送阶段失败向上抛 ApiError(401)（与 send 401 同款语义，上层感知登出）
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).code).toBe(401);
+    expect(String(fetchMock.mock.calls.at(-1)![0])).toBe(
+      "/api/v1/student/chat/session/sess-1/replay",
+    );
+    // auth 分级落位供页面感知（api 层单飞刷新失败已全局登出）
+    expect(result.current.state.error?.kind).toBe("auth");
+    // 本地消息不动（replay_rollback 未发生，与服务端一致无需恢复）
+    expect(result.current.state.messages).toHaveLength(0);
+    expect(result.current.state.streaming).toBe(false);
   });
 });
