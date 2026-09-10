@@ -42,7 +42,10 @@ coverage/
 appdata/
 
 # ── 过程文档（docs/ 不入库，仅本地保留；正式代码与项目宪法入版本控制） ──
-docs/
+# 例外：docs/data 为 RAG 知识库示例数据，随仓库分发（见 README.md）；需先排除 docs/ 整体，
+# 再反向豁免子目录，否则 git 不会下探被忽略目录，豁免规则不生效
+docs/*
+!docs/data/
 
 # ── 系统文件 ──
 .DS_Store
@@ -56,6 +59,7 @@ desktop.ini
 .zcode/
 .workbuddy/
 .claude/
+.playwright-cli/
 
 # ── Maven 本地调试输出 ──
 backend/mvn-log.txt

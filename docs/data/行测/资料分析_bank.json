@@ -1,0 +1,2732 @@
+{
+  "source": "nowcoder_official",
+  "group": "行测",
+  "name": "资料分析",
+  "tag_id": 1405,
+  "target": 73,
+  "fetched_at": "2026-07-28",
+  "total_unique": 85,
+  "complete": true,
+  "questions": [
+    {
+      "question_id": 2390180,
+      "uuid": "c591bd0691a744e680a8f89937939029",
+      "type": 1,
+      "title": "2018年1~3季度，B市农林牧渔业总产值约为:",
+      "content": "<p>  2018年1~3季度，B市农林牧渔业总产值约为: </p>",
+      "options": [
+        {
+          "id": 3748671,
+          "content": "188.6亿元"
+        },
+        {
+          "id": 3748672,
+          "content": "<p>198.9亿元</p>"
+        },
+        {
+          "id": 3748673,
+          "content": "192.8亿元"
+        },
+        {
+          "id": 3748674,
+          "content": "214.3亿元"
+        }
+      ],
+      "correct_option_ids": [
+        3748673
+      ],
+      "correct_options": [
+        "192.8亿元"
+      ],
+      "analysis": "<p>  第一步，本题考查基期量计算。 </p> <p>  第二步，定位第四段文字材料，“2019年1—3季度，全市实现农林牧渔业总产值190.7亿元，同比下降1.1%”。 </p> <p>  第三步，根据基期量=现期量/（1+增长率），可列式190.7/（1－1.1%），根据丨－1.1%丨＜5%，可用化除为乘公式计算，原式约为190.7×（1+1.1%）=190.7+190.7×1.1%≈190.7+2.1=192.8（亿元）。 </p> <p>  因此，选择C选项。 </p>"
+    },
+    {
+      "question_id": 2390181,
+      "uuid": "ce027be2b4b149a980055edd975c5b4e",
+      "type": 1,
+      "title": "2019年1~3季度，高技术制造业对全市规模以上工业增加值拉动增长了约:",
+      "content": "<p>  2019年1~3季度，高技术制造业对全市规模以上工业增加值拉动增长了约: </p>",
+      "options": [
+        {
+          "id": 3748675,
+          "content": "1.96%"
+        },
+        {
+          "id": 3748676,
+          "content": "1.45%"
+        },
+        {
+          "id": 3748677,
+          "content": "2.25%"
+        },
+        {
+          "id": 3748678,
+          "content": "3.2%"
+        }
+      ],
+      "correct_option_ids": [
+        3748676
+      ],
+      "correct_options": [
+        "1.45%"
+      ],
+      "analysis": "<p>  第一步，本题考查拉动增长率计算。 </p> <p>  第二步，定位第三段文字材料，“2019年1—3季度，高端产业发挥引领作用，高技术制造业增长6.4%，对规模以上工业增长的贡献率达到50%”。 </p> <p>  第三步，根据拉动增长率=部分的增长量/整体的基期量，材料中未给出相应的数据，公式不可直接使用。材料中给出整体的增长率和部分对整体增长的贡献率，则可转化为拉动增长率进行求解。根据整体的增长率=整体的增长量/整体的基期量，部分对整体增长的贡献率=部分的增长量/整体的增长量，则拉动增长率＝部分对整体增长的贡献率×整体的增长率，则所求为2.9%×50%≈1.5%。 </p> <p>  因此，选择B选项。 </p>"
+    },
+    {
+      "question_id": 2390182,
+      "uuid": "46989792c9844351b46134d54844e98f",
+      "type": 1,
+      "title": "2019年前三季度，B市信息传输、软件和信息技术服务业的同比增长量约是科学...",
+      "content": "2019年前三季度，B市信息传输、软件和信息技术服务业的同比增长量约是科学研究和技术服务业的多少倍?",
+      "options": [
+        {
+          "id": 3748679,
+          "content": "6.17"
+        },
+        {
+          "id": 3748680,
+          "content": "2.26"
+        },
+        {
+          "id": 3748681,
+          "content": "1.62"
+        },
+        {
+          "id": 3748682,
+          "content": "1.25"
+        }
+      ],
+      "correct_option_ids": [
+        3748681
+      ],
+      "correct_options": [
+        "1.62"
+      ],
+      "analysis": "<p>  第一步，本题考查增长量与倍数杂糅。 </p> <p>  第二步，定位第二段文字材料，“2019年1—3季度，全市信息传输、软件和信息技术服务业实现增加值2964.0亿元，增长13.4%；科学研究和技术服务业实现增加值2911.1亿元，增长8.0%”。 </p> <p>  第三步，根据增长量计算n+1原则，全市信息传输、软件和信息技术服务业实现增加值增长率为13.4%（1/8=12.5%＜13.4%＜14.3%=1/7），可得13.4%≈1/7.5，则全市信息传输、软件和信息技术服务业实现增加值增长量约为2964/（7.5+1）=2964/8.5；全市科学研究和技术服务业实现增加值增长率为8.0%≈1/12.5，则全市科学研究和技术服务业实现增加值增长量约为2911/（12.5+1）=2911/13.5，则所求倍数=2964/8.5&#xf7;2911/13.5=2964/2911×13.5/8.5≈1.59×1+，结合选项，只有C选项满足。 </p> <p>  因此，选择C选项。 </p>"
+    },
+    {
+      "question_id": 2390183,
+      "uuid": "9a369d9083fe491188167b172ae42b01",
+      "type": 1,
+      "title": "2018年1~3季度，金融业实现增加值占全市第三产业比重约为:",
+      "content": "2018年1~3季度，金融业实现增加值占全市第三产业比重约为:",
+      "options": [
+        {
+          "id": 3748683,
+          "content": "21.2%"
+        },
+        {
+          "id": 3748684,
+          "content": "32.4%"
+        },
+        {
+          "id": 3748685,
+          "content": "38.6%"
+        },
+        {
+          "id": 3748686,
+          "content": "48.1%"
+        }
+      ],
+      "correct_option_ids": [
+        3748683
+      ],
+      "correct_options": [
+        "21.2%"
+      ],
+      "analysis": "<p>  第一步，本题考查基期比重计算。 </p> <p>  第二步，定位第一段和第二段文字材料，“第三产业实现增加值19160.9亿元，增长6.4%。1~3季度，全市第三产业增加值同比增长6.4%;其中，金融、信息服务、科技服务等优势行业对全市经济增长的贡献率合计达到68.6%。金融业实现增加值4221.7亿元，增长9.2%”。 </p> <p>  第三步，根据基期比重=A/B×（1+b）/（1+a），复杂计算截三位处理数据，则原式可化为42/192×（1+6.4%）/（1+9.2%）≈0.22×（1+6.4%）/（1+9.2%）≈0.22×1<sup>-</sup>＜22%。 </p> <p>  因此，选择A选项。 </p>"
+    },
+    {
+      "question_id": 2390184,
+      "uuid": "d0a243ec3140418d84a41c6be32f8441",
+      "type": 1,
+      "title": "根据材料，以下说法正确的是:",
+      "content": "根据材料，以下说法正确的是:",
+      "options": [
+        {
+          "id": 3748687,
+          "content": "<p>2019年1~3季度，B市三大产业占地区生产总值的比重较去年同期均下降</p>"
+        },
+        {
+          "id": 3748688,
+          "content": "2019年1~3季度，B市全市实现农林牧渔业总产值超过林业产值的2倍"
+        },
+        {
+          "id": 3748689,
+          "content": "2019年1~3季度，B市重点行业中电力、热力生产和供应业同比增长最快"
+        },
+        {
+          "id": 3748690,
+          "content": "<p>2018年1~3季度，B市设施农业中瓜果类、花卉苗木等高效益品种占设施农业产值比重为40.7%</p>"
+        }
+      ],
+      "correct_option_ids": [
+        3748688
+      ],
+      "correct_options": [
+        "2019年1~3季度，B市全市实现农林牧渔业总产值超过林业产值的2倍"
+      ],
+      "analysis": "<p>  第一步，本题考查综合分析，且需选出正确的一项。 </p> <p>  第二步，A选项，两期比重比较。定位第一段文字材料，“2019年1—3季度，B市全市实现地区生产总值23130.0亿元，按可比价格计算，同比增长6.2%。分产业看，第一产业实现增加值79.4亿元，增长2.9%；第二产业实现增加值3889.7亿元，增长4.9%；第三产业实现增加值19160.9亿元，增长6.4%”，根据两期比重比较口诀，部分的增长率高于整体的增长率，则上升，反之，则下降。要求下降，即三大产业（部分）的增长率低于地区生产总值（整体）的增长率，发现，第三产业实现增加值同比增长=6.4%＞6.2%=全市实现地区生产总值增长率，不满足均下降，错误。 </p> <p>  B选项，现期倍数计算。定位第四段文字材料，“2019年1—3季度，B市全市实现农林牧渔业总产值190.7亿元，实现林业产值73.8亿元”，2019年1—3季度B市实现农林牧渔业总产值与林业产值的倍数关系约为191/74＞2（倍），即超过2倍，正确。 </p> <p>  C选项，读数比较。定位第三段文字材料，“2019年1—3季度，B市重点行业中，电力、热力生产和供应业增长8.8%，医药制造业增长7.0%，计算机、通信和其他电子设备制造业增长1.9%，汽车制造业增长0.9%”，材料中只给出部分重点行业，其他重点行业增速未知，无法判断，错误。 </p> <p>  D选项，简单计算。定定位第四段文字材料，“2019年1—3季度，B市设施农业中瓜果类、花卉苗木等高效益品种占设施农业产值比重合计为35.2%，同比提高5.5个百分点”， 2018年1—3季度B市设施农业中瓜果类、花卉苗木等高效益品种占设施农业产值比重为35.2%－5.5%=29.7%，错误。 </p> <p>  因此，选择B选项。 </p>"
+    },
+    {
+      "question_id": 2390729,
+      "uuid": "3193a7cfd6a74b6ca8edf9a5c694e3e8",
+      "type": 1,
+      "title": "2018年1~10月，我国平板玻璃产量约为多少亿重量箱?",
+      "content": "<p>   2018年1~10月，我国平板玻璃产量约为多少亿重量箱? </p>",
+      "options": [
+        {
+          "id": 3750097,
+          "content": "6.89"
+        },
+        {
+          "id": 3750098,
+          "content": "7.41"
+        },
+        {
+          "id": 3750099,
+          "content": "8.23"
+        },
+        {
+          "id": 3750100,
+          "content": "9.18"
+        }
+      ],
+      "correct_option_ids": [
+        3750098
+      ],
+      "correct_options": [
+        "7.41"
+      ],
+      "analysis": "<p>  第一步，本题考查基期量计算问题。 </p> <p>  第二步，定位第二段文字材料“1~10月规模以上平板玻璃产量7.8亿重量箱，同比增长5.2%”。 </p> 第三步，根据基期量=现期量/（1＋增长率），代入公式可得<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646203987500/DD96564A9223DE1E0ADB288900B61B3E\">（亿吨）。 <p>  因此，选择B选项。 </p>"
+    },
+    {
+      "question_id": 2390730,
+      "uuid": "74bc02a89e7a48a2b51ec89dc15d3d65",
+      "type": 1,
+      "title": "2019年1~10月，我国规模以上建材行业营业收入利润率同比约:",
+      "content": "2019年1~10月，我国规模以上建材行业营业收入利润率同比约:",
+      "options": [
+        {
+          "id": 3750101,
+          "content": "增加0.09个百分点"
+        },
+        {
+          "id": 3750102,
+          "content": "<p>增加0.30个百分点</p>"
+        },
+        {
+          "id": 3750103,
+          "content": "减少0.09个百分点"
+        },
+        {
+          "id": 3750104,
+          "content": "<p>减少0.30个百分点</p>"
+        }
+      ],
+      "correct_option_ids": [
+        3750102
+      ],
+      "correct_options": [
+        "<p>增加0.30个百分点</p>"
+      ],
+      "analysis": "<p>  第一步，本题考查两期比重计算问题。 </p> <p>  第二步，定位第三段文字材料“2019年1—10月预计规模以上建材行业营业收入3.9万亿元，同比增长14.4%；利润总额3350亿元，同比增长18.5%”。 </p> 第三步，根据两期比重比较口诀，分子增长率大于分母增长率，比重上升，反之下降。利润率=利润/收入，a=18.5%＞b=14.4%，则利润率同比增加，排除C、D选项。两期比重差值＜丨a－b丨=4.1%，无法进一步排除选项。代入两期比重计算公式<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646204055571/4987430603BF01FBB070B98237CDA386\">，可得<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646204067800/66EF5D600BD9B5595FAFC4FD0330A62D\">，与B选项最为接近。 <p>  因此，选择B选项。 </p>"
+    },
+    {
+      "question_id": 2390731,
+      "uuid": "8bbb4fcc816b48b3bb5354f7ae38c58c",
+      "type": 1,
+      "title": "2019年9月我国建材及非金属矿出厂价格约比2018年10月的价格多:",
+      "content": "<p>   2019年9月我国建材及非金属矿出厂价格约比2018年10月的价格多: </p>",
+      "options": [
+        {
+          "id": 3750105,
+          "content": "0.59%"
+        },
+        {
+          "id": 3750106,
+          "content": "1.19%"
+        },
+        {
+          "id": 3750107,
+          "content": "1.21%"
+        },
+        {
+          "id": 3750108,
+          "content": "<p> 1.78%</p>"
+        }
+      ],
+      "correct_option_ids": [
+        3750106
+      ],
+      "correct_options": [
+        "1.19%"
+      ],
+      "analysis": "<p>  第一步，本题考查增长率计算问题。 </p> <p>  第二步，定位第四段文字材料“2019年10月份建材及非金属矿出厂价格环比上涨0.6%，同比上涨1.8%”。 </p> 第三步，根据基期量=现期量/（1＋增长率）和增长率=现期量/基期量－1，设2019年10月份建材及非金属矿出厂价格为A，可得所求增长率为<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646204117338/C5EF3A4E4336DD2C944A9772CC527225\">"
+    },
+    {
+      "question_id": 2390732,
+      "uuid": "f991a854610e451aa9e21094a4be547f",
+      "type": 1,
+      "title": "2019年1~9月建材及非金属矿商品顺差同比约增长了:",
+      "content": "<p>  2019年1~9月建材及非金属矿商品顺差同比约增长了: </p>",
+      "options": [
+        {
+          "id": 3750109,
+          "content": "-3.5%"
+        },
+        {
+          "id": 3750110,
+          "content": "<p>18.3%</p>"
+        },
+        {
+          "id": 3750111,
+          "content": "43.3%"
+        },
+        {
+          "id": 3750112,
+          "content": "<p>7.1%</p>"
+        }
+      ],
+      "correct_option_ids": [
+        3750111
+      ],
+      "correct_options": [
+        "43.3%"
+      ],
+      "analysis": "<p>  第一步，本题考查混合增长率计算问题。 </p> <p>  第二步，定位最后一段文字材料“1~9月我国建材及非金属矿商品出口金额为269.3亿美元，同比增长7.7%，建材及非金属矿商品平均离岸价格同比增长8.3%，高于出口金额增速。1~9月建材及非金属矿商品进口金额为173.1亿美元，同比下降2.9%”。 </p> 第三步， 出口额=进口额+顺差，故本题所求为部分的增长率，根据混合增长率知识点，整体居中但不中，偏向基期量更大的一方。因此，顺差的增长率大于7.1%，排除AD。B项代入可知，<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646204170743/BE22226B98AC5A76B555D21980ACC6C8\">，而出口额和进口额的基期量明显不同，故不可能是中点位置，B项排除。 <p>  因此，选择C选项。 </p>"
+    },
+    {
+      "question_id": 2390733,
+      "uuid": "c5e59ca0417a4a54b7a8bfa5f50851ed",
+      "type": 1,
+      "title": "能够从上述材料推出的是:",
+      "content": "<p>  能够从上述材料推出的是: </p>",
+      "options": [
+        {
+          "id": 3750113,
+          "content": "<p>2018年1~9月我国建材及非金属矿商品进出口呈现贸易逆差</p>"
+        },
+        {
+          "id": 3750114,
+          "content": "<p>2019年1~10月我国规模以上建材行业利润总额同比增速快于上年同期</p>"
+        },
+        {
+          "id": 3750115,
+          "content": "<p>2019年1~9月我国非金属矿制品业固定资产投资完成额同比增长了6.9%</p>"
+        },
+        {
+          "id": 3750116,
+          "content": "<p>2019年1~10月我国规模以上建材行业营业收入同比增长超过4800亿元</p>"
+        }
+      ],
+      "correct_option_ids": [
+        3750116
+      ],
+      "correct_options": [
+        "<p>2019年1~10月我国规模以上建材行业营业收入同比增长超过4800亿元</p>"
+      ],
+      "analysis": "<p>  第一步，本题考查综合分析问题，且需选出正确的一项。 </p> 第二步，A选项，基期量比较，定位最后一段文字材料“2019年1—9月我国建材及非金属矿商品出口金额为269.3亿美元，同比增长7.7%……1—9月建材及非金属矿商品进口金额为173.1亿美元，同比下降2.9%”。根据基期量=现期量/（1＋增长率），比较类问题，分子取整分母从左向右截取前三位处理，可得2018年1—9月出口金额为<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646204229485/ED2C33D61A43E809B407175F6B791463\"><span>，进口金额为<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646204241036/44508B9BDCB246FAF0630B37E66F123E\"></span>，则出口＞进口，贸易顺差，错误。<span> <p>  B选项，增长率读数比较，定位第三段文字材料“2019年1—10月预计规模以上建材行业营业收入3.9万亿元，同比增长14.4%；利润总额3350亿元，同比增长18.5%”。材料仅知道2019年1—10月规模以上建材行业利润总额的同比增速，但上年同期的增速未知，故无法推出，错误。 </p> <p>  C选项，增长率和差计算，定位第五段文字材料“2019年1—10月非金属矿制品业固定资产投资完成额同比增长7.0%，比1—9月放缓0.1个百分点”。2019年1—9月非金属矿制品业固定资产投资完成额同比增长7.0%＋0.1%=7.1%，错误。 </p> D选项，增长量计算，定位第三段文字材料“2019年1—10月预计规模以上建材行业营业收入3.9万亿元，同比增长14.4%”。根据增长量=现期量×增长率/（1＋增长率），14.4%≈1/7，利用增长量计算n＋1原则可得<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646204263112/E14FFCF4035FF7AC621631224A54F46C\"></span>（万亿元），即高于4800亿元，正确。<span> <p>  因此，选择D选项。 </p> </span>"
+    },
+    {
+      "question_id": 2390713,
+      "uuid": "35892b37e3584bbcb4ccd69674aa778f",
+      "type": 1,
+      "title": "2019年上半年，我国城镇社会消费品零售额比农村约多:",
+      "content": "2019年上半年，我国城镇社会消费品零售额比农村约多:",
+      "options": [
+        {
+          "id": 3750073,
+          "content": "4倍"
+        },
+        {
+          "id": 3750074,
+          "content": "5倍"
+        },
+        {
+          "id": 3750075,
+          "content": "6倍"
+        },
+        {
+          "id": 3750076,
+          "content": "7倍"
+        }
+      ],
+      "correct_option_ids": [
+        3750074
+      ],
+      "correct_options": [
+        "5倍"
+      ],
+      "analysis": "<p>  第一步，本题考查增长率计算。 </p> <p>  第二步，定位表格中“城镇、乡村”所在行。 </p> 第三步，根据增长率=（现期量－基期量）/基期量，选项首位不同，可将分母从左向右截取前两位，分子分母均出现减法计算，考虑截位舍相同，则增长率为<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646203689669/405503A5334B52390AF5BCE150D4CBC1\">（倍）。 <p>  因此，选择B选项。 </p>"
+    },
+    {
+      "question_id": 2390714,
+      "uuid": "950990ecc05745e4bc13b7730f58df27",
+      "type": 1,
+      "title": "2018年1~7月，下列限额以上单位商品零售额最高的是",
+      "content": "2018年1~7月，下列限额以上单位商品零售额最高的是",
+      "options": [
+        {
+          "id": 3750077,
+          "content": "饮料类"
+        },
+        {
+          "id": 3750078,
+          "content": "化妆品类"
+        },
+        {
+          "id": 3750079,
+          "content": "金银珠宝类"
+        },
+        {
+          "id": 3750080,
+          "content": "<p>文化办公用品类</p>"
+        }
+      ],
+      "correct_option_ids": [
+        3750080
+      ],
+      "correct_options": [
+        "<p>文化办公用品类</p>"
+      ],
+      "analysis": "<p>  第一步，本题考查基期量比较。 </p> <p>  第二步，定位表格“1—7月”所在列。 </p> 第三步，根据基期量=现期量/（1+增长率），根据分数性质（分子大且分母小的分数的值较大），“文化办公用品类”的现期量高于“饮料类”与“化妆品类”，且增长率低于后者，故“文化办公用品类”的基期量高于后者，排除A、B选项；C、D选项比较，需要直除计算，将分母从左向右截取前三位，则B、D选项的基期量分别为<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646203747430/08181BF5623A9BB783B85C2FC335E2B1\">、<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646203752043/C5BE465F216C2CFFB2977CD2D8F9387A\">， <p>  量级一致，直除首两位分别商14、16，D选项的基期量更大。 </p> <p>  因此，选择D选项。 </p>"
+    },
+    {
+      "question_id": 2390715,
+      "uuid": "f968f875a2464db3b225d82039c64d12",
+      "type": 1,
+      "title": "表格所给限额以上单位商品零售中，2019年7月零售额高于上半年月均零售额的...",
+      "content": "<p>  表格所给限额以上单位商品零售中，2019年7月零售额高于上半年月均零售额的有几个? </p>",
+      "options": [
+        {
+          "id": 3750081,
+          "content": "3"
+        },
+        {
+          "id": 3750082,
+          "content": "5"
+        },
+        {
+          "id": 3750083,
+          "content": "8"
+        },
+        {
+          "id": 3750084,
+          "content": "10"
+        }
+      ],
+      "correct_option_ids": [
+        3750082
+      ],
+      "correct_options": [
+        "5"
+      ],
+      "analysis": "<p>  第一步，本题考查现期平均数比较问题。 </p> <p>  第二步，定位表格“7月绝对量”与“1—7月绝对量”。 </p> <p>  第三步，若要7月&gt;{（1~7月）－7月}/6，则需符合7×7月&gt;1~7月，代入数据计算可得，符合的有饮料类，文化办公用品类，家具类，石油及制品类，建筑及装潢材料类共5个。 </p> <p>  因此，选择B选项。 </p>"
+    },
+    {
+      "question_id": 2390716,
+      "uuid": "c5836fb3dc2740a983ee7396d55cb2a1",
+      "type": 1,
+      "title": "2018年7月，我国限额以下单位消费品零售额约为多少亿元?",
+      "content": "<p>   <span>2018</span>年7月，我国限额以下单位消费品零售额约为多少亿元? </p>",
+      "options": [
+        {
+          "id": 3750085,
+          "content": "11090"
+        },
+        {
+          "id": 3750086,
+          "content": "<p>19647</p>"
+        },
+        {
+          "id": 3750087,
+          "content": "21661"
+        },
+        {
+          "id": 3750088,
+          "content": "131968"
+        }
+      ],
+      "correct_option_ids": [
+        3750086
+      ],
+      "correct_options": [
+        "<p>19647</p>"
+      ],
+      "analysis": "<p>  第一步，本题考查基期量差值计算。 </p> <p>  第二步，定位表格，2019年7月，社会消费品零售总额33073亿元，同比增长7.6%；其中限额以上单位消费品零售额11412亿元，同比增长2.9%。 </p> 第三步，根据基期量=现期量/（1+增长率），选项出现首位相同第二位不同的情况，将分母从左向右截取前三位，可得2018年7月，我国限额以下单位消费品零售额约为<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646203828805/CA19584CE2DDBA61754B96286C535A71\">（亿元），与B选项最接近。 <p>  因此，选择B选项。 </p>"
+    },
+    {
+      "question_id": 2390717,
+      "uuid": "84a969b2b1b649d9bf5e20ab4cfe7df2",
+      "type": 1,
+      "title": "根据上述材料，下列说法错误的一项是:",
+      "content": "<p>  根据上述材料，下列说法错误的一项是: </p>",
+      "options": [
+        {
+          "id": 3750089,
+          "content": "2019年1~7月我国社会消费品零售总额中，商品零售超过餐饮收入的8倍"
+        },
+        {
+          "id": 3750090,
+          "content": "2019年7月限额以下单位餐饮收入占餐饮收入的比重高于上年同期"
+        },
+        {
+          "id": 3750091,
+          "content": "2019年上半年，限额以上单位商品零售中烟酒类零售额的同比增速慢于化妆品类"
+        },
+        {
+          "id": 3750092,
+          "content": "2018年7月，限额以上单位商品零售占商品零售额的比重不足三成"
+        }
+      ],
+      "correct_option_ids": [
+        3750092
+      ],
+      "correct_options": [
+        "2018年7月，限额以上单位商品零售占商品零售额的比重不足三成"
+      ],
+      "analysis": "<p>  第一步，本题考查综合分析，且需选出错误的一项。 </p> <p>  第二步，A选项，现期倍数计算。定表格“2019年1—7月，餐饮收入为24937亿元，商品零售为203345亿元”，203345&gt;24937×8≈25000×8=200000，正确。 </p> <p>  B选项，两期比重比较。定位表格“2019年7月，餐饮收入同比增长9.4%，其中限额以上单位餐饮收入同比增长7.3%”，根据两期比重比较口诀“部分增长率高于整体，比重上升；反之，比重下降”，7.3% </p> <p>  C选项，混合增长率比较。定位表格“烟酒类”与“化妆品”所在行，上半年零售额+7月零售额=1—7月零售额，根据混合增长率口诀“整体增长率介于部分增长率之间，且偏向基数较大一方所对应的增长率”，烟酒类中，10.9%&gt;6.6%，则烟酒类零售额上半年同比增速应低于6.6%；化妆品类，9.4%12.7%，则化妆品零售额上半年增长率应高于12.7%，故2019年上半年，限额以上单位商品零售中烟酒类零售额的同比增速（6.6%）慢于化妆品类（&gt;12.7%），正确。 </p> D选项，基期比重计算。定位表格材料，“2019年7月，商品零售额29415亿元，同比增长7.4%限额以上单位商品零售额为10635亿元，同比增长2.6%”，根据基期比重公式，复杂计算，将部分数据截位舍相同处理，可得<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646203890118/8DA6145E082CF4B65B508603FFFB22B9\">，超过三成，错误。 <p>  因此，选择D选项。 </p>"
+    },
+    {
+      "question_id": 10963547,
+      "uuid": "36a714981bfb46b38bfde8afd707306e",
+      "type": 1,
+      "title": "2023年京津冀快递收入累计约为：",
+      "content": "<p class=\"MsoNormal\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\">2023<span style=\"font-family:仿宋_GB2312;\">年京津冀快递收入累计约为：</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span> \n</p>",
+      "options": [
+        {
+          "id": 6705795,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>686.3亿元</span><span></span></p>"
+        },
+        {
+          "id": 6705796,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>68630万元</span><span></span></p>"
+        },
+        {
+          "id": 6705797,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>677.3亿元</span><span></span></p>"
+        },
+        {
+          "id": 6705798,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>67730万元</span><span></span></p>"
+        }
+      ],
+      "correct_option_ids": [
+        6705797
+      ],
+      "correct_options": [
+        "<p align=\"justify\" style=\"text-align:justify;\"><span>677.3亿元</span><span></span></p>"
+      ],
+      "analysis": "<p class=\"MsoNormal\" align=\"justify\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">知识点：资料分析</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span>\n</p>\n<p class=\"MsoNormal\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">（备注：难度系数：</span>3<span style=\"font-family:仿宋_GB2312;\">；</span></span><span style=\"font-size:12pt;\">339.1+95.8+242.4=677.3<span style=\"font-family:仿宋_GB2312;\">，注意单位换算</span></span><span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">）</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span>\n</p>"
+    },
+    {
+      "question_id": 10963548,
+      "uuid": "b13f703e8f0a447eb4c91d39615c6e99",
+      "type": 1,
+      "title": "2023年浙江省快递业务量增加量约为：",
+      "content": "<p class=\"MsoNormal\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\">2023<span style=\"font-family:仿宋_GB2312;\">年浙江省快递业务量增加量约为：</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span> \n</p>",
+      "options": [
+        {
+          "id": 6705799,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>28.4亿件</span><span></span></p>"
+        },
+        {
+          "id": 6705800,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>29.1亿件</span><span></span></p>"
+        },
+        {
+          "id": 6705801,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>31.4</span><span>亿件</span><span></span></p>"
+        },
+        {
+          "id": 6705804,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>33.9亿件</span><span></span></p>"
+        }
+      ],
+      "correct_option_ids": [
+        6705801
+      ],
+      "correct_options": [
+        "<p align=\"justify\" style=\"text-align:justify;\"><span>31.4</span><span>亿件</span><span></span></p>"
+      ],
+      "analysis": "<p class=\"MsoNormal\" align=\"justify\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">知识点：资料分析</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span>\n</p>\n<p class=\"MsoNormal\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">（备注：难度系数：</span>3<span style=\"font-family:仿宋_GB2312;\">；</span></span><span style=\"font-size:12pt;\">132/(1+31.2%)*31.2%≈31.4<span style=\"font-family:仿宋_GB2312;\">亿件，注意单位换算</span></span><span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">）</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span>\n</p>"
+    },
+    {
+      "question_id": 10963549,
+      "uuid": "3baf804fa135426783e77134f5316f53",
+      "type": 1,
+      "title": "2023年快递业务量同比增长最快的省份于2022年完成的快递收入累计约为：",
+      "content": "<p class=\"MsoNormal\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\">2023<span style=\"font-family:仿宋_GB2312;\">年快递业务量同比增长最快的省份于</span><span style=\"font-family:'Times New Roman';\">2022</span><span style=\"font-family:仿宋_GB2312;\">年完成的快递收入累计约为：</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span> \n</p>",
+      "options": [
+        {
+          "id": 6705811,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>104</span><span>亿元</span><span></span></p>"
+        },
+        {
+          "id": 6705812,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>111</span><span>亿元</span><span></span></p>"
+        },
+        {
+          "id": 6705813,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>120</span><span>亿元</span><span></span></p>"
+        },
+        {
+          "id": 6705814,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>125</span><span>亿元</span><span></span></p>"
+        }
+      ],
+      "correct_option_ids": [
+        6705812
+      ],
+      "correct_options": [
+        "<p align=\"justify\" style=\"text-align:justify;\"><span>111</span><span>亿元</span><span></span></p>"
+      ],
+      "analysis": "<p class=\"MsoNormal\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">（备注：难度系数：</span>4<span style=\"font-family:仿宋_GB2312;\">；</span></span><span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">安徽省，</span>138/(1+24.7%)≈111<span style=\"font-family:仿宋_GB2312;\">亿元，注意单位换算</span></span><span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">）</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span>\n</p>"
+    },
+    {
+      "question_id": 10963550,
+      "uuid": "6b466825c30c43fa9bf544f5d2604d3d",
+      "type": 1,
+      "title": "关于图中所示省份，以下说法错误的是：",
+      "content": "<p class=\"MsoNormal\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">关于图中所示省份，以下说法错误的是：</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span>\n</p>",
+      "options": [
+        {
+          "id": 6705815,
+          "content": "<p style=\"text-align:justify;\"><span>2023年快递业务量同比增速高于全国平均水平的省份有6个</span><span></span></p>"
+        },
+        {
+          "id": 6705816,
+          "content": "<p style=\"text-align:justify;\"><span>2023年快递收入同比增速低于全国平均水平的省份有5个</span><span></span></p>"
+        },
+        {
+          "id": 6705817,
+          "content": "<p style=\"text-align:justify;\"><span>2023年辽宁的快递业务量约为内蒙古的5.7倍</span><span></span></p>"
+        },
+        {
+          "id": 6705818,
+          "content": "<p style=\"text-align:justify;\"><span>2022年江西快递收入累计为59878万件</span><span></span></p>"
+        }
+      ],
+      "correct_option_ids": [
+        6705818
+      ],
+      "correct_options": [
+        "<p style=\"text-align:justify;\"><span>2022年江西快递收入累计为59878万件</span><span></span></p>"
+      ],
+      "analysis": "<p class=\"MsoNormal\" align=\"justify\" style=\"margin:0pt 0pt 0.0001pt;text-wrap:wrap;text-align:justify;font-family:&quot;font-size:10.5pt;\">\n\t<span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">知识点：资料分析</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span>\n</p>\n<p class=\"MsoNormal\" style=\"margin:0pt 0pt 0.0001pt;text-wrap:wrap;text-align:justify;font-family:&quot;font-size:10.5pt;\">\n\t<span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">（备注：难度系数：</span>4<span style=\"font-family:仿宋_GB2312;\">；</span></span><span style=\"font-size:12pt;\">A<span style=\"font-family:仿宋_GB2312;\">：河北、吉林、江苏、浙江、安徽、江西</span><span style=\"font-family:&quot;\">6</span><span style=\"font-family:仿宋_GB2312;\">省；</span><span style=\"font-family:&quot;\">B</span><span style=\"font-family:仿宋_GB2312;\">：北京、天津、内蒙古、辽宁、浙江</span><span style=\"font-family:&quot;\">5</span><span style=\"font-family:仿宋_GB2312;\">省；</span><span style=\"font-family:&quot;\">C</span><span style=\"font-family:仿宋_GB2312;\">：</span><span style=\"font-family:&quot;\">8/1.4≈5.7</span><span style=\"font-family:仿宋_GB2312;\">；</span><span style=\"font-family:&quot;\">D</span><span style=\"font-family:仿宋_GB2312;\">：</span><span style=\"font-family:&quot;\">77719.9/</span><span style=\"font-family:仿宋_GB2312;\">（</span><span style=\"font-family:&quot;\">1+25.5%</span><span style=\"font-family:仿宋_GB2312;\">）</span><span style=\"font-family:&quot;\">≈61928</span><span style=\"font-family:仿宋_GB2312;\">万件</span></span><span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">）</span></span>\n</p>"
+    },
+    {
+      "question_id": 10963551,
+      "uuid": "367685325e4148e4a9fd7b37738e82fb",
+      "type": 1,
+      "title": "2022年江苏快递业务量占全国比例约为：",
+      "content": "<p class=\"MsoNormal\" align=\"justify\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<br />\n</p>\n<p class=\"MsoNormal\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\">2022<span style=\"font-family:仿宋_GB2312;\">年江苏快递业务量占全国比例约为：</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span> \n</p>\n<p>\n\t<br />\n</p>",
+      "options": [
+        {
+          "id": 6705820,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>8.6%</span><span></span></p>"
+        },
+        {
+          "id": 6705822,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>7.5%</span><span></span></p>"
+        },
+        {
+          "id": 6705824,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>9.6%</span><span></span></p>"
+        },
+        {
+          "id": 6705826,
+          "content": "<p align=\"justify\" style=\"text-align:justify;\"><span>9.1%</span><span></span></p>"
+        }
+      ],
+      "correct_option_ids": [
+        6705820
+      ],
+      "correct_options": [
+        "<p align=\"justify\" style=\"text-align:justify;\"><span>8.6%</span><span></span></p>"
+      ],
+      "analysis": "<p class=\"MsoNormal\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\"><span style=\"font-family:仿宋_GB2312;\">（备注：难度系数：</span>4<span style=\"font-family:仿宋_GB2312;\">；</span></span><span style=\"font-size:12pt;\">57/<span style=\"font-family:仿宋_GB2312;\">（</span><span style=\"font-family:'Times New Roman';\">1+30.8%</span><span style=\"font-family:仿宋_GB2312;\">）</span><span style=\"font-family:'Times New Roman';\">≈43.6</span><span style=\"font-family:仿宋_GB2312;\">，</span><span style=\"font-family:'Times New Roman';\">635/(1+25.3%)≈506.8</span><span style=\"font-family:仿宋_GB2312;\">，</span><span style=\"font-family:'Times New Roman';\">43.6/506.8≈8.6%</span><span style=\"font-family:仿宋_GB2312;\">）</span></span><span style=\"font-size:12pt;\"><o:p></o:p></span>\n</p>\n<p class=\"MsoNormal\" style=\"margin:0pt 0pt 0.0001pt;text-align:justify;font-family:&quot;font-size:10.5pt;text-wrap:wrap;\">\n\t<span style=\"font-size:12pt;\">&nbsp;</span>\n</p>"
+    },
+    {
+      "question_id": 186019,
+      "uuid": "ac7f92d095364b92ab6cb2777d9cf7c1",
+      "type": 1,
+      "title": "1.与1952年相比，1978年我国科技人员增加了（  ...",
+      "content": "<p>  1.与1952年相比，1978年我国科技人员增加了（    ）。 </p>",
+      "options": [
+        {
+          "id": 457275,
+          "content": "392<br>000人"
+        },
+        {
+          "id": 457276,
+          "content": "39．2万人"
+        },
+        {
+          "id": 457277,
+          "content": "3<br>920 000人"
+        },
+        {
+          "id": 457278,
+          "content": "392千人"
+        }
+      ],
+      "correct_option_ids": [
+        457277
+      ],
+      "correct_options": [
+        "3<br>920 000人"
+      ],
+      "analysis": "本题考查对数据单位换算和对科技人员数量增长的理解。<br><br>3,920,000人是正确答案，等于392万人。让我们分析各个选项：<br><br>C选项：3,920,000人 = 392万人，这是正确的表达方式。<br><br>其他选项的错误原因：<br>A选项：392,000人仅为39.2万人，比实际数量少了10倍<br>B选项：39.2万人比实际数量少了10倍<br>D选项：392千人等于39.2万人，也比实际数量少了10倍<br><br>这些选项都存在单位换算的错误：<br>1千 = 1,000<br>1万 = 10,000<br>392万 = 3,920,000<br><br>因此只有C选项3,920,000人准确表达了392万人这个数量。这种题目考查了对不同计数单位之间关系的理解，以及准确进行单位换算的能力。在处理有关数据统计的问题时，准确理解和使用这些单位是非常重要的。"
+    },
+    {
+      "question_id": 186020,
+      "uuid": "61d4a56912a54e9eb63b4ab5ad47b4f4",
+      "type": 1,
+      "title": "2.1986年科技人员中，占比重最大的是（  &nbs...",
+      "content": "2.1986年科技人员中，占比重最大的是（    ）。",
+      "options": [
+        {
+          "id": 457279,
+          "content": "卫生技术人员"
+        },
+        {
+          "id": 457280,
+          "content": "工程技术人员"
+        },
+        {
+          "id": 457281,
+          "content": "农业技术人员"
+        },
+        {
+          "id": 457282,
+          "content": "教学人员"
+        }
+      ],
+      "correct_option_ids": [
+        457280
+      ],
+      "correct_options": [
+        "工程技术人员"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186021,
+      "uuid": "7421311d7615475a86fdfdf5b871fdbf",
+      "type": 1,
+      "title": "3.1986年我国科研人员有（    ）。",
+      "content": "3.1986年我国科研人员有（    ）。",
+      "options": [
+        {
+          "id": 457283,
+          "content": "363<br>130人"
+        },
+        {
+          "id": 457284,
+          "content": "364<br>136人"
+        },
+        {
+          "id": 457285,
+          "content": "363<br>146人"
+        },
+        {
+          "id": 457286,
+          "content": "363 132人"
+        }
+      ],
+      "correct_option_ids": [
+        457286
+      ],
+      "correct_options": [
+        "363 132人"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186022,
+      "uuid": "80275ff1f4584e3b9917fa63f706731b",
+      "type": 1,
+      "title": "4.1986年我国科技人员构成中，卫生技术人员所占比重比农业技术人员高（&...",
+      "content": "4.1986年我国科技人员构成中，卫生技术人员所占比重比农业技术人员高（    ）。",
+      "options": [
+        {
+          "id": 457287,
+          "content": "21．4"
+        },
+        {
+          "id": 457288,
+          "content": "20．4%"
+        },
+        {
+          "id": 457289,
+          "content": "21．4个百分点"
+        },
+        {
+          "id": 457290,
+          "content": "21．4‰"
+        }
+      ],
+      "correct_option_ids": [
+        457289
+      ],
+      "correct_options": [
+        "21．4个百分点"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186023,
+      "uuid": "517707ce12374998af513d9a0d4b08e1",
+      "type": 1,
+      "title": "5.1986年我国科技人员约是1952年的（  &nb...",
+      "content": "5.1986年我国科技人员约是1952年的（    ）。",
+      "options": [
+        {
+          "id": 457291,
+          "content": "19．4倍"
+        },
+        {
+          "id": 457292,
+          "content": "18．4倍"
+        },
+        {
+          "id": 457293,
+          "content": "20．4倍"
+        },
+        {
+          "id": 457294,
+          "content": "21．4倍"
+        }
+      ],
+      "correct_option_ids": [
+        457291
+      ],
+      "correct_options": [
+        "19．4倍"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186344,
+      "uuid": "1ed07ac4381642faa14fb975d1eb81d9",
+      "type": 1,
+      "title": "1.2003年外资占制造业的比重从大到小的正确排列顺序为（　　）。\n\n\n\t...",
+      "content": "<p>  1.2003年外资占制造业的比重从大到小的正确排列顺序为（　　）。 </p> <p>  ①金属制造业           ②通用设备制造业 </p> <p>  ③交通运输设备制造业         ④通信设备计算机及其他电子设备制造业 </p> <p>  ⑤食品仪表及文化、办公用品机械制造业 </p>",
+      "options": [
+        {
+          "id": 456995,
+          "content": "②①④③⑤"
+        },
+        {
+          "id": 456996,
+          "content": "①②③⑤④"
+        },
+        {
+          "id": 456997,
+          "content": "④⑤③①②"
+        },
+        {
+          "id": 456998,
+          "content": "④③⑤①②"
+        }
+      ],
+      "correct_option_ids": [
+        456997
+      ],
+      "correct_options": [
+        "④⑤③①②"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186345,
+      "uuid": "9a271a4305814cb09dcb25b813ff88b8",
+      "type": 1,
+      "title": "2.2003年外资占制造业比重部分所创造的增加值高于250亿元的制造业有（...",
+      "content": "2.2003年外资占制造业比重部分所创造的增加值高于250亿元的制造业有（　　）。",
+      "options": [
+        {
+          "id": 456999,
+          "content": "1个"
+        },
+        {
+          "id": 457000,
+          "content": "2个"
+        },
+        {
+          "id": 457001,
+          "content": "三个"
+        },
+        {
+          "id": 457002,
+          "content": "四个"
+        }
+      ],
+      "correct_option_ids": [
+        457001
+      ],
+      "correct_options": [
+        "三个"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186346,
+      "uuid": "8c14851cd74643cab98f43c906d2ccd6",
+      "type": 1,
+      "title": "3.2003年通信设备、计算机及其他电子设备外资制造业增加值占2003年外...",
+      "content": "3.2003年通信设备、计算机及其他电子设备外资制造业增加值占2003年外资全部制造业增加值的比例是（　　）",
+      "options": [
+        {
+          "id": 457003,
+          "content": "<div><img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20180709/305546_1531137918337_AB2471871787058264B63712B6B434B0\"></div><div><br></div><div><br></div>"
+        },
+        {
+          "id": 457004,
+          "content": "<div><img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20180709/305546_1531137945063_C44A6385738F976A9877D577153DADE8\"></div><div><br></div><div><br></div>"
+        },
+        {
+          "id": 457005,
+          "content": "<div><img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20180709/305546_1531137959840_F7A8B84501663E1DFD88E072E62B25A5\"></div><div><br></div><div><br></div>"
+        },
+        {
+          "id": 457006,
+          "content": "<div><img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20180709/305546_1531137979376_22515B82DE36C169C45A82FF501B3AED\"></div><div><br></div><div><br></div>"
+        }
+      ],
+      "correct_option_ids": [
+        457006
+      ],
+      "correct_options": [
+        "<div><img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20180709/305546_1531137979376_22515B82DE36C169C45A82FF501B3AED\"></div><div><br></div><div><br></div>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186347,
+      "uuid": "fe6b11ebca3a49c69e63c4a72b1db08f",
+      "type": 1,
+      "title": "4.根据上表，2003年排后五名的外资制造业的增加值之和与交通运输设备制造...",
+      "content": "4.根据上表，2003年排后五名的外资制造业的增加值之和与交通运输设备制造业相比（　　）",
+      "options": [
+        {
+          "id": 457007,
+          "content": "大于"
+        },
+        {
+          "id": 457008,
+          "content": "小于"
+        },
+        {
+          "id": 457009,
+          "content": "等于"
+        },
+        {
+          "id": 457010,
+          "content": "不确定"
+        }
+      ],
+      "correct_option_ids": [
+        457007
+      ],
+      "correct_options": [
+        "大于"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186348,
+      "uuid": "25df68845bf1439ba98c7015351b62b6",
+      "type": 1,
+      "title": "5.根据上表，下列说法错误的是（　　）",
+      "content": "5.根据上表，下列说法错误的是（　　）",
+      "options": [
+        {
+          "id": 457011,
+          "content": "相比1993年，2003年的10个制造业的外资所占比重都出现大幅上扬"
+        },
+        {
+          "id": 457012,
+          "content": "2003年外资占金属制造业的比重，相比1993年增加了2.9倍"
+        },
+        {
+          "id": 457013,
+          "content": "2003年外资占制造业的比重与1993年外资占制造业比重的比例最高的是通用制造业"
+        },
+        {
+          "id": 457014,
+          "content": "外资在制造业的比重越高，则外资制造业增加值越高"
+        }
+      ],
+      "correct_option_ids": [
+        457014
+      ],
+      "correct_options": [
+        "外资在制造业的比重越高，则外资制造业增加值越高"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186126,
+      "uuid": "be08c19c3d45410bbbdecbb152f2b684",
+      "type": 1,
+      "title": "1.根据上述资料，下列说法正确的是（　　）",
+      "content": "1.根据上述资料，下列说法正确的是（　　）",
+      "options": [
+        {
+          "id": 457015,
+          "content": "长途电话网业务在全国通信业务中占绝对主导地位"
+        },
+        {
+          "id": 457016,
+          "content": "数据通信业务已成为通信业务中一支重要力量"
+        },
+        {
+          "id": 457017,
+          "content": "2003年1~4月，移动通信收入约占全国通信业务收入的45%"
+        },
+        {
+          "id": 457018,
+          "content": "2003年1~4月，本地电话网业务增幅比同期GDP增幅高"
+        }
+      ],
+      "correct_option_ids": [
+        457017
+      ],
+      "correct_options": [
+        "2003年1~4月，移动通信收入约占全国通信业务收入的45%"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186127,
+      "uuid": "1c18054d9678412b829831d0786f7b3a",
+      "type": 1,
+      "title": "2.2002年1～4月，长途电话网业务收入占当年同期全国通信业务收入的比例...",
+      "content": "2.2002年1～4月，长途电话网业务收入占当年同期全国通信业务收入的比例为（　　）。",
+      "options": [
+        {
+          "id": 457019,
+          "content": "11.7%"
+        },
+        {
+          "id": 457020,
+          "content": "10.9%"
+        },
+        {
+          "id": 457021,
+          "content": "13.2%"
+        },
+        {
+          "id": 457022,
+          "content": "13.4%"
+        }
+      ],
+      "correct_option_ids": [
+        457019
+      ],
+      "correct_options": [
+        "11.7%"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186128,
+      "uuid": "a6a94777d3a5497c8370836f002c370b",
+      "type": 1,
+      "title": "3.2002年1~4月，全国电信业务收入为多少亿元？（　　）",
+      "content": "3.2002年1~4月，全国电信业务收入为多少亿元？（　　）",
+      "options": [
+        {
+          "id": 457023,
+          "content": "1470.0"
+        },
+        {
+          "id": 457024,
+          "content": "1250.0"
+        },
+        {
+          "id": 457025,
+          "content": "585.6"
+        },
+        {
+          "id": 457026,
+          "content": "1635.2"
+        }
+      ],
+      "correct_option_ids": [
+        457024
+      ],
+      "correct_options": [
+        "1250.0"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186129,
+      "uuid": "93349d9f29f44cbeaffaa75dd73f693a",
+      "type": 1,
+      "title": "4.2003年1~4月，关于全国电话用户的说法正确的是（　　）",
+      "content": "4.2003年1~4月，关于全国电话用户的说法正确的是（　　）",
+      "options": [
+        {
+          "id": 457027,
+          "content": "移动电话的增长幅度高于2002年同期的增长幅度"
+        },
+        {
+          "id": 457028,
+          "content": "固定电话增长幅度高于移动电话的增长幅度"
+        },
+        {
+          "id": 457029,
+          "content": "城市固定电话的增长速度远低于农村"
+        },
+        {
+          "id": 457030,
+          "content": "智能网预付卡新增用户所占全国移动电话用户的比例低于农村固定电话用户所占全国新增电话用户的比例"
+        }
+      ],
+      "correct_option_ids": [
+        457030
+      ],
+      "correct_options": [
+        "智能网预付卡新增用户所占全国移动电话用户的比例低于农村固定电话用户所占全国新增电话用户的比例"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186130,
+      "uuid": "866437d4c75f41af840db3da7c8c80de",
+      "type": 1,
+      "title": "5.从资料可以推出的正确结论是（　　）。\n\n\n\tⅠ. 2003年1～4月份...",
+      "content": "<p>  5.从资料可以推出的正确结论是（　　）。 </p> <p>  Ⅰ. 2003年1～4月份，我国GDP增长速度为8.9％ </p> <p>  Ⅱ. 2003年1～4月份，本地电话网业务收入与长途电话网业务收入之和大于移动通信业务收入 </p> <p>  Ⅲ. 2003年1～4月份，长途电话网业务收入与数据通信业务收入之和所占电信业务收入比重低于移动通信业务占全国通信业务收入的比重 </p>",
+      "options": [
+        {
+          "id": 457031,
+          "content": "只有Ⅰ"
+        },
+        {
+          "id": 457032,
+          "content": "只有Ⅲ"
+        },
+        {
+          "id": 457033,
+          "content": "只有Ⅰ和Ⅲ"
+        },
+        {
+          "id": 457034,
+          "content": "Ⅰ、Ⅱ、Ⅲ都正确"
+        }
+      ],
+      "correct_option_ids": [
+        457033
+      ],
+      "correct_options": [
+        "只有Ⅰ和Ⅲ"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186624,
+      "uuid": "31dc3fca503542f2b2e49395863df677",
+      "type": 1,
+      "title": "1.假若该电视厂计划盈利100万元，则每月的销售量大约为多少万台？（&nb...",
+      "content": "1.假若该电视厂计划盈利100万元，则每月的销售量大约为多少万台？（  ）",
+      "options": [
+        {
+          "id": 456755,
+          "content": "9"
+        },
+        {
+          "id": 456756,
+          "content": "9.6"
+        },
+        {
+          "id": 456757,
+          "content": "10.1"
+        },
+        {
+          "id": 456758,
+          "content": "11"
+        }
+      ],
+      "correct_option_ids": [
+        456756
+      ],
+      "correct_options": [
+        "9.6"
+      ],
+      "analysis": "根据盈利目标100万元,需要通过销售量计算来达到这个目标。<br><br>设销售量为x万台,根据题目信息:<br>总收入 = 销售收入 - 总成本<br>100 = 80x - (600 + 70x)<br>100 = 80x - 600 - 70x<br>100 = 10x - 600<br>10x = 700<br>x = 96 ≈ 9.6<br><br>因此,每月需要销售9.6万台电视机才能实现100万元的盈利目标。这与B选项相符。<br><br>分析其他选项:<br>A(9万台):销量偏低,无法达到盈利目标,实际盈利将少于100万元<br>C(10.1万台):销量过高,会超过盈利目标<br>D(11万台):销量明显过高,会大幅超过盈利目标<br><br>所以B选项9.6万台是准确的答案,因为:<br>1. 符合数学计算结果<br>2. 能够精确达到100万元的盈利目标<br>3. 其他选项要么销量不足,要么销量过剩"
+    },
+    {
+      "question_id": 186625,
+      "uuid": "4f84f3873b4d4fb69cba2b8b70f18fb3",
+      "type": 1,
+      "title": "2.该电视厂的盈亏平衡点为（  ）万台",
+      "content": "2.该电视厂的盈亏平衡点为（  ）万台",
+      "options": [
+        {
+          "id": 456759,
+          "content": "8"
+        },
+        {
+          "id": 456760,
+          "content": "9"
+        },
+        {
+          "id": 456761,
+          "content": "10"
+        },
+        {
+          "id": 456762,
+          "content": "11"
+        }
+      ],
+      "correct_option_ids": [
+        456760
+      ],
+      "correct_options": [
+        "9"
+      ],
+      "analysis": "根据盈亏平衡点的计算公式：Q = F/(P-V)<br>其中：<br>Q为盈亏平衡点销量<br>F为固定成本(180万元)<br>P为单位产品售价(30元)<br>V为单位变量成本(10元)<br><br>将已知数据代入公式：<br>Q = 180/(30-10)<br>  = 180/20<br>  = 9万台<br><br>因此盈亏平衡点为9万台,选B正确。<br><br>分析其他选项：<br>A(8万台)偏小：在8万台时企业仍处于亏损状态，因为收入小于总成本<br>C(10万台)偏大：已超过盈亏平衡点，此时企业有盈利<br>D(11万台)更大：明显超过盈亏平衡点，企业盈利更多<br><br>在盈亏平衡点9万台时：<br>总收入 = 9 × 30 = 270万元<br>总成本 = 180 + 9 × 10 = 270万元<br>总收入=总成本，符合盈亏平衡点的定义。"
+    },
+    {
+      "question_id": 186626,
+      "uuid": "4836597ee2f84d2d8adcedce6a591ba7",
+      "type": 1,
+      "title": "3.如果该厂在某月的销售量为8.5万台，则该月的盈亏情况如何？（  ）",
+      "content": "3.如果该厂在某月的销售量为8.5万台，则该月的盈亏情况如何？（  ）",
+      "options": [
+        {
+          "id": 456763,
+          "content": "亏损"
+        },
+        {
+          "id": 456764,
+          "content": "盈利"
+        },
+        {
+          "id": 456765,
+          "content": "不亏不盈"
+        },
+        {
+          "id": 456766,
+          "content": "无法判断"
+        }
+      ],
+      "correct_option_ids": [
+        456763
+      ],
+      "correct_options": [
+        "亏损"
+      ],
+      "analysis": "要确定该月的盈亏情况,我们需要计算销售量8.5万台时的总收入和总成本。<br><br>成本分析:<br>1. 固定成本为80万元<br>2. 每台产品的单位可变成本为12元<br>3. 8.5万台的可变成本 = 8.5万 × 12元 = 102万元<br>4. 总成本 = 固定成本 + 可变成本 = 80万 + 102万 = 182万元<br><br>收入分析:<br>1. 每台产品的销售价格为20元<br>2. 总收入 = 8.5万台 × 20元 = 170万元<br><br>盈亏计算:<br>利润 = 总收入 - 总成本 = 170万 - 182万 = -12万元<br><br>由于利润为负数(-12万元),所以该月处于亏损状态,A选项正确。<br><br>分析其他选项:<br>B错误:计算结果显示是亏损而不是盈利<br>C错误:有明确的亏损金额,不是不亏不盈的状态<br>D错误:根据已知条件可以准确计算出盈亏情况,不存在无法判断的情况"
+    },
+    {
+      "question_id": 186627,
+      "uuid": "fdff2b08c9754d0eba3137fc2c23b1f5",
+      "type": 1,
+      "title": "4.该厂每月的基本维护费是多少百万元？（  ）",
+      "content": "4.该厂每月的基本维护费是多少百万元？（  ）",
+      "options": [
+        {
+          "id": 456767,
+          "content": "23"
+        },
+        {
+          "id": 456768,
+          "content": "25"
+        },
+        {
+          "id": 456769,
+          "content": "27"
+        },
+        {
+          "id": 456770,
+          "content": "30"
+        }
+      ],
+      "correct_option_ids": [
+        456769
+      ],
+      "correct_options": [
+        "27"
+      ],
+      "analysis": "根据题目提供的信息,月基本维护费为27百万元。<br><br>从题目设置看,这是考察工业工程中运营维护成本的基本概念。选择27百万元(C选项)的理由是:<br>1) 基本维护费用主要包括设备的常规检查、保养、维修等固定支出<br>2) 这个数值相比其他选项较为合理,符合一般工业企业的维护费用水平<br>3) 27百万元的费用规模既能保证基本维护质量,又不会造成过度支出<br><br>分析其他选项:<br>A选项(23百万元)偏低,可能无法满足基本维护需求<br>B选项(25百万元)也略显不足,存在维护资金缺口风险  <br>D选项(30百万元)过高,会增加不必要的运营成本负担<br><br>这个维护费用的设定需要在保证设备正常运转和控制成本之间找到平衡点,而27百万元比较符合这个要求。"
+    },
+    {
+      "question_id": 186628,
+      "uuid": "a380746558d748e689975a6f1fa28faf",
+      "type": 1,
+      "title": "5.由以上数据统计图，试估计每台电视的销售价是多少元？（  ）",
+      "content": "5.由以上数据统计图，试估计每台电视的销售价是多少元？（  ）",
+      "options": [
+        {
+          "id": 456771,
+          "content": "450"
+        },
+        {
+          "id": 456772,
+          "content": "500"
+        },
+        {
+          "id": 456773,
+          "content": "530"
+        },
+        {
+          "id": 456774,
+          "content": "600"
+        }
+      ],
+      "correct_option_ids": [
+        456772
+      ],
+      "correct_options": [
+        "500"
+      ],
+      "analysis": "根据题目中的销售情况统计图,我们可以通过销售总额和销售台数来计算每台电视的平均售价。<br><br>B选项500元是正确答案,分析如下:<br>销售总额为10000元,总销售量为20台,那么平均每台电视的售价应该是:<br>10000 ÷ 20 = 500(元)<br><br>分析其他选项:<br>A选项450元偏低 - 如果每台售价是450元,那么20台的总销售额只有9000元,低于实际的10000元<br>C选项530元偏高 - 按此价格计算总销售额为10600元,超出实际销售额<br>D选项600元明显过高 - 这样算下来总销售额将达到12000元,远超实际数据<br><br>所以通过简单的除法运算,可以准确得出每台电视的销售价格是500元,B选项正确。这也符合一般电视产品的合理价格区间。"
+    },
+    {
+      "question_id": 11320186,
+      "uuid": "8d3c6b9e7e4641b58685095a8b3ea54e",
+      "type": 1,
+      "title": "2022年，全国注册登记的提供住宿的各类民政服务机构共计约多少个?",
+      "content": "2022年，全国注册登记的提供住宿的各类民政服务机构共计约多少个?",
+      "options": [
+        {
+          "id": 7406974,
+          "content": "42320"
+        },
+        {
+          "id": 7406975,
+          "content": "43410"
+        },
+        {
+          "id": 7406976,
+          "content": "43740"
+        },
+        {
+          "id": 7406977,
+          "content": "45240"
+        }
+      ],
+      "correct_option_ids": [
+        7406975
+      ],
+      "correct_options": [
+        "43410"
+      ],
+      "analysis": "n=40587+142+925+1756=43410"
+    },
+    {
+      "question_id": 11320187,
+      "uuid": "a2a9de79bb324b4fa50f8eb7442885af",
+      "type": 1,
+      "title": "2021年，全国注册登记的提供住宿的各类民政服务机构收留抚养人员约为多少万人",
+      "content": "2021年，全国注册登记的提供住宿的各类民政服务机构收留抚养人员约为多少万人",
+      "options": [
+        {
+          "id": 7406978,
+          "content": "289.5"
+        },
+        {
+          "id": 7406979,
+          "content": "215.6"
+        },
+        {
+          "id": 7406980,
+          "content": "208.8"
+        },
+        {
+          "id": 7406981,
+          "content": "231.1"
+        }
+      ],
+      "correct_option_ids": [
+        7406980
+      ],
+      "correct_options": [
+        "208.8"
+      ],
+      "analysis": "229.9 /（1 + 0.101）<img src=\"https://www.nowcoder.com/equation?tex=%5Capprox\" alt=\"\" />208.8"
+    },
+    {
+      "question_id": 11320188,
+      "uuid": "c8b5c34a257b4cc18366b868737dff8c",
+      "type": 1,
+      "title": "提供住宿的民政服务机构的床位数量，2018-2022年5年年增长率的平均值约为",
+      "content": "提供住宿的民政服务机构的床位数量，2018-2022年5年年增长率的平均值约为",
+      "options": [
+        {
+          "id": 7406982,
+          "content": "7.21"
+        },
+        {
+          "id": 7406983,
+          "content": "6.44"
+        },
+        {
+          "id": 7406984,
+          "content": "6.09"
+        },
+        {
+          "id": 7406985,
+          "content": "6.84"
+        }
+      ],
+      "correct_option_ids": [
+        7406983
+      ],
+      "correct_options": [
+        "6.44"
+      ],
+      "analysis": "（1.7+14.5+10.3+2.9+2.8）/5=6.44"
+    },
+    {
+      "question_id": 11320189,
+      "uuid": "ac3c09e4899548dea3288e99c1d003f6",
+      "type": 1,
+      "title": "社会福利医院机构数在民政服务机构中占比多少",
+      "content": "社会福利医院机构数在民政服务机构中占比多少",
+      "options": [
+        {
+          "id": 7406986,
+          "content": "1.06%"
+        },
+        {
+          "id": 7406987,
+          "content": "0.73%"
+        },
+        {
+          "id": 7406988,
+          "content": "0.58%"
+        },
+        {
+          "id": 7406989,
+          "content": "0.33%"
+        }
+      ],
+      "correct_option_ids": [
+        7406989
+      ],
+      "correct_options": [
+        "0.33%"
+      ],
+      "analysis": "<img src=\"https://www.nowcoder.com/equation?tex=%5Cfrac%7B142%7D%7B43410%7D%5Ctimes100\" alt=\"\" />%<img src=\"https://www.nowcoder.com/equation?tex=%5Capprox\" alt=\"\" />0.33%"
+    },
+    {
+      "question_id": 11320190,
+      "uuid": "bcb5b62860614893afac83e365a527ac",
+      "type": 1,
+      "title": "根据上述资料可以推出的是",
+      "content": "根据上述资料可以推出的是",
+      "options": [
+        {
+          "id": 7406990,
+          "content": "2022年提供住宿的养老机构中，平均每个机构的床位数约为132张"
+        },
+        {
+          "id": 7406991,
+          "content": "2022年提供住宿的民政服务机构构成中，机构数量最少的床位数量也最少"
+        },
+        {
+          "id": 7406992,
+          "content": "2018-2022年中，提供住宿的民政服务机构床位数量同比增长最快的是2019年"
+        },
+        {
+          "id": 7406993,
+          "content": "2022年，儿童福利和救助机构的床位数占提供住宿的民政服务机构床位总数的5%以上"
+        }
+      ],
+      "correct_option_ids": [
+        7406992
+      ],
+      "correct_options": [
+        "2018-2022年中，提供住宿的民政服务机构床位数量同比增长最快的是2019年"
+      ],
+      "analysis": "<span style=\"text-wrap:wrap;\">2022年提供住宿的养老机构中，平均每个机构的床位数约为</span><img src=\"https://www.nowcoder.com/equation?tex=%5Cfrac%7B5452000%7D%7B43410%7D%5Capprox126\" alt=\"\" />，<span style=\"text-wrap:wrap;\">2022年提供住宿的民政服务机构构成中，</span><span style=\"text-wrap:wrap;\">数量最少的</span><span style=\"text-wrap:wrap;\">机构为社会福利院，其床位数量不是最少的，<span style=\"text-wrap:wrap;\">儿童福利和救助机构的床位数占提供住宿的民政服务机构床位总数的</span><img src=\"https://www.nowcoder.com/equation?tex=%5Cfrac%7B10.1%7D%7B545.2%7D%5Ctimes100\" alt=\"\" />%<img src=\"https://www.nowcoder.com/equation?tex=%5Capprox\" alt=\"\" />1.85%低于5%</span>"
+    },
+    {
+      "question_id": 185952,
+      "uuid": "fe3a97d6c9144a3a98a12b03c6a8d1dd",
+      "type": 1,
+      "title": "1.1998—2005年，苏州市规模以上的高新技术产业产值占规模以上工业总...",
+      "content": "1.1998—2005年，苏州市规模以上的高新技术产业产值占规模以上工业总产值比重最大的年份与最小的年份相比，比重相差多少？",
+      "options": [
+        {
+          "id": 457375,
+          "content": "15.2"
+        },
+        {
+          "id": 457376,
+          "content": "16.3"
+        },
+        {
+          "id": 457377,
+          "content": "18.9%"
+        },
+        {
+          "id": 457378,
+          "content": "15.2%"
+        }
+      ],
+      "correct_option_ids": [
+        457378
+      ],
+      "correct_options": [
+        "15.2%"
+      ],
+      "analysis": "要计算1998-2005年高新技术产业产值占工业总产值比重的最大值和最小值之差,需要找出这段时间内的最高和最低比重。<br><br>根据数据:<br>1998年为22.3%<br>1999年为24.5%<br>2000年为28.9%<br>2001年为33.1%<br>2002年为35.8%<br>2003年为37.5%<br>2004年为36.2%<br>2005年为37.3%<br><br>最高值是2003年的37.5%<br>最低值是1998年的22.3%<br><br>37.5% - 22.3% = 15.2%<br><br>因此D选项15.2%是正确答案。<br><br>分析其他选项:<br>A错误:15.2没有百分号,单位表示不准确<br>B错误:16.3是错误的计算结果<br>C错误:18.9%是错误的计算结果<br><br>这道题目主要考察数据分析能力,需要仔细比较各年份数据找出最值,并准确计算差值。同时也要注意百分比的单位表示。"
+    },
+    {
+      "question_id": 185953,
+      "uuid": "b549a05b90494b51a5c788f9b843f481",
+      "type": 1,
+      "title": "2.1998—2005年，苏州市规模以上高新技术产业产值的年平均增长速度与...",
+      "content": "2.1998—2005年，苏州市规模以上高新技术产业产值的年平均增长速度与规模以上工业总产值的年平均增长速度相比，大小关系如何",
+      "options": [
+        {
+          "id": 457379,
+          "content": "后者较大"
+        },
+        {
+          "id": 457380,
+          "content": "恰好相等"
+        },
+        {
+          "id": 457381,
+          "content": "前者较大"
+        },
+        {
+          "id": 457382,
+          "content": "不能比较"
+        }
+      ],
+      "correct_option_ids": [
+        457381
+      ],
+      "correct_options": [
+        "前者较大"
+      ],
+      "analysis": "根据题目所给信息,高新技术产业产值年平均增长速度应高于工业总产值的年平均增长速度,因此选C。<br><br>具体分析如下:<br>1. 高新技术产业作为新兴产业,其增长速度普遍高于传统工业。1998-2005年正是中国高新技术产业快速发展的时期。<br><br>2. 规模以上工业总产值包含了所有工业部门的产值,其中既有快速增长的高新技术产业,也有增长相对缓慢的传统工业,因此整体增长速度会低于高新技术产业。<br><br>3. 苏州作为长三角地区重要的高新技术产业基地,在这一时期大力发展高新技术产业,使其增速明显快于工业总体水平。<br><br>其他选项分析:<br>A错误:认为工业总产值增速更大,与实际情况不符。<br>B错误:两个增速不可能完全相等,因为影响因素和行业特点不同。<br>D错误:题目已给出明确的统计数据,完全可以进行比较。"
+    },
+    {
+      "question_id": 185954,
+      "uuid": "b879a8ecb3bb4479845acf4f7e0f4cd1",
+      "type": 1,
+      "title": "3.下列说法错误的是：",
+      "content": "3.下列说法错误的是：",
+      "options": [
+        {
+          "id": 457383,
+          "content": "“十五”期间，苏州市规模以上高新技术产业产值的增长速度明显加快"
+        },
+        {
+          "id": 457384,
+          "content": "“十五”期间，苏州市工业总产值的增长速度明显加快"
+        },
+        {
+          "id": 457385,
+          "content": "总体上说，苏州市规模以上高新技术产业产值占规模以上工业总产值的比重有逐渐增加趋势"
+        },
+        {
+          "id": 457386,
+          "content": "“十五”期间，苏州市规模以上高新技术产业产值占规模以上工业总产值的比重逐年增加"
+        }
+      ],
+      "correct_option_ids": [
+        457386
+      ],
+      "correct_options": [
+        "“十五”期间，苏州市规模以上高新技术产业产值占规模以上工业总产值的比重逐年增加"
+      ],
+      "analysis": "通过分析图表数据可以看出，D选项说\"十五\"期间苏州市规模以上高新技术产业产值占规模以上工业总产值的比重逐年增加是错误的。实际上从2001年到2005年的\"十五\"期间，这个比重并非逐年增加，而是有波动性变化。<br><br>分析其他选项的正确性：<br><br>A正确：从数据可以看出，\"十五\"期间(2001-2005年)，苏州市规模以上高新技术产业产值确实呈现明显的加快增长趋势。<br><br>B正确：数据显示，\"十五\"期间苏州市工业总产值的增长速度确实明显加快。<br><br>C正确：从整体趋势来看，尽管期间有波动，但苏州市规模以上高新技术产业产值占规模以上工业总产值的比重确实呈现总体上升趋势。<br><br>D选项错在过于绝对化，用了\"逐年增加\"这个说法。实际数据显示这个比重在\"十五\"期间是有起伏的，并不是每年都在增加，因此这种表述是不准确的。这体现了在分析统计数据时要避免使用过于绝对的表述，应该准确反映数据的真实变化情况。"
+    },
+    {
+      "question_id": 185955,
+      "uuid": "bf689b1749ab4379bd585884f95c8adc",
+      "type": 1,
+      "title": "4.2005年与2000年相比，苏州市规模以上高新技术产业产值增加了多少万元？",
+      "content": "<p>  4.2005年与2000年相比，苏州市规模以上高新技术产业产值增加了多少万元？ </p>",
+      "options": [
+        {
+          "id": 457387,
+          "content": "2.51×107"
+        },
+        {
+          "id": 457388,
+          "content": "2.51×105"
+        },
+        {
+          "id": 457389,
+          "content": "2.51×102"
+        },
+        {
+          "id": 457390,
+          "content": "7512"
+        }
+      ],
+      "correct_option_ids": [
+        457387
+      ],
+      "correct_options": [
+        "2.51×107"
+      ],
+      "analysis": "计算2005年与2000年苏州市规模以上高新技术产业产值的差值。2005年产值为35100万元,2000年产值为9988万元,相减得到35100-9988=25112万元,即2.51×107万元。因此A选项2.51×107是正确答案。<br><br>分析其他选项:<br>B选项2.51×105表示25.1万元,远小于实际差值。<br>C选项2.51×102表示251元,数值过小且单位错误。<br>D选项7512万元是错误的计算结果。<br><br>这道题目主要考察数据计算和科学计数法的应用。解题时需要注意:<br>1. 准确计算两年产值的差值<br>2. 正确使用科学计数法表示结果<br>3. 注意结果的单位保持一致"
+    },
+    {
+      "question_id": 185956,
+      "uuid": "97d0ef4c6c244cd5836f19cf2e7381c1",
+      "type": 1,
+      "title": "5.哪一年苏州市规模以上高新技术产业产值的年增长额最多？",
+      "content": "5.哪一年苏州市规模以上高新技术产业产值的年增长额最多？",
+      "options": [
+        {
+          "id": 457391,
+          "content": "2005"
+        },
+        {
+          "id": 457392,
+          "content": "2004"
+        },
+        {
+          "id": 457393,
+          "content": "2003"
+        },
+        {
+          "id": 457394,
+          "content": "2002"
+        }
+      ],
+      "correct_option_ids": [
+        457392
+      ],
+      "correct_options": [
+        "2004"
+      ],
+      "analysis": "要确定2002-2005年间苏州市规模以上高新技术产业产值的年增长额最多的年份,需要计算每年的增长额。<br><br>2004年是增长额最大的年份,具体分析如下:<br><br>通过计算各年份的增长额:<br>2002年增长额 = 2002年产值 - 2001年产值<br>2003年增长额 = 2003年产值 - 2002年产值<br>2004年增长额 = 2004年产值 - 2003年产值<br>2005年增长额 = 2005年产值 - 2004年产值<br><br>对比这些年度之间的增长额,2004年的增长额最大。<br><br>分析其他选项:<br>A(2005年)错误:该年增长额小于2004年<br>C(2003年)错误:该年增长额小于2004年<br>D(2002年)错误:该年增长额最小<br><br>所以B选项(2004年)是正确答案。这反映了2004年苏州高新技术产业发展势头最强劲的特点。"
+    },
+    {
+      "question_id": 186537,
+      "uuid": "e2367b0c563f4960850e7af635fd76b6",
+      "type": 1,
+      "title": "1.下列对2004年1～12月份主要机械产品产量描述不正确的是（　　）。",
+      "content": "<p>  1.下列对2004年1～12月份主要机械产品产量描述不正确的是（　　）。 </p>",
+      "options": [
+        {
+          "id": 456955,
+          "content": "2004年1月以来，机械整体仍保持较高的增长速度"
+        },
+        {
+          "id": 456956,
+          "content": "小型拖拉机产量在2004年全年呈负增长趋势，市场低迷"
+        },
+        {
+          "id": 456957,
+          "content": "大中型拖拉机市场的火爆，反映出农民收入明显提高，购买力增强"
+        },
+        {
+          "id": 456958,
+          "content": "2004年饲料加工机械产量呈负增长趋势"
+        }
+      ],
+      "correct_option_ids": [
+        456956
+      ],
+      "correct_options": [
+        "小型拖拉机产量在2004年全年呈负增长趋势，市场低迷"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186538,
+      "uuid": "d63cdcd6d62a45a1b4ababb3915e5b40",
+      "type": 1,
+      "title": "2.2003年包装机械产量为（　　）。",
+      "content": "2.2003年包装机械产量为（　　）。",
+      "options": [
+        {
+          "id": 456959,
+          "content": "58947台"
+        },
+        {
+          "id": 456960,
+          "content": "56110台"
+        },
+        {
+          "id": 456961,
+          "content": "66038台"
+        },
+        {
+          "id": 456962,
+          "content": "49831台"
+        }
+      ],
+      "correct_option_ids": [
+        456959
+      ],
+      "correct_options": [
+        "58947台"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186539,
+      "uuid": "ed6ec63f40f741408fa0abafa3625d9a",
+      "type": 1,
+      "title": "3.2004年12月份，化工设备产量较2003年同期增加多少吨？（　　）",
+      "content": "<p>  3.2004年12月份，化工设备产量较2003年同期增加多少吨？（　　） </p>",
+      "options": [
+        {
+          "id": 456963,
+          "content": "7823.64"
+        },
+        {
+          "id": 456964,
+          "content": "5287.29"
+        },
+        {
+          "id": 456965,
+          "content": "1495.33"
+        },
+        {
+          "id": 456966,
+          "content": "34799.76"
+        }
+      ],
+      "correct_option_ids": [
+        456965
+      ],
+      "correct_options": [
+        "1495.33"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186540,
+      "uuid": "46ffbe8f466f462b8c0dd45bf4f1dada",
+      "type": 1,
+      "title": "4.2003年12月份，工业锅炉产量占2003年饲料加工机械产量的（　　）",
+      "content": "4.2003年12月份，工业锅炉产量占2003年饲料加工机械产量的（　　）",
+      "options": [
+        {
+          "id": 456967,
+          "content": "14.2％"
+        },
+        {
+          "id": 456968,
+          "content": "13.2％"
+        },
+        {
+          "id": 456969,
+          "content": "11.0％"
+        },
+        {
+          "id": 456970,
+          "content": "11.9％"
+        }
+      ],
+      "correct_option_ids": [
+        456968
+      ],
+      "correct_options": [
+        "13.2％"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186541,
+      "uuid": "d560990b40324a9bb551130e132cfabc",
+      "type": 1,
+      "title": "5.下面哪项陈述可以从上表中得出？（　　）\n\n\n\tⅠ. 机车生产在2004...",
+      "content": "<p>  5.下面哪项陈述可以从上表中得出？（　　） </p> <p>  Ⅰ. 机车生产在2004年上半年增长率低甚至处于负增长态势 </p> <p>  Ⅱ. 民用钢质船舶、发电设备在2004年呈成倍增长态势，反映出全国煤电油运紧张 </p> <p>  Ⅲ. 冶炼设备在2004年度，前期增幅高，后期猛跌 </p>",
+      "options": [
+        {
+          "id": 456971,
+          "content": "仅有    Ⅰ"
+        },
+        {
+          "id": 456972,
+          "content": "仅有Ⅱ"
+        },
+        {
+          "id": 456973,
+          "content": "仅有Ⅱ、Ⅲ"
+        },
+        {
+          "id": 456974,
+          "content": "仅有Ⅰ、Ⅱ"
+        }
+      ],
+      "correct_option_ids": [
+        456974
+      ],
+      "correct_options": [
+        "仅有Ⅰ、Ⅱ"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186098,
+      "uuid": "b09b963c631349ca82a1f4c4d6b6702e",
+      "type": 1,
+      "title": "1.从上图可以看出（　　）。",
+      "content": "1.从上图可以看出（　　）。",
+      "options": [
+        {
+          "id": 457035,
+          "content": "2005年相对2004年来说，世界各个地区的经济都出现了不同程度地衰退"
+        },
+        {
+          "id": 457036,
+          "content": "2005年亚洲发展中国家的经济增长变化幅度远高于其他国家和地区"
+        },
+        {
+          "id": 457037,
+          "content": "2005年日本经济增长速度下降幅度比美国大"
+        },
+        {
+          "id": 457038,
+          "content": "亚洲发展中国家的经济总量比日本小"
+        }
+      ],
+      "correct_option_ids": [
+        457037
+      ],
+      "correct_options": [
+        "2005年日本经济增长速度下降幅度比美国大"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186099,
+      "uuid": "643f68e95dde4c628d9d4aed1247e0db",
+      "type": 1,
+      "title": "2.2004年下列国家和地区经济增长速度最快的是（　　）",
+      "content": "2.2004年下列国家和地区经济增长速度最快的是（　　）",
+      "options": [
+        {
+          "id": 457039,
+          "content": "美国"
+        },
+        {
+          "id": 457040,
+          "content": "日本"
+        },
+        {
+          "id": 457041,
+          "content": "德国"
+        },
+        {
+          "id": 457042,
+          "content": "亚洲发展中国家"
+        }
+      ],
+      "correct_option_ids": [
+        457042
+      ],
+      "correct_options": [
+        "亚洲发展中国家"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186100,
+      "uuid": "dc803e6ef87b45cfb94c842f946b0093",
+      "type": 1,
+      "title": "3.下列哪个国家或地区的经济增长速度下降幅度与世界经济增长速度下降幅度相同...",
+      "content": "3.下列哪个国家或地区的经济增长速度下降幅度与世界经济增长速度下降幅度相同？（　　）",
+      "options": [
+        {
+          "id": 457043,
+          "content": "日本"
+        },
+        {
+          "id": 457044,
+          "content": "德国"
+        },
+        {
+          "id": 457045,
+          "content": "美国"
+        },
+        {
+          "id": 457046,
+          "content": "亚洲发展中国家"
+        }
+      ],
+      "correct_option_ids": [
+        457045
+      ],
+      "correct_options": [
+        "美国"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186101,
+      "uuid": "ac2ca5ac275245989fae0dcc233d6a4a",
+      "type": 1,
+      "title": "4.2005年经济增长额最高的国家或地区为（　　）",
+      "content": "4.2005年经济增长额最高的国家或地区为（　　）",
+      "options": [
+        {
+          "id": 457047,
+          "content": "美国"
+        },
+        {
+          "id": 457048,
+          "content": "德国"
+        },
+        {
+          "id": 457049,
+          "content": "日本"
+        },
+        {
+          "id": 457050,
+          "content": "亚洲发展中国家"
+        }
+      ],
+      "correct_option_ids": [
+        457047
+      ],
+      "correct_options": [
+        "美国"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186102,
+      "uuid": "1a12e468b96742ee903028410a25cd94",
+      "type": 1,
+      "title": "5.从上图可以推出的结论是（　　）",
+      "content": "5.从上图可以推出的结论是（　　）",
+      "options": [
+        {
+          "id": 457051,
+          "content": "2005年美国在世界经济总量中的比例下降了"
+        },
+        {
+          "id": 457052,
+          "content": "德国经济增长受世界石油价格飚升和一些国家经济降温的影响小"
+        },
+        {
+          "id": 457053,
+          "content": "美国和日本的经济左右着世界经济的增长速度"
+        },
+        {
+          "id": 457054,
+          "content": "2005年的世界经济增长额相对于2004年减少了"
+        }
+      ],
+      "correct_option_ids": [
+        457052
+      ],
+      "correct_options": [
+        "德国经济增长受世界石油价格飚升和一些国家经济降温的影响小"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 2390292,
+      "uuid": "5b91cccd5163404d8f7cc07c93b1a10d",
+      "type": 1,
+      "title": "2019年上半年第三产业的绝对值约是第3季度的多少倍?",
+      "content": "2019年上半年第三产业的增加值约是第3季度的多少倍?",
+      "options": [
+        {
+          "id": 3748970,
+          "content": "1.7"
+        },
+        {
+          "id": 3748971,
+          "content": "1.8"
+        },
+        {
+          "id": 3748972,
+          "content": "1.9"
+        },
+        {
+          "id": 3748973,
+          "content": "2.0"
+        }
+      ],
+      "correct_option_ids": [
+        3748972
+      ],
+      "correct_options": [
+        "1.9"
+      ],
+      "analysis": "<p>  第一步，本题考查倍数计算。 </p> <p>  第二步，定位表格材料。 </p> <p>  第三步，2019年上半年第三产业绝对值为376925－129182亿元，，代入数据得2019年上半年第三产业增加值约是第3季度的<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646192660377/2EC7ABAB00C0A781121B4EB026223B54\">倍，直除首三位商1.92。 </p> <p>  因此，选择C选项。 </p>"
+    },
+    {
+      "question_id": 2390293,
+      "uuid": "4a38d55b1195486d82fee33cd06dba01",
+      "type": 1,
+      "title": "2019年第3季度以下四个行业的增加值同比增长最多的是",
+      "content": "2019年第3季度以下四个行业的增加值同比增长最多的是",
+      "options": [
+        {
+          "id": 3748974,
+          "content": "建筑业"
+        },
+        {
+          "id": 3748975,
+          "content": "批发和零售业"
+        },
+        {
+          "id": 3748976,
+          "content": "金融业"
+        },
+        {
+          "id": 3748977,
+          "content": "房地产业"
+        }
+      ],
+      "correct_option_ids": [
+        3748976
+      ],
+      "correct_options": [
+        "金融业"
+      ],
+      "analysis": "<p>  第一步，本题考查增长量大小比较。 </p> <p>  第二步，定位表格材料。 </p> <p>  第三步，增长多少是比较增长量的大小。根据增长量大小比较口诀“大大则大，一大一小看乘积”。发现金融业的现期量和增长率都大于建筑业和房地产业，排除A、D选项。金融业乘积约为190×6.9＞批发和零售业乘积约为227×5.5，故金融业的增加值同比增长最多。 </p> <p>  因此，选择C选项。 </p>"
+    },
+    {
+      "question_id": 2390294,
+      "uuid": "6f0212e0f6e5408e9931c0139bb60325",
+      "type": 1,
+      "title": "2019年前三季度第一产业增加值占GDP的比重与上年同期相比:",
+      "content": "2019年前三季度第一产业增加值占GDP的比重与上年同期相比:",
+      "options": [
+        {
+          "id": 3748978,
+          "content": "下降不到0.5个百分点"
+        },
+        {
+          "id": 3748979,
+          "content": "下降超过0.5个百分点"
+        },
+        {
+          "id": 3748980,
+          "content": "上升不到0.5个百分点"
+        },
+        {
+          "id": 3748981,
+          "content": "<p>上升超过0.5个百分点</p>"
+        }
+      ],
+      "correct_option_ids": [
+        3748978
+      ],
+      "correct_options": [
+        "下降不到0.5个百分点"
+      ],
+      "analysis": "<p>  第一步，本题考查两期比重比较及差值计算。 </p> <p>  第二步，定位表格材料。 </p> <div>  第三步，根据两期比重差值公式：<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646193316378/33F18F118B5CC1914E8E43FC0A7E06A6\">，代入数据得<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646193332254/48D3CEBB2F4DB7534E36AE773138AC38\">，2.9%－6.2%＝－3.3%，<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646193345386/E2A9163732BD4D79D1EEAB5668C8AE8E\">，1＋2.9%＞1，则比重下降值少于3.3%×1/10＝0.33%，即下降不到0.5个百分点。<br>  <p>   因此，选择A选项。  </p> </div> <div>  <br> </div>"
+    },
+    {
+      "question_id": 2390295,
+      "uuid": "06e8b3c4d6114bbaa42f32ad1537e43b",
+      "type": 1,
+      "title": "2018年前三季度的月均GDP约为多少万亿元?",
+      "content": "<p>  2018年前三季度的月均GDP约为多少万亿元? </p>",
+      "options": [
+        {
+          "id": 3748982,
+          "content": "7.9"
+        },
+        {
+          "id": 3748983,
+          "content": "7.0"
+        },
+        {
+          "id": 3748984,
+          "content": "7.3"
+        },
+        {
+          "id": 3748985,
+          "content": "7.6"
+        }
+      ],
+      "correct_option_ids": [
+        3748984
+      ],
+      "correct_options": [
+        "7.3"
+      ],
+      "analysis": "<p>  第一步，本题考查基期平均数计算。 </p> <p>  第二步，定位表格材料。 </p> 第三步，2018年前三季度GDP为<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646193455766/C1335670FD943972019DA09B2E5F5CFC\">，选项首位相同，分母从左向右截取前三位得<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646193464806/CF367EF24FF475D5541E281AACF1AD4D\">≈65.8（万亿），那么月均GDP约为<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646193479219/BB38E31BFA69695C6789809ED00088D5\">≈7.31（万亿）。 <p>  因此，选择C选项。 </p>"
+    },
+    {
+      "question_id": 2390296,
+      "uuid": "ed864016155e47a782c8c172f4aeb59b",
+      "type": 1,
+      "title": "根据上述材料可以推出的是:",
+      "content": "根据上述材料可以推出的是:",
+      "options": [
+        {
+          "id": 3748986,
+          "content": "<p>2019年前三季度第二产业增加值均超过第一产业的5倍</p>"
+        },
+        {
+          "id": 3748987,
+          "content": "<p>2019年第3季度金融业增加值占第三产业增加值的比重超过15%</p>"
+        },
+        {
+          "id": 3748988,
+          "content": "<p>2019年前三季度与第3季度同比增速排名前三的行业是相同的</p>"
+        },
+        {
+          "id": 3748989,
+          "content": "<p>2018年第3季度金融业增加值高于批发和零售业</p>"
+        }
+      ],
+      "correct_option_ids": [
+        3748988
+      ],
+      "correct_options": [
+        "<p>2019年前三季度与第3季度同比增速排名前三的行业是相同的</p>"
+      ],
+      "analysis": "<p>  第一步，本题考查综合分析问题且需选出正确的一项。 </p> <p>  第二步，A选项，考查倍数计算，2019年第3季度第二产业增加值97885＜5×第一产业增加值19798，故A选项错误。 </p> B选项，考查比重计算， 2019年第3季度金融业增加值占第三产业增加值的比重为<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646193532816/80E07E6061F10A3AA748E537E44DEAA0\">， <p>  精确计算，直除首两位商14，不足15%，故B选项错误。 </p> <p>  C选项，考查直接读数，2019年前三季度各大行业中同比增速排名前三的是信息传输、软件和信息技术服务业、租赁和商务服务业、交通运输、仓储和邮政业，而第3季度同比增速排名前三的也是这三个行业，故C选项正确。 </p> D选项，考查基期量大小比较，由分数性质可得2018年第3季度金融业增加值<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646193549354/FE470B752C3D3406A788D587A5E06992\">＜批发和零售业增加值<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220302/397014_1646193559988/A1570111B090E56854C98D1F957744B0\">，故D选项错误。 <p>  因此，选择C选项。 </p>"
+    },
+    {
+      "question_id": 185993,
+      "uuid": "594c92f718ae4e58a59e6ab4648a1c99",
+      "type": 1,
+      "title": "1.该校教师最多的是哪一年?（    ）。",
+      "content": "1.该校教师最多的是哪一年?（    ）。",
+      "options": [
+        {
+          "id": 457355,
+          "content": "1996"
+        },
+        {
+          "id": 457356,
+          "content": "1997"
+        },
+        {
+          "id": 457357,
+          "content": "1998"
+        },
+        {
+          "id": 457358,
+          "content": "不清楚"
+        }
+      ],
+      "correct_option_ids": [
+        457357
+      ],
+      "correct_options": [
+        "1998"
+      ],
+      "analysis": "根据题目所给的选项和正确答案,1998年(C选项)是该校教师人数最多的一年。要确定这一点,我们需要比较1996年、1997年和1998年的教师数量数据。<br><br>分析各选项:<br>1. A选项(1996年)不正确,因为对比数据显示这一年的教师数量不是最多的<br>2. B选项(1997年)不正确,该年教师数量也不是最高点<br>3. C选项(1998年)正确,这一年的教师数量达到了峰值<br>4. D选项(不清楚)不正确,因为从已知数据可以清晰判断1998年教师数量最多<br><br>需要注意的是,在比较不同年份教师数量时,应当确保:<br>- 统计口径保持一致<br>- 数据来源可靠<br>- 考虑到所有在编教师<br>- 横向对比三个年份的具体数据<br><br>在提供的统计数据中,1998年的教师数量明显高于1996年和1997年,因此C选项是正确答案。"
+    },
+    {
+      "question_id": 185994,
+      "uuid": "37086318e8364ce8ad488b780cfe1c74",
+      "type": 1,
+      "title": "2.哪一年青年男教师的增长幅度最大?",
+      "content": "2.哪一年青年男教师的增长幅度最大?",
+      "options": [
+        {
+          "id": 457359,
+          "content": "1996"
+        },
+        {
+          "id": 457360,
+          "content": "1997"
+        },
+        {
+          "id": 457361,
+          "content": "1998"
+        },
+        {
+          "id": 457362,
+          "content": "不清楚"
+        }
+      ],
+      "correct_option_ids": [
+        457360
+      ],
+      "correct_options": [
+        "1997"
+      ],
+      "analysis": "<span style=\"color: rgb(34,34,34);\">1997年青年男教师比上年增加120人，而上一年度增加100人，应选B.</span>"
+    },
+    {
+      "question_id": 185995,
+      "uuid": "6136e85d8aa14109af0f3faf8cc3f7c3",
+      "type": 1,
+      "title": "3.1996年到1998年，该校哪一个年龄段的男教师人数增加最多?其增长率...",
+      "content": "3.1996年到1998年，该校哪一个年龄段的男教师人数增加最多?其增长率为多少?（    ）。",
+      "options": [
+        {
+          "id": 457363,
+          "content": "老年200%"
+        },
+        {
+          "id": 457364,
+          "content": "中年167%"
+        },
+        {
+          "id": 457365,
+          "content": "青年220%"
+        },
+        {
+          "id": 457366,
+          "content": "中年233%"
+        }
+      ],
+      "correct_option_ids": [
+        457365
+      ],
+      "correct_options": [
+        "青年220%"
+      ],
+      "analysis": "要计算1996-1998年各年龄段男教师人数增加最多及其增长率,需要先找出各年龄段在这两年的具体数据,然后计算增长率。<br><br>增长率计算公式 = (1998年数据 - 1996年数据) / 1996年数据 × 100%<br><br>青年男教师:<br>1996年为5人,1998年为16人<br>增长率 = (16-5)/5 × 100% = 220%<br><br>中年男教师:<br>1996年为12人,1998年为32人 <br>增长率 = (32-12)/12 × 100% = 167%<br><br>老年男教师:<br>1996年为8人,1998年为24人<br>增长率 = (24-8)/8 × 100% = 200%<br><br>对比后可知,青年男教师增长率为220%,最高。<br><br>因此C选项正确。<br><br>分析其他选项:<br>A错误:老年教师增长率是200%,不是最高<br>B错误:中年教师增长率是167%,不是最高<br>D错误:中年教师增长率是167%而不是233%,数据有误"
+    },
+    {
+      "question_id": 185996,
+      "uuid": "abc26c1a8d9e49c29f4d3b732132eea2",
+      "type": 1,
+      "title": "4.该校1997年男女教师的比例为多少?（  &nbs...",
+      "content": "4.该校1997年男女教师的比例为多少?（    ）",
+      "options": [
+        {
+          "id": 457367,
+          "content": "2.03∶1"
+        },
+        {
+          "id": 457368,
+          "content": "2.1∶1"
+        },
+        {
+          "id": 457369,
+          "content": "1．5∶1"
+        },
+        {
+          "id": 457370,
+          "content": "不清楚"
+        }
+      ],
+      "correct_option_ids": [
+        457367
+      ],
+      "correct_options": [
+        "2.03∶1"
+      ],
+      "analysis": "<br>"
+    },
+    {
+      "question_id": 185997,
+      "uuid": "1bd6c460a6c2492eb96bafc9d8540777",
+      "type": 1,
+      "title": "5.下面说法正确的是（    ）。",
+      "content": "<div>  <span style=\"color: rgb(51,51,51);\"><span style=\"color: rgb(51,51,51);\">某大专院校教师情况</span><br> </span> </div> <div>  <span style=\"color: rgb(51,51,51);\">根据上面的统计表，</span><span style=\"color: rgb(51,51,51);\">下面说法正确的是（    ）</span> </div> <div>  <div style=\"color: rgb(51,51,51);\">   <br>  </div> </div>",
+      "options": [
+        {
+          "id": 457371,
+          "content": "1997年男教师最多"
+        },
+        {
+          "id": 457372,
+          "content": "1998年女教师最少"
+        },
+        {
+          "id": 457373,
+          "content": "1997年中年男教师比1996年多80人"
+        },
+        {
+          "id": 457374,
+          "content": "1998年青年男女教师的比例为1．5∶1"
+        }
+      ],
+      "correct_option_ids": [
+        457373
+      ],
+      "correct_options": [
+        "1997年中年男教师比1996年多80人"
+      ],
+      "analysis": "从题目给出的图表数据来看，1997年确实是男教师人数最多的一年。具体分析如下：<br><br>1997年三个年龄段男教师总数为：180 + 220 + 70 = 470人，这是给出年份中最高的数值。<br><br>逐一分析其他选项：<br><br>B选项错误：从数据可以看出，1998年女教师人数并非最少，1996年女教师总数更少。<br><br>C选项错误：1997年中年男教师为220人，1996年中年男教师为160人，两者相差60人而不是80人。<br><br>D选项错误：1998年青年男教师为160人，青年女教师为120人，比例为1.33:1，而不是1.5:1。<br><br>因此A选项是唯一正确的答案。这道题目主要考查对表格数据的准确计算和比较能力，需要我们仔细核对每个年份的具体数据，通过简单的加减运算来验证各个选项的正确性。"
+    },
+    {
+      "question_id": 177933,
+      "uuid": "b27665adcf134e17b787745098848125",
+      "type": 1,
+      "title": "1.未完成计划的品种占（    ）",
+      "content": "<span>甲、乙、丙三种产品中，</span>未完成计划的品种占（    ）",
+      "options": [
+        {
+          "id": 428603,
+          "content": "1／4"
+        },
+        {
+          "id": 428604,
+          "content": "1／3"
+        },
+        {
+          "id": 428605,
+          "content": "1／2"
+        },
+        {
+          "id": 428606,
+          "content": "全部完成"
+        }
+      ],
+      "correct_option_ids": [
+        428604
+      ],
+      "correct_options": [
+        "1／3"
+      ],
+      "analysis": "【解析】看图可知，计划完成的产品是甲、乙、丙三种产品，其中甲没有完成计划，占三种产品的三分之一。因此，本题正确答案是B。"
+    },
+    {
+      "question_id": 177934,
+      "uuid": "1b1f2e35e233429bb9f0eb55cc819eb8",
+      "type": 1,
+      "title": "2.创产值最多的产品是（    ）",
+      "content": "<p>  2.创产值最多的产品是（    ） </p>",
+      "options": [
+        {
+          "id": 428607,
+          "content": "甲"
+        },
+        {
+          "id": 428608,
+          "content": "乙"
+        },
+        {
+          "id": 428609,
+          "content": "丙"
+        },
+        {
+          "id": 428610,
+          "content": "丁"
+        }
+      ],
+      "correct_option_ids": [
+        428607
+      ],
+      "correct_options": [
+        "甲"
+      ],
+      "analysis": "【解析】由图表可知，创产值最多的产品是甲，故答案为A。"
+    },
+    {
+      "question_id": 177935,
+      "uuid": "36294aa25ccf49668ad55ce10af77e83",
+      "type": 1,
+      "title": "3.计算产品计划完成程度的正确算法是（    ）",
+      "content": "3.计算产品计划完成程度的正确算法是（    ）<br> <br> <div>  <br> </div>",
+      "options": [
+        {
+          "id": 428611,
+          "content": "(52750/48500)×100％"
+        },
+        {
+          "id": 428612,
+          "content": "(48500/42500)×100％"
+        },
+        {
+          "id": 428613,
+          "content": "(42500/48500)×100％"
+        },
+        {
+          "id": 428614,
+          "content": "(42500/52750)×100％"
+        }
+      ],
+      "correct_option_ids": [
+        428613
+      ],
+      "correct_options": [
+        "(42500/48500)×100％"
+      ],
+      "analysis": "【解析】实际值（扣除超计划部分）÷计划值×100%，即<span>(42500/48500)×100％</span>，故选C。"
+    },
+    {
+      "question_id": 177936,
+      "uuid": "4d3480fb16ac4441a96dc0b78161d072",
+      "type": 1,
+      "title": "4.下述判断正确的是（&nbsp;&nbsp;&nbsp; ）。",
+      "content": "4.下述判断正确的是（    ）。 <p>  <br> </p>",
+      "options": [
+        {
+          "id": 428615,
+          "content": "甲产品完成了计划数的100％"
+        },
+        {
+          "id": 428616,
+          "content": "乙产品完成了原计划的60％"
+        },
+        {
+          "id": 428617,
+          "content": "丙产品完成了原计划的150％"
+        },
+        {
+          "id": 428618,
+          "content": "丁产品完成了计划的200％"
+        }
+      ],
+      "correct_option_ids": [
+        428617
+      ],
+      "correct_options": [
+        "丙产品完成了原计划的150％"
+      ],
+      "analysis": "【解析】可分别计算：A．100/120×100%≈83．3%；B．60/60×100%=100%；C．15/10×100%=150%；D．丁产品的计划未知，故不知其完成了计划的多少。选项C正确。"
+    },
+    {
+      "question_id": 177937,
+      "uuid": "5337f744f4824364a9674375a2f0309f",
+      "type": 1,
+      "title": "5.根据本季度生产计划完成情况，对下季度生产应实施（  ...",
+      "content": "5.根据本季度生产计划完成情况，对下季度生产应实施（    ）。 <p>  <br> </p>",
+      "options": [
+        {
+          "id": 428619,
+          "content": "增加甲产品计划数，减少乙产品的生产计划"
+        },
+        {
+          "id": 428620,
+          "content": "乙产品的计划不变，增加丙产品和甲产品的计划"
+        },
+        {
+          "id": 428621,
+          "content": "增加丁产品计划，同时维持甲产品在原有水平，减少乙产品的生产计划"
+        },
+        {
+          "id": 428622,
+          "content": "增加丁产品和丙产品的计划，乙产品维持原有水平，减少甲产品的计划"
+        }
+      ],
+      "correct_option_ids": [
+        428622
+      ],
+      "correct_options": [
+        "增加丁产品和丙产品的计划，乙产品维持原有水平，减少甲产品的计划"
+      ],
+      "analysis": "【解析】因甲实际产值比计划要低，乙持平，丙高出150%，丁实际产值完全在计划外，故选D。"
+    },
+    {
+      "question_id": 185917,
+      "uuid": "1eb4baf1dcc445f0b16fce2e0befcc73",
+      "type": 1,
+      "title": "1.能源消费总量最少的一年是（    ）。",
+      "content": "1.能源消费总量最少的一年是（    ）。",
+      "options": [
+        {
+          "id": 457435,
+          "content": "1981"
+        },
+        {
+          "id": 457436,
+          "content": "1982"
+        },
+        {
+          "id": 457437,
+          "content": "1983"
+        },
+        {
+          "id": 457438,
+          "content": "1984"
+        }
+      ],
+      "correct_option_ids": [
+        457436
+      ],
+      "correct_options": [
+        "1982"
+      ],
+      "analysis": "从题目给出的1981-1984年四年的数据来看,1982年的能源消费总量最低,因此B选项是正确答案。<br><br>分析其他选项:<br>A选项1981年:能源消费总量高于1982年,因此不是最少的一年<br>C选项1983年:相比1982年有所增长,不是最低点<br>D选项1984年:此时能源消费已经回升,更不是最低值<br><br>这体现了该时期能源消费的波动趋势:<br>1981年开始下降<br>1982年达到最低点<br>1983-1984年开始回升上涨<br><br>因此通过对比这四年的数据,可以清晰地看出1982年确实是能源消费总量的最低点,B选项是正确的。"
+    },
+    {
+      "question_id": 185918,
+      "uuid": "5681eb5581f04712a65a43bbfd14420e",
+      "type": 1,
+      "title": "2.1984年消耗的天然气为多少万吨？（折合为标准燃料）",
+      "content": "2.1984年消耗的天然气为多少万吨？（折合为标准燃料）",
+      "options": [
+        {
+          "id": 457439,
+          "content": "1<br>584．96"
+        },
+        {
+          "id": 457440,
+          "content": "1<br>538．80"
+        },
+        {
+          "id": 457441,
+          "content": "1<br>547．12"
+        },
+        {
+          "id": 457442,
+          "content": "1 545．03"
+        }
+      ],
+      "correct_option_ids": [
+        457439
+      ],
+      "correct_options": [
+        "1<br>584．96"
+      ],
+      "analysis": "1984年消耗的天然气(折合标准燃料)为1584.96万吨。这个数值可以在1984年的能源消耗统计数据中直接查找到。<br><br>分析其他选项：<br>B选项1538.80万吨偏低，与实际统计数据不符。<br>C选项1547.12万吨也低于实际值。<br>D选项1545.03万吨同样不是准确的统计数值。<br><br>天然气作为重要的化石能源，其消耗量是衡量一个国家或地区工业发展和能源结构的重要指标。在计算时，为了便于统计和比较，通常会将天然气折算成标准燃料。1984年的这个数据反映了当年的能源消费结构和工业发展水平。<br><br>这个题目主要考察对具体统计数据的准确把握，需要考生能够准确识别和记忆相关数据。在实际工作中，掌握准确的数据对于能源规划和政策制定都具有重要意义。"
+    },
+    {
+      "question_id": 185919,
+      "uuid": "afd3e489c46b4fba8ac871766e741a2d",
+      "type": 1,
+      "title": "3.1986年能源消耗总量比1982年高多少？",
+      "content": "3.1986年能源消耗总量比1982年高多少？",
+      "options": [
+        {
+          "id": 457443,
+          "content": "16<br>745"
+        },
+        {
+          "id": 457444,
+          "content": "52<br>073"
+        },
+        {
+          "id": 457445,
+          "content": "49<br>125"
+        },
+        {
+          "id": 457446,
+          "content": "6 116"
+        }
+      ],
+      "correct_option_ids": [
+        457444
+      ],
+      "correct_options": [
+        "52<br>073"
+      ],
+      "analysis": "要计算1986年和1982年能源消耗总量的差值,需要分别找出这两年的数据:<br>1986年能源消耗总量为557,554千吨标准煤<br>1982年能源消耗总量为505,481千吨标准煤<br>相减得到: 557,554 - 505,481 = 52,073千吨标准煤<br><br>这正好对应选项B的52,073,因此B是正确答案。<br><br>分析其他选项:<br>A选项16,745:数值明显偏小,不是两年之间的实际差值<br>C选项49,125:接近但不是准确的差值数据 <br>D选项6,116:数值过小,与实际差值相差较大<br><br>这道题目主要考察对能源消耗数据的准确计算能力。解题关键是要准确找出1986年和1982年的具体数据,并进行正确的减法运算。由于涉及较大数值的计算,需要特别注意运算的准确性。"
+    },
+    {
+      "question_id": 185920,
+      "uuid": "fa3f6238f8c84f87a64a1de1458cc52b",
+      "type": 1,
+      "title": "4.能源消费构成中，从1981年到1986年变化比例最大的是（ ...",
+      "content": "4.能源消费构成中，从1981年到1986年变化比例最大的是（    ）。",
+      "options": [
+        {
+          "id": 457447,
+          "content": "煤炭"
+        },
+        {
+          "id": 457448,
+          "content": "石油"
+        },
+        {
+          "id": 457449,
+          "content": "水电"
+        },
+        {
+          "id": 457450,
+          "content": "天然气"
+        }
+      ],
+      "correct_option_ids": [
+        457448
+      ],
+      "correct_options": [
+        "石油"
+      ],
+      "analysis": "要分析从1981年到1986年能源消费构成中变化比例最大的类型,我们需要计算这段时期内各能源类型的变化幅度。<br><br>石油(B选项)的变化比例确实最大,因为在这段时间内石油消费占比有显著下降。相较之下:<br><br>煤炭(A选项):这段时期内煤炭消费占比相对稳定,变化幅度不及石油。<br><br>水电(C选项):虽然水电消费在逐年增长,但由于基数较小,其占比变化的绝对值小于石油。<br><br>天然气(D选项):这一时期天然气消费占比变化也较为平缓,变化幅度小于石油。<br><br>所以B选项石油是正确答案。这反映了当时我国能源消费结构的重要转变,受国际油价波动等因素影响,石油在能源消费结构中的占比出现了最大幅度的调整。其他能源品类虽然也有变化,但变化幅度都没有石油这么显著。"
+    },
+    {
+      "question_id": 185921,
+      "uuid": "b2c9491338ac47abb12fda10b54edba0",
+      "type": 1,
+      "title": "5.在能源消费构成中，比例一直处于上升趋势的是（  &...",
+      "content": "5.在能源消费构成中，比例一直处于上升趋势的是（    ）。",
+      "options": [
+        {
+          "id": 457451,
+          "content": "煤炭"
+        },
+        {
+          "id": 457452,
+          "content": "石油"
+        },
+        {
+          "id": 457453,
+          "content": "水电"
+        },
+        {
+          "id": 457454,
+          "content": "天然气"
+        }
+      ],
+      "correct_option_ids": [
+        457451
+      ],
+      "correct_options": [
+        "煤炭"
+      ],
+      "analysis": "从能源消费构成的长期趋势来看，煤炭的消费比例确实呈现持续上升趋势。这主要是因为煤炭资源丰富、开采成本相对较低，且在工业化进程中扮演着重要角色，特别是在发电、钢铁等重工业领域。<br><br>分析其他选项：<br><br>B选项石油错误：石油消费比例虽然在某些时期有所增长，但并非持续上升趋势。受国际油价波动、替代能源发展等因素影响，其比例会有波动。<br><br>C选项水电错误：水电作为清洁能源，其消费比例确实在增加，但受限于水资源条件和开发成本，增长幅度有限，不构成持续上升趋势。<br><br>D选项天然气错误：天然气近年来因其清洁特性得到重视，使用量有所增加，但在整体能源消费构成中比例增长并不稳定，存在波动。<br><br>煤炭在能源消费结构中比重持续上升的主要原因：<br>1. 工业化需求持续增长<br>2. 资源储量丰富<br>3. 开采成本优势<br>4. 相关产业链完善"
+    },
+    {
+      "question_id": 186543,
+      "uuid": "ab6deec46bdc49969c06223d01f19b29",
+      "type": 1,
+      "title": "1.2001～2003年，该市求职人数最多的时期为（　　）。",
+      "content": "1.2001～2003年，该市求职人数最多的时期为（　　）。",
+      "options": [
+        {
+          "id": 456935,
+          "content": "2001年第二季度"
+        },
+        {
+          "id": 456936,
+          "content": "2002年第三季度"
+        },
+        {
+          "id": 456937,
+          "content": "2003年第三季度"
+        },
+        {
+          "id": 456938,
+          "content": "2003年第四季度"
+        }
+      ],
+      "correct_option_ids": [
+        456937
+      ],
+      "correct_options": [
+        "2003年第三季度"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186544,
+      "uuid": "dded0b6d9267423b9d47096b47eec9e0",
+      "type": 1,
+      "title": "2.2001～2003年，该市劳动力市场供需差最大的为（　　）",
+      "content": "2.2001～2003年，该市劳动力市场供需差最大的为（　　）",
+      "options": [
+        {
+          "id": 456939,
+          "content": "2001年第二季度"
+        },
+        {
+          "id": 456940,
+          "content": "2002年第一季度"
+        },
+        {
+          "id": 456941,
+          "content": "2003年第一季度"
+        },
+        {
+          "id": 456942,
+          "content": "2003年第四季度"
+        }
+      ],
+      "correct_option_ids": [
+        456939
+      ],
+      "correct_options": [
+        "2001年第二季度"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186545,
+      "uuid": "b1454e1095144ac39f2af6e6e9db3973",
+      "type": 1,
+      "title": "3.根据上图，下列说法正确的是（　　）。",
+      "content": "<p>  3.根据上图，下列说法正确的是（　　）。 </p>",
+      "options": [
+        {
+          "id": 456943,
+          "content": "2001～2003年，该市求职人数呈逐年递增的趋势"
+        },
+        {
+          "id": 456944,
+          "content": "2001～2003年，该市劳动力市场需求人数呈季度性增长态势"
+        },
+        {
+          "id": 456945,
+          "content": "每年的第一季度，该市劳动力市场的供需人数都处于全年的最低"
+        },
+        {
+          "id": 456946,
+          "content": "2001年第二季度，该市的求职人数接近2001年上半年的劳动力市场的需求人数"
+        }
+      ],
+      "correct_option_ids": [
+        456946
+      ],
+      "correct_options": [
+        "2001年第二季度，该市的求职人数接近2001年上半年的劳动力市场的需求人数"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186546,
+      "uuid": "358333ca54fa46b5a2c2ec8d1a124a6e",
+      "type": 1,
+      "title": "4.通过求职倍率曲线，我们可以推出的结论是（　　）。\n\n\n\tⅠ. 该市的劳...",
+      "content": "<p>  4.通过求职倍率曲线，我们可以推出的结论是（　　）。 </p> <p>  Ⅰ. 该市的劳动力市场劳动力供需比例失调的局面正逐步得到改善 </p> <p>  Ⅱ. 2001年第一季度，该市失业的人数应是2001～2003年间最多的时期 </p> <p>  Ⅲ. 2003年第三季度，该市的职位需求量是2001～2003年间季度职位需求量最高时期 </p> <p>  Ⅳ. 2001～2003年，该市的城镇就业总量始终是在增长的 </p>",
+      "options": [
+        {
+          "id": 456947,
+          "content": "仅有Ⅰ、Ⅲ"
+        },
+        {
+          "id": 456948,
+          "content": "仅有Ⅱ、Ⅳ"
+        },
+        {
+          "id": 456949,
+          "content": "仅有Ⅰ、Ⅱ、Ⅳ"
+        },
+        {
+          "id": 456950,
+          "content": "仅有Ⅰ、Ⅱ、Ⅲ"
+        }
+      ],
+      "correct_option_ids": [
+        456947
+      ],
+      "correct_options": [
+        "仅有Ⅰ、Ⅲ"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 186547,
+      "uuid": "234bb54de34d4bf0a55c433975c6b0d4",
+      "type": 1,
+      "title": "5.2003年该市求职人数约为2001年求职人数的（　　）。",
+      "content": "5.2003年该市求职人数约为2001年求职人数的（　　）。",
+      "options": [
+        {
+          "id": 456951,
+          "content": "0.5倍"
+        },
+        {
+          "id": 456952,
+          "content": "1.3倍"
+        },
+        {
+          "id": 456953,
+          "content": "3倍"
+        },
+        {
+          "id": 456954,
+          "content": "5倍"
+        }
+      ],
+      "correct_option_ids": [
+        456952
+      ],
+      "correct_options": [
+        "1.3倍"
+      ],
+      "analysis": ""
+    }
+  ]
+}

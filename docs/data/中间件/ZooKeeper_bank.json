@@ -1,0 +1,5022 @@
+{
+  "source": "nowcoder_official",
+  "group": "中间件",
+  "name": "ZooKeeper",
+  "tag_id": 3463,
+  "target": 154,
+  "fetched_at": "2026-07-28",
+  "total_unique": 154,
+  "complete": true,
+  "questions": [
+    {
+      "question_id": 11404375,
+      "uuid": "e603944587f0480387358e4400ae385d",
+      "type": 1,
+      "title": "在ZooKeeper中，为什么ephemeral znode在实现分布式锁...",
+      "content": "在ZooKeeper中，为什么ephemeral&nbsp;znode在实现分布式锁时更合适？",
+      "options": [
+        {
+          "id": 7425014,
+          "content": "ephemeral节点支持更高的数据吞吐量"
+        },
+        {
+          "id": 7425016,
+          "content": "ephemeral节点在客户端会话断开时自动删除，避免僵尸锁"
+        },
+        {
+          "id": 7425017,
+          "content": "ephemeral节点可以存储更大的数据量"
+        },
+        {
+          "id": 7425018,
+          "content": "ephemeral节点允许无限次更新"
+        }
+      ],
+      "correct_option_ids": [
+        7425016
+      ],
+      "correct_options": [
+        "ephemeral节点在客户端会话断开时自动删除，避免僵尸锁"
+      ],
+      "analysis": "在ZooKeeper中，ephemeral znode（短暂节点）的关键特性是当客户端会话结束时自动删除，这一特性在实现分布式锁时至关重要，因为它能避免客户端因崩溃或网络断开而无法释放锁，从而防止出现僵尸锁（即锁被永久占用的情况）。选项A错误，ephemeral节点并不支持更高的数据吞吐量；选项C错误，ephemeral节点没有特殊的数据存储容量，所有znode数据大小均有限制；选项D错误，ephemeral节点的更新操作有正常限制，并非无限次。因此，只有选项B正确描述了ephemeral znode在分布式锁中的优势。"
+    },
+    {
+      "question_id": 11404382,
+      "uuid": "34085b23c690460fac2e2f0ca61a4c72",
+      "type": 1,
+      "title": "在分布式系统中使用ZooKeeper实现配置中心时，最合适的ZNode类型...",
+      "content": "在分布式系统中使用ZooKeeper实现配置中心时，最合适的ZNode类型是什么？",
+      "options": [
+        {
+          "id": 7424911,
+          "content": "持久节点(Persistent)"
+        },
+        {
+          "id": 7424912,
+          "content": "临时节点(Ephemeral)"
+        },
+        {
+          "id": 7424913,
+          "content": "持久顺序节点(Persistent Sequential)"
+        },
+        {
+          "id": 7424914,
+          "content": "临时顺序节点(Ephemeral Sequential)"
+        }
+      ],
+      "correct_option_ids": [
+        7424911
+      ],
+      "correct_options": [
+        "持久节点(Persistent)"
+      ],
+      "analysis": "在分布式系统中，使用ZooKeeper实现配置中心时，配置数据需要持久存储，以确保系统重启或客户端会话结束后配置信息不丢失。持久节点(Persistent)正是为此设计，创建后一直存在直到显式删除。临时节点(Ephemeral)在会话结束时自动删除，不适合配置存储。顺序节点（持久顺序或临时顺序）适用于需要顺序标识的场景（如分布式锁），但配置中心通常不需要顺序后缀，因此不必要。"
+    },
+    {
+      "question_id": 11404317,
+      "uuid": "2a84416d8b53490cb27b0e14ad99c45d",
+      "type": 1,
+      "title": "ZooKeeper在分布式系统中能提供哪种一致性保证？",
+      "content": "ZooKeeper在分布式系统中能提供哪种一致性保证？",
+      "options": [
+        {
+          "id": 7426498,
+          "content": "强一致性"
+        },
+        {
+          "id": 7426500,
+          "content": "最终一致性"
+        },
+        {
+          "id": 7426501,
+          "content": "顺序一致性"
+        },
+        {
+          "id": 7426502,
+          "content": "弱一致性"
+        }
+      ],
+      "correct_option_ids": [
+        7426501
+      ],
+      "correct_options": [
+        "顺序一致性"
+      ],
+      "analysis": "ZooKeeper在分布式系统中提供顺序一致性（Sequential Consistency）保证。顺序一致性确保所有更新操作按照全局顺序执行，每个客户端都能看到一致的操作序列顺序。这与强一致性（如线性一致性）不同，因为强一致性要求所有节点立即看到相同的数据状态；最终一致性只保证数据最终会一致，但可能有延迟；弱一致性是更泛化的概念，通常包括最终一致性。题目和选项中未发现文字错误（如拼写、漏字等）、专业名词错误（所有术语均正确）、逻辑矛盾或考试规则破坏错误。"
+    },
+    {
+      "question_id": 11404384,
+      "uuid": "3b559106ea4342ddbea6648810a4f9fa",
+      "type": 1,
+      "title": "在ZAB协议中，哪个阶段确保事务请求在所有节点上按顺序执行？",
+      "content": "在ZAB协议中，哪个阶段确保事务请求在所有节点上按顺序执行？",
+      "options": [
+        {
+          "id": 7424879,
+          "content": "选举阶段(Leader Election)"
+        },
+        {
+          "id": 7424880,
+          "content": "发现阶段(Discovery)"
+        },
+        {
+          "id": 7424881,
+          "content": "同步阶段(Synchronization)"
+        },
+        {
+          "id": 7424882,
+          "content": "广播阶段(Broadcast)"
+        }
+      ],
+      "correct_option_ids": [
+        7424882
+      ],
+      "correct_options": [
+        "广播阶段(Broadcast)"
+      ],
+      "analysis": "在ZAB协议中，广播阶段负责处理事务请求并按顺序广播给所有节点，确保执行顺序一致性。选举阶段仅负责领导者选举，发现阶段负责节点状态发现，同步阶段负责日志同步，这些阶段不直接确保事务请求的顺序执行。"
+    },
+    {
+      "question_id": 1923955,
+      "uuid": "663554f057204586a82d7d9c9f392c9d",
+      "type": 2,
+      "title": "关于Zookeeper集群容错性的说法，正确的有（）",
+      "content": "关于Zookeeper集群容错性的说法，正确的有（）<br>",
+      "options": [
+        {
+          "id": 2970090,
+          "content": "3个节点的cluster可以挂掉1个节点"
+        },
+        {
+          "id": 2970091,
+          "content": "3个节点的cluster可以挂掉2个节点"
+        },
+        {
+          "id": 2970092,
+          "content": "4个节点的cluster可以挂掉2个节点"
+        },
+        {
+          "id": 2970093,
+          "content": "2个节点的cluster不能挂掉任何1个节点"
+        }
+      ],
+      "correct_option_ids": [
+        2970090,
+        2970093
+      ],
+      "correct_options": [
+        "3个节点的cluster可以挂掉1个节点",
+        "2个节点的cluster不能挂掉任何1个节点"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404323,
+      "uuid": "7db7a05c24304978b0a855c2c679a5e4",
+      "type": 1,
+      "title": "一位开发者使用ZooKeeper的Watch机制来监控一个关键配置节点 `...",
+      "content": "一位开发者使用ZooKeeper的Watch机制来监控一个关键配置节点&nbsp;`/app/config`&nbsp;的变化。他的代码逻辑是：1.&nbsp;调用&nbsp;`getData(\"/app/config\",&nbsp;true)`&nbsp;获取数据并注册一个Watch；2.&nbsp;客户端处理收到的数据；3.&nbsp;当Watch事件被触发后，重复步骤1。在高并发场景下，此模式存在一个经典的竞态条件（Race&nbsp;Condition），可能导致更新丢失。这个竞态条件具体是指？",
+      "options": [
+        {
+          "id": 7426407,
+          "content": "在步骤1 `getData` 调用成功和Watch被成功注册到服务端之间，节点数据发生了变化。"
+        },
+        {
+          "id": 7426408,
+          "content": "Watch事件在网络中传输延迟，导致客户端处理的是过期的事件。"
+        },
+        {
+          "id": 7426410,
+          "content": "在客户端收到Watch事件通知后，但在它再次调用 `getData` 注册新Watch之前，节点数据发生了两次或更多次变化。"
+        },
+        {
+          "id": 7426414,
+          "content": "ZooKeeper服务器的负载过高，导致Watch事件被丢弃，永远不会通知到客户端。"
+        }
+      ],
+      "correct_option_ids": [
+        7426410
+      ],
+      "correct_options": [
+        "在客户端收到Watch事件通知后，但在它再次调用 `getData` 注册新Watch之前，节点数据发生了两次或更多次变化。"
+      ],
+      "analysis": "在ZooKeeper的Watch机制中，Watch是一次性的（one-time trigger），当事件触发后，Watch会被移除。开发者代码逻辑在事件触发后重新调用getData来注册新Watch。选项C描述的竞态条件是：在客户端收到Watch事件通知后，但在它再次调用getData注册新Watch之前，节点数据发生了两次或更多次变化。由于Watch尚未重新注册，后续变化不会触发新事件，导致客户端只处理一次事件（获取一次数据），从而可能丢失中间更新。高并发场景加剧了此问题。其他选项分析如下：A) ZooKeeper的getData调用是原子操作，包括获取数据和注册Watch，变化发生在其间概率低；B) 事件延迟可能导致处理过期事件，但不直接导致更新丢失，因为重新获取数据会获得当前状态；D) ZooKeeper设计保证事件可靠传递，不因负载丢弃事件。"
+    },
+    {
+      "question_id": 1923959,
+      "uuid": "42c605bb157d49be9e82cc0c3dca7c88",
+      "type": 1,
+      "title": "以下关于ZooKeeper关键特性中的原子性说法正确的是（）？",
+      "content": "以下关于ZooKeeper关键特性中的原子性说法正确的是（）？<br>",
+      "options": [
+        {
+          "id": 2970106,
+          "content": "客户端发送的更新会按照他们被发送的顺序进行应用"
+        },
+        {
+          "id": 2970107,
+          "content": "更新只能全部完成或失败，不会部分完成"
+        },
+        {
+          "id": 2970108,
+          "content": "一条消息被一个server接收，将被所有server接收"
+        },
+        {
+          "id": 2970109,
+          "content": "集群中无论哪台服务器，对外展示的均是同一视图"
+        }
+      ],
+      "correct_option_ids": [
+        2970107
+      ],
+      "correct_options": [
+        "更新只能全部完成或失败，不会部分完成"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404374,
+      "uuid": "f59d0c47dd8d49a9b380b5fec2e025ac",
+      "type": 1,
+      "title": "某客户端通过临时顺序节点持有一把分布式锁。由于一次长时间 GC 停顿，客户...",
+      "content": "某客户端通过临时顺序节点持有一把分布式锁。由于一次长时间&nbsp;GC&nbsp;停顿，客户端与集群断开连接的时间超过&nbsp;sessionTimeout&nbsp;的一半，但小于&nbsp;sessionTimeout，随后客户端在同一会话（使用相同&nbsp;sessionId&nbsp;和密码）下成功重连。此时锁及对应临时节点的最可能状态是？",
+      "options": [
+        {
+          "id": 7425023,
+          "content": "会话未过期，临时节点仍然存在，锁仍归该客户端持有"
+        },
+        {
+          "id": 7425024,
+          "content": "会话未过期，但临时节点会被删除后自动恢复"
+        },
+        {
+          "id": 7425025,
+          "content": "会话已过期，临时节点被删除，锁已释放"
+        },
+        {
+          "id": 7425026,
+          "content": "是否过期取决于 Leader 是否切换，与 sessionTimeout 无关"
+        }
+      ],
+      "correct_option_ids": [
+        7425023
+      ],
+      "correct_options": [
+        "会话未过期，临时节点仍然存在，锁仍归该客户端持有"
+      ],
+      "analysis": "在ZooKeeper中，会话（session）过期基于sessionTimeout时间。客户端断开连接时间超过sessionTimeout的一半但小于sessionTimeout，因此会话未过期；客户端使用相同sessionId和密码成功重连，表明会话仍有效。临时顺序节点与会话绑定，会话有效时节点不会被删除，分布式锁仍归该客户端持有。选项A正确。选项B错误，因为临时节点不会在会话有效时被删除和自动恢复；选项C错误，因为断开时间小于sessionTimeout，会话未过期；选项D错误，因为会话过期主要取决于sessionTimeout，而非Leader切换，且重连成功表明会话未受影响。"
+    },
+    {
+      "question_id": 11404355,
+      "uuid": "2ad56bc338754fb49df70246930644b6",
+      "type": 1,
+      "title": "当在 ZooKeeper 节点上设置 Watcher 来监控数据变更时，该...",
+      "content": "当在&nbsp;ZooKeeper&nbsp;节点上设置&nbsp;Watcher&nbsp;来监控数据变更时，该&nbsp;Watcher&nbsp;在被触发后，客户端需要做什么才能继续监控后续变更？",
+      "options": [
+        {
+          "id": 7425307,
+          "content": "Watcher 会自动重新注册，无需额外操作"
+        },
+        {
+          "id": 7425308,
+          "content": "客户端必须显式调用 getData 或类似方法重新设置 Watcher"
+        },
+        {
+          "id": 7425311,
+          "content": "ZooKeeper 服务端会在触发后立即自动刷新 Watcher"
+        },
+        {
+          "id": 7425314,
+          "content": "Watcher 是基于订阅的，变更事件会持续触发"
+        }
+      ],
+      "correct_option_ids": [
+        7425308
+      ],
+      "correct_options": [
+        "客户端必须显式调用 getData 或类似方法重新设置 Watcher"
+      ],
+      "analysis": "根据 ZooKeeper 的机制，Watcher 是单次触发设计，在被触发后即失效。客户端必须在 Watcher 触发后显式调用 getData、exists 或 getChildren 等方法来重新设置 Watcher 以监控后续变更。选项 A 错误，因为 Watcher 不会自动重新注册；选项 C 错误，因为 ZooKeeper 服务端不会自动刷新 Watcher；选项 D 错误，因为 Watcher 不是基于持续订阅，变更事件不会自动持续触发。"
+    },
+    {
+      "question_id": 11404349,
+      "uuid": "a1fd78b971bb4dfaa3ec0490a2980bad",
+      "type": 1,
+      "title": "当 ZooKeeper 客户端建立会话后，以下关于会话超时的描述，正确的是？",
+      "content": "当&nbsp;ZooKeeper&nbsp;客户端建立会话后，以下关于会话超时的描述，正确的是？",
+      "options": [
+        {
+          "id": 7425402,
+          "content": "客户端会话超时完全由服务器配置决定，客户端无法干预"
+        },
+        {
+          "id": 7425404,
+          "content": "客户端发送心跳间隔必须大于服务器配置的 minSessionTimeout"
+        },
+        {
+          "id": 7425405,
+          "content": "最终超时时间取客户端请求值和服务端配置范围的交集"
+        },
+        {
+          "id": 7425406,
+          "content": "会话超时会触发所有 Watch 事件并自动重连"
+        }
+      ],
+      "correct_option_ids": [
+        7425405
+      ],
+      "correct_options": [
+        "最终超时时间取客户端请求值和服务端配置范围的交集"
+      ],
+      "analysis": "根据 ZooKeeper 的工作原理，客户端在建立会话时可以请求一个会话超时时间，服务器端根据配置的 minSessionTimeout 和 maxSessionTimeout 范围调整客户端请求值，最终超时时间取客户端请求值和服务端配置范围的交集（即钳制在 minSessionTimeout 和 maxSessionTimeout 之间）。因此选项 C 正确。选项 A 错误，因为客户端可以干预超时设置，例如在创建会话时指定请求值；选项 B 错误，因为客户端发送心跳间隔通常小于会话超时时间（约为超时时间的 1/3），不需要大于 minSessionTimeout；选项 D 错误，因为会话超时只会触发相关的 Watch 事件（如节点删除或数据变化），但不会触发所有事件，且会话超时后会话失效，不会自动重连，需要客户端重新建立连接。"
+    },
+    {
+      "question_id": 11404306,
+      "uuid": "6b139e621d894dd08e4d4fa7892476bf",
+      "type": 1,
+      "title": "使用 ZooKeeper 实现配置中心时，客户端如何感知配置变更？",
+      "content": "使用&nbsp;ZooKeeper&nbsp;实现配置中心时，客户端如何感知配置变更？",
+      "options": [
+        {
+          "id": 7426659,
+          "content": "客户端定期拉取全量配置数据"
+        },
+        {
+          "id": 7426660,
+          "content": "通过 getData() 注册 Watcher 监听节点变化"
+        },
+        {
+          "id": 7426661,
+          "content": "依赖第三方消息队列推送变更事件"
+        },
+        {
+          "id": 7426662,
+          "content": "通过事务日志回溯检查变更记录"
+        }
+      ],
+      "correct_option_ids": [
+        7426660
+      ],
+      "correct_options": [
+        "通过 getData() 注册 Watcher 监听节点变化"
+      ],
+      "analysis": "在 ZooKeeper 实现配置中心时，客户端感知配置变更的标准方式是使用其内置的 Watcher 机制。具体而言，客户端通过 getData() 方法在配置节点上注册 Watcher，当节点数据发生变化时，ZooKeeper 会触发事件通知客户端。选项A（定期拉取全量数据）虽然可行但效率低下，不推荐使用；选项C（依赖第三方消息队列）不是原生机制，增加了复杂性；选项D（通过事务日志回溯）是 ZooKeeper 内部用于复制和恢复的机制，客户端不应直接访问，不适合用于感知实时变更。题目无文字、逻辑、专业名词或规则错误。"
+    },
+    {
+      "question_id": 11404376,
+      "uuid": "333c45a05f0b45e09cd6cde0585353db",
+      "type": 1,
+      "title": "当客户端在ZooKeeper中设置一个watcher监视znode变化后，...",
+      "content": "当客户端在ZooKeeper中设置一个watcher监视znode变化后，watcher是如何工作的？",
+      "options": [
+        {
+          "id": 7425003,
+          "content": "watcher触发后自动重新注册，直到客户端取消"
+        },
+        {
+          "id": 7425005,
+          "content": "watcher触发后会自动发送新事件给所有连接的客户端"
+        },
+        {
+          "id": 7425008,
+          "content": "watcher仅触发一次，并在事件发生后被移除，需要客户端重新设置"
+        },
+        {
+          "id": 7425010,
+          "content": "watcher支持永久监视，且不会因事件触发而移除"
+        }
+      ],
+      "correct_option_ids": [
+        7425008
+      ],
+      "correct_options": [
+        "watcher仅触发一次，并在事件发生后被移除，需要客户端重新设置"
+      ],
+      "analysis": "在ZooKeeper中，watcher机制是一次性触发的，当监视的znode发生变化时，watcher会被触发一次，之后自动移除，客户端需要重新设置以继续监视；选项C正确描述了此行为。选项A错误，因为watcher不会自动重新注册；选项B错误，因为事件只发送给设置该watcher的客户端，而非所有客户端；选项D错误，因为watcher不支持永久监视。题目和选项未发现文字错误、专业名称错误、逻辑矛盾或考试规则破坏错误。"
+    },
+    {
+      "question_id": 11404290,
+      "uuid": "c8fb639317404c018822a912780ac6be",
+      "type": 1,
+      "title": "某分布式系统需要实现服务注册与发现功能：服务提供者启动时将自身信息注册到Z...",
+      "content": "某分布式系统需要实现服务注册与发现功能：服务提供者启动时将自身信息注册到ZooKeeper，宕机或主动下线时注册信息自动删除。请问最合适的节点类型是？",
+      "options": [
+        {
+          "id": 7426908,
+          "content": "持久节点（Persistent）"
+        },
+        {
+          "id": 7426911,
+          "content": "临时节点（Ephemeral）"
+        },
+        {
+          "id": 7426913,
+          "content": "持久顺序节点（Persistent Sequential）"
+        },
+        {
+          "id": 7426914,
+          "content": "临时顺序节点（Ephemeral Sequential）"
+        }
+      ],
+      "correct_option_ids": [
+        7426911
+      ],
+      "correct_options": [
+        "临时节点（Ephemeral）"
+      ],
+      "analysis": "在ZooKeeper中，临时节点（Ephemeral）的生命周期与客户端会话绑定：当服务提供者启动并注册时创建节点，当服务宕机或主动下线（客户端会话结束）时，节点会自动删除。这直接满足题目要求'注册信息自动删除'的条件。持久节点（Persistent）需手动删除，不符需求；顺序节点（Sequential）特性如追加序号非必需，且题目未强调顺序性。因此，B选项为最合适的节点类型。"
+    },
+    {
+      "question_id": 11404383,
+      "uuid": "8f408eea6ca04cd48567836183942e71",
+      "type": 1,
+      "title": "关于 ZooKeeper 集群规模与容错的关系，下列说法最准确的是哪一项？",
+      "content": "关于&nbsp;ZooKeeper&nbsp;集群规模与容错的关系，下列说法最准确的是哪一项？",
+      "options": [
+        {
+          "id": 7424895,
+          "content": "选择奇数台服务器是因为奇数组能显著提高读吞吐"
+        },
+        {
+          "id": 7424896,
+          "content": "在相同容错能力 F 下，2F+1 台与 2F+2 台的多数派规模相同，偶数组并不能提升容错，只会增加成本，因此推荐奇数组"
+        },
+        {
+          "id": 7424897,
+          "content": "只有奇数规模的集群才能完成领导者选举，偶数规模可能陷入无休止的投票"
+        },
+        {
+          "id": 7424898,
+          "content": "集群规模为 N 时，最多可容忍 N/2 台故障（向上取整）而不影响写可用"
+        }
+      ],
+      "correct_option_ids": [
+        7424896
+      ],
+      "correct_options": [
+        "在相同容错能力 F 下，2F+1 台与 2F+2 台的多数派规模相同，偶数组并不能提升容错，只会增加成本，因此推荐奇数组"
+      ],
+      "analysis": "选项B正确：在分布式系统（如ZooKeeper）中，容错能力F定义为可容忍故障节点数，使用多数派协议时，集群规模为2F+1和2F+2时所需的多数大小相同（均为F+1），但2F+2节点（偶数规模）未提升容错能力，反而增加成本，因此推荐奇数规模（2F+1）。选项A错误：选择奇数规模主要为避免选举平票问题，而非显著提高读吞吐量。选项C错误：偶数规模集群也可能完成领导者选举（需额外机制处理平票），并非“只有奇数才能完成”。选项D错误：容忍故障数上限应为floor(N/2)或floor((N-1)/2)，例如N=3时，正确容忍数为1（floor(3/2)=1），但“向上取整”会错误计算为2；N=4时，正确容忍数为1，但“向上取整”计算为2，导致高估容错能力。"
+    },
+    {
+      "question_id": 11404289,
+      "uuid": "d57373cec97143bc87a5b8ba6bda6f9e",
+      "type": 1,
+      "title": "在 ZooKeeper 的 ZAB 协议中，Leader 接收到写请求后的...",
+      "content": "在&nbsp;ZooKeeper&nbsp;的&nbsp;ZAB&nbsp;协议中，Leader&nbsp;接收到写请求后的正确处理顺序是？",
+      "options": [
+        {
+          "id": 7426919,
+          "content": "直接写入本地日志 → 广播 Proposal → 收集 ACK → 提交"
+        },
+        {
+          "id": 7426921,
+          "content": "生成全局递增 zxid → 广播 Proposal → 收集 ACK → 写入本地日志"
+        },
+        {
+          "id": 7426923,
+          "content": "广播 Proposal → 等待 ACK 超时 → 重发请求 → 提交"
+        },
+        {
+          "id": 7426926,
+          "content": "同步至所有 Follower → 本地写入 → 广播提交"
+        }
+      ],
+      "correct_option_ids": [
+        7426919
+      ],
+      "correct_options": [
+        "直接写入本地日志 → 广播 Proposal → 收集 ACK → 提交"
+      ],
+      "analysis": "在 ZooKeeper 的 ZAB 协议中，Leader 接收写请求后的标准处理顺序是：先写入本地日志（包含生成 zxid 的隐含步骤），然后广播 Proposal，接着收集多数派 ACK，最后提交（广播 Commit）。选项 A 描述的顺序正确：直接写入本地日志 → 广播 Proposal → 收集 ACK → 提交。选项 B 错误，因为它将写入本地日志置于收集 ACK 之后，但实际上 Leader 必须在广播 Proposal 前写入本地日志；选项 C 涉及超时重发，不符合 ZAB 的正常流程；选项 D 的顺序完全错误，Leader 不需要先同步至所有 Follower。题目文本和选项无文字错误、专业名称错误、逻辑矛盾或规则破坏错误。"
+    },
+    {
+      "question_id": 11404302,
+      "uuid": "1bbdfafa96ed4ac48392b1c0ee895f6f",
+      "type": 1,
+      "title": "关于 ZooKeeper 的 Zab 协议，下列哪项描述是正确的？",
+      "content": "关于&nbsp;ZooKeeper&nbsp;的&nbsp;Zab&nbsp;协议，下列哪项描述是正确的？",
+      "options": [
+        {
+          "id": 7426720,
+          "content": "事务在 Leader 本地写入日志后即可对外可见，不需要 Follower 确认"
+        },
+        {
+          "id": 7426724,
+          "content": "一个事务在提交前需要获得超过半数服务器的确认（ACK）"
+        },
+        {
+          "id": 7426725,
+          "content": "各服务器允许以不同顺序提交同一批事务，最终将通过对账收敛"
+        },
+        {
+          "id": 7426726,
+          "content": "Leader 崩溃后，新 Leader 会丢弃所有已提交的事务以保证一致性"
+        }
+      ],
+      "correct_option_ids": [
+        7426724
+      ],
+      "correct_options": [
+        "一个事务在提交前需要获得超过半数服务器的确认（ACK）"
+      ],
+      "analysis": "Zab 协议（Zookeeper Atomic Broadcast）是 ZooKeeper 中使用的一致性协议，用于保证分布式系统中的原子广播。在 Zab 协议中，事务提交需要获得超过半数服务器的确认（ACK）后才能提交，这是协议的核心机制以保证强一致性（quorum-based consistency）。选项 A 错误，因为事务仅在 Leader 本地写入日志后尚未提交，不可对外可见，必须获得 Follower 确认；选项 C 错误，因为 Zab 协议要求所有服务器以相同的顺序提交事务，而不是通过不同顺序对账收敛；选项 D 错误，因为 Leader 崩溃后，新 Leader 会恢复并保留所有已提交的事务，确保一致性，而不是丢弃它们。题目和选项中没有发现文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404286,
+      "uuid": "a0218bd0eabe4dedabb1f76d9c1937b8",
+      "type": 1,
+      "title": "当 ZooKeeper 集群采用 2n+1 台服务器部署时，某次网络分区导...",
+      "content": "当&nbsp;ZooKeeper&nbsp;集群采用&nbsp;2n+1&nbsp;台服务器部署时，某次网络分区导致两组机器分别包含&nbsp;n&nbsp;台和&nbsp;n+1&nbsp;台。此时关于集群可用性的正确描述是？",
+      "options": [
+        {
+          "id": 7426971,
+          "content": "两组均不可用，需等待网络恢复"
+        },
+        {
+          "id": 7426972,
+          "content": "n+1 台的分区可继续处理写请求"
+        },
+        {
+          "id": 7426973,
+          "content": "n 台的分区可继续处理读写请求"
+        },
+        {
+          "id": 7426974,
+          "content": "所有服务器自动进入只读模式"
+        }
+      ],
+      "correct_option_ids": [
+        7426972
+      ],
+      "correct_options": [
+        "n+1 台的分区可继续处理写请求"
+      ],
+      "analysis": "在ZooKeeper集群中，采用2n+1台服务器部署，多数要求为n+1台服务器才能处理写请求。网络分区后，n+1台的分区拥有多数，可以选举领导者并处理写请求；n台的分区没有多数，不能处理写请求（但可能允许有限读请求，不过选项C声称处理'读写请求'包含写请求，因此错误）。选项A错误，因为n+1分区可用；选项D错误，因为n+1分区可以处理写请求，不会进入只读模式。因此，仅选项B正确。"
+    },
+    {
+      "question_id": 11404303,
+      "uuid": "1a9e2f198aa440109ef537c2a1db4438",
+      "type": 1,
+      "title": "关于 ZooKeeper 的临时节点（Ephemeral ZNode），哪...",
+      "content": "关于&nbsp;ZooKeeper&nbsp;的临时节点（Ephemeral&nbsp;ZNode），哪项说法正确？",
+      "options": [
+        {
+          "id": 7426699,
+          "content": "临时节点不允许创建子节点"
+        },
+        {
+          "id": 7426700,
+          "content": "临时节点只能创建在根目录下"
+        },
+        {
+          "id": 7426702,
+          "content": "临时节点不支持设置 ACL"
+        },
+        {
+          "id": 7426708,
+          "content": "临时节点在会话断开后会永久保留，直到手动删除"
+        }
+      ],
+      "correct_option_ids": [
+        7426699
+      ],
+      "correct_options": [
+        "临时节点不允许创建子节点"
+      ],
+      "analysis": "选项A正确，因为在ZooKeeper中，临时节点（Ephemeral ZNode）不允许创建子节点，即临时节点不能成为父节点。选项B错误，因为临时节点可以被创建在任何ZNode路径下，而不仅限于根目录。选项C错误，因为临时节点支持设置ACL（Access Control List）。选项D错误，因为临时节点在会话断开后会被自动删除，而不是永久保留直到手动删除。"
+    },
+    {
+      "question_id": 11404353,
+      "uuid": "c3e8a905029d44da8ab72caa424f78b9",
+      "type": 1,
+      "title": "一个分布式应用使用 ZooKeeper Watcher 监控节点 `/ap...",
+      "content": "一个分布式应用使用&nbsp;ZooKeeper&nbsp;Watcher&nbsp;监控节点&nbsp;`/app/config`&nbsp;的数据变化。其标准处理逻辑是：1.&nbsp;调用&nbsp;`getData(\"/app/config\",&nbsp;true)`&nbsp;读取数据并注册&nbsp;Watcher。2.&nbsp;当&nbsp;Watcher&nbsp;被触发时，再次执行步骤1。如果在客户端收到事件通知到它成功重新注册新&nbsp;Watcher&nbsp;之间的短暂间隙内，`/app/config`&nbsp;节点的数据连续发生了两次变更（Update1&nbsp;-&gt;&nbsp;Update2），客户端最可能遇到的情况是什么？",
+      "options": [
+        {
+          "id": 7425339,
+          "content": "客户端会收到两个独立的 Watcher 事件，因为服务端会为客户端排队所有变更通知。"
+        },
+        {
+          "id": 7425340,
+          "content": "客户端只会收到关于 Update1 的事件，处理后重新注册 Watcher，但会错过关于 Update2 的变更通知。"
+        },
+        {
+          "id": 7425341,
+          "content": "ZooKeeper 服务端会检测到客户端正在处理事件，并自动为其保留对 Update2 的监听，确保事件不丢失。"
+        },
+        {
+          "id": 7425342,
+          "content": "客户端在尝试重新注册 Watcher 时会收到一个异常，因为前一个 Watcher 事件尚未被完全确认。"
+        }
+      ],
+      "correct_option_ids": [
+        7425340
+      ],
+      "correct_options": [
+        "客户端只会收到关于 Update1 的事件，处理后重新注册 Watcher，但会错过关于 Update2 的变更通知。"
+      ],
+      "analysis": "根据 ZooKeeper 的工作原理，Watcher 是一次性触发的机制：当客户端调用 `getData` 注册 Watcher 后，服务端只会在数据第一次变更时发送一个事件通知，然后该 Watcher 被移除。客户端必须在收到事件后重新注册才能监控后续变更。在题目场景中，客户端收到 Update1 的事件通知后，在重新注册 Watcher 的间隙内，发生了 Update2 变更，但由于此时没有活动的 Watcher，服务端不会发送关于 Update2 的事件通知，因此客户端只会处理 Update1 的事件并重新注册，但会错过 Update2 的直接变更通知（尽管在重新注册时读取的数据可能是 Update2 后的最新状态）。选项 A 错误，因为服务端不会为同一个 Watcher 排队多个事件；选项 C 错误，因为服务端没有自动保留监听的机制；选项 D 错误，因为重新注册 Watcher 时不会因前一个事件未被确认而抛出异常。"
+    },
+    {
+      "question_id": 11404385,
+      "uuid": "95dac9bff53345988d40f84df23576a3",
+      "type": 1,
+      "title": "使用ZooKeeper实现分布式锁时，为避免羊群效应(Herd Effec...",
+      "content": "使用ZooKeeper实现分布式锁时，为避免羊群效应(Herd&nbsp;Effect)，应如何设计？",
+      "options": [
+        {
+          "id": 7424862,
+          "content": "让所有客户端监听同一个锁节点"
+        },
+        {
+          "id": 7424864,
+          "content": "使用临时节点替代持久节点"
+        },
+        {
+          "id": 7424865,
+          "content": "让每个客户端创建顺序节点并监听前序节点"
+        },
+        {
+          "id": 7424867,
+          "content": "强制所有写请求通过Leader"
+        }
+      ],
+      "correct_option_ids": [
+        7424865
+      ],
+      "correct_options": [
+        "让每个客户端创建顺序节点并监听前序节点"
+      ],
+      "analysis": "在ZooKeeper实现分布式锁时，避免羊群效应（Herd Effect）的标准设计是让每个客户端创建顺序节点（sequential node）并监听前序节点（即序列中的前一个节点）。当锁释放时，只有前序节点被删除的客户端被通知，从而避免所有客户端同时被唤醒导致的通知风暴。选项A会让所有客户端监听同一个节点，当节点变化时所有客户端都被通知，这直接导致羊群效应；选项B使用临时节点（ephemeral node）可以防止客户端故障导致的死锁，但并非直接避免通知风暴的核心机制；选项D强制写请求通过Leader是ZooKeeper默认行为，与避免通知风暴无关。题目和选项无文字错误、逻辑矛盾、专业名词错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404377,
+      "uuid": "4974252f602c436f91c22ab435cea193",
+      "type": 1,
+      "title": "ZooKeeper的ZAB协议如何确保数据一致性？",
+      "content": "ZooKeeper的ZAB协议如何确保数据一致性？",
+      "options": [
+        {
+          "id": 7424987,
+          "content": "通过使用Paxos协议实现强一致性"
+        },
+        {
+          "id": 7424988,
+          "content": "通过领导者顺序处理所有写请求，并将更新广播到集群"
+        },
+        {
+          "id": 7424990,
+          "content": "允许所有follower直接处理读写请求，实现负载均衡"
+        },
+        {
+          "id": 7424992,
+          "content": "使用最终一致性模型，延迟后达到一致"
+        }
+      ],
+      "correct_option_ids": [
+        7424988
+      ],
+      "correct_options": [
+        "通过领导者顺序处理所有写请求，并将更新广播到集群"
+      ],
+      "analysis": "ZooKeeper的ZAB（ZooKeeper Atomic Broadcast）协议通过领导者（leader）顺序处理所有写请求，并将更新广播到集群，以确保数据的顺序一致性和原子性。选项A错误，因为ZAB并非直接使用Paxos协议（Paxos是共识协议的基础，但ZAB是其变体）；选项C错误，因为follower不能直接处理写请求（仅读请求可负载均衡）；选项D错误，因为ZAB提供强一致性而非最终一致性。题目文字、专业术语和逻辑均无错误。"
+    },
+    {
+      "question_id": 11404350,
+      "uuid": "84da75a6640d4c0bbf367f2326961225",
+      "type": 1,
+      "title": "在 ZooKeeper 集群中使用 ZAB 协议时，以下关于事务提交的描述...",
+      "content": "在&nbsp;ZooKeeper&nbsp;集群中使用&nbsp;ZAB&nbsp;协议时，以下关于事务提交的描述，错误的是？",
+      "options": [
+        {
+          "id": 7425391,
+          "content": "所有写请求必须由 Leader 节点协调处理"
+        },
+        {
+          "id": 7425392,
+          "content": "Follower 节点收到写请求时会自动转发给 Leader"
+        },
+        {
+          "id": 7425393,
+          "content": "事务提交需要获得半数以上节点的 ACK 响应"
+        },
+        {
+          "id": 7425394,
+          "content": "事务最终提交到所有节点后才响应客户端"
+        }
+      ],
+      "correct_option_ids": [
+        7425394
+      ],
+      "correct_options": [
+        "事务最终提交到所有节点后才响应客户端"
+      ],
+      "analysis": "在 ZooKeeper 的 ZAB 协议中，事务提交的正确机制是：Leader 节点协调所有写请求（A 正确），Follower 节点收到写请求时会自动转发给 Leader（B 正确），事务提交需要获得半数以上节点的 ACK 响应（即多数节点确认，C 正确）。但选项 D '事务最终提交到所有节点后才响应客户端' 错误，因为 ZAB 协议在获得半数以上节点 ACK 后，Leader 就会提交事务并响应客户端，无需等待所有节点提交，这确保了系统的高可用性和性能。"
+    },
+    {
+      "question_id": 11404309,
+      "uuid": "76ca2bdcd6a44a62a7d9d91171834336",
+      "type": 1,
+      "title": "ZooKeeper 集群处理写操作时，必须获得足够多节点的确认才能提交事务...",
+      "content": "ZooKeeper&nbsp;集群处理写操作时，必须获得足够多节点的确认才能提交事务，这个“足够多”指的是？",
+      "options": [
+        {
+          "id": 7426619,
+          "content": "超过集群节点总数的 1/2"
+        },
+        {
+          "id": 7426620,
+          "content": "等于集群节点总数的 2/3"
+        },
+        {
+          "id": 7426621,
+          "content": "超过集群节点总数的 2/3"
+        },
+        {
+          "id": 7426622,
+          "content": "所有存活节点"
+        }
+      ],
+      "correct_option_ids": [
+        7426619
+      ],
+      "correct_options": [
+        "超过集群节点总数的 1/2"
+      ],
+      "analysis": "ZooKeeper 使用 ZAB 协议，写操作需获得多数节点确认才能提交。根据多数原则，\"足够多\"指超过集群节点总数的1/2（选项A）。例如5节点需3节点确认（>2.5）。选项B/C要求的2/3过高，选项D的\"所有存活节点\"违反容错设计。题目及选项表述专业准确，无文字错误、专业术语错误、逻辑矛盾或规则破坏问题。"
+    },
+    {
+      "question_id": 11404300,
+      "uuid": "c97545b60dae4884bc3692e3cd0996b3",
+      "type": 1,
+      "title": "在一个包含5个节点的 ZooKeeper 集群中，一个客户端发起了一个创建...",
+      "content": "在一个包含5个节点的&nbsp;ZooKeeper&nbsp;集群中，一个客户端发起了一个创建新节点的写请求。该请求被路由到&nbsp;Leader&nbsp;节点。根据&nbsp;ZAB&nbsp;协议的规定，Leader&nbsp;节点在向客户端确认写操作成功之前，必须确保该操作被持久化到了至少多少个节点上？",
+      "options": [
+        {
+          "id": 7426751,
+          "content": "1 个节点 (仅 Leader 自己)"
+        },
+        {
+          "id": 7426752,
+          "content": "2 个节点 (Leader 和任意一个 Follower)"
+        },
+        {
+          "id": 7426753,
+          "content": "3 个节点 (包括 Leader 在内的一个多数派)"
+        },
+        {
+          "id": 7426758,
+          "content": "5 个节点 (集群中的所有节点)"
+        }
+      ],
+      "correct_option_ids": [
+        7426753
+      ],
+      "correct_options": [
+        "3 个节点 (包括 Leader 在内的一个多数派)"
+      ],
+      "analysis": "在ZooKeeper的ZAB协议中，写操作必须通过多数派（majority quorum）机制来确保一致性。对于一个包含5个节点的集群，多数派的数量计算公式为至少ceil(N/2)或等价于(N/2 + 1)，其中N=5，因此多数派为3个节点。Leader节点在向客户端确认写操作成功前，必须确保该操作被至少3个节点（包括Leader自身）持久化。选项A（仅Leader自己，1个节点）和B（Leader和任意一个Follower，2个节点）不满足多数派要求，可能导致数据不一致；选项D（所有5个节点）虽然可行但不是必要要求。因此，只有选项C正确，符合ZAB协议规定。"
+    },
+    {
+      "question_id": 11404387,
+      "uuid": "c0c5f7655c9943519686abd5e846257d",
+      "type": 1,
+      "title": "当Observer节点收到客户端读请求时，它会如何处理？",
+      "content": "当Observer节点收到客户端读请求时，它会如何处理？",
+      "options": [
+        {
+          "id": 7424827,
+          "content": "直接返回本地数据副本"
+        },
+        {
+          "id": 7424830,
+          "content": "将请求转发给Leader节点"
+        },
+        {
+          "id": 7424833,
+          "content": "广播给所有Follower节点"
+        },
+        {
+          "id": 7424834,
+          "content": "检查本地数据后等待Leader同步确认"
+        }
+      ],
+      "correct_option_ids": [
+        7424827
+      ],
+      "correct_options": [
+        "直接返回本地数据副本"
+      ],
+      "analysis": "在分布式系统如ZooKeeper中，Observer节点是专为处理读请求设计的非投票成员。当收到读请求时，Observer节点直接返回其本地数据副本，不涉及Leader节点或Follower节点的协调过程，这能提高系统读性能。选项B错误，因为转发生效于写请求；选项C错误，读请求无需广播；选项D错误，Observer不等待同步确认以避免参与一致性协议。"
+    },
+    {
+      "question_id": 11404315,
+      "uuid": "0d4d93ef01974d2c8122b3fe464206ae",
+      "type": 1,
+      "title": "关于 ZooKeeper 提供的一致性保证，下列陈述中哪一个是正确的？",
+      "content": "关于&nbsp;ZooKeeper&nbsp;提供的一致性保证，下列陈述中哪一个是正确的？",
+      "options": [
+        {
+          "id": 7426524,
+          "content": "ZooKeeper 提供了强一致性（线性一致性），任何客户端的读操作总能返回最近一次写操作完成后的结果。"
+        },
+        {
+          "id": 7426529,
+          "content": "客户端从 follower 节点读取数据时，可能会读到轻微过时的数据，但能保证所有客户端观察到的更新序列是完全一致的，这符合顺序一致性模型。"
+        },
+        {
+          "id": 7426532,
+          "content": "ZooKeeper 默认提供的是因果一致性，只有存在因果关系的操作才会保证其顺序性。"
+        },
+        {
+          "id": 7426534,
+          "content": "ZooKeeper 采用的是最终一致性模型， follower 节点的数据最终会与 leader 一致，但没有顺序保证。"
+        }
+      ],
+      "correct_option_ids": [
+        7426529
+      ],
+      "correct_options": [
+        "客户端从 follower 节点读取数据时，可能会读到轻微过时的数据，但能保证所有客户端观察到的更新序列是完全一致的，这符合顺序一致性模型。"
+      ],
+      "analysis": "ZooKeeper 提供顺序一致性保证：客户端从 follower 节点读取数据时可能读取到轻微过时的数据，但所有客户端观察到的更新序列完全一致。选项A错误，因为 ZooKeeper 的读操作不一定返回最近一次写操作的结果（尤其从 follower 读取时），不满足线性一致性；选项C错误，ZooKeeper 默认提供顺序一致性而非因果一致性，它保证所有操作顺序，不限于因果关系；选项D错误，ZooKeeper 有明确的顺序保证，不同于最终一致性模型。"
+    },
+    {
+      "question_id": 11404379,
+      "uuid": "74d951b041624183821fd7883aa8d223",
+      "type": 1,
+      "title": "关于ZooKeeper的写操作和读操作的一致性保证，以下哪个描述是错误的？",
+      "content": "关于ZooKeeper的写操作和读操作的一致性保证，以下哪个描述是错误的？",
+      "options": [
+        {
+          "id": 7424959,
+          "content": "ZooKeeper保证顺序一致性（Sequential Consistency），即来自同一客户端的请求会按其发送顺序被处理。"
+        },
+        {
+          "id": 7424960,
+          "content": "写操作是原子的，通过ZAB协议保证所有server最终都会应用该写操作。"
+        },
+        {
+          "id": 7424963,
+          "content": "客户端直接从Follower节点读取数据时，可能读到稍微过时（stale）的数据。"
+        },
+        {
+          "id": 7424965,
+          "content": "客户端调用 `sync()` 方法可以强制整个集群的所有节点立即同步到Leader的最新状态，从而保证读到最新数据。"
+        }
+      ],
+      "correct_option_ids": [
+        7424965
+      ],
+      "correct_options": [
+        "客户端调用 `sync()` 方法可以强制整个集群的所有节点立即同步到Leader的最新状态，从而保证读到最新数据。"
+      ],
+      "analysis": "选项A、B、C描述正确，选项D描述错误。具体分析：A正确，ZooKeeper保证来自同一客户端的请求按发送顺序处理，这是顺序一致性的体现；B正确，ZAB协议确保写操作的原子性和最终一致性；C正确，Follower节点可能滞后于Leader，因此客户端直接读取时可能获得过时数据；D错误，因为sync()方法不能立即同步所有节点，它是异步操作，通过向Leader发送请求并等待完成，确保客户端后续读取能看到sync调用前所有已提交写操作，但不强制整个集群所有节点立即同步到最新状态。"
+    },
+    {
+      "question_id": 11404378,
+      "uuid": "f3ea1a3b8a1243048d6e7326f46c817b",
+      "type": 1,
+      "title": "使用ZooKeeper实现配置管理时，以下哪项是潜在的性能瓶颈？",
+      "content": "使用ZooKeeper实现配置管理时，以下哪项是潜在的性能瓶颈？",
+      "options": [
+        {
+          "id": 7424971,
+          "content": "ZooKeeper无法处理小数据量的配置"
+        },
+        {
+          "id": 7424972,
+          "content": "所有配置更新必须由leader串行处理"
+        },
+        {
+          "id": 7424974,
+          "content": "高并发读取操作可能导致znode路径竞争"
+        },
+        {
+          "id": 7424980,
+          "content": "ZooKeeper的API不支持动态配置更新"
+        }
+      ],
+      "correct_option_ids": [
+        7424972
+      ],
+      "correct_options": [
+        "所有配置更新必须由leader串行处理"
+      ],
+      "analysis": "在ZooKeeper实现配置管理时，潜在的性能瓶颈是选项B：所有配置更新必须由leader串行处理。这在高并发写入场景下可能导致性能瓶颈，因为写操作需要leader顺序处理以确保一致性。选项A错误，因为ZooKeeper专为处理小数据量配置优化；选项C错误，因为读取操作可并发执行且不会导致路径竞争，ZooKeeper读取高效；选项D错误，因为ZooKeeper API通过watch机制支持动态配置更新。"
+    },
+    {
+      "question_id": 11404381,
+      "uuid": "091d20185d324170bbb4f743228187eb",
+      "type": 1,
+      "title": "有两个客户端需要并发更新 /featureFlag 配置，要求避免丢失更新...",
+      "content": "有两个客户端需要并发更新&nbsp;/featureFlag&nbsp;配置，要求避免丢失更新且不引入外部事务协调。以下哪种做法最合适？",
+      "options": [
+        {
+          "id": 7424927,
+          "content": "先读取数据及其 stat.version，随后在 setData(path, data, expectedVersion) 中传入该版本；若返回 BADVERSION 则重新读取并重试"
+        },
+        {
+          "id": 7424928,
+          "content": "将配置改为保存在临时节点中，因为其会随会话结束自动删除，可避免并发冲突"
+        },
+        {
+          "id": 7424929,
+          "content": "在同一会话内连续执行两次 setData，可以保证覆盖其他客户端写入"
+        },
+        {
+          "id": 7424930,
+          "content": "使用顺序节点记录每次变更，最后由任一客户端合并后直接覆盖旧值即可保证原子性"
+        }
+      ],
+      "correct_option_ids": [
+        7424927
+      ],
+      "correct_options": [
+        "先读取数据及其 stat.version，随后在 setData(path, data, expectedVersion) 中传入该版本；若返回 BADVERSION 则重新读取并重试"
+      ],
+      "analysis": "选项A使用版本号（stat.version）和乐观锁机制（setData with expectedVersion），在更新时检查版本，如果版本不匹配（BADVERSION）则重试，这可以有效避免丢失更新，且不依赖外部事务协调，仅利用ZooKeeper内部机制。选项B错误，因为临时节点（ephemeral nodes）在会话结束时自动删除，不适合存储配置，且无法解决并发冲突。选项C错误，同一会话内连续两次setData无法保证原子性覆盖其他客户端写入，可能在两次写入间被其他更新覆盖。选项D错误，使用顺序节点记录变更后合并覆盖不能保证原子性，合并过程可能出现并发冲突，导致丢失更新。"
+    },
+    {
+      "question_id": 11404345,
+      "uuid": "1196f29335234622b9d65cf994d02c84",
+      "type": 1,
+      "title": "一个客户端对 ZNode `/tasks` 设置了一个 `exists` ...",
+      "content": "一个客户端对&nbsp;ZNode&nbsp;`/tasks`&nbsp;设置了一个&nbsp;`exists`&nbsp;类型的&nbsp;Watcher。随后，发生了以下一系列事件：1.&nbsp;另一个客户端创建了&nbsp;`/tasks`。2.&nbsp;紧接着，该客户端又更新了&nbsp;`/tasks`&nbsp;的数据。3.&nbsp;最后，该客户端删除了&nbsp;`/tasks`。那么，第一个客户端设置的&nbsp;Watcher&nbsp;会被触发几次，分别是在哪个事件发生后？",
+      "options": [
+        {
+          "id": 7425463,
+          "content": "触发 3 次，分别在创建、更新和删除后。"
+        },
+        {
+          "id": 7425464,
+          "content": "触发 1 次，在节点被创建后。"
+        },
+        {
+          "id": 7425465,
+          "content": "触发 2 次，分别在创建和删除后，因为更新数据不影响节点存在性。"
+        },
+        {
+          "id": 7425466,
+          "content": "触发 1 次，在节点被删除后。"
+        }
+      ],
+      "correct_option_ids": [
+        7425464
+      ],
+      "correct_options": [
+        "触发 1 次，在节点被创建后。"
+      ],
+      "analysis": "在 ZooKeeper 中，`exists` 类型的 Watcher 用于监视节点的创建、删除和数据更新事件。Watcher 是一次性的，即触发后即被移除，需要重新注册才能继续监视。本题中，初始时 ZNode `/tasks` 不存在，客户端设置了 `exists` Watcher。事件序列：1. 创建节点会触发 Watcher（节点从不存在变为存在），然后 Watcher 被移除；2. 更新数据不会触发，因为 Watcher 已移除；3. 删除节点也不会触发，因为 Watcher 已移除。因此，Watcher 只触发一次，在创建事件后。选项 B 正确，选项 C 错误，因为即使数据更新不影响存在性，但 `exists` Watcher 在理论上也会响应数据更新事件，但在此序列中由于一次性特性未触发。"
+    },
+    {
+      "question_id": 11404338,
+      "uuid": "739018f6ce044d36a0ad36149cd099f9",
+      "type": 1,
+      "title": "关于临时节点（Ephemeral ZNode）与会话（Session）的关...",
+      "content": "关于临时节点（Ephemeral&nbsp;ZNode）与会话（Session）的关系，以下哪项表述最准确？",
+      "options": [
+        {
+          "id": 7425571,
+          "content": "只要客户端的 TCP 连接短暂中断，临时节点会立即被删除"
+        },
+        {
+          "id": 7425572,
+          "content": "临时节点在客户端会话过期时被删除，短暂的网络抖动通常不会导致删除"
+        },
+        {
+          "id": 7425573,
+          "content": "临时节点为避免误删会在服务端自动转换为持久节点"
+        },
+        {
+          "id": 7425574,
+          "content": "服务端重启后，临时节点一定会丢失"
+        }
+      ],
+      "correct_option_ids": [
+        7425572
+      ],
+      "correct_options": [
+        "临时节点在客户端会话过期时被删除，短暂的网络抖动通常不会导致删除"
+      ],
+      "analysis": "在ZooKeeper中，临时节点（Ephemeral ZNode）的生命周期与客户端会话（Session）绑定：节点在会话过期时被删除。短暂的网络抖动通常不会导致会话立即过期，因为ZooKeeper的心跳机制允许会话在短暂中断后恢复。选项A错误，因为TCP连接短暂中断并不会立即删除节点，除非会话超时；选项C错误，临时节点不会自动转换为持久节点，它们是不同类型且无转换机制；选项D虽然服务端重启常导致临时节点丢失，但这不是直接原因，而是通过会话过期间接触发，因此B是最准确且直接的表述。"
+    },
+    {
+      "question_id": 1073882,
+      "uuid": "70e3478cb1cc417b88516e2679d5d0dd",
+      "type": 1,
+      "title": "zookeeper有很多版本，()版本是原始版本，()版本是对原始版本的增...",
+      "content": "<div>  zookeeper 有很多版本，( ) 版本是原始版本，( ) 版本是对原始版本的增强。 </div> <div>  <span style=\"color: rgb(77,77,77);\">a、cdh</span>  </div> <div>  b、<span>apache</span><br> </div>",
+      "options": [
+        {
+          "id": 2269012,
+          "content": "ab"
+        },
+        {
+          "id": 2269013,
+          "content": "ba"
+        }
+      ],
+      "correct_option_ids": [
+        2269013
+      ],
+      "correct_options": [
+        "ba"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 1923963,
+      "uuid": "387ce2cb12c74c6d9c60c5b378263396",
+      "type": 1,
+      "title": "以下选项中zookeeper的功能正确的是（）。",
+      "content": "以下选项中zookeeper的功能正确的是（）。<br>",
+      "options": [
+        {
+          "id": 2970122,
+          "content": "实现元数据持久化"
+        },
+        {
+          "id": 2970123,
+          "content": "存储HA模式下状态信息"
+        },
+        {
+          "id": 2970124,
+          "content": "存储namenode生成的editlog"
+        },
+        {
+          "id": 2970125,
+          "content": "监控namenode节点的主备状态"
+        }
+      ],
+      "correct_option_ids": [
+        2970123
+      ],
+      "correct_options": [
+        "存储HA模式下状态信息"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 1073884,
+      "uuid": "cfb9f3e79f1945e7b67dc486d065049f",
+      "type": 2,
+      "title": "ZooKeeper提供了什么？",
+      "content": "ZooKeeper 提供了什么？",
+      "options": [
+        {
+          "id": 2269018,
+          "content": "文件系统"
+        },
+        {
+          "id": 2269019,
+          "content": "通知机制"
+        }
+      ],
+      "correct_option_ids": [
+        2269018,
+        2269019
+      ],
+      "correct_options": [
+        "文件系统",
+        "通知机制"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404364,
+      "uuid": "b1c00ec168894c8ca6062dc5290f9403",
+      "type": 1,
+      "title": "ZooKeeper 确保写操作的线性一致性，以下哪项正确描述了这种特性在实...",
+      "content": "ZooKeeper&nbsp;确保写操作的线性一致性，以下哪项正确描述了这种特性在实际应用中的表现？",
+      "options": [
+        {
+          "id": 7425165,
+          "content": "所有客户端都能在写入成功后立即读取最新值"
+        },
+        {
+          "id": 7425167,
+          "content": "写入操作按全局顺序执行，读操作可能返回旧值但不会看到部分更新"
+        },
+        {
+          "id": 7425169,
+          "content": "写入操作只对同一会话客户端可见"
+        },
+        {
+          "id": 7425170,
+          "content": "写入操作需要所有节点达成共识后才可读"
+        }
+      ],
+      "correct_option_ids": [
+        7425167
+      ],
+      "correct_options": [
+        "写入操作按全局顺序执行，读操作可能返回旧值但不会看到部分更新"
+      ],
+      "analysis": "ZooKeeper 的线性一致性保证写操作以全局顺序执行，但读操作可能返回旧值（例如，由于复制延迟），但不会看到部分更新（因为更新是原子的）。选项A错误，因为ZooKeeper默认不保证所有客户端能立即读取最新值（读操作可能读取陈旧数据）；选项C错误，因为写操作对所有客户端可见，不限于同一会话；选项D错误，因为写操作只需要多数节点达成共识（基于Quorum机制），并非所有节点，且达成共识后数据可读，但读操作可能仍返回旧值。"
+    },
+    {
+      "question_id": 11404285,
+      "uuid": "fb1ce1a54eb049a2bac2ba940816de45",
+      "type": 1,
+      "title": "在 ZooKeeper 分布式锁实现中，客户端尝试创建临时顺序节点 /lo...",
+      "content": "在&nbsp;ZooKeeper&nbsp;分布式锁实现中，客户端尝试创建临时顺序节点&nbsp;/lock/resource-。当该客户端会话突然中断时，其他等待锁的客户端最可能如何检测到锁释放？",
+      "options": [
+        {
+          "id": 7426983,
+          "content": "通过轮询检查 /lock 的子节点顺序"
+        },
+        {
+          "id": 7426984,
+          "content": "依赖 ZAB 协议自动广播节点删除事件"
+        },
+        {
+          "id": 7426989,
+          "content": "在父节点 /lock 上设置 Watcher 监听子节点变更"
+        },
+        {
+          "id": 7426990,
+          "content": "通过 getData 检查目标节点的会话状态"
+        }
+      ],
+      "correct_option_ids": [
+        7426989
+      ],
+      "correct_options": [
+        "在父节点 /lock 上设置 Watcher 监听子节点变更"
+      ],
+      "analysis": "在 ZooKeeper 分布式锁实现中，当客户端创建临时顺序节点后，如果其会话突然中断，该临时节点会被自动删除（因为临时节点的特性是与会话绑定）。其他等待锁的客户端最可能通过在父节点 /lock 上设置 Watcher 来监听子节点变更（如节点删除事件），从而检测到锁释放。这是推荐的方式，因为它避免了轮询的低效问题。其他选项的分析：A（轮询检查子节点顺序）可行但低效，不推荐作为主要方法；B（依赖 ZAB 协议自动广播节点删除事件）错误，因为 ZAB 是 ZooKeeper 内部协议，客户端不直接依赖它进行事件检测；D（通过 getData 检查目标节点的会话状态）错误，getData API 用于获取节点数据，无法直接检查会话状态，会话状态变化是通过节点删除（由 Watcher 检测）来体现的。"
+    },
+    {
+      "question_id": 11404361,
+      "uuid": "34bcf42fb5de4bb7a03d2e76d4bc4969",
+      "type": 1,
+      "title": "当客户端对 ZooKeeper 节点注册 Watcher 后，以下哪种场景...",
+      "content": "当客户端对&nbsp;ZooKeeper&nbsp;节点注册&nbsp;Watcher&nbsp;后，以下哪种场景会触发&nbsp;Watcher&nbsp;通知？",
+      "options": [
+        {
+          "id": 7425211,
+          "content": "该节点的子节点列表发生变化"
+        },
+        {
+          "id": 7425212,
+          "content": "集群中有新节点加入成为 Follower"
+        },
+        {
+          "id": 7425213,
+          "content": "同一父节点下新增了兄弟节点"
+        },
+        {
+          "id": 7425218,
+          "content": "ZAB 协议完成新事务日志同步"
+        }
+      ],
+      "correct_option_ids": [
+        7425211
+      ],
+      "correct_options": [
+        "该节点的子节点列表发生变化"
+      ],
+      "analysis": "在 ZooKeeper 中，当客户端对特定节点注册 Watcher（例如通过 getChildren 操作）时，该节点的子节点列表发生变化（如添加或删除子节点）会触发 Watcher 通知。选项 A 正确描述了这一场景。选项 B：集群中新节点加入成为 Follower 属于集群内部成员变化，不会触发客户端注册的节点级别 Watcher。选项 C：同一父节点下新增了兄弟节点不会触发对该节点（如节点 N）的 Watcher，因为 Watcher 仅监视注册节点自身的变化（如数据变化或子节点变化），除非 Watcher 注册在父节点上；但题目指定注册在节点上，因此不触发。选项 D：ZAB 协议完成事务日志同步是 ZooKeeper 内部协议操作，不暴露为客户端事件，因此不会触发 Watcher 通知。综上，只有 A 正确。"
+    },
+    {
+      "question_id": 11404297,
+      "uuid": "cd1c69da586b45f4a0fd56aa04bad17f",
+      "type": 1,
+      "title": "在实现服务注册与发现场景中，为什么常选用临时ZNode？",
+      "content": "在实现服务注册与发现场景中，为什么常选用临时ZNode？",
+      "options": [
+        {
+          "id": 7426799,
+          "content": "临时节点支持高吞吐量写入"
+        },
+        {
+          "id": 7426800,
+          "content": "临时节点在客户端会话结束时自动删除，便于检测服务失效"
+        },
+        {
+          "id": 7426801,
+          "content": "临时节点提供持久化存储保障"
+        },
+        {
+          "id": 7426802,
+          "content": "临时节点减少网络通信开销"
+        }
+      ],
+      "correct_option_ids": [
+        7426800
+      ],
+      "correct_options": [
+        "临时节点在客户端会话结束时自动删除，便于检测服务失效"
+      ],
+      "analysis": "在服务注册与发现场景中，临时ZNode（Ephemeral Node）的选用主要是因为其在客户端会话结束时自动删除，便于检测服务失效（选项B正确）。具体解析：A错误，临时节点在ZooKeeper中并不特别支持高吞吐量写入，ZooKeeper本身写入性能有限，且节点类型不影响吞吐量；C错误，临时节点是非持久化的，会话结束即删除，不提供持久化存储保障（持久化节点才提供）；D错误，临时节点需通过心跳机制维持会话，可能增加网络通信开销而非减少。未发现题目文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404352,
+      "uuid": "5a7b0d7eebb9468aa6e9bce541311150",
+      "type": 1,
+      "title": "ZooKeeper 的事务ID（ZXID）是一个64位的数字，由高32位的...",
+      "content": "ZooKeeper&nbsp;的事务ID（ZXID）是一个64位的数字，由高32位的&nbsp;epoch&nbsp;和低32位的&nbsp;counter&nbsp;组成，对于保证数据操作的顺序至关重要。关于&nbsp;epoch&nbsp;和&nbsp;counter&nbsp;的变化规则及其作用，以下描述正确的是？",
+      "options": [
+        {
+          "id": 7425355,
+          "content": "epoch 在每次事务提交时递增，counter 在每次 Leader 选举后递增，用于区分不同 Leader 的事务。"
+        },
+        {
+          "id": 7425356,
+          "content": "epoch 和 counter 都在每次事务提交时一起递增，提供一个全局单调递增的事务ID。"
+        },
+        {
+          "id": 7425357,
+          "content": "epoch 在每次选举出新的 Leader 后递增，而 counter 在当前 Leader 的任期内对每个事务单调递增。这种设计主要用于逻辑上隔离不同 Leader 任期的事务。"
+        },
+        {
+          "id": 7425358,
+          "content": "epoch 是一个随机数，用于防止 ZXID 冲突；counter 是一个简单的计数器。两者结合保证了事务的唯一性。"
+        }
+      ],
+      "correct_option_ids": [
+        7425357
+      ],
+      "correct_options": [
+        "epoch 在每次选举出新的 Leader 后递增，而 counter 在当前 Leader 的任期内对每个事务单调递增。这种设计主要用于逻辑上隔离不同 Leader 任期的事务。"
+      ],
+      "analysis": "在ZooKeeper中，ZXID由高32位的epoch和低32位的counter组成。epoch在每次选举出新的Leader后递增，用于标识新的Leader任期；counter在当前Leader的任期内，对每个事务提交时单调递增，从0开始。这种设计确保了事务ID在全局范围内的唯一性和顺序性，同时逻辑上隔离了不同Leader任期的事务。选项C正确描述了这一规则。选项A错误，因为epoch仅在Leader选举后变化，而非事务提交时；选项B错误，因为epoch不随每次事务提交递增；选项D错误，因为epoch是顺序递增的整数，并非随机数，主要用于区分Leader任期而非防冲突。"
+    },
+    {
+      "question_id": 1923928,
+      "uuid": "83f4d5749c184a5eab188ec1178f792d",
+      "type": 2,
+      "title": "Zookeeper的特性有（）。",
+      "content": "Zookeeper的特性有（）。<br>",
+      "options": [
+        {
+          "id": 2969981,
+          "content": "实时性"
+        },
+        {
+          "id": 2969982,
+          "content": "可靠性"
+        },
+        {
+          "id": 2969983,
+          "content": "顺序性"
+        },
+        {
+          "id": 2969984,
+          "content": "原子性"
+        }
+      ],
+      "correct_option_ids": [
+        2969981,
+        2969982,
+        2969983,
+        2969984
+      ],
+      "correct_options": [
+        "实时性",
+        "可靠性",
+        "顺序性",
+        "原子性"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404311,
+      "uuid": "9a1b4dd766014499acab30e706e1658b",
+      "type": 1,
+      "title": "某分布式服务框架需要实现服务实例的自动注册与下线，要求服务实例启动时在 Z...",
+      "content": "某分布式服务框架需要实现服务实例的自动注册与下线，要求服务实例启动时在&nbsp;ZooKeeper&nbsp;上创建节点，下线时该节点自动删除。以下节点类型中最适合的是？",
+      "options": [
+        {
+          "id": 7426587,
+          "content": "Persistent（持久节点）"
+        },
+        {
+          "id": 7426588,
+          "content": "PersistentSequential（持久顺序节点）"
+        },
+        {
+          "id": 7426589,
+          "content": "Ephemeral（临时节点）"
+        },
+        {
+          "id": 7426594,
+          "content": "EphemeralSequential（临时顺序节点）"
+        }
+      ],
+      "correct_option_ids": [
+        7426589
+      ],
+      "correct_options": [
+        "Ephemeral（临时节点）"
+      ],
+      "analysis": "在 ZooKeeper 中，临时节点（Ephemeral）的特性是当客户端会话结束时节点自动删除，这恰好满足服务实例下线时节点自动删除的要求。持久节点（Persistent）及其顺序变体（PersistentSequential）不会自动删除，除非手动删除，因此不适合。临时顺序节点（EphemeralSequential）也支持自动删除，但顺序特性（如节点名称附加序号）在此问题中非必需，题目未要求节点名称顺序或唯一性，因此临时节点（Ephemeral）是最直接且最适合的类型。题目和选项中所有文字准确，无拼写错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404370,
+      "uuid": "bbdb22a485e04a25aecfb1db59d110e3",
+      "type": 1,
+      "title": "某客户端配置与ZooKeeper集群的Session超时时间为30秒，若客...",
+      "content": "某客户端配置与ZooKeeper集群的Session超时时间为30秒，若客户端因网络波动断开连接15秒后重新恢复连接，以下情况最可能发生的是？",
+      "options": [
+        {
+          "id": 7425079,
+          "content": "Session保持有效，客户端无需重新初始化即可继续操作"
+        },
+        {
+          "id": 7425080,
+          "content": "Session已失效，需重新创建Session并重新注册所有Watcher"
+        },
+        {
+          "id": 7425081,
+          "content": "Session有效，但之前注册的所有Watcher会被自动清除"
+        },
+        {
+          "id": 7425082,
+          "content": "Session有效，但客户端需重新同步所有节点的数据才能正常使用"
+        }
+      ],
+      "correct_option_ids": [
+        7425079
+      ],
+      "correct_options": [
+        "Session保持有效，客户端无需重新初始化即可继续操作"
+      ],
+      "analysis": "由于Session超时时间为30秒，断开连接15秒（小于30秒）后重新恢复连接，Session仍在有效期内，因此Session保持有效。客户端无需重新初始化即可继续操作，之前注册的Watcher不会被自动清除，也不需要重新同步所有节点数据。选项B错误，因为Session未失效；选项C错误，因为Watcher在Session有效时不会被自动清除；选项D错误，因为重新连接后客户端可直接继续使用，无需额外同步数据。"
+    },
+    {
+      "question_id": 11404351,
+      "uuid": "ff5de268663e43cdbc28ef7349a380ad",
+      "type": 1,
+      "title": "在 ZooKeeper 的 ZAB (ZooKeeper Atomic B...",
+      "content": "在&nbsp;ZooKeeper&nbsp;的&nbsp;ZAB&nbsp;(ZooKeeper&nbsp;Atomic&nbsp;Broadcast)&nbsp;协议中，成功完成&nbsp;Leader&nbsp;选举后会进入一个恢复（Recovery）阶段。该阶段最核心的目标是什么？",
+      "options": [
+        {
+          "id": 7425371,
+          "content": "向所有 Follower 广播新 Leader 的 epoch，强制它们进入同步状态。"
+        },
+        {
+          "id": 7425372,
+          "content": "确保新 Leader 拥有一个已经被集群中多数节点（Quorum）确认过的、最完整的事务日志，并以此为基准同步所有 Follower 的状态。"
+        },
+        {
+          "id": 7425373,
+          "content": "直接提交所有在上一个 Leader 任期内未被确认的事务提案，以减少数据丢失。"
+        },
+        {
+          "id": 7425374,
+          "content": "清空所有 Follower 节点上的事务日志和内存快照，与新 Leader 进行一次全量数据同步。"
+        }
+      ],
+      "correct_option_ids": [
+        7425372
+      ],
+      "correct_options": [
+        "确保新 Leader 拥有一个已经被集群中多数节点（Quorum）确认过的、最完整的事务日志，并以此为基准同步所有 Follower 的状态。"
+      ],
+      "analysis": "在ZAB协议中，恢复阶段的核心目标是确保新Leader拥有Quorum确认的最新事务日志，并以此同步所有Follower的状态。选项B正确描述了这一目标，而A选项涉及epoch广播但不直接代表核心同步过程；C选项关于提交未确认事务，不是恢复阶段的核心，而是后续阶段处理；D选项要求清空Follower数据并进行全量同步，不符合ZAB的增量同步机制。"
+    },
+    {
+      "question_id": 1923961,
+      "uuid": "5e1e7d062c3e4266a0e34abca2392201",
+      "type": 1,
+      "title": "以下关于Zookeeper的Leader节点在收到数据变更请求后的读写流程...",
+      "content": "以下关于Zookeeper的Leader节点在收到数据变更请求后的读写流程说法正确的是？（）<br>",
+      "options": [
+        {
+          "id": 2970114,
+          "content": "仅写入内存"
+        },
+        {
+          "id": 2970115,
+          "content": "同时写入磁盘和内存"
+        },
+        {
+          "id": 2970116,
+          "content": "先写入内存再写入磁盘"
+        },
+        {
+          "id": 2970117,
+          "content": "先写磁盘再写内存"
+        }
+      ],
+      "correct_option_ids": [
+        2970117
+      ],
+      "correct_options": [
+        "先写磁盘再写内存"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 1923957,
+      "uuid": "5a2a80e9c4a24f18b6a3fa19b9b95554",
+      "type": 2,
+      "title": "关于Zookeeper相关配置（zoo.cfg)，说法正确的有（）",
+      "content": "关于Zookeeper相关配置（zoo.cfg)，说法正确的有（）<br>",
+      "options": [
+        {
+          "id": 2970098,
+          "content": "ickTime =2000：通信心跳数，Zookeeper服务器与客户端心跳时间，单位毫秒"
+        },
+        {
+          "id": 2970099,
+          "content": "initLimit =10：LF初始通信时限集群中的Follower跟随者服务器与Leader领导者服务器之间初始连接时能容忍的最多心跳数（tickTime的数量），用它来限定集群中的Zookeeper服务器连接到Leader的时限"
+        },
+        {
+          "id": 2970100,
+          "content": "dataDir：数据文件目录+数据持久化路径主要用于保存Zookeeper中的数据"
+        },
+        {
+          "id": 2970101,
+          "content": "clientPort =2181：客户端连接端口监听客户端连接的端口"
+        }
+      ],
+      "correct_option_ids": [
+        2970098,
+        2970099,
+        2970100,
+        2970101
+      ],
+      "correct_options": [
+        "ickTime =2000：通信心跳数，Zookeeper服务器与客户端心跳时间，单位毫秒",
+        "initLimit =10：LF初始通信时限集群中的Follower跟随者服务器与Leader领导者服务器之间初始连接时能容忍的最多心跳数（tickTime的数量），用它来限定集群中的Zookeeper服务器连接到Leader的时限",
+        "dataDir：数据文件目录+数据持久化路径主要用于保存Zookeeper中的数据",
+        "clientPort =2181：客户端连接端口监听客户端连接的端口"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404294,
+      "uuid": "511f70931f2c4ab6b9603f4417d5ac12",
+      "type": 1,
+      "title": "某业务要求客户端仅能读取ZooKeeper节点/node/config的数...",
+      "content": "某业务要求客户端仅能读取ZooKeeper节点/node/config的数据，不能对该节点进行修改、删除或创建子节点操作。请问应给客户端分配以下哪种ACL权限？",
+      "options": [
+        {
+          "id": 7426843,
+          "content": "READ"
+        },
+        {
+          "id": 7426844,
+          "content": "READ + WRITE"
+        },
+        {
+          "id": 7426845,
+          "content": "CREATE + READ"
+        },
+        {
+          "id": 7426846,
+          "content": "ADMIN + READ"
+        }
+      ],
+      "correct_option_ids": [
+        7426843
+      ],
+      "correct_options": [
+        "READ"
+      ],
+      "analysis": "根据题目要求，客户端只能读取ZooKeeper节点/node/config的数据，不能对该节点进行修改、删除或创建子节点操作。在ZooKeeper ACL权限中，READ权限允许读取节点数据，但不包括WRITE（修改数据）、CREATE（创建子节点）、DELETE（删除节点或子节点）或ADMIN（管理ACL）权限，因此仅分配READ权限（选项A）符合要求。选项B包含WRITE权限，允许修改数据，不符合要求。选项C包含CREATE权限，允许创建子节点，不符合要求。选项D包含ADMIN权限，允许设置ACL可能间接获得其他权限，不符合要求。题目文字和专业术语无错误，无逻辑矛盾。"
+    },
+    {
+      "question_id": 11404332,
+      "uuid": "7edbe7259fd44482bf45ea3e9b447680",
+      "type": 1,
+      "title": "在 ZooKeeper 集群中，Observer 节点的主要作用是什么？",
+      "content": "在&nbsp;ZooKeeper&nbsp;集群中，Observer&nbsp;节点的主要作用是什么？",
+      "options": [
+        {
+          "id": 7426327,
+          "content": "参与 Leader 选举的投票过程"
+        },
+        {
+          "id": 7426328,
+          "content": "处理读请求以分担 Follower 的负载"
+        },
+        {
+          "id": 7426329,
+          "content": "处理所有写请求并持久化数据"
+        },
+        {
+          "id": 7426330,
+          "content": "在 Leader 失败时自动成为新 Leader"
+        }
+      ],
+      "correct_option_ids": [
+        7426328
+      ],
+      "correct_options": [
+        "处理读请求以分担 Follower 的负载"
+      ],
+      "analysis": "在 ZooKeeper 集群中，Observer 节点不参与 Leader 选举的投票过程（因此选项 A 错误），也不处理写请求（因此选项 C 错误），更不会在 Leader 失败时自动成为新 Leader（因此选项 D 错误）。Observer 的主要作用是处理读请求，从而分担 Follower 节点的负载，提高系统的可扩展性（因此选项 B 正确）。"
+    },
+    {
+      "question_id": 11404380,
+      "uuid": "036d05f175944d6eb0a24936c5750578",
+      "type": 1,
+      "title": "某服务使用 ZooKeeper 在 /locks 目录下通过“临时顺序节点...",
+      "content": "某服务使用&nbsp;ZooKeeper&nbsp;在&nbsp;/locks&nbsp;目录下通过“临时顺序节点”实现分布式互斥锁。客户端创建了&nbsp;/locks/lock-&nbsp;并返回路径&nbsp;/locks/lock-00000023。为避免羊群效应并确保可扩展性，客户端接下来应采用哪种竞争策略？",
+      "options": [
+        {
+          "id": 7424943,
+          "content": "监听 /locks 节点的子节点变化，直到自己成为序号最小者后直接加锁"
+        },
+        {
+          "id": 7424944,
+          "content": "只要创建临时顺序节点成功就立即认为加锁成功"
+        },
+        {
+          "id": 7424945,
+          "content": "找到所有比自己序号小的节点，并对它们全部设置 Watch，任一删除就认为成功"
+        },
+        {
+          "id": 7424947,
+          "content": "找到紧邻自己且序号比自己小的那个节点，仅对其设置一次性 Watch，收到删除事件后再判断自己是否为最小再加锁"
+        }
+      ],
+      "correct_option_ids": [
+        7424947
+      ],
+      "correct_options": [
+        "找到紧邻自己且序号比自己小的那个节点，仅对其设置一次性 Watch，收到删除事件后再判断自己是否为最小再加锁"
+      ],
+      "analysis": "选项D描述了ZooKeeper分布式锁实现中避免羊群效应的最佳实践。在临时顺序节点方案中，客户端创建节点后，仅监听紧邻前一个（序号更小）节点的删除事件（使用一次性Watch），当该节点被删除时再检查自己是否成为序号最小者，从而获取锁。这确保通知数量最小化，避免所有客户端监听同一节点导致的羊群效应和可扩展性问题。\n其他选项错误：A监听父节点所有子节点变化，会引发羊群效应；B错误认为创建节点即加锁成功，忽略了等待前置节点释放锁的必要性；C监听所有较小节点，当任一删除即认为成功，但可能自己并非最小（例如有小节点未删除），导致错误加锁，且设置多个Watch增加开销。"
+    },
+    {
+      "question_id": 1923926,
+      "uuid": "5e65b450c3fc4334bfd6e5faad12cdc8",
+      "type": 2,
+      "title": "关于Zookeeper的Watcher，说法正确的有（）",
+      "content": "关于Zookeeper的Watcher，说法正确的有（）<br>",
+      "options": [
+        {
+          "id": 2969973,
+          "content": "无论服务端还是客户端，一旦一个Watcher被触发，Zookeeper都会将其从相应的存储中移除"
+        },
+        {
+          "id": 2969974,
+          "content": "Watcher通知非常简单，只会告诉客户端发生了事件，并不会说明事件的具体内容"
+        },
+        {
+          "id": 2969975,
+          "content": "Watcher通知不仅会告诉客户端发生了事件，还会说明事件的具体内容"
+        },
+        {
+          "id": 2969976,
+          "content": "无论是客户端还是服务端，一旦一个Watcher被触发，Zookeeper都不会将其从对应的存储中移除"
+        }
+      ],
+      "correct_option_ids": [
+        2969973,
+        2969974
+      ],
+      "correct_options": [
+        "无论服务端还是客户端，一旦一个Watcher被触发，Zookeeper都会将其从相应的存储中移除",
+        "Watcher通知非常简单，只会告诉客户端发生了事件，并不会说明事件的具体内容"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404331,
+      "uuid": "fb73caf5598c472a8a13aae26798737a",
+      "type": 1,
+      "title": "ZooKeeper 中的 watch 机制设置在一个 znode 上后，当...",
+      "content": "ZooKeeper&nbsp;中的&nbsp;watch&nbsp;机制设置在一个&nbsp;znode&nbsp;上后，当该&nbsp;znode&nbsp;发生更改时，watch&nbsp;会被触发几次？",
+      "options": [
+        {
+          "id": 7426335,
+          "content": "只触发一次，之后自动失效"
+        },
+        {
+          "id": 7426336,
+          "content": "无限次持续触发，直到显式移除"
+        },
+        {
+          "id": 7426337,
+          "content": "每次 znode 变化都触发，但仅在节点创建时有效"
+        },
+        {
+          "id": 7426338,
+          "content": "只在 znode 被删除时才触发"
+        }
+      ],
+      "correct_option_ids": [
+        7426335
+      ],
+      "correct_options": [
+        "只触发一次，之后自动失效"
+      ],
+      "analysis": "在 ZooKeeper 中，watch 机制是一次性触发（one-time trigger）。当在某个 znode 上设置 watch 后，如果该 znode 发生更改（如数据变更、子节点变化等事件），watch 会被触发一次。触发后，watch 自动失效，需要客户端重新注册才能监视后续变化。因此，选项 A '只触发一次，之后自动失效' 正确。选项 B 错误，因为它声称无限次持续触发，直到显式移除，但实际并非如此。选项 C 错误，因为它表示每次 znode 变化都触发，这不符合一次触发的特性，同时 '仅在节点创建时有效' 也不准确，因为 watch 可以监视多种事件（创建、更新、删除等）。选项 D 错误，因为它限定只在删除时触发，而 watch 可以响应多种事件类型。题目中无错误：文字拼写准确（如 'ZooKeeper'、'watch'、'znode' 均为标准术语），无逻辑矛盾（事件触发机制描述一致），且无规则破坏错误（选项公平，需专业知识判断）。"
+    },
+    {
+      "question_id": 1923951,
+      "uuid": "3629bb162dd547f8933620c7a71a7fd0",
+      "type": 2,
+      "title": "以下关于Zookeeper的Leader选举说法正确的是？（）",
+      "content": "以下关于Zookeeper的Leader选举说法正确的是？（）<br>",
+      "options": [
+        {
+          "id": 2970074,
+          "content": "当实例n为奇数时，假定n=2x+1，则成为leader节点需要x+1票"
+        },
+        {
+          "id": 2970075,
+          "content": "Zookeeper选举leader时，需要半数以上的票数"
+        },
+        {
+          "id": 2970076,
+          "content": "当实例数为8时，则成为leader节点需要5票，容灾能力为4"
+        },
+        {
+          "id": 2970077,
+          "content": "当实例数n为奇数时，假定n=2x+1，则成为leader节点需要x票"
+        }
+      ],
+      "correct_option_ids": [
+        2970074,
+        2970075
+      ],
+      "correct_options": [
+        "当实例n为奇数时，假定n=2x+1，则成为leader节点需要x+1票",
+        "Zookeeper选举leader时，需要半数以上的票数"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404344,
+      "uuid": "8ade958db3a84686ab2b8f26c5bc5726",
+      "type": 1,
+      "title": "一个客户端在 ZooKeeper 上创建了一个临时节点（Ephemeral...",
+      "content": "一个客户端在&nbsp;ZooKeeper&nbsp;上创建了一个临时节点（Ephemeral&nbsp;ZNode）`/myapp/serviceA`。如果在&nbsp;`sessionTimeout`&nbsp;时间内，该客户端与&nbsp;ZooKeeper&nbsp;集群的心跳中断，关于这个临时节点的后续行为，以下描述最准确的是？",
+      "options": [
+        {
+          "id": 7425479,
+          "content": "集群中的任意 Follower 检测到心跳超时后，会立即本地删除该节点并通知其他节点。"
+        },
+        {
+          "id": 7425480,
+          "content": "Leader 节点在检测到 Session 过期后，会立即在其内存中删除该节点，并通过下一个心跳包通知所有 Follower 同步删除。"
+        },
+        {
+          "id": 7425481,
+          "content": "Leader 节点在确定 Session 过期后，会生成一个删除该临时节点的事务，并通过 ZAB 协议将此事务广播给所有 Follower，待半数以上 Follower 确认后提交。"
+        },
+        {
+          "id": 7425482,
+          "content": "该临时节点将永久保留，直到客户端重新建立连接并显式地删除它。"
+        }
+      ],
+      "correct_option_ids": [
+        7425481
+      ],
+      "correct_options": [
+        "Leader 节点在确定 Session 过期后，会生成一个删除该临时节点的事务，并通过 ZAB 协议将此事务广播给所有 Follower，待半数以上 Follower 确认后提交。"
+      ],
+      "analysis": "C 正确描述了 ZooKeeper 的机制：当会话过期时，Leader 节点生成一个删除临时节点的事务，通过 ZAB 协议广播给所有 Follower，待半数以上 Follower 确认后提交，确保一致性。A 错误，因为 Follower 无法直接删除节点或通知其他节点，只有 Leader 可以发起事务。B 错误，因为删除操作不是立即在内存中执行，也不通过心跳包同步，而是通过 ZAB 事务广播。D 错误，因为临时节点在会话过期时自动删除，不会永久保留。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404307,
+      "uuid": "f58e19c9b29043a3bafd3d4c84bb7e32",
+      "type": 1,
+      "title": "ZooKeeper 中 znode 的 ACL 权限控制机制主要依赖什么实现？",
+      "content": "ZooKeeper&nbsp;中&nbsp;znode&nbsp;的&nbsp;ACL&nbsp;权限控制机制主要依赖什么实现？",
+      "options": [
+        {
+          "id": 7426643,
+          "content": "基于 IP 地址的白名单过滤"
+        },
+        {
+          "id": 7426645,
+          "content": "Scheme:ID 格式的授权模型"
+        },
+        {
+          "id": 7426647,
+          "content": "客户端数字证书认证"
+        },
+        {
+          "id": 7426654,
+          "content": "统一的全局管理员账户"
+        }
+      ],
+      "correct_option_ids": [
+        7426645
+      ],
+      "correct_options": [
+        "Scheme:ID 格式的授权模型"
+      ],
+      "analysis": "ZooKeeper 中 znode 的 ACL 权限控制主要依赖 Scheme:ID 格式的授权模型实现。该模型通过指定 scheme（如 world、auth、digest 或 ip）和对应的 ID（如 anyone 或用户凭证哈希）来定义访问权限。选项 A（基于 IP 地址的白名单过滤）是 ZooKeeper 支持的 ip scheme 的一种具体应用，但不是核心机制；选项 C（客户端数字证书认证）涉及身份认证过程，并非 ACL 权限控制的主要依赖；选项 D（统一的全局管理员账户）在 ZooKeeper 中不存在，因为权限是基于每个 znode 独立设置的。"
+    },
+    {
+      "question_id": 11404313,
+      "uuid": "517a0c55315b4703bf76b4bf5184459e",
+      "type": 1,
+      "title": "ZooKeeper 客户端与服务器之间通过心跳包维持会话，若客户端因网络波...",
+      "content": "ZooKeeper&nbsp;客户端与服务器之间通过心跳包维持会话，若客户端因网络波动短暂断开连接，以下哪种情况一定会导致会话失效？",
+      "options": [
+        {
+          "id": 7426558,
+          "content": "断开连接的时间超过会话超时时间"
+        },
+        {
+          "id": 7426560,
+          "content": "断开期间集群 Leader 发生切换"
+        },
+        {
+          "id": 7426561,
+          "content": "断开期间客户端未发起任何写请求"
+        },
+        {
+          "id": 7426562,
+          "content": "断开期间服务器端清理了过期会话"
+        }
+      ],
+      "correct_option_ids": [
+        7426558
+      ],
+      "correct_options": [
+        "断开连接的时间超过会话超时时间"
+      ],
+      "analysis": "ZooKeeper 会话失效的唯一确定性原因是心跳缺失超过会话超时时间。选项A：断开连接时间超过会话超时时间，必然导致服务器将会话标记为过期并失效。选项B：Leader 切换是 ZooKeeper 集群的正常故障恢复机制，会话状态在集群中复制，切换不会导致有效会话失效。选项C：心跳包独立于写请求，用于维持会话，未发起写请求不影响会话有效性。选项D：服务器清理过期会话仅在会话已过期后执行，此行为不一定导致本客户端会话失效，除非会话已过期（取决于断开时间）。"
+    },
+    {
+      "question_id": 11404360,
+      "uuid": "fa6756704cb642fd82d99e526729936d",
+      "type": 1,
+      "title": "在 ZooKeeper 集群扩容时，新增 Observer 节点的主要优势是：",
+      "content": "在&nbsp;ZooKeeper&nbsp;集群扩容时，新增&nbsp;Observer&nbsp;节点的主要优势是：",
+      "options": [
+        {
+          "id": 7425227,
+          "content": "提升读吞吐量且不参与投票"
+        },
+        {
+          "id": 7425228,
+          "content": "分担 Leader 的事务处理负载"
+        },
+        {
+          "id": 7425229,
+          "content": "自动接管故障 Follower 的职责"
+        },
+        {
+          "id": 7425230,
+          "content": "减少 ZAB 协议的消息广播延迟"
+        }
+      ],
+      "correct_option_ids": [
+        7425227
+      ],
+      "correct_options": [
+        "提升读吞吐量且不参与投票"
+      ],
+      "analysis": "在 ZooKeeper 中，新增 Observer 节点的主要优势是提升读吞吐量且不参与投票（选项 A）。Observer 节点处理读请求但不参与写操作的投票，从而增加读取容量而不影响共识性能。其他选项均不准确：选项 B 错误，因为 Leader 的事务处理负载主要来自写操作，Observer 不参与写过程，因此不分担负载；选项 C 错误，因为 Observer 不是投票成员，不能接管故障 Follower 的职责；选项 D 错误，因为添加 Observer 不会减少 ZAB 协议的消息广播延迟，广播延迟取决于投票节点（如 Leader 和 Follower）的数量，Observer 不参与投票过程。"
+    },
+    {
+      "question_id": 11404321,
+      "uuid": "9ffd6b3156a94582824346eaa016b39f",
+      "type": 1,
+      "title": "在ZooKeeper的ZAB协议中，当一个集群因网络波动等原因需要选举新的...",
+      "content": "在ZooKeeper的ZAB协议中，当一个集群因网络波动等原因需要选举新的Leader时，选举出的新Leader在正式对外提供服务（即进入BROADCASTING状态）之前，必须完成一个关键的同步阶段。关于这个阶段，以下描述最准确的是？",
+      "options": [
+        {
+          "id": 7426439,
+          "content": "新Leader的事务日志ID(ZXID)必须是所有服务器中最高的，一旦选举成功即可提供服务。"
+        },
+        {
+          "id": 7426440,
+          "content": "新Leader必须将其事务日志广播给所有Follower，并等待所有Follower确认。"
+        },
+        {
+          "id": 7426441,
+          "content": "新Leader必须确保占有多数派（Quorum）的Follower已经将其状态与Leader的事务历史同步一致，这可能涉及补齐或回滚Follower的日志。"
+        },
+        {
+          "id": 7426442,
+          "content": "新Leader只需等待一个Follower同步完成，即可开始处理新的客户端请求，以提高可用性。"
+        }
+      ],
+      "correct_option_ids": [
+        7426441
+      ],
+      "correct_options": [
+        "新Leader必须确保占有多数派（Quorum）的Follower已经将其状态与Leader的事务历史同步一致，这可能涉及补齐或回滚Follower的日志。"
+      ],
+      "analysis": "在ZAB协议中，新Leader在进入BROADCASTING状态前必须完成同步阶段，该阶段需要确保Quorum（多数派）Follower的状态与Leader的事务历史一致，涉及日志补齐或回滚。选项C准确描述了这一点：A错误（选举后需同步才能服务）；B错误（同步非广播事务日志，且无需所有确认）；D错误（需Quorum而非一个Follower）。题目无错误，所有专业名词（如ZAB、ZXID、Quorum）拼写正确，逻辑自洽。"
+    },
+    {
+      "question_id": 1923925,
+      "uuid": "9f63235cfefe4b279ecf9c345b6ff709",
+      "type": 2,
+      "title": "Zookeeper客户端命令中，递归删除节点可以使用（）",
+      "content": "Zookeeper客户端命令中，递归删除节点可以使用（）<br>",
+      "options": [
+        {
+          "id": 2969969,
+          "content": "rmr"
+        },
+        {
+          "id": 2969970,
+          "content": "deleteall"
+        },
+        {
+          "id": 2969971,
+          "content": "delete"
+        },
+        {
+          "id": 2969972,
+          "content": "mm"
+        }
+      ],
+      "correct_option_ids": [
+        2969969,
+        2969970
+      ],
+      "correct_options": [
+        "rmr",
+        "deleteall"
+      ],
+      "analysis": "<span>rmr（过时）；deleteall（推荐）</span>"
+    },
+    {
+      "question_id": 11404339,
+      "uuid": "fa473204c3964c79bc21e3dabbdbaccf",
+      "type": 1,
+      "title": "ZooKeeper 的 Watch 机制允许客户端监视节点的变化。以下关于...",
+      "content": "ZooKeeper&nbsp;的&nbsp;Watch&nbsp;机制允许客户端监视节点的变化。以下关于&nbsp;Watch&nbsp;的描述，哪一个是正确的？",
+      "options": [
+        {
+          "id": 7425555,
+          "content": "Watch 是持久化的，需要显式调用 API 才能移除"
+        },
+        {
+          "id": 7425558,
+          "content": "Watch 只能在创建节点时设置"
+        },
+        {
+          "id": 7425561,
+          "content": "Watch 触发一次后即失效，必须重新设置才能继续监视"
+        },
+        {
+          "id": 7425562,
+          "content": "Watch 能监视整个树形结构的任何事件"
+        }
+      ],
+      "correct_option_ids": [
+        7425561
+      ],
+      "correct_options": [
+        "Watch 触发一次后即失效，必须重新设置才能继续监视"
+      ],
+      "analysis": "根据ZooKeeper官方文档，Watch机制是一次性的，触发后自动失效，必须重新设置才能继续监视（选项C正确）。选项A错误：Watch不是持久化的，触发后自动移除；选项B错误：Watch可通过getData、exists、getChildren等操作设置，不限于创建节点；选项D错误：Watch仅监视特定节点的事件，不支持整个树形结构监视。题目无文字错误、逻辑矛盾、专业术语错误或规则破坏问题。"
+    },
+    {
+      "question_id": 11404314,
+      "uuid": "c3c17a2799054fe1aa4aaa097d57abfd",
+      "type": 1,
+      "title": "一个客户端使用 `getData()` 方法为一个 znode `/con...",
+      "content": "一个客户端使用&nbsp;`getData()`&nbsp;方法为一个&nbsp;znode&nbsp;`/config`&nbsp;设置了一个&nbsp;watch。随后，在极短的时间内，另一个进程连续两次修改了&nbsp;`/config`&nbsp;节点的数据。关于第一个客户端的&nbsp;watch&nbsp;行为，以下哪个描述最为准确？",
+      "options": [
+        {
+          "id": 7426541,
+          "content": "客户端保证会按顺序接收到两次独立的 NodeDataChanged 事件通知。"
+        },
+        {
+          "id": 7426543,
+          "content": "客户端只会收到一次事件通知，且在收到通知后读取数据，保证能读到第一次修改后的数据。"
+        },
+        {
+          "id": 7426545,
+          "content": "客户端只会收到一次事件通知，但在收到通知后，如果立即读取数据，可能会读到第二次修改后的数据。"
+        },
+        {
+          "id": 7426546,
+          "content": "客户端收到的事件通知次数不确定，可能是一次或两次，取决于两次修改的间隔时间。"
+        }
+      ],
+      "correct_option_ids": [
+        7426545
+      ],
+      "correct_options": [
+        "客户端只会收到一次事件通知，但在收到通知后，如果立即读取数据，可能会读到第二次修改后的数据。"
+      ],
+      "analysis": "在 Apache ZooKeeper 中，watch 机制是单次触发的（one-time trigger）。当客户端使用 `getData()` 方法为 znode `/config` 设置 watch 后，该 watch 只会在节点数据第一次被修改时触发一个 NodeDataChanged 事件通知，随后 watch 会被移除。题目中另一个进程在极短时间内连续两次修改数据，由于修改间隔极短，客户端可能尚未处理第一次事件通知，因此保证只收到一次事件通知。当客户端在收到通知后立即读取数据时，ZooKeeper 保证读取操作返回节点的当前最新数据，而该数据可能已被第二次修改覆盖，因此可能会读到第二次修改后的数据。选项 A 错误，因为不会保证收到两次事件；选项 B 错误，因为读取的数据不一定是第一次修改后的；选项 D 错误，因为事件通知次数在 ZooKeeper 设计中是确定的（只一次），不依赖于修改间隔时间。题目文字无错别字、逻辑无矛盾、专业名词（如 'watch'、'znode'、'getData()'、'NodeDataChanged'）拼写正确，且无规则破坏错误。"
+    },
+    {
+      "question_id": 1923939,
+      "uuid": "39e752ddcf834a1cba624e380ce7abb9",
+      "type": 2,
+      "title": "ZooKeeper服务器角色包括（）。",
+      "content": "ZooKeeper服务器角色包括（）。<br>",
+      "options": [
+        {
+          "id": 2970025,
+          "content": "领导者（leader）"
+        },
+        {
+          "id": 2970026,
+          "content": "观察者（observer）"
+        },
+        {
+          "id": 2970027,
+          "content": "客户端（client）"
+        },
+        {
+          "id": 2970028,
+          "content": "跟随者（follower）"
+        }
+      ],
+      "correct_option_ids": [
+        2970025,
+        2970026,
+        2970028
+      ],
+      "correct_options": [
+        "领导者（leader）",
+        "观察者（observer）",
+        "跟随者（follower）"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 1923932,
+      "uuid": "36f4cd6c3d6d486fa9fc3cd35a321793",
+      "type": 1,
+      "title": "zookeeper的作用不包括（）。",
+      "content": "zookeeper的作用不包括（）。<br>",
+      "options": [
+        {
+          "id": 2969997,
+          "content": "分布式配置同步"
+        },
+        {
+          "id": 2969998,
+          "content": "加强集群稳定性"
+        },
+        {
+          "id": 2969999,
+          "content": "对Task执行进行调度"
+        },
+        {
+          "id": 2970000,
+          "content": "加强集群持续性"
+        }
+      ],
+      "correct_option_ids": [
+        2969999
+      ],
+      "correct_options": [
+        "对Task执行进行调度"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404347,
+      "uuid": "822f8778845a41c28ddeaf38f70a01c5",
+      "type": 1,
+      "title": "在多服务器部署的场景下，客户端希望读取到已提交的最新数据（线性一致的读）。...",
+      "content": "在多服务器部署的场景下，客户端希望读取到已提交的最新数据（线性一致的读）。下列做法中哪项更为正确和通用？",
+      "options": [
+        {
+          "id": 7425431,
+          "content": "直接向任意服务器发起读取，ZooKeeper 的读取天然保证线性一致"
+        },
+        {
+          "id": 7425432,
+          "content": "在读取前先调用 sync(path) 与集群对齐，再发起读请求"
+        },
+        {
+          "id": 7425433,
+          "content": "只要将读取请求发送到当前 Leader，就一定是线性一致的"
+        },
+        {
+          "id": 7425434,
+          "content": "读取前先对节点设置 Watch 即可保证读到最新值"
+        }
+      ],
+      "correct_option_ids": [
+        7425432
+      ],
+      "correct_options": [
+        "在读取前先调用 sync(path) 与集群对齐，再发起读请求"
+      ],
+      "analysis": "在ZooKeeper中，线性一致读要求读操作反映所有已提交的最新数据。默认读操作从任意服务器不保证线性一致，可能返回旧值（A错误）。发送读请求到Leader（C）在ZooKeeper中可能保证线性一致，但不通用，因为系统设计允许从follower读取，且推荐使用sync操作。设置Watch（D）仅用于通知变化，不保证读操作本身的线性一致。选项B正确，调用sync(path)与集群同步，确保后续读操作获得最新数据，是ZooKeeper官方推荐做法。题目和选项无文字错误、专业名词错误或逻辑矛盾。"
+    },
+    {
+      "question_id": 11182744,
+      "uuid": "effabd7816984ce19a8878ee5030b343",
+      "type": 1,
+      "title": "在分布式数据库系统中有大量的分布式应用在日常使用，在使用过程中通过容错协调...",
+      "content": "<div>  <span>在分布式数据库系统中有大量的分布式应用在日常使用，在使用过程中通过容错协调服务进行分布式协调，下列属于分布式数据库协调服务特征的是？</span>  </div> <div>  <span>I、存储数据到文件</span>  </div> <div>  <span>II、监视文件的更新</span>  </div> <div>  <span>III、创建和删除文件</span>  </div> <div>  <span>IV、复制文件</span>  </div>",
+      "options": [
+        {
+          "id": 7197754,
+          "content": "<div>I、II、IV</div>"
+        },
+        {
+          "id": 7197755,
+          "content": "<div>I、III、IV</div>"
+        },
+        {
+          "id": 7197756,
+          "content": "<div>I、II、III</div>"
+        },
+        {
+          "id": 7197757,
+          "content": "<div>I、II、III、IV</div>"
+        }
+      ],
+      "correct_option_ids": [
+        7197756
+      ],
+      "correct_options": [
+        "<div>I、II、III</div>"
+      ],
+      "analysis": "<span>由题意得，在分布式数据库系统中存在大量的分布式应用，不能要求每个应用都实现属于自己的协调器，可以通过一个容错的分布式协调服务来管控众多的分布式应用，比如ZooKeeper服务就是其中之一；而这些协调服务都会提供一种类似文件系统的API，支持以下特性：1）存储少量数据，并使用分层的命名空间，用途是存储可用于启动分布式应用的配置信息，或者让新节点加入分布式应用；2）创建和删除文件，可用于实现封锁，比如为了获得锁，一个进程可以尝试创建一个名称与锁对应的文件，若已创建，则协调服务会返回错误；3）监视文件的更新，进程可以利用这个特征来检查是否已经释放锁，或被通知在系统中需要该进程来执行操作的</span>其他更改动作，故I、II、III属于，因此正确选项为C。"
+    },
+    {
+      "question_id": 1923927,
+      "uuid": "f6b7e99e1cdc45d6b0a5b5a81620de5f",
+      "type": 1,
+      "title": "ZooKeeper的核心是（）。",
+      "content": "ZooKeeper的核心是（）。<br>",
+      "options": [
+        {
+          "id": 2969977,
+          "content": "原子广播"
+        },
+        {
+          "id": 2969978,
+          "content": "watches"
+        },
+        {
+          "id": 2969979,
+          "content": "ACL"
+        },
+        {
+          "id": 2969980,
+          "content": "Znode"
+        }
+      ],
+      "correct_option_ids": [
+        2969977
+      ],
+      "correct_options": [
+        "原子广播"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404373,
+      "uuid": "f2f78bad6a114f828ca609b9c80accd2",
+      "type": 1,
+      "title": "为了实现一个分布式锁，两个客户端同时尝试通过带版本号的 setData 操...",
+      "content": "为了实现一个分布式锁，两个客户端同时尝试通过带版本号的&nbsp;setData&nbsp;操作（CAS，Compare-And-Set）更新同一个&nbsp;ZNode。客户端&nbsp;A&nbsp;和&nbsp;B&nbsp;同时读取到该节点的版本号为&nbsp;10。随后，客户端&nbsp;A&nbsp;使用版本号&nbsp;10&nbsp;成功更新了该节点。紧接着，客户端&nbsp;B&nbsp;也尝试使用版本号&nbsp;10&nbsp;进行更新，它会得到什么结果？",
+      "options": [
+        {
+          "id": 7425031,
+          "content": "客户端 B 的更新会成功，因为 ZooKeeper 内部有队列机制来处理并发请求。"
+        },
+        {
+          "id": 7425032,
+          "content": "客户端 B 的更新操作会阻塞，直到它获取到锁，然后自动完成更新。"
+        },
+        {
+          "id": 7425033,
+          "content": "客户端 B 的更新会立即失败，并收到一个 BadVersionException (或类似)的异常。"
+        },
+        {
+          "id": 7425034,
+          "content": "ZooKeeper 会认为这是一个重复操作，并直接返回成功，但不会实际修改数据。"
+        }
+      ],
+      "correct_option_ids": [
+        7425033
+      ],
+      "correct_options": [
+        "客户端 B 的更新会立即失败，并收到一个 BadVersionException (或类似)的异常。"
+      ],
+      "analysis": "在 ZooKeeper 中，CAS（Compare-And-Set）操作基于节点版本号实现。客户端 A 使用版本号 10 成功更新 ZNode 后，节点版本号会递增（例如变为 11）。随后客户端 B 尝试使用版本号 10 更新，但由于提供的版本号已过时（不再匹配当前版本），操作会立即失败，并抛出 BadVersionException（或类似异常）。选项 A 错误，因为 ZooKeeper 虽有队列机制处理请求顺序，但 CAS 操作的失败由版本号不匹配决定，而非内部队列；选项 B 错误，因为更新操作是非阻塞的，不会自动阻塞等待锁；选项 D 错误，因为 ZooKeeper 不会将不匹配的版本号视为重复操作，而是会返回异常。题目未发现文字错误、专业名称错误、逻辑矛盾或规则破坏错误。"
+    },
+    {
+      "question_id": 11404358,
+      "uuid": "0b55c049ad2a4a789e0e19867575148e",
+      "type": 1,
+      "title": "ZAB (ZooKeeper Atomic Broadcast) 协议是 ...",
+      "content": "ZAB&nbsp;(ZooKeeper&nbsp;Atomic&nbsp;Broadcast)&nbsp;协议是&nbsp;ZooKeeper&nbsp;的核心组件。它的主要功能是什么？",
+      "options": [
+        {
+          "id": 7425259,
+          "content": "管理客户端会话的生命周期"
+        },
+        {
+          "id": 7425260,
+          "content": "原子地广播写操作到所有集群节点，确保状态一致"
+        },
+        {
+          "id": 7425261,
+          "content": "处理客户端的读写负载均衡"
+        },
+        {
+          "id": 7425262,
+          "content": "提供 ZNode 数据的持久化存储"
+        }
+      ],
+      "correct_option_ids": [
+        7425260
+      ],
+      "correct_options": [
+        "原子地广播写操作到所有集群节点，确保状态一致"
+      ],
+      "analysis": "ZAB协议的核心功能是实现原子广播，确保所有集群节点在写操作上状态一致，选项B准确描述了这一功能。选项A（管理客户端会话的生命周期）由SessionTracker等组件处理，与ZAB无关；选项C（处理读写负载均衡）属于负载均衡机制，非ZAB职责；选项D（提供持久化存储）涉及日志存储组件，非ZAB主要功能。"
+    },
+    {
+      "question_id": 1923958,
+      "uuid": "625ff67baf5f4a588c5113ce1db549d3",
+      "type": 1,
+      "title": "下面关于 ZooKeeper 客户端使用命令，错误的是（）",
+      "content": "下面关于 ZooKeeper 客户端使用命令，错误的是（）<br>",
+      "options": [
+        {
+          "id": 2970102,
+          "content": "创建节点：create/node"
+        },
+        {
+          "id": 2970103,
+          "content": "列出节点：cat/node"
+        },
+        {
+          "id": 2970104,
+          "content": "获取节点数据：get/node"
+        },
+        {
+          "id": 2970105,
+          "content": "删除节点：delete/node"
+        }
+      ],
+      "correct_option_ids": [
+        2970103
+      ],
+      "correct_options": [
+        "列出节点：cat/node"
+      ],
+      "analysis": "列出节点：ls/node 或者 ls2/node"
+    },
+    {
+      "question_id": 11404320,
+      "uuid": "6da7309e87b74872ba701eafef91d716",
+      "type": 1,
+      "title": "在ZooKeeper的leader选举过程中，如何确保公平性和顺序性？",
+      "content": "在ZooKeeper的leader选举过程中，如何确保公平性和顺序性？",
+      "options": [
+        {
+          "id": 7426451,
+          "content": "使用持久节点按节点名排序"
+        },
+        {
+          "id": 7426452,
+          "content": "使用临时序列节点自动排序"
+        },
+        {
+          "id": 7426453,
+          "content": "使用临时节点优先级机制"
+        },
+        {
+          "id": 7426456,
+          "content": "使用共享锁竞争机制"
+        }
+      ],
+      "correct_option_ids": [
+        7426452
+      ],
+      "correct_options": [
+        "使用临时序列节点自动排序"
+      ],
+      "analysis": "在ZooKeeper的leader选举过程中，确保公平性和顺序性是通过使用临时序列节点自动排序实现的。每个参与的ZooKeeper节点在ZNode路径下创建一个临时序列节点（例如，在/election下），ZooKeeper自动分配并维护序列号，节点按序列号从小到大的顺序参与选举，序列号最小的节点成为leader，确保了所有节点都有平等机会（公平性）和严格顺序（顺序性）。选项A错误，因为持久节点不适用于选举场景，它们在节点故障后不会自动删除，可能导致残留节点和选举失败。选项C错误，临时节点本身没有内置的优先级机制，ZooKeeper选举依赖于序列号而非显式优先级。选项D错误，共享锁竞争机制用于资源互斥，不是ZooKeeper leader选举的标准方式，选举主要基于临时序列节点的顺序机制。"
+    },
+    {
+      "question_id": 11404312,
+      "uuid": "272aaba99a4846b79df4899f6fe266c0",
+      "type": 1,
+      "title": "一个客户端在 ZooKeeper 的 `/app/lock` 路径上成功创...",
+      "content": "一个客户端在&nbsp;ZooKeeper&nbsp;的&nbsp;`/app/lock`&nbsp;路径上成功创建了一个临时节点（ephemeral&nbsp;znode）以实现分布式锁。随后，该客户端因长时间的&nbsp;Full&nbsp;GC&nbsp;而暂停，导致其与&nbsp;ZooKeeper&nbsp;服务器的会话（session）超时失效。GC&nbsp;结束后，该客户端（未意识到会话已失效）立即尝试删除&nbsp;`/app/lock`&nbsp;节点，而此时另一个客户端已经因为前一个会话超时，成功创建了同名的临时节点。请问第一个客户端的删除操作会得到什么结果？",
+      "options": [
+        {
+          "id": 7426575,
+          "content": "操作成功，因为客户端仍然持有该节点的有效句柄。"
+        },
+        {
+          "id": 7426576,
+          "content": "操作失败，抛出 NoNodeException，因为其创建的原始节点已随会话失效而自动删除。"
+        },
+        {
+          "id": 7426577,
+          "content": "操作失败，抛出 SessionExpiredException，因为客户端的会话已失效，所有后续操作都将基于此原因被拒绝。"
+        },
+        {
+          "id": 7426578,
+          "content": "操作失败，抛出 BadVersionException，因为节点已被其他客户端重建，版本号不匹配。"
+        }
+      ],
+      "correct_option_ids": [
+        7426577
+      ],
+      "correct_options": [
+        "操作失败，抛出 SessionExpiredException，因为客户端的会话已失效，所有后续操作都将基于此原因被拒绝。"
+      ],
+      "analysis": "在ZooKeeper中，当客户端的会话（session）超时失效后，任何后续操作（包括删除节点）都会因会话无效而被拒绝，并抛出SessionExpiredException。题目中，第一个客户端的会话已因Full GC暂停而超时失效，GC结束后其尝试删除节点时，ZooKeeper会优先检测会话状态，直接拒绝操作并抛出SessionExpiredException，而非基于节点的错误（如NoNodeException或BadVersionException）。选项A错误，因为会话失效后句柄无效；B错误，虽然原始节点已删除，但新节点存在，但首要原因是会话失效；D错误，版本号问题非主要原因。"
+    },
+    {
+      "question_id": 11404342,
+      "uuid": "c905da3c62e445fbbe83d9fe54dfd074",
+      "type": 1,
+      "title": "ZooKeeper 提供最终一致性模型，但在读取操作时可能返回陈旧数据，其...",
+      "content": "ZooKeeper&nbsp;提供最终一致性模型，但在读取操作时可能返回陈旧数据，其主要原因是什么？",
+      "options": [
+        {
+          "id": 7425511,
+          "content": "默认情况下，读取操作可能被路由到 Followers，而 Followers 的数据可能尚未同步最新更改"
+        },
+        {
+          "id": 7425512,
+          "content": "写操作是异步执行的，不保证即时生效"
+        },
+        {
+          "id": 7425513,
+          "content": "ZooKeeper 不支持强一致性模型"
+        },
+        {
+          "id": 7425514,
+          "content": "所有读取请求都必须通过领导者处理"
+        }
+      ],
+      "correct_option_ids": [
+        7425511
+      ],
+      "correct_options": [
+        "默认情况下，读取操作可能被路由到 Followers，而 Followers 的数据可能尚未同步最新更改"
+      ],
+      "analysis": "在ZooKeeper中，读取操作默认可能被路由到Followers（追随者节点），Followers的数据可能还未同步最新的写操作更改，因此返回陈旧数据。这是主要原因。选项B中，写操作在ZooKeeper中不是异步执行，而是通过同步广播协议（如ZAB协议）进行，需要多数节点确认，但数据复制到Followers的过程可能有延迟；选项C部分正确，但ZooKeeper提供顺序一致性（sequential consistency），并非完全缺乏强一致性元素，这不直接解释读取陈旧数据的原因；选项D错误，读取请求在默认情况下不一定通过领导者处理，可以从Followers读取以提升性能。"
+    },
+    {
+      "question_id": 11404363,
+      "uuid": "ce59faed4dae4f37b8e14e2bf5cd627c",
+      "type": 1,
+      "title": "在 ZooKeeper 中，当创建临时节点（Ephemeral node）...",
+      "content": "在&nbsp;ZooKeeper&nbsp;中，当创建临时节点（Ephemeral&nbsp;node）时，该节点会在以下哪种情况下自动删除？",
+      "options": [
+        {
+          "id": 7425179,
+          "content": "节点被显式删除命令移除时"
+        },
+        {
+          "id": 7425180,
+          "content": "服务器重启时"
+        },
+        {
+          "id": 7425181,
+          "content": "创建该节点的客户端会话结束或超时时"
+        },
+        {
+          "id": 7425183,
+          "content": "任何客户端修改节点数据时"
+        }
+      ],
+      "correct_option_ids": [
+        7425181
+      ],
+      "correct_options": [
+        "创建该节点的客户端会话结束或超时时"
+      ],
+      "analysis": "在 ZooKeeper 中，临时节点（Ephemeral node）在创建它的客户端会话结束或超时时自动删除，选项C正确描述了这一机制。选项A涉及显式删除命令，属于手动操作而非自动删除；选项B中，服务器重启不直接触发删除，但可能间接导致会话超时（这不是选项表述的直接原因）；选项D中，修改节点数据不影响节点存在，不会导致删除。"
+    },
+    {
+      "question_id": 1073889,
+      "uuid": "9f0f639cf52147fa8670979a6a53ee36",
+      "type": 2,
+      "title": "Zookeeper都有哪些功能",
+      "content": "Zookeeper 都有哪些功能",
+      "options": [
+        {
+          "id": 2269033,
+          "content": "集群管理"
+        },
+        {
+          "id": 2269034,
+          "content": "主节点选举"
+        },
+        {
+          "id": 2269035,
+          "content": "分布式锁"
+        },
+        {
+          "id": 2269036,
+          "content": "命名服务"
+        }
+      ],
+      "correct_option_ids": [
+        2269033,
+        2269034,
+        2269035,
+        2269036
+      ],
+      "correct_options": [
+        "集群管理",
+        "主节点选举",
+        "分布式锁",
+        "命名服务"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404324,
+      "uuid": "3b432804f5f249809bb5d51e69237329",
+      "type": 1,
+      "title": "在ZooKeeper中，客户端的读请求默认可以由任意一台Follower服...",
+      "content": "在ZooKeeper中，客户端的读请求默认可以由任意一台Follower服务器处理，这带来了很好的读性能扩展性，但也引入了数据一致性的问题。如果一个客户端需要保证自己每次读取到的都是全局最新提交的数据，最标准和高效的做法是什么？",
+      "options": [
+        {
+          "id": 7426391,
+          "content": "在每次读（`getData`）请求之前，先执行一次无意义的写（`setData`）操作，以强制同步。"
+        },
+        {
+          "id": 7426396,
+          "content": "在每次读（`getData`）请求之前，先调用一次 `sync()` 命令，强制其连接的Follower与Leader进行状态同步。"
+        },
+        {
+          "id": 7426397,
+          "content": "配置客户端只连接Leader节点，牺牲读性能以换取最强的一致性。"
+        },
+        {
+          "id": 7426398,
+          "content": "读取数据后，再连接到另外一个随机的节点再次读取，比较两次结果是否一致。"
+        }
+      ],
+      "correct_option_ids": [
+        7426396
+      ],
+      "correct_options": [
+        "在每次读（`getData`）请求之前，先调用一次 `sync()` 命令，强制其连接的Follower与Leader进行状态同步。"
+      ],
+      "analysis": "在ZooKeeper中，为了确保客户端每次读取到全局最新提交的数据，标准做法是使用sync()命令，因为它强制当前连接的Follower与Leader同步状态，然后执行读取操作，从而保证强一致性。此方法高效，因为sync()是轻量级的操作，不涉及数据修改。选项A（执行无意义写操作）会引入不必要的写开销，降低性能；选项C（只连接Leader）牺牲读性能扩展性，无法利用Follower处理读请求；选项D（读取两次比较）只能检测数据不一致，无法保证每次读取都是最新数据，且效率低下。因此，选项B是最标准和高效的做法。"
+    },
+    {
+      "question_id": 1923929,
+      "uuid": "34025171b9c5407a8e506ad020a52547",
+      "type": 1,
+      "title": "Zookeeper能够确保（）",
+      "content": "Zookeeper能够确保（）<br>",
+      "options": [
+        {
+          "id": 2969985,
+          "content": "所有namenode都是活动的，为客户端请求提供服务"
+        },
+        {
+          "id": 2969986,
+          "content": "当任何一个datanode失效时，触发故障转移"
+        },
+        {
+          "id": 2969987,
+          "content": "仅有一个namenode是活动的，为客户端请求提供服务"
+        },
+        {
+          "id": 2969988,
+          "content": "Hadoop超级管理员不能启动故障转移"
+        }
+      ],
+      "correct_option_ids": [
+        2969987
+      ],
+      "correct_options": [
+        "仅有一个namenode是活动的，为客户端请求提供服务"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404308,
+      "uuid": "d0fb06c5714d4cdabf311080306d9b86",
+      "type": 1,
+      "title": "在 ZAB 协议的消息广播阶段，Leader 如何处理事务请求？",
+      "content": "在&nbsp;ZAB&nbsp;协议的消息广播阶段，Leader&nbsp;如何处理事务请求？",
+      "options": [
+        {
+          "id": 7426635,
+          "content": "直接将请求写入本地磁盘后响应客户端"
+        },
+        {
+          "id": 7426636,
+          "content": "转发给随机 Follower 处理"
+        },
+        {
+          "id": 7426637,
+          "content": "生成提案分发给所有节点进行原子广播"
+        },
+        {
+          "id": 7426638,
+          "content": "等待半数 Observer 节点确认后提交"
+        }
+      ],
+      "correct_option_ids": [
+        7426637
+      ],
+      "correct_options": [
+        "生成提案分发给所有节点进行原子广播"
+      ],
+      "analysis": "在ZAB协议的消息广播阶段，Leader处理事务请求的核心流程是：将请求转化为提案（proposal），并广播给所有Follower节点进行原子提交；当收到多数Follower的确认（ACK）后，Leader才提交事务并响应客户端。选项C描述正确：'生成提案分发给所有节点进行原子广播'，其中'节点'指参与广播的Follower。\n\n其他选项错误：\n- A错误：Leader不能直接写入磁盘后响应，这忽略广播和多数确认机制，破坏原子性。\n- B错误：Leader必须广播给所有Follower，而非随机转发。\n- D错误：ZAB协议中不涉及Observer节点（Observer是ZooKeeper的可扩展性机制，不参与投票），提交依赖于Follower的多数票。"
+    },
+    {
+      "question_id": 1923944,
+      "uuid": "2536eb05aa37422ba6afce125fd05b7c",
+      "type": 2,
+      "title": "关于ZooKeeper的说法描述正确的是（）",
+      "content": "关于ZooKeeper的说法描述正确的是（）<br>",
+      "options": [
+        {
+          "id": 2970045,
+          "content": "是一个分布式应用程序协调服务"
+        },
+        {
+          "id": 2970046,
+          "content": "Google的Chubby一个开源实现"
+        },
+        {
+          "id": 2970047,
+          "content": "是Hadoop的重要组件"
+        },
+        {
+          "id": 2970048,
+          "content": "提供的服务包括配置维护、域名服务、分布式同步、组服务"
+        }
+      ],
+      "correct_option_ids": [
+        2970045,
+        2970046,
+        2970047,
+        2970048
+      ],
+      "correct_options": [
+        "是一个分布式应用程序协调服务",
+        "Google的Chubby一个开源实现",
+        "是Hadoop的重要组件",
+        "提供的服务包括配置维护、域名服务、分布式同步、组服务"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404281,
+      "uuid": "4c967376379545539bb9a82ebcd387d3",
+      "type": 1,
+      "title": "关于临时节点（ephemeral）与临时顺序节点（ephemeral se...",
+      "content": "关于临时节点（ephemeral）与临时顺序节点（ephemeral&nbsp;sequential）的特性，哪项正确？",
+      "options": [
+        {
+          "id": 7427042,
+          "content": "临时节点在会话失效时自动删除，且不允许拥有子节点"
+        },
+        {
+          "id": 7427044,
+          "content": "临时节点在 TCP 连接断开瞬间就会被删除"
+        },
+        {
+          "id": 7427045,
+          "content": "临时顺序节点可被不同会话共享以跨会话存活"
+        },
+        {
+          "id": 7427046,
+          "content": "可以通过设置持久 watcher 防止临时节点被删除"
+        }
+      ],
+      "correct_option_ids": [
+        7427042
+      ],
+      "correct_options": [
+        "临时节点在会话失效时自动删除，且不允许拥有子节点"
+      ],
+      "analysis": "在ZooKeeper中，临时节点（ephemeral node）的特性是：在会话失效时（如客户端会话超时或结束）自动删除，并且不允许拥有子节点，这符合选项A的描述。选项B错误，因为临时节点的删除并非在TCP连接断开瞬间发生，而是在会话超时后（具体取决于会话超时设置）。选项C错误，因为临时顺序节点（ephemeral sequential node）与会话绑定，无法被不同会话共享或跨会话存活。选项D错误，因为设置持久watcher仅用于监听节点变化（如删除事件），但无法阻止临时节点因会话失效而被删除。题目无文字错误、逻辑矛盾、专业名词错误或规则破坏错误。"
+    },
+    {
+      "question_id": 370506,
+      "uuid": "bbfd16dacc1f434b81294ac58c6481d7",
+      "type": 1,
+      "title": "Zookeeper在\nconfig 命名空间下，每个znode最多能存储（...",
+      "content": "Zookeeper在 config 命名空间下，每个znode最多能存储（）数据？",
+      "options": [
+        {
+          "id": 963053,
+          "content": "1M"
+        },
+        {
+          "id": 963054,
+          "content": "16M"
+        },
+        {
+          "id": 963055,
+          "content": "512K"
+        },
+        {
+          "id": 963056,
+          "content": "64K"
+        }
+      ],
+      "correct_option_ids": [
+        963053
+      ],
+      "correct_options": [
+        "1M"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404372,
+      "uuid": "7918977fab1d4f3e996d6bbfff1bd3c8",
+      "type": 1,
+      "title": "在一个由 5 台服务器组成的 ZooKeeper 集群中，为了保证高可用性...",
+      "content": "在一个由&nbsp;5&nbsp;台服务器组成的&nbsp;ZooKeeper&nbsp;集群中，为了保证高可用性，其法定人数（Quorum）为&nbsp;3。如果该集群发生了网络分区，形成了两个分区：一个包含&nbsp;3&nbsp;台服务器（P1），另一个包含&nbsp;2&nbsp;台服务器（P2）。关于这两个分区内的服务状态，以下描述最准确的是？",
+      "options": [
+        {
+          "id": 7425043,
+          "content": "P1 和 P2 都会各自选举出 Leader，形成两个独立的子集群对外提供服务。"
+        },
+        {
+          "id": 7425045,
+          "content": "P1 分区可以选举出 Leader 并正常处理读写请求，而 P2 分区无法选举出 Leader，不能提供服务。"
+        },
+        {
+          "id": 7425047,
+          "content": "P1 分区会进入只读模式，P2 分区完全不可用。"
+        },
+        {
+          "id": 7425050,
+          "content": "整个集群都会停止服务，直到网络分区问题解决，所有节点重新恢复通信。"
+        }
+      ],
+      "correct_option_ids": [
+        7425045
+      ],
+      "correct_options": [
+        "P1 分区可以选举出 Leader 并正常处理读写请求，而 P2 分区无法选举出 Leader，不能提供服务。"
+      ],
+      "analysis": "在ZooKeeper集群中，法定人数（Quorum）为3，意味着需要至少3台服务器才能选举Leader并处理读写请求。分区P1包含3台服务器（满足Quorum），因此可以选举Leader并正常处理读写请求；分区P2包含2台服务器（少于Quorum），无法选举Leader，也不能提供服务，因为少数分区无法取得进展。选项A错误，因为P2无法选举Leader；选项C错误，因为P1拥有Quorum应读写可用而非只读；选项D错误，因为P1分区可继续服务。"
+    },
+    {
+      "question_id": 1923941,
+      "uuid": "fb7bb4eb20834a82b61cf1e97cc8741d",
+      "type": 2,
+      "title": "下列哪些是zookeeper的选举算法？（）",
+      "content": "下列哪些是zookeeper的选举算法？（）<br>",
+      "options": [
+        {
+          "id": 2970033,
+          "content": "basic paxos"
+        },
+        {
+          "id": 2970034,
+          "content": "fast paxos"
+        },
+        {
+          "id": 2970035,
+          "content": "FastLeaderElection"
+        },
+        {
+          "id": 2970036,
+          "content": "AuthLeaderElection"
+        }
+      ],
+      "correct_option_ids": [
+        2970035,
+        2970036
+      ],
+      "correct_options": [
+        "FastLeaderElection",
+        "AuthLeaderElection"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404319,
+      "uuid": "665528c466da4bb284b6af31e5d66da9",
+      "type": 1,
+      "title": "ZooKeeper的监听机制（watches）一旦触发，其行为特点是什么？",
+      "content": "ZooKeeper的监听机制（watches）一旦触发，其行为特点是什么？",
+      "options": [
+        {
+          "id": 7426467,
+          "content": "持续通知所有相关变化直到手动移除"
+        },
+        {
+          "id": 7426468,
+          "content": "仅在节点创建时通知"
+        },
+        {
+          "id": 7426469,
+          "content": "通知一次后自动失效"
+        },
+        {
+          "id": 7426470,
+          "content": "延迟固定时间后通知"
+        }
+      ],
+      "correct_option_ids": [
+        7426469
+      ],
+      "correct_options": [
+        "通知一次后自动失效"
+      ],
+      "analysis": "ZooKeeper的监听机制（watches）是单次触发器：一旦触发，它会通知客户端相关事件一次，之后自动失效；客户端需要重新注册才能接收后续通知。选项A错误，因为watches不会持续通知，而是单次；选项B错误，因为watches不仅限于节点创建，还可用于节点删除、数据更改等事件；选项D错误，因为通知没有固定延迟，而是事件驱动。"
+    },
+    {
+      "question_id": 11404326,
+      "uuid": "2370efbf6e1b49d0943f49149ecc72c4",
+      "type": 1,
+      "title": "在 ZAB 协议下，关于事务广播与提交过程的说法，哪一项是正确的？",
+      "content": "在&nbsp;ZAB&nbsp;协议下，关于事务广播与提交过程的说法，哪一项是正确的？",
+      "options": [
+        {
+          "id": 7426375,
+          "content": "Leader 收到客户端写请求后，任意一个 Follower 返回 ACK 即可提交，提交后再向其他节点同步"
+        },
+        {
+          "id": 7426376,
+          "content": "所有服务器各自生成 zxid，最终通过时间戳合并确保全局顺序"
+        },
+        {
+          "id": 7426377,
+          "content": "Leader 为每个提议分配全局有序的 zxid，需获得超过半数服务器的 ACK 后才能提交"
+        },
+        {
+          "id": 7426378,
+          "content": "ZAB 基于两阶段提交（2PC），不需要崩溃恢复阶段即可保证一致性"
+        }
+      ],
+      "correct_option_ids": [
+        7426377
+      ],
+      "correct_options": [
+        "Leader 为每个提议分配全局有序的 zxid，需获得超过半数服务器的 ACK 后才能提交"
+      ],
+      "analysis": "选项C正确：在ZAB协议中，Leader为每个提议分配全局有序的zxid（ZooKeeper Transaction ID），并需要获得超过半数服务器的ACK才能提交，这确保了事务的顺序性和原子性。\n其他选项错误：\n- A：错误，ZAB要求获得超过半数Follower的ACK才能提交，不是任意一个Follower返回ACK即可。\n- B：错误，zxid由Leader统一生成并分配，以保持全局顺序，不是服务器各自生成并通过时间戳合并。\n- D：错误，ZAB虽然类似两阶段提交，但并非严格基于2PC，且必须包含崩溃恢复阶段来处理Leader故障，以保证一致性。"
+    },
+    {
+      "question_id": 11404316,
+      "uuid": "0b85a214e0744c14bcfdfa6b339204ed",
+      "type": 1,
+      "title": "一个包含 5 个节点的 ZooKeeper 集群，其正常运行所需的法定人数...",
+      "content": "一个包含&nbsp;5&nbsp;个节点的&nbsp;ZooKeeper&nbsp;集群，其正常运行所需的法定人数（quorum）为&nbsp;3。在某一时刻，当前的&nbsp;leader&nbsp;节点因硬件故障宕机，同时另一个&nbsp;follower&nbsp;节点因网络问题与集群中的其他所有节点失联（网络分区）。此时，集群的整体状态会是怎样的？",
+      "options": [
+        {
+          "id": 7426511,
+          "content": "集群将无法提供服务，因为存活的节点数（3个）未超过原集群总数的一半。"
+        },
+        {
+          "id": 7426513,
+          "content": "剩余的 3 个能够互相通信的节点会形成新的法定多数，选举出新的 leader，并继续正常提供读写服务。"
+        },
+        {
+          "id": 7426515,
+          "content": "集群将进入只读模式，因为无法选举出新的 leader，但客户端仍然可以从剩余的 follower 读取数据。"
+        },
+        {
+          "id": 7426517,
+          "content": "剩余的 3 个节点将无限期地处于 LOOKING 状态，直到宕机或分区的节点之一恢复正常。"
+        }
+      ],
+      "correct_option_ids": [
+        7426513
+      ],
+      "correct_options": [
+        "剩余的 3 个能够互相通信的节点会形成新的法定多数，选举出新的 leader，并继续正常提供读写服务。"
+      ],
+      "analysis": "在ZooKeeper集群中，法定人数（quorum）用于确保分布式一致性和 leader 选举，quorum 大小为集群节点总数的多数。对于5节点集群，quorum= floor(5/2) + 1 = 3。当 leader 节点宕机且另一个 follower 节点因网络分区失联时，剩余3个节点能互相通信，且节点数为3（等于 quorum 大小），因此它们能形成新的法定多数，选举出新 leader，并继续正常提供读写服务。选项A错误，因为存活的3个节点已超过集群总数一半（2.5），且理由不成立；选项C错误，因为剩余节点能选举新 leader，不会进入只读模式；选项D错误，因为选举在 quorum 满足时应快速成功，不会无限期等待故障节点恢复。题目中所有文字、专业术语（如ZooKeeper、quorum、leader、follower、LOOKING状态）和逻辑一致，无错误或矛盾。"
+    },
+    {
+      "question_id": 1923931,
+      "uuid": "abf1dab2a7984ca099e415df12600a84",
+      "type": 1,
+      "title": "zookeeper节点的特性（）",
+      "content": "zookeeper节点的特性（）<br>",
+      "options": [
+        {
+          "id": 2969993,
+          "content": "可以存储数据"
+        },
+        {
+          "id": 2969994,
+          "content": "不可以存储数据"
+        },
+        {
+          "id": 2969995,
+          "content": "可以计算数据"
+        },
+        {
+          "id": 2969996,
+          "content": "可以协调数据"
+        }
+      ],
+      "correct_option_ids": [
+        2969993
+      ],
+      "correct_options": [
+        "可以存储数据"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 1923935,
+      "uuid": "a9081a46349144c088fd00f73bd9b0f2",
+      "type": 1,
+      "title": "关于ZooKeeper的说法不正确是（）",
+      "content": "关于ZooKeeper的说法不正确是（）<br>",
+      "options": [
+        {
+          "id": 2970009,
+          "content": "采用层次化的数据结构"
+        },
+        {
+          "id": 2970010,
+          "content": "采用类似于LINUX命令进行数据访问"
+        },
+        {
+          "id": 2970011,
+          "content": "具备临时节点和永久节点"
+        },
+        {
+          "id": 2970012,
+          "content": "永久节点会随客户端会话的结束而结束其生命周期"
+        }
+      ],
+      "correct_option_ids": [
+        2970012
+      ],
+      "correct_options": [
+        "永久节点会随客户端会话的结束而结束其生命周期"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404287,
+      "uuid": "ec65081c9a5d4cf8a8f70268c128f588",
+      "type": 1,
+      "title": "客户端通过ZooKeeper客户端为节点/node1注册了Watcher以...",
+      "content": "客户端通过ZooKeeper客户端为节点/node1注册了Watcher以监听数据变化，当/node1的数据第一次被修改时客户端成功收到通知。若/node1的数据再次被修改，客户端能否收到第二次通知？",
+      "options": [
+        {
+          "id": 7426955,
+          "content": "能，因为Watcher会持续监听直到手动取消"
+        },
+        {
+          "id": 7426956,
+          "content": "不能，因为ZooKeeper的Watcher是一次性触发机制"
+        },
+        {
+          "id": 7426957,
+          "content": "能，只要客户端会话未超时"
+        },
+        {
+          "id": 7426958,
+          "content": "不能，因为第二次修改不会触发数据变化事件"
+        }
+      ],
+      "correct_option_ids": [
+        7426956
+      ],
+      "correct_options": [
+        "不能，因为ZooKeeper的Watcher是一次性触发机制"
+      ],
+      "analysis": "ZooKeeper的Watcher机制是一次性触发的：当事件（如数据变化）触发Watcher后，该Watcher会被自动移除，因此客户端在第一次收到通知后，无法收到第二次通知，除非重新注册Watcher。选项A错误，因为Watcher不会持续监听；选项C错误，因为会话未超时不改变Watcher的一次性本质；选项D错误，因为第二次修改会触发数据变化事件，但没有Watcher导致通知未被发送。"
+    },
+    {
+      "question_id": 11404327,
+      "uuid": "f7f76b43317140c583b772586d6b37a2",
+      "type": 1,
+      "title": "你要被动感知某父节点下子节点的增删变化，应该如何设置监控？",
+      "content": "你要被动感知某父节点下子节点的增删变化，应该如何设置监控？",
+      "options": [
+        {
+          "id": 7426367,
+          "content": "对该父节点执行 getChildren 并设置 watch，再在回调中重新注册"
+        },
+        {
+          "id": 7426368,
+          "content": "对该父节点执行 getData 并设置 watch，可同时感知数据与子节点列表变化"
+        },
+        {
+          "id": 7426369,
+          "content": "对该父节点执行 exists 并设置 watch，即可感知其子节点的变化"
+        },
+        {
+          "id": 7426370,
+          "content": "在创建子节点时使用 EPHEMERAL_SEQUENTIAL，ZooKeeper 会永久推送父节点的子列表变化，无需重新注册"
+        }
+      ],
+      "correct_option_ids": [
+        7426367
+      ],
+      "correct_options": [
+        "对该父节点执行 getChildren 并设置 watch，再在回调中重新注册"
+      ],
+      "analysis": "在ZooKeeper中，被动感知父节点下子节点的增删变化，需要使用getChildren操作并设置watch，因为getChildren专门用于监控子节点列表的变化（如添加或删除子节点）。由于ZooKeeper的watch机制是一次性的，必须在回调函数中重新注册watch以持续监控，这符合选项A的描述。选项B错误：getData只能监控父节点数据的变化，无法感知子节点的增删。选项C错误：exists只监控父节点本身的创建或删除，无法感知子节点变化。选项D错误：EPHEMERAL_SEQUENTIAL是创建子节点的模式，与watch机制无关；ZooKeeper的watch并非永久推送，仍需重新注册，选项声称‘无需重新注册’不符合事实。"
+    },
+    {
+      "question_id": 11404334,
+      "uuid": "b06f06354e3a47b585cf5a48a936eac6",
+      "type": 1,
+      "title": "一个客户端与 ZooKeeper 集群建立了一个会话（Session），并...",
+      "content": "一个客户端与&nbsp;ZooKeeper&nbsp;集群建立了一个会话（Session），并创建了一个临时节点（Ephemeral&nbsp;Node）。如果在&nbsp;`sessionTimeout`&nbsp;时间内，服务端没有收到该客户端的任何心跳请求，最终导致会话过期，关于该临时节点的清理过程，以下描述最准确的是？",
+      "options": [
+        {
+          "id": 7426311,
+          "content": "Leader 节点会立即在其本地内存中删除该临时节点，并依赖 Gossip 协议通知其他节点。"
+        },
+        {
+          "id": 7426312,
+          "content": "该会话过期事件会触发一次新的 Leader 选举，由新 Leader 负责清理所有过期的会话和相关的临时节点。"
+        },
+        {
+          "id": 7426313,
+          "content": "Leader 节点会将该会话的关闭和临时节点的删除操作作为一个内部事务（Proposal）在集群内通过 ZAB 协议进行广播和提交。"
+        },
+        {
+          "id": 7426314,
+          "content": "Leader 节点会直接向所有 Follower 发送删除指令，Follower 收到后立即执行删除，无需等待 Quorum 确认。"
+        }
+      ],
+      "correct_option_ids": [
+        7426313
+      ],
+      "correct_options": [
+        "Leader 节点会将该会话的关闭和临时节点的删除操作作为一个内部事务（Proposal）在集群内通过 ZAB 协议进行广播和提交。"
+      ],
+      "analysis": "在 ZooKeeper 中，当会话超时过期时，Leader 节点会将会话关闭和临时节点删除操作作为一个内部事务（Proposal），通过 ZAB 协议广播给所有节点，需要 Quorum 确认后才能提交并执行删除。选项 A 错误，因为 ZooKeeper 使用 ZAB 协议而非 Gossip 协议；选项 B 错误，会话过期不会触发 Leader 选举，Leader 选举只在 Leader 失败时发生；选项 D 错误，操作必须等待 Quorum 确认，不能立即执行。题目和选项无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 1923948,
+      "uuid": "fbada1a17d474b1aa9ac6f174255740b",
+      "type": 1,
+      "title": "下列关于zookeeper自身特性说法正确的是（）",
+      "content": "下列关于zookeeper自身特性说法正确的是（）<br>",
+      "options": [
+        {
+          "id": 2970062,
+          "content": "zookeeper是一个被动协调服务组件"
+        },
+        {
+          "id": 2970063,
+          "content": "zookeeper是一个计算组件"
+        },
+        {
+          "id": 2970064,
+          "content": "zookeeper是一个主动协调服务"
+        },
+        {
+          "id": 2970065,
+          "content": "zookeeper是一个存储模型"
+        }
+      ],
+      "correct_option_ids": [
+        2970062
+      ],
+      "correct_options": [
+        "zookeeper是一个被动协调服务组件"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404288,
+      "uuid": "28da8aa0c83a420aa40c5d8166989637",
+      "type": 1,
+      "title": "ZooKeeper的ZAB（ZooKeeper Atomic Broadc...",
+      "content": "ZooKeeper的ZAB（ZooKeeper&nbsp;Atomic&nbsp;Broadcast）协议最核心的设计目标是什么？",
+      "options": [
+        {
+          "id": 7426936,
+          "content": "实现分布式事务的强一致性提交"
+        },
+        {
+          "id": 7426938,
+          "content": "保证Leader选举后集群状态的同步及写操作的原子性广播"
+        },
+        {
+          "id": 7426940,
+          "content": "优化集群的读操作性能，支持高并发读"
+        },
+        {
+          "id": 7426942,
+          "content": "解决Paxos协议中存在的活锁问题"
+        }
+      ],
+      "correct_option_ids": [
+        7426938
+      ],
+      "correct_options": [
+        "保证Leader选举后集群状态的同步及写操作的原子性广播"
+      ],
+      "analysis": "ZAB（ZooKeeper Atomic Broadcast）协议的核心设计目标是确保在Leader选举后集群状态的同步，并通过原子广播保证写操作的一致性，从而实现分布式系统的顺序一致性。选项B准确描述此目标；选项A错误，因为ZAB提供顺序一致性而非强一致性提交；选项C错误，因为ZAB优化写操作广播而非读操作性能；选项D错误，虽然ZAB避免了活锁，但解决Paxos活锁问题并非其核心设计目标。"
+    },
+    {
+      "question_id": 11404367,
+      "uuid": "18ec6d77a635404b9ebbaa211087d754",
+      "type": 1,
+      "title": "客户端C与ZooKeeper集群建立Session后创建了临时节点/tmp...",
+      "content": "客户端C与ZooKeeper集群建立Session后创建了临时节点/tmp/session_node，若客户端C因网络波动短暂断开连接（未超过Session超时时间），恢复连接后该临时节点的状态是？",
+      "options": [
+        {
+          "id": 7425115,
+          "content": "已被立即删除，因为客户端断开连接"
+        },
+        {
+          "id": 7425116,
+          "content": "仍然存在，因为Session未超时"
+        },
+        {
+          "id": 7425117,
+          "content": "已被删除，需重新创建"
+        },
+        {
+          "id": 7425118,
+          "content": "状态不确定，取决于集群负载"
+        }
+      ],
+      "correct_option_ids": [
+        7425116
+      ],
+      "correct_options": [
+        "仍然存在，因为Session未超时"
+      ],
+      "analysis": "在ZooKeeper中，临时节点的生命周期与客户端Session绑定。当客户端短暂断开连接但未超过Session超时时间时，Session保持有效，因此临时节点不会被删除。恢复连接后，临时节点/tmp/session_node仍然存在。选项A错误，因为断开连接不会立即删除节点（只在Session结束时才删除）；选项C错误，因为节点未被删除，无需重新创建；选项D错误，因为状态由Session状态决定，与集群负载无关。"
+    },
+    {
+      "question_id": 11404318,
+      "uuid": "857306d26a1d4443af929aa3333e70e0",
+      "type": 1,
+      "title": "在实际工程中，ZooKeeper的临时节点（ephemeral nodes...",
+      "content": "在实际工程中，ZooKeeper的临时节点（ephemeral&nbsp;nodes）最适合用于解决哪个问题？",
+      "options": [
+        {
+          "id": 7426483,
+          "content": "存储持久化配置数据"
+        },
+        {
+          "id": 7426484,
+          "content": "确保客户端崩溃时分布式锁自动释放"
+        },
+        {
+          "id": 7426485,
+          "content": "实现高吞吐数据写入"
+        },
+        {
+          "id": 7426486,
+          "content": "提供数据备份和恢复"
+        }
+      ],
+      "correct_option_ids": [
+        7426484
+      ],
+      "correct_options": [
+        "确保客户端崩溃时分布式锁自动释放"
+      ],
+      "analysis": "ZooKeeper的临时节点（ephemeral nodes）在客户端会话结束时自动删除，这一特性使其最适合用于分布式锁机制：当客户端崩溃或断开连接时，锁相关临时节点自动移除，从而确保锁被释放，避免死锁。选项A错误，因为临时节点不持久，无法用于存储持久化配置数据（应使用持久节点）；选项C错误，因为ZooKeeper本身不设计为高吞吐数据存储，临时节点不解决写入吞吐量问题；选项D错误，因为临时节点与会话绑定，无法提供可靠的数据备份和恢复。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404296,
+      "uuid": "2f83f5febe1b465289efdcc24193a550",
+      "type": 1,
+      "title": "ZooKeeper的Zab协议主要用于确保什么核心特性？",
+      "content": "ZooKeeper的Zab协议主要用于确保什么核心特性？",
+      "options": [
+        {
+          "id": 7426811,
+          "content": "读操作的最终一致性"
+        },
+        {
+          "id": 7426812,
+          "content": "服务器负载均衡"
+        },
+        {
+          "id": 7426817,
+          "content": "事务的顺序一致性和原子性广播"
+        },
+        {
+          "id": 7426818,
+          "content": "快速节点发现和注册"
+        }
+      ],
+      "correct_option_ids": [
+        7426817
+      ],
+      "correct_options": [
+        "事务的顺序一致性和原子性广播"
+      ],
+      "analysis": "ZooKeeper的Zab协议（ZooKeeper Atomic Broadcast）主要用于确保事务的顺序一致性和原子性广播，这是其核心特性。选项A：读操作的最终一致性，ZooKeeper支持最终一致性读，但Zab协议侧重于写操作（事务）的顺序和原子性，不是直接针对读操作；选项B：服务器负载均衡，Zab协议不涉及负载均衡，该功能由ZooKeeper的其他机制处理；选项D：快速节点发现和注册，ZooKeeper提供节点服务，但Zab协议是底层一致性协议，不直接处理这些功能。因此，C选项正确匹配Zab协议的设计目的。"
+    },
+    {
+      "question_id": 11404335,
+      "uuid": "45ac7bc64b5d45e4bfbd0593d111a9ac",
+      "type": 1,
+      "title": "在一个 ZooKeeper 集群中，当 Leader 节点发生故障并触发新...",
+      "content": "在一个&nbsp;ZooKeeper&nbsp;集群中，当&nbsp;Leader&nbsp;节点发生故障并触发新一轮的&nbsp;Leader&nbsp;选举后，ZAB&nbsp;(ZooKeeper&nbsp;Atomic&nbsp;Broadcast)&nbsp;协议的恢复模式（Recovery&nbsp;Mode）核心目标是确保数据的一致性。以下哪个选项最准确地描述了新&nbsp;Leader&nbsp;选出后到开始处理新请求前的关键行为？",
+      "options": [
+        {
+          "id": 7426299,
+          "content": "新 Leader 会强制所有 Followers 回滚到它自己的最新已提交事务，即使 Followers 存在更新的事务日志。"
+        },
+        {
+          "id": 7426300,
+          "content": "新 Leader 会立即开始接受新的写请求，并异步地将自己的状态同步给落后的 Followers。"
+        },
+        {
+          "id": 7426301,
+          "content": "新 Leader 会首先与集群中超过半数的 Follower 进行通信，找到并同步到拥有最高 ZXID (ZooKeeper Transaction ID) 的事务日志状态，然后再统一集群状态并开始对外服务。"
+        },
+        {
+          "id": 7426302,
+          "content": "新 Leader 会丢弃所有未被集群确认的事务提议（Proposal），然后等待所有 Followers 主动连接并同步其状态。"
+        }
+      ],
+      "correct_option_ids": [
+        7426301
+      ],
+      "correct_options": [
+        "新 Leader 会首先与集群中超过半数的 Follower 进行通信，找到并同步到拥有最高 ZXID (ZooKeeper Transaction ID) 的事务日志状态，然后再统一集群状态并开始对外服务。"
+      ],
+      "analysis": "在ZAB协议的恢复模式中，新Leader选出后需确保数据一致性。选项C正确描述：新Leader与超过半数的Follower通信，找到最高ZXID的事务日志状态并同步，统一集群状态后才开始服务。选项A错误：新Leader不应强制回滚到自身状态，若Follower有更高ZXID，需同步该状态；选项B错误：新Leader不能立即接受新请求，必须先同步状态；选项D错误：同步过程是主动的，而非被动等待Followers连接，且并非所有未确认提议都被丢弃。"
+    },
+    {
+      "question_id": 11404299,
+      "uuid": "314c7319c81b4f318ac72f9463fe8a65",
+      "type": 1,
+      "title": "一个客户端进程创建了一个临时节点（ephemeral znode）`/ap...",
+      "content": "一个客户端进程创建了一个临时节点（ephemeral&nbsp;znode）`/app/lock`&nbsp;来实现分布式锁。随后，该客户端进程遇到了一个长时间的&nbsp;Full&nbsp;GC，暂停时间超过了与&nbsp;ZooKeeper&nbsp;服务器协商的&nbsp;session&nbsp;timeout。当&nbsp;GC&nbsp;结束，客户端进程恢复执行后，它会观察到什么情况？",
+      "options": [
+        {
+          "id": 7426767,
+          "content": "客户端的会话依然有效，因为它是由于 GC 暂停而非网络故障，临时节点 `/app/lock` 也仍然存在。"
+        },
+        {
+          "id": 7426768,
+          "content": "服务器会检测到会话超时，但会等待客户端下一次心跳来确认是否删除临时节点 `/app/lock`。"
+        },
+        {
+          "id": 7426769,
+          "content": "客户端的会话被服务器认定为已过期，临时节点 `/app/lock` 已被自动删除，客户端需要重新建立会话。"
+        },
+        {
+          "id": 7426770,
+          "content": "临时节点 `/app/lock` 会被服务器自动转换为持久节点，以防止锁信息因会话超时而丢失。"
+        }
+      ],
+      "correct_option_ids": [
+        7426769
+      ],
+      "correct_options": [
+        "客户端的会话被服务器认定为已过期，临时节点 `/app/lock` 已被自动删除，客户端需要重新建立会话。"
+      ],
+      "analysis": "ZooKeeper会话超时机制与临时节点行为：ZooKeeper服务器仅基于心跳检测会话状态；若客户端在session timeout内未发送心跳（无论原因，如GC暂停或网络故障），服务器将单方面认定会话过期并自动删除关联的临时节点。恢复后，客户端需重新建立会话和节点。选项C正确，选项A、B、D均错误：A误以为GC暂停有特殊处理；B误以为服务器需等待客户端确认；D所述转换机制不存在。题目无文字错误、逻辑矛盾或专业名称错误，符合筛选有效性。"
+    },
+    {
+      "question_id": 1923947,
+      "uuid": "7daf9bc56ede4311ab9ee7f896b800f8",
+      "type": 1,
+      "title": "关于ZooKeeper顺序节点的说法正确的是（）",
+      "content": "关于ZooKeeper顺序节点的说法正确的是（）<br>",
+      "options": [
+        {
+          "id": 2970058,
+          "content": "创建顺序节点的命令为：create/testvalue1"
+        },
+        {
+          "id": 2970059,
+          "content": "创建顺序节点时不能连续执行创建命令，否者报错节点已存在"
+        },
+        {
+          "id": 2970060,
+          "content": "通过顺序节点，可以创建分布式系统唯一ID"
+        },
+        {
+          "id": 2970061,
+          "content": "顺序节点的序号能无限增加"
+        }
+      ],
+      "correct_option_ids": [
+        2970060
+      ],
+      "correct_options": [
+        "通过顺序节点，可以创建分布式系统唯一ID"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404295,
+      "uuid": "2b390f3d0b374c929a64368b80d4c7aa",
+      "type": 1,
+      "title": "在一个包含5个节点的 ZooKeeper 集群中，为实现分布式锁，客户端尝...",
+      "content": "在一个包含5个节点的&nbsp;ZooKeeper&nbsp;集群中，为实现分布式锁，客户端尝试创建一个排他性的临时节点&nbsp;`/locks/job1`。如果在创建过程中，客户端成功向&nbsp;Leader&nbsp;发送了创建请求，但在收到&nbsp;Leader&nbsp;的成功响应之前，Leader&nbsp;节点宕机了。当集群选出新&nbsp;Leader&nbsp;后，客户端重新连接并检查&nbsp;`/locks/job1`&nbsp;节点。它会发现什么情况？",
+      "options": [
+        {
+          "id": 7426827,
+          "content": "节点 `/locks/job1` 肯定不存在，因为客户端没有收到成功的响应。"
+        },
+        {
+          "id": 7426828,
+          "content": "节点 `/locks/job1` 肯定存在，因为 Leader 在宕机前已将操作复制给了至少一个 Follower。"
+        },
+        {
+          "id": 7426829,
+          "content": "节点 `/locks/job1` 可能存在也可能不存在，取决于旧 Leader 宕机前是否已将该写操作成功复制到多数派节点。"
+        },
+        {
+          "id": 7426830,
+          "content": "节点 `/locks/job1` 会以一个特殊的状态存在，标记为“待确认”，直到原客户端重新确认为止。"
+        }
+      ],
+      "correct_option_ids": [
+        7426829
+      ],
+      "correct_options": [
+        "节点 `/locks/job1` 可能存在也可能不存在，取决于旧 Leader 宕机前是否已将该写操作成功复制到多数派节点。"
+      ],
+      "analysis": "在ZooKeeper集群中，写操作（如创建节点）需要遵循Zab协议，必须被复制到多数派节点（quorum）才能提交。给定5个节点，多数派为3。客户端向Leader发送创建请求后，Leader可能在宕机前已将该操作复制到多数派节点（则节点存在），或未复制到多数派节点（则节点不存在）。客户端未收到响应并不直接决定节点存在性。选项A错误，因为未收到响应不保证节点不存在；B错误，因仅复制到一个Follower不足以保证；D错误，因ZooKeeper无“待确认”状态；C正确，描述了存在性取决于旧Leader是否成功复制到多数派节点。"
+    },
+    {
+      "question_id": 11404371,
+      "uuid": "cc1659b4a50f4132ae3eba5f33c89012",
+      "type": 1,
+      "title": "一个客户端在 ZooKeeper 上创建了一个临时节点（Ephemeral...",
+      "content": "一个客户端在&nbsp;ZooKeeper&nbsp;上创建了一个临时节点（Ephemeral&nbsp;ZNode），随后该客户端与&nbsp;ZooKeeper&nbsp;集群发生网络分区。假设&nbsp;tickTime&nbsp;为&nbsp;2000ms，initLimit&nbsp;为&nbsp;10，syncLimit&nbsp;为&nbsp;5。客户端请求的&nbsp;sessionTimeout&nbsp;为&nbsp;9000ms。关于该临时节点的命运，以下说法最准确的是？",
+      "options": [
+        {
+          "id": 7425061,
+          "content": "临时节点将在大约 9000ms 后被自动删除，因为这是客户端指定的超时时间。"
+        },
+        {
+          "id": 7425064,
+          "content": "临时节点将在 10000ms（tickTime * syncLimit）后被删除，因为这是集群内部的同步超时。"
+        },
+        {
+          "id": 7425065,
+          "content": "临时节点将在 20000ms（tickTime * initLimit）后被删除，因为这是集群的初始化超时。"
+        },
+        {
+          "id": 7425066,
+          "content": "临时节点的实际超时时间由服务端根据自身配置（min/maxSessionTimeout）与客户端请求协商确定，节点将在该协商后的超时时间到达且未收到心跳后被删除。"
+        }
+      ],
+      "correct_option_ids": [
+        7425066
+      ],
+      "correct_options": [
+        "临时节点的实际超时时间由服务端根据自身配置（min/maxSessionTimeout）与客户端请求协商确定，节点将在该协商后的超时时间到达且未收到心跳后被删除。"
+      ],
+      "analysis": "在ZooKeeper中，临时节点的生命周期与客户端会话绑定。会话超时时间（sessionTimeout）由服务端根据minSessionTimeout和maxSessionTimeout配置与客户端请求协商确定，而不仅仅是客户端指定的值。题目中，客户端请求9000ms，但服务端可能基于tickTime（2000ms）和默认配置调整（例如，minSessionTimeout通常为2*tickTime=4000ms, maxSessionTimeout为20*tickTime=40000ms，9000ms在范围内，故协商值可能为9000ms）。临时节点会在协商后的超时时间到达且未收到心跳后被删除，选项D准确描述了此机制。选项A错误，因超时时间非严格由客户端指定；选项B和C错误，因initLimit（用于初始化容忍时间）和syncLimit（用于同步消息超时）是集群内部参数，不直接决定会话超时。"
+    },
+    {
+      "question_id": 11404304,
+      "uuid": "a3efa50641334bd4b143eeea920f0cd7",
+      "type": 1,
+      "title": "一个包含 5 台服务器的 ZooKeeper 集群在不丧失对外写服务能力的...",
+      "content": "一个包含&nbsp;5&nbsp;台服务器的&nbsp;ZooKeeper&nbsp;集群在不丧失对外写服务能力的前提下，最多能容忍同时宕机的服务器数量是？",
+      "options": [
+        {
+          "id": 7426687,
+          "content": "1 台"
+        },
+        {
+          "id": 7426688,
+          "content": "2 台"
+        },
+        {
+          "id": 7426689,
+          "content": "3 台"
+        },
+        {
+          "id": 7426691,
+          "content": "4 台"
+        }
+      ],
+      "correct_option_ids": [
+        7426688
+      ],
+      "correct_options": [
+        "2 台"
+      ],
+      "analysis": "在ZooKeeper集群中，写服务能力依赖于多数节点（quorum）存活以达成共识。对于一个5台服务器的集群，多数节点数为ceil(5/2)=3。因此，在3台服务器存活时仍能提供写服务（最多容忍2台宕机）。若宕机3台，只剩2台，少于多数，无法处理写请求，丧失写服务能力。选项分析：A（1台）：4台存活，可写服务但非最大容忍数；B（2台）：3台存活，满足最大容忍条件；C（3台）：2台存活，不足多数，丧失写服务；D（4台）：1台存活，完全失效。题目文字、专业术语（如'ZooKeeper'）和逻辑均无错误。"
+    },
+    {
+      "question_id": 11404291,
+      "uuid": "90cf444adee54a819a93468984a77150",
+      "type": 1,
+      "title": "ZooKeeper客户端默认的读操作可能无法保证读取到最新的写结果，若需确...",
+      "content": "ZooKeeper客户端默认的读操作可能无法保证读取到最新的写结果，若需确保客户端读到全局一致的最新状态，以下哪种方式最有效？",
+      "options": [
+        {
+          "id": 7426891,
+          "content": "强制客户端连接到Leader节点进行读操作"
+        },
+        {
+          "id": 7426894,
+          "content": "在读操作前调用sync()方法同步节点状态"
+        },
+        {
+          "id": 7426896,
+          "content": "使用持久节点存储需要读取的数据"
+        },
+        {
+          "id": 7426898,
+          "content": "延长客户端会话的超时时间"
+        }
+      ],
+      "correct_option_ids": [
+        7426894
+      ],
+      "correct_options": [
+        "在读操作前调用sync()方法同步节点状态"
+      ],
+      "analysis": "在ZooKeeper中，默认读操作可能从follower节点读取陈旧数据，因为写操作通过leader提交但follower的复制有延迟。为确保读取全局一致的最新状态（即线性一致性），调用sync()方法最有效：它强制服务器在后续读操作前应用所有待处理的写操作，从而保证读取最新状态。其他选项无效：A（强制连接到Leader节点）虽可能读取最新数据，但不是官方推荐方式，且Leader变更时可能失效；C（使用持久节点）只涉及节点生命周期，不影响读取一致性；D（延长会话超时）仅维护会话连接，不影响数据新鲜度。ZooKeeper文档推荐使用sync()实现强一致性读。题目及选项无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404328,
+      "uuid": "4bbbd03700d74e81b52f9739bcb196b1",
+      "type": 1,
+      "title": "某服务通过临时节点 /services/s1 注册自身。会话超时为 30 ...",
+      "content": "某服务通过临时节点&nbsp;/services/s1&nbsp;注册自身。会话超时为&nbsp;30&nbsp;秒。若客户端因网络抖动与集群断开&nbsp;5&nbsp;秒后重新连接，下列说法正确的是？",
+      "options": [
+        {
+          "id": 7426359,
+          "content": "断开即触发会话过期，/services/s1 会立刻被删除"
+        },
+        {
+          "id": 7426360,
+          "content": "只要 TCP 连接断开，服务端就立即将会话迁移到其他服务器并删除临时节点"
+        },
+        {
+          "id": 7426361,
+          "content": "只要在会话超时之前重连成功，临时节点不会被删除；但客户端会收到连接状态变化事件，需要自行处理"
+        },
+        {
+          "id": 7426362,
+          "content": "临时节点允许挂载子节点，可通过子节点维持注册信息不被删除"
+        }
+      ],
+      "correct_option_ids": [
+        7426361
+      ],
+      "correct_options": [
+        "只要在会话超时之前重连成功，临时节点不会被删除；但客户端会收到连接状态变化事件，需要自行处理"
+      ],
+      "analysis": "在ZooKeeper中，临时节点与会话绑定，会话超时为30秒。客户端断开后，会话不会立即过期，而是在超时期过后才过期。断开5秒后重连，由于5秒小于30秒的超时时间，会话有效，临时节点不会被删除。但客户端会收到连接状态变化事件（如断开事件Disconnected和重连事件SyncConnected），需要自行处理这些事件以维持状态一致性。选项A错误：断开不会立即触发会话过期或节点删除；选项B错误：TCP连接断开不会立即导致会话迁移或节点删除，删除只在会话过期时发生；选项D错误：临时节点可以有子节点，但子节点不会维持父节点不被删除，当会话过期时，父节点及其所有子节点都会被删除。题目中选项D的'挂载子节点'表述非标准术语，应使用'创建子节点'，但因该选项为题目设置的错误选项，属故意设置，无需额外标注错误。"
+    },
+    {
+      "question_id": 11404293,
+      "uuid": "c15c822b62644b29b3535f480cf9adb7",
+      "type": 1,
+      "title": "在一个由5个节点组成的 ZooKeeper 集群中，一个客户端使用 `Cr...",
+      "content": "在一个由5个节点组成的&nbsp;ZooKeeper&nbsp;集群中，一个客户端使用&nbsp;`CreateMode.EPHEMERAL_SEQUENTIAL`&nbsp;模式成功创建了一个&nbsp;ZNode&nbsp;`/app/task-`。随后，该客户端与&nbsp;ZooKeeper&nbsp;服务器之间的网络连接因长时间的&nbsp;Full&nbsp;GC&nbsp;而中断，超过了&nbsp;sessionTimeout。当客户端恢复后，它尝试使用相同的会话（Session&nbsp;ID）重新连接。以下哪个陈述最准确地描述了此时的状态？",
+      "options": [
+        {
+          "id": 7426859,
+          "content": "客户端可以成功重连并恢复会话，但之前创建的临时顺序节点已被删除。"
+        },
+        {
+          "id": 7426860,
+          "content": "服务器会因为会话已过期而拒绝连接，客户端必须创建一个全新的会话，且之前创建的临时顺序节点已被删除。"
+        },
+        {
+          "id": 7426861,
+          "content": "只要客户端在 sessionTimeout * 2 的时间内重连，会话和临时节点都会被保留。"
+        },
+        {
+          "id": 7426862,
+          "content": "临时顺序节点会被服务器自动转换为持久顺序节点，客户端需要用新会话来访问它。"
+        }
+      ],
+      "correct_option_ids": [
+        7426860
+      ],
+      "correct_options": [
+        "服务器会因为会话已过期而拒绝连接，客户端必须创建一个全新的会话，且之前创建的临时顺序节点已被删除。"
+      ],
+      "analysis": "根据ZooKeeper的工作原理，会话超时（sessionTimeout）后，服务器会使会话过期。一旦会话过期，所有与该会话关联的临时节点（包括EPHEMERAL_SEQUENTIAL节点）都会被自动删除。客户端尝试使用相同的会话ID重新连接时，服务器会因会话已过期而拒绝连接。客户端必须创建一个全新的会话，且临时节点无法恢复。选项A错误，因为会话过期后无法恢复；选项C错误，ZooKeeper没有sessionTimeout * 2的重连保留机制；选项D错误，临时节点不会自动转换为持久节点。题目中所有文字和专业术语（如ZooKeeper、CreateMode.EPHEMERAL_SEQUENTIAL、sessionTimeout等）拼写正确，无错别字或逻辑矛盾。"
+    },
+    {
+      "question_id": 1073887,
+      "uuid": "9d1ec02165d9419da4c43ca3e526c63f",
+      "type": 1,
+      "title": "Zookeeper对节点的watch监听通知是永久的吗？",
+      "content": "Zookeeper 对节点的 watch 监听通知是永久的吗？",
+      "options": [
+        {
+          "id": 2269027,
+          "content": "是"
+        },
+        {
+          "id": 2269028,
+          "content": "不是"
+        }
+      ],
+      "correct_option_ids": [
+        2269028
+      ],
+      "correct_options": [
+        "不是"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404388,
+      "uuid": "bb8a105c2d3b44cf815e0d2e903d8221",
+      "type": 1,
+      "title": "某分布式系统需实现\"公平调度且客户端故障后自动释放\"的分布式锁，最适合的Z...",
+      "content": "某分布式系统需实现\"公平调度且客户端故障后自动释放\"的分布式锁，最适合的ZooKeeper节点类型是？",
+      "options": [
+        {
+          "id": 7424811,
+          "content": "持久非顺序节点（Persistent）"
+        },
+        {
+          "id": 7424812,
+          "content": "临时顺序节点（EphemeralSequential）"
+        },
+        {
+          "id": 7424817,
+          "content": "持久顺序节点（PersistentSequential）"
+        },
+        {
+          "id": 7424818,
+          "content": "临时非顺序节点（Ephemeral）"
+        }
+      ],
+      "correct_option_ids": [
+        7424812
+      ],
+      "correct_options": [
+        "临时顺序节点（EphemeralSequential）"
+      ],
+      "analysis": "题目要求实现“公平调度”和“客户端故障后自动释放”的分布式锁。在ZooKeeper中，临时顺序节点（EphemeralSequential）最适合此需求：1. 临时性（Ephemeral）确保客户端故障或会话结束时节点自动删除，满足自动释放要求；2. 顺序性（Sequential）允许节点按创建顺序排列，支持公平调度（如通过序号最小节点获取锁）。其他选项不符合：A（持久非顺序节点）不会自动释放且不支持公平调度；C（持久顺序节点）不会自动释放；D（临时非顺序节点）支持自动释放但不支持公平调度。题目文字和选项无错误，专业术语（如Persistent、Ephemeral、Sequential）与ZooKeeper标准一致，逻辑自洽，无规则破坏问题。"
+    },
+    {
+      "question_id": 1923943,
+      "uuid": "11eb253eeba84882a33e591377e6b0b0",
+      "type": 2,
+      "title": "Zookeeper这种数据结构包括的特点有（）",
+      "content": "Zookeeper这种数据结构包括的特点有（）<br>",
+      "options": [
+        {
+          "id": 2970041,
+          "content": "每个子目录（节点）都被称作为znode，这个znode是被它所在的路径唯一标识"
+        },
+        {
+          "id": 2970042,
+          "content": "znode可以有子节点目录，并且每个znode可以存储数据，注意EPHEMERAL（临时的）类型的目录节点不能有子节点目录"
+        },
+        {
+          "id": 2970043,
+          "content": "znode是有版本的（version），每个znode中存储的数据可以有多个版本，也就是一个访问路径中可以存储多份数据，version号自动增加"
+        },
+        {
+          "id": 2970044,
+          "content": "znode有多种不同的类型"
+        }
+      ],
+      "correct_option_ids": [
+        2970041,
+        2970042,
+        2970043,
+        2970044
+      ],
+      "correct_options": [
+        "每个子目录（节点）都被称作为znode，这个znode是被它所在的路径唯一标识",
+        "znode可以有子节点目录，并且每个znode可以存储数据，注意EPHEMERAL（临时的）类型的目录节点不能有子节点目录",
+        "znode是有版本的（version），每个znode中存储的数据可以有多个版本，也就是一个访问路径中可以存储多份数据，version号自动增加",
+        "znode有多种不同的类型"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404365,
+      "uuid": "ee952478128f4218a7efaee325fee952",
+      "type": 1,
+      "title": "使用 ZooKeeper 实现分布式配置管理时，当配置节点数据更新，如何确...",
+      "content": "使用&nbsp;ZooKeeper&nbsp;实现分布式配置管理时，当配置节点数据更新，如何确保客户端及时获取最新配置？",
+      "options": [
+        {
+          "id": 7425147,
+          "content": "客户端需轮询检查节点版本号"
+        },
+        {
+          "id": 7425148,
+          "content": "客户端通过 Watcher 监听节点，在数据变更时收到通知"
+        },
+        {
+          "id": 7425150,
+          "content": "服务器主动推送更新到所有客户端"
+        },
+        {
+          "id": 7425153,
+          "content": "客户端在读取时强制刷新缓存"
+        }
+      ],
+      "correct_option_ids": [
+        7425148
+      ],
+      "correct_options": [
+        "客户端通过 Watcher 监听节点，在数据变更时收到通知"
+      ],
+      "analysis": "在 ZooKeeper 中，客户端通过注册 Watcher 监听配置节点（如 /config），当节点数据更新时，服务器会发送通知事件；客户端收到通知后主动读取最新数据，确保及时性。选项 A（轮询）可行但效率低；C 错误，因为服务器不主动推送完整数据，只发送事件通知；D 中的刷新缓存需结合 Watcher 通知触发，但核心机制是 Watcher。"
+    },
+    {
+      "question_id": 1923956,
+      "uuid": "c46d40fa833a482e890b5da91c1f7daa",
+      "type": 1,
+      "title": "下列关于ZooKeeper集群原理的介绍，不正确的是（）。",
+      "content": "下列关于ZooKeeper集群原理的介绍，不正确的是（）。<br>",
+      "options": [
+        {
+          "id": 2970094,
+          "content": "由多个ZooKeeperSEVER组成的集群环境"
+        },
+        {
+          "id": 2970095,
+          "content": "包含一个Leader和多个Follower"
+        },
+        {
+          "id": 2970096,
+          "content": "每个sever保存一个数据副本、全局数据一致"
+        },
+        {
+          "id": 2970097,
+          "content": "不采用分布式读写机制"
+        }
+      ],
+      "correct_option_ids": [
+        2970097
+      ],
+      "correct_options": [
+        "不采用分布式读写机制"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404348,
+      "uuid": "2a5ce29fa0ce4aae987f188a564d173c",
+      "type": 1,
+      "title": "在分布式系统中使用 ZooKeeper 实现分布式锁时，最合理的节点设计策略是？",
+      "content": "在分布式系统中使用&nbsp;ZooKeeper&nbsp;实现分布式锁时，最合理的节点设计策略是？",
+      "options": [
+        {
+          "id": 7425413,
+          "content": "所有客户端直接在根节点下创建同名临时节点"
+        },
+        {
+          "id": 7425415,
+          "content": "每个客户端创建持久节点并在请求结束后手动删除"
+        },
+        {
+          "id": 7425419,
+          "content": "所有客户端在父节点下创建临时有序节点，当前最小序号节点获得锁"
+        },
+        {
+          "id": 7425422,
+          "content": "所有客户端在父节点下创建无序持久节点并通过随机值竞争锁"
+        }
+      ],
+      "correct_option_ids": [
+        7425419
+      ],
+      "correct_options": [
+        "所有客户端在父节点下创建临时有序节点，当前最小序号节点获得锁"
+      ],
+      "analysis": "ZooKeeper 实现分布式锁的标准策略是使用临时有序节点（选项 C）。临时节点在客户端会话结束时自动删除，避免了死锁；有序节点允许客户端通过监控前一个节点（即最小序号节点）来高效获取锁。其他选项有缺陷：A 在根节点下创建同名临时节点会导致冲突（ZooKeeper 不支持同名节点创建），且根节点管理不当；B 使用持久节点需手动删除，无法处理客户端故障（如崩溃），可能导致锁泄漏；D 使用无序持久节点，缺乏自动清理和有序机制，随机值竞争不可靠，易导致锁状态不一致。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404362,
+      "uuid": "29678c61594b41f5a89785bff0c56f2a",
+      "type": 1,
+      "title": "一个客户端与ZooKeeper集群建立了一个会话，并创建了一个临时节点（e...",
+      "content": "一个客户端与ZooKeeper集群建立了一个会话，并创建了一个临时节点（ephemeral&nbsp;node）。随后，该客户端因网络问题与整个ZooKeeper集群失联，最终导致会话超时。当网络恢复后，该客户端尝试重连，它会观察到什么现象？",
+      "options": [
+        {
+          "id": 7425191,
+          "content": "客户端可以继续使用原来的会话ID（Session ID），并且之前创建的临时节点依然存在。"
+        },
+        {
+          "id": 7425198,
+          "content": "客户端会收到“Session Expired”错误，必须重新建立一个新会话，且之前创建的临时节点已被自动删除。"
+        },
+        {
+          "id": 7425200,
+          "content": "客户端可以自动恢复会话，但之前创建的临时节点需要由客户端手动重新创建。"
+        },
+        {
+          "id": 7425202,
+          "content": "ZooKeeper集群会为该会话的临时节点设置一个短暂的“保留期”，如果客户端在此期间重连，节点不会被删除。"
+        }
+      ],
+      "correct_option_ids": [
+        7425198
+      ],
+      "correct_options": [
+        "客户端会收到“Session Expired”错误，必须重新建立一个新会话，且之前创建的临时节点已被自动删除。"
+      ],
+      "analysis": "根据ZooKeeper的工作原理，临时节点（ephemeral node）与会话绑定，当会话超时后，所有关联的临时节点会被自动删除。客户端重连时，由于原会话已过期，ZooKeeper会返回“Session Expired”错误，客户端必须重新建立新会话，且临时节点已不复存在。选项B正确描述了这一现象。选项A错误，因为会话过期后无法继续使用原Session ID且节点已被删除；选项C错误，会话无法自动恢复，必须手动建立新会话；选项D错误，ZooKeeper没有设置临时节点保留期的机制，超时后节点立即删除。"
+    },
+    {
+      "question_id": 1923936,
+      "uuid": "4247067617a74203b4dc250a41a21436",
+      "type": 2,
+      "title": "Zookeeper运行的模式可以为（）",
+      "content": "Zookeeper运行的模式可以为（）<br>",
+      "options": [
+        {
+          "id": 2970013,
+          "content": "StandAlone"
+        },
+        {
+          "id": 2970014,
+          "content": "Stoool"
+        },
+        {
+          "id": 2970015,
+          "content": "StandUp"
+        },
+        {
+          "id": 2970016,
+          "content": "集群模式"
+        }
+      ],
+      "correct_option_ids": [
+        2970013,
+        2970016
+      ],
+      "correct_options": [
+        "StandAlone",
+        "集群模式"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 1923930,
+      "uuid": "9c650199b41d4fe79d6ecb7377aa767b",
+      "type": 2,
+      "title": "下列关于Eureka和ZooKeeper的区别说法对的是（）？",
+      "content": "下列关于Eureka和ZooKeeper的区别说法对的是（）？<br>",
+      "options": [
+        {
+          "id": 2969989,
+          "content": "Eureka保证的是CP"
+        },
+        {
+          "id": 2969990,
+          "content": "Eureka保证的是AP"
+        },
+        {
+          "id": 2969991,
+          "content": "ZooKeeper保证的是CP"
+        },
+        {
+          "id": 2969992,
+          "content": "ZooKeeper有Leader和Follower角色"
+        }
+      ],
+      "correct_option_ids": [
+        2969990,
+        2969991,
+        2969992
+      ],
+      "correct_options": [
+        "Eureka保证的是AP",
+        "ZooKeeper保证的是CP",
+        "ZooKeeper有Leader和Follower角色"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404325,
+      "uuid": "f9b6fb3cfaa24d7faf46f94b65433a98",
+      "type": 1,
+      "title": "一个由5台服务器组成的ZooKeeper集群，正常运行时，一台服务器是Le...",
+      "content": "一个由5台服务器组成的ZooKeeper集群，正常运行时，一台服务器是Leader，四台是Follower。现在发生了一次网络分区，将集群分成了两个部分：一个包含2台服务器（包括原Leader），另一个包含3台服务器。在这种情况下，集群的可用性会如何变化？",
+      "options": [
+        {
+          "id": 7426383,
+          "content": "包含原Leader的2台服务器分区将继续提供服务，而3台服务器的分区将无法工作。"
+        },
+        {
+          "id": 7426384,
+          "content": "整个集群将停止服务，因为没有任何一个分区拥有全部5台服务器。"
+        },
+        {
+          "id": 7426385,
+          "content": "包含3台服务器的分区将选举出一个新的Leader并继续提供读写服务，而包含2台服务器的分区将无法提供服务。"
+        },
+        {
+          "id": 7426386,
+          "content": "两个分区都会各自选举出Leader，形成“脑裂”（Split-Brain），对外提供服务。"
+        }
+      ],
+      "correct_option_ids": [
+        7426385
+      ],
+      "correct_options": [
+        "包含3台服务器的分区将选举出一个新的Leader并继续提供读写服务，而包含2台服务器的分区将无法提供服务。"
+      ],
+      "analysis": "根据ZooKeeper的工作原理（基于Zab协议），集群需要多数节点（quorum）才能选举Leader和提供读写服务。对于一个5台服务器的集群，多数节点数为3（大于5/2=2.5）。网络分区后，包含3台服务器的分区拥有多数，因此能选举新Leader并继续提供读写服务；而包含2台服务器的分区（包括原Leader）没有多数，无法选举Leader或提供写服务，只能处理读请求（但题目聚焦可用性变化，通常指写服务）。因此，选项C正确。其他选项错误：A错误，因为少数分区不能提供写服务；B错误，因为多数分区能继续服务；D错误，因为ZooKeeper协议设计防止脑裂，只有多数分区能选举Leader。"
+    },
+    {
+      "question_id": 11404368,
+      "uuid": "c423ee8fea6c4b33b58dfbf7b201d652",
+      "type": 1,
+      "title": "某分布式系统使用ZooKeeper的Watcher机制监控节点/data/...",
+      "content": "某分布式系统使用ZooKeeper的Watcher机制监控节点/data/config的变更，开发人员发现第一次修改节点数据时客户端收到了通知，但第二次修改同一路径时未收到任何通知。以下哪项是最可能的原因？",
+      "options": [
+        {
+          "id": 7425103,
+          "content": "ZooKeeper的Watcher是一次性的，需重新注册才能接收后续变更通知"
+        },
+        {
+          "id": 7425104,
+          "content": "第二次修改操作的权限不足，客户端无权限获取通知"
+        },
+        {
+          "id": 7425105,
+          "content": "客户端Session已过期，无法再接收任何Watcher通知"
+        },
+        {
+          "id": 7425106,
+          "content": "节点/data/config是持久节点，无法触发多次Watcher事件"
+        }
+      ],
+      "correct_option_ids": [
+        7425103
+      ],
+      "correct_options": [
+        "ZooKeeper的Watcher是一次性的，需重新注册才能接收后续变更通知"
+      ],
+      "analysis": "在ZooKeeper中，Watcher机制是一次性的，即Watcher只会在第一次事件触发时发送通知，之后需要重新注册才能接收后续变更通知。这解释了为什么第一次修改节点/data/config数据时客户端收到通知，但第二次修改未收到。选项B不正确，因为权限不足通常会导致操作失败而非仅影响通知，且题目未提及权限变更；选项C中Session过期会导致整个连接失效，而非仅影响第二次通知；选项D错误，因为持久节点同样支持多次Watcher事件触发，Watcher行为与节点类型无关。"
+    },
+    {
+      "question_id": 11404340,
+      "uuid": "e797d02fea2d49f4a724a477356a26b8",
+      "type": 1,
+      "title": "在 ZooKeeper 集群的领导者选举过程中，Zab 协议主要负责确保：",
+      "content": "在&nbsp;ZooKeeper&nbsp;集群的领导者选举过程中，Zab&nbsp;协议主要负责确保：",
+      "options": [
+        {
+          "id": 7425543,
+          "content": "所有 Followers 都能同时接收写请求"
+        },
+        {
+          "id": 7425544,
+          "content": "写请求的顺序提交和全局一致性"
+        },
+        {
+          "id": 7425545,
+          "content": "客户端的读写请求负载均衡"
+        },
+        {
+          "id": 7425546,
+          "content": "节点间的低延迟通信"
+        }
+      ],
+      "correct_option_ids": [
+        7425544
+      ],
+      "correct_options": [
+        "写请求的顺序提交和全局一致性"
+      ],
+      "analysis": "在 ZooKeeper 集群的领导者选举过程中，Zab 协议的主要职责是确保所有写请求以相同顺序提交并维护全局一致性，从而实现状态复制和故障恢复。选项 B 正确描述了这一核心功能。选项 A 错误，因为写请求由领导者接收并异步传播给 Followers，并非所有 Followers 都能同时接收；选项 C 错误，客户端的读写请求负载均衡由 ZooKeeper 的客户端连接策略处理，而非 Zab 协议；选项 D 错误，节点间的低延迟通信依赖于网络环境，并非 Zab 协议的直接责任。"
+    },
+    {
+      "question_id": 11404389,
+      "uuid": "29560970e5f0469e91cd408bc8550fca",
+      "type": 1,
+      "title": "一个客户端在ZooKeeper上创建了一个临时节点（Ephemeral N...",
+      "content": "一个客户端在ZooKeeper上创建了一个临时节点（Ephemeral&nbsp;Node）。随后，该客户端由于长时间的Full&nbsp;GC导致进程暂停，暂停时间超过了与服务器协商的&nbsp;`sessionTimeout`。当该客户端GC结束后恢复运行时，它会收到什么？以及那个临时节点的状态是什么？",
+      "options": [
+        {
+          "id": 7424798,
+          "content": "客户端会话保持有效，临时节点依然存在，因为客户端进程并未终止。"
+        },
+        {
+          "id": 7424800,
+          "content": "客户端会收到 `ConnectionLossException`，但会话依然有效，临时节点也存在，客户端可以自动重连恢复操作。"
+        },
+        {
+          "id": 7424801,
+          "content": "客户端会收到 `SessionExpiredException`，并且它创建的临时节点已经被服务器自动删除。"
+        },
+        {
+          "id": 7424802,
+          "content": "服务器会一直等待客户端恢复并发送心跳，会话和临时节点都会被无限期保留。"
+        }
+      ],
+      "correct_option_ids": [
+        7424801
+      ],
+      "correct_options": [
+        "客户端会收到 `SessionExpiredException`，并且它创建的临时节点已经被服务器自动删除。"
+      ],
+      "analysis": "根据ZooKeeper机制，客户端会话依赖于定期心跳维持；如果客户端暂停时间超过sessionTimeout，会话会过期（session expiration），导致临时节点被自动删除。客户端恢复运行时，由于会话已过期，会收到SessionExpiredException。选项C正确描述了这一行为。其他选项中：A错误（会话不会保持有效）；B错误（应收到SessionExpiredException而非ConnectionLossException，且会话无效）；D错误（服务器不会无限期等待，会因sessionTimeout关闭会话）。"
+    },
+    {
+      "question_id": 1923950,
+      "uuid": "cfd539b4c3a042a393abb8c4e204b914",
+      "type": 1,
+      "title": "关于 ZooKeeper 临时节点的说法正确的是（）",
+      "content": "关于 ZooKeeper 临时节点的说法正确的是（）<br>",
+      "options": [
+        {
+          "id": 2970070,
+          "content": "创建临时节点的命令为：create -s /tmp myvalue"
+        },
+        {
+          "id": 2970071,
+          "content": "一旦会话结束，临时节点将被自动删除"
+        },
+        {
+          "id": 2970072,
+          "content": "临时节点不能手动删除"
+        },
+        {
+          "id": 2970073,
+          "content": "临时节点允许有子节点"
+        }
+      ],
+      "correct_option_ids": [
+        2970071
+      ],
+      "correct_options": [
+        "一旦会话结束，临时节点将被自动删除"
+      ],
+      "analysis": "创建临时节点命令：create -e /tmp myvalue，目前ZooKeeper不支持临时节点下挂子节点，临时节点可以手动删除<br>"
+    },
+    {
+      "question_id": 1923953,
+      "uuid": "9d62a1309dc847729b1eb5bb98550363",
+      "type": 2,
+      "title": "关于Zookeeper的数据结构，以下说法正确的有（）",
+      "content": "关于Zookeeper的数据结构，以下说法正确的有（）<br>",
+      "options": [
+        {
+          "id": 2970082,
+          "content": "与Unix文件系统类似"
+        },
+        {
+          "id": 2970083,
+          "content": "整体可以看做成一棵树"
+        },
+        {
+          "id": 2970084,
+          "content": "每个节点称为一个Znode"
+        },
+        {
+          "id": 2970085,
+          "content": "每个Znode默认存储128MB数据"
+        }
+      ],
+      "correct_option_ids": [
+        2970082,
+        2970083,
+        2970084
+      ],
+      "correct_options": [
+        "与Unix文件系统类似",
+        "整体可以看做成一棵树",
+        "每个节点称为一个Znode"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404305,
+      "uuid": "405fc3f94ab14e9a81172db0a0f19d70",
+      "type": 1,
+      "title": "ZooKeeper 集群中 Observer 节点的作用是什么？",
+      "content": "ZooKeeper&nbsp;集群中&nbsp;Observer&nbsp;节点的作用是什么？",
+      "options": [
+        {
+          "id": 7426675,
+          "content": "处理所有读写请求以提升吞吐量"
+        },
+        {
+          "id": 7426676,
+          "content": "参与 Leader 选举投票"
+        },
+        {
+          "id": 7426677,
+          "content": "分担读请求压力但不参与写操作投票"
+        },
+        {
+          "id": 7426678,
+          "content": "备份所有数据用于灾难恢复"
+        }
+      ],
+      "correct_option_ids": [
+        7426677
+      ],
+      "correct_options": [
+        "分担读请求压力但不参与写操作投票"
+      ],
+      "analysis": "在 ZooKeeper 集群中，Observer 节点的作用是分担读请求的压力，但不参与写操作的投票过程。这有助于提升读吞吐量而不会影响写性能。选项A错误，因为Observer只处理读请求，不处理写请求；选项B错误，因为Observer不参与Leader选举投票；选项D错误，虽然Observer有数据副本，但主要作用不是灾难恢复（灾难恢复是集群整体的备份机制，Observer更侧重于读负载分担）。"
+    },
+    {
+      "question_id": 11404333,
+      "uuid": "0503b2d1520b4995b84d267c4461b000",
+      "type": 1,
+      "title": "关于ZooKeeper的数据一致性模型，以下描述正确的是？",
+      "content": "关于ZooKeeper的数据一致性模型，以下描述正确的是？",
+      "options": [
+        {
+          "id": 7426319,
+          "content": "ZooKeeper保证顺序一致性（Sequential Consistency），所有客户端观察到的写操作执行顺序完全一致"
+        },
+        {
+          "id": 7426320,
+          "content": "ZooKeeper保证最终一致性（Eventual Consistency），写操作完成后需等待所有副本同步才能被读取"
+        },
+        {
+          "id": 7426321,
+          "content": "ZooKeeper的读操作无法保证单调性（Monotonic Reads），同一客户端可能读取到比之前更旧的数据"
+        },
+        {
+          "id": 7426322,
+          "content": "ZooKeeper支持因果一致性（Causal Consistency），但无法保证写操作的原子性"
+        }
+      ],
+      "correct_option_ids": [
+        7426319
+      ],
+      "correct_options": [
+        "ZooKeeper保证顺序一致性（Sequential Consistency），所有客户端观察到的写操作执行顺序完全一致"
+      ],
+      "analysis": "选项A正确：ZooKeeper保证顺序一致性（Sequential Consistency），所有客户端观察到的写操作执行顺序完全一致，这是ZooKeeper的核心特性之一（更新操作按全局顺序执行）。选项B错误：ZooKeeper不保证最终一致性（Eventual Consistency），它提供强一致性；写操作完成后无需等待所有副本同步即可被读取，读操作可能从本地副本读取旧数据，除非使用sync命令。选项C错误：ZooKeeper保证单调性读（Monotonic Reads），同一客户端不会读取到比之前更旧的数据，因为它维护客户端请求的顺序。选项D错误：ZooKeeper支持因果一致性（Causal Consistency，通过顺序一致性实现），同时保证写操作的原子性（更新要么全成功，要么全失败）。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404301,
+      "uuid": "12b5d7289d814944a8baff9bd459b2aa",
+      "type": 1,
+      "title": "关于 ZooKeeper 的 Watch 机制，下列说法哪项是正确的？",
+      "content": "关于&nbsp;ZooKeeper&nbsp;的&nbsp;Watch&nbsp;机制，下列说法哪项是正确的？",
+      "options": [
+        {
+          "id": 7426735,
+          "content": "Watch 是一次性触发，事件触发后若仍需监听需要客户端重新注册"
+        },
+        {
+          "id": 7426736,
+          "content": "Watch 是持久订阅，除非显式取消，否则会持续多次触发"
+        },
+        {
+          "id": 7426740,
+          "content": "Watch 保证对同一事件至少触发两次，以确保可靠性"
+        },
+        {
+          "id": 7426742,
+          "content": "同一 znode 上最多只允许注册一个 Watch"
+        }
+      ],
+      "correct_option_ids": [
+        7426735
+      ],
+      "correct_options": [
+        "Watch 是一次性触发，事件触发后若仍需监听需要客户端重新注册"
+      ],
+      "analysis": "ZooKeeper 的 Watch 机制是一次性触发器（one-time trigger）：事件触发后，Watch 自动失效，客户端必须重新注册才能继续监听。因此选项 A 正确。选项 B 错误，因为 Watch 不是持久订阅，不会持续多次触发。选项 C 错误，因为 ZooKeeper 不保证 Watch 事件至少触发两次，它只触发一次且可能丢失事件。选项 D 错误，因为同一 znode 上允许多个 Watch 注册，不同客户端或同一客户端可以多次注册。"
+    },
+    {
+      "question_id": 1923934,
+      "uuid": "df4afec4eb8e464ca47c56451db9c1ff",
+      "type": 1,
+      "title": "Zookeeper-Stat 结构体中 dataLength 是（）",
+      "content": "Zookeeper-Stat 结构体中 dataLength 是（）<br>",
+      "options": [
+        {
+          "id": 2970005,
+          "content": "znode 数据变化号"
+        },
+        {
+          "id": 2970006,
+          "content": "znode 访问控制列表的变化号"
+        },
+        {
+          "id": 2970007,
+          "content": "znode 子节点数量"
+        },
+        {
+          "id": 2970008,
+          "content": "znode 的数据长度"
+        }
+      ],
+      "correct_option_ids": [
+        2970008
+      ],
+      "correct_options": [
+        "znode 的数据长度"
+      ],
+      "analysis": "<div>  <span>Zookeeper-Stat 结构体成员：</span> </div> <div>  <span>czxid    引起这个 znode 创建的 zxid，创建节点的事务的 zxid<br> ctime    znode 被创建的毫秒数（从1970年开始）<br> mzxid    znode 最后更新的 zxid<br> mtime    znode 最后修改的毫秒数（从1970年开始）<br> pZxid    znode 最后更新的子节点 zxid<br> cversion    znode 子节点变化号，znode 子节点修改次数<br> dataversion    znode 数据变化号<br> aclVersion    znode 访问控制列表的变化号<br> ephemeralOwner    如果是临时节点，这个是 znode 拥有者的 session id。如果不是临时节点则是 0<br> dataLength    znode 的数据长度<br> numChildren    znode 子节点数量<br> </span> </div>"
+    },
+    {
+      "question_id": 1923933,
+      "uuid": "e4982c2a37be46419f35c4407ebd0b32",
+      "type": 2,
+      "title": "ZooKeeper提供的服务包括（）",
+      "content": "ZooKeeper提供的服务包括（）<br>",
+      "options": [
+        {
+          "id": 2970001,
+          "content": "配置维护"
+        },
+        {
+          "id": 2970002,
+          "content": "域名服务"
+        },
+        {
+          "id": 2970003,
+          "content": "分布式同步"
+        },
+        {
+          "id": 2970004,
+          "content": "组服务"
+        }
+      ],
+      "correct_option_ids": [
+        2970001,
+        2970002,
+        2970003,
+        2970004
+      ],
+      "correct_options": [
+        "配置维护",
+        "域名服务",
+        "分布式同步",
+        "组服务"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404310,
+      "uuid": "48fbbb4a2f6d41a2abce467fe682da1a",
+      "type": 1,
+      "title": "ZooKeeper 集群在完成 Leader 选举后进入数据同步阶段，此阶...",
+      "content": "ZooKeeper&nbsp;集群在完成&nbsp;Leader&nbsp;选举后进入数据同步阶段，此阶段的主要目的是什么？",
+      "options": [
+        {
+          "id": 7426603,
+          "content": "保证所有 Follower 节点的数据状态与 Leader 完全一致"
+        },
+        {
+          "id": 7426604,
+          "content": "处理客户端发起的新事务请求"
+        },
+        {
+          "id": 7426605,
+          "content": "选举出一个副 Leader 作为 Leader 的备份"
+        },
+        {
+          "id": 7426606,
+          "content": "清理所有节点上的过期会话数据"
+        }
+      ],
+      "correct_option_ids": [
+        7426603
+      ],
+      "correct_options": [
+        "保证所有 Follower 节点的数据状态与 Leader 完全一致"
+      ],
+      "analysis": "在 ZooKeeper 集群中，Leader 选举完成后进入数据同步阶段（也称为恢复阶段），其主要目的是确保所有 Follower 节点的数据状态与 Leader 完全一致，以便集群达到一致状态后开始正常处理请求。选项 A 正确描述了这一目的。选项 B 错误，因为数据同步阶段并不直接处理新事务请求，新请求会在同步完成后由广播阶段处理。选项 C 错误，因为 ZooKeeper 没有'副 Leader'的概念，Leader 是唯一的，备份角色由 Follower 或 Observer 承担，且选举只发生在 Leader 失败时而非同步阶段。选项 D 错误，因为清理过期会话数据是会话管理的一部分，不是数据同步阶段的主要目的。"
+    },
+    {
+      "question_id": 11404366,
+      "uuid": "1c871bf51a7c4561a330239e81c2a5f9",
+      "type": 1,
+      "title": "在 ZooKeeper 中，会话超时（Session Timeout）机制...",
+      "content": "在&nbsp;ZooKeeper&nbsp;中，会话超时（Session&nbsp;Timeout）机制如何影响客户端连接的管理？",
+      "options": [
+        {
+          "id": 7425131,
+          "content": "超时后客户端会自动重连，会话状态保留"
+        },
+        {
+          "id": 7425132,
+          "content": "超时时间由客户端配置，服务器必须在时间内响应心跳"
+        },
+        {
+          "id": 7425133,
+          "content": "服务器检测到客户端心跳中断超过配置时间后，会终止会话并清理相关临时节点"
+        },
+        {
+          "id": 7425134,
+          "content": "超时仅影响读写操作，不改变节点状态"
+        }
+      ],
+      "correct_option_ids": [
+        7425133
+      ],
+      "correct_options": [
+        "服务器检测到客户端心跳中断超过配置时间后，会终止会话并清理相关临时节点"
+      ],
+      "analysis": "在ZooKeeper中，会话超时机制的核心是：服务器在检测到客户端心跳中断超过配置的会话超时时间后，会终止该会话并清理所有相关临时节点（ephemeral nodes），这对应选项C正确。选项A错误，因为超时后客户端不会自动重连，会话状态会丢失，客户端必须手动重新建立连接；选项B错误，虽然超时时间由客户端在创建会话时配置，但服务器会基于minSessionTimeout和maxSessionTimeout参数调整最终值，且'服务器必须在时间内响应心跳'表述不准确，心跳机制是客户端定期发送心跳请求（ping），服务器响应以维持会话活跃，但服务器响应不及时可能导致会话超时，而非服务器必须在严格时间内响应；选项D错误，超时不仅影响读写操作，还会导致会话终止和临时节点清理，从而改变节点状态。"
+    },
+    {
+      "question_id": 11404359,
+      "uuid": "73c2743a71c04527a5bdd8ba80f89a5c",
+      "type": 1,
+      "title": "在分布式系统中使用 ZooKeeper 实现 leader 选举时，最关键...",
+      "content": "在分布式系统中使用&nbsp;ZooKeeper&nbsp;实现&nbsp;leader&nbsp;选举时，最关键的实现机制是什么？",
+      "options": [
+        {
+          "id": 7425243,
+          "content": "所有节点尝试创建相同的临时节点，创建成功者成为 Leader"
+        },
+        {
+          "id": 7425244,
+          "content": "所有节点监听固定的持久化节点变化"
+        },
+        {
+          "id": 7425245,
+          "content": "通过全局计数器自动分配 Leader 角色"
+        },
+        {
+          "id": 7425246,
+          "content": "由 Observer 节点统一指派 Leader"
+        }
+      ],
+      "correct_option_ids": [
+        7425243
+      ],
+      "correct_options": [
+        "所有节点尝试创建相同的临时节点，创建成功者成为 Leader"
+      ],
+      "analysis": "在ZooKeeper中实现Leader选举时，最关键机制是使用临时节点（ephemeral node）进行选举：所有节点尝试创建相同的znode路径（通常为ephemeral node），创建成功者成为Leader。这对应选项A。选项B错误，因为监听持久化节点变化主要用于数据变更检测，而非选举机制本身；选项C错误，ZooKeeper无内置全局计数器分配Leader；选项D错误，Observer节点不参与投票或指派Leader，仅提供读扩展。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404356,
+      "uuid": "0f927ea770774726a553da3571256b99",
+      "type": 1,
+      "title": "ZooKeeper 在处理写操作时，保证所有客户端看到的更新顺序一致，即使...",
+      "content": "ZooKeeper&nbsp;在处理写操作时，保证所有客户端看到的更新顺序一致，即使在集群节点故障恢复后也维持此顺序。这体现了&nbsp;ZooKeeper&nbsp;的哪种一致性保证？",
+      "options": [
+        {
+          "id": 7425293,
+          "content": "最终一致性"
+        },
+        {
+          "id": 7425295,
+          "content": "强一致性"
+        },
+        {
+          "id": 7425297,
+          "content": "顺序一致性"
+        },
+        {
+          "id": 7425298,
+          "content": "单调读一致性"
+        }
+      ],
+      "correct_option_ids": [
+        7425297
+      ],
+      "correct_options": [
+        "顺序一致性"
+      ],
+      "analysis": "题目描述中指出 ZooKeeper 保证所有客户端看到的更新顺序一致，且在故障恢复后维持此顺序。这符合顺序一致性的定义，即所有操作（包括读和写）以某种全局顺序执行，所有客户端对此顺序一致。选项 A（最终一致性）不保证顺序；B（强一致性）虽然包括顺序保证，但 ZooKeeper 具体实现为顺序一致性；D（单调读一致性）仅保证单个客户端的读顺序，不涉及全局更新顺序。经检查，题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404292,
+      "uuid": "6c054635086d4fd1ba1d5f03d2b10fea",
+      "type": 1,
+      "title": "一个客户端在 ZNode `/config/database` 上设置了一...",
+      "content": "一个客户端在&nbsp;ZNode&nbsp;`/config/database`&nbsp;上设置了一个&nbsp;`getData()`&nbsp;watch。紧接着，另一个客户端极快地连续两次修改了该&nbsp;ZNode&nbsp;的数据。关于第一个设置了&nbsp;watch&nbsp;的客户端，下列哪项描述是正确的？",
+      "options": [
+        {
+          "id": 7426873,
+          "content": "客户端保证会收到两次独立的 Watch 事件，分别对应两次数据修改。"
+        },
+        {
+          "id": 7426876,
+          "content": "客户端只会收到一次 Watch 事件，该事件在第一次数据修改后被触发，并且 watch 在此之后失效。"
+        },
+        {
+          "id": 7426877,
+          "content": "由于两次修改间隔太短，客户端可能不会收到任何 Watch 事件。"
+        },
+        {
+          "id": 7426878,
+          "content": "客户端收到的 Watch 事件中，会包含两次数据修改的详细差异信息。"
+        }
+      ],
+      "correct_option_ids": [
+        7426876
+      ],
+      "correct_options": [
+        "客户端只会收到一次 Watch 事件，该事件在第一次数据修改后被触发，并且 watch 在此之后失效。"
+      ],
+      "analysis": "在 ZooKeeper 中，watch 是一次性触发器。当客户端在 ZNode 上设置一个 getData() watch 时，它只会在该 ZNode 数据首次被修改时触发一次事件，之后 watch 自动失效。即使另一个客户端极快地连续修改了两次数据，第一个客户端也只会收到第一次修改的 watch 事件，不会收到第二次修改的事件，因为 watch 在第一次触发后已被移除。选项 A 错误，因为 watch 不会触发两次；选项 C 错误，因为至少第一次修改会触发事件；选项 D 错误，因为 watch 事件只通知变化发生，不包含数据修改的详细差异信息，客户端需要主动获取数据来查看内容变化。"
+    },
+    {
+      "question_id": 1923940,
+      "uuid": "703bd2b7fb054a4c98ee87c7b87428f1",
+      "type": 2,
+      "title": "ZooKeeper节点类型是（）",
+      "content": "ZooKeeper节点类型是（）<br>",
+      "options": [
+        {
+          "id": 2970029,
+          "content": "持久节点（PERSISTENT）"
+        },
+        {
+          "id": 2970030,
+          "content": "持久顺序节点（PERSISTENT_SEQUENTIAL）"
+        },
+        {
+          "id": 2970031,
+          "content": "临时节点（EPHEMERAL）"
+        },
+        {
+          "id": 2970032,
+          "content": "临时顺序节点（EPHEMERAL_SEQUENTIAL）"
+        }
+      ],
+      "correct_option_ids": [
+        2970029,
+        2970030,
+        2970031,
+        2970032
+      ],
+      "correct_options": [
+        "持久节点（PERSISTENT）",
+        "持久顺序节点（PERSISTENT_SEQUENTIAL）",
+        "临时节点（EPHEMERAL）",
+        "临时顺序节点（EPHEMERAL_SEQUENTIAL）"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404346,
+      "uuid": "e531344a75d147ddbd8a895243b45ec4",
+      "type": 1,
+      "title": "一个由 5 个节点组成的 ZooKeeper 集群正在稳定运行。在不考虑网...",
+      "content": "一个由&nbsp;5&nbsp;个节点组成的&nbsp;ZooKeeper&nbsp;集群正在稳定运行。在不考虑网络分区（脑裂）的理想情况下，该集群最多能容忍多少个节点同时发生故障（fail-stop,&nbsp;即节点直接宕机）而不影响其对外提供写服务的能力？以及，如果此时为了提升读性能将集群扩展到&nbsp;6&nbsp;个节点，其写服务的容错能力会发生什么变化？",
+      "options": [
+        {
+          "id": 7425447,
+          "content": "能容忍 2 个节点故障；扩展到 6 个节点后，容错能力提升，能容忍 3 个节点故障。"
+        },
+        {
+          "id": 7425448,
+          "content": "能容忍 3 个节点故障；扩展到 6 个节点后，容错能力不变。"
+        },
+        {
+          "id": 7425449,
+          "content": "能容忍 2 个节点故障；扩展到 6 个节点后，容错能力不变，仍然只能容忍 2 个节点故障。"
+        },
+        {
+          "id": 7425450,
+          "content": "能容忍 2 个节点故障；扩展到 6 个节点后，容错能力下降，只能容忍 1 个节点故障。"
+        }
+      ],
+      "correct_option_ids": [
+        7425449
+      ],
+      "correct_options": [
+        "能容忍 2 个节点故障；扩展到 6 个节点后，容错能力不变，仍然只能容忍 2 个节点故障。"
+      ],
+      "analysis": "ZooKeeper集群基于多数共识机制进行写操作。对于5个节点的集群，多数（quorum）为3，因此最多能容忍2个节点故障（5-2=3）而不影响写服务。扩展到6个节点后，多数为4（因节点数为偶数，需超过半数），因此能容忍最多2个节点故障（6-2=4），写服务的容错能力保持不变。选项C正确描述了这一情况。"
+    },
+    {
+      "question_id": 11404343,
+      "uuid": "142ff6329cbc43e796fdafca10c244b8",
+      "type": 1,
+      "title": "在一个 ZooKeeper 集群中，当 Leader 节点发生故障，需要重...",
+      "content": "在一个&nbsp;ZooKeeper&nbsp;集群中，当&nbsp;Leader&nbsp;节点发生故障，需要重新进行&nbsp;Leader&nbsp;选举时，ZAB&nbsp;协议的恢复模式（Recovery&nbsp;Mode）会被激活。在所有参与选举的节点中，以下哪个节点最有可能被选举为新的&nbsp;Leader？",
+      "options": [
+        {
+          "id": 7425491,
+          "content": "拥有最大 myid 的节点。"
+        },
+        {
+          "id": 7425492,
+          "content": "拥有最长事务日志（log file）的节点。"
+        },
+        {
+          "id": 7425493,
+          "content": "拥有最大 zxid 的节点。"
+        },
+        {
+          "id": 7425494,
+          "content": "最先向其他节点发起投票，并最先获得超过半数选票的节点。"
+        }
+      ],
+      "correct_option_ids": [
+        7425493
+      ],
+      "correct_options": [
+        "拥有最大 zxid 的节点。"
+      ],
+      "analysis": "在ZAB协议的恢复模式中，Leader选举优先选择拥有最大zxid（事务ID）的节点，因为它拥有最新的数据状态。选项A（最大myid）仅在zxid相同时作为次要因素；选项B（最长事务日志）间接相关，但zxid是直接标准；选项D（最先发起投票）不是决定性因素，选举结果取决于zxid和myid。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11404386,
+      "uuid": "252ef59180524750a089a0593fb5f19b",
+      "type": 1,
+      "title": "客户端会话超时后，ZooKeeper将如何处理该会话创建的临时节点？",
+      "content": "客户端会话超时后，ZooKeeper将如何处理该会话创建的临时节点？",
+      "options": [
+        {
+          "id": 7424843,
+          "content": "永久保留直到手动删除"
+        },
+        {
+          "id": 7424845,
+          "content": "立即自动删除"
+        },
+        {
+          "id": 7424848,
+          "content": "标记为只读节点"
+        },
+        {
+          "id": 7424853,
+          "content": "由Leader重新分配所有权"
+        }
+      ],
+      "correct_option_ids": [
+        7424845
+      ],
+      "correct_options": [
+        "立即自动删除"
+      ],
+      "analysis": "在ZooKeeper中，临时节点的生命周期与创建它的客户端会话绑定。当会话超时后，ZooKeeper会自动删除该会话创建的所有临时节点。选项B '立即自动删除' 正确描述了这一行为，符合ZooKeeper的设计机制。选项A错误，因为临时节点不会永久保留（与永久节点相区分）；选项C错误，因为ZooKeeper没有只读节点的概念（节点权限基于ACL控制）；选项D错误，因为临时节点不涉及所有权分配，而是直接删除。"
+    },
+    {
+      "question_id": 1923964,
+      "uuid": "b1b15bd0e4ab4bdd8ab1903cc6d6550a",
+      "type": 2,
+      "title": "关于Zookeeper客户端命令行操作，其中可以监听节点的命令有（）",
+      "content": "关于Zookeeper客户端命令行操作，其中可以监听节点的命令有（）<br>",
+      "options": [
+        {
+          "id": 2970126,
+          "content": "ls -w path"
+        },
+        {
+          "id": 2970127,
+          "content": "create -w"
+        },
+        {
+          "id": 2970128,
+          "content": "get -w path"
+        },
+        {
+          "id": 2970129,
+          "content": "set -w"
+        }
+      ],
+      "correct_option_ids": [
+        2970126,
+        2970128
+      ],
+      "correct_options": [
+        "ls -w path",
+        "get -w path"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404337,
+      "uuid": "d39934d7e08a483e88c3c984b7087964",
+      "type": 1,
+      "title": "在一个包含 5 个节点的 ZooKeeper 集群中，为了保证服务的可用性...",
+      "content": "在一个包含&nbsp;5&nbsp;个节点的&nbsp;ZooKeeper&nbsp;集群中，为了保证服务的可用性和数据一致性，写操作需要获得的确认数（Write&nbsp;Quorum）和整个集群能够容忍的永久性故障节点数分别是多少？",
+      "options": [
+        {
+          "id": 7426283,
+          "content": "确认数: 3, 容忍故障数: 2"
+        },
+        {
+          "id": 7426284,
+          "content": "确认数: 3, 容忍故障数: 3"
+        },
+        {
+          "id": 7426285,
+          "content": "确认数: 5, 容忍故障数: 0"
+        },
+        {
+          "id": 7426286,
+          "content": "确认数: 2, 容忍故障数: 3"
+        }
+      ],
+      "correct_option_ids": [
+        7426283
+      ],
+      "correct_options": [
+        "确认数: 3, 容忍故障数: 2"
+      ],
+      "analysis": "在ZooKeeper集群中，为了保证数据一致性和服务可用性，写操作需要使用多数派协议（Quorum），通常大小为 floor(n/2) + 1。对于5个节点的集群，多数派为3，因此写操作需要获得的确认数为3。集群能够容忍的永久性故障节点数为2，因为当2个节点故障时，剩余3个节点仍能形成多数quorum，确保系统正常工作。选项A正确：确认数3、容忍故障数2。选项B错误：若容忍故障数3，则故障时仅剩2节点无法达到多数；选项C错误：确认数5要求所有节点确认，无法容忍任何故障；选项D错误：确认数2不足多数，可能导致数据不一致。"
+    },
+    {
+      "question_id": 11404336,
+      "uuid": "f64b526e24844699a92164cafc9dd2a1",
+      "type": 1,
+      "title": "关于 ZooKeeper 的数据一致性模型和读写特性，以下哪项描述是 `不...",
+      "content": "关于&nbsp;ZooKeeper&nbsp;的数据一致性模型和读写特性，以下哪项描述是&nbsp;`不正确`&nbsp;的？",
+      "options": [
+        {
+          "id": 7426291,
+          "content": "ZooKeeper 保证了顺序一致性（Sequential Consistency），即来自单个客户端的请求会按其发送顺序被服务端处理。"
+        },
+        {
+          "id": 7426292,
+          "content": "ZooKeeper 保证了全局的写操作顺序性（Total Order），所有写操作都会被赋予一个全局唯一的、单调递增的 ZXID。"
+        },
+        {
+          "id": 7426293,
+          "content": "客户端从任意一个 Follower 节点读取数据时，总能保证读到的是整个集群中最新的已提交数据。"
+        },
+        {
+          "id": 7426294,
+          "content": "客户端可以通过调用 `sync()` 命令来强制其连接的 Follower 与 Leader 进行状态同步，从而避免读到过时的数据。"
+        }
+      ],
+      "correct_option_ids": [
+        7426293
+      ],
+      "correct_options": [
+        "客户端从任意一个 Follower 节点读取数据时，总能保证读到的是整个集群中最新的已提交数据。"
+      ],
+      "analysis": "选项C不正确，因为在 ZooKeeper 中，客户端从 Follower 节点读取数据时，默认情况下不能保证总是读到整个集群中最新的已提交数据。ZooKeeper 提供的是顺序一致性（Sequential Consistency），但读取操作可能从 Follower 返回过时的数据（stale data），因为 Follower 节点可能尚未同步到 Leader 的最新提交数据。要保证读到最新数据，客户端可以在读取前调用 `sync()` 命令（如选项D所述）或从 Leader 节点读取。其他选项正确：A 描述了顺序一致性保证（来自同一客户端的请求按顺序处理）；B 描述了全局写操作顺序性（ZXID 是全局唯一、单调递增的事务ID）；D 描述了 `sync()` 的正确用法。"
+    },
+    {
+      "question_id": 11404329,
+      "uuid": "cdb80ceb84bf4de3931353fbfbfbe9b8",
+      "type": 1,
+      "title": "一个由 5 台服务器组成的 ZooKeeper 集群发生网络分区，其中一侧...",
+      "content": "一个由&nbsp;5&nbsp;台服务器组成的&nbsp;ZooKeeper&nbsp;集群发生网络分区，其中一侧只有&nbsp;2&nbsp;台服务器，另一侧有&nbsp;3&nbsp;台。关于服务可用性的说法，哪一项正确？",
+      "options": [
+        {
+          "id": 7426351,
+          "content": "拥有 3 台服务器的一侧可选主并继续处理读写请求；2 台的一侧无法对外提供写服务"
+        },
+        {
+          "id": 7426352,
+          "content": "两个分区都可以各自选主并处理写请求"
+        },
+        {
+          "id": 7426353,
+          "content": "必须至少 4 台服务器存活才能处理写请求"
+        },
+        {
+          "id": 7426354,
+          "content": "两个分区都只能提供只读服务，无法进行任何写入"
+        }
+      ],
+      "correct_option_ids": [
+        7426351
+      ],
+      "correct_options": [
+        "拥有 3 台服务器的一侧可选主并继续处理读写请求；2 台的一侧无法对外提供写服务"
+      ],
+      "analysis": "ZooKeeper 集群基于 ZAB 协议，需要多数服务器（majority）才能选举领导者和处理写请求。对于一个 5 台服务器的集群，多数为至少 3 台服务器。网络分区后，拥有 3 台服务器的一侧可以选举领导者并处理读写请求，因为形成了多数；而拥有 2 台服务器的一侧无法选举领导者，因此不能提供写服务，但可能提供只读服务。选项 A 正确描述了这一行为。选项 B 错误，因为 2 台服务器一侧不能选举领导者；选项 C 错误，因为处理写请求仅需 3 台服务器（多数不是 4 台）；选项 D 错误，因为 3 台服务器一侧可以处理写请求。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 1073888,
+      "uuid": "99bf892c32604838898faae60cbc8f7e",
+      "type": 2,
+      "title": "zookeeper常用的命令有哪些",
+      "content": "zookeeper 常用的命令有哪些",
+      "options": [
+        {
+          "id": 2269029,
+          "content": "delete"
+        },
+        {
+          "id": 2269030,
+          "content": "get"
+        },
+        {
+          "id": 2269031,
+          "content": "set"
+        },
+        {
+          "id": 2269032,
+          "content": "create"
+        }
+      ],
+      "correct_option_ids": [
+        2269029,
+        2269030,
+        2269031,
+        2269032
+      ],
+      "correct_options": [
+        "delete",
+        "get",
+        "set",
+        "create"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404284,
+      "uuid": "02eb5ee565eb4b3194f630b440098133",
+      "type": 1,
+      "title": "在使用版本号进行并发控制时，关于 setData 和 Stat.versi...",
+      "content": "在使用版本号进行并发控制时，关于&nbsp;setData&nbsp;和&nbsp;Stat.version&nbsp;的说法，哪项正确？",
+      "options": [
+        {
+          "id": 7426997,
+          "content": "setData(path, data, expectedVersion) 只有在 expectedVersion 等于当前节点版本时才会成功，否则返回 BadVersion 错误"
+        },
+        {
+          "id": 7427000,
+          "content": "将 expectedVersion 置为任意负数都会跳过版本校验"
+        },
+        {
+          "id": 7427001,
+          "content": "setData 总是无条件覆盖数据，版本号只用于监控"
+        },
+        {
+          "id": 7427002,
+          "content": "只要使用了事务型 multi()，setData 就不再校验版本"
+        }
+      ],
+      "correct_option_ids": [
+        7426997
+      ],
+      "correct_options": [
+        "setData(path, data, expectedVersion) 只有在 expectedVersion 等于当前节点版本时才会成功，否则返回 BadVersion 错误"
+      ],
+      "analysis": "在 ZooKeeper 的版本控制机制中：\n- 选项 A 正确：setData 操作只有在 expectedVersion 参数与当前节点 Stat.version 匹配时才会成功执行，否则返回 BadVersion 错误，这保证了并发安全。\n- 选项 B 错误：只有特定负数值（如 -1）会跳过版本校验，其他负数值（如 -2）无效，可能被视为无效版本或导致错误。\n- 选项 C 错误：setData 并非无条件覆盖数据；版本号用于原子性并发控制，而非仅监控。\n- 选项 D 错误：事务型 multi() 操作中，setData 仍会进行版本校验；如果版本不匹配，整个事务会失败。"
+    },
+    {
+      "question_id": 11404330,
+      "uuid": "04b3488f84c445cdaadf1df54d31ab28",
+      "type": 1,
+      "title": "在 ZooKeeper 中，当创建一个临时节点（Ephemeral Nod...",
+      "content": "在&nbsp;ZooKeeper&nbsp;中，当创建一个临时节点（Ephemeral&nbsp;Node）后，如果创建该节点的客户端会话终止，该节点会发生什么变化？",
+      "options": [
+        {
+          "id": 7426343,
+          "content": "节点被自动删除"
+        },
+        {
+          "id": 7426344,
+          "content": "节点持久存在，不会删除"
+        },
+        {
+          "id": 7426345,
+          "content": "节点被移动到另一个父节点下"
+        },
+        {
+          "id": 7426346,
+          "content": "节点变为只读状态"
+        }
+      ],
+      "correct_option_ids": [
+        7426343
+      ],
+      "correct_options": [
+        "节点被自动删除"
+      ],
+      "analysis": "在 ZooKeeper 中，临时节点（Ephemeral Node）的生命周期与创建它的客户端会话紧密绑定。当客户端会话终止时，该临时节点会被自动删除。选项 A 描述了这一行为；选项 B、C、D 均不符合 ZooKeeper 的标准机制：临时节点不会持久存在（B）、不会被移动到另一个父节点下（C）、也不会变为只读状态（D）。题目和选项的文字准确性、专业术语（如 'Ephemeral Node'）使用正确，无逻辑矛盾或规则破坏错误。"
+    },
+    {
+      "question_id": 11404322,
+      "uuid": "0f12651dfefd43c8a40b2ba9911bf953",
+      "type": 1,
+      "title": "一个客户端连接到ZooKeeper集群，并创建了一个临时节点（Epheme...",
+      "content": "一个客户端连接到ZooKeeper集群，并创建了一个临时节点（Ephemeral&nbsp;Node）`/app/service/instance-01`。客户端与集群之间的&nbsp;`sessionTimeout`&nbsp;设置为15秒。此后，该客户端所在的机器发生了网络故障，导致它无法与ZooKeeper集群通信，但客户端进程本身并未崩溃。大约在网络故障发生后多久，这个临时节点会发生什么变化？",
+      "options": [
+        {
+          "id": 7426423,
+          "content": "节点会立即被删除，因为客户端连接已断开。"
+        },
+        {
+          "id": 7426424,
+          "content": "节点会一直存在，直到客户端进程被手动停止。"
+        },
+        {
+          "id": 7426425,
+          "content": "在大约15秒后，ZooKeeper服务端会因检测到会话超时而自动删除该节点。"
+        },
+        {
+          "id": 7426426,
+          "content": "节点会转为持久节点，直到网络恢复后由客户端手动删除。"
+        }
+      ],
+      "correct_option_ids": [
+        7426425
+      ],
+      "correct_options": [
+        "在大约15秒后，ZooKeeper服务端会因检测到会话超时而自动删除该节点。"
+      ],
+      "analysis": "在ZooKeeper中，临时节点（Ephemeral Node）的生命周期与客户端的会话绑定。当客户端发生网络故障无法通信时，服务端不会立即删除节点，而是依赖于会话超时机制。会话超时时间（sessionTimeout）设置为15秒，服务端在此时间内检测不到心跳或活动后，会判定会话失效，并自动删除临时节点。选项C正确描述了这一行为。选项A错误，因为删除不是立即的；选项B错误，因为节点不会永久存在，与进程状态无关；选项D错误，因为临时节点不会转为持久节点。"
+    },
+    {
+      "question_id": 1923945,
+      "uuid": "69e1f5323be947b9b3b2d520736d8aef",
+      "type": 2,
+      "title": "关于Zookeeper监听器的描述，说法正确的有（）",
+      "content": "关于Zookeeper监听器的描述，说法正确的有（）<br>",
+      "options": [
+        {
+          "id": 2970049,
+          "content": "首先要有一个main（）线程"
+        },
+        {
+          "id": 2970050,
+          "content": "在main线程中创建Zookeeper客户端，这时就会创建两个线程，一个负责网络连接通信（connet），一个负责监听（listener）"
+        },
+        {
+          "id": 2970051,
+          "content": "通过connect线程将注册的监听事件发送给Zookeeper"
+        },
+        {
+          "id": 2970052,
+          "content": "在Zookeeper的注册监听器列表中将注册的监听事件添加到列表中"
+        },
+        {
+          "id": 2970053,
+          "content": "Zookeeper监听到有数据或路径变化，就会将这个消息发送给listener线程"
+        }
+      ],
+      "correct_option_ids": [
+        2970049,
+        2970050,
+        2970051,
+        2970052,
+        2970053
+      ],
+      "correct_options": [
+        "首先要有一个main（）线程",
+        "在main线程中创建Zookeeper客户端，这时就会创建两个线程，一个负责网络连接通信（connet），一个负责监听（listener）",
+        "通过connect线程将注册的监听事件发送给Zookeeper",
+        "在Zookeeper的注册监听器列表中将注册的监听事件添加到列表中",
+        "Zookeeper监听到有数据或路径变化，就会将这个消息发送给listener线程"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 1923942,
+      "uuid": "69275efff7e0412c949c044e53e62d9c",
+      "type": 2,
+      "title": "Zookeeper中follower主要功能有（）",
+      "content": "Zookeeper中follower主要功能有（）<br>",
+      "options": [
+        {
+          "id": 2970037,
+          "content": "向Leader发送请求（PING消息、REQUEST消息、ACK消息、REVALIDATE消息）"
+        },
+        {
+          "id": 2970038,
+          "content": "接收Leader消息并进行处理"
+        },
+        {
+          "id": 2970039,
+          "content": "接收Client的请求，如果为写请求，发送给Leader进行投票"
+        },
+        {
+          "id": 2970040,
+          "content": "返回Client结果"
+        }
+      ],
+      "correct_option_ids": [
+        2970037,
+        2970038,
+        2970039,
+        2970040
+      ],
+      "correct_options": [
+        "向Leader发送请求（PING消息、REQUEST消息、ACK消息、REVALIDATE消息）",
+        "接收Leader消息并进行处理",
+        "接收Client的请求，如果为写请求，发送给Leader进行投票",
+        "返回Client结果"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 1073885,
+      "uuid": "b6023080c600496db659880c2e41a151",
+      "type": 2,
+      "title": "四种类型的数据节点Znode",
+      "content": "四种类型的数据节点 Znode",
+      "options": [
+        {
+          "id": 2269020,
+          "content": "PERSISTENT-持久节点"
+        },
+        {
+          "id": 2269021,
+          "content": "EPHEMERAL-临时节点"
+        },
+        {
+          "id": 2269022,
+          "content": "PERSISTENT_SEQUENTIAL-持久顺序节点"
+        },
+        {
+          "id": 2269023,
+          "content": "EPHEMERAL_SEQUENTIAL-临时顺序节点"
+        }
+      ],
+      "correct_option_ids": [
+        2269020,
+        2269021,
+        2269022,
+        2269023
+      ],
+      "correct_options": [
+        "PERSISTENT-持久节点",
+        "EPHEMERAL-临时节点",
+        "PERSISTENT_SEQUENTIAL-持久顺序节点",
+        "EPHEMERAL_SEQUENTIAL-临时顺序节点"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404354,
+      "uuid": "efc68688c93a4b8fa4c0884298bbdff4",
+      "type": 1,
+      "title": "一个客户端与 ZooKeeper 集群建立了一个会话，其会话超时时间（se...",
+      "content": "一个客户端与&nbsp;ZooKeeper&nbsp;集群建立了一个会话，其会话超时时间（sessionTimeout）设置为&nbsp;5000&nbsp;毫秒。该客户端创建了一个临时节点（ephemeral&nbsp;znode）`/app/lock`。随后，该客户端进程被&nbsp;`kill&nbsp;-9`&nbsp;命令强制终止。关于临时节点&nbsp;`/app/lock`&nbsp;的删除，以下哪个描述最为准确？",
+      "options": [
+        {
+          "id": 7425323,
+          "content": "在客户端的 TCP 连接断开后，Leader 会立即检测到并删除该节点。"
+        },
+        {
+          "id": 7425324,
+          "content": "Leader 在大约 `tickTime * 2` 的时间内没有收到客户端的心跳后，会话被判定为过期，并删除节点。"
+        },
+        {
+          "id": 7425325,
+          "content": "当 Leader 在超过协商的会话超时时间（5000 毫秒）后仍未收到该客户端的任何心跳时，会话才被正式标记为过期，并触发该临时节点的删除流程。"
+        },
+        {
+          "id": 7425326,
+          "content": "该临时节点将一直存在，直到另一个客户端使用相同的会话 ID 和密码重新连接后才能被删除。"
+        }
+      ],
+      "correct_option_ids": [
+        7425325
+      ],
+      "correct_options": [
+        "当 Leader 在超过协商的会话超时时间（5000 毫秒）后仍未收到该客户端的任何心跳时，会话才被正式标记为过期，并触发该临时节点的删除流程。"
+      ],
+      "analysis": "在 ZooKeeper 中，临时节点（ephemeral znode）的生命周期与客户端会话绑定。当客户端被强制终止（如 kill -9）后，TCP 连接会立即断开，但会话不会立即过期；服务器会等待会话超时时间（sessionTimeout）5000 毫秒，如果在超时后未收到客户端心跳，会话才被标记为过期，此时临时节点被删除。选项 A 错误，因为节点删除不会在 TCP 断开后立即发生；选项 B 错误，因为会话过期基于协商的会话超时时间，而非 tickTime * 2（tickTime 是内部参数，不一定与超时时间直接相关）；选项 D 错误，因为临时节点在会话过期后自动删除，无需其他客户端重新连接，且过期会话无法被重用。"
+    },
+    {
+      "question_id": 11404282,
+      "uuid": "730f628b03a7410bb10d4a74edb060db",
+      "type": 1,
+      "title": "在 ZAB 协议下，关于写请求的提交与顺序，下列说法哪项正确？",
+      "content": "在&nbsp;ZAB&nbsp;协议下，关于写请求的提交与顺序，下列说法哪项正确？",
+      "options": [
+        {
+          "id": 7427027,
+          "content": "写请求在超过半数服务器将 proposal 持久化到事务日志后，Leader 才会将其提交并对外可见"
+        },
+        {
+          "id": 7427028,
+          "content": "写请求只要 Leader 将 proposal 写入内存队列即可立即提交"
+        },
+        {
+          "id": 7427030,
+          "content": "必须集群所有服务器都持久化后才能提交"
+        },
+        {
+          "id": 7427034,
+          "content": "提交顺序由客户端发送顺序决定，与 zxid 无关"
+        }
+      ],
+      "correct_option_ids": [
+        7427027
+      ],
+      "correct_options": [
+        "写请求在超过半数服务器将 proposal 持久化到事务日志后，Leader 才会将其提交并对外可见"
+      ],
+      "analysis": "在ZAB协议中，写请求的提交需要基于quorum机制：Leader广播proposal后，必须等待超过半数服务器将proposal持久化到事务日志并发送ACK，才提交该请求并使其对客户端可见。选项A正确描述了此过程。选项B错误，因为仅Leader写入内存队列不足以保证一致性和持久性；选项C错误，提交不需要所有服务器都持久化，仅需多数派（quorum），以确保高可用；选项D错误，提交顺序由zxid（事务ID）全局顺序决定，而非客户端发送顺序。题目中专业术语（如ZAB、proposal、事务日志、zxid）拼写正确，无逻辑矛盾或文字错误。"
+    },
+    {
+      "question_id": 1923937,
+      "uuid": "3f1b53250b7b49279679636d6130923c",
+      "type": 1,
+      "title": "Zookeeper-Stat结构体中numChildren是（）",
+      "content": "Zookeeper-Stat结构体中numChildren是（）<br>",
+      "options": [
+        {
+          "id": 2970017,
+          "content": "znode数据变化号"
+        },
+        {
+          "id": 2970018,
+          "content": "znode访问控制列表的变化号"
+        },
+        {
+          "id": 2970019,
+          "content": "znode子节点数量"
+        },
+        {
+          "id": 2970020,
+          "content": "znode的数据长度"
+        }
+      ],
+      "correct_option_ids": [
+        2970019
+      ],
+      "correct_options": [
+        "znode子节点数量"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404357,
+      "uuid": "99e5955db6864cd0af35f7162693f1c5",
+      "type": 1,
+      "title": "在实现分布式锁机制时，开发者利用 ZooKeeper 的临时有序节点特性：...",
+      "content": "在实现分布式锁机制时，开发者利用&nbsp;ZooKeeper&nbsp;的临时有序节点特性：客户端创建&nbsp;/lock&nbsp;目录下的临时有序节点，然后获取所有子节点比较序号。这种方式能避免死锁的关键原因是？",
+      "options": [
+        {
+          "id": 7425275,
+          "content": "临时节点在客户端会话超时后自动删除，释放锁资源"
+        },
+        {
+          "id": 7425276,
+          "content": "持久节点保证了锁的永久持有"
+        },
+        {
+          "id": 7425277,
+          "content": "Watcher 机制自动处理节点删除事件"
+        },
+        {
+          "id": 7425278,
+          "content": "ZooKeeper 内置了锁超时检测算法"
+        }
+      ],
+      "correct_option_ids": [
+        7425275
+      ],
+      "correct_options": [
+        "临时节点在客户端会话超时后自动删除，释放锁资源"
+      ],
+      "analysis": "在ZooKeeper分布式锁机制中，使用临时有序节点时，避免死锁的关键原因是临时节点在客户端会话超时（如崩溃或断开连接）后自动删除，从而释放锁资源。这确保了即使锁持有者失效，锁也能被回收，防止死锁。选项A正确描述了此机制。选项B错误：持久节点在会话结束后仍存在，无法自动释放锁，反而可能引发死锁。选项C错误：Watcher机制用于监听节点变化，但仅辅助通知节点删除事件，非避免死锁的核心原因。选项D错误：ZooKeeper本身无内置锁超时检测算法，锁实现由客户端负责，ZooKeeper仅提供临时节点等原语。题目和选项无文字错误、逻辑矛盾或专业名称错误，符合考试筛选规则。"
+    },
+    {
+      "question_id": 11404341,
+      "uuid": "f7b4a9f419554f4bb0edb434faa9cfa4",
+      "type": 1,
+      "title": "在分布式系统中，使用 ZooKeeper 实现分布式锁的一种常见方法是创建...",
+      "content": "在分布式系统中，使用&nbsp;ZooKeeper&nbsp;实现分布式锁的一种常见方法是创建临时序列节点。这种方法的主要优势是什么？",
+      "options": [
+        {
+          "id": 7425527,
+          "content": "它可以完全消除所有类型的锁竞争"
+        },
+        {
+          "id": 7425528,
+          "content": "当持有锁的客户端崩溃或断开时，锁会自动释放"
+        },
+        {
+          "id": 7425529,
+          "content": "它确保锁只能在集群领导者上管理"
+        },
+        {
+          "id": 7425530,
+          "content": "它提高了读写操作的并发能力"
+        }
+      ],
+      "correct_option_ids": [
+        7425528
+      ],
+      "correct_options": [
+        "当持有锁的客户端崩溃或断开时，锁会自动释放"
+      ],
+      "analysis": "在ZooKeeper中，创建临时序列节点实现分布式锁时，临时节点的特性是当客户端会话结束（如崩溃或断开）时，节点会被自动删除，从而释放锁。这防止了因客户端失败而导致的死锁问题。选项A错误，因为此方法只能减少锁竞争（如通过序列节点避免惊群效应），但不能完全消除所有类型锁竞争；选项C错误，因为锁管理基于所有节点共识，不限于集群领导者；选项D错误，因为分布式锁用于互斥控制，可能降低并发，而非提高。"
+    },
+    {
+      "question_id": 1073886,
+      "uuid": "f39bc2e2ddf24ac88abc90896a311f16",
+      "type": 2,
+      "title": "Zookeeper有哪几种几种部署模式？",
+      "content": "Zookeeper 有哪几种几种部署模式？",
+      "options": [
+        {
+          "id": 2269024,
+          "content": "单机部署"
+        },
+        {
+          "id": 2269025,
+          "content": "集群部署"
+        },
+        {
+          "id": 2269026,
+          "content": "伪集群部署"
+        }
+      ],
+      "correct_option_ids": [
+        2269024,
+        2269025,
+        2269026
+      ],
+      "correct_options": [
+        "单机部署",
+        "集群部署",
+        "伪集群部署"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404283,
+      "uuid": "dbdb9c3ba41d4eb390bdf5cf0bb3bf1f",
+      "type": 1,
+      "title": "关于 ZooKeeper 的读一致性，下列说法哪项正确？",
+      "content": "关于&nbsp;ZooKeeper&nbsp;的读一致性，下列说法哪项正确？",
+      "options": [
+        {
+          "id": 7427014,
+          "content": "如果不调用 sync()，从 Follower 发起的读可能返回旧值；需要在对全局最新写有强需求时先调用 sync()"
+        },
+        {
+          "id": 7427016,
+          "content": "所有读操作都是线性一致的，因此无需任何额外处理"
+        },
+        {
+          "id": 7427017,
+          "content": "只要启用了只读模式，所有读请求都会被转发到 Leader，因而都是最新的"
+        },
+        {
+          "id": 7427018,
+          "content": "只要是同一客户端的连续两次读，第二次一定看到全局最新值"
+        }
+      ],
+      "correct_option_ids": [
+        7427014
+      ],
+      "correct_options": [
+        "如果不调用 sync()，从 Follower 发起的读可能返回旧值；需要在对全局最新写有强需求时先调用 sync()"
+      ],
+      "analysis": "ZooKeeper的默认读操作可能由Follower处理并返回旧值，因为Follower的数据可能未及时同步；sync()操作可确保读取最新数据，因此选项A正确。选项B错误，因为读操作不是默认线性一致的；选项C错误，因为只读模式下读请求可能不被转发到Leader，数据可能过时；选项D错误，因为即使同一客户端的连续两次读，也不能保证第二次看到全局最新值，除非强制同步。题目和选项文字无错误，专业名词使用正确，且无逻辑矛盾。"
+    },
+    {
+      "question_id": 1923938,
+      "uuid": "eb1fec73c9704dfaaca866fd04215336",
+      "type": 1,
+      "title": "Zookeeper集群需要多少个节点（）",
+      "content": "Zookeeper集群需要多少个节点（）<br>",
+      "options": [
+        {
+          "id": 2970021,
+          "content": "1"
+        },
+        {
+          "id": 2970022,
+          "content": "2"
+        },
+        {
+          "id": 2970023,
+          "content": "2N"
+        },
+        {
+          "id": 2970024,
+          "content": "2N+1"
+        }
+      ],
+      "correct_option_ids": [
+        2970024
+      ],
+      "correct_options": [
+        "2N+1"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 1923962,
+      "uuid": "2d369e1c90d44830b52d768592f68f7b",
+      "type": 1,
+      "title": "下列命令中（在zookeeper安装文件夹的bin目录下执行），哪项是停止...",
+      "content": "下列命令中（在 Zookeeper 安装文件夹的 bin 目录下执行），哪项是停止 <span></span>ZooKeeper <span></span>的正确命令（）<br>",
+      "options": [
+        {
+          "id": 2970118,
+          "content": "start-all.sh"
+        },
+        {
+          "id": 2970119,
+          "content": "start-stop.sh"
+        },
+        {
+          "id": 2970120,
+          "content": "zkServer.sh stop"
+        },
+        {
+          "id": 2970121,
+          "content": "zkServer.sh start"
+        }
+      ],
+      "correct_option_ids": [
+        2970120
+      ],
+      "correct_options": [
+        "zkServer.sh stop"
+      ],
+      "analysis": "<div>  zkServer.sh stop：停止 <span>ZooKeeper</span> </div> <div>  <span>zkServer.sh start：启动 <span>ZooKeeper</span><br> </span> </div>"
+    },
+    {
+      "question_id": 11404369,
+      "uuid": "42784fa8479e4020ba4508be6c8f28eb",
+      "type": 1,
+      "title": "在分布式锁的实现中，通常优先选择ZooKeeper的临时顺序节点而非持久顺...",
+      "content": "在分布式锁的实现中，通常优先选择ZooKeeper的临时顺序节点而非持久顺序节点，最主要的原因是？",
+      "options": [
+        {
+          "id": 7425089,
+          "content": "临时顺序节点会随客户端Session销毁而自动删除，避免因客户端崩溃导致锁无法释放的死锁问题"
+        },
+        {
+          "id": 7425091,
+          "content": "持久顺序节点的创建性能远低于临时节点，会降低锁的竞争效率"
+        },
+        {
+          "id": 7425093,
+          "content": "临时顺序节点支持更多客户端同时竞争锁，提升并发处理能力"
+        },
+        {
+          "id": 7425094,
+          "content": "持久顺序节点无法保证节点的全局唯一顺序，易引发锁冲突"
+        }
+      ],
+      "correct_option_ids": [
+        7425089
+      ],
+      "correct_options": [
+        "临时顺序节点会随客户端Session销毁而自动删除，避免因客户端崩溃导致锁无法释放的死锁问题"
+      ],
+      "analysis": "在ZooKeeper的分布式锁实现中，选择临时顺序节点的主要原因是其生命周期与客户端Session绑定，当客户端崩溃或Session结束时，节点自动删除，从而避免锁无法释放导致的死锁问题。选项A正确描述此机制。选项B错误，因为持久节点和临时节点的创建性能差异不大，并非主要原因；选项C错误，临时顺序节点不直接影响并发能力；选项D错误，顺序节点（无论临时或持久）都能保证全局唯一顺序。"
+    },
+    {
+      "question_id": 1923949,
+      "uuid": "238b7840423a45828da1a1a3408de59f",
+      "type": 2,
+      "title": "关于Zookeeper的特点，说法正确的有（）",
+      "content": "关于Zookeeper的特点，说法正确的有（）<br>",
+      "options": [
+        {
+          "id": 2970066,
+          "content": "Zookeeper：一个领导者（Leader），多个跟随者（Follower）组成的集群"
+        },
+        {
+          "id": 2970067,
+          "content": "集群中只要有半数以上节点存活，Zookeeper集群就能正常服务"
+        },
+        {
+          "id": 2970068,
+          "content": "全局数据一致：每个Server保存一份相同的数据副本，Client无论连接到哪个Server，数据都是一致的"
+        },
+        {
+          "id": 2970069,
+          "content": "数据更新原子性，一次数据更新要么成功，要么失败"
+        }
+      ],
+      "correct_option_ids": [
+        2970066,
+        2970067,
+        2970068,
+        2970069
+      ],
+      "correct_options": [
+        "Zookeeper：一个领导者（Leader），多个跟随者（Follower）组成的集群",
+        "集群中只要有半数以上节点存活，Zookeeper集群就能正常服务",
+        "全局数据一致：每个Server保存一份相同的数据副本，Client无论连接到哪个Server，数据都是一致的",
+        "数据更新原子性，一次数据更新要么成功，要么失败"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11404298,
+      "uuid": "5e8d4bef847d468a9cd489656910a020",
+      "type": 1,
+      "title": "在ZooKeeper中实现分布式锁时，使用顺序节点（sequential ...",
+      "content": "在ZooKeeper中实现分布式锁时，使用顺序节点（sequential&nbsp;znode）的主要目的是什么？",
+      "options": [
+        {
+          "id": 7426783,
+          "content": "防止锁操作的延迟"
+        },
+        {
+          "id": 7426784,
+          "content": "确保锁的获取遵循先进先出顺序，避免饥饿问题"
+        },
+        {
+          "id": 7426785,
+          "content": "简化锁的释放过程"
+        },
+        {
+          "id": 7426786,
+          "content": "提高锁的安全性"
+        }
+      ],
+      "correct_option_ids": [
+        7426784
+      ],
+      "correct_options": [
+        "确保锁的获取遵循先进先出顺序，避免饥饿问题"
+      ],
+      "analysis": "在ZooKeeper中实现分布式锁时，使用顺序节点的主要目的是通过创建带有单调递增序列号的znode来确保多个客户端获取锁的顺序遵循先进先出（FIFO）原则。这样，每个客户端可以根据序列号顺序等待锁，避免了某些客户端因竞争而长时间无法获取锁（即饥饿问题）。选项A错误，因为顺序节点无法直接防止操作延迟；选项C错误，因为锁的释放主要通过删除节点实现，顺序节点并未简化这一过程；选项D错误，因为顺序节点关注公平顺序，而非直接提高安全性（安全性由ZooKeeper的ACL等机制处理）。"
+    }
+  ]
+}

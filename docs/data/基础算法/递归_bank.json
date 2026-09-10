@@ -1,0 +1,2708 @@
+{
+  "source": "nowcoder_official",
+  "group": "基础算法",
+  "name": "递归",
+  "tag_id": 591,
+  "target": 87,
+  "fetched_at": "2026-07-28",
+  "total_unique": 84,
+  "complete": false,
+  "questions": [
+    {
+      "question_id": 98644,
+      "uuid": "0ef419a44cdc4ed3a2a1237872a4dabe",
+      "type": 1,
+      "title": "一个递归算法必须包括（）",
+      "content": "一个递归算法必须包括（）",
+      "options": [
+        {
+          "id": 178776,
+          "content": "递归部分"
+        },
+        {
+          "id": 178777,
+          "content": "终止条件和递归部分"
+        },
+        {
+          "id": 178778,
+          "content": "迭代部分"
+        },
+        {
+          "id": 178779,
+          "content": "终止条件和迭代部分"
+        }
+      ],
+      "correct_option_ids": [
+        178777
+      ],
+      "correct_options": [
+        "终止条件和递归部分"
+      ],
+      "analysis": "递归算法不仅需要包含递归部分还要包含终止条件。故A、C、D错，B对。"
+    },
+    {
+      "question_id": 326267,
+      "uuid": "068eb34aa6374ab485c1ce184f1a1d55",
+      "type": 1,
+      "title": "用递归算法实现转换，如“uvxyz”转换后为“zyxvu”，请选择合适的语...",
+      "content": "用递归算法实现转换，如“uvxyz”转换后为“zyxvu”，请选择合适的语句（）<br> <pre class=\"prettyprint\">void rev_str（char *s，int len）\n{\n    char ch;\n    if ( len &gt; 1)\n        {\n             ch = *s;\n             *s = *(s+len-1);\n             *(s+len-1) = ch;\n             rev_str(?,?);\n        }\n}</pre> <br>",
+      "options": [
+        {
+          "id": 860195,
+          "content": "s,len-1"
+        },
+        {
+          "id": 860196,
+          "content": "s,len-2"
+        },
+        {
+          "id": 860197,
+          "content": "s+2,len-2"
+        },
+        {
+          "id": 860198,
+          "content": "s+1,len-2"
+        }
+      ],
+      "correct_option_ids": [
+        860198
+      ],
+      "correct_options": [
+        "s+1,len-2"
+      ],
+      "analysis": "<div>  算法的逻辑为先交换字符串开头和结尾的字符，然后递归处理少去头尾的子串，因此指向开头的指针应移向下一位，长度应减二。 </div> <div>  A、B、C错误，D正确。 </div>"
+    },
+    {
+      "question_id": 11182415,
+      "uuid": "212d9ada7bb94736bc6e884a57e5f7a7",
+      "type": 1,
+      "title": "给定一个整数数组 `nums`，你需要选择其中的一些数字进行累加，使得累加...",
+      "content": "给定一个整数数组 `nums`，你需要选择其中的一些数字进行累加，使得累加和最大。但是，你不能选择相邻的数字。请问，累加和的最大值是多少？<br />\n请填写下面缺失的代码部分，使得函数能够实现上述功能（）<br />\n<pre class=\"prettyprint lang-c++\">int&nbsp;maxNonAdjacentSum(vector&lt;int&gt;&amp;&nbsp;nums)&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;int&nbsp;n&nbsp;=&nbsp;nums.size();\n&nbsp;&nbsp;&nbsp;&nbsp;vector&lt;int&gt;&nbsp;dp(n);&nbsp;&nbsp;//&nbsp;dp[i]表示以nums[i]结尾的非相邻数字的最大和\n&nbsp;&nbsp;&nbsp;&nbsp;dp[0]&nbsp;=&nbsp;nums[0];\n&nbsp;&nbsp;&nbsp;&nbsp;dp[1]&nbsp;=&nbsp;max(nums[0],&nbsp;nums[1]);\n&nbsp;&nbsp;&nbsp;&nbsp;for&nbsp;(int&nbsp;i&nbsp;=&nbsp;2;&nbsp;i&nbsp;&lt;&nbsp;n;&nbsp;++i)&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;dp[i]&nbsp;=&nbsp;max(dp[i-1],&nbsp;__(1)__);&nbsp;&nbsp;//&nbsp;状态转移方程\n&nbsp;&nbsp;&nbsp;&nbsp;}\n&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;dp[n-1];\n}</pre>",
+      "options": [
+        {
+          "id": 7197249,
+          "content": "<span>dp[i-1] + nums[i]</span>"
+        },
+        {
+          "id": 7197250,
+          "content": "<span>dp[i-2] + nums[i]</span>"
+        },
+        {
+          "id": 7197251,
+          "content": "<span>dp[i-2] + nums[i-1]</span>"
+        },
+        {
+          "id": 7197252,
+          "content": "<span>dp[i-1] + nums[i-1]</span>"
+        }
+      ],
+      "correct_option_ids": [
+        7197250
+      ],
+      "correct_options": [
+        "<span>dp[i-2] + nums[i]</span>"
+      ],
+      "analysis": "该题目同样使用动态规划来求解非相邻数字的最大和。定义一个数组 `dp`，其中 `dp[i]` 表示以 `nums[i]` 结尾的非相邻数字的最大和。初始时，将 `dp[0]` 设置为 `nums[0]`，将 `dp[1]` 设置为 `nums[0]` 和 `nums[1]` 中的较大值。然后从 `i = 2` 开始遍历数组 `nums`，对于每个位置 `i`，根据状态转移方程 `dp[i] = max(dp[i-1], dp[i-2] + nums[i])` 来更新 `dp[i]`，即选择当前位置的数 `nums[i]` 与前两个位置的最大和 `dp[i-2]` 加上当前位置的数 `nums[i]` 的较大值作为 `dp[i]` 的值。最后返回 `dp[n-1]` 即为累加和的最大值。因此，正确的选项是 B. `dp[i-2] + nums[i]`。<br />"
+    },
+    {
+      "question_id": 11182734,
+      "uuid": "a13aa94c63a448bfbc52cf649d10df04",
+      "type": 1,
+      "title": "对于背包问题，若令 x[k,h] 表示从前 k 项物品中取出并装入体积为 ...",
+      "content": "<div>\n\t对于背包问题，若令 x[k,h] 表示从前 k 项物品中取出并装入体积为 h 的背包的物品的最大价值，则当 k&gt;0 且 h≥w<sub>k&nbsp;</sub>时，x[k,h]=?\n</div>\n<div>\n\t(w<sub>k&nbsp;</sub>表示第 k 件物品的重量，c<sub>k&nbsp;</sub>表示第 k 件物品的价值）\n</div>",
+      "options": [
+        {
+          "id": 7197850,
+          "content": "<img src=\"https://hr.nowcoder.com/equation?tex=x%5Bk-1.h%5D\" alt=\"x[k-1.h]\" />"
+        },
+        {
+          "id": 7197851,
+          "content": "<img src=\"https://hr.nowcoder.com/equation?tex=max%5Cleft%5C%7B%20x%5Bk.h%5D%2Cx%5Bk-1%2Ch-w_k%5D%2Bc_k%20%5Cright%5C%7D\" alt=\"max\\left\\{ x[k.h],x[k-1,h-w_k]+c_k \\right\\}\" />"
+        },
+        {
+          "id": 7197852,
+          "content": "<img src=\"https://hr.nowcoder.com/equation?tex=max%5Cleft%5C%7B%20x%5Bk-1.h%5D%2Cx%5Bk-1%2Ch-w_k%5D%2Bc_k%20%5Cright%5C%7D\" alt=\"\" />"
+        },
+        {
+          "id": 7197853,
+          "content": "<img src=\"https://hr.nowcoder.com/equation?tex=x%5Bk-1%2Ch-w_k%5D%2Bc_k\" alt=\"x[k-1,h-w_k]+c_k\" />"
+        }
+      ],
+      "correct_option_ids": [
+        7197852
+      ],
+      "correct_options": [
+        "<img src=\"https://hr.nowcoder.com/equation?tex=max%5Cleft%5C%7B%20x%5Bk-1.h%5D%2Cx%5Bk-1%2Ch-w_k%5D%2Bc_k%20%5Cright%5C%7D\" alt=\"\" />"
+      ],
+      "analysis": "当&nbsp;<span style=\"text-wrap:wrap;\"><span style=\"text-wrap:wrap;\">h≥w</span><sub style=\"text-wrap:wrap;\">k&nbsp;</sub><span style=\"text-wrap:wrap;\">时，需要考虑将第 k 件物品放入背包的情况，所以答案选择 C</span></span><sub style=\"text-wrap:wrap;\"></sub>"
+    },
+    {
+      "question_id": 11182566,
+      "uuid": "2f7cfeacef9044a780f028f2c7056bb1",
+      "type": 1,
+      "title": "考虑以下递归算法： int qux(int n) { if (n &lt;...",
+      "content": "考虑以下递归算法：\n<div>\n<pre class=\"prettyprint lang-c\">int&nbsp;qux(int&nbsp;n)&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;if&nbsp;(n&nbsp;&lt;=&nbsp;0)\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;0;\n&nbsp;&nbsp;&nbsp;&nbsp;else\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;qux(n&nbsp;-&nbsp;2)&nbsp;+&nbsp;qux(n&nbsp;-&nbsp;3)&nbsp;+&nbsp;1;\n}</pre>\n</div>\n<div>\n</div>\n<div>\n\t计算&nbsp;qux(qux(5))&nbsp;时需要调用&nbsp;qux&nbsp;函数的次数是（）\n</div>",
+      "options": [
+        {
+          "id": 7197573,
+          "content": "7&nbsp;次"
+        },
+        {
+          "id": 7197574,
+          "content": "10&nbsp;次"
+        },
+        {
+          "id": 7197575,
+          "content": "16次"
+        },
+        {
+          "id": 7197576,
+          "content": "22&nbsp;次"
+        }
+      ],
+      "correct_option_ids": [
+        7197575
+      ],
+      "correct_options": [
+        "16次"
+      ],
+      "analysis": "计算&nbsp;qux(qux(5))&nbsp;需要调用&nbsp;qux&nbsp;函数的n值分别为5,3,1,-1,-2,0,2,0,-1,4,2,0,-1,1,-1,-2,次数是&nbsp;<span style=\"text-wrap:wrap;\">16</span>&nbsp;次。"
+    },
+    {
+      "question_id": 10816574,
+      "uuid": "523ad310689e415595de269fbd306516",
+      "type": 1,
+      "title": "下面求解斐波那契数列的代码，体现了（）算法思想 int fun2(int ...",
+      "content": "<div>  下面求解斐波那契数列的代码，体现了（）算法思想 </div> <div> <pre class=\"prettyprint lang-cpp\"> int fun2(int n){\n        int a[] = new int[20] ;\n        a[1] = 1 ;\n        a[2] = 1 ;\n        for(int i=3 ; i&lt;=n ;i++){\n            a[i] = a[i-1] + a[i-2] ;\n        }\n        return a[n] ;\n    }</pre> </div>",
+      "options": [
+        {
+          "id": 6244022,
+          "content": "<p>递归</p>"
+        },
+        {
+          "id": 6244023,
+          "content": "<p>递推</p>"
+        },
+        {
+          "id": 6244024,
+          "content": "<p>枚举</p>"
+        },
+        {
+          "id": 6244025,
+          "content": "贪心"
+        }
+      ],
+      "correct_option_ids": [
+        6244023
+      ],
+      "correct_options": [
+        "<p>递推</p>"
+      ],
+      "analysis": "<div>  考查基础算法的递推。 </div> <div>  观察“ a[i]<span> </span>= a[i-1]<span> </span>+ a[i-2]<span> </span>;”，可以发现，这段核心代码是从a[3]开始求解，层层递进，直到a[n]，所以体现的是递推思想，即答案是B；排除A、C、D。 </div> <div>  <em><strong>补充：</strong></em>当代码首先求解的是a[n]，直到a[1]、a[2]时，是从顶到下，体现的是“递归”思想。 </div>"
+    },
+    {
+      "question_id": 2226691,
+      "uuid": "e81d38ff220e41bc847c6b9ca7841511",
+      "type": 1,
+      "title": "在Python3中，下列函数字符串为 ‘abc’ 时，返回结果为： def...",
+      "content": "<div>  在Python3中，下列函数字符串为 ‘abc’ 时，返回结果为： </div> <div> <pre class=\"prettyprint lang-py\">def reserve_str(s):\n    if len(s) &lt; 1:\n        return s\n    return reserve_str(s[1:]) + s[0]\nprint(reserve_str('abc'))</pre> </div>",
+      "options": [
+        {
+          "id": 3395929,
+          "content": "<div><div><p>'abc'</p></div></div>"
+        },
+        {
+          "id": 3395930,
+          "content": "<div><div><p>'a'</p></div></div>"
+        },
+        {
+          "id": 3395931,
+          "content": "<div><div><p>'ab'</p></div></div>"
+        },
+        {
+          "id": 3395932,
+          "content": "<div><div><p>'cba'</p></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3395932
+      ],
+      "correct_options": [
+        "<div><div><p>'cba'</p></div></div>"
+      ],
+      "analysis": "<div>  <div>   <p>    根据程序所示，当字符串s长度小于1时，直接返回字符串本身，否则返回 reserve_str(s[1:]) + s[0]，因此当输入 s='abc'时，返回 reserve_str('bc')+'a' = (reserve_str('c')+'b')+'a' = ((reserve_str('')+'c')+'b')+'a'='cba',此函数主要实现将字符串进行反转   </p>  </div> </div>"
+    },
+    {
+      "question_id": 16035,
+      "uuid": "af88658ab10346a9ad558aca182ec8d4",
+      "type": 1,
+      "title": "试问计算x(x(8))时需要计算（）次x函数。",
+      "content": "设有递归算法如下，<br>\n<pre class=\"prettyprint\">int x(int n)\n{\n if(n&lt;=3)\n     return 1;\n else\n     return x(n-2)+x(n-4)+1;\n}</pre>\n 试问计算x(x(8))时需要计算（）次x函数。<br>",
+      "options": [
+        {
+          "id": 21732,
+          "content": "8"
+        },
+        {
+          "id": 21733,
+          "content": "9"
+        },
+        {
+          "id": 21734,
+          "content": "16"
+        },
+        {
+          "id": 21735,
+          "content": "18"
+        }
+      ],
+      "correct_option_ids": [
+        21735
+      ],
+      "correct_options": [
+        "18"
+      ],
+      "analysis": "这道题目需要我们仔细计算递归函数的调用次数。让我们逐步分析:<br><br>首先计算x(8):<br>1) x(8) = x(6) + x(4) + 1<br>2) x(6) = x(4) + x(2) + 1<br>3) x(4) = x(2) + x(0) + 1<br>4) x(2) = 1 (因为n<=3)<br>5) x(0) = 1 (因为n<=3)<br><br>所以:<br>- x(4) = 1 + 1 + 1 = 3<br>- x(6) = 3 + 1 + 1 = 5<br>- x(8) = 5 + 3 + 1 = 9<br><br>计算完x(8)=9后,再计算x(9):<br>1) x(9) = x(7) + x(5) + 1<br>2) x(7) = x(5) + x(3) + 1<br>3) x(5) = x(3) + x(1) + 1<br>4) x(3) = 1<br>5) x(1) = 1<br><br>所以总共需要调用x函数的次数:<br>- 计算x(8)需要7次<br>- 计算x(9)需要11次<br>总计18次<br><br>因此D(18)是正确答案。<br><br>其他选项分析:<br>A(8)错误:仅仅计算了x(8)的部分调用次数<br>B(9)错误:只得到了x(8)的结果值,并非调用次数<br>C(16)错误:漏掉了一些递归调用的计算<br><br>注意:在递归计算中,要特别注意函数的重复调用情况,需要完整地追踪每一次递归调用。"
+    },
+    {
+      "question_id": 2203110,
+      "uuid": "4032b040ae524e21927684096b177a72",
+      "type": 1,
+      "title": "给定下列递归算法的程序段，则输出结果为（）。 int cnt = 0; v...",
+      "content": "<div>  给定下列递归算法的程序段，则输出结果为（）。 <pre class=\"prettyprint lang-cpp\">int cnt = 0;\nvoid f(int l, int r) {\n\tif(l &gt; r)return ;\n\tif(l == r)\n\t{\n\t\tcnt ++ ;\n\t\treturn ;\n\t}\n\tcnt ++ ;\t\t\n\tint mid = (l + r) / 2;\n\tf(l, mid);\n\tf(mid + 1, r);\n\treturn ;\n}\nint main() {\n\tf(1,1000);\n\tprintf(&quot;%d&quot;,cnt);\n}</pre> </div>",
+      "options": [
+        {
+          "id": 3373817,
+          "content": "1024"
+        },
+        {
+          "id": 3373818,
+          "content": "1999"
+        },
+        {
+          "id": 3373819,
+          "content": "2000"
+        },
+        {
+          "id": 3373820,
+          "content": "2048"
+        }
+      ],
+      "correct_option_ids": [
+        3373818
+      ],
+      "correct_options": [
+        "1999"
+      ],
+      "analysis": "<div>  考察递归。 </div> <div>  易得，题目就是要求(l&lt;=r)的递归函数的执行次数。 </div> <div>  下面给出n=10的递归树的图示，以及递归函数执行次数cnt=T(n)=2n-1的证明过程 </div> <div>  结论成立，故cnt=T(1000)=1999 </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211003/387374_1633194012021/676E5446A6D38E335B1CCE819E8D00CF\" style=\"height: auto;width: 390.0px;\">  </div>"
+    },
+    {
+      "question_id": 10960010,
+      "uuid": "ceb3f8550f70428fa5099dc0dae73c9b",
+      "type": 1,
+      "title": "考虑以下递归函数： function calculateI(i): if ...",
+      "content": "考虑以下递归函数：\n<div>\n<pre class=\"prettyprint lang-c++\">function&nbsp;calculateI(i):\n&nbsp;&nbsp;&nbsp;&nbsp;if&nbsp;i&nbsp;&lt;=&nbsp;0:\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;0\n&nbsp;&nbsp;&nbsp;&nbsp;else:\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;2 * calculateI(i&nbsp;-&nbsp;1)&nbsp;+&nbsp;1\n</pre>\n</div>\n<div>\n\t对于给定的初始i值为4，计算最终的i值是多少？\n</div>",
+      "options": [
+        {
+          "id": 6620778,
+          "content": "14"
+        },
+        {
+          "id": 6620779,
+          "content": "15"
+        },
+        {
+          "id": 6620780,
+          "content": "16<br />"
+        },
+        {
+          "id": 6620781,
+          "content": "17"
+        }
+      ],
+      "correct_option_ids": [
+        6620779
+      ],
+      "correct_options": [
+        "15"
+      ],
+      "analysis": "递归函数`calculateI(i)`每次调用时，将i的值减1并乘以2，并返回调用`calculateI(i&nbsp;- 1)`的结果加1。calculateI(1)=1；calculateI(2)=3；calculateI(3)=7；calculateI(4)=15；<br />"
+    },
+    {
+      "question_id": 2225551,
+      "uuid": "a799daf4b46c4f46838bcfd4780b626e",
+      "type": 1,
+      "title": "判断下面grow函数当输入n为1时的输出情况（ ）",
+      "content": "<div>  判断下面grow函数当<span>输入</span>n为1时的输出情况（ ） </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211015/389619_1634285164477/1B55AE55828902F0E580D2181A9B3BFD\"><br> </div> <p>  <span></span>  </p>",
+      "options": [
+        {
+          "id": 3394728,
+          "content": "<p>1234</p>"
+        },
+        {
+          "id": 3394729,
+          "content": "<p>11223344</p>"
+        },
+        {
+          "id": 3394730,
+          "content": "<p>12344321</p>"
+        },
+        {
+          "id": 3394731,
+          "content": "12341234"
+        }
+      ],
+      "correct_option_ids": [
+        3394730
+      ],
+      "correct_options": [
+        "<p>12344321</p>"
+      ],
+      "analysis": "<div>  <div>   <p>    知识点：递归算法的特点   </p>   <p>    本题主要抓住两个关键点：一、每级递归都属于本级递归私有，每级函数调用都有自己的变量；二、虽然每级变量都有自己的变量，但并没有拷贝函数的代码。理解这两点，根据算法进行模拟即可的出答案，下面列出模拟过程以供参考：   </p>   <table>    <tbody>     <tr>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">变量 </span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"> n </span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"> n </span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"> n </span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"> n </span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>     </tr>     <tr>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">1级调用后</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">1</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p> <br>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p> <br>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p> <br>      </td>     </tr>     <tr>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">2级调用后</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">1</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">2</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p> <br>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p> <br>      </td>     </tr>     <tr>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">3级调用后</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">1</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">2</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">3</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p> <br>      </td>     </tr>     <tr>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">4级调用后</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">1</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">2</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">3</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">4</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>     </tr>     <tr>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">4级调用返回后</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">1</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">2</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">3</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       4       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>     </tr>     <tr>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">3级调用返回后</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">1</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">2</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       3       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p> <br>      </td>     </tr>     <tr>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">2级调用返回后</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">1</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       2       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p> <br>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p> <br>      </td>     </tr>     <tr>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">1级调用返回后</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\">1</span><span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"><br> </span><span style=\"color: rgb(51,51,51);\"></span>        </p> <br>      </td>      <td>       <br>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>      </td>      <td>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p>       <p>        <span style=\"color: rgb(51,51,51);\"></span>        </p> <br>      </td>     </tr>    </tbody>   </table>   <p>    <table>     <tbody>      <tr>       <td>        <br>       </td>       <td>        <table>         <tbody>          <tr>           <td>            <br>           </td>           <td>            <br>           </td>           <td>            <br>           </td>           <td>            <br>           </td>           <td>            <br>           </td>          </tr>         </tbody>        </table> <br>       </td>      </tr>     </tbody>    </table>   </p>  </div> </div>"
+    },
+    {
+      "question_id": 10816600,
+      "uuid": "9a85bff433da4171b1531e1706a7db5a",
+      "type": 1,
+      "title": "给定一组硬币面值，下面是用最少的硬币向客户支付金额的贪心算法，下列关于该贪...",
+      "content": "<div>  给定一组硬币面值<img src=\"https://www.nowcoder.com/equation?tex=C%3D%5C%7B1%2C5%2C10%2C25%2C60%2C100%5C%7D\">，下面是用最少的硬币向客户支付金额的贪心算法，下列关于该贪心算法的叙述正确的是（） </div> <div> <pre class=\"prettyprint lang-cpp\">ALGORITHM (x, c1, c2, …, cn)//c1,c2..表示货币金额\nSORT n coin denominations so that 0 &lt; c1 &lt; c2 &lt; … &lt; cn.\nS ← ∅.//选择货币的集合\nWHILE (x &gt; 0)\n    k ← largest coin denomination ck such that ck &lt;= x.\n    IF no such k, RETURN “no solution.”\n    ELSE\n        x ← x – ck.\n        S ← S ∪ { k }.\nRETURN S.</pre> </div>",
+      "options": [
+        {
+          "id": 6244094,
+          "content": "利用该贪心算法求解得到的解总是最优的"
+        },
+        {
+          "id": 6244095,
+          "content": "题中所给的贪心算法适用于任何一套面值c1&lt;c2&lt;…&lt;cn的硬币，前提是c1=1"
+        },
+        {
+          "id": 6244096,
+          "content": "题中所给的贪心算法只适合于硬币面值为<img src=\"https://www.nowcoder.com/equation?tex=C%3D%5C%7B1%2C5%2C10%2C25%2C60%2C100%5C%7D\">"
+        },
+        {
+          "id": 6244097,
+          "content": "给定x=90，得到的集合<img src=\"https://www.nowcoder.com/equation?tex=S%3D%5C%7B60%2C25%2C5%5C%7D\">，这个解是最优的"
+        }
+      ],
+      "correct_option_ids": [
+        6244097
+      ],
+      "correct_options": [
+        "给定x=90，得到的集合<img src=\"https://www.nowcoder.com/equation?tex=S%3D%5C%7B60%2C25%2C5%5C%7D\">，这个解是最优的"
+      ],
+      "analysis": "<div>  考查基础算法中的贪心算法。 </div> <div>  对于A、C，<span>给定货币值x=120，根据该贪心算法得到的解</span><span>集合</span><img src=\"https://www.nowcoder.com/equation?tex=S%3D%5C%7B100%2C10%2C10%5C%7D\"><span>，而最优解集合为</span><img src=\"https://www.nowcoder.com/equation?tex=optS%3D%5C%7B60%2C60%5C%7D\">，因此<span>用该贪心算法求解得到的解并不总是最优的，选项A、C错误</span> </div> <div>  对于B，给定一组硬币<span>面值</span><img src=\"https://www.nowcoder.com/equation?tex=C%3D%5C%7B1%2C%2010%2C%2021%2C%2034%2C%2070%2C%20100%5C%7D\">，给定货币值x=140，根据该贪心算法得到的解<span>集合</span><img src=\"https://www.nowcoder.com/equation?tex=S%3D%5C%7B100%2C34%2C1%2C1%2C1%2C1%2C1%2C1%5C%7D\">，而最优解集合为<img src=\"https://www.nowcoder.com/equation?tex=optS%3D%5C%7B70%2C70%5C%7D\">，因此题中的贪心算法不一定适用于<span>任何一套面值c1&lt;c2&lt;…&lt;cn的硬币，即使<span>c1=1</span>，选项B错误</span> </div> <div>  <span>对于D，<span>给定x=90，利用贪心算法，每次选择不大于剩余货币值得货币，得到的</span><span>集合</span><img src=\"https://www.nowcoder.com/equation?tex=S%3D%5C%7B60%2C25%2C5%5C%7D\" style=\"\"><span>，可以判断这个解是最优的</span>，选项D正确</span> </div> <div>  <span><br> </span> </div>"
+    },
+    {
+      "question_id": 52237,
+      "uuid": "2bf910f406ab4fe088988de92cb73dea",
+      "type": 1,
+      "title": "采用递归方式对顺序表进行快速排序，下列关于递归次数的叙述中，正确的是（）",
+      "content": "<p style=\"margin-left: 0.0pt;\">\n  <span>采用递归方式对顺序表进行快速排序，下列关于递归次数的叙述中，正确的是（）</span>\n</p>",
+      "options": [
+        {
+          "id": 67208,
+          "content": "递归次数与初始数据的排列次序无关"
+        },
+        {
+          "id": 67209,
+          "content": "每次划分后，先处理较长的分区可以减少递归次数"
+        },
+        {
+          "id": 67210,
+          "content": "每次划分后，先处理较短的分区可以减少递归次数"
+        },
+        {
+          "id": 67211,
+          "content": "递归次数与每次划分后得到的分区处理顺序无关"
+        }
+      ],
+      "correct_option_ids": [
+        67211
+      ],
+      "correct_options": [
+        "递归次数与每次划分后得到的分区处理顺序无关"
+      ],
+      "analysis": "快速排序的递归次数主要取决于划分点的选择和数据规模,而与处理分区的顺序无关,所以D选项正确。<br><br>分析各选项:<br>A错误:递归次数与初始数据的排列顺序是有关的。比如,当数据已经有序或逆序时,如果选择第一个或最后一个元素作为基准值,会导致划分极不均衡,递归次数会达到最大O(n)。<br><br>B错误:每次划分后先处理较长的分区并不会减少递归次数。递归次数取决于划分点的选择是否均衡,与处理分区的顺序无关。<br><br>C错误:与B选项同理,先处理较短的分区也不会减少递归次数。虽然在某些实现中可能会考虑先处理较短分区来节省栈空间,但这不影响递归的总次数。<br><br>D正确:快速排序的递归次数只与划分过程有关。每次划分会将数据分成两个子区间,递归次数取决于这些划分点将数据分割的均衡程度。无论先处理哪个分区,最终需要递归处理的次数是一样的。<br><br>需要注意的是,虽然处理分区的顺序不影响递归次数,但在实践中可能会考虑先处理较小的分区以优化栈空间使用。这是一个实现细节,与递归次数本身无关。"
+    },
+    {
+      "question_id": 11182735,
+      "uuid": "6cef9c0deaef45a687796510b35662d1",
+      "type": 1,
+      "title": "以下问题中不适用于动态规划的是：",
+      "content": "以下问题中不适用于动态规划的是：",
+      "options": [
+        {
+          "id": 7197838,
+          "content": "从围棋棋盘的左上角走到右下角计算有多少种走法"
+        },
+        {
+          "id": 7197839,
+          "content": "固定终点的最长路和最短路"
+        },
+        {
+          "id": 7197840,
+          "content": "求解最长上升子序列"
+        },
+        {
+          "id": 7197841,
+          "content": "<span style=\"color:#4B4B4B;\">给出n列珍珠，两人轮流取珍珠，每次在某一列中取至少1颗珍珠，但不能在两列中取。最后拿光珍珠的人输，计算如何能赢</span>"
+        }
+      ],
+      "correct_option_ids": [
+        7197841
+      ],
+      "correct_options": [
+        "<span style=\"color:#4B4B4B;\">给出n列珍珠，两人轮流取珍珠，每次在某一列中取至少1颗珍珠，但不能在两列中取。最后拿光珍珠的人输，计算如何能赢</span>"
+      ],
+      "analysis": "D考察的是博弈，不适用于动态规划"
+    },
+    {
+      "question_id": 11180546,
+      "uuid": "7a0823007ee849e0b8327792c2ba88d7",
+      "type": 1,
+      "title": "对于物品数量 n=4，承重 W=8 的背包问题，已知要装入背包的物品分别是...",
+      "content": "<div>\n\t对于物品数量 n=4，承重 W=8 的背包问题，已知要装入背包的物品分别是\n</div>\n<div>\n\tw=2，c=3（重量为2，价值为3）\n</div>\n<div>\n\tw=3，c=4\n</div>\n<div>\n\tw=4，c=5\n</div>\n<div>\n\tw=5，c=6\n</div>\n<div>\n\t每个物品最多选一次，请问往背包里最多放入价值为多少的物品\n</div>",
+      "options": [
+        {
+          "id": 7193397,
+          "content": "4"
+        },
+        {
+          "id": 7193398,
+          "content": "6"
+        },
+        {
+          "id": 7193399,
+          "content": "8"
+        },
+        {
+          "id": 7193400,
+          "content": "10"
+        }
+      ],
+      "correct_option_ids": [
+        7193400
+      ],
+      "correct_options": [
+        "10"
+      ],
+      "analysis": "<div>\n\t通过动态规划的方式对四件物品进行装包计算，可知最多装入\n</div>\n<div>\n\tw=3，c=4\n</div>\n<div>\n\tw=5，c=6\n</div>\n<div>\n\t两件物品，答案为D\n</div>"
+    },
+    {
+      "question_id": 10974634,
+      "uuid": "87f3b528fd29408a8b8ae4ea4b69e6cd",
+      "type": 1,
+      "title": "某算法的时间复杂度为O(n2)，表明该算法的（ ）",
+      "content": "某算法的时间复杂度为O(n2)，表明该算法的（&nbsp;）",
+      "options": [
+        {
+          "id": 6653462,
+          "content": "问题规模是n2"
+        },
+        {
+          "id": 6653463,
+          "content": "执行时间等于n2"
+        },
+        {
+          "id": 6653464,
+          "content": "执行时间与n2成正比"
+        },
+        {
+          "id": 6653465,
+          "content": "问题规模与n2成正比"
+        }
+      ],
+      "correct_option_ids": [
+        6653464
+      ],
+      "correct_options": [
+        "执行时间与n2成正比"
+      ],
+      "analysis": "时间复杂度O(n²)表示算法的执行时间增长率与输入规模n的平方成正比。C选项\"执行时间与n²成正比\"准确描述了这一特性。<br><br>分析其他选项：<br><br>A错误：时间复杂度O(n²)描述的是算法执行时间的增长趋势，而不是问题规模。问题规模n是输入数据的大小。<br><br>B错误：时间复杂度O(n²)并不意味着实际执行时间严格等于n²，而是表示执行时间的增长率与n²成正比。实际执行时间还要考虑系统环境、常数项等因素。<br><br>D错误：问题规模n是算法的输入规模，与时间复杂度O(n²)描述的执行时间增长率是两个不同的概念。问题规模是输入，而时间复杂度是输出特征。<br><br>补充说明：<br>时间复杂度使用大O符号表示算法执行时间的渐进上界。O(n²)意味着当输入规模n足够大时，算法的执行时间不会超过k×n²的增长速度，其中k为某个常数。这种渐进性质正是\"成正比\"的体现。"
+    },
+    {
+      "question_id": 11182314,
+      "uuid": "400769934bbb4b7589e1fd24b4c1a15f",
+      "type": 1,
+      "title": "下面 C++ 代码运行结束后，打印输出的结果为（） #include &l...",
+      "content": "<div style=\"text-align:justify;\">\n\t<span>下面</span><span>&nbsp;</span><span>C++</span><span>&nbsp;</span><span>代码运行结束后，打印输出的结果为（）</span> \n</div>\n<div style=\"text-align:justify;\">\n\t<span> \n<pre class=\"prettyprint lang-c++\">#include&nbsp;&lt;iostream&gt;\nusing&nbsp;namespace&nbsp;std;\n\nint&nbsp;fib(int&nbsp;n)&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;if&nbsp;(n&nbsp;&lt;=&nbsp;1)&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;n;\n&nbsp;&nbsp;&nbsp;&nbsp;}\n&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;fib(n-1)&nbsp;+&nbsp;fib(n-2);\n}\n\nint&nbsp;main()&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;int&nbsp;sum&nbsp;=&nbsp;0;\n&nbsp;&nbsp;&nbsp;&nbsp;for&nbsp;(int&nbsp;i&nbsp;=&nbsp;0;&nbsp;i&nbsp;&lt;=&nbsp;6;&nbsp;i++)&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sum&nbsp;+=&nbsp;fib(i);\n&nbsp;&nbsp;&nbsp;&nbsp;}\n&nbsp;&nbsp;&nbsp;&nbsp;cout&nbsp;&lt;&lt;&nbsp;sum&nbsp;&lt;&lt;&nbsp;endl;\n&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;0;\n}</pre>\n</span> \n</div>",
+      "options": [
+        {
+          "id": 7196681,
+          "content": "<div style=\"text-align:justify;\"><span>12</span></div>"
+        },
+        {
+          "id": 7196682,
+          "content": "20"
+        },
+        {
+          "id": 7196683,
+          "content": "<div style=\"text-align:justify;\"><span>编译错误</span></div>"
+        },
+        {
+          "id": 7196684,
+          "content": "<span>运行错误</span>"
+        }
+      ],
+      "correct_option_ids": [
+        7196682
+      ],
+      "correct_options": [
+        "20"
+      ],
+      "analysis": "这道题目考察了C++中递归函数和斐波那契数列的计算。让我们逐步分析代码的执行过程：<br><br>fib(n)函数是一个递归实现的斐波那契数列计算函数。代码中通过循环计算fib(0)到fib(6)的和。<br><br>让我们列出每个fib(i)的值：<br>fib(0) = 0<br>fib(1) = 1<br>fib(2) = fib(1) + fib(0) = 1<br>fib(3) = fib(2) + fib(1) = 2<br>fib(4) = fib(3) + fib(2) = 3<br>fib(5) = fib(4) + fib(3) = 5<br>fib(6) = fib(5) + fib(4) = 8<br><br>最终sum的值 = 0 + 1 + 1 + 2 + 3 + 5 + 8 = 20<br><br>所以B选项20是正确答案。<br><br>分析其他选项：<br>A选项12错误：这个数值明显小于实际计算结果。<br><br>C选项\"编译错误\"错误：代码语法完全正确，包含了必要的头文件和using namespace std声明，不会出现编译错误。<br><br>D选项\"运行错误\"错误：虽然递归实现的斐波那契函数效率不高，但对于计算到fib(6)这样小的数值完全不会造成栈溢出或其他运行时错误。代码可以正常执行并得到结果。"
+    },
+    {
+      "question_id": 2203111,
+      "uuid": "8af6b42a781145cf8d705a00218229dc",
+      "type": 1,
+      "title": "给定下列递归算法的程序段，则输出结果为（）。 int cnt = 0, n...",
+      "content": "<div>  <span style=\"color: rgb(51,51,51);\">给定下列递归算法的程序段，则输出结果为（）。</span>  </div> <div>  <span style=\"color: rgb(51,51,51);\">  <pre class=\"prettyprint lang-cpp\">int cnt = 0, n;\nvoid f(int a, int b)\n{\n\tcnt ++ ;\n\tif(b &lt;= 1)\n\t\tif(a == 1) return ;\n\t\telse f(a - 1, a - 2);\n\telse \n\t\tf(a, b - 1);\n\treturn ;\n}\nint main() {\n\tn = 456;\n\tf(n, n - 1);\n\tprintf(&quot;%d&quot;,cnt);\n}</pre> <br> <br> </span>  </div>",
+      "options": [
+        {
+          "id": 3373821,
+          "content": "103740"
+        },
+        {
+          "id": 3373822,
+          "content": "103741"
+        },
+        {
+          "id": 3373823,
+          "content": "<p>104196</p>"
+        },
+        {
+          "id": 3373824,
+          "content": "<p>104197</p>"
+        }
+      ],
+      "correct_option_ids": [
+        3373822
+      ],
+      "correct_options": [
+        "103741"
+      ],
+      "analysis": "<div>  （想要检验答案，这题如果直接运行程序，会因为递归层数过多而栈溢出，返回段错误，需要手动将栈的大小调大） </div> <div>  观察代码结构可以发现，对于n&gt;1 </div> <div>  设刚进入a=n，则f(n,i)会执行n-1次， </div> <div>  然后进入a=n-1,随后f(n-1,i)会执行n-2次 </div> <div>  以此类推 </div> <div>  注意递归边界 </div> <div>  当a=1的时候，待会再额外执行一次 </div> <div>  所以最后的结果为等差数列的求和公式，再加上1 </div> <div>  即cnt=n(n-1)/2+1 </div> <div>  将n=456代入得到cnt=<span>103741，选择B</span>  </div> <div>  本题容易忽视递归边界A，或者多算了等差数列中的一项，误选C,D </div>"
+    },
+    {
+      "question_id": 10959979,
+      "uuid": "a1edd76c2baf475a919e796b24c2550e",
+      "type": 1,
+      "title": "存在一棵二叉树，其前序遍历为ABCDE，中序遍历为BADCE，则其后序遍历为（）",
+      "content": "存在一棵二叉树，其前序遍历为ABCDE，中序遍历为BADCE，则其后序遍历为（）",
+      "options": [
+        {
+          "id": 6620685,
+          "content": "BACDE"
+        },
+        {
+          "id": 6620686,
+          "content": "ABDCE"
+        },
+        {
+          "id": 6620687,
+          "content": "BDECA"
+        },
+        {
+          "id": 6620690,
+          "content": "CEBDA"
+        }
+      ],
+      "correct_option_ids": [
+        6620687
+      ],
+      "correct_options": [
+        "BDECA"
+      ],
+      "analysis": "根据二叉树的前序遍历(根-左-右)为ABCDE和中序遍历(左-根-右)为BADCE，我们可以推导出二叉树的结构，进而得到后序遍历(左-右-根)。<br><br>具体推导过程：<br>1. 由前序遍历可知，A是根节点<br>2. 在中序遍历BADCE中，A的位置将左右子树划分：<br>   - A左边的B是左子树<br>   - A右边的DCE是右子树<br>3. 对右子树DCE，根据前序遍历CDE可知C是右子树的根<br>4. 在中序遍历DCE中，C的位置将D和E划分：<br>   - D是C的左子树<br>   - E是C的右子树<br><br>因此二叉树结构为：<br>- A为根<br>- B为A的左子节点<br>- C为A的右子节点<br>- D为C的左子节点<br>- E为C的右子节点<br><br>后序遍历为：BDECA（左子树-右子树-根节点）<br>所以C选项是正确答案。<br><br>分析其他选项：<br>A. BACDE：不符合后序遍历规则，根节点A应该在最后出现<br>B. ABDCE：这是题目给出的前序遍历序列<br>D. CEBDA：顺序错误，没有遵循左子树-右子树-根节点的后序遍历规则"
+    },
+    {
+      "question_id": 949,
+      "uuid": "8128a3c74c904ed7bea9f13214d5863a",
+      "type": 1,
+      "title": "给定下列程序，那么执行printf(\"%d\\n\", foo(20, 13)...",
+      "content": "给定下列程序，那么执行printf(\"%d\\n\", foo(20, 13));的输出结果是（）<br />\n<pre class=\"prettyprint lang-js\">int foo(int x, int y){\n    if (x &lt;= 0 || y &lt;= 0) \n        return 1; \n    return 3 * foo( x-6, y/2 ); \n}</pre>",
+      "options": [
+        {
+          "id": 2065,
+          "content": "3"
+        },
+        {
+          "id": 2066,
+          "content": "9"
+        },
+        {
+          "id": 2067,
+          "content": "27"
+        },
+        {
+          "id": 2068,
+          "content": "81"
+        }
+      ],
+      "correct_option_ids": [
+        2068
+      ],
+      "correct_options": [
+        "81"
+      ],
+      "analysis": "这道题目需要通过递归函数的运行过程来分析结果。让我们逐步计算foo(20,13)的执行过程：<br><br>第一次调用: foo(20,13)<br>x=20,y=13 不满足终止条件,继续递归<br>返回 3 * foo(14,6)<br><br>第二次调用: foo(14,6)<br>x=14,y=6 不满足终止条件,继续递归<br>返回 3 * foo(8,3)<br><br>第三次调用: foo(8,3)<br>x=8,y=3 不满足终止条件,继续递归<br>返回 3 * foo(2,1)<br><br>第四次调用: foo(2,1)<br>x=2,y=1 不满足终止条件,继续递归<br>返回 3 * foo(-4,0)<br><br>第五次调用: foo(-4,0)<br>x=-4,y=0 满足终止条件,返回1<br><br>因此最终结果是:<br>1 * 3 * 3 * 3 * 3 = 81<br><br>所以选D:81是正确答案。<br><br>分析其他选项:<br>A选项3只进行了一次乘3的运算,太少<br>B选项9只进行了两次乘3的运算,太少<br>C选项27只进行了三次乘3的运算,太少<br><br>这个递归函数每次x减6,y除以2,直到x或y小于等于0时返回1,然后每层递归都乘以3,总共进行了4次乘3运算,所以最终结果是81。"
+    },
+    {
+      "question_id": 10959792,
+      "uuid": "9e37096b88784a668994668cc99e6ef0",
+      "type": 1,
+      "title": "对数组a=[6, 2, 9, 4, 1, 7]采用快速排序的方法，以第一个...",
+      "content": "<span style=\"color: rgb(38,38,38);\">以第一个元素 6 为枢轴，采用“挖坑法”分区：保存 pivot=a[0]，设 i=1、j=n−1；循环过程为“先从右向左找第一个小于 pivot 的元素填到左坑，再从左向右找第一个大于 pivot 的元素填到右坑”，当 i==j 时将 pivot 填回 a[i]，完成第一次划分。比较规则：左侧元素严格小于 pivot，右侧元素严格大于 pivot。 数组 a=[6,2,9,4,1,7]，问第一次划分后的数组是：</span>",
+      "options": [
+        {
+          "id": 6615642,
+          "content": "[2,&nbsp;6,&nbsp;9,&nbsp;4,&nbsp;1,&nbsp;7]"
+        },
+        {
+          "id": 6615643,
+          "content": "[6,&nbsp;2,&nbsp;9,&nbsp;4,&nbsp;1,&nbsp;7]"
+        },
+        {
+          "id": 6615644,
+          "content": "[1, 2,&nbsp;4, 6,&nbsp;9,&nbsp;7]"
+        },
+        {
+          "id": 6615645,
+          "content": "[4,&nbsp;2,&nbsp;1,&nbsp;6,&nbsp;9,&nbsp;7]"
+        }
+      ],
+      "correct_option_ids": [
+        6615644
+      ],
+      "correct_options": [
+        "[1, 2,&nbsp;4, 6,&nbsp;9,&nbsp;7]"
+      ],
+      "analysis": "<p>  根据题目要求，使用快速排序的“挖坑法”对数组a = [6, 2, 9, 4, 1, 7]进行划分，以第一个元素6为枢轴（pivot）。划分规则为： </p> <ol>  <li>   保存pivot = a[0] = 6，位置a[0]视为初始“坑”    <li>   指针i = 0（坑位置），j = 5（末尾）    <li>   从右向左（j递减）找第一个 <strong>严格小于</strong> pivot的元素，填入左坑    <li>   从左向右（i递增）找第一个 <strong>严格大于</strong> pivot的元素，填入右坑    <li>   重复直到i == j，将pivot填回a[i]   </ol> <h3>  划分过程： </h3> <ol>  <li>   <p>    <strong>初始状态</strong>：<br> [6, 2, 9, 4, 1, 7]<br> pivot = 6，坑在索引0，i = 0，j = 5   </p>    <li>   <p>    <strong>从右向左找小于pivot的元素</strong>：   </p>   <ul>    <li>     j = 5：7 &gt; 6→ 跳过        <li>     j = 4：1 &lt; 6→ 将a[4] = 1填入坑a[0]，坑移至j = 4<br> 数组变为：[1, 2, 9, 4, 坑, 7]<br> （此时i = 0，j = 4）       </ul>    <li>   <p>    <strong>从左向右找大于pivot的元素</strong>：   </p>   <ul>    <li>     i = 0：1 &lt; 6→ 跳过        <li>     i = 1：2 &lt; 6→ 跳过        <li>     i = 2：9 &gt; 6→ 将a[2] = 9填入坑a[4]，坑移至i = 2<br> 数组变为：[1, 2, 坑, 4, 9, 7]<br> （此时i = 2，j = 4）       </ul>    <li>   <p>    <strong>从右向左找小于pivot的元素</strong>：   </p>   <ul>    <li>     j = 4：9 &gt; 6→ 跳过        <li>     j = 3：4 &lt; 6→ 将a[3] = 4填入坑a[2]，坑移至j = 3<br> 数组变为：[1, 2, 4, 坑, 9, 7]<br> （此时i = 2，j = 3）       </ul>    <li>   <p>    <strong>从左向右找大于pivot的元素</strong>：   </p>   <ul>    <li>     i = 2：4 &lt; 6→ 跳过        <li>     i = 3：此时i == j，终止循环       </ul>    <li>   <p>    <strong>填入pivot</strong>：<br> 将pivot = 6填入坑a[3]<br> 最终数组：[1, 2, 4, 6, 9, 7]   </p>   </ol> <h3>  验证： </h3> <ul>  <li>   左侧[1, 2, 4]严格小于6    <li>   右侧[9, 7]严格大于6    <li>   枢轴6在正确位置   </ul> <h3>  选项匹配： </h3> <ul>  <li>   <strong>A.[2, 6, 9, 4, 1, 7]</strong> → 错误（枢轴位置不正确）    <li>   <strong>B.[6, 2, 9, 4, 1, 7]</strong> → 错误（未划分的原始数组）    <li>   <strong>C.[1, 2, 4, 6, 9, 7]</strong> → 正确（划分结果匹配）    <li>   <strong>D.[4, 2, 1, 6, 9, 7]</strong> → 错误（顺序不符）   </ul> <h3>  <br> </h3> <br>"
+    },
+    {
+      "question_id": 2224945,
+      "uuid": "8216fa30426846d79413487d21882af6",
+      "type": 1,
+      "title": "一个正整数的阶乘是从1连乘到它本身，下面递归函数实现了阶乘的计算，请分析出...",
+      "content": "<p>  一个正整数的阶乘是从<span>1</span>连乘到它本身，下面递归函数实现了阶乘的计算，请分析出它的时间复杂度为（） </p> <p>  <br> </p> <pre class=\"prettyprint lang-cpp\">int factorial(unsigned int n)\n{\n    if(i &lt;= 1)\n        return 1;\n    else\n        return n * factorial(n-1);\n}</pre> <p>  <br> </p>",
+      "options": [
+        {
+          "id": 3394021,
+          "content": "<p>O(1)</p>"
+        },
+        {
+          "id": 3394024,
+          "content": "O(logN)"
+        },
+        {
+          "id": 3394028,
+          "content": "O(N)"
+        },
+        {
+          "id": 3394033,
+          "content": "O(N*logN)"
+        }
+      ],
+      "correct_option_ids": [
+        3394028
+      ],
+      "correct_options": [
+        "O(N)"
+      ],
+      "analysis": "<p>  由代码可知展开<span>f(n) = n * f(n-1) = n * (n-1) * f(n-2) = </span>…<span> = n * (n-1) * (n-2) *</span>…<span>*1</span>，每进入一次递归函数<span>factorial</span>，<span>n</span>减小<span>1</span>，且每次只需要<span>O(1)</span>时间完成乘法和减法操作，因此总的时间复杂度为<span>O(N)</span>。 </p>"
+    },
+    {
+      "question_id": 323612,
+      "uuid": "17f0d7441e72476589d5f92eecae9cb9",
+      "type": 1,
+      "title": "以下函数的时间复杂度是\nvoid recursive(int n, int...",
+      "content": "<div>  以下函数的时间复杂度是 </div> <div> <pre class=\"prettyprint lang-cpp\">void recursive(int n, int m, int o) {\n    if (n &lt;= 0) {\n        printf(&quot;%d, %d \\n&quot;, m, o);\n    } else {\n        recursive(n - 1, m + 1, o);\n        recursive(n - 1, m, o + 1);\n    }\n}</pre> </div> <br>",
+      "options": [
+        {
+          "id": 852022,
+          "content": "O(n*m*o)"
+        },
+        {
+          "id": 852023,
+          "content": "O(2^n)"
+        },
+        {
+          "id": 852024,
+          "content": "O(n^2*m^2)"
+        },
+        {
+          "id": 852025,
+          "content": "O(n!)"
+        }
+      ],
+      "correct_option_ids": [
+        852023
+      ],
+      "correct_options": [
+        "O(2^n)"
+      ],
+      "analysis": "<div>  可以发现时间复杂度只跟n有关系 </div> <div>  设T(n)表示recursive(n,m,o)的时间复杂度，可以得到递推式T(n)=2T(n-1)+O(1),T(0)=O(1)，解得T(n)=O(2^n) </div> <div>  A、C、D错误，B正确 </div>"
+    },
+    {
+      "question_id": 10824199,
+      "uuid": "aa8f8a7b863d480ea8ad6f677bde923e",
+      "type": 1,
+      "title": "考虑以下递归函数： int calculateI(int i) { if ...",
+      "content": "考虑以下递归函数：\n<div>\n<pre class=\"prettyprint lang-c++\">int&nbsp;calculateI(int&nbsp;i)&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;if&nbsp;(i&nbsp;&lt;=&nbsp;1)&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;i;\n&nbsp;&nbsp;&nbsp;&nbsp;}&nbsp;else&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;calculateI(i&nbsp;-&nbsp;1)&nbsp;+&nbsp;1;\n&nbsp;&nbsp;&nbsp;&nbsp;}\n}\n</pre>\n</div>\n<div>\n\t对于给定的初始i值（i&gt;1），计算最终的i值是多少？\n</div>",
+      "options": [
+        {
+          "id": 6269865,
+          "content": "0"
+        },
+        {
+          "id": 6269866,
+          "content": "i - 1"
+        },
+        {
+          "id": 6269867,
+          "content": "i"
+        },
+        {
+          "id": 6269868,
+          "content": "i&nbsp;+&nbsp;1"
+        }
+      ],
+      "correct_option_ids": [
+        6269867
+      ],
+      "correct_options": [
+        "i"
+      ],
+      "analysis": "递归函数`calculateI(i)`每次调用时，将i的值减1，返回递归调用的结果后再加1。因此，最终的值是初始i值。"
+    },
+    {
+      "question_id": 1251935,
+      "uuid": "1596362bc847455887fa482cffbdf295",
+      "type": 1,
+      "title": "如下图一个树型结构，其结点E在树的中序遍历中的位次为（）",
+      "content": "<div>\n\t如下图一个树型结构，其结点<strong>E</strong>在树的中序遍历中的位次为（）\n</div>\n<div>\n\t<div>\n\t\t<p>\n\t\t\t<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20201222/343441_1608637481630/C01950E82C2B61B84FEACC0A6E5135F5\" /> \n\t\t</p>\n\t</div>\n</div>",
+      "options": [
+        {
+          "id": 2367189,
+          "content": "4"
+        },
+        {
+          "id": 2367190,
+          "content": "5"
+        },
+        {
+          "id": 2367191,
+          "content": "6"
+        },
+        {
+          "id": 2367192,
+          "content": "7"
+        }
+      ],
+      "correct_option_ids": [
+        2367190
+      ],
+      "correct_options": [
+        "5"
+      ],
+      "analysis": "<div>  <div>   <p>    其中序遍历结果为AGBC<strong>E</strong>FH，故选B   </p>  </div> </div>"
+    },
+    {
+      "question_id": 2207516,
+      "uuid": "df93e4bcf5b24c9ba14ac68c575d4a06",
+      "type": 1,
+      "title": "给定下列递归算法的程序段，则f(15)的返回值为（）。 int f(int...",
+      "content": "<div>  <span style=\"color: rgb(51,51,51);\">给定下列递归算法的程序段，则f(15)的返回值为（）。</span>  </div> <div>  <span style=\"color: rgb(51,51,51);\">  <pre class=\"prettyprint lang-cpp\">int f(int n)\n{\n\tif(n &lt; 1)\n\t\treturn 0;\n\tif(n &lt;= 4)\n\t\treturn 1;\n\treturn f(n - 1) + f(n - 2) + f(n - 3) + f(n - 4);\t\n} </pre> </span>  </div>",
+      "options": [
+        {
+          "id": 3378525,
+          "content": "1297"
+        },
+        {
+          "id": 3378526,
+          "content": "2500"
+        },
+        {
+          "id": 3378527,
+          "content": "4819"
+        },
+        {
+          "id": 3378528,
+          "content": "9289"
+        }
+      ],
+      "correct_option_ids": [
+        3378526
+      ],
+      "correct_options": [
+        "2500"
+      ],
+      "analysis": "<div>  本题求解的算法背景为，总共有n节台阶，每次可以走1、2、3，4阶，总共有多少种走法。但本题修改了边界条件。 </div> <div>  即f(1)=f(2)=f(3)=f(4)=1,f(n)=f(n-1)+f(n-2)+f(n-3)+f(n-4),n&gt;=5 </div> <div>  递归式递推可以得到，答案为2500 </div>"
+    },
+    {
+      "question_id": 10816555,
+      "uuid": "de1fd356426f463d9a22cbe5d237cba3",
+      "type": 1,
+      "title": "观察下面递归算法的部分伪代码，其中缺少的递归要素是（） function ...",
+      "content": "<div>  观察下面递归算法的部分伪代码，其中缺少的递归要素是（） </div> <div> <pre class=\"prettyprint lang-cpp\">function (大规模){\n    solve;                \t//解决问题的逻辑实现 \n    recursion(问题的小规模形式);     //逐步解决小规模问题 \n}</pre> </div>",
+      "options": [
+        {
+          "id": 6243950,
+          "content": "<p>递归终止边界</p>"
+        },
+        {
+          "id": 6243951,
+          "content": "<p>扩大问题规模</p>"
+        },
+        {
+          "id": 6243952,
+          "content": "<p>缩小问题规模</p>"
+        },
+        {
+          "id": 6243953,
+          "content": "没缺少任何要素"
+        }
+      ],
+      "correct_option_ids": [
+        6243950
+      ],
+      "correct_options": [
+        "<p>递归终止边界</p>"
+      ],
+      "analysis": "<div>  考查基础算法的递归算法。 </div> <div>  递归算法的实现要素有三个： </div> <ol>  <li>   <p>    递归终止边界   </p>    <li>   <p>    公共的问题求解逻辑   </p>    <li>   <div>    缩小问题规模   </div>   </ol> <div>  观察上述伪代码可以发现，<span>缺少的递归要素是递归的终止条件，故本题选A。</span> </div>"
+    },
+    {
+      "question_id": 2226690,
+      "uuid": "5ee650fa1a39413a9b53316491496cee",
+      "type": 1,
+      "title": "在Python3中，执行以下函数运行结果为： def pow(n, k):...",
+      "content": "<div>  在Python3中，执行以下函数运行结果为： </div> <div> <pre class=\"prettyprint lang-py\">def pow(n, k):\n    if k == 0:\n        return 1\n    elif k == 1:\n        return n\n    else:\n        return n * pow(n, k-1)\nprint(pow(2, 3))</pre> </div>",
+      "options": [
+        {
+          "id": 3395925,
+          "content": "2"
+        },
+        {
+          "id": 3395926,
+          "content": "3"
+        },
+        {
+          "id": 3395927,
+          "content": "8"
+        },
+        {
+          "id": 3395928,
+          "content": "6"
+        }
+      ],
+      "correct_option_ids": [
+        3395927
+      ],
+      "correct_options": [
+        "8"
+      ],
+      "analysis": "<div>  <div>   <p>    此题目 pow(n, k)函数表示计算 n^k，当 k==0 时表示 n^0=1，当 k==1 时表示 n^1=n，如果 k&gt;1时，则执行递归计算 n * pow(n, k-1)，当输入的 n ==2 ，k == 3，返回结果为 2 * pow(2, 2) = 2 * 2 * pow(2, 1) = 2 * 2 * 2 = 8   </p>  </div> </div>"
+    },
+    {
+      "question_id": 54777,
+      "uuid": "fb3293b2127a4649934a8b9a5b8050f0",
+      "type": 1,
+      "title": "试问计算f(8)时，函数f返回（    ）。",
+      "content": "<p>\n  <span>设有一个递归函数如下</span>\n</p>\n<pre class=\"prettyprint lang-cpp\">int  f(int n)\n{   \n     if(n&lt;=3)    \n         return 1;\n    else \n        return f(n-2)+f(n-4)+1;\n}</pre>\n<p>\n  <span>试问计算f(8)时，函数f返回（    ）。</span>\n</p>",
+      "options": [
+        {
+          "id": 72706,
+          "content": "6"
+        },
+        {
+          "id": 72707,
+          "content": "7"
+        },
+        {
+          "id": 72708,
+          "content": "8"
+        },
+        {
+          "id": 72709,
+          "content": "9"
+        }
+      ],
+      "correct_option_ids": [
+        72709
+      ],
+      "correct_options": [
+        "9"
+      ],
+      "analysis": "这道题考察了递归函数的运算过程。我们通过递归展开的方式来计算f(8)的值。<br><br>计算过程如下：<br>f(8) = f(6) + f(4) + 1<br>f(6) = f(4) + f(2) + 1<br>f(4) = f(2) + f(0) + 1<br>f(2) = 1 (因为n<=3)<br>f(0) = 1 (因为n<=3)<br><br>从下往上逐步计算：<br>1. f(4) = 1 + 1 + 1 = 3<br>2. f(6) = 3 + 1 + 1 = 5<br>3. f(8) = 5 + 3 + 1 = 9<br><br>所以f(8)最终返回9，D选项正确。<br><br>分析其他选项：<br>A(6)错误：这个数值明显小于实际计算结果9，可能是只计算了部分递归分支。<br>B(7)错误：这个数值小于实际计算结果9，可能是忽略了某些递归分支的计算。<br>C(8)错误：这个数值接近但仍小于实际计算结果9，可能是递归过程中遗漏了\"+1\"的操作。<br><br>这类递归函数题目的关键是要耐心地把每一步递归都展开，然后从最底层开始一步步往上计算，不能遗漏任何一个分支或操作。"
+    },
+    {
+      "question_id": 10860225,
+      "uuid": "54f76a25e7494dac92671ee90c307a12",
+      "type": 1,
+      "title": "以下代码有什么问题()publicstaticStringprint(in...",
+      "content": "<p>  以下代码有什么问题() </p> <p>  public static String print(int i) { </p> <p>  System.out.println(i++); </p> <p>  return print(i); </p> <p>  } </p>",
+      "options": [
+        {
+          "id": 6390466,
+          "content": "编译报错"
+        },
+        {
+          "id": 6390467,
+          "content": "运行报错"
+        },
+        {
+          "id": 6390468,
+          "content": "编译&amp;运行都报错"
+        },
+        {
+          "id": 6390469,
+          "content": "编译&amp;运行都正常"
+        }
+      ],
+      "correct_option_ids": [
+        6390467
+      ],
+      "correct_options": [
+        "运行报错"
+      ],
+      "analysis": "这段代码存在递归调用问题，会导致运行时栈溢出错误(StackOverflowError)。<br><br>代码分析：<br>1. 该方法在编译时没有问题，因为语法完全正确：<br>   - 方法声明正确<br>   - 参数类型正确<br>   - 返回类型正确<br>   - 方法体语法正确<br><br>2. 运行时会出现问题，原因是：<br>   - 方法中执行了无条件的递归调用<br>   - 没有设置递归终止条件<br>   - 每次调用都会在栈中创建新的方法帧<br>   - 最终导致栈空间耗尽，抛出StackOverflowError<br><br>分析其他选项：<br>A错误：代码在语法上完全符合Java规范，可以正常编译<br><br>C错误：既然可以编译通过，就不存在编译错误<br><br>D错误：代码必然会在运行时报错，不可能正常运行<br><br>要修复这个问题，需要添加适当的递归终止条件，例如：<br>当i达到某个值时返回，而不是无限递归调用。<br><br>这也告诉我们在编写递归方法时，必须要有明确的终止条件，否则会导致栈溢出。"
+    },
+    {
+      "question_id": 10826597,
+      "uuid": "ac9c37024bba4930910b07092e969c5b",
+      "type": 2,
+      "title": "堆栈溢出一般是由什么原因导致的（）",
+      "content": "堆栈溢出一般是由什么原因导致的（）",
+      "options": [
+        {
+          "id": 6272456,
+          "content": "函数代码长度过长"
+        },
+        {
+          "id": 6272457,
+          "content": "循环的递归调用"
+        },
+        {
+          "id": 6272458,
+          "content": "大数据结构的局部变量"
+        },
+        {
+          "id": 6272459,
+          "content": "代码运行时错误"
+        }
+      ],
+      "correct_option_ids": [
+        6272457,
+        6272458
+      ],
+      "correct_options": [
+        "循环的递归调用",
+        "大数据结构的局部变量"
+      ],
+      "analysis": "堆栈溢出(Stack Overflow)主要由两种情况导致:过度的递归调用(B选项)和大量的局部变量定义(C选项)。<br><br>具体分析如下:<br><br>B选项正确:循环的递归调用会导致堆栈溢出。因为每次递归调用都会在栈中分配新的栈帧,包含函数的参数、返回地址和局部变量。如果递归层次太深或没有正确的终止条件,就会耗尽栈空间,导致栈溢出。<br><br>C选项正确:在函数中定义大数据结构的局部变量(如大数组)会占用大量栈空间。因为局部变量是存储在栈上的,如果局部变量过大或过多,超出了栈的容量限制,就会发生栈溢出。<br><br>A选项错误:函数代码长度与堆栈溢出没有直接关系。代码长度主要影响代码段的大小,而不是运行时栈的使用情况。<br><br>D选项错误:代码运行时错误是一个笼统的说法,可能包含多种错误类型,不能简单地等同于堆栈溢出。堆栈溢出是一种特定类型的运行时错误,有其具体的发生原因。<br><br>预防堆栈溢出的方法包括:限制递归深度、使用迭代替代递归、合理设置栈大小、避免在栈上分配过大的局部变量等。"
+    },
+    {
+      "question_id": 10974813,
+      "uuid": "4788a405481343ada8db2f4117ad8da6",
+      "type": 2,
+      "title": "有一棵树广义表形式为A(B(E(K,L),F,G(M)),C(H),D(I...",
+      "content": "有一棵树广义表形式为A(B(E(K,L),F,G(M)),C(H),D(I,J)),&nbsp;将其转换为二叉树，说法正确的是（&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;）",
+      "options": [
+        {
+          "id": 6653414,
+          "content": "二叉树为只有左子树的单支树"
+        },
+        {
+          "id": 6653415,
+          "content": "二叉树中结点D的双亲是C"
+        },
+        {
+          "id": 6653416,
+          "content": "二叉树中结点G的右子树根为M"
+        },
+        {
+          "id": 6653417,
+          "content": "二叉树中结点F只有右子树，右子树的根为G"
+        }
+      ],
+      "correct_option_ids": [
+        6653414,
+        6653415,
+        6653417
+      ],
+      "correct_options": [
+        "二叉树为只有左子树的单支树",
+        "二叉树中结点D的双亲是C",
+        "二叉树中结点F只有右子树，右子树的根为G"
+      ],
+      "analysis": "将广义表形式的树转换为二叉树需要遵循以下规则：<br>1. 将广义表中的所有兄弟结点用右指针链接<br>2. 将广义表中所有双亲结点与第一个子女结点用左指针链接<br>3. 除此之外的指针全部删除<br><br>根据这些规则分析：<br>1. A正确。转换后的二叉树形成一个只有左孩子的单支树，因为在第一层只有A一个节点，A通过左指针连接到其第一个子节点B。<br><br>2. B正确。在转换过程中，D是其父节点A的最后一个子节点，经过兄弟节点的右指针链接，D的双亲节点确实是C。<br><br>3. C错误。在转换后的二叉树中，G作为F的右子节点，其右子树的根节点M已经变成了G的左子节点，而不是右子节点。这是因为在原树中M是G的子节点，转换规则要求父子关系用左指针连接。<br><br>4. D正确。在转换后，F节点确实只有右子树，且右子树的根节点是G。这是因为F和G在原树中是兄弟关系，根据转换规则，兄弟节点间用右指针链接。<br><br>所以选项ABD正确。这个转换过程体现了树转换为二叉树的基本原理，保持了原树的层次关系，同时又满足了二叉树的结构特点。"
+    },
+    {
+      "question_id": 10959790,
+      "uuid": "7b401b9ac48845ab8f5ad61dca689e7a",
+      "type": 1,
+      "title": "已知一个有序表（-10, -8, -6, -4, -2, 0, 2, 4,...",
+      "content": "已知一个有序表（-10,&nbsp;-8,&nbsp;-6,&nbsp;-4,&nbsp;-2,&nbsp;0,&nbsp;2,&nbsp;4,&nbsp;6,&nbsp;8,&nbsp;10,&nbsp;12,&nbsp;14,&nbsp;16），当进行在中间值位置向下取整的二分查找值为0的元素时，查找成功的比较次数为（&nbsp;）",
+      "options": [
+        {
+          "id": 6615634,
+          "content": "1"
+        },
+        {
+          "id": 6615635,
+          "content": "2"
+        },
+        {
+          "id": 6615636,
+          "content": "3"
+        },
+        {
+          "id": 6615637,
+          "content": "4"
+        }
+      ],
+      "correct_option_ids": [
+        6615637
+      ],
+      "correct_options": [
+        "4"
+      ],
+      "analysis": "对于给定的有序表，初始查找范围为整个表，即low=0,&nbsp;high=13。第一次比较时，中间元素为2，与目标值0进行比较，由于2大于0，所以目标值在左半部分。更新查找范围为low=0,&nbsp;high=5。第二次比较时，中间元素为-6，与目标值0进行比较，由于-6小于0，所以目标值在右半部分。更新查找范围为low=3,&nbsp;high=5。第三次比较时，中间元素为-2，<span style=\"text-wrap:wrap;\">由于-2小于0，所以目标值在右半部分。<span style=\"text-wrap:wrap;\">更新查找范围为low=5,&nbsp;high=5。</span>此时low=high，mid值</span>与目标值0相等，查找成功。因此，查找成功的比较次数为4，对应选项D。"
+    },
+    {
+      "question_id": 2222880,
+      "uuid": "6b6ac40620a0477bb22523d0b155e15c",
+      "type": 1,
+      "title": "给定一递归算法的程序段如下（n>2），则该算法的时间复杂度为（） i...",
+      "content": "<div>  <div>   <span>给定一递归算法的程序段如下</span><span>（</span><span>n&gt;2</span><span>）</span><span>，则该算法的时间复杂度为（）</span>   </div>  <div>   <span>  <pre class=\"prettyprint lang-cpp\">int f(int n)\n{\n    if(n == 2)\n        return 3;\n    else\n        return f(n - 1) * 4;\n}</pre> </span>   </div> </div> <span></span>",
+      "options": [
+        {
+          "id": 3390412,
+          "content": "<div><div><p><img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220384192/A5DBE966C66E4537BEEBCAB519B659AE\"></p></div></div>"
+        },
+        {
+          "id": 3390413,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220391418/71FAB4A6392B200EF19C70EE834C95C9\">"
+        },
+        {
+          "id": 3390416,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220398273/6E16D12D23EF59654B5959A7EFF509CB\">"
+        },
+        {
+          "id": 3390419,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220403591/285101786F737D416A268F9637C6357F\">"
+        }
+      ],
+      "correct_option_ids": [
+        3390412
+      ],
+      "correct_options": [
+        "<div><div><p><img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220384192/A5DBE966C66E4537BEEBCAB519B659AE\"></p></div></div>"
+      ],
+      "analysis": "<div>  <div>   <p>    使用递归算法，总共调用了n-1次,规模为 <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220422401/32F606808B9625BA4BFE8C6D5B32985A\"> 级别，选A。   </p>  </div> </div>"
+    },
+    {
+      "question_id": 10974636,
+      "uuid": "5a62f4addd424941ae75d2301d3a8d96",
+      "type": 1,
+      "title": "以下设计解决hanoi塔问题的递归算法正确的是（ ）",
+      "content": "以下设计解决hanoi塔问题的递归算法正确的是（&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;）",
+      "options": [
+        {
+          "id": 6653454,
+          "content": "<div>\n\tvoid hanoi(int n, int A, int C, int B)\n</div><div>\n\t{\n</div><div>\n\t   if (n &gt; 0)\n</div><div>\n\t{\n</div><div>\n\t   hanoi(n-1,A,C, B);\n</div><div>\n\t   move(n,a,b);\n</div><div>\n\t   hanoi(n-1, C, B, A);\n</div><div>\n\t}\n</div>"
+        },
+        {
+          "id": 6653455,
+          "content": "<div>\n\tvoid hanoi(int n, int C, int B, int A)\n</div><div>\n\t{\n</div><div>\n\t   if (n &gt; 0)\n</div><div>\n\t{\n</div><div>\n\t   hanoi(n-1, A, C, B);\n</div><div>\n\t   move(n,a,b);\n</div><div>\n\t   hanoi(n-1, C, B, A);\n</div><div>\n\t}\n</div>"
+        },
+        {
+          "id": 6653456,
+          "content": "<div>\n\tvoid hanoi(int n, int C, int A, int B)\n</div><div>\n\t{\n</div><div>\n\t   if (n &gt; 0)\n</div><div>\n\t{\n</div><div>\n\t   hanoi(n-1, A, C, B);\n</div><div>\n\t   move(n,a,b);\n</div><div>\n\t   hanoi(n-1, C, B, A);\n</div><div>\n\t}\n</div>"
+        },
+        {
+          "id": 6653457,
+          "content": "<div>\n\tvoid hanoi(int n, int A, int B, int C)\n</div><div>\n\t{\n</div><div>\n\t   if (n &gt; 0)\n</div><div>\n\t{\n</div><div>\n\t   hanoi(n-1, A, C, B);\n</div><div>\n\t   move(n,a,b);\n</div><div>\n\t   hanoi(n-1, C, B, A);\n</div><div>\n\t}\n</div>"
+        }
+      ],
+      "correct_option_ids": [
+        6653457
+      ],
+      "correct_options": [
+        "<div>\n\tvoid hanoi(int n, int A, int B, int C)\n</div><div>\n\t{\n</div><div>\n\t   if (n &gt; 0)\n</div><div>\n\t{\n</div><div>\n\t   hanoi(n-1, A, C, B);\n</div><div>\n\t   move(n,a,b);\n</div><div>\n\t   hanoi(n-1, C, B, A);\n</div><div>\n\t}\n</div>"
+      ],
+      "analysis": "汉诺塔问题是一个经典的递归算法问题。D选项是正确的,因为它符合汉诺塔问题的标准递归解法,参数顺序和递归过程都是正确的。<br><br>在汉诺塔算法中:<br>- 第一个参数n表示要移动的盘子数量<br>- A、B、C三个参数分别代表源柱(起始柱)、目标柱(目标柱)和辅助柱(中转柱)<br>- 递归的三个步骤是:<br>  1. 将n-1个盘子从源柱借助目标柱移到辅助柱<br>  2. 将第n个盘子从源柱移到目标柱<br>  3. 将n-1个盘子从辅助柱借助源柱移到目标柱<br><br>分析其他选项的错误:<br>A选项错误:参数顺序不对,第二个参数C应该是目标柱而不是辅助柱。<br><br>B选项错误:第一个参数C作为源柱的位置不对,应该是A作为源柱。参数顺序完全混乱。<br><br>C选项错误:同样是参数顺序错误,C作为第一个参数不符合通常的起始柱(A)的约定。<br><br>另外所有选项中的move(n,a,b)都有小写的a,b是有语法错误的,应该是大写的A,B。但这不影响算法逻辑的判断。正确的应该是move(n,A,B)。"
+    },
+    {
+      "question_id": 10506856,
+      "uuid": "cdb62860df584e5f8725ebc12804fe9b",
+      "type": 2,
+      "title": "输入一个链表的头节点，按链表从尾到头的顺序返回每个节点的值（用数组返回）。...",
+      "content": "<div>\n\t<span style=\"color:#262626;\">输入一个链表的头节点，</span><span style=\"color:#333333;\">按链表从尾到头的顺序返回</span><span style=\"color:#262626;\">每个节点的值（用数组返回）。</span>\n</div>\n<div>\n\t<span style=\"color:#262626;\"><span style=\"color:#262626;\"><span style=\"color:#374151;\">请填写下面缺失的代码部分，使得函数能够实现上述功能。<span style=\"color:#374151;\">并判断</span><span style=\"color:#333333;\">下列说法中正确的是（）</span></span></span></span>\n</div>\n<div>\n\t<span style=\"color:#262626;\"><span style=\"color:#262626;\"></span>\n<pre class=\"prettyprint lang-c++\">class&nbsp;Solution&nbsp;{\npublic:\n&nbsp;&nbsp;&nbsp;&nbsp;void&nbsp;recursion(ListNode*&nbsp;head,&nbsp;vector&lt;int&gt;&amp;&nbsp;res){&nbsp;\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if(head&nbsp;!=&nbsp;NULL){\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;__(1)__&nbsp;\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;res.push_back(head-&gt;val);&nbsp;\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}\n&nbsp;&nbsp;&nbsp;&nbsp;}\n&nbsp;&nbsp;&nbsp;&nbsp;vector&lt;int&gt;&nbsp;printListFromTailToHead(ListNode*&nbsp;head)&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;vector&lt;int&gt;&nbsp;res;\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;recursion(head,&nbsp;res);&nbsp;\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;res;\n&nbsp;&nbsp;&nbsp;&nbsp;}\n};</pre>\n</span>\n</div>",
+      "options": [
+        {
+          "id": 5486160,
+          "content": "（1）处应为 recursion(head-&gt;next,res);"
+        },
+        {
+          "id": 5486161,
+          "content": "<span>（1）处应为&nbsp;<span>recursion(head,res);</span></span>"
+        },
+        {
+          "id": 5486162,
+          "content": "函数的时间复杂度为O(n)"
+        },
+        {
+          "id": 5486163,
+          "content": "<span>函数的空间复杂度为O(1)</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5486160,
+        5486162
+      ],
+      "correct_options": [
+        "（1）处应为 recursion(head-&gt;next,res);",
+        "函数的时间复杂度为O(n)"
+      ],
+      "analysis": "<p style=\"color:#333333;\">\n\t<span style=\"font-weight:600;\">复杂度分析：</span>\n</p>\n<ul style=\"color:#333333;\">\n\t<li>\n\t\t时间复杂度：<span><span><span><span>O</span><span>(</span><span>n</span><span>)</span></span></span></span>，其中<span><span><span><span>n</span></span></span></span>为链表长度，递归遍历一次链表\n\t</li>\n\t<li>\n\t\t空间复杂度：<span><span><span><span>O</span><span>(</span><span>n</span><span>)</span></span></span></span>，递归栈的最大空间为链表长度\n\t</li>\n</ul>"
+    },
+    {
+      "question_id": 2226680,
+      "uuid": "590637adfe4442f8b2b4c5a674c166d5",
+      "type": 1,
+      "title": "int fun(int n) { if (n &lt;= 1) retur...",
+      "content": "<pre class=\"prettyprint lang-py\">int&nbsp;fun(int&nbsp;n)\n{\n\tif&nbsp;(n&nbsp;&lt;=&nbsp;1)\n\t\treturn&nbsp;1;\n\telse\n\t\treturn&nbsp;n&nbsp;*&nbsp;fun(n-1);\n}\nint&nbsp;res&nbsp;=&nbsp;fun(5)</pre>\n<div>\n\t<div>\n\t\t<p>\n\t\t\t在C中执行上述函数之后，res的结果为（）\n\t\t</p>\n\t</div>\n</div>",
+      "options": [
+        {
+          "id": 3395897,
+          "content": "<div><div><p>30</p></div></div>"
+        },
+        {
+          "id": 3395898,
+          "content": "<div><div><p>50</p></div></div>"
+        },
+        {
+          "id": 3395899,
+          "content": "<div><div><p>60</p></div></div>"
+        },
+        {
+          "id": 3395900,
+          "content": "<div><div><p>120</p></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3395900
+      ],
+      "correct_options": [
+        "<div><div><p>120</p></div></div>"
+      ],
+      "analysis": "<div>  <div>   <p>    此题递归算法表示计算n(n&gt;1)的阶乘，因此进行递归fun(5)=5*fun(4)，fun(4)=4*fun(3)，fun(3)=3*fun(2)，fun(2)=2*fun(1)，其中fun(1)=1，所以fun(5)=120   </p>  </div> </div>"
+    },
+    {
+      "question_id": 171517,
+      "uuid": "7d7c896fddee48499ea3fdc0abe906b6",
+      "type": 1,
+      "title": "将一个递归算法转换为非递归算法，通常需要借用的数据结构是（    ）",
+      "content": "将一个递归算法转换为非<span>递归算法，通常需要借用的数据结构是（    ）</span>",
+      "options": [
+        {
+          "id": 406827,
+          "content": "栈"
+        },
+        {
+          "id": 406828,
+          "content": "队列"
+        },
+        {
+          "id": 406829,
+          "content": "线性表"
+        },
+        {
+          "id": 406830,
+          "content": "广义表"
+        }
+      ],
+      "correct_option_ids": [
+        406827
+      ],
+      "correct_options": [
+        "栈"
+      ],
+      "analysis": "在将递归算法转换为非递归算法时,栈是最常用也是最合适的数据结构,因为栈的后进先出(LIFO)特性与递归调用的特点完全吻合。<br><br>递归算法的执行过程实际上就是系统维护一个调用栈的过程。每次递归调用时,系统都会将当前的执行环境(包括局部变量、返回地址等)压入栈中,当递归返回时再将这些信息弹出栈。因此,我们在将递归转换为非递归时,可以通过显式使用栈来模拟这个过程。<br><br>分析其他选项:<br>B错误:队列是先进先出(FIFO)的数据结构,其特性与递归的执行顺序不符<br>C错误:虽然线性表可以存储数据,但其访问特性不适合模拟递归调用的过程<br>D错误:广义表主要用于表示具有层次结构的数据,不适合模拟递归调用栈的行为<br><br>通过栈结构,我们可以:<br>1. 保存递归过程中的中间状态<br>2. 按照正确的顺序恢复这些状态<br>3. 精确模拟递归的执行过程<br><br>因此,栈是实现递归转非递归的最佳选择。"
+    },
+    {
+      "question_id": 11182698,
+      "uuid": "6548fdcfd41a479b9d82bd9e68f09e3d",
+      "type": 1,
+      "title": "考虑以下递归算法： int foo(int n) { if (n &lt;...",
+      "content": "考虑以下递归算法：\n<div>\n<pre class=\"prettyprint lang-c\">int&nbsp;foo(int&nbsp;n)&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;if&nbsp;(n&nbsp;&lt;=&nbsp;0)\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;0;\n&nbsp;&nbsp;&nbsp;&nbsp;else\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;2&nbsp;*&nbsp;foo(n&nbsp;-&nbsp;1)&nbsp;+&nbsp;1;\n}</pre>\n</div>\n<div>\n</div>\n<div>\n\t计算&nbsp;foo(foo(3))&nbsp;时需要调用&nbsp;foo&nbsp;函数的次数是（）\n</div>",
+      "options": [
+        {
+          "id": 7197782,
+          "content": "3&nbsp;次"
+        },
+        {
+          "id": 7197783,
+          "content": "4&nbsp;次"
+        },
+        {
+          "id": 7197784,
+          "content": "10次"
+        },
+        {
+          "id": 7197785,
+          "content": "12 次"
+        }
+      ],
+      "correct_option_ids": [
+        7197785
+      ],
+      "correct_options": [
+        "12 次"
+      ],
+      "analysis": "计算&nbsp;foo(foo(3))&nbsp;需要调用&nbsp;foo&nbsp;函数值n分别为，3,2,1,0,7,6,5,4,3,2,1,0。次数是 12次。"
+    },
+    {
+      "question_id": 369877,
+      "uuid": "b9848ddb22234e67bc4ceb0f121ac10b",
+      "type": 1,
+      "title": "class program\n {\n    &...",
+      "content": "<pre class=\"prettyprint\">public class Test {\n\n  public static int count = 0;\n\n  public static void main(String[] args) {\n    int i;\n    i = x(8);\n    System.out.println(count);\n  }\n\n  public static int x(int n) {\n    count++;\n    if (n &lt;= 3)\n      return 1;\n    else\n      return x(n - 2) + x(n - 4) + 1;\n  }\n}\n\n\n</pre> <div>  该程序最后输出结果是多少? </div>",
+      "options": [
+        {
+          "id": 960618,
+          "content": "9"
+        },
+        {
+          "id": 960619,
+          "content": "12"
+        },
+        {
+          "id": 960620,
+          "content": "18"
+        },
+        {
+          "id": 960621,
+          "content": "8"
+        }
+      ],
+      "correct_option_ids": [
+        960618
+      ],
+      "correct_options": [
+        "9"
+      ],
+      "analysis": "<div>  设<img alt=\"f_n\" src=\"https://www.nowcoder.com/equation?tex=f_n\">表示调用x(n)时会让count自增多少次，则可以得到递推式<img src=\"https://www.nowcoder.com/equation?tex=f_n%3Df_%7Bn-2%7D%2Bf_%7Bn-4%7D%2B1%2Cf_0%3Df_1%3Df_2%3Df_3%3D1\">，根据递推式可以算出<img src=\"https://www.nowcoder.com/equation?tex=f_8%3Df_6%2Bf_4%2B1%3D2f_4%2Bf_2%2B2%3D3f_2%2B2f_0%2B4%3D9\"> </div> <div>  B、C、D错误，A正确<span></span> </div>"
+    },
+    {
+      "question_id": 10974632,
+      "uuid": "327f25dc18d7427f9b1f36755d5ef717",
+      "type": 1,
+      "title": "关于排序，以下说法正确的是（ ）",
+      "content": "关于排序，以下说法正确的是（&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;）",
+      "options": [
+        {
+          "id": 6653470,
+          "content": "冒泡排序法平均时间复杂度为O（N<sup>2</sup>）"
+        },
+        {
+          "id": 6653471,
+          "content": "快速排序法最坏情况下时间复杂度为O(Nlog<sub>2</sub>N)"
+        },
+        {
+          "id": 6653472,
+          "content": "堆排序平均时间复杂度为O（N<sup>2</sup>）"
+        },
+        {
+          "id": 6653473,
+          "content": "直接插入排序最坏情况下时间复杂度为O(Nlog<sub>2</sub>N)"
+        }
+      ],
+      "correct_option_ids": [
+        6653470
+      ],
+      "correct_options": [
+        "冒泡排序法平均时间复杂度为O（N<sup>2</sup>）"
+      ],
+      "analysis": "这道题目考察了各种排序算法的时间复杂度。A选项是正确的，冒泡排序的平均时间复杂度确实为O(N²)。冒泡排序需要进行N轮比较，每轮比较需要比较N-i次（i为当前轮数），因此平均时间复杂度为O(N²)。<br><br>分析其他选项：<br><br>B错误：快速排序最坏情况下的时间复杂度是O(N²)，而不是O(Nlog₂N)。当待排序序列已经有序或逆序时会出现最坏情况。O(Nlog₂N)是快速排序的平均时间复杂度。<br><br>C错误：堆排序的平均时间复杂度是O(Nlog₂N)，而不是O(N²)。堆排序是一种效率较高的排序算法，通过建立和维护最大堆或最小堆来实现排序。<br><br>D错误：直接插入排序最坏情况下的时间复杂度是O(N²)，而不是O(Nlog₂N)。当待排序序列完全逆序时会出现最坏情况，需要进行N²/2次比较和移动。<br><br>这些排序算法的时间复杂度是算法分析中的重要内容，对于选择合适的排序算法很有帮助。"
+    },
+    {
+      "question_id": 372705,
+      "uuid": "30f1ff91ae8e403783bb9f603c4d09c9",
+      "type": 1,
+      "title": "6个圆盘的汉诺塔，总的移动次数是（      ）",
+      "content": "6个圆盘的汉诺塔，总的移动次数是（      ）",
+      "options": [
+        {
+          "id": 969628,
+          "content": "30"
+        },
+        {
+          "id": 969629,
+          "content": "33"
+        },
+        {
+          "id": 969630,
+          "content": "60"
+        },
+        {
+          "id": 969631,
+          "content": "63"
+        }
+      ],
+      "correct_option_ids": [
+        969631
+      ],
+      "correct_options": [
+        "63"
+      ],
+      "analysis": "<div>  设<img alt=\"f_n\" src=\"https://www.nowcoder.com/equation?tex=f_n\">表示移动n个圆盘的汉诺塔的次数，根据移动汉诺塔的递归函数可以得出递推式<img src=\"https://www.nowcoder.com/equation?tex=f_n%3D2f_%7Bn-1%7D%2B1%2Cf_1%3D1\">，可以解得<img src=\"https://www.nowcoder.com/equation?tex=f_n%3D2%5En-1\">，代入n=6得到答案为63 </div> <div>  A、B、C错误，D正确 </div>"
+    },
+    {
+      "question_id": 10860488,
+      "uuid": "301ed64480674930bedad3065267f004",
+      "type": 1,
+      "title": "下面关于函数调用的开销说法正确的是",
+      "content": "下面关于函数调用的开销说法正确的是",
+      "options": [
+        {
+          "id": 6390967,
+          "content": "函数调用中传参数量不影响性能"
+        },
+        {
+          "id": 6390968,
+          "content": "宏相对于简短且频繁调用的函数有着更佳的性能"
+        },
+        {
+          "id": 6390969,
+          "content": "尾递归和普通递归开销没有区别"
+        },
+        {
+          "id": 6390970,
+          "content": "函数调用中原栈帧保存在寄存器中"
+        }
+      ],
+      "correct_option_ids": [
+        6390968
+      ],
+      "correct_options": [
+        "宏相对于简短且频繁调用的函数有着更佳的性能"
+      ],
+      "analysis": "宏是在预处理阶段进行文本替换,没有函数调用的开销。对于简短且频繁调用的函数,使用宏可以避免函数调用时压栈、跳转等开销,从而获得更好的性能表现。因此B选项正确。<br><br>分析其他选项:<br><br>A错误:函数调用时需要将参数压入栈中,参数数量越多,压栈和出栈的开销就越大,因此参数数量会影响函数调用的性能。<br><br>C错误:尾递归是一种特殊的递归形式,编译器可以将其优化为循环,避免了普通递归调用时的栈空间消耗。而普通递归每次调用都会在栈上分配新的栈帧,两者开销是有区别的。<br><br>D错误:函数调用时,原栈帧是保存在栈内存中,而不是寄存器中。寄存器主要用于存放函数参数、返回值和临时计算结果等。<br><br>总的来说,这道题主要考察了函数调用机制、宏替换、递归优化等程序设计的基础知识。在实际开发中,需要根据具体场景选择合适的实现方式,以平衡代码可维护性和运行效率。"
+    },
+    {
+      "question_id": 10974637,
+      "uuid": "830e43a9e6794b0c88f48dbfb8abf0ac",
+      "type": 1,
+      "title": "辗转相除法的时间复杂度为（ ）",
+      "content": "辗转相除法的时间复杂度为（&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;）",
+      "options": [
+        {
+          "id": 6653450,
+          "content": "O(nlogn)"
+        },
+        {
+          "id": 6653451,
+          "content": "O(logn)"
+        },
+        {
+          "id": 6653452,
+          "content": "O(n^2)"
+        },
+        {
+          "id": 6653453,
+          "content": "O(n)"
+        }
+      ],
+      "correct_option_ids": [
+        6653451
+      ],
+      "correct_options": [
+        "O(logn)"
+      ],
+      "analysis": "辗转相除法(欧几里得算法)的时间复杂度是O(logn),这是因为:<br><br>1. 辗转相除法的核心是不断求两个数的余数,每次迭代都会让较大的数变成较小的数,而较小的数变成余数。<br><br>2. 可以证明,每次迭代后,较大数至少会减小一半。因为如果a除以b,商为q余数为r,那么:<br>   a = b * q + r<br>   其中r < b<br>   所以每次迭代后数的规模至少减少一半。<br><br>3. 对于初始值为n的数,经过logn次迭代后,数值就会变得很小,最终到达算法终止条件。<br><br>分析其他选项:<br>A. O(nlogn)错误,这是一些排序算法如快速排序的时间复杂度,远高于辗转相除法的实际复杂度<br>C. O(n^2)错误,这是冒泡排序等基础排序算法的复杂度,明显过高<br>D. O(n)错误,这表示算法执行次数与输入n成线性关系,但辗转相除法的迭代次数实际上是以对数方式减少的<br><br>所以B选项O(logn)准确反映了辗转相除法的时间复杂度。这也是该算法被广泛应用的原因之一,它能够高效地求得两个数的最大公约数。"
+    },
+    {
+      "question_id": 56426,
+      "uuid": "c7c14a2d52ea458c95fed1e6198ca4e8",
+      "type": 1,
+      "title": "对递归程序的优化的一般的手段为（）",
+      "content": "<p>  <span>对递归程序的优化的一般的手段为（）</span>  </p>",
+      "options": [
+        {
+          "id": 77919,
+          "content": "尾递归优化"
+        },
+        {
+          "id": 77920,
+          "content": "循环优化"
+        },
+        {
+          "id": 77921,
+          "content": "堆栈优化"
+        },
+        {
+          "id": 77922,
+          "content": "停止值优化"
+        }
+      ],
+      "correct_option_ids": [
+        77919
+      ],
+      "correct_options": [
+        "尾递归优化"
+      ],
+      "analysis": "在递归程序的优化方法中,尾递归优化是最主要和最有效的优化手段。尾递归是指递归调用作为函数的最后一步操作,这种情况下编译器可以把递归调用转换为循环,从而避免了递归调用时的栈空间消耗。<br><br>分析各选项:<br>A正确:尾递归优化是最主要的递归优化方法,它可以将递归转换为迭代,显著提高程序性能并降低栈溢出风险。<br><br>B错误:循环优化通常指的是对循环结构的优化,而不是针对递归的优化手段。<br><br>C错误:堆栈优化虽然与递归有关,但它是一个更general的概念,不是专门针对递归优化的手段。<br><br>D错误:停止值优化不是标准的递归优化术语,递归的终止条件(base case)是递归程序的必要组成部分,而不是优化手段。<br><br>举个例子说明尾递归优化:<br>普通递归计算阶乘:<br>factorial(n) = n * factorial(n-1)<br><br>尾递归优化后:<br>factorial(n, acc) = factorial(n-1, n*acc)<br><br>尾递归形式可以被编译器优化为循环,避免了深层递归调用带来的栈溢出风险。"
+    },
+    {
+      "question_id": 44586,
+      "uuid": "bd5b9d11f63e4216bcfaf43500dd4d9b",
+      "type": 1,
+      "title": "下列程序执行后，输出的结果为（） #include &lt;stdio.h...",
+      "content": "<div>\n\t下列程序执行后，输出的结果为（）\n</div>\n<pre class=\"prettyprint lang-cpp\">#include &lt;stdio.h&gt;\nint cnt=0;\nint fib(int n){\n　　cnt++;\n　　if(n==0)&nbsp;\n　　　　return 1;&nbsp;\n　　else if(n==1)&nbsp;\n　　　　return 2;&nbsp;\n　　else&nbsp;\n　　　　return fib(n-1)+fib(n-2);\n}\nvoid main()\n{\n　　fib(8);\n　　printf(\"%d\",cnt);\n}</pre>",
+      "options": [
+        {
+          "id": 45430,
+          "content": "41"
+        },
+        {
+          "id": 45431,
+          "content": "67"
+        },
+        {
+          "id": 45432,
+          "content": "109"
+        },
+        {
+          "id": 45433,
+          "content": "177"
+        }
+      ],
+      "correct_option_ids": [
+        45431
+      ],
+      "correct_options": [
+        "67"
+      ],
+      "analysis": "这道题目考察了递归函数的执行过程和计数统计。通过分析fib(8)的递归调用过程,我们可以得出cnt最终值为67。<br><br>关键点分析:<br>1. cnt是全局变量,每次调用fib函数时cnt都会加1<br>2. fib函数的递归规则:<br>   - 当n=0时,返回1<br>   - 当n=1时,返回2<br>   - 当n>1时,返回fib(n-1) + fib(n-2)<br><br>递归调用分解:<br>fib(8) = fib(7) + fib(6)<br>fib(7) = fib(6) + fib(5)<br>fib(6) = fib(5) + fib(4)<br>...以此类推<br><br>每个递归分支都会产生两个新的函数调用,直到触及基础情况(n=0或n=1)。通过完整展开递归树,我们可以统计到:<br>- fib(8)的计算过程中,函数被调用了67次<br>- 因此cnt的最终值为67<br><br>其他选项分析:<br>A(41):偏小,没有完整计算所有递归分支<br>C(109):偏大,可能多计算了一些不存在的分支<br>D(177):明显偏大,超出了实际递归次数<br><br>选B(67)是正确的,这个数值反映了fib(8)递归计算过程中实际的函数调用次数。"
+    },
+    {
+      "question_id": 2203242,
+      "uuid": "02f0d5f7795941ffb363432c07853dab",
+      "type": 1,
+      "title": "给定下列递归算法的程序段，则输出结果为（）。 int f(int a, i...",
+      "content": "<div>  <span style=\"color: rgb(51,51,51);\">给定下列递归算法的程序段，则输出结果为（）。</span>  </div> <div>  <span style=\"color: rgb(51,51,51);\">  <pre class=\"prettyprint lang-cpp\">int f(int a, int b, int c) {\n\tif(c == 1) {\n\t\tif(b == 1) {\n\t\t\tif(a == 1)\n\t\t\t\treturn 2;\n\t\t\telse\n\t\t\t\treturn f(a - 1, a - 1, a - 1) + 1;\n\t\t} else\n\t\t\treturn f(a, b - 1, b - 1) + 1;\n\t} else\n\t\treturn f(a, b, c - 1) + 1;\n}\nint main() {\n\tint n = 50;\n\tprintf(&quot;%d&quot;, f(n, n, n));\n}</pre> </span>  </div>",
+      "options": [
+        {
+          "id": 3374169,
+          "content": "20825"
+        },
+        {
+          "id": 3374170,
+          "content": "20826"
+        },
+        {
+          "id": 3374171,
+          "content": "22100"
+        },
+        {
+          "id": 3374172,
+          "content": "22101"
+        }
+      ],
+      "correct_option_ids": [
+        3374172
+      ],
+      "correct_options": [
+        "22101"
+      ],
+      "analysis": "<div>  本题考察递归。 </div> <div>  仔细阅读递归程序，递归程序可以等价为下列的for循环的运行次数cnt+1， </div> <div>  因为f(1,1,1)的时候返回2 </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211005/387374_1633402661327/F785519E50F36C68C9C46D2E37FB50C8\" style=\"height: auto;width: 290.8px;\"><br> </div> <div>  设上述循环结束后，则求解cnt的过程如下 </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211005/387374_1633402314213/2477ABCF91ED2A46D8951332B78D3011\" style=\"height: auto;width: 297.3px;\"><br> </div> <div>  <span></span>最后的答案是cnt+1，代入n=50 </div> <div>  得到答案为<span>22101，选择D答案</span><br> <br> </div>"
+    },
+    {
+      "question_id": 881,
+      "uuid": "648fb818c1e144a4b3832a6248779a2f",
+      "type": 1,
+      "title": "以下程序是用来计算两个非负数之间的最大公约数：&nbsp;\nlong long gcd(long long x, long long y) { \n    if (y == 0) \n        return x; \n    else \n        return gcd(y, x % y); \n}我们假设x,y中最大的那个数的长度为n，基本运算时间复杂度为O(1)，那么该程序的时间复杂度为()：",
+      "content": "以下程序是用来计算两个非负数之间的最大公约数： <pre class=\"prettyprint lang-js\">long long gcd(long long x, long long y) { \n    if (y == 0) \n        return x; \n    else \n        return gcd(y, x % y); \n}</pre>\n  我们假设x,y中最大的那个数的长度为n，基本运算时间复杂度为O(1)，那么该程序的时间复杂度为()：",
+      "options": [
+        {
+          "id": 1836,
+          "content": "O(1)"
+        },
+        {
+          "id": 1837,
+          "content": "O(logn)"
+        },
+        {
+          "id": 1838,
+          "content": "O(n)"
+        },
+        {
+          "id": 1839,
+          "content": "O(n^2)"
+        }
+      ],
+      "correct_option_ids": [
+        1837
+      ],
+      "correct_options": [
+        "O(logn)"
+      ],
+      "analysis": "略"
+    },
+    {
+      "question_id": 10859671,
+      "uuid": "1f61456da8fc425a87524f9d12519fe3",
+      "type": 1,
+      "title": "一只青蛙一次可以跳上1级台阶，也可以跳上2级……它也可以跳上n级。求该青蛙...",
+      "content": "一只青蛙一次可以跳上1级台阶，也可以跳上2级……它也可以跳上n级。求该青蛙跳上一个n级的台阶总共&nbsp;有多少种跳法？",
+      "options": [
+        {
+          "id": 6389347,
+          "content": "2^(n-1)"
+        },
+        {
+          "id": 6389348,
+          "content": "2*(n-1)"
+        },
+        {
+          "id": 6389349,
+          "content": "2^n"
+        },
+        {
+          "id": 6389350,
+          "content": "2n"
+        }
+      ],
+      "correct_option_ids": [
+        6389347
+      ],
+      "correct_options": [
+        "2^(n-1)"
+      ],
+      "analysis": "这道题目考察了青蛙跳台阶的动态规划问题的变体。A选项2^(n-1)是正确答案，我们可以通过以下分析来理解：<br><br>1. 对于n级台阶，青蛙在每个台阶都面临两种选择：跳过这个台阶或者不跳过。<br><br>2. 设f(n)为跳n级台阶的方法数，分析如下：<br>- 跳1级：f(1) = 1<br>- 跳2级：f(2) = 2 (1+1或2)<br>- 跳3级：f(3) = 4 (1+1+1或1+2或2+1或3)<br>- 跳4级：f(4) = 8<br><br>可以发现规律：f(n) = 2^(n-1)<br><br>原因是：对于n级台阶，第一步可以跳1级、2级...直到n级，后面的台阶同理，相当于每个台阶都有跳与不跳两种选择，除了最后一级必须跳，所以是2^(n-1)种可能。<br><br>分析其他选项：<br>B错误：2*(n-1)是线性增长，显然不符合实际情况，因为随着台阶数增加，跳法应该是指数增长的。<br><br>C错误：2^n过大，比实际情况多计算了一次。<br><br>D错误：2n是线性增长，同B选项一样，不符合跳台阶的实际组合情况。<br><br>这是一个典型的动态规划问题的特例，因为每一步都可以跳任意级，所以简化为了数学公式2^(n-1)。"
+    },
+    {
+      "question_id": 11182199,
+      "uuid": "3cf9f565c2824d0f907314f43c5b6fa3",
+      "type": 1,
+      "title": "以下是一个递归函数，求解最终的 `i` 值： function recur...",
+      "content": "以下是一个递归函数，求解最终的&nbsp;`i`&nbsp;值：\n<div>\n\t<div style=\"white-space:normal;\">\n<pre class=\"prettyprint lang-c\">function&nbsp;recursiveFunc(i):\n    if&nbsp;i&nbsp;&lt;=&nbsp;1:\n        return&nbsp;i\n    return&nbsp;recursiveFunc(i-2)&nbsp;+&nbsp;i</pre>\n\t</div>\n\t<div style=\"white-space:normal;\">\n\t</div>\n</div>\n<div>\n</div>\n<div>\n\t如果初始值&nbsp;`i`&nbsp;为&nbsp;6，最终的&nbsp;`i`&nbsp;值是（）\n</div>",
+      "options": [
+        {
+          "id": 7196445,
+          "content": "6"
+        },
+        {
+          "id": 7196446,
+          "content": "9"
+        },
+        {
+          "id": 7196447,
+          "content": "12"
+        },
+        {
+          "id": 7196448,
+          "content": "14"
+        }
+      ],
+      "correct_option_ids": [
+        7196447
+      ],
+      "correct_options": [
+        "12"
+      ],
+      "analysis": "根据给定的递归函数，我们可以追踪递归调用并求解最终的 `i` 值。<br />\n首先，我们调用 `recursiveFunc(6)`。<br />\n由于 `i` 大于1，函数继续递归调用 `recursiveFunc(i-2)`，即 `recursiveFunc(4)`。<br />\n同样地，继续递归调用 `recursiveFunc(2)` 和 `recursiveFunc(0)`。<br />\n当 `recursiveFunc(0)` 被调用时，满足递归终止条件，返回0，并开始回溯。<br />\n回溯到 `recursiveFunc(2)`，加上当前的 `i` 值2，即返回2。<br />\n回溯到 `recursiveFunc(4)`，加上当前的 `i` 值4，即返回6。<br />\n最后，回溯到初始调用 `recursiveFunc(6)`，加上当前的 `i` 值6，即返回12。<br />\n因此，当初始值 `i` 为6时，最终的 `i` 值是12。<br />\n<div>\n</div>"
+    },
+    {
+      "question_id": 529926,
+      "uuid": "f8ecd35e3eeb491ca30fb3264c87cb39",
+      "type": 1,
+      "title": "考虑下面递归表达式：\n\n\n\t \n\n\n\t那么（）",
+      "content": "<p>  考虑下面递归表达式： </p> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20190719/310337_1563526149868_4A47A0DB6E60853DEDFCFDF08A5CA249\">  </div> <div>  那么<img alt=\"\" src=\"https://www.nowcoder.com/equation?tex=T(n)%3D\">（） </div> <div>  <p>   <br>  </p> <br> </div>",
+      "options": [
+        {
+          "id": 1067507,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20190719/310337_1563527762640_10FB15C77258A991B0028080A64FB42D\" style=\"height: auto;width: 349.6px;\" />"
+        },
+        {
+          "id": 1067508,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20190719/310337_1563527776307_09DD8C2662B96CE14928333F055C5580\" style=\"height: auto;width: 338.1px;\" />"
+        },
+        {
+          "id": 1067509,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20190719/310337_1563527790011_8266E4BFEDA1BD42D8F9794EB4EA0A13\" style=\"height: auto;width: 333.9px;\" />"
+        },
+        {
+          "id": 1067510,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20190719/310337_1563527802009_F19C9085129709EE14D013BE869DF69B\" style=\"height: auto;width: 337.4px;\" />"
+        }
+      ],
+      "correct_option_ids": [
+        1067507
+      ],
+      "correct_options": [
+        "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20190719/310337_1563527762640_10FB15C77258A991B0028080A64FB42D\" style=\"height: auto;width: 349.6px;\" />"
+      ],
+      "analysis": "这道题目考察了递归式的时间复杂度分析。给定递归式 T(n) = T(n/2) + O(n)，且 T(1) = O(1)。<br><br>通过主定理(Master Theorem)或递归树方法分析可知答案为 O(n)。具体分析过程如下:<br><br>1) 首先,这是一个典型的分治递归式,每次将问题规模减半(n/2),并有一个线性的额外开销O(n)<br><br>2) 用递归树方法分析:<br>- 第0层:开销为cn<br>- 第1层:开销为cn/2<br>- 第2层:开销为cn/4<br>- ...<br>- 直到问题规模减至1<br><br>3) 总层数为log₂n,各层开销形成一个等比数列:cn + cn/2 + cn/4 + ... + c<br>   求和得到:cn(1 + 1/2 + 1/4 + ...) ≈ 2cn = O(n)<br><br>因此A选项 O(n) 是正确答案。<br><br>分析其他选项:<br>B选项 O(nlogn) 错误:这种递归形式下每层的开销之和是等比数列,最终结果是线性的而不是nlogn<br>C选项 O(n²) 错误:明显过大,问题每次规模减半不会产生平方级复杂度<br>D选项 O(logn) 错误:明显过小,仅考虑了递归层数而忽略了每层的线性开销"
+    },
+    {
+      "question_id": 2224947,
+      "uuid": "fe847cf2dba142e9901025b9b4f487b4",
+      "type": 1,
+      "title": "以下函数是求解第n个斐波那契数的递归写法，分析它的时间复杂度是（） int...",
+      "content": "<p>  以下函数是求解第<span>n</span>个斐波那契数的递归写法，分析它的时间复杂度是（） </p> <pre class=\"prettyprint lang-cpp\">int func(unsigned int n)\n{\n    if(n&lt;2)\n        return n;\n    return fabonaci(n-1) + fabonaci(n-2);\n}</pre>",
+      "options": [
+        {
+          "id": 3394030,
+          "content": "O(N)"
+        },
+        {
+          "id": 3394035,
+          "content": "O(N^2)"
+        },
+        {
+          "id": 3394037,
+          "content": "O(2^N)"
+        },
+        {
+          "id": 3394039,
+          "content": "O(N!)"
+        }
+      ],
+      "correct_option_ids": [
+        3394037
+      ],
+      "correct_options": [
+        "O(2^N)"
+      ],
+      "analysis": "<p>  选<span>C</span>。由代码可展开得：<span>f(n) = f(n-1)+f(n-2) = (f(n-2)+f(n-3)) + (f(n-3)+f(n-4)) = </span>…。每次计算规模只从<span>n</span>变为了<span>n-1</span>和<span>n-2</span>，即步长减一，但是生成了两个子问题。每个问题又需要重复往下迭代，问题规模每次减一。递归通式可写为<span>T(n) = T(n-1)+T(n-2)+O(1)</span>。如果画出一颗递归树，如下图，可以看到它是一颗二叉树，并且树的深度为<span>n</span>，每个节点表示要执行一次递归函数体，而除了递归部分，函数体内其他操作都是<span>O(1)</span>时间完成，因此总的时间复杂度为<span>O(2^n)</span>。题目引申学习：很容易发现递归树中很多节点做了重复计算，如果去除所有重复计算（记忆化搜索或迭代法），完全可以降低时间复杂度到<span>O(N)</span>。 </p> <p>  <br> </p> <p>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211015/389614_1634280112156/E275A8FDA8B2412FDFCAF92A993E3BA7\" style=\"height: auto;width: 498.6px;\">  </p>"
+    },
+    {
+      "question_id": 10959984,
+      "uuid": "00235add0c974cc590eff080d22aadf1",
+      "type": 1,
+      "title": "已知以下按值传递的递归函数，i 为给定正整数（i > 0）。问：函数 calculateI(i) 的返回值等于多少？",
+      "content": "<div> <pre class=\"prettyprint lang-c++\">int calculateI(int i) {\n    if (i &lt;= 0) {\n        return 0;\n    } else {\n        return calculateI(i - 1) + 2;\n    }\n}\n</pre> </div> <div>  已知以下按值传递的递归函数，i 为给定正整数（i &gt; 0）。问：函数 calculateI(i) 的返回值等于多少？ </div>",
+      "options": [
+        {
+          "id": 6620701,
+          "content": "2*i"
+        },
+        {
+          "id": 6620702,
+          "content": "2*i-1"
+        },
+        {
+          "id": 6620703,
+          "content": "i"
+        },
+        {
+          "id": 6620704,
+          "content": "2*i+1"
+        }
+      ],
+      "correct_option_ids": [
+        6620701
+      ],
+      "correct_options": [
+        "2*i"
+      ],
+      "analysis": "递归函数`calculateI(i)`每次调用时，将i的值减1，并返回调用`calculateI(i - 1)`的结果加2。因此，最终的i值就是2*i。"
+    },
+    {
+      "question_id": 369687,
+      "uuid": "52b036dbf0e64ab6832b615315626988",
+      "type": 1,
+      "title": "class program\n {\n    &...",
+      "content": "<pre class=\"prettyprint\">class program\n {\n     static void Main(string[] args)\n     {\n         int i;\n         i = x(8);\n     }\n     static int x(int n)\n     {\n         if (n &lt;= 3)\n             return 1;\n         else\n             return x(n - 2) + x(n - 4) + 1;\n     }\n }</pre> 递归算法x(8)需要调用几次函数x(int n)<br> <div>  <br> </div>",
+      "options": [
+        {
+          "id": 959860,
+          "content": "9"
+        },
+        {
+          "id": 959861,
+          "content": "12"
+        },
+        {
+          "id": 959862,
+          "content": "18"
+        },
+        {
+          "id": 959863,
+          "content": "24"
+        }
+      ],
+      "correct_option_ids": [
+        959860
+      ],
+      "correct_options": [
+        "9"
+      ],
+      "analysis": "答案：A<br> <br> 解析：<br> 设 T(n) 为计算 x(n) 时函数 x 的调用次数（含当前这一层）。  <br> 有递推：n≤3 时 T(n)=1；n&gt;3 时 T(n)=1+T(n−2)+T(n−4)。<br> <br> 逐步计算：<br> - T(4)=1+T(2)+T(0)=1+1+1=3<br> - T(5)=1+T(3)+T(1)=3<br> - T(6)=1+T(4)+T(2)=1+3+1=5<br> - T(7)=1+T(5)+T(3)=5<br> - T(8)=1+T(6)+T(4)=1+5+3=9<br> <br> 故 x(8) 共调用 9 次。<br>"
+    },
+    {
+      "question_id": 10702572,
+      "uuid": "dd8e39bd14514321a86a661310fdedbd",
+      "type": 1,
+      "title": "设有一个递归算法如下： int fact(int n) { if ( n&...",
+      "content": "<div>\n\t设有一个递归算法如下：\n</div>\n<div>\n<pre class=\"prettyprint lang-c++\">int&nbsp;fact(int&nbsp;n)&nbsp;{&nbsp;&nbsp;\n&nbsp;&nbsp;&nbsp;&nbsp;if&nbsp;(&nbsp;n&lt;=0&nbsp;)&nbsp;&nbsp;\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;&nbsp;1&nbsp;&nbsp;;\n&nbsp;&nbsp;&nbsp;&nbsp;else&nbsp;&nbsp;\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;&nbsp;n*fact&nbsp;(n-1)&nbsp;&nbsp;;\n}</pre>\n</div>\n<div>\n\t计算fact(n)需要调用该函数的次数为\n</div>",
+      "options": [
+        {
+          "id": 5952334,
+          "content": "n"
+        },
+        {
+          "id": 5952336,
+          "content": "n-1"
+        },
+        {
+          "id": 5952338,
+          "content": "n+1"
+        },
+        {
+          "id": 5952340,
+          "content": "n+2"
+        }
+      ],
+      "correct_option_ids": [
+        5952338
+      ],
+      "correct_options": [
+        "n+1"
+      ],
+      "analysis": "这道题目考察了递归函数的调用次数计算。对于fact(n)的递归调用,正确答案是n+1次。<br><br>让我们分析fact(n)的调用过程:<br>1. 首次调用fact(n)<br>2. 递归调用fact(n-1)<br>3. 递归调用fact(n-2)<br>...直到...<br>n. 递归调用fact(1)<br>n+1. 最后调用fact(0)返回1<br><br>所以总共调用次数为n+1次,因此C选项正确。<br><br>分析其他选项:<br>A选项n: 少算了一次,因为从n递归到0需要n+1次调用<br>B选项n-1: 少算了两次,忽略了首次调用和最后到达0的调用<br>D选项n+2: 多算了一次,实际上不需要再继续递归<br><br>举个具体例子:当n=3时<br>- 第1次调用fact(3)<br>- 第2次调用fact(2) <br>- 第3次调用fact(1)<br>- 第4次调用fact(0)<br>总共调用4次,即3+1次,验证了n+1这个结论。<br><br>理解这个问题的关键是要清楚地列出递归的每一步调用,从n开始一直到达递归终止条件0,包括最初调用和最终调用。"
+    },
+    {
+      "question_id": 10960079,
+      "uuid": "9dbe6c8361a54d7a81233773afe2230a",
+      "type": 1,
+      "title": "现有一个待排序的数组a={6, 5, 4, 3, 2, 1, 8, 8}，...",
+      "content": "现有一个待排序的数组a={6,&nbsp;5,&nbsp;4,&nbsp;3,&nbsp;2,&nbsp;1,&nbsp;8,&nbsp;8}，完成最终归并排序（升序）的前一步的结果为（）。",
+      "options": [
+        {
+          "id": 6621038,
+          "content": "<span>2,&nbsp;1,&nbsp;8,&nbsp;8<span><span>,&nbsp;</span></span></span>6,&nbsp;5,&nbsp;4,&nbsp;3"
+        },
+        {
+          "id": 6621039,
+          "content": "3, 4, 5, 6<span>,&nbsp;</span>1,&nbsp;2,&nbsp;8,&nbsp;8"
+        },
+        {
+          "id": 6621040,
+          "content": "1,&nbsp;2,&nbsp;3,&nbsp;4,&nbsp;5,&nbsp;6,&nbsp;8,&nbsp;8"
+        },
+        {
+          "id": 6621041,
+          "content": "6,&nbsp;5,&nbsp;4,&nbsp;3,&nbsp;2,&nbsp;1,&nbsp;8,&nbsp;8"
+        }
+      ],
+      "correct_option_ids": [
+        6621039
+      ],
+      "correct_options": [
+        "3, 4, 5, 6<span>,&nbsp;</span>1,&nbsp;2,&nbsp;8,&nbsp;8"
+      ],
+      "analysis": "这道题目考察归并排序算法的排序过程。在归并排序的最后一步之前，数组会被分成两个已排好序的子数组，然后进行最后一次合并得到完全有序的数组。<br><br>B选项\"3, 4, 5, 6, 1, 2, 8, 8\"正确，因为：<br>1. 归并排序是分治算法，会将数组不断二分，直到子数组长度为1<br>2. 然后逐步合并这些有序子数组<br>3. 在最后一步之前，数组被分为两个已排序的部分：左半部分\"3, 4, 5, 6\"和右半部分\"1, 2, 8, 8\"<br>4. 最后一步会将这两个有序子数组合并成完全有序的数组\"1, 2, 3, 4, 5, 6, 8, 8\"<br><br>分析其他选项：<br>A错误：\"2, 1, 8, 8, 6, 5, 4, 3\"不符合归并排序的特点，因为子数组未排序<br>C错误：\"1, 2, 3, 4, 5, 6, 8, 8\"是最终排序完成的结果，不是最后一步之前的状态<br>D错误：\"6, 5, 4, 3, 2, 1, 8, 8\"是原始数组，未经过任何排序"
+    },
+    {
+      "question_id": 11254689,
+      "uuid": "1f095f05fd87411c93d5f833b60ca2dc",
+      "type": 1,
+      "title": "在魔法王国的宝藏室里，守护者需要从一排魔法石中挑选不相邻的石头，以获得最大...",
+      "content": "在魔法王国的宝藏室里，守护者需要从一排魔法石中挑选不相邻的石头，以获得最大的魔力。每块石头的魔力值对应于数组 nums = <span style=\"text-wrap:wrap;\">[91, 47, 70, 29, 50, 21, 70, 63, 76, 69]</span>。你能帮助守护者找到最大的魔力总和吗？",
+      "options": [
+        {
+          "id": 7363355,
+          "content": "310"
+        },
+        {
+          "id": 7363356,
+          "content": "322"
+        },
+        {
+          "id": 7363357,
+          "content": "357"
+        },
+        {
+          "id": 7363358,
+          "content": "445"
+        }
+      ],
+      "correct_option_ids": [
+        7363357
+      ],
+      "correct_options": [
+        "357"
+      ],
+      "analysis": "房屋现金数组: [91, 47, 70, 29, 50, 21, 70, 63, 76, 69]<br />\n最大抢劫金额: 357<br />\n抢劫的房屋现金: [91, 70, 50, 70, 76]<br />\n<div>\n</div>"
+    },
+    {
+      "question_id": 2222883,
+      "uuid": "349519703642484fae322c59f0f778cd",
+      "type": 1,
+      "title": "给定一个递归算法的时间复杂度表达式，为 则该算法的时间复杂度为（）",
+      "content": "<div>  <div>   给定一个递归算法的时间复杂度表达式，为  </div> </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220551831/9F9E8E7B5BAD20274CCB240EEA3DB3C3\">  </div> <div>  <div>   <div>    <p>     则该算法的时间复杂度为（）    </p>   </div>  </div> <br> </div>",
+      "options": [
+        {
+          "id": 3390420,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220564077/EC361D41D2F75F995275024534CC7D4B\">"
+        },
+        {
+          "id": 3390423,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220568554/6802EC7558E8BFB2517150D3C0BD020C\">"
+        },
+        {
+          "id": 3390427,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220573230/F363AD7B623B417A3B3D19F59EEB899B\">"
+        },
+        {
+          "id": 3390430,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220578132/2FC56B6CA1ADA0A5B69DF6DAD96BDE66\">"
+        }
+      ],
+      "correct_option_ids": [
+        3390423
+      ],
+      "correct_options": [
+        "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220568554/6802EC7558E8BFB2517150D3C0BD020C\">"
+      ],
+      "analysis": "<p>  考察递归、时间复杂度分析。 </p> <p>  可用主定理法，和递归树法。 </p> <p>  下面讲解主定理法的做法。 </p> <div>  表达式后面的<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220594226/9761D14620480A6FA957B251C68EE178\">  </div> <div>  <div>   <div>    所以带入主定理法有，<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220616959/1798687FB97C12EDA4C0CAC8760B95F3\">    </div>  </div>  <div>   <div>    <p>     所以时间复杂度为 <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220638822/E8052ABA3B782B3A3F7A64A2CE823F3A\"> ，选择B。    </p>   </div>  </div> <br> </div>"
+    },
+    {
+      "question_id": 10826601,
+      "uuid": "acdda071a4fb42ba8def7e96461f06d0",
+      "type": 1,
+      "title": "项目经理夕玖目前有9个任务，其中3个是1天完成，2个是2天完成，2个是3天...",
+      "content": "项目经理夕玖目前有9个任务，其中3个是1天完成，2个是2天完成，2个是3天完成，1个4天完成，2个5天完成。需要分配给3位工程师，不考虑其他因素，只考虑每个人总时间相差最小&nbsp;&nbsp;请问以下哪个最适合解决这个问题&nbsp;(&nbsp;)",
+      "options": [
+        {
+          "id": 6272472,
+          "content": "倒序贪婪"
+        },
+        {
+          "id": 6272473,
+          "content": "弗洛伊德算法"
+        },
+        {
+          "id": 6272474,
+          "content": "迪杰斯特拉算法"
+        },
+        {
+          "id": 6272475,
+          "content": "穷举法"
+        }
+      ],
+      "correct_option_ids": [
+        6272472
+      ],
+      "correct_options": [
+        "倒序贪婪"
+      ],
+      "analysis": "这道题考察任务分配问题中的算法选择。倒序贪婪算法是最适合的解决方案,原因如下:<br><br>1. 倒序贪婪算法的工作原理:<br>- 先将任务按照耗时从大到小排序(5,5,4,3,3,2,2,1,1)<br>- 每次选择当前最大的任务,分配给当前总工作时间最少的工程师<br>- 这种方式能较好地平衡各个工程师的工作量<br><br>2. 为什么倒序贪婪最适合:<br>- 问题的目标是使每个人总时间相差最小<br>- 大任务优先分配可以避免最后剩下大任务导致分配不均<br>- 算法简单高效,易于实现<br>- 虽然不一定能得到最优解,但通常可以得到较好的近似解<br><br>分析其他选项:<br>B错误:弗洛伊德算法用于解决多源最短路径问题,与任务分配无关<br>C错误:迪杰斯特拉算法用于解决单源最短路径问题,不适用于此类任务分配<br>D错误:虽然穷举法可以得到最优解,但时间复杂度太高,效率低下,不适合实际应用<br><br>因此在保证效率的前提下,倒序贪婪算法是解决该问题最合适的选择。"
+    },
+    {
+      "question_id": 2222887,
+      "uuid": "fab737aeb0ca44208a9940dddc73a192",
+      "type": 1,
+      "title": "给定下面程序段，则执行一次函数f(n)的时间复杂度为（）。 int f(i...",
+      "content": "<div>  <div>   <p>    给定下面程序段，则执行一次函数f(n)(n&gt;0)的时间复杂度为（）。   </p>   <div> <pre class=\"prettyprint lang-cpp\">int f(int n){\n    if(n &lt;= 1) return 2;\n    else return f(n - 2) / 2;\n}</pre>   </div>  </div> </div>",
+      "options": [
+        {
+          "id": 3390435,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220815792/D89E0719FA674024DC9CBCD6EBAE54E6\">"
+        },
+        {
+          "id": 3390437,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220820455/1E298DFACC88C9A32D65B0A7CA881671\">"
+        },
+        {
+          "id": 3390439,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220824191/754A0D203B9192A4CBC984C38C100B62\">"
+        },
+        {
+          "id": 3390441,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220828248/4A09F23E7896E6306F9AE602D3781BFA\">"
+        }
+      ],
+      "correct_option_ids": [
+        3390435
+      ],
+      "correct_options": [
+        "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220815792/D89E0719FA674024DC9CBCD6EBAE54E6\">"
+      ],
+      "analysis": "<p>  画出递归树进行分析，树高[n/2]+1层，每层O(1)，总时间复杂度为O(n)。 </p> <p>  <br> </p>"
+    },
+    {
+      "question_id": 128,
+      "uuid": "00a6dbdb815c49079022518c63b7d24b",
+      "type": 1,
+      "title": "4个圆盘的Hanoi塔,总的移动次数为()",
+      "content": "4个圆盘的Hanoi塔,总的移动次数为()",
+      "options": [
+        {
+          "id": 435,
+          "content": "7"
+        },
+        {
+          "id": 436,
+          "content": "8"
+        },
+        {
+          "id": 437,
+          "content": "15"
+        },
+        {
+          "id": 438,
+          "content": "16"
+        }
+      ],
+      "correct_option_ids": [
+        437
+      ],
+      "correct_options": [
+        "15"
+      ],
+      "analysis": "汉诺塔(Hanoi)问题是一个经典的递归问题。对于n个圆盘的汉诺塔,移动的最少步骤数是2^n-1。本题中是4个圆盘,因此:<br><br>移动步数 = 2^4 - 1 = 16 - 1 = 15步<br><br>所以C选项15是正确答案。<br><br>具体分析过程:<br>1. 要将4个圆盘从A柱移动到C柱,可以分解为:<br>   - 将上面3个圆盘移到B柱<br>   - 将最大的圆盘移到C柱<br>   - 将B柱上的3个圆盘移到C柱<br><br>2. 对于每个子问题,都可以用相同方式继续分解,直到只剩一个圆盘<br><br>其他选项分析:<br>- A选项7太少,连3个圆盘所需的步数(7步)都不够<br>- B选项8也明显偏少,不足以完成任务<br>- D选项16虽然接近,但比实际所需的15步多了1步<br><br>这是一个数学证明的结果,也可以通过编程验证,4个圆盘的汉诺塔问题最少需要15步才能完成。"
+    },
+    {
+      "question_id": 11182322,
+      "uuid": "437e6190ebba4fd985af3ffbf736b78b",
+      "type": 1,
+      "title": "有n个活动，每个活动都有一个开始时间和结束时间。要求选择一些活动，使得它们...",
+      "content": "有n个活动，每个活动都有一个开始时间和结束时间。要求选择一些活动，使得它们不相互冲突并且能够安排在同一时间段内，同时所选活动的数量最大。下面哪种算法可以用于解决这个问题？",
+      "options": [
+        {
+          "id": 7196769,
+          "content": "Dijkstra算法"
+        },
+        {
+          "id": 7196770,
+          "content": "Kruskal算法"
+        },
+        {
+          "id": 7196771,
+          "content": "Prim算法"
+        },
+        {
+          "id": 7196772,
+          "content": "贪心算法"
+        }
+      ],
+      "correct_option_ids": [
+        7196772
+      ],
+      "correct_options": [
+        "贪心算法"
+      ],
+      "analysis": "这是一道经典的<a href=\"https://so.csdn.net/so/search?q=%E8%B4%AA%E5%BF%83%E7%AE%97%E6%B3%95&amp;spm=1001.2101.3001.7020\" target=\"_blank\" class=\"hl hl-1\" data-report-click=\"{&quot;spm&quot;:&quot;1001.2101.3001.7020&quot;,&quot;dest&quot;:&quot;https://so.csdn.net/so/search?q=%E8%B4%AA%E5%BF%83%E7%AE%97%E6%B3%95&amp;spm=1001.2101.3001.7020&quot;,&quot;extra&quot;:&quot;{\\&quot;searchword\\&quot;:\\&quot;贪心算法\\&quot;}&quot;}\" data-tit=\"贪心算法\" data-pretit=\"贪心算法\">贪心算法</a>问题，即选择最优的活动安排方式使得活动数量尽可能地多。\n<p>\n\t具体实现方法为：首先将所有活动按照结束时间从早到晚排序，然后依次枚举每个活动，如果该活动的开始时间在当前已选择的活动中最晚的结束时间之后，就将该活动加入已选择集合中。最终选择的活动数量即为所求。\n</p>"
+    },
+    {
+      "question_id": 44607,
+      "uuid": "6628a64cd6ad41809565fe9f802aecfa",
+      "type": 1,
+      "title": "int f(int x){ return ((x&gt;2) ? x*f(...",
+      "content": "<div> <pre class=\"prettyprint lang-cpp\">int f(int x){\n    return ((x&gt;2) ? x*f(x-1) : 3);\n}\nint i;\ni=f(f(2));</pre> </div> <div>  执行如上函数后. i的值为（） </div>",
+      "options": [
+        {
+          "id": 45498,
+          "content": "30"
+        },
+        {
+          "id": 45499,
+          "content": "无限递归"
+        },
+        {
+          "id": 45500,
+          "content": "9"
+        },
+        {
+          "id": 45501,
+          "content": "2160"
+        }
+      ],
+      "correct_option_ids": [
+        45500
+      ],
+      "correct_options": [
+        "9"
+      ],
+      "analysis": "<div>  首先是将x=2传入，x&gt;2为假，返回值为3，因此f(f(2))的值为f(3)， </div> <div>  将x=3传入，x&gt;3为真，f(3)的值为3*f(2)=9 </div> <div>  故答案选C </div>"
+    },
+    {
+      "question_id": 11182233,
+      "uuid": "d815869f536247cba2680b63b247f26a",
+      "type": 1,
+      "title": "有一个 个点， 条边的连通图（每条边都会给定一个长度），图中有至多 个点上...",
+      "content": "有一个 <img alt=\"n\" src=\"https://www.nowcoder.com/equation?tex=n\" /> 个点，<img alt=\"m\" src=\"https://www.nowcoder.com/equation?tex=m\" /> 条边的连通图（每条边都会给定一个长度），图中有至多 <img alt=\"k\" src=\"https://www.nowcoder.com/equation?tex=k\" /> 个点上有糖果，你从 1 号点出发，想要吃完所有糖果，请问至少走多少距离。（每个点、边都可以重复走，<img src=\"https://www.nowcoder.com/equation?tex=1%20%5Cleq%20n%2Cm%20%5Cleq%20300%2C%201%20%5Cleq%20k%20%5Cleq%2015\" />）<br />\n请问这样的题应该使用下列选项中的哪种动态规划解决（）",
+      "options": [
+        {
+          "id": 7196373,
+          "content": "状态压缩dp"
+        },
+        {
+          "id": 7196374,
+          "content": "拓扑图上dp"
+        },
+        {
+          "id": 7196375,
+          "content": "树上dp"
+        },
+        {
+          "id": 7196376,
+          "content": "区间dp"
+        }
+      ],
+      "correct_option_ids": [
+        7196373
+      ],
+      "correct_options": [
+        "状态压缩dp"
+      ],
+      "analysis": "考察对 dp 概念的理解。本题应该预处理每两个糖果之间的距离，由于糖果数量只有 15 个，所以应该使用状态压缩 dp，dp[s][i] 表示已经吃的糖果的集合为 <img alt=\"s\" src=\"https://www.nowcoder.com/equation?tex=s\">，当前正在第 <img alt=\"i\" src=\"https://www.nowcoder.com/equation?tex=i\"> 个糖果的位置上。"
+    },
+    {
+      "question_id": 2224946,
+      "uuid": "6e4354ebead14a40a7e37e8dc745b87d",
+      "type": 1,
+      "title": "下面函数实现了在一个升序整型数组arr中查找一个目标值target的位置，...",
+      "content": "<div>  下面函数实现了在一个升序整型数组<span>arr</span>中查找一个目标值<span>target</span>的位置，请分析它的时间复杂度为（） </div> <div> <pre class=\"prettyprint lang-cpp\">int search(int start, int end, int target, int *arr)\n{\n    if(start &lt;= end) {\n        int mid = start + (end - start) / 2;\n        if (arr[mid] == target)\n            return mid;\n        else if (target &gt; arr[mid])\n            return search(mid + 1, end, target, arr);\n        else if (target &lt; arr[mid])\n            return search(start, mid - 1, target, arr);\n    }\n    return -1;\n}</pre> </div>",
+      "options": [
+        {
+          "id": 3394020,
+          "content": "O(1)"
+        },
+        {
+          "id": 3394023,
+          "content": "O(logN)"
+        },
+        {
+          "id": 3394026,
+          "content": "O(N)"
+        },
+        {
+          "id": 3394031,
+          "content": "O(Nlog(N))"
+        }
+      ],
+      "correct_option_ids": [
+        3394023
+      ],
+      "correct_options": [
+        "O(logN)"
+      ],
+      "analysis": "<p>  选<span>B</span>。代码为标准的二分查找，期望情况下，每次将范围<span>n</span>缩小一半，直到找到目标元素或者左右游标相遇，因此平均需要<span>logN</span>次搜索，所以时间复杂度为<span>O(logN)</span>  </p>"
+    },
+    {
+      "question_id": 2603605,
+      "uuid": "e1fa0e365b514ddda7207663dd3c4eae",
+      "type": 1,
+      "title": "对递归程序的优化的一般的手段是：",
+      "content": "对递归程序的优化的一般的手段是：",
+      "options": [
+        {
+          "id": 4088839,
+          "content": "堆栈优化"
+        },
+        {
+          "id": 4088844,
+          "content": "停止值优化"
+        },
+        {
+          "id": 4088850,
+          "content": "尾递归优化"
+        },
+        {
+          "id": 4088856,
+          "content": "循环优化"
+        }
+      ],
+      "correct_option_ids": [
+        4088850
+      ],
+      "correct_options": [
+        "尾递归优化"
+      ],
+      "analysis": "尾递归优化是对递归程序最有效的优化手段,它通过将递归调用作为函数的最后一步操作来实现。这种优化可以让编译器把递归转换为迭代,从而避免了递归调用时栈空间的过度消耗。<br><br>分析所有选项:<br>A选项\"堆栈优化\"不够准确。虽然尾递归优化最终会影响到堆栈的使用,但堆栈优化是一个更宽泛的概念,不是专门针对递归的优化手段。<br><br>B选项\"停止值优化\"说法不准确。停止值(即递归的结束条件)虽然在递归中很重要,但优化停止值并不是递归优化的主要手段。<br><br>C选项\"尾递归优化\"正确。它是最主要的递归优化方式,可以显著提高递归程序的性能,避免栈溢出的风险。现代编译器普遍支持尾递归优化。<br><br>D选项\"循环优化\"范围过大。虽然尾递归最终可能被优化成循环,但循环优化是一个通用的优化手段,不是专门针对递归的优化技术。<br><br>尾递归优化的价值在于它能将空间复杂度从O(n)优化到O(1),这是其他优化手段难以达到的效果。"
+    },
+    {
+      "question_id": 2222882,
+      "uuid": "9d0221e213d3443898f03a57657b23ac",
+      "type": 1,
+      "title": "给定一递归算法的程序段如下（r -l&gt;1），设n=r-l+1，则该算...",
+      "content": "<div>  <div>   <p>    给定一递归算法的程序段如下（r -l&gt;1），设n=r-l+1，则该算法的时间复杂度为（）。   </p> <pre class=\"prettyprint lang-cpp\">void f(int l, int r)\n{\n    for(int i = l; i &lt;= r; i ++ ) a[i] ++ ;\n    if(l == r) return ;\n    int mid = (l + r) / 2;\n    f(l, mid);\n    f(mid + 1, r);\n    return ;\n}\nint main()\n{\n    n = r - l + 1;\n    f(l, r);\n}</pre>  </div> </div>",
+      "options": [
+        {
+          "id": 3390415,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220493944/5326775435C0574AA756F84E925E160B\">"
+        },
+        {
+          "id": 3390418,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220503000/C05DB13CAFC26AA3254C4526F093CAEF\">"
+        },
+        {
+          "id": 3390422,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220508920/72A46E2B198A4385DC24DA152BAD51F7\">"
+        },
+        {
+          "id": 3390426,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220513614/C718C216F5CBDD6E6534F045974E4E99\">"
+        }
+      ],
+      "correct_option_ids": [
+        3390418
+      ],
+      "correct_options": [
+        "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220503000/C05DB13CAFC26AA3254C4526F093CAEF\">"
+      ],
+      "analysis": "<div>  <div>   <p>    根据题意可知n为区间长度，递归树法得，递归树最多有log n层，每层的区间长度加起来都是n（除了未满的那层）。   </p>   <p>    代码中内层for循环，每个位置 i 的贡献又都是1，深度乘以层数乘以单个位置的贡献得到时间复杂度为 <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220526858/0B5EFC399764CB3B17662A329BB7682F\"> ，选B。   </p>   <p>    <br>   </p>  </div> </div>"
+    },
+    {
+      "question_id": 10860436,
+      "uuid": "2259e461157e42109f1fe15e81e964bd",
+      "type": 1,
+      "title": "有如下代码，在执行func(17)的时候，func()函数被调用了多少( ...",
+      "content": "<div>  有如下代码，在执行<span>func(17)</span>的时候，<span>func()</span>函数被调用了多少<span>( )</span>次？ </div> <div>  <p>   int func(int x) {  </p>  <p>       if(x &lt;= 2){  </p>  <p>           return 1；<span> </span>  </p>  <p>       }  </p>  <p>       return func(x - 3) * func(x - 5);  </p>  <p>   }  </p> <br /> </div>",
+      "options": [
+        {
+          "id": 6390851,
+          "content": "35"
+        },
+        {
+          "id": 6390852,
+          "content": "39"
+        },
+        {
+          "id": 6390853,
+          "content": "37"
+        },
+        {
+          "id": 6390854,
+          "content": "41"
+        }
+      ],
+      "correct_option_ids": [
+        6390852
+      ],
+      "correct_options": [
+        "39"
+      ],
+      "analysis": "这道题目考察递归函数的执行过程和调用次数统计。可以通过画递归树的方式来分析函数的调用次数。<br><br>当输入x=17时，根据代码：<br>- 如果x<=2，直接返回1<br>- 否则返回func(x-3) * func(x-5)<br><br>让我们跟踪执行过程：<br>1. func(17) 调用 func(14)和func(12)<br>2. func(14) 调用 func(11)和func(9)<br>3. func(12) 调用 func(9)和func(7)<br>4. func(11) 调用 func(8)和func(6)<br>5. func(9) 调用 func(6)和func(4)<br>6. func(8) 调用 func(5)和func(3)<br>7. func(7) 调用 func(4)和func(2)<br>8. func(6) 调用 func(3)和func(1)<br>9. func(5) 调用 func(2)和func(0)<br>10. func(4) 调用 func(1)和func(-1)<br>11. func(3) 调用 func(0)和func(-2)<br><br>当x<=2时都返回1，所以不再继续递归。<br><br>统计所有函数调用次数（包括原始调用）：<br>func(17)=1, func(14)=1, func(12)=1, func(11)=1, func(9)=2, func(8)=1, func(7)=1, func(6)=2, func(5)=1, func(4)=2, func(3)=2, func(2)=2, func(1)=3, func(0)=3, func(-1)=2, func(-2)=2<br><br>总计调用次数为39次，因此B选项39是正确答案。<br><br>其他选项35、37、41都不是准确的调用次数。要得到精确的调用次数，必须仔细追踪每一个递归分支，统计所有被调用的次数。这道题的关键在于理解递归调用时函数会被重复调用的特点，以及如何正确统计总的调用次数。"
+    },
+    {
+      "question_id": 11338516,
+      "uuid": "5b55b96e80734071a1b11fa5c212bdf7",
+      "type": 1,
+      "title": "给定6个物品，6个物品的体积和价值依次为（1、2），（2、2），（3、4）...",
+      "content": "<div>  <div>   <p>    给定6个物品，6个物品的体积和价值依次为（1、2），（2、2），（3、4），<span>（4、4），<span>（3、3），<span>（2、3）</span></span></span>（第一个物品的体积为1，价值为2）。若背包的剩余容量足够装下某个物品，则可将此物品装入背包。如果每个物品都只能使用一次，请问最大容量为8的背包最多能够装下价值多少的物品：   </p>  </div> </div>",
+      "options": [
+        {
+          "id": 7407161,
+          "content": "8"
+        },
+        {
+          "id": 7407162,
+          "content": "10"
+        },
+        {
+          "id": 7407163,
+          "content": "11"
+        },
+        {
+          "id": 7407164,
+          "content": "13"
+        }
+      ],
+      "correct_option_ids": [
+        7407163
+      ],
+      "correct_options": [
+        "11"
+      ],
+      "analysis": "<div>  此题考查基础动态规划问题。这是一个典型的01背包问题，模拟01背包的执行过程我们能够得到如下的一个表。 </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20201228/343788_1609145472277/316A76DD607F18F9361EF29BC395B2BB\"><br> </div> <div>  <div>   <div>    <p>     因此可知最大容量为8的背包最多能够装下价值为11的物品。    </p>   </div>  </div> <br> </div>"
+    },
+    {
+      "question_id": 2224949,
+      "uuid": "2b775a8c5c0c41bf849c32bde4f2d9da",
+      "type": 1,
+      "title": "下面函数实现了从一个长度为n的数组中得到第K小的数，请分析它的平均时间复杂...",
+      "content": "<p>  下面函数实现了从一个长度为<span>n</span>的正整数数组中得到第<span>K</span>小的数（无解返回-1），请分析它的平均时间复杂度为（） </p> <p>  <br> </p> <pre class=\"prettyprint lang-cpp\">int partition(int arr[], int left, int right)\n{\n    int j = left, tmp;\n    for (int i = left; i &lt; right; ++i){\n        if (arr[i] &lt;= arr[right]){\n            tmp = arr[i];\n            arr[i] = arr[j];\n            arr[j] = tmp;\n\n            j += 1;\n        }\n    }\n    tmp = arr[j];\n    arr[j] = arr[right];\n    arr[right] = tmp;\n    return j;\n}\n\nint find_kth(int arr[], int n, int K)\n{\n    int left = 0, right = n - 1;\n    K -= 1;\n    while (true){\n        int pivot = partition(arr, left, right);\n        if (pivot == K)\n            return arr[pivot];\n        if (pivot &gt; K)\n            right = pivot - 1;\n        else\n            left = pivot + 1;\n    }\n    return -1;\n}</pre> <p>  <br> </p>",
+      "options": [
+        {
+          "id": 3394027,
+          "content": "O(NlogK)"
+        },
+        {
+          "id": 3394032,
+          "content": "O(K*logN)"
+        },
+        {
+          "id": 3394036,
+          "content": "O(N*logN)"
+        },
+        {
+          "id": 3394038,
+          "content": "O(N)"
+        }
+      ],
+      "correct_option_ids": [
+        3394038
+      ],
+      "correct_options": [
+        "O(N)"
+      ],
+      "analysis": "选<span>D</span>。由代码可知其利用了快排的划分思想，对于指定的<span>k</span>，都需要在长度为<span>n</span>的数组中遍历一遍，找到第一个枢纽元素<span>pivot</span>，<span>arr[pivot]</span>已经在排好序的位置上（即左边都不大于它，右边都不小于它），如果<span>pivot</span>刚好是要找的第<span>k</span>个数，那么返回即可，如果不是，则缩小范围继续递归查找。期望情况下，每次将范围<span>n</span>缩小到一半<span>n/2</span>，因此第二次遍历<span>n/2</span>个数，第三次<span>n/4</span>…，因此总的遍历次数期望为<span>n+(n/2)+(n/4)+(n/8)+</span>…<span> = 2n</span>。故总时间复杂度为<span>O(N)</span>。注意找第<span>K</span>个数的时间复杂度与<span>K</span>的规模无关，只与<span>N</span>有关。通俗地说就是在长度为<span>n</span>的数组中找第<span>1</span>个数还是第<span>10</span>个数还是第<span>100</span>个数，耗费的时间几乎是一样的。但在<span>1</span>万个数中找还是在<span>10</span>万个数中找耗时明显是不同的。"
+    },
+    {
+      "question_id": 11269523,
+      "uuid": "33ba993a1b754a748a59720f17d0a72c",
+      "type": 1,
+      "title": "实现大整数的乘法是利用（ ）算法。",
+      "content": "实现大整数的乘法是利用（&nbsp;&nbsp;&nbsp;&nbsp;）算法。",
+      "options": [
+        {
+          "id": 7400098,
+          "content": "贪心法"
+        },
+        {
+          "id": 7400100,
+          "content": "动态规划法"
+        },
+        {
+          "id": 7400102,
+          "content": "分治策略"
+        },
+        {
+          "id": 7400104,
+          "content": "回溯法"
+        }
+      ],
+      "correct_option_ids": [
+        7400102
+      ],
+      "correct_options": [
+        "分治策略"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 11285697,
+      "uuid": "efa3214822864c1d9cf62f8710c6c466",
+      "type": 1,
+      "title": "有一份编程作业，要求学生使用递归程序解决走台阶问题，并分析递归调用中的重复...",
+      "content": "<div>\n\t有一份编程作业，要求学生使用递归程序解决走台阶问题，并分析递归调用中的重复情况。走台阶问题：从&nbsp;每次可以上1个或2个台阶，问第 1 个台阶走到第 15 个台阶有多少种不同的方案。a同学写了一个递归程序来解决。调用 SolveStep(15)，输出答案。但是<span>a同学</span>发现这样会使得同一情况被调用多次。例如执行 <span>SolveStep</span>(15) 的时候会调用 <span>SolveStep</span>(13)，<span>SolveStep</span>(14) 也会调用<span>SolveStep</span>(13)。请回答：在调用<span>&nbsp;<span>SolveStep</span>(15)的过程中，</span> <span>SolveStep</span>(9) 被重复调用了（）次\n</div>\n<div>\n<pre class=\"prettyprint lang-cpp\">int&nbsp;SolveStep(int&nbsp;x){\n&nbsp;&nbsp;&nbsp;&nbsp;if(x&nbsp;&lt;=&nbsp;1){\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;x;\n&nbsp;&nbsp;&nbsp;&nbsp;}\n&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;SolveStep(x-1)&nbsp;+&nbsp;SolveStep(x-2);\n}</pre>\n</div>",
+      "options": [
+        {
+          "id": 7401592,
+          "content": "21"
+        },
+        {
+          "id": 7401593,
+          "content": "13"
+        },
+        {
+          "id": 7401594,
+          "content": "6"
+        },
+        {
+          "id": 7401595,
+          "content": "36"
+        }
+      ],
+      "correct_option_ids": [
+        7401593
+      ],
+      "correct_options": [
+        "13"
+      ],
+      "analysis": "考察递归。该题的答案是斐波那契数列，其调用次数也呈斐波那契数列，即从 <span>SolveStep</span>(15) 开始，调用次数分别为 [1,1,2,3,5,8,13...]，即 <span>SolveStep</span>(9) 调用次数为 13。"
+    },
+    {
+      "question_id": 54248,
+      "uuid": "f8eb44fe97fa4943be5498d73c4ff67c",
+      "type": 1,
+      "title": "递归函数中的形参是（）",
+      "content": "<p>  <span>递归函数中的形参是（）</span>  </p>",
+      "options": [
+        {
+          "id": 71285,
+          "content": "自动变量"
+        },
+        {
+          "id": 71286,
+          "content": "外部变量"
+        },
+        {
+          "id": 71287,
+          "content": "静态变量"
+        },
+        {
+          "id": 71288,
+          "content": "可根据需要自定义存储类型"
+        }
+      ],
+      "correct_option_ids": [
+        71285
+      ],
+      "correct_options": [
+        "自动变量"
+      ],
+      "analysis": "在递归函数中,形参是自动变量(auto),这是因为:<br><br>1. 递归函数每次调用都会在栈上创建一个新的栈帧,其中包含该次调用的形参和局部变量。当函数返回时,这些变量会自动释放。<br><br>2. 形参的生命周期仅限于函数的执行期间,属于自动存储类型。每次递归调用都会创建新的形参副本,这些副本相互独立。<br><br>分析其他选项:<br><br>B错误:外部变量(extern)的作用域是全局的,在整个程序执行期间都存在。递归函数的形参显然不属于这种类型。<br><br>C错误:静态变量(static)在程序运行期间只有一份拷贝,而递归函数的形参在每次调用时都需要创建新的副本。<br><br>D错误:递归函数的形参存储类型不能随意指定,它们必须是自动变量,这是由函数调用机制决定的。形参会随着函数调用的开始而创建,函数返回而释放。<br><br>因此,A选项\"自动变量\"最准确地描述了递归函数形参的特性。"
+    },
+    {
+      "question_id": 109,
+      "uuid": "7e270400bf564d5caed72a6f08cc6b4c",
+      "type": 1,
+      "title": "执行完下列语句段后,i值为()",
+      "content": "执行完下列语句段后,i值为() <pre class=\"prettyprint lang-js\">int f(int x){ \n    return ((x&gt;0)?x*f(x-1):2) \n} \nint i; \ni=f(f(2));</pre>",
+      "options": [
+        {
+          "id": 359,
+          "content": "4"
+        },
+        {
+          "id": 360,
+          "content": "48"
+        },
+        {
+          "id": 361,
+          "content": "8"
+        },
+        {
+          "id": 362,
+          "content": "无限递归"
+        }
+      ],
+      "correct_option_ids": [
+        360
+      ],
+      "correct_options": [
+        "48"
+      ],
+      "analysis": "这道题目需要仔细分析函数调用和递归的执行过程。让我们逐步计算求解:<br><br>1. 首先看函数 f 的定义,它是一个条件表达式:<br>   - 当 x > 0 时,返回 x * f(x-1)<br>   - 当 x ≤ 0 时,返回 2<br><br>2. 计算 i = f(f(2)) 的过程:<br>   先计算内层 f(2):<br>   - f(2): 2>0, 所以返回 2*f(1)<br>   - f(1): 1>0, 所以返回 1*f(0)<br>   - f(0): 0≤0, 所以返回 2<br>   因此 f(2) = 2*1*2 = 4<br><br>   再计算外层 f(4):<br>   - f(4): 4>0, 所以返回 4*f(3)<br>   - f(3): 3>0, 所以返回 3*f(2)<br>   - f(2): 2>0, 所以返回 2*f(1)<br>   - f(1): 1>0, 所以返回 1*f(0)<br>   - f(0): 0≤0, 所以返回 2<br>   因此 f(4) = 4*3*2*1*2 = 48<br><br>所以最终 i 的值为 48。<br><br>分析其他选项:<br>A(4)错误: 这只是第一步 f(2) 的结果。<br>C(8)错误: 这不是任何中间计算结果。<br>D(无限递归)错误: 该函数有明确的终止条件(x≤0时返回2),不会无限递归。"
+    },
+    {
+      "question_id": 2222884,
+      "uuid": "28756ecdfb5c4633afab54417342f6eb",
+      "type": 1,
+      "title": "给定下面程序段，则执行一次FunA(n)函数的时间复杂度为（）。 int ...",
+      "content": "<div>  <div>   <p>    给定下面程序段，则执行一次FunA(n)函数的时间复杂度为（）。   </p> <pre class=\"prettyprint lang-cpp\">int FunB(int n)\n{\n    if(n &lt;= 1) return 1;\n    else return FunB(n - 1) * 2;\n}\nint FunA(int n)\n{\n    if(n &lt;= 2) return 2;\n    else return FunB(n) + FunA(n - 1);\n}</pre>  </div> </div>",
+      "options": [
+        {
+          "id": 3390425,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220653612/056B3E602CAA04B449549455D0B7F2CB\">"
+        },
+        {
+          "id": 3390428,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220659222/9C647905716E076CB5A05490BE711014\">"
+        },
+        {
+          "id": 3390431,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220664201/80D9EF3D44A9349B3136714E2A1A9362\">"
+        },
+        {
+          "id": 3390433,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220669950/403CFAC4644E0BD52239C871C6BD5752\">"
+        }
+      ],
+      "correct_option_ids": [
+        3390431
+      ],
+      "correct_options": [
+        "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220664201/80D9EF3D44A9349B3136714E2A1A9362\">"
+      ],
+      "analysis": "<div>  <div>   <p>    考察间接递归的理解和递归复杂度分析。易得FunB()的时间复杂度为O(n)级别，FunA()间接调用FunB()的递归程序，执行次数约为2+3+4+...+n=n(n-1)/2-1=O(n^2)级别，选择C答案。   </p>  </div> </div>"
+    },
+    {
+      "question_id": 2226678,
+      "uuid": "fd26414dab63408ca42927f1a1c19d29",
+      "type": 1,
+      "title": "def fun(n): if n <= 1: return n re...",
+      "content": "<pre class=\"prettyprint lang-py\">def fun(n):\n    if n &lt;= 1:\n        return n\n    return fun(n-1) + fun(n-2)\nprint(fun(6))</pre> <br> <div>  <div>   <p>    在python中执行上述函数之后的结果为：   </p>  </div> </div>",
+      "options": [
+        {
+          "id": 3395893,
+          "content": "0"
+        },
+        {
+          "id": 3395894,
+          "content": "5"
+        },
+        {
+          "id": 3395895,
+          "content": "8"
+        },
+        {
+          "id": 3395896,
+          "content": "<div><div><p>无限递归</p></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3395895
+      ],
+      "correct_options": [
+        "8"
+      ],
+      "analysis": "<div>  <div>   <p>    此题的递归函数为 fun(n) =  fun(n-1) +  fun(n-2)，可以理解为简单的斐波那契数列（n&gt;1），因此进行递归计算fun(6) = fun(5) + fun(4)，其中fun(5) = fun(4) + fun(3)，fun(4) = fun(3) + fun(2)，fun(3) = fun(2) + fun(1)，fun(2) = fun(1) + fun(0)，因为fun(0)=0, fun(1)=1，因此最后的fun(6)=8   </p>  </div> </div>"
+    },
+    {
+      "question_id": 44660,
+      "uuid": "360069ca7225478380ffdcfb7e4b2a2b",
+      "type": 1,
+      "title": "有一段楼梯台阶有15级台阶，以小明的脚力一步最多只能跨3级，请问小明登上这段楼梯有多少种不同的走法?()",
+      "content": "有一段楼梯台阶有15级台阶，以小明的脚力一步最多只能跨3级，请问小明登上这段楼梯有多少种不同的走法?()",
+      "options": [
+        {
+          "id": 45710,
+          "content": "2345"
+        },
+        {
+          "id": 45711,
+          "content": "3261"
+        },
+        {
+          "id": 45712,
+          "content": "5768"
+        },
+        {
+          "id": 45713,
+          "content": "6843"
+        }
+      ],
+      "correct_option_ids": [
+        45712
+      ],
+      "correct_options": [
+        "5768"
+      ],
+      "analysis": "选 C（5768）<br> <br> - 设 f(n) 为到第 n 级走法数，允许跨 1/2/3 级：f(n)=f(n−1)+f(n−2)+f(n−3)，<br>   初值 f(0)=1，f(1)=1，f(2)=2。<br> - 计算得 f(15)=5768。<br>"
+    },
+    {
+      "question_id": 2226692,
+      "uuid": "a1e84f30e95f412d988b9da0c55afbde",
+      "type": 1,
+      "title": "在Python3中，执行函数结果为： def dig_num(n): if...",
+      "content": "<div>  在Python3中，执行函数结果为： </div> <div> <pre class=\"prettyprint lang-py\">def dig_num(n):\n    if n &lt;= 10:\n        return n\n    else:\n        return n % 10 + dig_num(n // 10)\nprint(dig_num(1291))</pre> </div>",
+      "options": [
+        {
+          "id": 3395933,
+          "content": "<div><div><p>1291</p></div></div>"
+        },
+        {
+          "id": 3395934,
+          "content": "<div><div><p>129</p></div></div>"
+        },
+        {
+          "id": 3395935,
+          "content": "12"
+        },
+        {
+          "id": 3395936,
+          "content": "13"
+        }
+      ],
+      "correct_option_ids": [
+        3395936
+      ],
+      "correct_options": [
+        "13"
+      ],
+      "analysis": "<div>  <div>   <p>    根据题意，输入的数字为 1291 &gt; 10，则直接执行dig_num(1291)=1291 % 10 + dig_num(1291 // 10)=1+dig_num(129)，此时129 &gt; 10，执行dig_num(129)=129 % 10 + dig_num(129 // 10)=9+dig_num(12)，此时12&gt;10，执行dig_num(12)=12 % 10 + dig_num(12 // 10)=2+dig_num(1)，此时 1&lt;10，则dig_num(1)=1.综上dig_num(1291)=1+9+2+1=13，在Python3中 % 为除法取余，// 表示除法取整   </p>  </div> </div>"
+    },
+    {
+      "question_id": 2222881,
+      "uuid": "dba92402f35142b495c7c9b67c24f7fe",
+      "type": 1,
+      "title": "给定一递归算法的程序段如下（n>2），则该算法的时间复杂度为（）。 ...",
+      "content": "<div>  <div>   <p>    给定一递归算法的程序段如下（n&gt;2），则该算法的时间复杂度为（）。   </p> <pre class=\"prettyprint lang-cpp\">int fun(int n)\n{\n    if(n &lt;= 1)\n        return 2;\n    else\n        return fun(n / 2) + n;\n}</pre>  </div> </div>",
+      "options": [
+        {
+          "id": 3390414,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220442822/F6B8BDD2DB45FE462B91F31B43B76DE4\">"
+        },
+        {
+          "id": 3390417,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220448055/6D1060959FD8A79DC87C519257CE1885\">"
+        },
+        {
+          "id": 3390421,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220452862/83113422C6185688D03DF4508800DAEE\">"
+        },
+        {
+          "id": 3390424,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220457457/26531F446443231F8EF34858F3151636\">"
+        }
+      ],
+      "correct_option_ids": [
+        3390424
+      ],
+      "correct_options": [
+        "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220457457/26531F446443231F8EF34858F3151636\">"
+      ],
+      "analysis": "<div>  <div>   <p>    计算fun(n)的值，每次除以2，最多需要除以<img src=\"https://www.nowcoder.com/equation?tex=%5Clfloor%20log_2n%5Crfloor\">次，总共需要运行<img src=\"https://www.nowcoder.com/equation?tex=%5Clfloor%20log_2n%5Crfloor%20%2B%201\"><span>次</span>递归，所以规模为O(logn)级别，选D。   </p>  </div> </div>"
+    },
+    {
+      "question_id": 2203109,
+      "uuid": "d741cc82f31b46c8b5545829848267be",
+      "type": 1,
+      "title": "给定下列递归算法代码段，则输出为（）。 int f1(int n) { i...",
+      "content": "<div>  给定下列递归算法代码段，则输出为（）。 </div> <div> <pre class=\"prettyprint lang-cpp\">int f1(int n)\n{\n\tif(n &lt;= 1) return 1;\n\telse return f1(n - 1) + 2 * n - 1; \n}\nint f2(int n)\n{\n\tif(n &lt;= 1) return 1;\n\telse return f2(n - 1) + f1(n);\n}\nint main()\n{\n    printf(&quot;%d&quot;, f2(100));\n}</pre> </div>",
+      "options": [
+        {
+          "id": 3373813,
+          "content": "337250"
+        },
+        {
+          "id": 3373814,
+          "content": "337350"
+        },
+        {
+          "id": 3373815,
+          "content": "338250"
+        },
+        {
+          "id": 3373816,
+          "content": "338350"
+        }
+      ],
+      "correct_option_ids": [
+        3373816
+      ],
+      "correct_options": [
+        "338350"
+      ],
+      "analysis": "<div>  考察间接递归。 </div> <div>  观察f1函数，可以发现是奇数的和，故有 </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211003/387374_1633193435591/A32A75EBB3A25557D89F647A578CCA95\" style=\"height: auto;width: 300.3px;\">  </div> <div>  所以f1函数的功能就是求解n的平方 </div> <div>  f2函数就是若干项f1函数的和，所以有 </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211003/387374_1633193545645/BAACCA7B93CEED4CA7D7D66AC7EE7B40\" style=\"height: auto;width: 200.2px;\"><br> </div> <div>  将n=100代入，得到f2(100)=<span>338350</span>  </div>"
+    },
+    {
+      "question_id": 51669,
+      "uuid": "38b409e1b9174871938c61c8698b16bd",
+      "type": 1,
+      "title": "设有一个递归算法如下，试问计算f(f(9))时需要计算（）次f函数。",
+      "content": "<p>  <span>设有一个递归算法如下</span>  </p> <pre class=\"prettyprint lang-cpp\">int f(int n) {\n    if(n&lt;=3) return 1;\n    else return f(n-2)+f(n-6)+1;\n}</pre> <p>  <span>试问计算f(f(9))时需要计算（）次f函数。</span>  </p>",
+      "options": [
+        {
+          "id": 65813,
+          "content": "10"
+        },
+        {
+          "id": 65814,
+          "content": "11"
+        },
+        {
+          "id": 65815,
+          "content": "12"
+        },
+        {
+          "id": 65816,
+          "content": "14"
+        }
+      ],
+      "correct_option_ids": [
+        65815
+      ],
+      "correct_options": [
+        "12"
+      ],
+      "analysis": "这题需要分步计算f(f(9))的值。首先计算f(9)，然后将结果代入计算f(f(9))。<br><br>先计算f(9)：<br>- f(9) = f(7) + f(3) + 1<br>- f(7) = f(5) + f(1) + 1<br>- f(5) = f(3) + f(-1) + 1<br>- f(3) = 1<br>- f(1) = 1<br>- f(-1) = 1 (因为n<=3时返回1)<br><br>所以：<br>- f(5) = 1 + 1 + 1 = 3<br>- f(7) = 3 + 1 + 1 = 5 <br>- f(9) = 5 + 1 + 1 = 7<br><br>然后计算f(7)：<br>- f(7) = f(5) + f(1) + 1<br>- f(5) = f(3) + f(-1) + 1<br>- f(3) = 1<br>- f(1) = 1<br><br>计算过程中调用f函数的次数为：<br>- 计算f(9)需要9次调用<br>- 计算f(7)(即f(f(9)))需要3次调用<br><br>总共需要12次调用f函数。<br><br>因此C选项12是正确答案。<br><br>其他选项分析：<br>A(10)和B(11)偏小，没有完整统计所有递归调用的次数。<br>D(14)偏大，可能重复计算了某些值。"
+    },
+    {
+      "question_id": 2222885,
+      "uuid": "b2308f9c51c44c01aa2969de348e3d73",
+      "type": 1,
+      "title": "给定下面程序段，则执行一次Fun(1,n)函数的时间复杂度为（）。 int...",
+      "content": "<div>  <div>   <p>    给定下面程序段，则执行一次Fun(1,n)函数的时间复杂度为（）。   </p>   <p> <pre class=\"prettyprint lang-cpp\">int Fun(int l, int r)\n{\n    if (r - l + 1 == 1){\n        for (int i = l; i &lt;= r; i *= 2 )\n            for (int j = r; j &gt;= l ; j -- )\n                    a[i] = a[i] * a[j];\n        return a[l] * a[r];\n    }\n    int mid = (l + r) / 2;\n    return f(l, mid) / f(mid + 1, r);\n}</pre>   </p>  </div> </div>",
+      "options": [
+        {
+          "id": 3390429,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220687208/787016CE4C8197225C49606BB572D9DC\">"
+        },
+        {
+          "id": 3390432,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220692077/986936BC547093713A84C291E7AAF20B\">"
+        },
+        {
+          "id": 3390434,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220695958/C623F335CB2F1D5601D362C775D6C3BE\">"
+        },
+        {
+          "id": 3390436,
+          "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220699962/157412B5D7071C0847791C30D2D5A8A4\">"
+        }
+      ],
+      "correct_option_ids": [
+        3390429
+      ],
+      "correct_options": [
+        "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220687208/787016CE4C8197225C49606BB572D9DC\">"
+      ],
+      "analysis": "<p>  考察递归的复杂度分析。如果学过线段树的应该知道这个跟线段树建树的复杂度O(n)是一样的。 </p> <p>  返回的地方 </p> <div>  递归边界l==r的时候有个双循环看起来很大,但是实际上只会执行1次，依旧是O(1)的复杂度，所以每层的复杂度都是O(1)，只需要判断进行了多少次递归即可，证明如下 </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/389615_1634220716960/0C31B630F7AEAB8742572429609F365F\"><br> </div>"
+    },
+    {
+      "question_id": 326269,
+      "uuid": "cda34f3c39c140b7bc69a94b14653e2a",
+      "type": 1,
+      "title": "以下函数的时间复杂度是（） void foo(int n, int x, ...",
+      "content": "以下函数的时间复杂度是（）<br />\n<pre class=\"prettyprint\">void foo(int n, int x, int y) {\n&nbsp; &nbsp; int z = 0;\n&nbsp; &nbsp; if (n &lt;= 0) {\n&nbsp; &nbsp; &nbsp; &nbsp;z = x + y;\n&nbsp; &nbsp; } else {\n&nbsp; &nbsp; &nbsp; &nbsp; foo(n - 1, x + 1, y);\n&nbsp; &nbsp; &nbsp; &nbsp; foo(n - 1, x, y + 1);\n&nbsp; &nbsp; }\n}</pre>",
+      "options": [
+        {
+          "id": 860203,
+          "content": "O(2^n)"
+        },
+        {
+          "id": 860204,
+          "content": "O(n)"
+        },
+        {
+          "id": 860205,
+          "content": "O(logn)"
+        },
+        {
+          "id": 860206,
+          "content": "O(n^2)"
+        }
+      ],
+      "correct_option_ids": [
+        860203
+      ],
+      "correct_options": [
+        "O(2^n)"
+      ],
+      "analysis": "<div>  可以发现x、y的取值对时间复杂度没有影响，因此我们只关心n </div> <div>  设T(n)表示foo(n,x,y)的时间复杂度，可以得到递推式T(n)=2T(n-1)+O(1),T(0)=O(1)，可以解得T(n)=O(2^n) </div> <div>  B、C、D错误，A正确 </div>"
+    },
+    {
+      "question_id": 305020,
+      "uuid": "7de74c489321497a8573b910668c76d9",
+      "type": 1,
+      "title": "递归公式 的时间复杂度为(   &...",
+      "content": "<div>  递归公式 </div> <div>  <img src=\"https://www.nowcoder.com/equation?tex=T(n)%20%3D%20%0A%5Cbegin%7Bcases%7D%0A1%2C%20%26%20%5Ctext%7Bn%20%3D%201%7D%20%5C%5C%0A4T(%5Cfrac%7Bn%7D%7B2%7D)%20%2B%20n%2C%20%26%20%5Ctext%7Bn%20%3E%201%7D%20%0A%5Cend%7Bcases%7D\"><br> </div> <br> 的时间复杂度为（）。",
+      "options": [
+        {
+          "id": 790643,
+          "content": "O(n)"
+        },
+        {
+          "id": 790644,
+          "content": "O(logn)"
+        },
+        {
+          "id": 790645,
+          "content": "O(nlogn)"
+        },
+        {
+          "id": 790646,
+          "content": "O(n^2)"
+        }
+      ],
+      "correct_option_ids": [
+        790646
+      ],
+      "correct_options": [
+        "O(n^2)"
+      ],
+      "analysis": "这个递归公式的时间复杂度是O(n²),选择D是正确的。这里需要分析递归树的结构来理解时间复杂度。<br> <br> 当我们分析递归算法的时间复杂度时,需要考虑:<br> 1. 每一层递归的计算量<br> 2. 递归的层数<br> 3. 总的计算量是所有层次计算量的和<br> <br> 在这个递归中:<br> - 第1层有1次计算<br> - 第2层有2次计算<br> - 第3层有3次计算<br> - 依此类推,直到第n层有n次计算<br> <br> 总的计算次数是:1 + 2 + 3 + ... + n<br> 这是一个等差数列求和,结果是n(n+1)/2<br> 所以时间复杂度为O(n²)<br> <br> 分析其他选项:<br> A、O(n)错误:这个复杂度明显低于实际情况,因为每一层的计算量都在增加<br> B、O(logn)错误:这种复杂度通常出现在二分查找等算法中,与此递归结构不符<br> C、O(nlogn)错误:虽然比O(n)大,但仍然小于实际的O(n²)复杂度<br> <br> 因此,D选项O(n²)准确反映了该递归算法的时间复杂度。"
+    }
+  ]
+}

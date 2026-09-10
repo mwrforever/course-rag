@@ -1,0 +1,1212 @@
+{
+  "source": "nowcoder_official",
+  "group": "devops",
+  "name": "gitlab",
+  "tag_id": 161405,
+  "target": 40,
+  "fetched_at": "2026-07-27",
+  "total_unique": 40,
+  "complete": true,
+  "questions": [
+    {
+      "question_id": 10413060,
+      "uuid": "b644747c56ee471797118fa8c5257493",
+      "type": 1,
+      "title": "以下哪个关键字启动DAG流水线？",
+      "content": "以下哪个关键字启动DAG流水线？<br> <div>  <br> </div>",
+      "options": [
+        {
+          "id": 5382886,
+          "content": "<span>Trigger</span>"
+        },
+        {
+          "id": 5382887,
+          "content": "<span>Parallel</span>"
+        },
+        {
+          "id": 5382888,
+          "content": "<span>Needs</span>"
+        },
+        {
+          "id": 5382889,
+          "content": "<span>Extends</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382888
+      ],
+      "correct_options": [
+        "<span>Needs</span>"
+      ],
+      "analysis": "答案：C<br> <br> 说明：GitLab CI 中使用 needs 来声明作业依赖关系，从而形成基于依赖图（DAG）的并行/有序执行。<br>"
+    },
+    {
+      "question_id": 10412978,
+      "uuid": "f6e654aba3e84cbbbdee7a693061a87f",
+      "type": 1,
+      "title": "以下哪个选项通常不会触发CI流水线？",
+      "content": "以下哪个选项通常不会触发CI流水线？",
+      "options": [
+        {
+          "id": 5382953,
+          "content": "一个标签（tag）"
+        },
+        {
+          "id": 5382954,
+          "content": "一个分支（branch）"
+        },
+        {
+          "id": 5382955,
+          "content": "一个提交（commit）"
+        },
+        {
+          "id": 5382956,
+          "content": "一个标记（label）"
+        }
+      ],
+      "correct_option_ids": [
+        5382956
+      ],
+      "correct_options": [
+        "一个标记（label）"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413031,
+      "uuid": "f8dac89f7293466f909a37b38aae9f0c",
+      "type": 1,
+      "title": "极狐GitLab中的哪个概念会触发CI流水线?",
+      "content": "极狐GitLab中的哪个概念会触发CI流水线?",
+      "options": [
+        {
+          "id": 5382897,
+          "content": "<span>一个提交（commit）</span>"
+        },
+        {
+          "id": 5382898,
+          "content": "<span>一个议题（issue）</span>"
+        },
+        {
+          "id": 5382899,
+          "content": "<span>&nbsp;一个合并请求（merge request）</span>"
+        },
+        {
+          "id": 5382900,
+          "content": "<span>一个预生产环境部署（deploy）</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382897
+      ],
+      "correct_options": [
+        "<span>一个提交（commit）</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413064,
+      "uuid": "bfc992b9abb74fceac8687dec6d4d56c",
+      "type": 1,
+      "title": "SAST是指什么?",
+      "content": "SAST是指什么?<span>&nbsp;</span>&nbsp;<br />\n<div>\n\t<br />\n</div>",
+      "options": [
+        {
+          "id": 5382874,
+          "content": "<span>应用静态安全测试（Static Applied Security Testing）</span>"
+        },
+        {
+          "id": 5382875,
+          "content": "<span>标准应用程序安全测试（Standard Application Security Testing）</span>"
+        },
+        {
+          "id": 5382876,
+          "content": "<span>策略应用程序安全测试（Strategic Application Security Testing）</span>"
+        },
+        {
+          "id": 5382877,
+          "content": "<span>静态应用程序安全测试（Static Application Security Testing）</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382877
+      ],
+      "correct_options": [
+        "<span>静态应用程序安全测试（Static Application Security Testing）</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412984,
+      "uuid": "6a61bf31acc34b1baf973d013f26b495",
+      "type": 1,
+      "title": "GitLab中的“单一事实来源”通常是指什么？",
+      "content": "GitLab中的“单一事实来源”通常是指什么？",
+      "options": [
+        {
+          "id": 5382940,
+          "content": "一个提交（commit）"
+        },
+        {
+          "id": 5382941,
+          "content": "一个议题（issue）"
+        },
+        {
+          "id": 5382942,
+          "content": "一个合并请求（merge request）"
+        }
+      ],
+      "correct_option_ids": [
+        5382941
+      ],
+      "correct_options": [
+        "一个议题（issue）"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413062,
+      "uuid": "844e0551ddb04aa7860d279057f47ad5",
+      "type": 1,
+      "title": "在极狐GitLab中支持可拓展性（autoscale）的执行器（execu...",
+      "content": "在极狐GitLab中支持可拓展性（autoscale）的执行器（executor）是什么？",
+      "options": [
+        {
+          "id": 5382882,
+          "content": "<span>docker</span>"
+        },
+        {
+          "id": 5382883,
+          "content": "<span>kubernetes</span>"
+        },
+        {
+          "id": 5382884,
+          "content": "<span>ssh</span>"
+        },
+        {
+          "id": 5382885,
+          "content": "<span>virtualbox</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382882
+      ],
+      "correct_options": [
+        "<span>docker</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412982,
+      "uuid": "cf305bb9892c4a0dac5f07577e37c348",
+      "type": 1,
+      "title": "极狐GitLab的哪个功能可让您进行代码段共享？",
+      "content": "极狐GitLab的哪个功能可让您进行代码段共享？",
+      "options": [
+        {
+          "id": 5382943,
+          "content": "GitLab Pages"
+        },
+        {
+          "id": 5382944,
+          "content": "Wiki"
+        },
+        {
+          "id": 5382945,
+          "content": "Snippets"
+        },
+        {
+          "id": 5382946,
+          "content": "交互式Web终端"
+        }
+      ],
+      "correct_option_ids": [
+        5382945
+      ],
+      "correct_options": [
+        "Snippets"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413026,
+      "uuid": "eab21ccbd5e9482492fab8cba5fc477d",
+      "type": 1,
+      "title": "极狐GitLab看板（Issue Board）中最适合用于：",
+      "content": "极狐GitLab看板（Issue Board）中最适合用于：",
+      "options": [
+        {
+          "id": 5382910,
+          "content": "瀑布式开发"
+        },
+        {
+          "id": 5382911,
+          "content": "<span>敏捷开发</span>"
+        },
+        {
+          "id": 5382912,
+          "content": "价值流管理"
+        },
+        {
+          "id": 5382913,
+          "content": "反馈管理"
+        }
+      ],
+      "correct_option_ids": [
+        5382912
+      ],
+      "correct_options": [
+        "价值流管理"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413074,
+      "uuid": "b1de7871f5e74606b4740ed5ab5d7f4d",
+      "type": 1,
+      "title": "关于许可证扫描，下列哪种说法是正确的？",
+      "content": "关于许可证扫描，下列哪种说法是正确的？<br />",
+      "options": [
+        {
+          "id": 5382837,
+          "content": "<span>在极狐GitLab上创建的Go项目都可以使用许可证扫描</span>"
+        },
+        {
+          "id": 5382838,
+          "content": "<span>GitLab各版本通过包含\"Contrainer-Scanning.gitlab-ci.yml\"模板来使用许可证扫描</span>"
+        },
+        {
+          "id": 5382839,
+          "content": "<span>&nbsp;只有使用了指定包管理器的项目才可以使用极狐GitLab许可证扫描</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382839
+      ],
+      "correct_options": [
+        "<span>&nbsp;只有使用了指定包管理器的项目才可以使用极狐GitLab许可证扫描</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412977,
+      "uuid": "6139c8ea377e444689bbfe601b800b43",
+      "type": 1,
+      "title": "Git使用哪个概念来标识一次版本Commit",
+      "content": "Git使用哪个概念来标识一次版本Commit",
+      "options": [
+        {
+          "id": 5382957,
+          "content": "Milestone"
+        },
+        {
+          "id": 5382958,
+          "content": "Label"
+        },
+        {
+          "id": 5382959,
+          "content": "Tag"
+        },
+        {
+          "id": 5382960,
+          "content": "Branch"
+        }
+      ],
+      "correct_option_ids": [
+        5382959
+      ],
+      "correct_options": [
+        "Tag"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413033,
+      "uuid": "2ffc59e45df640f9ba6bfbbaf7c1d7b4",
+      "type": 1,
+      "title": "集成测试属于CI/CD流水线的那个部分？",
+      "content": "集成测试属于CI/CD流水线的那个部分？<br />\n<div>\n\t<br />\n</div>",
+      "options": [
+        {
+          "id": 5382894,
+          "content": "<span>CI流水线</span>"
+        },
+        {
+          "id": 5382895,
+          "content": "<span>CD流水线</span>"
+        },
+        {
+          "id": 5382896,
+          "content": "<span>代码创建</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382894
+      ],
+      "correct_options": [
+        "<span>CI流水线</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413081,
+      "uuid": "22dc12ed63db43a99622a8ecfb4a86fb",
+      "type": 1,
+      "title": "使用 gitlab-backup create 命令进行备份时，备份将包括...",
+      "content": "使用 gitlab-backup create 命令进行备份时，备份将包括以下哪一个选项的内容？<br />\n<br />",
+      "options": [
+        {
+          "id": 5382846,
+          "content": "<span>Terraform state 文件</span>"
+        },
+        {
+          "id": 5382847,
+          "content": "<span>软件包仓库文件</span>"
+        },
+        {
+          "id": 5382848,
+          "content": "<span>CI/CD作业输出日志</span>"
+        },
+        {
+          "id": 5382849,
+          "content": "<span>gitlab.rb配置文件</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382848
+      ],
+      "correct_options": [
+        "<span>CI/CD作业输出日志</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412991,
+      "uuid": "7fb51faa7d82446b862f9eba103b6ccb",
+      "type": 1,
+      "title": "极狐GitLab的哪个功能可让您记录研发项目知识库？",
+      "content": "极狐GitLab的哪个功能可让您记录研发项目知识库？",
+      "options": [
+        {
+          "id": 5382921,
+          "content": "Feature Flags"
+        },
+        {
+          "id": 5382922,
+          "content": "GitLab Pages"
+        },
+        {
+          "id": 5382923,
+          "content": "Wiki"
+        },
+        {
+          "id": 5382924,
+          "content": "交互式Web终端"
+        }
+      ],
+      "correct_option_ids": [
+        5382923
+      ],
+      "correct_options": [
+        "Wiki"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412981,
+      "uuid": "069e6a96df2f4f008a75c795111d99ec",
+      "type": 1,
+      "title": "使用极狐GitLab这样的开源平台有很多好处，以下不正确的是？",
+      "content": "使用极狐GitLab这样的开源平台有很多好处，以下不正确的是？",
+      "options": [
+        {
+          "id": 5382947,
+          "content": "更少的错误"
+        },
+        {
+          "id": 5382948,
+          "content": "更安全和高可靠性"
+        },
+        {
+          "id": 5382949,
+          "content": "任何人都可以贡献代码以添加功能"
+        },
+        {
+          "id": 5382950,
+          "content": "<span>完全免费，永远不需要专业的售后服务</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382950
+      ],
+      "correct_options": [
+        "<span>完全免费，永远不需要专业的售后服务</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412992,
+      "uuid": "79577fd311c34a71b138121e1fb14dbf",
+      "type": 1,
+      "title": "极狐GitLab的哪一个功能帮助您查看跨仓库、跨群组的项目信息？",
+      "content": "极狐GitLab的哪一个功能帮助您查看跨仓库、跨群组的项目信息？",
+      "options": [
+        {
+          "id": 5382917,
+          "content": "路线图（Roadmaps）"
+        },
+        {
+          "id": 5382918,
+          "content": "群组（Groups）"
+        },
+        {
+          "id": 5382919,
+          "content": "项目（Projects）"
+        },
+        {
+          "id": 5382920,
+          "content": "标记（Label）"
+        }
+      ],
+      "correct_option_ids": [
+        5382917
+      ],
+      "correct_options": [
+        "路线图（Roadmaps）"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413070,
+      "uuid": "04f65bcc31c84c11b950dc3ac6eae7a4",
+      "type": 1,
+      "title": "在极狐GitLab版本中，最低哪种可以使用密钥扫描？",
+      "content": "在极狐GitLab版本中，最低哪种可以使用密钥扫描？<br />\n<div>\n\t<br />\n</div>",
+      "options": [
+        {
+          "id": 5382856,
+          "content": "<span>标准版</span>"
+        },
+        {
+          "id": 5382857,
+          "content": "<span>专业版</span>"
+        },
+        {
+          "id": 5382858,
+          "content": "<span>旗舰版</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382858
+      ],
+      "correct_options": [
+        "<span>旗舰版</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413028,
+      "uuid": "413aa3c385694eac8954ad48979025b0",
+      "type": 1,
+      "title": "在极狐GitLab中哪个代码库权限设置通常用于企业内源（内部开源）项目？",
+      "content": "在极狐GitLab中哪个代码库权限设置通常用于企业内源（内部开源）项目？",
+      "options": [
+        {
+          "id": 5382907,
+          "content": "私有的（private）"
+        },
+        {
+          "id": 5382908,
+          "content": "内部的（internal）"
+        },
+        {
+          "id": 5382909,
+          "content": "公共的（public）"
+        }
+      ],
+      "correct_option_ids": [
+        5382908
+      ],
+      "correct_options": [
+        "内部的（internal）"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412988,
+      "uuid": "42d8037bbbfd45708e5fd3ca894953a7",
+      "type": 1,
+      "title": "如果使用极狐GitLab进行日常的研发项目管理，至少需要项目/群组的什么角...",
+      "content": "如果使用极狐GitLab进行日常的研发项目管理，至少需要项目/群组的什么角色（role）？",
+      "options": [
+        {
+          "id": 5382929,
+          "content": "Owner"
+        },
+        {
+          "id": 5382930,
+          "content": "Maintainer"
+        },
+        {
+          "id": 5382931,
+          "content": "Developer"
+        },
+        {
+          "id": 5382932,
+          "content": "Reporter"
+        }
+      ],
+      "correct_option_ids": [
+        5382930
+      ],
+      "correct_options": [
+        "Maintainer"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412989,
+      "uuid": "fbdbaeefe3a1483c9b1d035614774e06",
+      "type": 1,
+      "title": "GitLab的研发过程和产出信息（代码提交、流水线执行情况、安全扫描报告）...",
+      "content": "GitLab的研发过程和产出信息（代码提交、流水线执行情况、安全扫描报告）通常保存在哪里？",
+      "options": [
+        {
+          "id": 5382925,
+          "content": "一个提交（commit）"
+        },
+        {
+          "id": 5382926,
+          "content": "一个议题（issue）"
+        },
+        {
+          "id": 5382927,
+          "content": "一个合并请求（merge request）"
+        },
+        {
+          "id": 5382928,
+          "content": "一个代码仓库（repo）"
+        }
+      ],
+      "correct_option_ids": [
+        5382927
+      ],
+      "correct_options": [
+        "一个合并请求（merge request）"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413076,
+      "uuid": "ca285d8d9a6a44be8cbcb44eb473601e",
+      "type": 1,
+      "title": "关于安全测试，以下哪个选项正确？",
+      "content": "关于安全测试，以下哪个选项正确？&nbsp;<br />\n<div>\n\t<br />\n</div>",
+      "options": [
+        {
+          "id": 5382831,
+          "content": "<span>容器安全扫描不可以与Review Apps同时使用</span><br />"
+        },
+        {
+          "id": 5382832,
+          "content": "<span>如果您使用Contrainer.gitlab-ci.yml，默认在deploy阶段后运行</span>"
+        },
+        {
+          "id": 5382833,
+          "content": "<span>如果您的应用程序打包成容器镜像，可以使用service方式进行DAST扫描</span>"
+        },
+        {
+          "id": 5382834,
+          "content": "<span>依赖项扫描使用流行的开源工具OWASP ZAProxy</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382833
+      ],
+      "correct_options": [
+        "<span>如果您的应用程序打包成容器镜像，可以使用service方式进行DAST扫描</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413063,
+      "uuid": "83d746a667c94603aaf4633d460df9ac",
+      "type": 1,
+      "title": "在极狐GitLab中使用哪个关键字定义流水线运行需要指定的容器镜像？",
+      "content": "在极狐GitLab中使用哪个关键字定义流水线运行需要指定的容器镜像？",
+      "options": [
+        {
+          "id": 5382878,
+          "content": "<span>image</span>"
+        },
+        {
+          "id": 5382879,
+          "content": "<span>services</span>"
+        },
+        {
+          "id": 5382880,
+          "content": "<span>artifacts</span>"
+        },
+        {
+          "id": 5382881,
+          "content": "<span>needs</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382878
+      ],
+      "correct_options": [
+        "<span>image</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413080,
+      "uuid": "3478914f1280459c821090d96cb8d2cb",
+      "type": 1,
+      "title": "在修改了gitlab.rb 配置文件后，需要运行以下哪个命令进行配置更新？",
+      "content": "在修改了gitlab.rb 配置文件后，需要运行以下哪个命令进行配置更新？<br />\n<div>\n\t<br />\n</div>",
+      "options": [
+        {
+          "id": 5382852,
+          "content": "<span>gitlab-ctl start</span>"
+        },
+        {
+          "id": 5382853,
+          "content": "<span>gitlab-ctl restart</span>"
+        },
+        {
+          "id": 5382854,
+          "content": "<span>gitlab-ctl config</span>"
+        },
+        {
+          "id": 5382855,
+          "content": "<span>gitlab-ctl reconfigure</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382855
+      ],
+      "correct_options": [
+        "<span>gitlab-ctl reconfigure</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413079,
+      "uuid": "08531c623e3741c3b93da829dee68aa6",
+      "type": 1,
+      "title": "关于极狐GitLab 的参考架构，2000用户的架构，至少需要多少服务器？",
+      "content": "关于极狐GitLab 的参考架构，2000用户的架构，至少需要多少服务器？<br />\n<div>\n\t<br />\n</div>",
+      "options": [
+        {
+          "id": 5382859,
+          "content": "<span>2</span>"
+        },
+        {
+          "id": 5382860,
+          "content": "<span>8</span>"
+        },
+        {
+          "id": 5382861,
+          "content": "<span>10-20</span>"
+        },
+        {
+          "id": 5382862,
+          "content": "<span>30以上</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382860
+      ],
+      "correct_options": [
+        "<span>8</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412975,
+      "uuid": "b3e87d2763f0495aabd8ea29138547ba",
+      "type": 1,
+      "title": "请问Git与SVN相比的最大特点是？",
+      "content": "请问Git与SVN相比的最大特点是？",
+      "options": [
+        {
+          "id": 5382961,
+          "content": "分布式"
+        },
+        {
+          "id": 5382962,
+          "content": "集中式"
+        },
+        {
+          "id": 5382963,
+          "content": "单一来源"
+        },
+        {
+          "id": 5382964,
+          "content": "其他选项均错误"
+        }
+      ],
+      "correct_option_ids": [
+        5382961
+      ],
+      "correct_options": [
+        "分布式"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412986,
+      "uuid": "5b12ed0bc48147d3853daeb35e44f83e",
+      "type": 1,
+      "title": "为了方便研发运维人员的沟通协作，您会使用以下什么功能来标记特定的issue？",
+      "content": "为了方便研发运维人员的沟通协作，您会使用以下什么功能来标记特定的issue？",
+      "options": [
+        {
+          "id": 5382933,
+          "content": "Milestone"
+        },
+        {
+          "id": 5382934,
+          "content": "<div>Label</div>"
+        },
+        {
+          "id": 5382935,
+          "content": "Tag"
+        },
+        {
+          "id": 5382936,
+          "content": "Branch"
+        }
+      ],
+      "correct_option_ids": [
+        5382934
+      ],
+      "correct_options": [
+        "<div>Label</div>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413077,
+      "uuid": "069f9d1834c340118f4e9fbbb469bc43",
+      "type": 1,
+      "title": "关于GitLab Puma，以下哪个选项是正确的？",
+      "content": "关于GitLab Puma，以下哪个选项是正确的？<br />\n<div>\n\t<br />\n</div>",
+      "options": [
+        {
+          "id": 5382826,
+          "content": "<span>Puma是Web前端服务</span>"
+        },
+        {
+          "id": 5382828,
+          "content": "<span>Puma位于Workhorse后面，用户请求经过Workhorse后传递给Rails</span>"
+        },
+        {
+          "id": 5382829,
+          "content": "<span>Puma负责后台服务和批处理操作</span>"
+        },
+        {
+          "id": 5382830,
+          "content": "<span>Puma处理文件上传和下载，Web Socket代理等</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382828
+      ],
+      "correct_options": [
+        "<span>Puma位于Workhorse后面，用户请求经过Workhorse后传递给Rails</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413082,
+      "uuid": "8ac807db6c12450797a161db1bdbf5d0",
+      "type": 1,
+      "title": "备份配置文件时，使用的命令是那一个？",
+      "content": "备份配置文件时，使用的命令是那一个？<br />",
+      "options": [
+        {
+          "id": 5382840,
+          "content": "<span>gitlab-ctl backup-etc&nbsp;</span><br />"
+        },
+        {
+          "id": 5382841,
+          "content": "<span>gitlab-ctl backup-config</span>"
+        },
+        {
+          "id": 5382842,
+          "content": "<span>gitlab-ctl backup-reconfigure</span><br />"
+        },
+        {
+          "id": 5382843,
+          "content": "gitlab-ctl backup-start<br /><div><br /></div>"
+        }
+      ],
+      "correct_option_ids": [
+        5382840
+      ],
+      "correct_options": [
+        "<span>gitlab-ctl backup-etc&nbsp;</span><br />"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412985,
+      "uuid": "4ef593d1efb5419aabae31e8f762bcd9",
+      "type": 1,
+      "title": "在极狐GitLab中哪个代码库权限设置通常用于开源项目？",
+      "content": "在极狐GitLab中哪个代码库权限设置通常用于开源项目？",
+      "options": [
+        {
+          "id": 5382937,
+          "content": "内部的（internal）"
+        },
+        {
+          "id": 5382938,
+          "content": "私有的（private）"
+        },
+        {
+          "id": 5382939,
+          "content": "公共的（public）"
+        }
+      ],
+      "correct_option_ids": [
+        5382939
+      ],
+      "correct_options": [
+        "公共的（public）"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413068,
+      "uuid": "a94cb57a8d6e49faa7d8b0b4d89a7d8b",
+      "type": 1,
+      "title": "在极狐GitLab版本中，最低哪种可以使用DAST扫描？",
+      "content": "在极狐GitLab版本中，最低哪种可以使用DAST扫描？",
+      "options": [
+        {
+          "id": 5382863,
+          "content": "<span>标准版</span>"
+        },
+        {
+          "id": 5382864,
+          "content": "<span>专业版</span>"
+        },
+        {
+          "id": 5382865,
+          "content": "<span>旗舰版</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382865
+      ],
+      "correct_options": [
+        "<span>旗舰版</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413030,
+      "uuid": "8c6575e6bf2c46dabda5471b2e1b3e38",
+      "type": 1,
+      "title": "在极狐GitLab中运行CI/CD流水线，默认的三阶段为？",
+      "content": "在极狐GitLab中运行CI/CD流水线，默认的三阶段为？<br />\n<div>\n\t<br />\n</div>",
+      "options": [
+        {
+          "id": 5382901,
+          "content": "<span>Build、Test、Deploy</span><br />"
+        },
+        {
+          "id": 5382902,
+          "content": "<span>Test、Release、Deploy</span>"
+        },
+        {
+          "id": 5382903,
+          "content": "<span>Develop、Test、Release</span>"
+        },
+        {
+          "id": 5382904,
+          "content": "<span>Build、Test、Release</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382901
+      ],
+      "correct_options": [
+        "<span>Build、Test、Deploy</span><br />"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413067,
+      "uuid": "4a55a53c37eb4e1c8319aa051173e6f3",
+      "type": 1,
+      "title": "DAST是指什么?",
+      "content": "DAST是指什么?",
+      "options": [
+        {
+          "id": 5382870,
+          "content": "<span>双态应用安全测试（Dual Applied Security Testing）</span>"
+        },
+        {
+          "id": 5382871,
+          "content": "<span>动态应用程序安全测试（Dynamic Application Security Testing）</span>"
+        },
+        {
+          "id": 5382872,
+          "content": "<span>演示应用程序安全测试（Demo Application Security Testing）</span>"
+        },
+        {
+          "id": 5382873,
+          "content": "<span>设计应用程序安全测试（Design Application Security Testing）</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382871
+      ],
+      "correct_options": [
+        "<span>动态应用程序安全测试（Dynamic Application Security Testing）</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413078,
+      "uuid": "be6c6429751c42fc84c0527041ba3db7",
+      "type": 1,
+      "title": "关于极狐GitLab 的参考架构，以下哪个选项是正确的？",
+      "content": "关于极狐GitLab 的参考架构，以下哪个选项是正确的？",
+      "options": [
+        {
+          "id": 5382866,
+          "content": "<span>1000 用户以下，极狐GitLab 推荐使用多节点部署</span>"
+        },
+        {
+          "id": 5382867,
+          "content": "<span>针对 2000 用户及以上的用户，极狐GitLab 推荐的参考架构都是多节点部署，但不需要高可用部署</span>"
+        },
+        {
+          "id": 5382868,
+          "content": "<span>3000 用户与 5000 用户的参考架构不同</span>"
+        },
+        {
+          "id": 5382869,
+          "content": "<span>极狐GitLab针对不同的用户数量提供不同的部署参考架构</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382869
+      ],
+      "correct_options": [
+        "<span>极狐GitLab针对不同的用户数量提供不同的部署参考架构</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10412980,
+      "uuid": "21185cf775784a329ef823d29fc54f97",
+      "type": 1,
+      "title": "True/False: 极狐GitLab 提供基于SaaS的代码仓库管理能力",
+      "content": "True/False: 极狐GitLab 提供基于SaaS的代码仓库管理能力",
+      "options": [
+        {
+          "id": 5382951,
+          "content": "<div>True</div>"
+        },
+        {
+          "id": 5382952,
+          "content": "<div>False</div>"
+        }
+      ],
+      "correct_option_ids": [
+        5382951
+      ],
+      "correct_options": [
+        "<div>True</div>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413073,
+      "uuid": "d0fb8f0940eb4b58b1726183441eb55f",
+      "type": 1,
+      "title": "True/False: 极狐GitLab SAST 支持 Python和Go。",
+      "content": "True/False: 极狐GitLab SAST 支持 Python和Go。",
+      "options": [
+        {
+          "id": 5382844,
+          "content": "<span>True</span>"
+        },
+        {
+          "id": 5382845,
+          "content": "<span>False</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382844
+      ],
+      "correct_options": [
+        "<span>True</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413029,
+      "uuid": "b8a64c22054447259af0f98bbf4a53c8",
+      "type": 1,
+      "title": "True/False: 极狐GitLab 提供一体化的DevOps平台能力。",
+      "content": "True/False: 极狐GitLab 提供一体化的DevOps平台能力。<br />\n<div>\n\t<br />\n</div>",
+      "options": [
+        {
+          "id": 5382905,
+          "content": "<div>True</div>"
+        },
+        {
+          "id": 5382906,
+          "content": "<div>False</div>"
+        }
+      ],
+      "correct_option_ids": [
+        5382905
+      ],
+      "correct_options": [
+        "<div>True</div>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413083,
+      "uuid": "5d093325fa3a43a59b10fbc17d2e560e",
+      "type": 1,
+      "title": "True/False: 备份文件名中可以看出备份日期和版本号。",
+      "content": "True/False: 备份文件名中可以看出备份日期和版本号。",
+      "options": [
+        {
+          "id": 5382835,
+          "content": "<span>True</span>"
+        },
+        {
+          "id": 5382836,
+          "content": "<span>False</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382835
+      ],
+      "correct_options": [
+        "<span>True</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413085,
+      "uuid": "a4984c6083414f889ca404c434a6a14d",
+      "type": 1,
+      "title": "True/False: 在极狐GitLab 2k高可用集群参考架构中， R...",
+      "content": "True/False: 在极狐GitLab 2k高可用集群参考架构中， Redis仍存在单点问题。",
+      "options": [
+        {
+          "id": 5382825,
+          "content": "<span>True</span>"
+        },
+        {
+          "id": 5382827,
+          "content": "<span>False</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382827
+      ],
+      "correct_options": [
+        "<span>False</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413023,
+      "uuid": "c28fb3428514491a8c1c9fab533eed37",
+      "type": 1,
+      "title": "在极狐GitLab版本中，哪种不支持Epic功能？",
+      "content": "在极狐GitLab版本中，哪种不支持Epic功能？",
+      "options": [
+        {
+          "id": 5382914,
+          "content": "专业版"
+        },
+        {
+          "id": 5382915,
+          "content": "社区版"
+        },
+        {
+          "id": 5382916,
+          "content": "旗舰版"
+        }
+      ],
+      "correct_option_ids": [
+        5382915
+      ],
+      "correct_options": [
+        "社区版"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413072,
+      "uuid": "1d10a0b363044fae91fb425681a462f6",
+      "type": 1,
+      "title": "True/False: 极狐GitLab 提供一体化的DevSecOps平...",
+      "content": "True/False: 极狐GitLab 提供一体化的DevSecOps平台能力。<br />\n<div>\n\t<br />\n</div>",
+      "options": [
+        {
+          "id": 5382850,
+          "content": "<span>True</span>"
+        },
+        {
+          "id": 5382851,
+          "content": "<span>False</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382850
+      ],
+      "correct_options": [
+        "<span>True</span>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10413034,
+      "uuid": "02a7098fdea74943b6911f6537276d33",
+      "type": 1,
+      "title": "在极狐GitLab中运行CI/CD流水线至少需要以下哪一项？",
+      "content": "在极狐GitLab中运行CI/CD流水线至少需要以下哪一项？<br />\n<div>\n\t<br />\n</div>",
+      "options": [
+        {
+          "id": 5382890,
+          "content": "<span>一个GitLab Runner实例</span>"
+        },
+        {
+          "id": 5382891,
+          "content": "<span>一个单元测试</span>"
+        },
+        {
+          "id": 5382892,
+          "content": "<span>一个安全扫描</span>"
+        },
+        {
+          "id": 5382893,
+          "content": "<span>wiki</span>"
+        }
+      ],
+      "correct_option_ids": [
+        5382890
+      ],
+      "correct_options": [
+        "<span>一个GitLab Runner实例</span>"
+      ],
+      "analysis": ""
+    }
+  ]
+}

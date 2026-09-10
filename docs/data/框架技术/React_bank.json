@@ -1,0 +1,5036 @@
+{
+  "source": "nowcoder_official",
+  "group": "框架技术",
+  "name": "React",
+  "tag_id": 146755,
+  "target": 158,
+  "fetched_at": "2026-07-28",
+  "total_unique": 157,
+  "complete": false,
+  "questions": [
+    {
+      "question_id": 11403222,
+      "uuid": "83747208292e47d1ad52250fb21e9601",
+      "type": 1,
+      "title": "在React函数组件中，当需要模拟生命周期方法componentDidMo...",
+      "content": "在React函数组件中，当需要模拟生命周期方法componentDidMount时，应使用以下哪种useEffect钩子的写法？",
+      "options": [
+        {
+          "id": 7430651,
+          "content": "useEffect(() =&gt; { /* 逻辑 */ }, [])"
+        },
+        {
+          "id": 7430652,
+          "content": "useEffect(() =&gt; { /* 逻辑 */ }, [dependencies])"
+        },
+        {
+          "id": 7430653,
+          "content": "useEffect(() =&gt; { /* 逻辑 */ })"
+        },
+        {
+          "id": 7430654,
+          "content": "useEffect(() =&gt; { /* 逻辑 */ }, componentDidMount)"
+        }
+      ],
+      "correct_option_ids": [
+        7430651
+      ],
+      "correct_options": [
+        "useEffect(() =&gt; { /* 逻辑 */ }, [])"
+      ],
+      "analysis": "在React函数组件中，componentDidMount是类组件的生命周期方法，仅在组件挂载后执行一次。使用useEffect钩子模拟componentDidMount时，应传入一个空依赖数组 `[]` ，这确保副作用逻辑仅在挂载时运行一次。选项A `useEffect(() => { /* 逻辑 */ }, [])` 正确实现了此行为。选项B `useEffect(() => { /* 逻辑 */ }, [dependencies])` 在有依赖项改变时运行，可能多次执行，不保证仅在挂载时运行。选项C `useEffect(() => { /* 逻辑 */ })` 无依赖数组，在每次渲染后运行，模拟了componentDidMount和componentDidUpdate。选项D `useEffect(() => { /* 逻辑 */ }, componentDidMount)` 语法错误，因为useEffect的第二个参数必须是数组或undefined，而非方法名componentDidMount，这会导致运行时错误。综上，只有选项A正确模拟了componentDidMount。"
+    },
+    {
+      "question_id": 2388952,
+      "uuid": "2c7824440bf84415922c5ecd00a241fa",
+      "type": 1,
+      "title": "以下关于Fragments组件说法错误的是？",
+      "content": "以下关于Fragments组件说法错误的是？",
+      "options": [
+        {
+          "id": 3747049,
+          "content": "在jsx中使用Fragments组件会在html中生成dom节点"
+        },
+        {
+          "id": 3747050,
+          "content": "Fragments组件可以简写成“&lt;&gt;&lt;/&gt;”"
+        },
+        {
+          "id": 3747051,
+          "content": "React中一个常见模式是为一个组件返回多个元素。Fragments可以让你聚合一个子元素列表"
+        },
+        {
+          "id": 3747052,
+          "content": "Fragments组件中可以设置key属性，但是简写后将不支持"
+        }
+      ],
+      "correct_option_ids": [
+        3747049
+      ],
+      "correct_options": [
+        "在jsx中使用Fragments组件会在html中生成dom节点"
+      ],
+      "analysis": "Fragments组件不会生成额外的dom节点。"
+    },
+    {
+      "question_id": 11403201,
+      "uuid": "a6ae12f6b53c4aa5ab0d6dfbab775d36",
+      "type": 1,
+      "title": "在React函数组件中，使用useEffect Hook时，若依赖数组包含...",
+      "content": "在React函数组件中，使用useEffect&nbsp;Hook时，若依赖数组包含一个状态变量count，当count变化时，该useEffect的执行顺序是？",
+      "options": [
+        {
+          "id": 7431213,
+          "content": "在组件渲染前同步执行"
+        },
+        {
+          "id": 7431214,
+          "content": "在浏览器完成布局与绘制后异步执行"
+        },
+        {
+          "id": 7431215,
+          "content": "在DOM更新后同步执行"
+        },
+        {
+          "id": 7431221,
+          "content": "在组件卸载时同步执行"
+        }
+      ],
+      "correct_option_ids": [
+        7431214
+      ],
+      "correct_options": [
+        "在浏览器完成布局与绘制后异步执行"
+      ],
+      "analysis": "在React中，useEffect Hook用于处理副作用，其执行依赖于依赖数组。当依赖数组包含的状态变量count变化时，useEffect会在组件渲染（包括DOM更新）后，浏览器完成布局和绘制阶段后异步执行，以避免阻塞UI渲染。选项A错误，因为useEffect在渲染后执行，不是在渲染前；选项C错误，虽然DOM更新后执行，但useEffect是异步的，不是同步；选项D错误，因为它描述的是组件卸载时的行为，而不是count变化时的执行顺序。"
+    },
+    {
+      "question_id": 11403163,
+      "uuid": "9b1ae4ead91c4dc29394f427a93fad32",
+      "type": 1,
+      "title": "父组件中使用`ThemeContext.Provider`包裹子组件，Pr...",
+      "content": "父组件中使用`ThemeContext.Provider`包裹子组件，Provider的value设置为`{&nbsp;theme:&nbsp;state.theme&nbsp;}`。当父组件的`state.count`变化（`state.theme`未改变）时，使用`useContext(ThemeContext)`的子组件会重新渲染吗？",
+      "options": [
+        {
+          "id": 7427731,
+          "content": "会，因为Provider的value对象引用发生了变化"
+        },
+        {
+          "id": 7427733,
+          "content": "不会，因为`state.theme`的值没有改变"
+        },
+        {
+          "id": 7427735,
+          "content": "会，因为父组件的重新渲染会强制子组件渲染"
+        },
+        {
+          "id": 7427736,
+          "content": "不会，因为`useContext`会自动忽略未使用的属性变化"
+        }
+      ],
+      "correct_option_ids": [
+        7427731
+      ],
+      "correct_options": [
+        "会，因为Provider的value对象引用发生了变化"
+      ],
+      "analysis": "在React中，当Provider的value对象引用发生变化时，即使其属性值未变（如theme未改变），使用useContext(ThemeContext)的子组件也会重新渲染。父组件state.count变化导致父组件重新渲染，Provider的value每次渲染时被重新创建为{ theme: state.theme }，因此对象引用变化，触发子组件重新渲染。选项B错误，因为useContext基于引用比较而非值比较；选项C不准确，因为父组件重新渲染本身不会强制子组件渲染，但通过Context机制间接导致；选项D错误，因为useContext不会忽略未使用的属性变化，而是整体比较value引用。"
+    },
+    {
+      "question_id": 2388936,
+      "uuid": "4ade4339f02a418a8ef6638b8b9adbd1",
+      "type": 1,
+      "title": "以下不属于React支持的鼠标事件的是",
+      "content": "以下不属于React支持的鼠标事件的是",
+      "options": [
+        {
+          "id": 3746985,
+          "content": "onContextMenu"
+        },
+        {
+          "id": 3746986,
+          "content": "onClick"
+        },
+        {
+          "id": 3746987,
+          "content": "onDblclick"
+        },
+        {
+          "id": 3746988,
+          "content": "onDragExit"
+        }
+      ],
+      "correct_option_ids": [
+        3746987
+      ],
+      "correct_options": [
+        "onDblclick"
+      ],
+      "analysis": "React支持的<span>鼠标</span>事件有 <span>onClick，onContextMenu，onDoubleClick，onDrag，onDragEnd，<span></span>onDragEnter，onDragExit，onDragLeave，onDragOver，onDragStart，onDrop，onMouseDown onMouseEnter，onMouseLeave，onMouseMove，onMouseOut，onMouseOver，onMouseUp，双击事件是<span>onDoubleClick而非<span>onDblclick</span></span></span>"
+    },
+    {
+      "question_id": 11403182,
+      "uuid": "cc149ce70dae42ca94a7a33f6aaf7d2e",
+      "type": 1,
+      "title": "在一个 React 组件的事件处理函数中，您连续调用了两次 setStat...",
+      "content": "在一个&nbsp;React&nbsp;组件的事件处理函数中，您连续调用了两次&nbsp;setState&nbsp;来更新同一个状态变量。但状态变量只更新了一次。以下哪个选项解释了此行为的原因？",
+      "options": [
+        {
+          "id": 7430935,
+          "content": "setState 是同步操作，后一次调用覆盖前一次"
+        },
+        {
+          "id": 7430936,
+          "content": "React 在事件处理期间批量处理多个 setState 调用"
+        },
+        {
+          "id": 7430941,
+          "content": "状态变量必须在组件顶层定义才能更新"
+        },
+        {
+          "id": 7430942,
+          "content": "缺少 useEffect 来处理状态更新"
+        }
+      ],
+      "correct_option_ids": [
+        7430936
+      ],
+      "correct_options": [
+        "React 在事件处理期间批量处理多个 setState 调用"
+      ],
+      "analysis": "React 在事件处理函数中，会将多个 setState 调用批量处理（batching），以减少不必要的重新渲染，因此连续两次调用 setState 更新同一个状态变量时，状态只更新一次。选项 A 错误，因为 setState 在 React 事件处理中是异步操作，而非同步；选项 C 错误，状态变量定义位置（如顶层）不影响更新逻辑；选项 D 错误，缺少 useEffect 并不是导致此行为的原因，useEffect 用于处理副作用而非状态更新批处理。"
+    },
+    {
+      "question_id": 2388933,
+      "uuid": "b75b4d046dea47b696992b27e7ab1c27",
+      "type": 1,
+      "title": "React DOM在渲染之前，默认会对所有输入内容进行转义，这样做的目的是",
+      "content": "React DOM<span>在渲染之前</span><span>，默认会对<span>所有输入内容</span>进行<span></span>转义</span>，这样做的目的是",
+      "options": [
+        {
+          "id": 3746973,
+          "content": "可以更轻松的添加dom节点"
+        },
+        {
+          "id": 3746974,
+          "content": "简化html写法"
+        },
+        {
+          "id": 3746975,
+          "content": "这样可以有效地防止XSS攻击"
+        },
+        {
+          "id": 3746976,
+          "content": "浏览器进行解析时更省性能"
+        }
+      ],
+      "correct_option_ids": [
+        3746975
+      ],
+      "correct_options": [
+        "这样可以有效地防止XSS攻击"
+      ],
+      "analysis": "React DOM在渲染所有输入内容之前，默认会进行转义。它可以确保在你的应用中，永远不会注入那些并非自己明确编写的内容。所有的内容在渲染之前都被转换成了字符串。这样可以有效地防止 XSS（cross-site-scripting, 跨站脚本）攻击。"
+    },
+    {
+      "question_id": 11403146,
+      "uuid": "caea29168c7446278a053fb3ddc32c3d",
+      "type": 1,
+      "title": "父组件Parent有状态filter，子组件Child被React.mem...",
+      "content": "父组件Parent有状态filter，子组件Child被React.memo包裹，接收data（过滤后的列表数据）和onItemClick（点击项的回调）props。以下父组件的写法中，能避免Child因onItemClick不必要重新渲染的是？",
+      "options": [
+        {
+          "id": 7427875,
+          "content": "const onItemClick = (id) =&gt; console.log(`点击项${id}，当前filter：${filter}`); return &lt;Child data={filteredData} onItemClick={onItemClick} /&gt;"
+        },
+        {
+          "id": 7427876,
+          "content": "const onItemClick = useCallback((id) =&gt; console.log(`点击项${id}，当前filter：${filter}`), []); return &lt;Child data={filteredData} onItemClick={onItemClick} /&gt;"
+        },
+        {
+          "id": 7427878,
+          "content": "const onItemClick = useCallback((id) =&gt; console.log(`点击项${id}，当前filter：${filter}`), [filter]); return &lt;Child data={filteredData} onItemClick={onItemClick} /&gt;"
+        },
+        {
+          "id": 7427879,
+          "content": "const onItemClick = useMemo(() =&gt; (id) =&gt; console.log(`点击项${id}，当前filter：${filter}`), []); return &lt;Child data={filteredData} onItemClick={onItemClick} /&gt;"
+        }
+      ],
+      "correct_option_ids": [
+        7427878
+      ],
+      "correct_options": [
+        "const onItemClick = useCallback((id) =&gt; console.log(`点击项${id}，当前filter：${filter}`), [filter]); return &lt;Child data={filteredData} onItemClick={onItemClick} /&gt;"
+      ],
+      "analysis": "选项C使用useCallback并将filter作为依赖项，确保onItemClick函数只在filter变化时重新创建。这样，在父组件重新渲染但filter未变时，onItemClick的引用保持不变，结合Child组件被React.memo包裹的浅比较props机制，避免了因onItemClick引用变化导致的不必要重新渲染。同时，回调函数内部能正确访问最新的filter值，避免过时闭包问题。其他选项：A每次渲染创建新函数，导致Child必然重新渲染；B和D使用空依赖项，函数引用稳定可能避免重新渲染，但回调中filter值固定为初始值，功能错误。"
+    },
+    {
+      "question_id": 11403210,
+      "uuid": "2b9e4eeb440744f38fc35fe44328def8",
+      "type": 1,
+      "title": "列表渲染时使用数组索引作为key（如&lt;li key={index}&...",
+      "content": "列表渲染时使用数组索引作为key（如&lt;li&nbsp;key={index}&gt;{item.text}&lt;/li&gt;），当列表项的顺序发生变化（如删除第一个项）时，最可能导致的问题是？",
+      "options": [
+        {
+          "id": 7430579,
+          "content": "React无法正确识别元素的身份，导致组件状态或输入内容错位"
+        },
+        {
+          "id": 7430580,
+          "content": "列表项会被强制卸载并重新挂载，无法保留原有组件状态"
+        },
+        {
+          "id": 7430581,
+          "content": "React的diff算法会因key重复而抛出错误"
+        },
+        {
+          "id": 7430582,
+          "content": "列表的渲染性能会显著下降"
+        }
+      ],
+      "correct_option_ids": [
+        7430579
+      ],
+      "correct_options": [
+        "React无法正确识别元素的身份，导致组件状态或输入内容错位"
+      ],
+      "analysis": "在React中，使用数组索引作为key时，当列表项顺序变化（如删除第一项），React无法正确识别元素的身份，导致组件状态或输入内容错位。这是因为索引key在顺序变化后不再对应原元素，React可能会复用旧元素或重新挂载新元素，造成状态错位。例如，删除第一项后，原第二项的索引变为0，但其输入内容可能被保留或关联到错误位置。选项B部分正确，但非最直接问题；选项C错误，因为索引唯一，key不重复；选项D可能但非主要问题。"
+    },
+    {
+      "question_id": 2388942,
+      "uuid": "d9135b0d4d9d467db99b697e9ff29eca",
+      "type": 1,
+      "title": "当使用ReactDOM.unmountComponentAtNode从DO...",
+      "content": "当使用ReactDOM.unmountComponentAtNode从DOM中卸载组件时，以下说法正确的是",
+      "options": [
+        {
+          "id": 3747009,
+          "content": "从DOM中卸载组件时，会将其事件处理器（event handlers）和 state 一并清除"
+        },
+        {
+          "id": 3747010,
+          "content": "从DOM中卸载组件时，如果指定容器上没有要删除的组件，则会报一个警告，没有返回"
+        },
+        {
+          "id": 3747011,
+          "content": "从DOM中卸载组件时，如果指定容器上没有要删除的组件，会返回一个包含错误信息的Error对象"
+        },
+        {
+          "id": 3747012,
+          "content": "从DOM中卸载组件时，如果组件被移除将会返回被移除的组件实例"
+        }
+      ],
+      "correct_option_ids": [
+        3747009
+      ],
+      "correct_options": [
+        "从DOM中卸载组件时，会将其事件处理器（event handlers）和 state 一并清除"
+      ],
+      "analysis": "从DOM中卸载组件时，如果指定容器上没有要删除的组件，这个函数什么也不会做，并且返回false，如果组件被移除将会返回true。"
+    },
+    {
+      "question_id": 11403177,
+      "uuid": "7e5604b25a1e40f4a277bc460115df12",
+      "type": 1,
+      "title": "在 React 18 中，考虑以下在一个fetch请求成功后的.then(...",
+      "content": "<div>\n\t<span style=\"text-wrap-mode:wrap;\">在 React 18 中，考虑以下在一个fetch请求成功后的.then()回调中执行的代码。setData和setLoading都是由useState创建的状态更新函数。这系列操作会导致组件发生多少次重渲染？</span>\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">fetch('/api/data')\n&nbsp;&nbsp;.then(res&nbsp;=&gt;&nbsp;res.json())\n&nbsp;&nbsp;.then(data&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;setData(data);&nbsp;//&nbsp;更新数据\n&nbsp;&nbsp;&nbsp;&nbsp;setLoading(false);&nbsp;//&nbsp;更新加载状态\n&nbsp;&nbsp;});</pre>\n</div>",
+      "options": [
+        {
+          "id": 7430865,
+          "content": "2 次，因为每个状态更新都会独立触发一次渲染。"
+        },
+        {
+          "id": 7430867,
+          "content": "1 次，因为 React 18 的自动批处理 (Automatic Batching) 会将异步事件中的多次状态更新合并。"
+        },
+        {
+          "id": 7430869,
+          "content": "0 次，因为在 Promise 回调中的状态更新不会被 React 正确处理。"
+        },
+        {
+          "id": 7430870,
+          "content": "可能会是 1 次或 2 次，行为不稳定，取决于网络请求的速度。"
+        }
+      ],
+      "correct_option_ids": [
+        7430867
+      ],
+      "correct_options": [
+        "1 次，因为 React 18 的自动批处理 (Automatic Batching) 会将异步事件中的多次状态更新合并。"
+      ],
+      "analysis": "在React 18中，自动批处理（Automatic Batching）机制会将异步事件（如Promise回调）中的多个状态更新合并为一次渲染。因此，`setData`和`setLoading`在同一个`.then()`回调中被调用，只会触发一次组件重渲染。"
+    },
+    {
+      "question_id": 2376805,
+      "uuid": "4faea62d468d46e793d6d238708755c3",
+      "type": 1,
+      "title": "关于以下代码说法错误的是 const OtherComponent = R...",
+      "content": "<div>  <div>   <div>    <p>     关于以下代码说法错误的是    </p>   </div>  </div> </div> <pre class=\"prettyprint lang-cpp\">const OtherComponent = React.lazy(() =&gt; import('./OtherComponent'));\nfunction MyComponent() {\n     return (\n              &lt;&gt;\n                            &lt;React.Suspense fallback={&lt;Component1 /&gt;}&gt;\n                                             &lt;div&gt;\n                                                                  &lt;OtherComponent /&gt;\n                                            &lt;/div&gt;             \n                             &lt;/React.Suspense&gt;         \n              &lt;/&gt;     \n      ); \n}\n</pre> <br>",
+      "options": [
+        {
+          "id": 3715791,
+          "content": "<div><div><div><p>React.lazy()允许你定义一个动态加载的组件</p></div></div></div>"
+        },
+        {
+          "id": 3715792,
+          "content": "<div><div><div><p>OtherComponent组件是动态加载的</p></div></div></div>"
+        },
+        {
+          "id": 3715793,
+          "content": "<div><div><div><p>直至OtherComponent加载完成，&lt;Component1&gt;才会显示</p></div></div></div>"
+        },
+        {
+          "id": 3715794,
+          "content": "<div><div><div><p>Component1是一个非动态加载的组件</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3715793
+      ],
+      "correct_options": [
+        "<div><div><div><p>直至OtherComponent加载完成，&lt;Component1&gt;才会显示</p></div></div></div>"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     React.Suspense中fallback 属性指定加载指示器（在本段代码中指{&lt;Component1 /&gt;），在加载过程中展示，以防其组件树中的某些子组件尚未具备渲染条件。    </p>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 11403188,
+      "uuid": "200c5249860d4af591d5a25a352de049",
+      "type": 1,
+      "title": "在 React 18 或更高版本的应用中，对于以下组件，当按钮被点击时，控...",
+      "content": "<div>\n\t在&nbsp;React&nbsp;18&nbsp;或更高版本的应用中，对于以下组件，当按钮被点击时，控制台会打印&nbsp;“Component&nbsp;Rendered”&nbsp;多少次？\n</div>\n<div>\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">function&nbsp;MyComponent()&nbsp;{\n&nbsp;&nbsp;const&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0);\n&nbsp;&nbsp;const&nbsp;[text,&nbsp;setText]&nbsp;=&nbsp;useState('');\n&nbsp;&nbsp;const&nbsp;handleClick&nbsp;=&nbsp;()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;setCount(c&nbsp;=&gt;&nbsp;c&nbsp;+&nbsp;1);\n&nbsp;&nbsp;&nbsp;&nbsp;setText('updated');\n&nbsp;&nbsp;};\n&nbsp;&nbsp;console.log('Component&nbsp;Rendered');\n&nbsp;&nbsp;return&nbsp;&lt;button&nbsp;onClick={handleClick}&gt;Click&lt;/button&gt;;\n}</pre>\n</div>",
+      "options": [
+        {
+          "id": 7431025,
+          "content": "0 次"
+        },
+        {
+          "id": 7431026,
+          "content": "1 次"
+        },
+        {
+          "id": 7431027,
+          "content": "2 次"
+        },
+        {
+          "id": 7431028,
+          "content": "不确定，取决于浏览器性能"
+        }
+      ],
+      "correct_option_ids": [
+        7431026
+      ],
+      "correct_options": [
+        "1 次"
+      ],
+      "analysis": "在 React 18 或更高版本中，事件处理函数中的多个状态更新会被自动批处理（Automatic Batching），导致组件只重新渲染一次。因此，当按钮被点击时，尽管调用了两次状态更新函数（setCount 和 setText），控制台也只会打印一次 'Component Rendered'。选项 A 错误，因为状态更新会触发渲染；选项 C 错误，因为批处理机制避免了多次渲染；选项 D 错误，因为 React 的批处理行为是确定的，不取决于浏览器性能。"
+    },
+    {
+      "question_id": 11403199,
+      "uuid": "a2ffd6b582bf4838959cf3e7a451d400",
+      "type": 1,
+      "title": "在 React 18 环境下，考虑以下组件。当用户点击按钮时，`handl...",
+      "content": "<div>\n\t在&nbsp;React&nbsp;18&nbsp;环境下，考虑以下组件。当用户点击按钮时，`handleClick`&nbsp;函数被触发。请问该组件会重新渲染多少次，以及最终显示的&nbsp;`count`&nbsp;值是多少？\n</div>\n<div>\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">function&nbsp;BatchingTest()&nbsp;{\n&nbsp;&nbsp;const&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0);\n&nbsp;&nbsp;console.log('Render');\n&nbsp;&nbsp;const&nbsp;handleClick&nbsp;=&nbsp;()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;setCount(c&nbsp;=&gt;&nbsp;c&nbsp;+&nbsp;1);\n&nbsp;&nbsp;&nbsp;&nbsp;setCount(c&nbsp;=&gt;&nbsp;c&nbsp;+&nbsp;1);\n&nbsp;&nbsp;};\n&nbsp;&nbsp;return&nbsp;&lt;button&nbsp;onClick={handleClick}&gt;Count&nbsp;is&nbsp;{count}&lt;/button&gt;;\n}</pre>\n</div>",
+      "options": [
+        {
+          "id": 7431185,
+          "content": "重新渲染 2 次，最终 count 为 2"
+        },
+        {
+          "id": 7431186,
+          "content": "重新渲染 1 次，最终 count 为 1"
+        },
+        {
+          "id": 7431187,
+          "content": "重新渲染 1 次，最终 count 为 2"
+        },
+        {
+          "id": 7431189,
+          "content": "重新渲染 2 次，最终 count 为 1"
+        }
+      ],
+      "correct_option_ids": [
+        7431187
+      ],
+      "correct_options": [
+        "重新渲染 1 次，最终 count 为 2"
+      ],
+      "analysis": "在 React 18 中，由于默认启用自动批处理（Automatic Batching），事件处理函数（如 onClick）中的多个状态更新会被批量处理，只触发一次重新渲染。handleClick 函数中的两次 setCount 调用使用函数式更新（c => c + 1），确保状态更新基于前一个值计算：初始 count 为 0，第一次 setCount 返回 1，第二次 setCount 返回 2，因此最终 count 值为 2。同时，console.log('Render') 只输出一次，表明仅重新渲染一次。选项分析：A 错误（渲染次数应为 1 次）、B 错误（count 应为 2）、D 错误（渲染次数应为 1 次且 count 应为 2）。"
+    },
+    {
+      "question_id": 2388927,
+      "uuid": "01ac1ff05b5744d1b308bf6e7b354a71",
+      "type": 1,
+      "title": "StrictMode组件的作用是",
+      "content": "StrictMode组件的作用是",
+      "options": [
+        {
+          "id": 3746949,
+          "content": "作用跟Fragment组件一样，可以一个组件返回多个元素"
+        },
+        {
+          "id": 3746950,
+          "content": "用来突出显示应用程序中潜在问题"
+        },
+        {
+          "id": 3746951,
+          "content": "为其后代元素开启严格模式"
+        },
+        {
+          "id": 3746952,
+          "content": "为其后代元素触发额外的检查和警告"
+        }
+      ],
+      "correct_option_ids": [
+        3746952
+      ],
+      "correct_options": [
+        "为其后代元素触发额外的检查和警告"
+      ],
+      "analysis": "与Fragment一样，StrictMode不会渲染任何可见的UI。但是与Fragment不同的是，它为其后代元素触发额外的检查和警告。"
+    },
+    {
+      "question_id": 11403191,
+      "uuid": "d1421fc282c24e809d5217a0bb31d209",
+      "type": 1,
+      "title": "在React中，React.memo高阶组件如何帮助优化性能？",
+      "content": "在React中，React.memo高阶组件如何帮助优化性能？",
+      "options": [
+        {
+          "id": 7431069,
+          "content": "自动缓存组件内部状态"
+        },
+        {
+          "id": 7431070,
+          "content": "通过浅比较props来阻止不必要的重新渲染"
+        },
+        {
+          "id": 7431071,
+          "content": "将函数组件转换为类组件"
+        },
+        {
+          "id": 7431072,
+          "content": "确保组件使用生命周期方法"
+        }
+      ],
+      "correct_option_ids": [
+        7431070
+      ],
+      "correct_options": [
+        "通过浅比较props来阻止不必要的重新渲染"
+      ],
+      "analysis": "React.memo是React的高阶组件，专门用于函数组件，通过浅比较props来防止在props未变化时触发重新渲染，从而优化性能。选项A错误，因为React.memo不会缓存组件内部状态（状态管理由useState等hook处理）；选项C错误，因为React.memo不会将函数组件转换为类组件（它返回一个记忆化的函数组件）；选项D错误，因为React.memo不确保使用生命周期方法（函数组件使用useEffect而非传统生命周期方法）。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11403195,
+      "uuid": "b79aa8621fd54768a8a8f5919bd15403",
+      "type": 1,
+      "title": "React组件中，以下代码点击按钮后count的值是？ const [co...",
+      "content": "<div>\n\tReact组件中，以下代码点击按钮后count的值是？\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">const&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0);\nconst&nbsp;handleClick&nbsp;=&nbsp;()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;setCount(count&nbsp;+&nbsp;1);\n&nbsp;&nbsp;setCount(count&nbsp;+&nbsp;1);\n};\nreturn&nbsp;&lt;button&nbsp;onClick={handleClick}&gt;{count}&lt;/button&gt;;</pre>\n</div>",
+      "options": [
+        {
+          "id": 7431129,
+          "content": "1"
+        },
+        {
+          "id": 7431130,
+          "content": "2"
+        },
+        {
+          "id": 7431131,
+          "content": "0"
+        },
+        {
+          "id": 7431132,
+          "content": "取决于React版本"
+        }
+      ],
+      "correct_option_ids": [
+        7431129
+      ],
+      "correct_options": [
+        "1"
+      ],
+      "analysis": "在React事件处理函数中，多次同步调用setState会被批处理。代码中两次setCount(count+1)都基于当前count值0执行，得到count+1=1。批处理后仅执行一次更新，count变为1。选项D不正确，因批处理机制在React 17/18的事件处理中行为一致。"
+    },
+    {
+      "question_id": 2388954,
+      "uuid": "635ac37ef63a4aa29e37d2527b73cf75",
+      "type": 1,
+      "title": "关于React中的“状态提升”说法错误的是",
+      "content": "关于React中的“状态提升”说法错误的是",
+      "options": [
+        {
+          "id": 3747057,
+          "content": "React建议任何可变数据应当只有一个相对应的唯一“数据源”"
+        },
+        {
+          "id": 3747058,
+          "content": "提升状态(state)方式相比于双向绑定方式需要编写更多的“样板”代码"
+        },
+        {
+          "id": 3747059,
+          "content": "虽然某些数据可以由props或state推导得出，但是我们最好还是单独在state声明它"
+        },
+        {
+          "id": 3747060,
+          "content": "通常，多个组件需要反映相同的变化数据，都应尽量将共享状态提升到最近的公共父组件中去"
+        }
+      ],
+      "correct_option_ids": [
+        3747059
+      ],
+      "correct_options": [
+        "虽然某些数据可以由props或state推导得出，但是我们最好还是单独在state声明它"
+      ],
+      "analysis": "其中ABD都为官方说法，C选项中如果某些数据可以由props或state推导得出，那么就不应该将其在state中声明。"
+    },
+    {
+      "question_id": 11403171,
+      "uuid": "88b8a65d7f6747cc8589beee15f9ef4b",
+      "type": 1,
+      "title": "在React应用中实现一个复杂表单时，遇到连续快速输入导致卡顿问题。现有解...",
+      "content": "在React应用中实现一个复杂表单时，遇到连续快速输入导致卡顿问题。现有解决方案：1)&nbsp;使用debounce延迟状态更新&nbsp;2)&nbsp;将表单状态移出React改用Ref管理&nbsp;3)&nbsp;采用React.memo包装输入组件&nbsp;4)&nbsp;使用Web&nbsp;Worker处理验证逻辑。从React渲染机制角度，最根本的优化方案是？",
+      "options": [
+        {
+          "id": 7430775,
+          "content": "方案1，因为减少渲染次数可缓解主线程压力"
+        },
+        {
+          "id": 7430780,
+          "content": "方案2，因为绕过状态更新可直接避免渲染"
+        },
+        {
+          "id": 7430781,
+          "content": "方案3，因为浅比较能阻止子组件重渲染"
+        },
+        {
+          "id": 7430782,
+          "content": "方案4，因为将计算移出主线程可彻底解决阻塞"
+        }
+      ],
+      "correct_option_ids": [
+        7430780
+      ],
+      "correct_options": [
+        "方案2，因为绕过状态更新可直接避免渲染"
+      ],
+      "analysis": "从React渲染机制角度，状态更新会触发组件的重新渲染，频繁的状态更新（如连续快速输入）会导致主线程阻塞和卡顿。方案2（将表单状态移出React改用Ref管理）通过使用Ref存储状态，状态变化不会触发重新渲染，从而直接避免了渲染过程，是最根本的优化方案。其他方案：方案1（debounce）减少渲染次数但不消除每次渲染的开销；方案3（React.memo）通过浅比较阻止子组件重渲染，但如果父组件状态更新或组件内部状态变化，仍可能触发渲染；方案4（Web Worker）将验证逻辑移出主线程，但不解决状态更新触发的渲染问题本身。因此，选项B正确。"
+    },
+    {
+      "question_id": 2388929,
+      "uuid": "beef9bfa322b4261afd145b6a4d7a47f",
+      "type": 1,
+      "title": "ReactDOM.createPortal(child, containe...",
+      "content": "ReactDOM.createPortal(child, container)函数可以将子节点渲染到存在于父组件以外的DOM节点上，那么通过Portal进行事件冒泡时，会冒泡到",
+      "options": [
+        {
+          "id": 3746957,
+          "content": "会上冒到子元素插入的DOM节点，一直冒泡至DOM树的根"
+        },
+        {
+          "id": 3746958,
+          "content": "不会上冒"
+        },
+        {
+          "id": 3746959,
+          "content": "会上冒到子元素插入的DOM节点，不再继续上冒"
+        },
+        {
+          "id": 3746960,
+          "content": "从portal内部触发的事件会一直冒泡至包含React树的祖先"
+        }
+      ],
+      "correct_option_ids": [
+        3746960
+      ],
+      "correct_options": [
+        "从portal内部触发的事件会一直冒泡至包含React树的祖先"
+      ],
+      "analysis": "尽管 portal 可以被放置在 DOM 树中的任何地方，但在任何其他方面，其行为和普通的 React 子节点行为一致。由于 portal 仍存在于 React 树， 且与 DOM 树 中的位置无关，那么无论其子节点是否是 portal，像 context 这样的功能特性都是不变的，<span>包含事件冒泡。</span>"
+    },
+    {
+      "question_id": 11403179,
+      "uuid": "ca807e32ce994656b60a9ea1d7300fdd",
+      "type": 1,
+      "title": "关于 React 18 的自动批处理（automatic batching...",
+      "content": "关于&nbsp;React&nbsp;18&nbsp;的自动批处理（automatic&nbsp;batching），以下哪项说法是正确的？",
+      "options": [
+        {
+          "id": 7430893,
+          "content": "即使在 setTimeout 等原生异步回调中，多个状态更新也会自动批处理"
+        },
+        {
+          "id": 7430895,
+          "content": "只有在 React 合成事件中会批处理，其他情况下不会"
+        },
+        {
+          "id": 7430897,
+          "content": "React 不会批处理更新，所有更新都会立即逐条生效"
+        },
+        {
+          "id": 7430898,
+          "content": "必须显式调用 batchedUpdates 才能批处理任何更新"
+        }
+      ],
+      "correct_option_ids": [
+        7430893
+      ],
+      "correct_options": [
+        "即使在 setTimeout 等原生异步回调中，多个状态更新也会自动批处理"
+      ],
+      "analysis": "关于 React 18 的自动批处理：在 React 18 中，自动批处理（automatic batching）默认开启，它会批处理多个状态更新，不仅限于 React 合成事件，还扩展到原生异步回调如 setTimeout、promises 等场景。因此：选项 A 正确，因为在 setTimeout 等原生异步回调中，更新会自动批处理；选项 B 错误，自动批处理不限于合成事件；选项 C 错误，React 18 会批处理更新；选项 D 错误，无需显式调用 batchedUpdates，批处理是自动的。"
+    },
+    {
+      "question_id": 2388915,
+      "uuid": "653db972c4284a36b523746f48f9df8f",
+      "type": 1,
+      "title": "以下哪些不是react-router内置的组件",
+      "content": "以下哪些不是react-router内置的组件",
+      "options": [
+        {
+          "id": 3746901,
+          "content": "DefaultLink"
+        },
+        {
+          "id": 3746902,
+          "content": "Router"
+        },
+        {
+          "id": 3746903,
+          "content": "RoutingContext"
+        },
+        {
+          "id": 3746904,
+          "content": "Link"
+        }
+      ],
+      "correct_option_ids": [
+        3746901
+      ],
+      "correct_options": [
+        "DefaultLink"
+      ],
+      "analysis": "Router： <span>react-router</span> 的重要组件，它能保持 UI 和 URL 的同步。 <div>  RoutingContext：在 context 中给定路由的 state、设置 history 对象和当前的 location，&lt;RoutingContext&gt; 就会去渲染组件树。 </div> <div>  Link：允许用户浏览应用的主要方式，&lt;Link&gt; 以适当的 href 去渲染一个可访问的锚标签。 </div> <div>  没有内置组件<span>DefaultLink</span>  </div>"
+    },
+    {
+      "question_id": 2388944,
+      "uuid": "ce2b9afecd4b44408252a391252d0ff0",
+      "type": 1,
+      "title": "验证对象是否为 React 元素可以使用（）方法",
+      "content": "验证对象是否为 React 元素可以使用（）方法",
+      "options": [
+        {
+          "id": 3747017,
+          "content": "React.isValidReactElement"
+        },
+        {
+          "id": 3747018,
+          "content": "React.isValidElement"
+        },
+        {
+          "id": 3747019,
+          "content": "React.isReactElement"
+        },
+        {
+          "id": 3747020,
+          "content": "React.isElement"
+        }
+      ],
+      "correct_option_ids": [
+        3747018
+      ],
+      "correct_options": [
+        "React.isValidElement"
+      ],
+      "analysis": "React.isValidElement 验证对象是否为React元素，返回值为true或false。"
+    },
+    {
+      "question_id": 2388914,
+      "uuid": "175ac4f985bb4c10ae8c5d7b373883cb",
+      "type": 1,
+      "title": "&lt;Route /&gt;中的path属性可以使用通配符，以下关于通配...",
+      "content": "&lt;Route /&gt;中的path属性可以使用通配符，以下关于通配符的规则描述错误的是",
+      "options": [
+        {
+          "id": 3746897,
+          "content": "“:paramName”： 匹配URL的一个部分，直到遇到下一个/、?、#为止。这个路径参数可以通过this.props.params.paramName取出"
+        },
+        {
+          "id": 3746898,
+          "content": "“()”： ()表示URL的这个部分是可选的。"
+        },
+        {
+          "id": 3746899,
+          "content": "“*”： *匹配任意字符，直到模式里面的下一个字符为止。匹配方式是贪婪模式。"
+        },
+        {
+          "id": 3746900,
+          "content": "“**”：** 匹配任意字符，直到下一个/、?、#为止。匹配方式是贪婪模式。"
+        }
+      ],
+      "correct_option_ids": [
+        3746899
+      ],
+      "correct_options": [
+        "“*”： *匹配任意字符，直到模式里面的下一个字符为止。匹配方式是贪婪模式。"
+      ],
+      "analysis": "*匹配任意字符，直到模式里面的下一个字符为止。匹配方式是非贪婪模式。(贪婪模式和非贪婪模式：贪婪模式在整个表达式匹配成功的前提下，尽可能多的匹配，而非贪婪模式在整个表达式匹配成功的前提下，尽可能少的匹配。)"
+    },
+    {
+      "question_id": 11403170,
+      "uuid": "ac0b06f5557e4955b35a6fa4cc525b34",
+      "type": 1,
+      "title": "在 React 18 中，以下代码在一次点击后 count 值会变成多少？...",
+      "content": "<div>\n\t在&nbsp;React&nbsp;18&nbsp;中，以下代码在一次点击后&nbsp;count&nbsp;值会变成多少？\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">const&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0);\nconst&nbsp;onClick&nbsp;=&nbsp;()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;setCount(count&nbsp;+&nbsp;1);\n&nbsp;&nbsp;setCount(count&nbsp;+&nbsp;1);\n};</pre>\n</div>",
+      "options": [
+        {
+          "id": 7430763,
+          "content": "1"
+        },
+        {
+          "id": 7430764,
+          "content": "2"
+        },
+        {
+          "id": 7430765,
+          "content": "0"
+        },
+        {
+          "id": 7430766,
+          "content": "取决于是否开启并发特性，结果不确定"
+        }
+      ],
+      "correct_option_ids": [
+        7430763
+      ],
+      "correct_options": [
+        "1"
+      ],
+      "analysis": "在React 18中，事件处理函数内的状态更新会触发自动批处理（batching）。连续调用setCount(count + 1)时，count的值在初始渲染闭包中始终为0，因此两次调用等效于setCount(0+1)。批处理机制会合并更新，最终只执行一次重新渲染，count变为1。选项D的说法错误，因为事件处理函数中的批处理是React 18的默认行为，不依赖并发特性的开启。"
+    },
+    {
+      "question_id": 2388908,
+      "uuid": "eb351a00716f4e2781e1fe8b9fbe9c2a",
+      "type": 1,
+      "title": "在Redux中，不属于store提供的方法的是",
+      "content": "在Redux中，不属于store提供的方法的是",
+      "options": [
+        {
+          "id": 3746873,
+          "content": "store.subscribe"
+        },
+        {
+          "id": 3746874,
+          "content": "store.dispatch"
+        },
+        {
+          "id": 3746875,
+          "content": "store.getState"
+        },
+        {
+          "id": 3746876,
+          "content": "store.createStore"
+        }
+      ],
+      "correct_option_ids": [
+        3746876
+      ],
+      "correct_options": [
+        "store.createStore"
+      ],
+      "analysis": "不存在store.createStore方法，store可以使用Redux提供的createStore生成"
+    },
+    {
+      "question_id": 2388921,
+      "uuid": "b23e886627f64e1090a009a2b62601b3",
+      "type": 1,
+      "title": "关于Hook中里的useEffect的执行时机，下面说法正确的是",
+      "content": "关于Hook中里的useEffect的执行时机，下面说法正确的是",
+      "options": [
+        {
+          "id": 3746925,
+          "content": "与class组件的componentDidMount相同"
+        },
+        {
+          "id": 3746926,
+          "content": "与class组件的componentWillUpdate相同"
+        },
+        {
+          "id": 3746927,
+          "content": "与class组件的componentDidUpdate相同"
+        },
+        {
+          "id": 3746928,
+          "content": "其他选项都不正确"
+        }
+      ],
+      "correct_option_ids": [
+        3746928
+      ],
+      "correct_options": [
+        "其他选项都不正确"
+      ],
+      "analysis": "<span>如果熟悉 React class 的生命周期函数，你可以把 </span>useEffect<span> Hook 看做 </span>componentDidMount<span>，</span>componentDidUpdate<span> 和 </span>componentWillUnmount<span> 这三个函数的组合。</span>"
+    },
+    {
+      "question_id": 11403189,
+      "uuid": "d5b04beaafc74616898cc83225c6bc4b",
+      "type": 1,
+      "title": "在React函数组件中，useEffect的依赖数组设置为包含一个状态变量...",
+      "content": "在React函数组件中，useEffect的依赖数组设置为包含一个状态变量。如果该状态变量的引用值在每次渲染时都发生变化（即使内容未变），但effect内部未使用该变量，这可能导致什么行为？",
+      "options": [
+        {
+          "id": 7431037,
+          "content": "effect只在组件挂载和卸载时运行"
+        },
+        {
+          "id": 7431041,
+          "content": "effect每次渲染后都会运行"
+        },
+        {
+          "id": 7431043,
+          "content": "effect不会运行"
+        },
+        {
+          "id": 7431044,
+          "content": "effect只在状态变量实际改变时运行"
+        }
+      ],
+      "correct_option_ids": [
+        7431041
+      ],
+      "correct_options": [
+        "effect每次渲染后都会运行"
+      ],
+      "analysis": "根据React的useEffect机制，依赖数组中的值通过Object.is进行浅比较。题目中状态变量的引用值每次渲染都变化，即使内容未变且effect未使用该变量，依赖项比较仍认为发生变化。因此effect会在每次渲染后运行，符合选项B的描述。其他选项分析：A仅适用于空依赖数组；C适用于依赖项永不变化的情况；D需内容实际改变而非引用变化。"
+    },
+    {
+      "question_id": 2388932,
+      "uuid": "f63a5b3c5dfd4e51883ef8b1c643a186",
+      "type": 1,
+      "title": "Babel 会把 JSX 转译成一个名为（）函数调用。",
+      "content": "Babel 会把 JSX 转译成一个名为（）函数调用。",
+      "options": [
+        {
+          "id": 3746969,
+          "content": "React.render"
+        },
+        {
+          "id": 3746970,
+          "content": "React.createElement"
+        },
+        {
+          "id": 3746971,
+          "content": "ReactDom.createElement"
+        },
+        {
+          "id": 3746972,
+          "content": "ReactDom.render"
+        }
+      ],
+      "correct_option_ids": [
+        3746970
+      ],
+      "correct_options": [
+        "React.createElement"
+      ],
+      "analysis": "Babel会把JSX转译成一个名为React.createElement()函数调用。"
+    },
+    {
+      "question_id": 2388906,
+      "uuid": "c5c16186587e4f4ea99aa9756c8eb51f",
+      "type": 1,
+      "title": "在React组件中的JSX里，如果要添加类选择器，可以给DOM节点和组件添...",
+      "content": "在React组件中的JSX里，如果要添加类选择器，可以给DOM节点和组件添加()属性",
+      "options": [
+        {
+          "id": 3746865,
+          "content": "classStyle"
+        },
+        {
+          "id": 3746866,
+          "content": "class"
+        },
+        {
+          "id": 3746867,
+          "content": "styleName"
+        },
+        {
+          "id": 3746868,
+          "content": "className"
+        }
+      ],
+      "correct_option_ids": [
+        3746868
+      ],
+      "correct_options": [
+        "className"
+      ],
+      "analysis": "className属性用于指定CSS的class，此特性适用于所有常规 DOM 节点和 SVG 元素，如 &lt;div&gt;，&lt;a&gt; 及其它标签。"
+    },
+    {
+      "question_id": 11403141,
+      "uuid": "6caa96de9a244c9b81b0e889bc288ace",
+      "type": 1,
+      "title": "使用React.memo高阶组件时，默认的props比较机制是：",
+      "content": "使用React.memo高阶组件时，默认的props比较机制是：",
+      "options": [
+        {
+          "id": 7427922,
+          "content": "深比较(deep comparison)"
+        },
+        {
+          "id": 7427923,
+          "content": "引用比较(referential equality)"
+        },
+        {
+          "id": 7427924,
+          "content": "只比较props的key数量"
+        },
+        {
+          "id": 7427926,
+          "content": "全等比较(===)嵌套对象"
+        }
+      ],
+      "correct_option_ids": [
+        7427923
+      ],
+      "correct_options": [
+        "引用比较(referential equality)"
+      ],
+      "analysis": "React.memo高阶组件的默认props比较机制是浅比较（shallow comparison），它通过比较每个prop的值来实现，对于对象类型的prop，则比较其引用是否相等（referential equality）。选项B'引用比较(referential equality)'正确描述了该机制的核心部分。选项A'深比较(deep comparison)'错误，因为默认不是递归比较所有嵌套属性；选项C'只比较props的key数量'错误，因为它忽略值是否相等；选项D'全等比较(===)嵌套对象'错误且矛盾，因为全等比较（===）不涉及嵌套对象的比较，只比较整体引用或标量值。"
+    },
+    {
+      "question_id": 11403225,
+      "uuid": "4b1fb614ceaf435c893b24ea0060f337",
+      "type": 1,
+      "title": "在React性能优化场景下，React.memo高阶组件主要用于解决什么问题？",
+      "content": "在React性能优化场景下，React.memo高阶组件主要用于解决什么问题？",
+      "options": [
+        {
+          "id": 7430671,
+          "content": "优化组件的首次渲染速度"
+        },
+        {
+          "id": 7430672,
+          "content": "防止组件因props浅比较而进行不必要的re-render"
+        },
+        {
+          "id": 7430673,
+          "content": "自动处理异步状态更新"
+        },
+        {
+          "id": 7430674,
+          "content": "缓存组件的计算结果以减少渲染开销"
+        }
+      ],
+      "correct_option_ids": [
+        7430672
+      ],
+      "correct_options": [
+        "防止组件因props浅比较而进行不必要的re-render"
+      ],
+      "analysis": "React.memo 是 React 的高阶组件，用于性能优化，它通过浅比较（shallow comparison）组件的 props 来避免在 props 未变化时进行不必要的重新渲染（re-render）。选项 A 错误，因为 React.memo 优化的是重新渲染，而非首次渲染速度；选项 C 错误，因为 React.memo 不涉及异步状态更新，该功能通常由 useEffect 等钩子处理；选项 D 错误，因为它描述了 useMemo 的行为，后者缓存具体计算结果以减少渲染开销，而 React.memo 缓存整个组件的渲染输出。"
+    },
+    {
+      "question_id": 11403173,
+      "uuid": "b5bbf51a9c9e41f2ad99d2f7d4617e2e",
+      "type": 1,
+      "title": "使用自定义Hook封装数据请求时，发现当组件快速卸载后响应返回导致状态更新...",
+      "content": "使用自定义Hook封装数据请求时，发现当组件快速卸载后响应返回导致状态更新。下列解决方案中，最能规避内存泄漏风险的是？",
+      "options": [
+        {
+          "id": 7430807,
+          "content": "在useEffect清理函数中将请求标记为已取消"
+        },
+        {
+          "id": 7430808,
+          "content": "使用AbortController中断Fetch请求"
+        },
+        {
+          "id": 7430809,
+          "content": "在Hook中使用useRef跟踪组件挂载状态"
+        },
+        {
+          "id": 7430810,
+          "content": "为异步操作添加防抖机制控制执行频率"
+        }
+      ],
+      "correct_option_ids": [
+        7430808
+      ],
+      "correct_options": [
+        "使用AbortController中断Fetch请求"
+      ],
+      "analysis": "AbortController能够直接中断Fetch请求，从而在组件卸载时阻止任何回调执行，确保不会在卸载的组件上更新状态，从根本上规避内存泄漏风险。选项A和C通过标记或跟踪挂载状态虽能阻止状态更新，但网络请求可能继续并产生副作用，风险未完全消除；选项D的防抖机制仅控制请求频率，无法解决卸载后回调问题。"
+    },
+    {
+      "question_id": 2388922,
+      "uuid": "2b6548b4d05344019ad76cc2587c7a89",
+      "type": 1,
+      "title": "在函数组件中使用哪个Hook可以包裹副作用（改变 DOM、添加订阅、设置定...",
+      "content": "在函数组件中使用哪个Hook可以包裹副作用（改变 DOM、添加订阅、设置定时器、记录日志等）",
+      "options": [
+        {
+          "id": 3746929,
+          "content": "useReducer"
+        },
+        {
+          "id": 3746930,
+          "content": "useState"
+        },
+        {
+          "id": 3746931,
+          "content": "useEffect"
+        },
+        {
+          "id": 3746932,
+          "content": "useCallback"
+        }
+      ],
+      "correct_option_ids": [
+        3746931
+      ],
+      "correct_options": [
+        "useEffect"
+      ],
+      "analysis": "使用 useEffect 完成副作用操作。赋值给 useEffect 的函数会在组件渲染到屏幕之后执行。你可以把<span>useEffect</span> 看作从 React 的纯函数式世界通往命令式世界的逃生通道。"
+    },
+    {
+      "question_id": 11403158,
+      "uuid": "3354ba7b33464fcfbb7121bffad1f381",
+      "type": 1,
+      "title": "在React并发模式下，下列哪项是useTransition钩子的主要应用场景？",
+      "content": "在React并发模式下，下列哪项是useTransition钩子的主要应用场景？",
+      "options": [
+        {
+          "id": 7427777,
+          "content": "管理表单输入框的状态变化"
+        },
+        {
+          "id": 7427778,
+          "content": "延迟非关键UI更新以避免页面卡顿"
+        },
+        {
+          "id": 7427779,
+          "content": "替代Redux进行全局状态管理"
+        },
+        {
+          "id": 7427781,
+          "content": "优化大型列表的初始渲染性能"
+        }
+      ],
+      "correct_option_ids": [
+        7427778
+      ],
+      "correct_options": [
+        "延迟非关键UI更新以避免页面卡顿"
+      ],
+      "analysis": "useTransition钩子在React并发模式中的主要应用场景是管理非紧急更新，允许将其延迟以优先处理关键用户交互（如输入响应），从而避免页面卡顿。选项A（管理表单输入框的状态变化）应使用useState或其他状态钩子；选项C（替代Redux进行全局状态管理）错误，因为useTransition不涉及状态管理，仅用于更新优先级调度；选项D（优化大型列表的初始渲染性能）通常需结合React.memo或虚拟化技术，而非useTransition的核心用途。所有文字拼写准确、无错别字、无逻辑矛盾、无专业名词错误，且题目无规则破坏错误，有效考察知识点。"
+    },
+    {
+      "question_id": 2388920,
+      "uuid": "6d5f13c2baf6489599d9c793a11b9261",
+      "type": 1,
+      "title": "以下关于useContext说法错误的是",
+      "content": "以下关于useContext说法错误的是",
+      "options": [
+        {
+          "id": 3746921,
+          "content": "调用了useContext的组件总会在context值变化时重新渲染"
+        },
+        {
+          "id": 3746922,
+          "content": "当组件上层最近的 &lt;MyContext.Provider&gt; 更新时，该 Hook 会触发重渲染"
+        },
+        {
+          "id": 3746923,
+          "content": "useContext 的参数必须是 context 对象本身："
+        },
+        {
+          "id": 3746924,
+          "content": "当组件最上层的 &lt;MyContext.Provider&gt; 更新时，该 Hook 会触发重渲染"
+        }
+      ],
+      "correct_option_ids": [
+        3746924
+      ],
+      "correct_options": [
+        "当组件最上层的 &lt;MyContext.Provider&gt; 更新时，该 Hook 会触发重渲染"
+      ],
+      "analysis": "当组件上层最近的 &lt;MyContext.Provider&gt; 更新时，该 Hook 会触发重渲染"
+    },
+    {
+      "question_id": 2388911,
+      "uuid": "ec11cd639877403eb37f2a5151b4caab",
+      "type": 1,
+      "title": "以下不是Redux的使用原则的是",
+      "content": "以下不是Redux的使用原则的是",
+      "options": [
+        {
+          "id": 3746885,
+          "content": "单一数据源"
+        },
+        {
+          "id": 3746886,
+          "content": "双向数据流"
+        },
+        {
+          "id": 3746887,
+          "content": "State是只读的"
+        },
+        {
+          "id": 3746888,
+          "content": "使用纯函数来执行修改"
+        }
+      ],
+      "correct_option_ids": [
+        3746886
+      ],
+      "correct_options": [
+        "双向数据流"
+      ],
+      "analysis": "Redux可以用这三个基本原则来描述：1.单一数据源 2.State是只读的 3.使用纯函数来执行修改"
+    },
+    {
+      "question_id": 2388931,
+      "uuid": "5aa821db52504839814b38b0f447225e",
+      "type": 1,
+      "title": "JSX只是（）的语法糖",
+      "content": "JSX只是（）的语法糖",
+      "options": [
+        {
+          "id": 3746965,
+          "content": "ReactDom.render"
+        },
+        {
+          "id": 3746966,
+          "content": "ReactDom.createElement"
+        },
+        {
+          "id": 3746967,
+          "content": "React.render"
+        },
+        {
+          "id": 3746968,
+          "content": "React.createElement"
+        }
+      ],
+      "correct_option_ids": [
+        3746968
+      ],
+      "correct_options": [
+        "React.createElement"
+      ],
+      "analysis": "JSX 仅仅只是 React.createElement(component, props, ...children) 函数的语法糖。"
+    },
+    {
+      "question_id": 2388912,
+      "uuid": "f043d065a43641e2b21572e56d03ec41",
+      "type": 1,
+      "title": "以下关于对Router组件设置history属性值解释正确的是",
+      "content": "以下关于对Router组件设置history属性值解释正确的是",
+      "options": [
+        {
+          "id": 3746889,
+          "content": "browserHistory，背后调用的是浏览器的History API。"
+        },
+        {
+          "id": 3746890,
+          "content": "hashHistory，路由将通过URL的hash部分（#）切换"
+        },
+        {
+          "id": 3746891,
+          "content": "createMemoryHistory主要用于服务器渲染，它创建一个内存中的history对象，不与浏览器URL互动"
+        },
+        {
+          "id": 3746892,
+          "content": "其他选项都正确"
+        }
+      ],
+      "correct_option_ids": [
+        3746892
+      ],
+      "correct_options": [
+        "其他选项都正确"
+      ],
+      "analysis": "选项ABC都正确"
+    },
+    {
+      "question_id": 11403169,
+      "uuid": "e3669311773a4f279051214be758ac9f",
+      "type": 1,
+      "title": "在 React 18 的并发特性中，`startTransition` A...",
+      "content": "在&nbsp;React&nbsp;18&nbsp;的并发特性中，`startTransition`&nbsp;API&nbsp;的主要目的是什么？",
+      "options": [
+        {
+          "id": 7430747,
+          "content": "将一个耗时长的同步计算任务转移到 Web Worker 中执行，避免阻塞主线程。"
+        },
+        {
+          "id": 7430748,
+          "content": "延迟执行一个 state 更新，直到浏览器处于空闲状态。"
+        },
+        {
+          "id": 7430750,
+          "content": "将一个 state 更新标记为非紧急，允许更高优先级的渲染（如用户输入）打断它，从而保持界面响应。"
+        },
+        {
+          "id": 7430754,
+          "content": "自动地对组件进行 memoization，以减少不必要的渲染。"
+        }
+      ],
+      "correct_option_ids": [
+        7430750
+      ],
+      "correct_options": [
+        "将一个 state 更新标记为非紧急，允许更高优先级的渲染（如用户输入）打断它，从而保持界面响应。"
+      ],
+      "analysis": "在 React 18 中，`startTransition` API 的主要目的是将状态更新标记为非紧急，允许更高优先级的渲染（如用户输入）打断它，从而保持界面的响应性。选项 A 错误，因为 `startTransition` 不涉及 Web Worker（用于多线程执行）；选项 B 错误，因为它描述的是类似 `useDeferredValue` 或空闲回调的行为，而非 `startTransition`；选项 D 错误，因为 memoization 是由 `React.memo` 或 `useMemo` 处理的功能，与 `startTransition` 无关。"
+    },
+    {
+      "question_id": 11403196,
+      "uuid": "f781a7e2e6684c649d91dc84621bd8ad",
+      "type": 1,
+      "title": "在下面的 React 组件中，如果用户多次点击按钮，控制台每秒会打印出什么...",
+      "content": "<div>\n\t在下面的&nbsp;React&nbsp;组件中，如果用户多次点击按钮，控制台每秒会打印出什么？\n</div>\n<div>\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">function&nbsp;Counter()&nbsp;{\n&nbsp;&nbsp;const&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0);\n&nbsp;&nbsp;useEffect(()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;const&nbsp;intervalId&nbsp;=&nbsp;setInterval(()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;console.log(count);\n&nbsp;&nbsp;&nbsp;&nbsp;},&nbsp;1000);\n&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;()&nbsp;=&gt;&nbsp;clearInterval(intervalId);\n&nbsp;&nbsp;},&nbsp;[]);&nbsp;//&nbsp;注意此处的空依赖数组\n&nbsp;&nbsp;return&nbsp;&lt;button&nbsp;onClick={()&nbsp;=&gt;&nbsp;setCount(c&nbsp;=&gt;&nbsp;c&nbsp;+&nbsp;1)}&gt;Increment&lt;/button&gt;;\n}</pre>\n</div>",
+      "options": [
+        {
+          "id": 7431145,
+          "content": "每次都打印 `count` 的最新值"
+        },
+        {
+          "id": 7431146,
+          "content": "总是打印 `0`"
+        },
+        {
+          "id": 7431147,
+          "content": "依次打印 `0`, `1`, `2`, ...，每秒递增"
+        },
+        {
+          "id": 7431148,
+          "content": "组件会因依赖项数组为空而抛出错误"
+        }
+      ],
+      "correct_option_ids": [
+        7431146
+      ],
+      "correct_options": [
+        "总是打印 `0`"
+      ],
+      "analysis": "由于 useEffect 的依赖数组为空，该 effect 仅在组件挂载时运行一次。setInterval 中的回调函数捕获了初始 count 值 0，之后每秒都打印这个固定值 0，即使用户点击按钮使 count 状态更新，也不会触发 effect 重新运行或更新回调函数的闭包引用。选项分析：A 错误，因未使用最新值；C 错误，因数值不递增；D 错误，依赖数组为空不会抛出错误（React 允许此写法）。题目文字、专业术语和逻辑无错误。"
+    },
+    {
+      "question_id": 11403221,
+      "uuid": "cb3460a9f59b411cb29df9ba94e6bda5",
+      "type": 1,
+      "title": "你在实现一个弹出层，打开时需要测量元素尺寸并同步计算定位，要求避免首次出现...",
+      "content": "你在实现一个弹出层，打开时需要测量元素尺寸并同步计算定位，要求避免首次出现时的可见“跳动”。应使用哪种&nbsp;Hook&nbsp;与时机？",
+      "options": [
+        {
+          "id": 7430647,
+          "content": "useEffect，在浏览器绘制之后异步读取布局并更新位置"
+        },
+        {
+          "id": 7430648,
+          "content": "useLayoutEffect，在 DOM 变更后、浏览器绘制前同步读取布局并设置位置"
+        },
+        {
+          "id": 7430649,
+          "content": "useMemo，在渲染前计算 DOM 尺寸"
+        },
+        {
+          "id": 7430650,
+          "content": "useInsertionEffect，用于在读取布局前注入样式并完成定位计算"
+        }
+      ],
+      "correct_option_ids": [
+        7430648
+      ],
+      "correct_options": [
+        "useLayoutEffect，在 DOM 变更后、浏览器绘制前同步读取布局并设置位置"
+      ],
+      "analysis": "题目要求避免弹出层首次打开时的可见跳动，这意味着必须在浏览器绘制屏幕前完成尺寸测量和定位计算，以确保元素首次渲染时位置正确。在React中，useLayoutEffect Hook 在DOM变更后、浏览器绘制前同步运行，允许同步读取布局信息（如元素尺寸）并更新位置，从而避免视觉跳动。其他选项不满足要求：A（useEffect）在浏览器绘制后异步运行，会导致元素先以默认位置渲染再跳动；C（useMemo）在渲染前运行，但主要用于计算，无法可靠访问DOM尺寸，因为DOM尚未更新；D（useInsertionEffect）用于在布局读取前注入样式，但不适合读取布局，因为DOM可能未更新。题目和选项文字无错误，专业名词使用正确。"
+    },
+    {
+      "question_id": 2388909,
+      "uuid": "952c4fa8538f43139bfbc7bfd1fdd900",
+      "type": 1,
+      "title": "在使用Redux时，如果想要监听State中的值变化，可以使用：",
+      "content": "在使用Redux时，如果想要监听State中的值变化，可以使用：",
+      "options": [
+        {
+          "id": 3746877,
+          "content": "state.subscribe"
+        },
+        {
+          "id": 3746878,
+          "content": "store.subscribe"
+        },
+        {
+          "id": 3746879,
+          "content": "store.setter"
+        },
+        {
+          "id": 3746880,
+          "content": "state.setter"
+        }
+      ],
+      "correct_option_ids": [
+        3746878
+      ],
+      "correct_options": [
+        "store.subscribe"
+      ],
+      "analysis": "Store允许使用store.subscribe方法设置监听函数，一旦State发生变化，就自动执行这个函数。"
+    },
+    {
+      "question_id": 11403162,
+      "uuid": "48e11a903c214a34b52c7f76a3dd1827",
+      "type": 1,
+      "title": "组件中定义`const [count, setCount] = useSt...",
+      "content": "组件中定义`const&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0)`，并在点击事件处理函数中执行：`setCount(count&nbsp;+&nbsp;1);&nbsp;setCount(count&nbsp;+&nbsp;1);`。假设点击前count为0，点击后count的最终值是？",
+      "options": [
+        {
+          "id": 7427739,
+          "content": "1"
+        },
+        {
+          "id": 7427740,
+          "content": "2"
+        },
+        {
+          "id": 7427741,
+          "content": "0"
+        },
+        {
+          "id": 7427742,
+          "content": "取决于React版本（18+为2，18以下为1）"
+        }
+      ],
+      "correct_option_ids": [
+        7427739
+      ],
+      "correct_options": [
+        "1"
+      ],
+      "analysis": "在React中，状态更新是异步的且使用闭包机制。当连续调用两次`setCount(count + 1)`时：1. 初始count=0；2. 两次更新都基于相同的闭包值（0），因此实际执行为`setCount(1)`和`setCount(1)`；3. 批处理机制会合并这两次更新，最终结果为1。无论React 18之前或之后的版本，直接基于当前状态值（非函数式更新）的结果均相同。选项D关于版本差异的描述仅适用于函数式更新场景（如`setCount(prev => prev + 1)`），但本题未使用该语法，故无效。"
+    },
+    {
+      "question_id": 11403203,
+      "uuid": "8518c6a3a1934c6496ab3f899bbf143c",
+      "type": 1,
+      "title": "在React事件处理中，当事件对象需要异步访问时（例如setTimeout...",
+      "content": "在React事件处理中，当事件对象需要异步访问时（例如setTimeout中），正确的处理方式是？",
+      "options": [
+        {
+          "id": 7430535,
+          "content": "使用event.persist()保留事件引用"
+        },
+        {
+          "id": 7430536,
+          "content": "将事件对象存入ref.current"
+        },
+        {
+          "id": 7430537,
+          "content": "克隆事件对象JSON.parse(JSON.stringify(event))"
+        },
+        {
+          "id": 7430538,
+          "content": "使用全局变量缓存事件对象"
+        }
+      ],
+      "correct_option_ids": [
+        7430535
+      ],
+      "correct_options": [
+        "使用event.persist()保留事件引用"
+      ],
+      "analysis": "在React事件处理中，事件对象是合成事件（SyntheticEvent），在事件回调后可能被重用。event.persist()方法可以保留事件引用，以便在异步操作（如setTimeout）中安全访问。选项B（将事件对象存入ref.current）可能因事件重用而失效；选项C（使用JSON.parse(JSON.stringify(event))克隆对象）可能丢失事件方法（如preventDefault）和不可序列化的属性；选项D（使用全局变量缓存事件对象）不推荐，可能导致内存泄漏或状态不一致问题。因此，A是唯一正确的处理方式。"
+    },
+    {
+      "question_id": 2388926,
+      "uuid": "4cd4c8e56b7e4706b63b83d858829aff",
+      "type": 1,
+      "title": "以下不属于StrictMode的作用或优点的是",
+      "content": "以下不属于StrictMode的作用或优点的是",
+      "options": [
+        {
+          "id": 3746945,
+          "content": "检测过时的 context API"
+        },
+        {
+          "id": 3746946,
+          "content": "识别不安全的生命周期"
+        },
+        {
+          "id": 3746947,
+          "content": "检测意外的副作用"
+        },
+        {
+          "id": 3746948,
+          "content": "在生产环境也生效"
+        }
+      ],
+      "correct_option_ids": [
+        3746948
+      ],
+      "correct_options": [
+        "在生产环境也生效"
+      ],
+      "analysis": "严格模式检查仅在开发模式下运行，它们不会影响生产构建。"
+    },
+    {
+      "question_id": 2376802,
+      "uuid": "e278ffeecc28486a96018408a5507745",
+      "type": 1,
+      "title": "Class内部有一handleClick方法如下代码块，在点击事件中触发h...",
+      "content": "<div>  <div>   <div>    <p>     Class内部有一handleClick方法如下代码块，在点击事件中触发handleClick的正确方法是？    </p>   </div>  </div> </div> <pre class=\"prettyprint lang-cpp\">handleClick(){\n     console.log('this.state:',this.state); \n }\n</pre> <br>",
+      "options": [
+        {
+          "id": 3715779,
+          "content": "<div><div><div><p>onClick={ () =&gt; this.handleClick()}</p></div></div></div>"
+        },
+        {
+          "id": 3715780,
+          "content": "<div><div><div><p>onClick={ this.handleClick()}</p></div></div></div>"
+        },
+        {
+          "id": 3715781,
+          "content": "<div><div><div><p>onClick={ this.handleClick}</p></div></div></div>"
+        },
+        {
+          "id": 3715782,
+          "content": "<div><div><div><p>onclick={ handleClick}</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3715779
+      ],
+      "correct_options": [
+        "<div><div><div><p>onClick={ () =&gt; this.handleClick()}</p></div></div></div>"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     这并不是 React 特有的行为，在JavaScript中 Class的方法默认不会绑定this。    </p>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 2388940,
+      "uuid": "4c33b9ce2a044c68b31c9afae6fa9f14",
+      "type": 1,
+      "title": "以下关于ReactDOM.findDOMNode说法错误的是",
+      "content": "以下关于ReactDOM.findDOMNode说法错误的是",
+      "options": [
+        {
+          "id": 3747001,
+          "content": "findDOMNode只在已挂载的组件上可用"
+        },
+        {
+          "id": 3747002,
+          "content": "findDOMNode不能用于函数组件"
+        },
+        {
+          "id": 3747003,
+          "content": "如果你尝试调用未挂载的组件，会返回false"
+        },
+        {
+          "id": 3747004,
+          "content": "如果你尝试调用未挂载的组件，会引发异常"
+        }
+      ],
+      "correct_option_ids": [
+        3747003
+      ],
+      "correct_options": [
+        "如果你尝试调用未挂载的组件，会返回false"
+      ],
+      "analysis": "findDOMNode 只在已挂载的组件上可用（即，已经放置在 DOM 中的组件）。如果你尝试调用未挂载的组件（例如在一个还未创建的组件上调用 render() 中的 findDOMNode()）将会引发异常。"
+    },
+    {
+      "question_id": 11403216,
+      "uuid": "c56a219f78e442d48325bc7a503ae84f",
+      "type": 1,
+      "title": "一个父组件频繁地重新渲染，并向一个用`React.memo`包裹的子组件传...",
+      "content": "一个父组件频繁地重新渲染，并向一个用`React.memo`包裹的子组件传递了一个回调函数作为`prop`。为了有效防止子组件因该回调函数而产生不必要的重新渲染，最佳的实践是什么？",
+      "options": [
+        {
+          "id": 7430615,
+          "content": "在父组件中，将该回调函数存储在`useRef`中再传递给子组件。"
+        },
+        {
+          "id": 7430616,
+          "content": "在父组件中，使用`useMemo`并传入一个空依赖数组来包裹该回调函数的定义。"
+        },
+        {
+          "id": 7430617,
+          "content": "在父组件中，使用`useCallback`并提供正确的依赖数组来包裹该回调函数。"
+        },
+        {
+          "id": 7430618,
+          "content": "无需特殊处理，`React.memo`会自动对函数类型的`prop`进行深度比较。"
+        }
+      ],
+      "correct_option_ids": [
+        7430617
+      ],
+      "correct_options": [
+        "在父组件中，使用`useCallback`并提供正确的依赖数组来包裹该回调函数。"
+      ],
+      "analysis": "为了防止子组件因回调函数prop而重新渲染，最佳实践是使用`useCallback`。`useCallback`可以记忆化回调函数，确保函数引用只在依赖变化时改变，从而与`React.memo`的浅比较兼容，避免不必要的子组件渲染。选项A：使用`useRef`存储函数会导致传递ref对象而非函数本身，实现不便且非标准；选项B：`useMemo`可用于函数但非最佳，`useCallback`更语义化；选项D：`React.memo`仅进行浅比较，不会自动深度比较函数prop。"
+    },
+    {
+      "question_id": 11403154,
+      "uuid": "168fbd19121f4ee599b99151604eb00a",
+      "type": 1,
+      "title": "关于 React.memo 的工作机制，以下哪项描述是正确的？",
+      "content": "关于&nbsp;React.memo&nbsp;的工作机制，以下哪项描述是正确的？",
+      "options": [
+        {
+          "id": 7427811,
+          "content": "React.memo 通过深比较 props 来决定是否跳过渲染。"
+        },
+        {
+          "id": 7427812,
+          "content": "React.memo 仅在类组件上生效，函数组件无效。"
+        },
+        {
+          "id": 7427813,
+          "content": "当父组件传入新的对象或函数引用作为 props 时，即使其内部逻辑不变，也可能触发子组件重新渲染。"
+        },
+        {
+          "id": 7427814,
+          "content": "使用 React.memo 后，子组件不会因父组件状态变化而重新渲染。"
+        }
+      ],
+      "correct_option_ids": [
+        7427813
+      ],
+      "correct_options": [
+        "当父组件传入新的对象或函数引用作为 props 时，即使其内部逻辑不变，也可能触发子组件重新渲染。"
+      ],
+      "analysis": "C 正确：React.memo 使用浅比较（shallow comparison），当父组件传入新的对象或函数引用（即使内容不变）时，引用变化会触发子组件重新渲染。A 错误：React.memo 默认使用浅比较，而非深比较（deep comparison）。B 错误：React.memo 专用于函数组件，类组件需用 React.PureComponent。D 错误：使用 React.memo 后，子组件只在 props 变化时重新渲染；父组件状态变化可能导致传递给子组件的 props 变化，从而触发渲染。"
+    },
+    {
+      "question_id": 2388924,
+      "uuid": "7d02034f6150477489e81bc661a5d649",
+      "type": 1,
+      "title": "以下选项中，哪个不是Hook的优点",
+      "content": "以下选项中，哪个不是Hook的优点",
+      "options": [
+        {
+          "id": 3746937,
+          "content": "Hook能覆盖class的所有使用场景"
+        },
+        {
+          "id": 3746938,
+          "content": "Hook使你在无需修改组件结构的情况下复用状态逻辑"
+        },
+        {
+          "id": 3746939,
+          "content": "Hook使你在非class的情况下可以使用更多的React特性"
+        },
+        {
+          "id": 3746940,
+          "content": "Hook将组件中相互关联的部分拆分成更小的函数（比如设置订阅或请求数据）"
+        }
+      ],
+      "correct_option_ids": [
+        3746937
+      ],
+      "correct_options": [
+        "Hook能覆盖class的所有使用场景"
+      ],
+      "analysis": "作者给Hook设定的目标是尽早覆盖class的所有使用场景。目前暂时还没有对应不常用的getSnapshotBeforeUpdate，getDerivedStateFromError和componentDidCatch生命周期的Hook等价写法"
+    },
+    {
+      "question_id": 2388946,
+      "uuid": "71181566d15b45928e618b3c50eec2d7",
+      "type": 1,
+      "title": "在componentDidUpdate()中以下哪个说法是正确的",
+      "content": "在componentDidUpdate()中以下哪个说法是正确的",
+      "options": [
+        {
+          "id": 3747025,
+          "content": "在componentDidUpdate()中可以任意调用setState()"
+        },
+        {
+          "id": 3747026,
+          "content": "当组件更新时，componentDidUpdate()总会被调用"
+        },
+        {
+          "id": 3747027,
+          "content": "首次渲染时，componentDidUpdate()会在componentDidMount()前面调用"
+        },
+        {
+          "id": 3747028,
+          "content": "当组件更新时，componentDidUpdate()可能不会被调用"
+        }
+      ],
+      "correct_option_ids": [
+        3747028
+      ],
+      "correct_options": [
+        "当组件更新时，componentDidUpdate()可能不会被调用"
+      ],
+      "analysis": "A选项中，可以在 componentDidUpdate()中直接调用 setState()，但请注意它必须被包裹在一个条件语句里 <div>  BD选项中，如果shouldComponentUpdate()返回值为false，则不会调用componentDidUpdate() </div> <div>  C选项中，首次渲染不会执行componentDidUpdate() </div>"
+    },
+    {
+      "question_id": 11403155,
+      "uuid": "b8f948cb644f4919b200b64751ce39a4",
+      "type": 1,
+      "title": "关于 React 18 的自动批处理（Automatic Batching...",
+      "content": "关于&nbsp;React&nbsp;18&nbsp;的自动批处理（Automatic&nbsp;Batching），以下说法哪项是正确的？",
+      "options": [
+        {
+          "id": 7427799,
+          "content": "只有在事件处理函数中才会批处理 setState，Promise 或 setTimeout 中不会批处理。"
+        },
+        {
+          "id": 7427800,
+          "content": "任何场景下都不会批处理 setState，必须手动调用 unstable_batchedUpdates。"
+        },
+        {
+          "id": 7427801,
+          "content": "React 18 会在原生事件、Promise、setTimeout 等多种异步边界中自动批处理多次状态更新，从而减少重复渲染。"
+        },
+        {
+          "id": 7427802,
+          "content": "自动批处理会导致状态更新顺序不可预测，可能乱序合并。"
+        }
+      ],
+      "correct_option_ids": [
+        7427801
+      ],
+      "correct_options": [
+        "React 18 会在原生事件、Promise、setTimeout 等多种异步边界中自动批处理多次状态更新，从而减少重复渲染。"
+      ],
+      "analysis": "选项C正确，React 18的自动批处理（Automatic Batching）会在原生事件、Promise、setTimeout等多种异步操作中自动合并多个状态更新，减少渲染次数，提升性能。选项A错误，因为在React 18中，批处理不仅限于事件处理函数，也会在Promise或setTimeout中生效；选项B错误，React 18默认启用自动批处理，无需手动调用unstable_batchedUpdates；选项D错误，自动批处理不会导致状态更新顺序乱序或不可预测，更新顺序仍按调用顺序进行。题目无文字、逻辑、专业名词或规则破坏错误。"
+    },
+    {
+      "question_id": 11403200,
+      "uuid": "53abc98db0d34d4b9386518d512228e1",
+      "type": 1,
+      "title": "在一个父组件 `Parent` 中，有一个计算开销很大的函数 `expen...",
+      "content": "在一个父组件&nbsp;`Parent`&nbsp;中，有一个计算开销很大的函数&nbsp;`expensiveCalculation()`，它返回一个对象&nbsp;`data`，这个&nbsp;`data`&nbsp;对象作为&nbsp;prop&nbsp;传递给子组件&nbsp;`Child`。当&nbsp;`Parent`&nbsp;组件因为自身其他状态（例如一个计数器）变化而重新渲染时，如何组合使用优化技术，才能最有效地同时避免&nbsp;`expensiveCalculation`&nbsp;被重复执行和&nbsp;`Child`&nbsp;组件的不必要重新渲染？",
+      "options": [
+        {
+          "id": 7431197,
+          "content": "用 `React.memo` 包裹 `Child` 组件，并用 `useCallback` 包裹 `expensiveCalculation` 的调用"
+        },
+        {
+          "id": 7431198,
+          "content": "仅用 `useMemo` 包裹 `expensiveCalculation` 的调用"
+        },
+        {
+          "id": 7431203,
+          "content": "用 `React.memo` 包裹 `Child` 组件，并用 `useMemo` 包裹 `expensiveCalculation` 的调用"
+        },
+        {
+          "id": 7431204,
+          "content": "仅用 `React.memo` 包裹 `Child` 组件"
+        }
+      ],
+      "correct_option_ids": [
+        7431203
+      ],
+      "correct_options": [
+        "用 `React.memo` 包裹 `Child` 组件，并用 `useMemo` 包裹 `expensiveCalculation` 的调用"
+      ],
+      "analysis": "使用 React.memo 包裹 Child 组件可以避免其在 props 不变时重新渲染，而用 useMemo 包裹 expensiveCalculation 的调用可以缓存计算结果，当依赖项不变时避免函数重复执行，从而同时解决两个问题。选项 A 中的 useCallback 用于记忆函数实例而非计算结果，因此不适用；选项 B 仅避免计算重复执行，但不防止 Child 重新渲染；选项 D 仅防止 Child 重新渲染，但由于 data 对象每次渲染可能为新引用，优化效果不佳。"
+    },
+    {
+      "question_id": 11403204,
+      "uuid": "af3de864fc924feaa1bb8718d65da66a",
+      "type": 1,
+      "title": "在使用React.lazy进行代码分割时，配合Suspense组件的作用是？",
+      "content": "在使用React.lazy进行代码分割时，配合Suspense组件的作用是？",
+      "options": [
+        {
+          "id": 7430539,
+          "content": "预加载所有懒加载组件的资源"
+        },
+        {
+          "id": 7430540,
+          "content": "提供加载中的降级UI展示"
+        },
+        {
+          "id": 7430541,
+          "content": "强制同步加载目标组件"
+        },
+        {
+          "id": 7430542,
+          "content": "自动合并多个懒加载请求"
+        }
+      ],
+      "correct_option_ids": [
+        7430540
+      ],
+      "correct_options": [
+        "提供加载中的降级UI展示"
+      ],
+      "analysis": "在React中，React.lazy用于实现组件的懒加载（即代码分割），而Suspense组件的作用是在懒加载组件加载过程中提供回退UI（fallback UI），即加载中的降级展示。选项A错误，因为Suspense不会预加载所有懒加载组件的资源（懒加载本身负责资源加载）；选项C错误，因为Suspense配合懒加载时是异步加载，不会强制同步加载目标组件；选项D错误，因为Suspense不会自动合并多个懒加载请求（React.lazy本身是独立的）。"
+    },
+    {
+      "question_id": 2388918,
+      "uuid": "75ab02ee70d94da3af2528dfa64f3b2e",
+      "type": 1,
+      "title": "关于Hook中的useDebugValue的作用是",
+      "content": "关于Hook中的useDebugValue的作用是",
+      "options": [
+        {
+          "id": 3746913,
+          "content": "获取当前是否在debug模式"
+        },
+        {
+          "id": 3746914,
+          "content": "开启当前函数组件debug模式"
+        },
+        {
+          "id": 3746915,
+          "content": "可以在React开发者工具中显示自定义hook的标签"
+        },
+        {
+          "id": 3746916,
+          "content": "可以在React开发者工具中给函数组件添加额外的描述"
+        }
+      ],
+      "correct_option_ids": [
+        3746915
+      ],
+      "correct_options": [
+        "可以在React开发者工具中显示自定义hook的标签"
+      ],
+      "analysis": "useDebugValue可用于在React开发者工具中显示自定义Hook的标签。"
+    },
+    {
+      "question_id": 11403227,
+      "uuid": "1885127c20614262ae126fe1b879c90d",
+      "type": 1,
+      "title": "一位开发者想要在组件渲染后立即测量一个 DOM 元素的尺寸，并根据这个尺寸...",
+      "content": "一位开发者想要在组件渲染后立即测量一个&nbsp;DOM&nbsp;元素的尺寸，并根据这个尺寸同步更新组件的状态来调整布局，同时要避免用户看到页面闪烁（即先渲染初始布局，再渲染调整后布局的视觉效果）。哪一个&nbsp;Hook&nbsp;最适合这个场景？",
+      "options": [
+        {
+          "id": 7430683,
+          "content": "`useEffect`，因为它在组件渲染到屏幕后执行，是执行副作用的通用选择。"
+        },
+        {
+          "id": 7430684,
+          "content": "`useCallback`，因为它能缓存测量函数，避免不必要的重复测量。"
+        },
+        {
+          "id": 7430685,
+          "content": "`useMemo`，用它来缓存 DOM 元素的尺寸计算结果。"
+        },
+        {
+          "id": 7430686,
+          "content": "`useLayoutEffect`，因为它在所有 DOM 变更后、浏览器绘制前同步执行，可以防止视觉闪烁。"
+        }
+      ],
+      "correct_option_ids": [
+        7430686
+      ],
+      "correct_options": [
+        "`useLayoutEffect`，因为它在所有 DOM 变更后、浏览器绘制前同步执行，可以防止视觉闪烁。"
+      ],
+      "analysis": "题目要求组件渲染后立即测量DOM元素尺寸并同步更新状态以避免页面闪烁。React Hooks中，`useLayoutEffect`在所有DOM变更后、浏览器绘制前同步执行，允许在用户看到页面之前测量尺寸并更新状态，从而避免视觉闪烁。`useEffect`在渲染后异步执行，可能导致用户短暂看到初始布局；`useCallback`用于缓存函数引用，不直接执行DOM测量；`useMemo`用于缓存计算值，但执行时DOM可能未渲染完毕，不适合测量。题目文字准确，无拼写错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11403215,
+      "uuid": "85ee4115295244ceb5e936fb056e9736",
+      "type": 1,
+      "title": "React的`startTransition` API主要用于解决什么问题？",
+      "content": "React的`startTransition`&nbsp;API主要用于解决什么问题？",
+      "options": [
+        {
+          "id": 7430607,
+          "content": "将整个组件的更新逻辑移到Web Worker中执行，以避免阻塞主线程。"
+        },
+        {
+          "id": 7430608,
+          "content": "对状态更新进行防抖（debounce）处理，只在用户停止操作后执行更新。"
+        },
+        {
+          "id": 7430609,
+          "content": "将某些状态更新标记为非紧急，允许更高优先级的更新（如用户输入）打断它，从而保持UI的响应性。"
+        },
+        {
+          "id": 7430610,
+          "content": "强制React同步执行所有状态更新，以确保数据的一致性。"
+        }
+      ],
+      "correct_option_ids": [
+        7430609
+      ],
+      "correct_options": [
+        "将某些状态更新标记为非紧急，允许更高优先级的更新（如用户输入）打断它，从而保持UI的响应性。"
+      ],
+      "analysis": "React的`startTransition` API主要用于将某些状态更新标记为非紧急，允许更高优先级的更新（如用户输入）打断它，从而保持UI的响应性。选项A错误，因为`startTransition`不涉及Web Worker；选项B错误，因为它不是防抖处理；选项D错误，因为它不是强制同步更新。"
+    },
+    {
+      "question_id": 2388923,
+      "uuid": "9b5fce7a2f4b4d20956f8dbaa34f8cdf",
+      "type": 1,
+      "title": "使用哪个Hook可以为函数组件添加state",
+      "content": "使用哪个Hook可以为函数组件添加state",
+      "options": [
+        {
+          "id": 3746933,
+          "content": "useEffect"
+        },
+        {
+          "id": 3746934,
+          "content": "useReducer"
+        },
+        {
+          "id": 3746935,
+          "content": "useContext"
+        },
+        {
+          "id": 3746936,
+          "content": "useState"
+        }
+      ],
+      "correct_option_ids": [
+        3746936
+      ],
+      "correct_options": [
+        "useState"
+      ],
+      "analysis": "<div> <pre class=\"prettyprint lang-js\">const [state, setState] = useState(initialState);</pre> useState返回一个state，以及更新state的函数，在初始渲染期间，返回的状态 (state) 与传入的第一个参数 (initialState) 值相同。setState函数用于更新state，它接收一个新的state值并将组件的一次重新渲染加入队列。 </div>"
+    },
+    {
+      "question_id": 11403213,
+      "uuid": "3bb8afd11e3a4edeb2a7b6a73f419041",
+      "type": 1,
+      "title": "当在 React 函数组件中使用 `useEffect` 钩子，并将依赖数...",
+      "content": "当在&nbsp;React&nbsp;函数组件中使用&nbsp;`useEffect`&nbsp;钩子，并将依赖数组设为空数组&nbsp;`[]`&nbsp;时，该&nbsp;effect&nbsp;的执行时机是什么？",
+      "options": [
+        {
+          "id": 7430595,
+          "content": "在组件挂载和每次更新后执行"
+        },
+        {
+          "id": 7430596,
+          "content": "仅在组件挂载时执行"
+        },
+        {
+          "id": 7430597,
+          "content": "在组件每次渲染后都执行"
+        },
+        {
+          "id": 7430598,
+          "content": "仅在组件卸载时执行"
+        }
+      ],
+      "correct_option_ids": [
+        7430596
+      ],
+      "correct_options": [
+        "仅在组件挂载时执行"
+      ],
+      "analysis": "在 React 函数组件中，当 useEffect 的依赖数组设为空数组 [] 时，该 effect 仅在组件挂载时执行一次，清理函数会在卸载时执行。选项 A 错误，因为 effect 不会在每次更新后执行；选项 C 错误，因为没有依赖数组时 effect 才会在每次渲染后执行；选项 D 错误，因为它描述的是清理函数的执行时机，而非 effect 本身。"
+    },
+    {
+      "question_id": 2376811,
+      "uuid": "75641c50f64240c1b4769e702ffc85b2",
+      "type": 1,
+      "title": "每个路由都有自己的onEnter和onLeave钩子，观察以下代码，当从&ldquo;...",
+      "content": "<div>  每个路由都有自己的onEnter和onLeave钩子，观察以下代码，当从“/a”跳转到“/b”时，各路由的钩子被调用顺序为（） </div> <div>  ``` </div> <p>  &lt;Route path=&quot;/a&quot; component={About} /&gt; </p> <p>  ＜Route path=&quot;/b&quot; component={Inbox} /&gt; </p> <p>  ＜Route path=&quot;/c&quot; component={Inbox} /&gt; </p> <p>  ``` </p>",
+      "options": [
+        {
+          "id": 3715815,
+          "content": "<div><div><div><p>&quot;/a&quot;的onEnter -&gt; &quot;/a&quot;的onLeave -&gt; &quot;/c&quot;的onLeave -&gt; &quot;/b&quot;的onLeave -&gt; &quot;/b&quot;的onEnter</p></div></div></div>"
+        },
+        {
+          "id": 3715816,
+          "content": "<div><div><div><p>&quot;/a&quot;的onEnter -&gt; &quot;/a&quot;的onLeave -&gt; &quot;/c&quot;的onLeave -&gt; &quot;/b&quot;的onEnter</p></div></div></div>"
+        },
+        {
+          "id": 3715817,
+          "content": "<div><div><div><p>&quot;/a&quot;的onEnter -&gt; &quot;/a&quot;的onLeave -&gt; &quot;/b&quot;的onEnter</p></div></div></div>"
+        },
+        {
+          "id": 3715818,
+          "content": "<div><div><div><p>&quot;/a&quot;的onLeave -&gt; &quot;/b&quot;的onEnter</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3715818
+      ],
+      "correct_options": [
+        "<div><div><div><p>&quot;/a&quot;的onLeave -&gt; &quot;/b&quot;的onEnter</p></div></div></div>"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     onEnter是当用户进入时触发和onLeave是用户离开时触发， 本题中从“/a”跳转到“/b”，应当为从“/a”中离开，紧接着在进入“/b”    </p>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 2388910,
+      "uuid": "4825b2f0587148849728a56372e8398b",
+      "type": 1,
+      "title": "关于Redux，以下说法错误的是",
+      "content": "关于Redux，以下说法错误的是",
+      "options": [
+        {
+          "id": 3746881,
+          "content": "唯一改变state的方法就是触发action"
+        },
+        {
+          "id": 3746882,
+          "content": "action是一个用于描述即将发生事件的普通对象"
+        },
+        {
+          "id": 3746883,
+          "content": "为了描述action如何改变state tree，你需要编写纯的reducers"
+        },
+        {
+          "id": 3746884,
+          "content": "整个应用的全局state被储存在一棵object tree中，并且这个object tree只存在于唯一一个store中"
+        }
+      ],
+      "correct_option_ids": [
+        3746882
+      ],
+      "correct_options": [
+        "action是一个用于描述即将发生事件的普通对象"
+      ],
+      "analysis": "在Redux中，action是一个用于描述已发生事件的普通对象"
+    },
+    {
+      "question_id": 2388943,
+      "uuid": "3e46f459959d46788532895bc0208a09",
+      "type": 1,
+      "title": "从 DOM 中卸载组件，可以使用",
+      "content": "从 DOM 中卸载组件，可以使用",
+      "options": [
+        {
+          "id": 3747013,
+          "content": "ReactDOM.unmountComponentAtNode"
+        },
+        {
+          "id": 3747014,
+          "content": "ReactDOM.unmountComponent"
+        },
+        {
+          "id": 3747015,
+          "content": "ReactDOM.unmountRender"
+        },
+        {
+          "id": 3747016,
+          "content": "ReactDOM.clearDOMNode"
+        }
+      ],
+      "correct_option_ids": [
+        3747013
+      ],
+      "correct_options": [
+        "ReactDOM.unmountComponentAtNode"
+      ],
+      "analysis": "ReactDOM.unmountComponentAtNode，从DOM中卸载组件，会将其事件处理器（event handlers）和 state 一并清除。如果指定容器上没有对应已挂载的组件，这个函数什么也不会做。如果组件被移除将会返回 true，如果没有组件可被移除将会返回 false。"
+    },
+    {
+      "question_id": 11403151,
+      "uuid": "4d2f63c1315143cfaab3ed44fa618e41",
+      "type": 1,
+      "title": "你需要在一个组件渲染后，立即读取某个 DOM 元素的尺寸（例如宽度），并根...",
+      "content": "你需要在一个组件渲染后，立即读取某个&nbsp;DOM&nbsp;元素的尺寸（例如宽度），并根据这个尺寸同步更新组件的&nbsp;state，以确保在用户看到界面之前完成布局调整，避免视觉上的闪烁。在这种场景下，应该优先选择哪个&nbsp;Hook，为什么？",
+      "options": [
+        {
+          "id": 7427834,
+          "content": "`useEffect`，因为它在组件渲染后异步执行，不会阻塞浏览器绘制，性能更好。"
+        },
+        {
+          "id": 7427835,
+          "content": "`useLayoutEffect`，因为它在所有 DOM 变更后、浏览器绘制前同步调用，可以保证在用户看到更新前完成 DOM 读取和状态同步。"
+        },
+        {
+          "id": 7427837,
+          "content": "`useMemo`，因为它能缓存计算结果，适合用于获取 DOM 尺寸这类昂贵的计算。"
+        },
+        {
+          "id": 7427838,
+          "content": "`useRef` 配合 `useEffect`，虽然可以实现但无法从根本上避免在某些情况下出现闪烁。"
+        }
+      ],
+      "correct_option_ids": [
+        7427835
+      ],
+      "correct_options": [
+        "`useLayoutEffect`，因为它在所有 DOM 变更后、浏览器绘制前同步调用，可以保证在用户看到更新前完成 DOM 读取和状态同步。"
+      ],
+      "analysis": "题目要求避免视觉闪烁，需在用户看到界面之前同步读取 DOM 尺寸并更新 state。useLayoutEffect 在所有 DOM 变更后、浏览器绘制前同步调用，能够确保在用户看到任何更新前完成 DOM 读取和状态同步，从而实现无闪烁布局调整。选项 A 中 useEffect 是异步的，在绘制后执行，可能导致用户先看到旧布局；选项 C 的 useMemo 用于缓存计算值，在渲染期间运行，此时 DOM 可能未更新；选项 D 的 useRef 配合 useEffect 虽可实现 DOM 读取，但无法避免绘制后的异步执行造成的闪烁。"
+    },
+    {
+      "question_id": 11403205,
+      "uuid": "6584660560d04e28a4181d06a5f9a7e3",
+      "type": 1,
+      "title": "函数组件中需模拟class组件的componentDidUpdate生命周...",
+      "content": "函数组件中需模拟class组件的componentDidUpdate生命周期（即仅在props或state变化时执行逻辑，且能获取变化前的props/state），以下实现正确的是？",
+      "options": [
+        {
+          "id": 7430547,
+          "content": "使用useEffect并传递依赖数组，直接在effect内处理更新逻辑"
+        },
+        {
+          "id": 7430548,
+          "content": "使用useRef保存前一次的props/state，在useEffect内比较当前与前一次的值并更新useRef"
+        },
+        {
+          "id": 7430549,
+          "content": "使用useLayoutEffect且不传递依赖数组，确保逻辑同步执行"
+        },
+        {
+          "id": 7430550,
+          "content": "使用useState保存前一次的props/state，在useEffect内更新前一次的值"
+        }
+      ],
+      "correct_option_ids": [
+        7430548
+      ],
+      "correct_options": [
+        "使用useRef保存前一次的props/state，在useEffect内比较当前与前一次的值并更新useRef"
+      ],
+      "analysis": "题目要求模拟class组件的componentDidUpdate生命周期（仅在props或state变化时执行逻辑，且能获取变化前的props/state）。选项B使用useRef保存前一次的props/state，在useEffect内比较当前值与前一次值并更新ref，能精确控制只在依赖变化时执行并访问变化前的值。选项A错误：useEffect只能访问当前值，无法直接获取变化前的值。选项C错误：useLayoutEffect不传递依赖数组会导致每次渲染都执行，包括第一次挂载，无法仅在变化时执行。选项D错误：使用useState保存前一次值会导致状态更新触发额外渲染，可能引起无限循环或效率问题，不符合componentDidUpdate的语义。"
+    },
+    {
+      "question_id": 2376806,
+      "uuid": "870e7140e19b4b9eb7ff910172136597",
+      "type": 1,
+      "title": "以下关于ReactDOM.render说法错误的是",
+      "content": "<div>  <div>   <div>    <p>     以下关于ReactDOM.render说法错误的是    </p>   </div>  </div> </div>",
+      "options": [
+        {
+          "id": 3715795,
+          "content": "<div><div><div><p>ReactDOM.render() 会控制你传入容器节点里的内容</p></div></div></div>"
+        },
+        {
+          "id": 3715796,
+          "content": "<div><div><div><p>ReactDOM.render() 会修改容器节点以及其子节点</p></div></div></div>"
+        },
+        {
+          "id": 3715797,
+          "content": "<div><div><div><p>ReactDOM.render() 目前会返回对根组件 ReactComponent 实例的引用</p></div></div></div>"
+        },
+        {
+          "id": 3715798,
+          "content": "<div><div><div><p>使用 ReactDOM.render() 对服务端渲染容器进行 hydrate 操作的方式已经被废弃，并且会在 React 17 被移除</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3715796
+      ],
+      "correct_options": [
+        "<div><div><div><p>ReactDOM.render() 会修改容器节点以及其子节点</p></div></div></div>"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     ReactDOM.render() 不会修改容器节点（只会修改容器的子节点）。可以在不覆盖现有子节点的情况下，将组件插入已有的 DOM 节点中。    </p>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 2376810,
+      "uuid": "77a67d9cd14a4eed8524f29f09d312ac",
+      "type": 1,
+      "title": "以下路由代码中，如果现在跳转到&ldquo;/inbox/messages/3&rdquo;，浏览...",
+      "content": "<div>  以下路由代码中，如果现在跳转到“/inbox/messages/3”，浏览器链接栏中显示的路由为```jsx </div> <div>  <div>   <div>    <div>     <p>      &lt;Route path=&quot;inbox&quot; component={Inbox}&gt;     </p>     <p>      ＜Redirect from=&quot;messages/:id&quot; to=&quot;/messages/:id&quot; /&gt;     </p>     <p>      &lt;/Route&gt;     </p>     <p>      ```     </p>    </div>   </div>  </div> <br> </div>",
+      "options": [
+        {
+          "id": 3715811,
+          "content": "<div><div><div><p>/inbox/messages/3</p></div></div></div>"
+        },
+        {
+          "id": 3715812,
+          "content": "<div><div><div><p>messages/3</p></div></div></div>"
+        },
+        {
+          "id": 3715813,
+          "content": "<div><div><div><p>/inbox/messages</p></div></div></div>"
+        },
+        {
+          "id": 3715814,
+          "content": "<div><div><div><p>/messages/3</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3715814
+      ],
+      "correct_options": [
+        "<div><div><div><p>/messages/3</p></div></div></div>"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     &lt;Redirect&gt;组件用于路由的跳转，即用户访问一个路由，会自动跳转到另一个路由，访问/inbox/messages/3，会自动跳转到/messages/3    </p>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 11403149,
+      "uuid": "7caf978c277a4116946477f6e55e9aa9",
+      "type": 1,
+      "title": "一个 `AppContext` 提供了一个包含多个值的对象作为其 `val...",
+      "content": "一个&nbsp;`AppContext`&nbsp;提供了一个包含多个值的对象作为其&nbsp;`value`，例如&nbsp;`{&nbsp;user:&nbsp;{&nbsp;name:&nbsp;'test'&nbsp;},&nbsp;theme:&nbsp;'dark'&nbsp;}`。一个子组件&nbsp;`ThemeSwitcher`&nbsp;通过&nbsp;`useContext(AppContext)`&nbsp;来消费这个&nbsp;context，但它在渲染时只用到了&nbsp;`theme`&nbsp;属性。如果父组件更新了&nbsp;context&nbsp;的&nbsp;value，但只改变了&nbsp;`user`&nbsp;对象的内容（例如&nbsp;`setUser({&nbsp;name:&nbsp;'new'&nbsp;})`），而&nbsp;`theme`&nbsp;字符串保持不变，`ThemeSwitcher`&nbsp;组件会发生什么？",
+      "options": [
+        {
+          "id": 7427851,
+          "content": "不会重新渲染，因为 React 会优化并检测到它所依赖的 `theme` 属性没有变化。"
+        },
+        {
+          "id": 7427852,
+          "content": "不会重新渲染，因为 `user` 是一个对象，React 对 context value 的比较是深度的。"
+        },
+        {
+          "id": 7427853,
+          "content": "会重新渲染，因为 context 的 `value` 是一个新创建的对象，其引用地址发生了变化。"
+        },
+        {
+          "id": 7427854,
+          "content": "只有当 `ThemeSwitcher` 同时使用了 `user` 和 `theme` 属性时才会重新渲染。"
+        }
+      ],
+      "correct_option_ids": [
+        7427853
+      ],
+      "correct_options": [
+        "会重新渲染，因为 context 的 `value` 是一个新创建的对象，其引用地址发生了变化。"
+      ],
+      "analysis": "根据React的工作原理，当context的value对象被更新时，即使只有部分属性改变，整个context对象的引用地址都会变化。使用useContext的组件在context值变化时必然重新渲染，无论组件是否只使用了未改变的部分属性。选项A和B错误（React默认不做属性级优化或深度比较），选项D错误（重渲染与使用的属性数量无关）。题目描述清晰，无文字错误、逻辑矛盾或专业术语错误。"
+    },
+    {
+      "question_id": 2388907,
+      "uuid": "ae71b815d2fe42d1ae35aecc87161ddd",
+      "type": 1,
+      "title": "以下关于Reducer的作用说法错误的是",
+      "content": "以下关于Reducer的作用说法错误的是",
+      "options": [
+        {
+          "id": 3746869,
+          "content": "Reducer是纯函数，它指定应用程序的状态如何随操作的变化而变化"
+        },
+        {
+          "id": 3746870,
+          "content": "Reduce通过获取以前的状态和动作来工作，然后返回一个新的状态"
+        },
+        {
+          "id": 3746871,
+          "content": "它根据操作的类型确定需要执行哪种类型的更新，然后返回新值"
+        },
+        {
+          "id": 3746872,
+          "content": "如果不需要做任何工作，它将返回的当前状态的浅拷贝"
+        }
+      ],
+      "correct_option_ids": [
+        3746872
+      ],
+      "correct_options": [
+        "如果不需要做任何工作，它将返回的当前状态的浅拷贝"
+      ],
+      "analysis": "如果不需要做任何工作，它将返回以前的状态，而不是当前状态的浅拷贝，所以，D选项错误。"
+    },
+    {
+      "question_id": 11403181,
+      "uuid": "306b4a5f65df41399244664494fceb84",
+      "type": 1,
+      "title": "在 React 类组件中，您定义了一个事件处理函数 handleClick...",
+      "content": "在&nbsp;React&nbsp;类组件中，您定义了一个事件处理函数&nbsp;handleClick，并在&nbsp;JSX&nbsp;中使用&nbsp;onClick={this.handleClick}&nbsp;绑定。但在&nbsp;handleClick&nbsp;内部，this&nbsp;关键字被解析为&nbsp;undefined。以下哪个选项是解决此问题的正确方法？",
+      "options": [
+        {
+          "id": 7430923,
+          "content": "在组件外部定义 handleClick 为全局函数"
+        },
+        {
+          "id": 7430924,
+          "content": "在类构造函数中显式绑定 this.handleClick = this.handleClick.bind(this)"
+        },
+        {
+          "id": 7430925,
+          "content": "在 render 方法中直接调用 handleClick()"
+        },
+        {
+          "id": 7430926,
+          "content": "使用 React.createRef() 来引用 this"
+        }
+      ],
+      "correct_option_ids": [
+        7430924
+      ],
+      "correct_options": [
+        "在类构造函数中显式绑定 this.handleClick = this.handleClick.bind(this)"
+      ],
+      "analysis": "在 React 类组件中，事件处理函数作为回调传递时，this 会丢失绑定，导致 undefined。选项 B 在构造函数中使用 bind(this) 显式绑定 this.handleClick，确保 this 指向组件实例，正确解决问题。其他选项无效：A 定义全局函数会使 this 指向全局作用域（或严格模式下 undefined），无法访问组件实例；C 在 render 中直接调用 handleClick() 会导致函数立即执行而非作为事件回调，引发错误；D 使用 createRef() 用于引用 DOM 元素，不能解决 this 上下文问题。"
+    },
+    {
+      "question_id": 11403147,
+      "uuid": "245925d7ef6340b49cb83688496a578f",
+      "type": 1,
+      "title": "在一个使用 `useEffect` 的函数组件中，如果 `useEffec...",
+      "content": "在一个使用&nbsp;`useEffect`&nbsp;的函数组件中，如果&nbsp;`useEffect`&nbsp;的依赖项数组发生了变化，导致&nbsp;effect&nbsp;需要重新执行，那么上一次&nbsp;effect&nbsp;返回的清理（cleanup）函数会在什么时机被调用？",
+      "options": [
+        {
+          "id": 7427867,
+          "content": "在组件重新渲染（re-render）的过程中，DOM 更新之前。"
+        },
+        {
+          "id": 7427868,
+          "content": "在组件完成渲染且 DOM 更新后，但在下一次 effect 执行之前。"
+        },
+        {
+          "id": 7427869,
+          "content": "在组件即将卸载（unmount）时，且仅在卸载时调用。"
+        },
+        {
+          "id": 7427870,
+          "content": "与下一次 effect 的执行在同一个宏任务（macro-task）中被异步调用。"
+        }
+      ],
+      "correct_option_ids": [
+        7427868
+      ],
+      "correct_options": [
+        "在组件完成渲染且 DOM 更新后，但在下一次 effect 执行之前。"
+      ],
+      "analysis": "根据React官方文档，当useEffect的依赖项数组发生变化导致effect重新执行时，上一次effect返回的清理函数会在组件完成渲染和DOM更新后、但在下一次effect执行之前被调用。选项A错误，因为清理函数的调用发生在渲染完成后，而不是在渲染过程中或DOM更新之前；选项C错误，因为清理函数不仅在组件卸载时调用，也在依赖项变化时调用；选项D错误，因为React调度清理函数和effect执行是异步的，但不保证两者在同一个宏任务中被调用，清理函数可能在不同任务中优先执行。"
+    },
+    {
+      "question_id": 11403230,
+      "uuid": "b01ad7ccd19047f8a10c50380a148c04",
+      "type": 1,
+      "title": "在一个应用中，使用 Context API 提供一个包含多个字段的状态对象...",
+      "content": "<div>\n\t在一个应用中，使用&nbsp;Context&nbsp;API&nbsp;提供一个包含多个字段的状态对象，如下所示。组件&nbsp;`Avatar`&nbsp;只消费了&nbsp;context&nbsp;中的&nbsp;`user`&nbsp;对象。当&nbsp;Provider&nbsp;中的&nbsp;`theme`&nbsp;状态发生变化，但&nbsp;`user`&nbsp;状态保持不变时，`Avatar`&nbsp;组件的行为是什么？\n</div>\n<div>\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">//&nbsp;App.js&nbsp;(Provider)\nconst&nbsp;AppContext&nbsp;=&nbsp;React.createContext();\nfunction&nbsp;App()&nbsp;{\n&nbsp;&nbsp;const&nbsp;[theme,&nbsp;setTheme]&nbsp;=&nbsp;useState('light');\n&nbsp;&nbsp;const&nbsp;user&nbsp;=&nbsp;{&nbsp;name:&nbsp;'Alice'&nbsp;};&nbsp;//&nbsp;假设&nbsp;user&nbsp;对象稳定\n&nbsp;&nbsp;const&nbsp;value&nbsp;=&nbsp;{&nbsp;user,&nbsp;theme&nbsp;};\n&nbsp;&nbsp;return&nbsp;(\n&nbsp;&nbsp;&nbsp;&nbsp;&lt;AppContext.Provider&nbsp;value={value}&gt;\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{/*&nbsp;...&nbsp;other&nbsp;components&nbsp;...&nbsp;*/}\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;Avatar&nbsp;/&gt;\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;button&nbsp;onClick={()&nbsp;=&gt;&nbsp;setTheme(t&nbsp;=&gt;&nbsp;t&nbsp;===&nbsp;'light'&nbsp;?&nbsp;'dark'&nbsp;:&nbsp;'light')}&gt;Toggle&nbsp;Theme&lt;/button&gt;\n&nbsp;&nbsp;&nbsp;&nbsp;&lt;/AppContext.Provider&gt;\n&nbsp;&nbsp;);\n}\n//&nbsp;Avatar.js&nbsp;(Consumer)\nfunction&nbsp;Avatar()&nbsp;{\n&nbsp;&nbsp;const&nbsp;{&nbsp;user&nbsp;}&nbsp;=&nbsp;useContext(AppContext);\n&nbsp;&nbsp;console.log('Avatar&nbsp;rendered');\n&nbsp;&nbsp;return&nbsp;&lt;div&gt;{user.name}&lt;/div&gt;;\n}</pre>\n</div>",
+      "options": [
+        {
+          "id": 7430710,
+          "content": "`Avatar` 组件不会重新渲染，因为 React 会智能地检测到它所依赖的 `user` 数据没有发生变化。"
+        },
+        {
+          "id": 7430711,
+          "content": "`Avatar` 组件会重新渲染，因为 `setTheme` 导致 `App` 组件重新渲染，从而创建了一个新的 `value` 对象，这会导致所有消费者都重新渲染。"
+        },
+        {
+          "id": 7430712,
+          "content": "只有当 `Avatar` 组件被 `React.memo` 包裹时，它才不会重新渲染。"
+        },
+        {
+          "id": 7430714,
+          "content": "`Avatar` 组件不会重新渲染，除非 `user` 对象的引用地址发生改变。"
+        }
+      ],
+      "correct_option_ids": [
+        7430711
+      ],
+      "correct_options": [
+        "`Avatar` 组件会重新渲染，因为 `setTheme` 导致 `App` 组件重新渲染，从而创建了一个新的 `value` 对象，这会导致所有消费者都重新渲染。"
+      ],
+      "analysis": "当 Provider 的 value 属性发生变化时（本例中因 `theme` 状态改变导致 `value` 对象引用改变），所有使用该 Context 的消费者组件（无论是否只消费部分数据）都会重新渲染。选项 A 错误：React 不会根据消费的子字段选择性阻止重渲染。选项 C 错误：即使使用 `React.memo` 包裹，因 Context 值变化仍会触发重渲染。选项 D 错误：重渲染条件取决于整个 Context 值的引用变化，而非仅 `user` 的引用变化。题目文字、逻辑、专业术语均无误，无矛盾或规则破坏问题。"
+    },
+    {
+      "question_id": 2376809,
+      "uuid": "315a7b827fa946c4ab947ee0d1efca67",
+      "type": 1,
+      "title": "以下哪项对react-router-dom中组件分类是错误的",
+      "content": "<div>  <div>   <div>    <p>     以下哪项对react-router-dom中组件分类是错误的    </p>   </div>  </div> </div>",
+      "options": [
+        {
+          "id": 3715807,
+          "content": "<div><div><div><p>路由器组件: BrowserRouter和HashRouter</p></div></div></div>"
+        },
+        {
+          "id": 3715808,
+          "content": "<div><div><div><p>导航组件: Link和NavLink</p></div></div></div>"
+        },
+        {
+          "id": 3715809,
+          "content": "<div><div><div><p>路由匹配组件: Route和Switch</p></div></div></div>"
+        },
+        {
+          "id": 3715810,
+          "content": "<div><div><div><p>导航组件: Route和Switch</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3715810
+      ],
+      "correct_options": [
+        "<div><div><div><p>导航组件: Route和Switch</p></div></div></div>"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     在react-router-dom中通常使用的组件有三种路由器组件: 如BrowserRouter和HashRouter    </p>    <p>     路由匹配组件: Route和Switch 组件    </p>    <p>     导航组件: Link和NavLink 组件    </p>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 11403228,
+      "uuid": "0c7d5246d9d34515abfa2a255c314d14",
+      "type": 1,
+      "title": "考虑以下父组件 `Parent` 和被 `React.memo` 包装的子...",
+      "content": "<div>\n\t考虑以下父组件&nbsp;`Parent`&nbsp;和被&nbsp;`React.memo`&nbsp;包装的子组件&nbsp;`MemoizedChild`。当&nbsp;`Parent`&nbsp;组件因为自身状态&nbsp;`count`&nbsp;变化而重新渲染时，`MemoizedChild`&nbsp;会发生什么？\n</div>\n<div>\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">const&nbsp;MemoizedChild&nbsp;=&nbsp;React.memo(({&nbsp;config,&nbsp;onAction&nbsp;})&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;console.log('Child&nbsp;Rendered');\n&nbsp;&nbsp;return&nbsp;&lt;button&nbsp;onClick={onAction}&gt;{config.text}&lt;/button&gt;;\n});\nfunction&nbsp;Parent()&nbsp;{\n&nbsp;&nbsp;const&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0);\n&nbsp;&nbsp;const&nbsp;config&nbsp;=&nbsp;{&nbsp;text:&nbsp;'Click&nbsp;me'&nbsp;};\n&nbsp;&nbsp;const&nbsp;handleAction&nbsp;=&nbsp;()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;console.log('Action&nbsp;triggered');\n&nbsp;&nbsp;};\n&nbsp;&nbsp;return&nbsp;(\n&nbsp;&nbsp;&nbsp;&nbsp;&lt;div&gt;\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;button&nbsp;onClick={()&nbsp;=&gt;&nbsp;setCount(c&nbsp;=&gt;&nbsp;c&nbsp;+&nbsp;1)}&gt;Increment:&nbsp;{count}&lt;/button&gt;\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;MemoizedChild&nbsp;config={config}&nbsp;onAction={handleAction}&nbsp;/&gt;\n&nbsp;&nbsp;&nbsp;&nbsp;&lt;/div&gt;\n&nbsp;&nbsp;);\n}</pre>\n</div>",
+      "options": [
+        {
+          "id": 7430691,
+          "content": "`MemoizedChild` 不会重新渲染，因为 `React.memo` 会进行 props 的浅比较，且 `config` 和 `onAction` 的内容没有改变。"
+        },
+        {
+          "id": 7430692,
+          "content": "`MemoizedChild` 会重新渲染，因为 `Parent` 每次渲染都会创建新的 `config` 对象和 `handleAction` 函数，导致 props 的引用地址变化。"
+        },
+        {
+          "id": 7430693,
+          "content": "`MemoizedChild` 只会在 `count` 的值首次从 0 变为 1 时重新渲染一次。"
+        },
+        {
+          "id": 7430694,
+          "content": "`MemoizedChild` 不会重新渲染，因为 `React.memo` 对对象和函数类型的 prop 会进行深比较。"
+        }
+      ],
+      "correct_option_ids": [
+        7430692
+      ],
+      "correct_options": [
+        "`MemoizedChild` 会重新渲染，因为 `Parent` 每次渲染都会创建新的 `config` 对象和 `handleAction` 函数，导致 props 的引用地址变化。"
+      ],
+      "analysis": "当 Parent 组件因 count 状态变化重新渲染时，它会重新创建 config 对象和 handleAction 函数，导致 MemoizedChild 的 props（config 和 onAction）引用地址发生变化。React.memo 默认使用浅比较，它只比较 props 的引用而非内容，因此引用变化会触发 MemoizedChild 重新渲染。选项 A 错误，因为浅比较不检查内容；选项 C 错误，因为每次 count 变化都会导致重新渲染；选项 D 错误，因为 React.memo 默认不进行深比较。"
+    },
+    {
+      "question_id": 2388939,
+      "uuid": "29d54d5100134ddca5a88c39f7a7ee01",
+      "type": 1,
+      "title": "以下不属于react支持的剪贴板事件的是",
+      "content": "以下不属于react支持的剪贴板事件的是",
+      "options": [
+        {
+          "id": 3746997,
+          "content": "onCopy"
+        },
+        {
+          "id": 3746998,
+          "content": "onPaste"
+        },
+        {
+          "id": 3746999,
+          "content": "onCut"
+        },
+        {
+          "id": 3747000,
+          "content": "onBeforeCopy"
+        }
+      ],
+      "correct_option_ids": [
+        3747000
+      ],
+      "correct_options": [
+        "onBeforeCopy"
+      ],
+      "analysis": "react支持的剪贴板事件有onCopy，onCut，onPaste"
+    },
+    {
+      "question_id": 2388919,
+      "uuid": "77622717a9794e9088bb2b19c0270c6a",
+      "type": 1,
+      "title": "传给useEffect的函数会在浏览器完成布局与绘制之后执行，如果想在在浏...",
+      "content": "传给useEffect的函数会在浏览器完成布局与绘制之后执行，如果想在在浏览器执行绘制之前执行，可以使用",
+      "options": [
+        {
+          "id": 3746917,
+          "content": "useContext"
+        },
+        {
+          "id": 3746918,
+          "content": "useReducer"
+        },
+        {
+          "id": 3746919,
+          "content": "useCallback"
+        },
+        {
+          "id": 3746920,
+          "content": "useLayoutEffect"
+        }
+      ],
+      "correct_option_ids": [
+        3746920
+      ],
+      "correct_options": [
+        "useLayoutEffect"
+      ],
+      "analysis": "<span>useLayoutEffect：</span><span></span>其函数签名与 useEffect 相同，但它会在所有的 DOM 变更之后同步调用 effect。可以使用它来读取 DOM 布局并同步触发重渲染。在浏览器执行绘制之前，useLayoutEffect 内部的更新计划将被同步刷新。"
+    },
+    {
+      "question_id": 2388948,
+      "uuid": "4b8e58e9da7645b289246750bf157d91",
+      "type": 1,
+      "title": "关于Context一下说法错误的是？",
+      "content": "关于Context一下说法错误的是？",
+      "options": [
+        {
+          "id": 3747033,
+          "content": "Context提供了一种在组件之间共享此类值的方式，而不必显式地通过组件树的逐层传递 props"
+        },
+        {
+          "id": 3747034,
+          "content": "Context设计目的是为了共享那些对于一个组件树而言是“全局”的数据"
+        },
+        {
+          "id": 3747035,
+          "content": "Context会提高组件的复用性"
+        },
+        {
+          "id": 3747036,
+          "content": "Context能让你将这些数据向组件树下所有的组件进行“广播”，所有的组件都能访问到这些数据，也能访问到后续的数据更新"
+        }
+      ],
+      "correct_option_ids": [
+        3747035
+      ],
+      "correct_options": [
+        "Context会提高组件的复用性"
+      ],
+      "analysis": "Context主要应用场景在于很多不同层级的组件需要访问同样一些的数据。请谨慎使用，因为这会使得组件的复用性变差。"
+    },
+    {
+      "question_id": 11403219,
+      "uuid": "74ba714a32934e9a93666db1d0e5db0a",
+      "type": 1,
+      "title": "你在实现一个“输入即搜索”的页面：输入框的值需要即时回显，同时根据输入渲染...",
+      "content": "你在实现一个“输入即搜索”的页面：输入框的值需要即时回显，同时根据输入渲染一个代价较大的结果列表。当前输入会明显卡顿。要求：不牺牲输入框的即时回显，也不改变接口/请求策略，优先利用&nbsp;React&nbsp;18&nbsp;的能力改善交互流畅度。应优先采用哪种做法？",
+      "options": [
+        {
+          "id": 7430633,
+          "content": "对列表请求或渲染进行 300ms 防抖（debounce）以减少触发频率"
+        },
+        {
+          "id": 7430634,
+          "content": "把触发列表更新的逻辑放到 useLayoutEffect 中"
+        },
+        {
+          "id": 7430636,
+          "content": "将触发列表更新的 setState 包裹在 startTransition 中（或使用 useTransition 提供的 startTransition）以标记为非紧急更新"
+        },
+        {
+          "id": 7430637,
+          "content": "将输入框改为非受控组件以减少受控渲染开销"
+        }
+      ],
+      "correct_option_ids": [
+        7430636
+      ],
+      "correct_options": [
+        "将触发列表更新的 setState 包裹在 startTransition 中（或使用 useTransition 提供的 startTransition）以标记为非紧急更新"
+      ],
+      "analysis": "选项C是正确答案，因为React 18引入的startTransition（或useTransition）可以将触发列表更新的状态更新标记为非紧急任务，这样输入框的即时回显（作为紧急更新）优先执行，而代价较大的列表渲染在后台进行，避免阻塞主线程，从而改善交互流畅度，符合题目要求的不牺牲即时回显、不改变接口/请求策略，且优先利用React 18能力。其他选项分析如下：A（防抖）会延迟列表更新频率，可能导致反馈延迟，且不是React 18特性；B（useLayoutEffect）是同步逻辑，可能加剧渲染阻塞；D（非受控组件）改变了输入框实现，可能间接影响回显机制，且未直接利用React 18新功能。题目无文字错误、专业名称错误、逻辑矛盾或规则破坏错误。"
+    },
+    {
+      "question_id": 2388925,
+      "uuid": "7b6e9616b77f420891f2732d934d7225",
+      "type": 1,
+      "title": "以下不属于React作者添加hook动机的是",
+      "content": "以下不属于React作者添加hook动机的是",
+      "options": [
+        {
+          "id": 3746941,
+          "content": "在class组件之间复用状态逻辑很难"
+        },
+        {
+          "id": 3746942,
+          "content": "添加hook后函数组件可以实现class所有功能，React中移除class"
+        },
+        {
+          "id": 3746943,
+          "content": "复杂组件变得难以理解"
+        },
+        {
+          "id": 3746944,
+          "content": "class组件难以理解"
+        }
+      ],
+      "correct_option_ids": [
+        3746942
+      ],
+      "correct_options": [
+        "添加hook后函数组件可以实现class所有功能，React中移除class"
+      ],
+      "analysis": "添加hook后函数组件可以实现class组件“大部分”功能，而且作者没有计划从React中移除class"
+    },
+    {
+      "question_id": 11403167,
+      "uuid": "8e3f191a82c045d6b4012320280d54b5",
+      "type": 1,
+      "title": "在使用 React Context API 时，如果 Provider 的...",
+      "content": "在使用&nbsp;React&nbsp;Context&nbsp;API&nbsp;时，如果&nbsp;Provider&nbsp;的&nbsp;`value`&nbsp;属性是一个对象，例如&nbsp;`value={{&nbsp;user,&nbsp;theme&nbsp;}}`。一个&nbsp;Consumer&nbsp;组件仅使用了&nbsp;`user`&nbsp;属性。当父组件仅更新&nbsp;`theme`&nbsp;属性并导致&nbsp;Provider&nbsp;重新渲染时，这个&nbsp;Consumer&nbsp;组件会发生什么？",
+      "options": [
+        {
+          "id": 7430719,
+          "content": "不会重新渲染，因为 React 会智能地检测到它所依赖的 `user` 属性没有变化。"
+        },
+        {
+          "id": 7430720,
+          "content": "会重新渲染，因为每次父组件渲染时都会创建一个新的对象作为 `value`，导致引用地址发生变化。"
+        },
+        {
+          "id": 7430721,
+          "content": "只有当 Consumer 组件被 `React.memo` 包裹时，它才不会重新渲染。"
+        },
+        {
+          "id": 7430722,
+          "content": "会导致一个性能警告，提示应将 context 的值拆分为多个独立的 Provider。"
+        }
+      ],
+      "correct_option_ids": [
+        7430720
+      ],
+      "correct_options": [
+        "会重新渲染，因为每次父组件渲染时都会创建一个新的对象作为 `value`，导致引用地址发生变化。"
+      ],
+      "analysis": "在React Context API中，当Provider的value属性是一个对象时，每次父组件重新渲染都会创建一个新的对象引用。即使Consumer组件仅使用对象中的部分属性（如user），但由于整个context值的引用发生了变化，所有订阅该context的Consumer组件都会重新渲染。React不会根据实际使用的属性进行依赖检测优化，因此选项B正确。选项A错误，因为React本身不提供这种智能检测；选项C部分正确但表述不全面，React.memo可以优化props变化，但不直接解决context重渲染问题；选项D错误，React不会自动抛出性能警告，仅建议最佳实践。"
+    },
+    {
+      "question_id": 2388934,
+      "uuid": "519c7c9e566140a3ad324bfc566f10dc",
+      "type": 1,
+      "title": "以下不属于React支持的动画事件的是",
+      "content": "以下不属于React支持的动画事件的是",
+      "options": [
+        {
+          "id": 3746977,
+          "content": "onAnimationIteration"
+        },
+        {
+          "id": 3746978,
+          "content": "onAnimationStart"
+        },
+        {
+          "id": 3746979,
+          "content": "onAnimationOver"
+        },
+        {
+          "id": 3746980,
+          "content": "onAnimationEnd"
+        }
+      ],
+      "correct_option_ids": [
+        3746979
+      ],
+      "correct_options": [
+        "onAnimationOver"
+      ],
+      "analysis": "React支持的动画事件有onAnimationStart，onAnimationEnd，onAnimationIteration"
+    },
+    {
+      "question_id": 11403178,
+      "uuid": "12c8e7e3ab5245488ec98110e15b3c3f",
+      "type": 1,
+      "title": "在一个渲染项目列表的组件中，使用了数组的索引 `index` 作为每个列表...",
+      "content": "在一个渲染项目列表的组件中，使用了数组的索引&nbsp;`index`&nbsp;作为每个列表项的&nbsp;`key`。如果现在从列表的开头添加或删除一个项目，会对组件的更新和子组件状态产生什么最主要的影响？",
+      "options": [
+        {
+          "id": 7430877,
+          "content": "没有影响，React 内部有优化机制可以处理这种情况。"
+        },
+        {
+          "id": 7430879,
+          "content": "React 会高效地只创建或删除对应的 DOM 节点，而其他节点保持不变。"
+        },
+        {
+          "id": 7430884,
+          "content": "React 的 diff 算法会错误地复用组件实例，可能导致后续所有子组件的 props 都发生非预期的变化，并可能丢失其内部 state（如输入框的值）。"
+        },
+        {
+          "id": 7430886,
+          "content": "会导致一个运行时错误，因为 React 禁止使用 index 作为 key。"
+        }
+      ],
+      "correct_option_ids": [
+        7430884
+      ],
+      "correct_options": [
+        "React 的 diff 算法会错误地复用组件实例，可能导致后续所有子组件的 props 都发生非预期的变化，并可能丢失其内部 state（如输入框的值）。"
+      ],
+      "analysis": "在React中使用数组索引（index）作为列表项的key时，如果从列表开头添加或删除项目，会导致所有后续项目的索引发生变化。React的diff算法依赖于key来识别元素，索引变化会导致算法错误地复用组件实例（如原本索引为1的项目变为索引0，可能被误认为是新元素），从而使后续所有子组件的props发生非预期的变化（如数据错位），并可能丢失其内部state（例如输入框的值）。选项A错误，因为React内部优化无法完全避免这种问题；选项B错误，因为DOM节点可能被不正确地复用或重新创建，导致性能下降；选项D错误，因为React允许使用index作为key（尽管不推荐），不会直接引发运行时错误。"
+    },
+    {
+      "question_id": 2388951,
+      "uuid": "ec93651f3e4f472bbcb648c7ed984ee3",
+      "type": 1,
+      "title": "以下哪个钩子可以使组件变成“错误边界”？",
+      "content": "以下哪个钩子可以使组件变成“错误边界”？",
+      "options": [
+        {
+          "id": 3747045,
+          "content": "shouldComponentUpdate"
+        },
+        {
+          "id": 3747046,
+          "content": "getSnapshotBeforeUpdate"
+        },
+        {
+          "id": 3747047,
+          "content": "componentDidCatch"
+        },
+        {
+          "id": 3747048,
+          "content": "getDerivedStateFromProps"
+        }
+      ],
+      "correct_option_ids": [
+        3747047
+      ],
+      "correct_options": [
+        "componentDidCatch"
+      ],
+      "analysis": "如果一个class组件中定义了static getDerivedStateFromError()或componentDidCatch()这两个生命周期方法中的任意一个（或两个）时，那么它就变成一个错误边界。当抛出错误后，请使用static getDerivedStateFromError()渲染备用 UI ，使用componentDidCatch()打印错误信息。"
+    },
+    {
+      "question_id": 2388916,
+      "uuid": "e9c7fd957a9545839033bea63a15f813",
+      "type": 1,
+      "title": "React 函数组件中关于 Hook 的使用，以下哪一项不符合官方规则？",
+      "content": "React 函数组件中关于 Hook 的使用，以下哪一项不符合官方规则？<br>",
+      "options": [
+        {
+          "id": 3746905,
+          "content": "不要在循环、条件或分支中调用 Hook"
+        },
+        {
+          "id": 3746906,
+          "content": "可以在自定义 Hook 中调用，也可以在其他普通自定义函数中调用"
+        },
+        {
+          "id": 3746907,
+          "content": "只在 React 函数组件的最外层调用 Hook"
+        },
+        {
+          "id": 3746908,
+          "content": "在 React 的函数组件中调用 Hook"
+        }
+      ],
+      "correct_option_ids": [
+        3746906
+      ],
+      "correct_options": [
+        "可以在自定义 Hook 中调用，也可以在其他普通自定义函数中调用"
+      ],
+      "analysis": "<div>  <span>Hook 只能在函数组件或自定义 Hook 且在最外层调用；普通自定义函数中不可调用。</span> </div> <div> </div>"
+    },
+    {
+      "question_id": 11403209,
+      "uuid": "2bee4cb433fe44ae9d975952a21b95ec",
+      "type": 1,
+      "title": "在 React 中，当渲染一个元素列表时，为每个列表项提供一个稳定且唯一的...",
+      "content": "在&nbsp;React&nbsp;中，当渲染一个元素列表时，为每个列表项提供一个稳定且唯一的&nbsp;`key`&nbsp;prop&nbsp;的主要目的是什么？",
+      "options": [
+        {
+          "id": 7430571,
+          "content": "作为一个唯一的 DOM `id` 属性，用于 CSS 样式和 DOM 查询。"
+        },
+        {
+          "id": 7430572,
+          "content": "帮助 React 的 diffing 算法识别哪些项被更改、添加或删除，从而高效地更新 UI。"
+        },
+        {
+          "id": 7430573,
+          "content": "强制列表项按照 `key` 的值进行排序渲染。"
+        },
+        {
+          "id": 7430574,
+          "content": "提升所有列表项的渲染速度，即使列表顺序和内容没有变化。"
+        }
+      ],
+      "correct_option_ids": [
+        7430572
+      ],
+      "correct_options": [
+        "帮助 React 的 diffing 算法识别哪些项被更改、添加或删除，从而高效地更新 UI。"
+      ],
+      "analysis": "选项 B 正确，因为在 React 中为列表项提供唯一的 key prop 主要目的是帮助 React 的 diffing 算法高效识别列表项的添加、删除或顺序变化，从而优化 UI 更新过程。选项 A 错误，因为 key 并不是直接用作 DOM id 属性；选项 C 错误，因为 key 并不强制控制列表项的渲染顺序；选项 D 错误，因为 key 提升渲染速度的效果主要出现在列表变化时，而在静态列表下其作用有限。"
+    },
+    {
+      "question_id": 2376808,
+      "uuid": "0eb0ba28ae4e417c9bcff01d6bd6702a",
+      "type": 1,
+      "title": "在如下 React 类组件中，为 props 进行类型检查，要求 name 为必填字符串。下列哪种写法是正确的？",
+      "content": "<span>在如下 React 类组件中，为 props 进行类型检查，要求 name 为必填字符串。下列哪种写法是正确的？</span><br> <pre class=\"prettyprint lang-js\">import PropTypes from 'prop-types';\n\nclass Greeting extends React.Component {\n  render() {\n    return (\n      &lt;h1&gt;Hello, {this.props.name}&lt;/h1&gt;\n    );\n  }\n}</pre>",
+      "options": [
+        {
+          "id": 3715803,
+          "content": "在类后添加：\nGreeting.propTypes = {\n  name: PropTypes.string.isRequired\n};"
+        },
+        {
+          "id": 3715804,
+          "content": "在类后添加：\nGreeting.propTypes = {\n  name: PropTypes.number\n};"
+        },
+        {
+          "id": 3715805,
+          "content": "在类后添加：\nGreeting.propTypes = {\n  name: React.PropTypes.string.isRequired\n};"
+        },
+        {
+          "id": 3715806,
+          "content": "不需要声明，React 会自动进行 props 类型检查。"
+        }
+      ],
+      "correct_option_ids": [
+        3715803
+      ],
+      "correct_options": [
+        "在类后添加：\nGreeting.propTypes = {\n  name: PropTypes.string.isRequired\n};"
+      ],
+      "analysis": "答案<br> A<br> <br> 解析<br> - 正确做法是从 'prop-types' 包引入 PropTypes，并将 name 声明为必填字符串：PropTypes.string.isRequired。<br> - 选项 B 将类型声明为 number，不符合使用场景。<br> - 选项 C 使用了已废弃的 React.PropTypes。<br> - 选项 D 错误，React 不会自动进行类型检查，需显式声明。<br>"
+    },
+    {
+      "question_id": 11403157,
+      "uuid": "2d5728d99ce149e38ec16259ea7e35f9",
+      "type": 1,
+      "title": "当使用React Context传递数据时，若Provider的value...",
+      "content": "当使用React&nbsp;Context传递数据时，若Provider的value属性引用对象未使用useMemo优化，可能导致什么后果？",
+      "options": [
+        {
+          "id": 7427783,
+          "content": "所有消费该Context的组件都会触发重渲染"
+        },
+        {
+          "id": 7427784,
+          "content": "仅子组件会触发重渲染"
+        },
+        {
+          "id": 7427785,
+          "content": "Context默认值会覆盖传入值"
+        },
+        {
+          "id": 7427786,
+          "content": "引发跨组件状态同步错误"
+        }
+      ],
+      "correct_option_ids": [
+        7427783
+      ],
+      "correct_options": [
+        "所有消费该Context的组件都会触发重渲染"
+      ],
+      "analysis": "在React中，当Provider的value属性是一个对象引用未使用useMemo优化时，每次父组件渲染会创建一个新的对象引用，导致所有消费该Context的组件（无论是否为直接子组件）都认为值发生了变化而触发重新渲染，这可能导致性能问题。选项B错误，因为不仅子组件，所有后代消费者都会重渲染；C错误，未用useMemo不会影响默认值与传入值的覆盖关系；D错误，未用useMemo主要引起不必要的重渲染，而非必然的状态同步错误。"
+    },
+    {
+      "question_id": 2388950,
+      "uuid": "245451f9541f47db815297c137fde478",
+      "type": 1,
+      "title": "关于“错误边界”，以下说法错误的是？",
+      "content": "关于“错误边界”，以下说法错误的是？",
+      "options": [
+        {
+          "id": 3747041,
+          "content": "static getDerivedStateFromError() 可以用来渲染备用UI"
+        },
+        {
+          "id": 3747042,
+          "content": "componentDidCatch()可以打印错误信息"
+        },
+        {
+          "id": 3747043,
+          "content": "错误边界是一种React组件，这种组件可以捕获并打印发生在当前组件的javaScript错误"
+        },
+        {
+          "id": 3747044,
+          "content": "class组件中只要定义了static getDerivedStateFromError()或componentDidCatch()其中一个，该组件就会变成错误边界"
+        }
+      ],
+      "correct_option_ids": [
+        3747043
+      ],
+      "correct_options": [
+        "错误边界是一种React组件，这种组件可以捕获并打印发生在当前组件的javaScript错误"
+      ],
+      "analysis": "错误边界是一种 React 组件，这种组件可以捕获并打印发生在其子组件树任何位置的JavaScript错误"
+    },
+    {
+      "question_id": 11403202,
+      "uuid": "ab3d624d28394758b0320dd203241ab1",
+      "type": 1,
+      "title": "React.memo()进行组件性能优化时，默认使用哪种比较策略来避免不必...",
+      "content": "React.memo()进行组件性能优化时，默认使用哪种比较策略来避免不必要的重渲染？",
+      "options": [
+        {
+          "id": 7431229,
+          "content": "深比较所有props和state"
+        },
+        {
+          "id": 7431230,
+          "content": "引用比较所有props"
+        },
+        {
+          "id": 7431232,
+          "content": "仅比较props中标记为memoized的字段"
+        },
+        {
+          "id": 7431234,
+          "content": "按字母顺序比较props键名"
+        }
+      ],
+      "correct_option_ids": [
+        7431230
+      ],
+      "correct_options": [
+        "引用比较所有props"
+      ],
+      "analysis": "React.memo()是一个高阶组件，用于优化函数组件的性能，其默认比较策略是浅比较（shallow comparison）props的变化。浅比较即引用比较（reference comparison），通过比较前后props对象的引用是否相同来决定是否重渲染。选项B正确描述了这一点。选项A错误，因为它提到深比较（deep comparison）和state，但React.memo()只比较props而不比较state，且默认不是深比较；选项C错误，React.memo()没有机制仅比较标记为'memoized'（正确拼写应为'memoized'，但此选项本身是错误设定）的字段；选项D错误，比较策略不依赖props键名的字母顺序。题目中没有文字错误、逻辑矛盾或专业名称错误（选项C的拼写错误属于题目设定的错误选项），也没有规则破坏错误。"
+    },
+    {
+      "question_id": 11403184,
+      "uuid": "63406b1157ae44ee803621963f7dad47",
+      "type": 1,
+      "title": "某函数组件Child通过React.memo包裹以优化性能，父组件Pare...",
+      "content": "某函数组件Child通过React.memo包裹以优化性能，父组件Parent渲染时传递props给Child，以下哪种情况会导致React.memo失效（即Child仍会不必要重新渲染）？",
+      "options": [
+        {
+          "id": 7430967,
+          "content": "传递props为{ list: useMemo(() =&gt; [1,2,3], []) }"
+        },
+        {
+          "id": 7430968,
+          "content": "传递props为{ handleClick: () =&gt; console.log('click') }"
+        },
+        {
+          "id": 7430969,
+          "content": "传递props为{ name: 'Alice', age: 25 }"
+        },
+        {
+          "id": 7430970,
+          "content": "传递props为{ user: { id: 1, name: 'Bob' } }且user引用始终未变"
+        }
+      ],
+      "correct_option_ids": [
+        7430968
+      ],
+      "correct_options": [
+        "传递props为{ handleClick: () =&gt; console.log('click') }"
+      ],
+      "analysis": "React.memo 通过浅比较 props 引用来避免不必要的重新渲染。选项 B 中，父组件每次渲染时都会创建一个新的 handleClick 函数对象（内联函数），导致 props.handleClick 的引用发生变化，即使函数内容相同，也会触发 Child 组件的重新渲染，从而使 React.memo 失效。其他选项不会导致失效：A 使用了 useMemo 确保 list 引用不变；C 的 name 和 age 是原始值，值不变时浅比较通过；D 的 user 引用始终未变。"
+    },
+    {
+      "question_id": 11403233,
+      "uuid": "b7ab66605aff4e2bbf83dec0cd234242",
+      "type": 1,
+      "title": "在React函数组件中，使用useEffect并指定依赖数组时，若依赖数组...",
+      "content": "在React函数组件中，使用useEffect并指定依赖数组时，若依赖数组中的值发生变化，以下关于清理函数（useEffect回调返回的函数）的执行顺序描述正确的是？",
+      "options": [
+        {
+          "id": 7430733,
+          "content": "A. 清理函数在新的effect回调执行之后执行"
+        },
+        {
+          "id": 7430734,
+          "content": "B. 清理函数仅在组件卸载时才会执行"
+        },
+        {
+          "id": 7430736,
+          "content": "C. 清理函数在新的effect回调执行之前执行"
+        },
+        {
+          "id": 7430737,
+          "content": "D. 清理函数不会执行，除非依赖数组为空"
+        }
+      ],
+      "correct_option_ids": [
+        7430736
+      ],
+      "correct_options": [
+        "C. 清理函数在新的effect回调执行之前执行"
+      ],
+      "analysis": "在React中，当useEffect的依赖数组发生变化时，清理函数（即useEffect回调返回的函数）会在新的effect回调执行之前执行。这是因为React会在运行当前effect之前，先清理上一个effect。选项A错误，因为清理函数不可能在effect之后执行；选项B错误，因为清理函数不仅会在组件卸载时执行，还会在依赖变化时执行；选项D错误，因为当依赖数组变化时，清理函数会执行，且依赖数组为空时只在卸载时执行。"
+    },
+    {
+      "question_id": 11403175,
+      "uuid": "72611eab4d854117bd8d8db10e8875e9",
+      "type": 1,
+      "title": "考虑以下代码片段：`useEffect(() => { /*",
+      "content": "在如下 React 代码中，`useEffect` 依赖 `dep`。组件首次渲染时 `dep=1`，随后把 `dep` 更新为 `2`。请问这次更新过程中（非卸载阶段）的执行顺序是？<br> <pre class=\"prettyprint lang-js\">import React, { useEffect } from 'react';\n\nfunction Demo({ dep }) {\n  useEffect(() =&gt; {\n    // A: 新依赖对应的 effect\n    console.log('effect A, dep =', dep);\n\n    return () =&gt; {\n      // B: 旧依赖对应的 cleanup\n      console.log('cleanup B, dep =', dep);\n    };\n  }, [dep]);\n\n  return null;\n}</pre>",
+      "options": [
+        {
+          "id": 7430835,
+          "content": "先执行与 `dep=2` 关联的 effect (A)，再执行与 `dep=1` 关联的 cleanup (B)。"
+        },
+        {
+          "id": 7430836,
+          "content": "先执行与 `dep=1` 关联的 cleanup (B)，再执行与 `dep=2` 关联的 effect (A)。"
+        },
+        {
+          "id": 7430837,
+          "content": "只会执行与 `dep=2` 关联的 effect (A)，cleanup (B) 只在组件卸载时执行。"
+        },
+        {
+          "id": 7430838,
+          "content": "执行顺序是不确定的，由 React 的内部调度算法决定。"
+        }
+      ],
+      "correct_option_ids": [
+        7430836
+      ],
+      "correct_options": [
+        "先执行与 `dep=1` 关联的 cleanup (B)，再执行与 `dep=2` 关联的 effect (A)。"
+      ],
+      "analysis": "在 React 中，当 useEffect 的依赖项发生变化时，会先执行上一次 effect 的 cleanup 函数（对应旧依赖），然后再执行新的 effect 函数（对应新依赖）。因此，当依赖项 dep 从 1 变为 2 时，执行顺序为先执行与 dep=1 关联的 cleanup (B)，再执行与 dep=2 关联的 effect (A)，这对应选项 B。选项 A 顺序颠倒；选项 C 错误，因为 cleanup 在依赖变化时也会执行；选项 D 错误，React 的执行顺序是确定的。"
+    },
+    {
+      "question_id": 11403142,
+      "uuid": "6cf00464722d4cfc84ce0d989c920411",
+      "type": 1,
+      "title": "在React上下文(Context)中，若Provider的value属性...",
+      "content": "在React上下文(Context)中，若Provider的value属性使用字面量对象直接赋值，如`value={{&nbsp;theme:&nbsp;'dark'&nbsp;}}`，会导致：",
+      "options": [
+        {
+          "id": 7427911,
+          "content": "Context数据无法被子组件消费"
+        },
+        {
+          "id": 7427912,
+          "content": "消费组件必然每次渲染都重新渲染"
+        },
+        {
+          "id": 7427913,
+          "content": "自动触发深层对象比较优化"
+        },
+        {
+          "id": 7427914,
+          "content": "违反hooks规则抛出异常"
+        }
+      ],
+      "correct_option_ids": [
+        7427912
+      ],
+      "correct_options": [
+        "消费组件必然每次渲染都重新渲染"
+      ],
+      "analysis": "在React Context中，当Provider的value属性使用对象字面量直接赋值（如`value={{ theme: 'dark' }}`）时，每次组件渲染都会创建一个新对象。React Context通过引用比较来判断值是否变化，因此新对象会导致引用不同，从而触发所有消费该Context的组件重新渲染。选项B正确，因为消费组件在每次父组件渲染时必然重新渲染（除非使用React.memo等优化）。选项A错误，Context数据可以被消费；选项C错误，React不会自动触发深层对象比较优化，而是默认引用比较；选项D错误，这并不违反Hooks规则，不会抛出异常。题目中文字、专业名称、逻辑均无错误。"
+    },
+    {
+      "question_id": 11403207,
+      "uuid": "ce7d8396b6984f3897d8216af4af6616",
+      "type": 1,
+      "title": "在一个 React 应用中，你使用 Context API 来传递一个包含...",
+      "content": "在一个&nbsp;React&nbsp;应用中，你使用&nbsp;Context&nbsp;API&nbsp;来传递一个包含多个属性的对象，例如&nbsp;`value={{&nbsp;theme:&nbsp;'dark',&nbsp;user:&nbsp;'guest'&nbsp;}}`。一个子组件&nbsp;`ConsumerComponent`&nbsp;只通过&nbsp;`useContext`&nbsp;消费了其中的&nbsp;`theme`&nbsp;属性。当&nbsp;Context&nbsp;Provider&nbsp;中&nbsp;`user`&nbsp;属性的值发生变化，而&nbsp;`theme`&nbsp;属性保持不变时，`ConsumerComponent`&nbsp;会发生什么？",
+      "options": [
+        {
+          "id": 7430559,
+          "content": "`ConsumerComponent` 不会重新渲染，因为 React 会自动优化未改变的 context 值。"
+        },
+        {
+          "id": 7430560,
+          "content": "`ConsumerComponent` 会重新渲染，因为 Context 的 `value` 对象的引用发生了变化。"
+        },
+        {
+          "id": 7430561,
+          "content": "`ConsumerComponent` 会触发一次警告，提示存在不必要的渲染。"
+        },
+        {
+          "id": 7430562,
+          "content": "只有当 `theme` 和 `user` 同时改变时，`ConsumerComponent` 才会重新渲染。"
+        }
+      ],
+      "correct_option_ids": [
+        7430560
+      ],
+      "correct_options": [
+        "`ConsumerComponent` 会重新渲染，因为 Context 的 `value` 对象的引用发生了变化。"
+      ],
+      "analysis": "在React的Context API中，当Provider的value属性变化时，React通过引用比较来确定是否重新渲染消费者组件。即使ConsumerComponent只使用了theme属性，但整个value对象的引用发生了变化（因为user属性改变导致新对象被创建），组件也会重新渲染。选项B正确描述了这一行为。选项A错误，因为React不会自动优化Context的部分属性变化；选项C错误，React不会因此触发警告；选项D错误，因为只有theme和user同时改变不是必要条件，整个value引用改变即触发重新渲染。"
+    },
+    {
+      "question_id": 2388913,
+      "uuid": "6257f7dd5c9e4f92883bef9ddd1e2e74",
+      "type": 1,
+      "title": "以下哪个选项不能作为Router组件的history属性值",
+      "content": "以下哪个选项不能作为Router组件的history属性值",
+      "options": [
+        {
+          "id": 3746893,
+          "content": "createMemoryHistory"
+        },
+        {
+          "id": 3746894,
+          "content": "History"
+        },
+        {
+          "id": 3746895,
+          "content": "hashHistory"
+        },
+        {
+          "id": 3746896,
+          "content": "browserHistory"
+        }
+      ],
+      "correct_option_ids": [
+        3746894
+      ],
+      "correct_options": [
+        "History"
+      ],
+      "analysis": "history属性，一共可以设置三种值:browserHistory、hashHistory和createMemoryHistory。"
+    },
+    {
+      "question_id": 11403212,
+      "uuid": "fb5544eda757477691a8695bac2fa94c",
+      "type": 1,
+      "title": "在 React 函数组件中，当 JSX 试图直接渲染一个 JavaScri...",
+      "content": "在&nbsp;React&nbsp;函数组件中，当&nbsp;JSX&nbsp;试图直接渲染一个&nbsp;JavaScript&nbsp;对象（如&nbsp;`{&nbsp;name:&nbsp;'John'&nbsp;}`）时，会发生什么？",
+      "options": [
+        {
+          "id": 7430591,
+          "content": "对象会自动转换为字符串显示"
+        },
+        {
+          "id": 7430592,
+          "content": "React 会抛出错误，因为对象无法被直接渲染"
+        },
+        {
+          "id": 7430593,
+          "content": "React 会渲染对象的属性键值对"
+        },
+        {
+          "id": 7430594,
+          "content": "React 忽略该表达式，不渲染任何内容"
+        }
+      ],
+      "correct_option_ids": [
+        7430592
+      ],
+      "correct_options": [
+        "React 会抛出错误，因为对象无法被直接渲染"
+      ],
+      "analysis": "在 React 中，JSX 无法直接渲染 JavaScript 对象（如 { name: 'John' }），因为对象不是有效的 React 子元素。React 会在控制台抛出错误，例如 'Uncaught Error: Objects are not valid as a React child'，选项 B 正确描述了这一行为。选项 A 错误，对象不会自动转换为字符串；选项 C 错误，React 不会渲染键值对；选项 D 错误，React 不会忽略表达式，而是抛出错误。"
+    },
+    {
+      "question_id": 11403164,
+      "uuid": "dc5fbabf5fbc4f46b1f1c6652ba9de52",
+      "type": 1,
+      "title": "React的错误边界（Error Boundary）能够捕获以下哪种场景的错误？",
+      "content": "React的错误边界（Error&nbsp;Boundary）能够捕获以下哪种场景的错误？",
+      "options": [
+        {
+          "id": 7427723,
+          "content": "组件渲染函数中抛出的错误"
+        },
+        {
+          "id": 7427724,
+          "content": "点击事件处理函数中抛出的错误"
+        },
+        {
+          "id": 7427725,
+          "content": "`setTimeout`回调函数中抛出的错误"
+        },
+        {
+          "id": 7427726,
+          "content": "异步请求`fetch`的`catch`回调中抛出的错误"
+        }
+      ],
+      "correct_option_ids": [
+        7427723
+      ],
+      "correct_options": [
+        "组件渲染函数中抛出的错误"
+      ],
+      "analysis": "React的错误边界（Error Boundary）主要用于捕获在子组件渲染期间（包括生命周期方法和构造函数）发生的错误，但无法捕获事件处理、异步代码等非渲染流程中的错误。具体分析：选项A中组件渲染函数（如render方法）的错误发生在渲染期间，错误边界可以捕获；选项B的点击事件处理函数错误发生在事件回调中，无法捕获；选项C的setTimeout回调错误是异步操作，无法捕获；选项D的fetch的catch回调中抛出的错误也属异步，无法捕获。"
+    },
+    {
+      "question_id": 11403185,
+      "uuid": "8315223af6964e269db4800f6f232b2f",
+      "type": 1,
+      "title": "在一个 React 应用中，你使用 `map` 方法渲染一个动态列表，并使...",
+      "content": "在一个&nbsp;React&nbsp;应用中，你使用&nbsp;`map`&nbsp;方法渲染一个动态列表，并使用了数组的索引&nbsp;`index`&nbsp;作为每个列表项的&nbsp;`key`。当列表的顺序发生变化（例如，在列表开头插入一个新元素）时，这种做法会引发的主要性能问题是什么？",
+      "options": [
+        {
+          "id": 7430983,
+          "content": "它会导致 React 错误地复用组件实例但更新其 props，可能引发子组件内部状态与 props 不同步的问题，并执行不必要的 DOM 操作。"
+        },
+        {
+          "id": 7430984,
+          "content": "它会在生产环境中抛出一个严重错误，导致整个应用崩溃。"
+        },
+        {
+          "id": 7430985,
+          "content": "它会使组件的初始挂载（mount）时间显著增加，即使列表为空。"
+        },
+        {
+          "id": 7430986,
+          "content": "它违反了 Hooks 的调用规则，因为 key 的值不是一个稳定的标识符。"
+        }
+      ],
+      "correct_option_ids": [
+        7430983
+      ],
+      "correct_options": [
+        "它会导致 React 错误地复用组件实例但更新其 props，可能引发子组件内部状态与 props 不同步的问题，并执行不必要的 DOM 操作。"
+      ],
+      "analysis": "使用数组索引作为key在列表顺序变化（如开头插入新元素）时，会导致React错误地复用组件实例（key变化但组件实例被复用），此时更新props但内部state未重置，引起状态与props不同步问题，同时由于key不匹配，React会执行不必要的DOM操作（如重新创建而非移动元素），导致性能下降。选项B错误，因为不会抛出严重错误或应用崩溃；选项C错误，初始挂载时间不受影响，尤其列表为空时无影响；选项D错误，Hooks调用规则要求Hooks在函数组件顶层调用，与key稳定性无关。"
+    },
+    {
+      "question_id": 11403217,
+      "uuid": "e1ee70daa0ed4079bfb9e6ec53f6d63d",
+      "type": 1,
+      "title": "关于 React 列表渲染中的 key，以下哪一项描述是正确的？",
+      "content": "关于&nbsp;React&nbsp;列表渲染中的&nbsp;key，以下哪一项描述是正确的？",
+      "options": [
+        {
+          "id": 7430619,
+          "content": "key 的主要作用是给元素添加唯一的 DOM id，便于原生选择器查询"
+        },
+        {
+          "id": 7430620,
+          "content": "使用数组索引作为 key 可以确保在元素增删或重排时状态与动画不被打乱"
+        },
+        {
+          "id": 7430621,
+          "content": "key 用来标识元素在同一列表中的稳定身份，帮助 React 正确调和并最小化 DOM 变更"
+        },
+        {
+          "id": 7430622,
+          "content": "key 会自动作为 props.key 传递给子组件，子组件可直接读取"
+        }
+      ],
+      "correct_option_ids": [
+        7430621
+      ],
+      "correct_options": [
+        "key 用来标识元素在同一列表中的稳定身份，帮助 React 正确调和并最小化 DOM 变更"
+      ],
+      "analysis": "C选项正确：key在React中用于标识元素在同一列表中的稳定身份，帮助React在调和（reconciliation）过程中识别变化，从而最小化不必要的DOM操作。A选项错误：key的主要作用不是为DOM添加id以便查询，而是React内部用于优化渲染，如需DOM id应使用id属性。B选项错误：使用数组索引作为key在元素增删或重排时可能导致状态混乱或动画问题，React推荐使用唯一稳定的id而非索引。D选项错误：key不会自动作为props.key传递给子组件，React保留key用于内部处理，子组件无法直接访问，如需类似功能应显式传递其他属性。"
+    },
+    {
+      "question_id": 2388937,
+      "uuid": "3b3a2fc0b7f048f9bbd9fd10df2dbf79",
+      "type": 1,
+      "title": "以下不属于React支持的键盘事件的是",
+      "content": "以下不属于React支持的键盘事件的是",
+      "options": [
+        {
+          "id": 3746989,
+          "content": "onKeyUp"
+        },
+        {
+          "id": 3746990,
+          "content": "onKeyDown"
+        },
+        {
+          "id": 3746991,
+          "content": "onKey"
+        },
+        {
+          "id": 3746992,
+          "content": "onKeyPress"
+        }
+      ],
+      "correct_option_ids": [
+        3746991
+      ],
+      "correct_options": [
+        "onKey"
+      ],
+      "analysis": "React支持的键盘事件有onKeyDown，onKeyPress，onKeyUp"
+    },
+    {
+      "question_id": 11403197,
+      "uuid": "f4d712a97938495fb1ea878cc949ed34",
+      "type": 1,
+      "title": "考虑一个使用 React Context API 的场景。一个 Conte...",
+      "content": "考虑一个使用&nbsp;React&nbsp;Context&nbsp;API&nbsp;的场景。一个&nbsp;Context&nbsp;Provider&nbsp;提供了一个值为&nbsp;`{&nbsp;user:&nbsp;{&nbsp;name:&nbsp;'Alex'&nbsp;},&nbsp;theme:&nbsp;'dark'&nbsp;}`&nbsp;的对象。组件&nbsp;`UserProfile`&nbsp;仅消费并显示&nbsp;`user.name`，而组件&nbsp;`ThemeToggler`&nbsp;消费并更新&nbsp;`theme`&nbsp;的值。当&nbsp;`ThemeToggler`&nbsp;中的一个操作导致&nbsp;Provider&nbsp;的状态更新，只有&nbsp;`theme`&nbsp;属性的值从&nbsp;'dark'&nbsp;变为&nbsp;'light'，而&nbsp;`user`&nbsp;对象保持引用不变时，以下哪个陈述是正确的？",
+      "options": [
+        {
+          "id": 7431157,
+          "content": "只有 `ThemeToggler` 会重新渲染，因为 `UserProfile` 依赖的数据没有改变"
+        },
+        {
+          "id": 7431158,
+          "content": "`UserProfile` 和 `ThemeToggler` 都会重新渲染"
+        },
+        {
+          "id": 7431159,
+          "content": "两个组件都不会重新渲染，因为 React 能检测到 context 中被使用的部分"
+        },
+        {
+          "id": 7431164,
+          "content": "会发生运行时错误，因为 context 的值不应为对象"
+        }
+      ],
+      "correct_option_ids": [
+        7431158
+      ],
+      "correct_options": [
+        "`UserProfile` 和 `ThemeToggler` 都会重新渲染"
+      ],
+      "analysis": "在React中，Context Provider的值变化时（通过引用比较），所有消费该Context的组件都会重新渲染，无论它们实际依赖的context部分是否改变。本题中，Provider的值对象引用改变（theme属性更新），因此UserProfile和ThemeToggler都会重新渲染。选项A错误，因为UserProfile也会重新渲染；选项C错误，因为React默认不检测部分使用；选项D错误，因为Context值可以是对象，不会导致运行时错误。"
+    },
+    {
+      "question_id": 11403144,
+      "uuid": "d1782bcf983342bf91b09fa3785fa0dc",
+      "type": 1,
+      "title": "在React函数组件中，点击按钮后控制台会输出什么结果？ 代码示例： co...",
+      "content": "<div>\n\t在React函数组件中，点击按钮后控制台会输出什么结果？\n</div>\n<div>\n</div>\n<div>\n\t代码示例：\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">const&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0);\nconst&nbsp;handleClick&nbsp;=&nbsp;()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;setCount(count&nbsp;+&nbsp;1);\n&nbsp;&nbsp;console.log('First&nbsp;log:',&nbsp;count);\n&nbsp;&nbsp;setCount(count&nbsp;+&nbsp;1);\n&nbsp;&nbsp;console.log('Second&nbsp;log:',&nbsp;count);\n};\nreturn&nbsp;&lt;button&nbsp;onClick={handleClick}&gt;点击&lt;/button&gt;</pre>\n</div>",
+      "options": [
+        {
+          "id": 7427895,
+          "content": "First log: 0；Second log: 0"
+        },
+        {
+          "id": 7427896,
+          "content": "First log: 1；Second log: 2"
+        },
+        {
+          "id": 7427897,
+          "content": "First log: 0；Second log: 1"
+        },
+        {
+          "id": 7427898,
+          "content": "First log: 1；Second log: 1"
+        }
+      ],
+      "correct_option_ids": [
+        7427895
+      ],
+      "correct_options": [
+        "First log: 0；Second log: 0"
+      ],
+      "analysis": "在React函数组件中，状态更新是异步的，且在同一事件处理函数中，多次调用状态更新函数（如setCount）会基于同一个闭包值。初始count为0，点击按钮时，所有对count的引用都使用初始值0，因此第一个setCount(count + 1)和第二个setCount(count + 1)都计划将count设为1，但状态尚未更新。console.log('First log:', count)和console.log('Second log:', count)均输出count的当前值0。最终输出为First log: 0和Second log: 0，对应选项A。"
+    },
+    {
+      "question_id": 2388949,
+      "uuid": "f38eda9700c844a98c9d0a7b80d9c481",
+      "type": 1,
+      "title": "以下可以用来动态引入组件的是？",
+      "content": "以下可以用来动态引入组件的是？",
+      "options": [
+        {
+          "id": 3747037,
+          "content": "React.Fragments"
+        },
+        {
+          "id": 3747038,
+          "content": "React.lazy"
+        },
+        {
+          "id": 3747039,
+          "content": "React.Suspense"
+        },
+        {
+          "id": 3747040,
+          "content": "React.import"
+        }
+      ],
+      "correct_option_ids": [
+        3747038
+      ],
+      "correct_options": [
+        "React.lazy"
+      ],
+      "analysis": "React.lazy可以让你在代码中动态引入组件。"
+    },
+    {
+      "question_id": 11403161,
+      "uuid": "c908026feac2441fba7244f406a4eb6e",
+      "type": 1,
+      "title": "父组件Parent通过state维护count，并将`&lt;Child ...",
+      "content": "父组件Parent通过state维护count，并将`&lt;Child&nbsp;data={{&nbsp;id:&nbsp;count&nbsp;}}&nbsp;/&gt;`作为子组件渲染。Child组件使用`React.memo`包裹以优化性能，但每次Parent的count变化时，Child仍会重新渲染。最可能的原因是？",
+      "options": [
+        {
+          "id": 7427751,
+          "content": "Child组件的memo没有指定依赖项数组"
+        },
+        {
+          "id": 7427752,
+          "content": "Parent传递的data对象每次渲染都会生成新的引用"
+        },
+        {
+          "id": 7427753,
+          "content": "Parent的count变化会强制所有子组件重新渲染"
+        },
+        {
+          "id": 7427754,
+          "content": "Child内部使用了useEffect且依赖项包含count"
+        }
+      ],
+      "correct_option_ids": [
+        7427752
+      ],
+      "correct_options": [
+        "Parent传递的data对象每次渲染都会生成新的引用"
+      ],
+      "analysis": "Parent组件每次渲染时，`data={{ id: count }}`会创建一个新对象，导致data prop的引用发生改变。由于React.memo使用浅比较来检测props变化，新引用会触发Child重新渲染。选项A错误，因为React.memo的第二个参数是可选的比较函数，而不是依赖项数组（依赖项数组用于React hooks如useEffect或useMemo）。选项C不准确，因为React.memo旨在防止父组件状态变化导致的子组件重新渲染，但此处Child重新渲染的根本原因是props引用改变而非父组件强制渲染。选项D无关，因为useEffect的依赖项变化不会直接导致组件重新渲染（它仅触发副作用执行），重新渲染是由props或state变化引起的。"
+    },
+    {
+      "question_id": 11403165,
+      "uuid": "a796b6ad60ac4298866abd76e2f38bb7",
+      "type": 1,
+      "title": "在一个 React 组件中，我们使用 `useEffect` 来添加一个监...",
+      "content": "在一个&nbsp;React&nbsp;组件中，我们使用&nbsp;`useEffect`&nbsp;来添加一个监听浏览器窗口大小变化的事件。该事件处理函数依赖于一个通过&nbsp;`useState`&nbsp;定义的名为&nbsp;`count`&nbsp;的状态。当用户调整窗口大小时，我们发现事件处理函数中获取的&nbsp;`count`&nbsp;值始终是其初始值，即使&nbsp;`count`&nbsp;本身已经被其他操作更新。造成这种现象最根本的原因是什么？",
+      "options": [
+        {
+          "id": 7430687,
+          "content": "React 的 state 更新是异步的，导致事件触发时 state 尚未更新。"
+        },
+        {
+          "id": 7430688,
+          "content": "`useEffect` 的依赖数组为空，导致 effect 只在组件挂载时运行一次，事件处理函数形成了一个捕获了初始 state 的闭包。"
+        },
+        {
+          "id": 7430689,
+          "content": "浏览器事件循环的机制与 React 的渲染循环不兼容。"
+        },
+        {
+          "id": 7430690,
+          "content": "应该使用 `useLayoutEffect` 而不是 `useEffect` 来处理 DOM 相关的事件。"
+        }
+      ],
+      "correct_option_ids": [
+        7430688
+      ],
+      "correct_options": [
+        "`useEffect` 的依赖数组为空，导致 effect 只在组件挂载时运行一次，事件处理函数形成了一个捕获了初始 state 的闭包。"
+      ],
+      "analysis": "根本原因是 `useEffect` 的依赖数组为空，导致 effect 只在组件挂载时运行一次，事件处理函数在创建时捕获了初始 state 的值，形成一个闭包。即使后续 `count` 状态更新，事件处理函数中的引用仍然是初始值，因为它没有在依赖项变化时重新创建。选项 A 错误：虽然 state 更新是异步的，但问题在于闭包捕获旧值，而不是更新时机；选项 C 错误：浏览器事件循环与 React 渲染循环可以兼容，这不是根本原因；选项 D 错误：使用 `useLayoutEffect` 可能更适合 DOM 操作，但问题核心是依赖数组未包含 `count`，而非钩子类型选择。"
+    },
+    {
+      "question_id": 11403143,
+      "uuid": "71c9e97101a4476a9a8b462cebd63943",
+      "type": 1,
+      "title": "关于React.memo的特性，以下描述正确的是？",
+      "content": "关于React.memo的特性，以下描述正确的是？",
+      "options": [
+        {
+          "id": 7427902,
+          "content": "React.memo会对组件的所有props进行深比较以决定是否重新渲染"
+        },
+        {
+          "id": 7427903,
+          "content": "若组件使用了useContext，当context值更新时，即使props未变化，被React.memo包裹的组件仍会重新渲染"
+        },
+        {
+          "id": 7427905,
+          "content": "被React.memo包裹的组件，其内部useState的状态更新不会触发自身重新渲染"
+        },
+        {
+          "id": 7427907,
+          "content": "React.memo可以替代useEffect的依赖数组来优化组件性能"
+        }
+      ],
+      "correct_option_ids": [
+        7427903
+      ],
+      "correct_options": [
+        "若组件使用了useContext，当context值更新时，即使props未变化，被React.memo包裹的组件仍会重新渲染"
+      ],
+      "analysis": "选项B正确：当组件使用useContext钩子时，它订阅context的变化。如果context值更新，即使props未变化，被React.memo包裹的组件也会重新渲染，因为React.memo仅比较props而忽略context变化。选项A错误：React.memo默认对props进行浅比较（shallow comparison），而非深比较（deep comparison）；选项C错误：被React.memo包裹的组件内部useState状态更新仍会触发自身重新渲染，因为React.memo只阻止由props变化引起的渲染，而不影响内部状态；选项D错误：React.memo用于避免不必要的组件渲染优化，而useEffect依赖数组控制effect执行时机，两者作用不同，不可互相替代。"
+    },
+    {
+      "question_id": 11403159,
+      "uuid": "c812d85e59e74e62bf15c085cbcdd97a",
+      "type": 1,
+      "title": "在大型React应用中，当某个组件状态频繁更新导致不必要的子组件重渲染时，...",
+      "content": "在大型React应用中，当某个组件状态频繁更新导致不必要的子组件重渲染时，应优先使用下列哪种优化方案？",
+      "options": [
+        {
+          "id": 7427767,
+          "content": "使用React.memo高阶组件包裹子组件"
+        },
+        {
+          "id": 7427768,
+          "content": "将状态提升至最近的共同父组件"
+        },
+        {
+          "id": 7427769,
+          "content": "在父组件中增加shouldComponentUpdate生命周期方法"
+        },
+        {
+          "id": 7427770,
+          "content": "将子组件改为函数表达式而非常规函数"
+        }
+      ],
+      "correct_option_ids": [
+        7427767
+      ],
+      "correct_options": [
+        "使用React.memo高阶组件包裹子组件"
+      ],
+      "analysis": "在React中，当父组件状态频繁更新可能导致子组件不必要重渲染时，使用React.memo包裹子组件可以避免在props未变化时重渲染，直接优化问题。选项B的状态提升可能扩大重渲染范围；选项C在父组件中使用shouldComponentUpdate虽可减少更新传播，但需要类组件且不够直接；选项D的函数表达式更改不影响渲染性能。React.memo是优先推荐的方案。"
+    },
+    {
+      "question_id": 11403180,
+      "uuid": "990af13f05eb40cb971bcedbdbadefff",
+      "type": 1,
+      "title": "在 React 类组件中，您需要在状态更新后执行一些额外的逻辑（如日志记录...",
+      "content": "在&nbsp;React&nbsp;类组件中，您需要在状态更新后执行一些额外的逻辑（如日志记录）。您覆盖了&nbsp;componentDidUpdate&nbsp;方法，但如果不小心，可能会引起无限渲染循环。以下哪种操作可以有效避免此问题？",
+      "options": [
+        {
+          "id": 7430907,
+          "content": "在 componentDidUpdate 中无条件调用 setState"
+        },
+        {
+          "id": 7430908,
+          "content": "在 componentDidUpdate 中添加一个条件检查（如比较 prevState 和 this.state）才调用 setState"
+        },
+        {
+          "id": 7430910,
+          "content": "将逻辑迁移到 getDerivedStateFromProps 静态方法中"
+        },
+        {
+          "id": 7430912,
+          "content": "在 componentDidUpdate 中使用异步请求以避免阻塞"
+        }
+      ],
+      "correct_option_ids": [
+        7430908
+      ],
+      "correct_options": [
+        "在 componentDidUpdate 中添加一个条件检查（如比较 prevState 和 this.state）才调用 setState"
+      ],
+      "analysis": "在 React 类组件中，componentDidUpdate 方法在组件更新后被调用，如果其中调用 setState，可能触发无限渲染循环，因为每次状态更新会重新触发 componentDidUpdate。选项 A（无条件调用 setState）必然引起循环，无效；选项 B（添加条件检查比较 prevState 和 this.state）可避免循环，因为只在状态实际变化时才调用 setState；选项 C（迁移到 getDerivedStateFromProps）不适合副作用如日志记录，该方法是静态的且用于派生状态，无效；选项 D（使用异步请求）不能解决循环问题，因为异步不阻止 setState 触发更新。因此，只有 B 能有效避免循环。"
+    },
+    {
+      "question_id": 11403190,
+      "uuid": "34bc0e9f02e14f9f975b0426c3d74cc6",
+      "type": 1,
+      "title": "当React Context的Provider组件更新其value属性时，...",
+      "content": "当React&nbsp;Context的Provider组件更新其value属性时，以下哪种情况会发生？",
+      "options": [
+        {
+          "id": 7431053,
+          "content": "所有消费该Context的组件都会重新渲染"
+        },
+        {
+          "id": 7431054,
+          "content": "只有使用useContext钩子的组件会重新渲染"
+        },
+        {
+          "id": 7431059,
+          "content": "Context消费者组件是否需要渲染取决于其自身props"
+        },
+        {
+          "id": 7431060,
+          "content": "Context更新不会触发任何组件的渲染"
+        }
+      ],
+      "correct_option_ids": [
+        7431053
+      ],
+      "correct_options": [
+        "所有消费该Context的组件都会重新渲染"
+      ],
+      "analysis": "当React Context的Provider组件更新其value属性时，所有消费该Context的组件（无论使用useContext钩子还是Context.Consumer）都会重新渲染，因为Context的值变化会触发所有消费者的重新渲染，与组件自身props无关（选项C错误）。选项B错误，因为它忽略了使用Context.Consumer的组件；选项D错误，因为Context更新会触发渲染。"
+    },
+    {
+      "question_id": 11403193,
+      "uuid": "321154afe2cd4e4095b425ac159eefd0",
+      "type": 1,
+      "title": "React中的合成事件（SyntheticEvent）系统主要解决了什么问题？",
+      "content": "React中的合成事件（SyntheticEvent）系统主要解决了什么问题？",
+      "options": [
+        {
+          "id": 7431097,
+          "content": "提供跨浏览器的一致事件处理行为"
+        },
+        {
+          "id": 7431098,
+          "content": "允许事件处理器直接访问原生DOM API"
+        },
+        {
+          "id": 7431100,
+          "content": "提高事件处理器的执行速度"
+        },
+        {
+          "id": 7431104,
+          "content": "强制事件传播行为"
+        }
+      ],
+      "correct_option_ids": [
+        7431097
+      ],
+      "correct_options": [
+        "提供跨浏览器的一致事件处理行为"
+      ],
+      "analysis": "React的合成事件系统主要解决了跨浏览器事件处理不一致的问题，提供统一的事件接口。选项A正确描述了这一主要目的。选项B错误，因为合成事件封装了原生事件（通过nativeEvent访问），而不是直接允许访问原生DOM API；选项C错误，因为提高执行速度不是主要目的，实际可能引入轻微开销；选项D错误，因为事件传播行为是模拟原生DOM的冒泡和捕获机制，而非'强制'。"
+    },
+    {
+      "question_id": 11403192,
+      "uuid": "fdc4a3c0b8b54a9c95d8506789149b4e",
+      "type": 1,
+      "title": "在React函数组件中，useRef的主要用途与useState的区别是什么？",
+      "content": "在React函数组件中，useRef的主要用途与useState的区别是什么？",
+      "options": [
+        {
+          "id": 7431085,
+          "content": "useRef用于改变状态值，useState用于引用DOM元素"
+        },
+        {
+          "id": 7431086,
+          "content": "useRef的值更新会触发重渲染，useState不会"
+        },
+        {
+          "id": 7431087,
+          "content": "useState的值更新会触发重渲染，useRef的值更新不会触发重渲染"
+        },
+        {
+          "id": 7431088,
+          "content": "useRef只能用于存储基本类型数据，useState可以存储复杂对象"
+        }
+      ],
+      "correct_option_ids": [
+        7431087
+      ],
+      "correct_options": [
+        "useState的值更新会触发重渲染，useRef的值更新不会触发重渲染"
+      ],
+      "analysis": "本题考查React Hook的核心特性。useState用于状态管理，其值更新会触发组件重新渲染；useRef主要用于引用DOM元素或存储渲染周期内持续存在的可变值，其.current属性更新不会触发重渲染。选项分析：A错误（useRef不用于状态值，useState不用于DOM引用）；B错误（useRef更新不触发重渲染）；C正确（符合官方定义）；D错误（useRef可存储任何类型数据）。题目及选项文字规范，专业术语准确（useRef/useState/DOM等拼写正确），无逻辑矛盾或规则破坏问题。"
+    },
+    {
+      "question_id": 2388935,
+      "uuid": "94cb5bf0c44246458402c5c0a1aaebff",
+      "type": 1,
+      "title": "以下不属于React支持的触摸事件的是",
+      "content": "以下不属于React支持的触摸事件的是",
+      "options": [
+        {
+          "id": 3746981,
+          "content": "onTouchCancel"
+        },
+        {
+          "id": 3746982,
+          "content": "onTouchEnd"
+        },
+        {
+          "id": 3746983,
+          "content": "onTouchStart"
+        },
+        {
+          "id": 3746984,
+          "content": "onTouchOver"
+        }
+      ],
+      "correct_option_ids": [
+        3746984
+      ],
+      "correct_options": [
+        "onTouchOver"
+      ],
+      "analysis": "React支持的触摸事件有onTouchCancel，onTouchEnd，onTouchMove，onTouchStart"
+    },
+    {
+      "question_id": 11403139,
+      "uuid": "49bca850f7314cbca4c98e9aa028e5cd",
+      "type": 1,
+      "title": "在React函数组件中，使用useMemo钩子的主要目的是什么？",
+      "content": "在React函数组件中，使用useMemo钩子的主要目的是什么？",
+      "options": [
+        {
+          "id": 7427939,
+          "content": "替代useState管理组件状态"
+        },
+        {
+          "id": 7427940,
+          "content": "缓存函数组件避免重新渲染"
+        },
+        {
+          "id": 7427941,
+          "content": "避免在渲染期间重复计算高开销值"
+        },
+        {
+          "id": 7427942,
+          "content": "提供跨组件共享状态的能力"
+        }
+      ],
+      "correct_option_ids": [
+        7427941
+      ],
+      "correct_options": [
+        "避免在渲染期间重复计算高开销值"
+      ],
+      "analysis": "在React函数组件中，useMemo钩子的主要目的是避免在渲染期间重复计算高开销值（选项C正确）。其工作机制是缓存计算结果，仅当依赖项变化时重新计算，从而优化性能。选项A错误，因为useMemo不用于管理状态（useState更适合）；选项B错误，因为useMemo缓存值而非组件，防止组件重渲染应使用React.memo；选项D错误，因为跨组件共享状态需使用Context或Redux等机制。"
+    },
+    {
+      "question_id": 11403168,
+      "uuid": "ee294758b94c41c48c947f331e18a5d9",
+      "type": 1,
+      "title": "在渲染一个包含多个有内部状态的子组件（如输入框）的列表时，若使用数组的索引...",
+      "content": "在渲染一个包含多个有内部状态的子组件（如输入框）的列表时，若使用数组的索引&nbsp;`index`&nbsp;作为&nbsp;`key`，在列表的开头插入一个新元素会导致什么最主要的负面影响？",
+      "options": [
+        {
+          "id": 7430731,
+          "content": "React 会因为 `key` 重复而抛出运行时错误，导致应用崩溃。"
+        },
+        {
+          "id": 7430732,
+          "content": "整个列表的 DOM 节点会被完全销毁并重建，性能开销极大。"
+        },
+        {
+          "id": 7430735,
+          "content": "React 会复用现有的组件实例和 DOM 节点，但由于 `key` 与数据项不再匹配，会导致组件状态与数据错位。"
+        },
+        {
+          "id": 7430738,
+          "content": "会导致新增的元素无法被正确渲染出来。"
+        }
+      ],
+      "correct_option_ids": [
+        7430735
+      ],
+      "correct_options": [
+        "React 会复用现有的组件实例和 DOM 节点，但由于 `key` 与数据项不再匹配，会导致组件状态与数据错位。"
+      ],
+      "analysis": "在 React 中，当使用数组索引作为 key 渲染一个有内部状态的列表时（如输入框），在列表开头插入新元素会改变所有元素的索引。React 会复用现有的组件实例和 DOM 节点，但由于 key 与数据项的对应关系发生变化，组件的内部状态（如输入框的值）不会更新为新数据，导致状态与数据错位。例如，原本索引0的组件现在可能对应新元素，但状态仍保留旧数据。选项A错误，因为索引变化不会导致 key 重复；选项B错误，性能开销不是最主要问题，关键是状态错位；选项D错误，新增元素可以渲染，但状态可能不正确。"
+    },
+    {
+      "question_id": 11403137,
+      "uuid": "fff797db75ff40bb86afc25c6715694b",
+      "type": 1,
+      "title": "在一个包含大量输入框的复杂表单中，输入频繁且仅在提交时需要读取值。为了获得...",
+      "content": "在一个包含大量输入框的复杂表单中，输入频繁且仅在提交时需要读取值。为了获得更好的性能与更少的重渲染，以下哪种设计更合适？",
+      "options": [
+        {
+          "id": 7427955,
+          "content": "使用受控组件，将每次 onChange 都同步至状态，便于即时校验"
+        },
+        {
+          "id": 7427956,
+          "content": "使用非受控组件，通过 ref 在提交时读取值，减少渲染与状态更新开销"
+        },
+        {
+          "id": 7427957,
+          "content": "使用受控组件并用 React.memo 包裹 input，父组件自然不会被影响"
+        },
+        {
+          "id": 7427958,
+          "content": "使用 Context 广播输入值，避免状态提升带来的渲染"
+        }
+      ],
+      "correct_option_ids": [
+        7427956
+      ],
+      "correct_options": [
+        "使用非受控组件，通过 ref 在提交时读取值，减少渲染与状态更新开销"
+      ],
+      "analysis": "在复杂表单中，输入频繁但仅在提交时读取值，为了获得更好性能与更少重渲染，非受控组件（B选项）是最合适的设计。因为非受控组件通过ref在提交时直接读取输入值，避免了每次输入事件都触发状态更新和组件重渲染，从而减少开销。A选项（受控组件同步每个onChange）会导致每次输入都更新状态并重渲染，性能差；C选项使用React.memo包裹受控组件，但由于输入值变化导致props更新，React.memo无法阻止重渲染，且父组件状态更新仍可能影响渲染；D选项使用Context广播值，Context变化会触发所有消费者重渲染，频繁输入时性能更差。"
+    },
+    {
+      "question_id": 2388947,
+      "uuid": "e9fc8c53aa794c1ea263e4566d11742e",
+      "type": 1,
+      "title": "在componentWillUnmount()中以下哪个操作是错误的",
+      "content": "在componentWillUnmount()中以下哪个操作是错误的",
+      "options": [
+        {
+          "id": 3747029,
+          "content": "清除timer"
+        },
+        {
+          "id": 3747030,
+          "content": "取消网络请求"
+        },
+        {
+          "id": 3747031,
+          "content": "调用setState"
+        },
+        {
+          "id": 3747032,
+          "content": "清除在componentDidMount()中创建的订阅"
+        }
+      ],
+      "correct_option_ids": [
+        3747031
+      ],
+      "correct_options": [
+        "调用setState"
+      ],
+      "analysis": "componentWillUnmount()中不应调用setState()，因为该组件将永远不会重新渲染。组件实例卸载后，将永远不会再挂载它。"
+    },
+    {
+      "question_id": 11403231,
+      "uuid": "bfd8a7c5413f4fd69f1e731a31d17b8a",
+      "type": 1,
+      "title": "在优化大型React应用性能时，发现某个列表组件频繁重新渲染。下列哪种方法...",
+      "content": "在优化大型React应用性能时，发现某个列表组件频繁重新渲染。下列哪种方法能最有效地避免不必要的渲染？",
+      "options": [
+        {
+          "id": 7430715,
+          "content": "使用PureComponent或React.memo包裹组件"
+        },
+        {
+          "id": 7430716,
+          "content": "在useEffect中手动管理渲染条件"
+        },
+        {
+          "id": 7430717,
+          "content": "将所有状态提升到Redux中管理"
+        },
+        {
+          "id": 7430718,
+          "content": "减少组件树层级深度"
+        }
+      ],
+      "correct_option_ids": [
+        7430715
+      ],
+      "correct_options": [
+        "使用PureComponent或React.memo包裹组件"
+      ],
+      "analysis": "使用PureComponent或React.memo可以通过浅比较props来避免不必要的重新渲染，特别适用于列表组件频繁重新渲染的场景，因为它直接针对组件的渲染优化。选项B（在useEffect中手动管理渲染条件）无效，因为useEffect用于处理副作用而非控制渲染逻辑；选项C（将所有状态提升到Redux中管理）不直接解决渲染问题，Redux需要结合额外优化（如selectors或memo）才能避免重新渲染；选项D（减少组件树层级深度）有助于提升整体渲染性能，但不直接针对避免不必要的重新渲染。"
+    },
+    {
+      "question_id": 11403138,
+      "uuid": "4c718bf425e246f5b6c5e5cb68a8f879",
+      "type": 1,
+      "title": "一个搜索框在用户输入时触发昂贵的筛选并渲染大量列表，造成输入卡顿。在 Re...",
+      "content": "一个搜索框在用户输入时触发昂贵的筛选并渲染大量列表，造成输入卡顿。在&nbsp;React&nbsp;18&nbsp;中，优先推荐的处理方式是？",
+      "options": [
+        {
+          "id": 7427943,
+          "content": "使用 startTransition 将筛选结果的状态更新标记为过渡，保证输入等紧急更新优先响应"
+        },
+        {
+          "id": 7427944,
+          "content": "将输入改为非受控组件即可彻底避免卡顿"
+        },
+        {
+          "id": 7427945,
+          "content": "使用 setTimeout 延迟筛选逻辑，避免与输入同时进行"
+        },
+        {
+          "id": 7427946,
+          "content": "为列表项添加 React.memo 即可完全消除卡顿"
+        }
+      ],
+      "correct_option_ids": [
+        7427943
+      ],
+      "correct_options": [
+        "使用 startTransition 将筛选结果的状态更新标记为过渡，保证输入等紧急更新优先响应"
+      ],
+      "analysis": "题目描述和选项均无文字错误、逻辑矛盾、专业名称错误及规则破坏错误。选项分析：A 正确 - React 18 的 startTransition API 专为处理此类场景设计，通过将昂贵的筛选渲染标记为非紧急过渡更新，确保用户输入等紧急操作优先响应；B 错误 - 非受控组件仅避免组件重渲染，无法解决筛选计算本身的性能问题；C 错误 - setTimeout 异步延迟会导致视觉不一致且无法利用 React 18 的并发调度；D 错误 - React.memo 仅优化重复渲染，无法减少首次筛选的计算开销。题目符合技术场景和选项设置规范。"
+    },
+    {
+      "question_id": 2376804,
+      "uuid": "f395485ba98f443cbb0dfd46b50e40ce",
+      "type": 1,
+      "title": "如果想要在组件第一次加载后获取该组件的dom元素，应当在以下哪个生命周期中进行",
+      "content": "<div>  <div>   <div>    <p>     如果想要在组件第一次加载后获取该组件的dom元素，应当在以下哪个生命周期中进行    </p>   </div>  </div> </div>",
+      "options": [
+        {
+          "id": 3715787,
+          "content": "<div><div><div><p>componentDidUpdate()</p></div></div></div>"
+        },
+        {
+          "id": 3715788,
+          "content": "<div><div><div><p>componentDidMount()</p></div></div></div>"
+        },
+        {
+          "id": 3715789,
+          "content": "<div><div><div><p>componentWillUnmount()</p></div></div></div>"
+        },
+        {
+          "id": 3715790,
+          "content": "<div><div><div><p>shouldComponentUpdate()</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3715788
+      ],
+      "correct_options": [
+        "<div><div><div><p>componentDidMount()</p></div></div></div>"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     componentDidMount()会在组件挂载后立即调用。    </p>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 11403172,
+      "uuid": "a01e05685d6e49b29f0404d09b1a3022",
+      "type": 1,
+      "title": "在React 18严格模式下，发现useEffect执行了两次。以下解释中...",
+      "content": "在React&nbsp;18严格模式下，发现useEffect执行了两次。以下解释中最准确的是？",
+      "options": [
+        {
+          "id": 7430791,
+          "content": "这是开发环境的行为，用于暴露不纯的副作用代码"
+        },
+        {
+          "id": 7430792,
+          "content": "这是React 18的渲染批处理机制导致的正常现象"
+        },
+        {
+          "id": 7430793,
+          "content": "表明存在内存泄漏需要清理事件监听器"
+        },
+        {
+          "id": 7430794,
+          "content": "说明项目需要升级React DOM版本"
+        }
+      ],
+      "correct_option_ids": [
+        7430791
+      ],
+      "correct_options": [
+        "这是开发环境的行为，用于暴露不纯的副作用代码"
+      ],
+      "analysis": "在React 18严格模式下，useEffect执行两次是开发环境中的预期行为，用于暴露不纯的副作用代码（如资源未清理）。选项A正确解释了这一官方设计目的；选项B（渲染批处理机制）是React 18的另一特性，用于优化渲染性能，并非导致useEffect双重调用的原因；选项C（内存泄漏）和选项D（升级React DOM）均不符合该行为的真实意图，因为该行为是React 18严格模式在开发环境下的内置机制。"
+    },
+    {
+      "question_id": 11403187,
+      "uuid": "4445045e0d3449c19be68cafdad2e736",
+      "type": 1,
+      "title": "考虑一个父组件 `Parent`，它将一个通过复杂计算得到的对象 `dat...",
+      "content": "考虑一个父组件&nbsp;`Parent`，它将一个通过复杂计算得到的对象&nbsp;`data`&nbsp;作为&nbsp;prop&nbsp;传递给子组件&nbsp;`Child`。如果&nbsp;`Parent`&nbsp;组件因为自身其他无关状态的改变而频繁重新渲染，为了避免&nbsp;`Child`&nbsp;组件进行不必要的渲染，最有效的优化组合是什么？",
+      "options": [
+        {
+          "id": 7431011,
+          "content": "仅使用 `React.memo` 包裹 `Child` 组件。"
+        },
+        {
+          "id": 7431012,
+          "content": "仅在 `Parent` 组件中使用 `useMemo` 来缓存 `data` 对象。"
+        },
+        {
+          "id": 7431013,
+          "content": "在 `Parent` 中使用 `useMemo` 缓存 `data` 对象，并同时使用 `React.memo` 包裹 `Child` 组件。"
+        },
+        {
+          "id": 7431014,
+          "content": "在 `Parent` 中使用 `useCallback` 缓存 `data` 对象，并使用 `React.memo` 包裹 `Child` 组件。"
+        }
+      ],
+      "correct_option_ids": [
+        7431013
+      ],
+      "correct_options": [
+        "在 `Parent` 中使用 `useMemo` 缓存 `data` 对象，并同时使用 `React.memo` 包裹 `Child` 组件。"
+      ],
+      "analysis": "在 React 中，当父组件频繁重新渲染时，子组件若不优化也会默认重新渲染。使用 `React.memo` 包裹子组件可确保其仅在 props 改变时重新渲染。但由于 `data` 对象通过复杂计算得到，若父组件未缓存 `data`，每次渲染都会生成新引用，触发子组件渲染。因此，在父组件中使用 `useMemo` 缓存 `data` 对象（仅在依赖变更时重新计算），并结合 `React.memo` 包裹子组件，可避免子组件不必要的渲染：`useMemo` 保持 `data` 引用稳定，`React.memo` 进行浅比较。选项 A 单独使用 `React.memo` 时，未缓存的 `data` 每次都会改变引用，无效；选项 B 单独使用 `useMemo` 但子组件未优化，仍会重新渲染；选项 D 错误，因 `useCallback` 用于函数而非对象缓存，技术无效。"
+    },
+    {
+      "question_id": 11403150,
+      "uuid": "dae884114560490e95ad304d60d7685e",
+      "type": 1,
+      "title": "在一个动态列表中，你正在使用数组的索引（index）作为每个列表项的 `k...",
+      "content": "在一个动态列表中，你正在使用数组的索引（index）作为每个列表项的&nbsp;`key`。当向这个列表的&nbsp;**开头**&nbsp;插入一个新元素时，React&nbsp;的协调（Reconciliation）过程最可能会发生什么？",
+      "options": [
+        {
+          "id": 7427843,
+          "content": "React 会高效地只在列表开头创建一个新的 DOM 节点，其他节点保持不变。"
+        },
+        {
+          "id": 7427844,
+          "content": "React 会认为所有现有元素的身份（key）都发生了变化，从而对几乎所有列表项组件进行内容更新（update）而不是高效地移动（move）DOM节点。"
+        },
+        {
+          "id": 7427845,
+          "content": "React 会抛出一个运行时错误，因为官方强烈不推荐使用 index 作为 key。"
+        },
+        {
+          "id": 7427846,
+          "content": "React 会将所有现有 DOM 节点向下移动，然后在顶部插入新节点，这是最高效的方式。"
+        }
+      ],
+      "correct_option_ids": [
+        7427844
+      ],
+      "correct_options": [
+        "React 会认为所有现有元素的身份（key）都发生了变化，从而对几乎所有列表项组件进行内容更新（update）而不是高效地移动（move）DOM节点。"
+      ],
+      "analysis": "使用数组索引作为 key 时，向列表开头插入新元素会导致所有现有元素的索引（key）发生变化（例如，原索引为 0 的元素变为索引 1）。React 的协调过程基于 key 识别元素：由于 key 改变，React 会认为所有现有元素身份已变，从而触发内容更新（update）而非高效移动（move）DOM 节点。这可能导致性能问题，如组件状态丢失或额外渲染。选项 B 正确描述了此行为。选项 A 错误，因为 key 变化会导致所有元素重新渲染；选项 C 错误，React 不会抛出运行时错误，仅不推荐使用索引作为 key；选项 D 错误，仅当 key 稳定时 React 才可能移动节点，而此处无法实现高效移动。"
+    },
+    {
+      "question_id": 11403234,
+      "uuid": "bc794085216642a795a8e86e5039f5d4",
+      "type": 1,
+      "title": "在React类组件的点击事件处理函数中，执行以下代码：this.setSt...",
+      "content": "在React类组件的点击事件处理函数中，执行以下代码：this.setState({&nbsp;count:&nbsp;this.state.count&nbsp;+&nbsp;1&nbsp;});&nbsp;this.setState({&nbsp;count:&nbsp;this.state.count&nbsp;+&nbsp;1&nbsp;});&nbsp;初始count为0，最终count的值是？",
+      "options": [
+        {
+          "id": 7430743,
+          "content": "A. 0，因为setState是异步的未立即生效"
+        },
+        {
+          "id": 7430744,
+          "content": "B. 1，因为React将两次更新合并为一次批量更新"
+        },
+        {
+          "id": 7430745,
+          "content": "C. 2，因为每次setState都会立即更新state"
+        },
+        {
+          "id": 7430746,
+          "content": "D. 不确定，取决于React版本"
+        }
+      ],
+      "correct_option_ids": [
+        7430744
+      ],
+      "correct_options": [
+        "B. 1，因为React将两次更新合并为一次批量更新"
+      ],
+      "analysis": "在React类组件的点击事件处理函数中，setState是异步的，且React会将同一事件循环内的连续setState调用批处理为一次更新。初始count为0，第一次setState计划将count更新为0+1=1，但state未立即改变；第二次setState读取的仍是初始值0，计划更新为1。批处理后，state仅应用一次更新，最终count的值为1。因此选项B正确。选项A错误，因state会被更新；选项C错误，因setState非立即更新；选项D错误，因在事件处理函数中行为确定。"
+    },
+    {
+      "question_id": 11403229,
+      "uuid": "e0641591b1794074932d500b05012ad2",
+      "type": 1,
+      "title": "在一个使用 React 18 并开启了并发模式（Concurrent Mo...",
+      "content": "<div>\n\t在一个使用&nbsp;React&nbsp;18&nbsp;并开启了并发模式（Concurrent&nbsp;Mode）的应用中，考虑以下组件代码。当用户点击按钮时，`handleClick`&nbsp;被调用，组件会重新渲染多少次？\n</div>\n<div>\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">function&nbsp;Counter()&nbsp;{\n&nbsp;&nbsp;const&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0);\n&nbsp;&nbsp;const&nbsp;[isUpdating,&nbsp;setIsUpdating]&nbsp;=&nbsp;useState(false);\n&nbsp;&nbsp;const&nbsp;handleClick&nbsp;=&nbsp;()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;fetch('/api/data').then(()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;setCount(c&nbsp;=&gt;&nbsp;c&nbsp;+&nbsp;1);\n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;setIsUpdating(false);\n&nbsp;&nbsp;&nbsp;&nbsp;});\n&nbsp;&nbsp;};\n&nbsp;&nbsp;return&nbsp;&lt;button&nbsp;onClick={handleClick}&gt;Update&lt;/button&gt;;\n}</pre>\n</div>",
+      "options": [
+        {
+          "id": 7430699,
+          "content": "2次，因为两次状态更新是在 Promise 的回调中，这在 React 18 之前会脱离批处理。"
+        },
+        {
+          "id": 7430700,
+          "content": "1次，因为 React 18 的自动批处理（Automatic Batching）会将 Promise 回调中的多次状态更新合并。"
+        },
+        {
+          "id": 7430701,
+          "content": "0次，因为状态更新是异步的，不会立即触发渲染。"
+        },
+        {
+          "id": 7430702,
+          "content": "不确定，渲染次数取决于网络请求的响应时间。"
+        }
+      ],
+      "correct_option_ids": [
+        7430700
+      ],
+      "correct_options": [
+        "1次，因为 React 18 的自动批处理（Automatic Batching）会将 Promise 回调中的多次状态更新合并。"
+      ],
+      "analysis": "在React 18开启并发模式（Concurrent Mode）时，自动批处理（Automatic Batching）默认启用，它可以将异步代码（如Promise回调）中的多个状态更新合并为一次重新渲染。在给定的组件中，点击按钮后，fetch请求的.then回调中连续调用setCount和setIsUpdating，这两个状态更新会被批处理，因此只触发一次渲染。选项A错误，因为它适用于React 18之前的版本（无自动批处理）；选项C错误，因为状态更新虽异步，但最终会触发渲染；选项D错误，因为渲染次数由React的批处理机制决定，而非网络响应时间。"
+    },
+    {
+      "question_id": 11403153,
+      "uuid": "150bcae57b3e4bfc93ef97f41d762c56",
+      "type": 1,
+      "title": "关于 useEffect 的清理函数（返回的 cleanup）调用时机和用...",
+      "content": "关于&nbsp;useEffect&nbsp;的清理函数（返回的&nbsp;cleanup）调用时机和用途，以下哪项描述是正确的？",
+      "options": [
+        {
+          "id": 7427815,
+          "content": "清理函数在组件每次渲染后立即执行，用于同步更新 DOM。"
+        },
+        {
+          "id": 7427816,
+          "content": "清理函数仅在组件卸载时执行一次，用于释放内存。"
+        },
+        {
+          "id": 7427817,
+          "content": "清理函数会在下一次执行同一 effect 之前以及组件卸载前被调用，常用于移除订阅或取消定时器。"
+        },
+        {
+          "id": 7427818,
+          "content": "清理函数只有依赖数组为空时才会被调用。"
+        }
+      ],
+      "correct_option_ids": [
+        7427817
+      ],
+      "correct_options": [
+        "清理函数会在下一次执行同一 effect 之前以及组件卸载前被调用，常用于移除订阅或取消定时器。"
+      ],
+      "analysis": "选项C正确，因为React官方文档中，useEffect的清理函数（cleanup）调用时机包括：在依赖项变化后、下一次执行同一effect之前，以及组件卸载前。它常用于移除订阅或取消定时器等清理操作，以防止内存泄漏。选项A错误，因为清理函数不用于同步更新DOM，且不在每次渲染后立即执行；选项B错误，因为清理函数不仅只在组件卸载时执行，还可能因依赖项变化多次调用；选项D错误，因为清理函数在依赖数组非空时（依赖项变化）也会被调用，而不仅限于依赖数组为空的情况。"
+    },
+    {
+      "question_id": 11403160,
+      "uuid": "31408a664a8041499692e924df97b2d6",
+      "type": 1,
+      "title": "当React组件接收的props是内联函数定义时（如onClick={()...",
+      "content": "当React组件接收的props是内联函数定义时（如onClick={()&nbsp;=&gt;&nbsp;{}}），使用哪种方案能最优避免子组件无效重渲染？",
+      "options": [
+        {
+          "id": 7427755,
+          "content": "将函数提取为组件的类方法"
+        },
+        {
+          "id": 7427756,
+          "content": "在子组件中使用useMemo缓存函数引用"
+        },
+        {
+          "id": 7427757,
+          "content": "在父组件中使用useCallback包裹函数"
+        },
+        {
+          "id": 7427758,
+          "content": "将函数移到组件外部定义"
+        }
+      ],
+      "correct_option_ids": [
+        7427757
+      ],
+      "correct_options": [
+        "在父组件中使用useCallback包裹函数"
+      ],
+      "analysis": "题目描述清晰，无文字错误或逻辑矛盾。专业术语如'内联函数定义'、'useMemo'、'useCallback'等拼写正确且符合React标准。选项分析：A（将函数提取为组件的类方法）仅适用于类组件，在函数组件中不通用；B（在子组件中使用useMemo缓存函数引用）无效，因为useMemo不能改变父组件传递的prop引用；C（在父组件中使用useCallback包裹函数）能稳定函数引用，避免每次渲染创建新函数，是React函数组件中优化子组件重渲染的标准和最优方案；D（将函数移到组件外部定义）在函数无依赖时有效，但若有状态依赖则不通用。因此C是最优选择。"
+    },
+    {
+      "question_id": 11403156,
+      "uuid": "741b33df0dbf474b9b37e6f4409677ed",
+      "type": 1,
+      "title": "在使用React Hooks时，下列哪种场景会导致useEffect产生内...",
+      "content": "在使用React&nbsp;Hooks时，下列哪种场景会导致useEffect产生内存泄漏？",
+      "options": [
+        {
+          "id": 7427791,
+          "content": "在useEffect中调用setState更新组件状态"
+        },
+        {
+          "id": 7427792,
+          "content": "未在useEffect返回的清理函数中取消订阅事件监听"
+        },
+        {
+          "id": 7427793,
+          "content": "在依赖数组中遗漏某个状态变量"
+        },
+        {
+          "id": 7427794,
+          "content": "在useEffect中直接修改DOM元素"
+        }
+      ],
+      "correct_option_ids": [
+        7427792
+      ],
+      "correct_options": [
+        "未在useEffect返回的清理函数中取消订阅事件监听"
+      ],
+      "analysis": "在React Hooks的useEffect中，未在清理函数中取消订阅事件监听（选项B）会导致事件监听器在组件卸载后未被移除，从而持续引用组件实例，阻止垃圾回收，造成内存泄漏。选项A（在useEffect中调用setState）不会导致内存泄漏，它是常见的状态更新方式。选项C（在依赖数组中遗漏状态变量）可能导致过时状态或无限循环，但不直接导致内存泄漏；仅在涉及未清理资源（如订阅）时可能间接引发，但非本质原因。选项D（在useEffect中直接修改DOM元素）可能引起UI不一致或性能问题，但如果不添加事件监听器等资源，不会导致内存泄漏。题目文字、专业术语（如'React Hooks'、'useEffect'、'依赖数组'、'事件监听'等）无错误，无逻辑矛盾或规则破坏问题。"
+    },
+    {
+      "question_id": 11403194,
+      "uuid": "442811c3ca65433b818394fd7a3fa94b",
+      "type": 1,
+      "title": "父组件Parent如下，子组件Child用React.memo包裹。点击按...",
+      "content": "<div>\n\t父组件Parent如下，子组件Child用React.memo包裹。点击按钮后Child仍重新渲染的核心原因是？\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">const&nbsp;Parent&nbsp;=&nbsp;()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;const&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0);\n&nbsp;&nbsp;const&nbsp;handleClick&nbsp;=&nbsp;()&nbsp;=&gt;&nbsp;console.log('click');\n&nbsp;&nbsp;return&nbsp;(\n&nbsp;&nbsp;&nbsp;&nbsp;&lt;div&gt;&lt;button&nbsp;onClick={()&nbsp;=&gt;&nbsp;setCount(count+1)}&gt;Click&lt;/button&gt;&lt;Child&nbsp;onClick={handleClick}&nbsp;/&gt;&lt;/div&gt;\n&nbsp;&nbsp;);\n};\nconst&nbsp;Child&nbsp;=&nbsp;memo(({&nbsp;onClick&nbsp;})&nbsp;=&gt;&nbsp;&lt;button&nbsp;onClick={onClick}&gt;Child&lt;/button&gt;);</pre>\n</div>",
+      "options": [
+        {
+          "id": 7431113,
+          "content": "React.memo对函数类型props无法进行浅比较"
+        },
+        {
+          "id": 7431114,
+          "content": "handleClick在父组件每次渲染时创建新引用，导致memo浅比较失败"
+        },
+        {
+          "id": 7431115,
+          "content": "父组件未用React.memo包裹，导致Child被迫重渲染"
+        },
+        {
+          "id": 7431116,
+          "content": "Child组件的onClick属性是函数，memo默认忽略函数比较"
+        }
+      ],
+      "correct_option_ids": [
+        7431114
+      ],
+      "correct_options": [
+        "handleClick在父组件每次渲染时创建新引用，导致memo浅比较失败"
+      ],
+      "analysis": "Parent组件每次渲染时，handleClick函数都会创建新的引用，传递给Child的onClick属性。React.memo基于浅比较机制检测props变化，新函数引用导致浅比较失败，触发Child重新渲染。选项B正确描述了该原因。选项A错误，因为React.memo可以对函数进行浅比较（基于引用）；选项C错误，父组件未用memo不是Child重渲染的直接原因（memo子组件在props未变时可避免重渲染）；选项D错误，memo不默认忽略函数比较，而是进行引用比较。"
+    },
+    {
+      "question_id": 11403186,
+      "uuid": "a71062b389654654b4df9a79f6812306",
+      "type": 1,
+      "title": "在下列哪种场景下，使用 `useLayoutEffect` 会比 `use...",
+      "content": "在下列哪种场景下，使用&nbsp;`useLayoutEffect`&nbsp;会比&nbsp;`useEffect`&nbsp;更为合适？",
+      "options": [
+        {
+          "id": 7430995,
+          "content": "在组件挂载后，需要从服务器异步获取数据并更新状态。"
+        },
+        {
+          "id": 7430996,
+          "content": "当组件更新后，需要立即从 DOM 中读取布局信息（如元素尺寸或位置），并根据这些信息同步地更新状态或样式以避免视觉闪烁。"
+        },
+        {
+          "id": 7430997,
+          "content": "当需要设置一个定时器（`setInterval`），并在组件卸载时清除它。"
+        },
+        {
+          "id": 7430999,
+          "content": "当希望某个副作用函数只在组件首次渲染时执行一次，类似于 `componentDidMount`。"
+        }
+      ],
+      "correct_option_ids": [
+        7430996
+      ],
+      "correct_options": [
+        "当组件更新后，需要立即从 DOM 中读取布局信息（如元素尺寸或位置），并根据这些信息同步地更新状态或样式以避免视觉闪烁。"
+      ],
+      "analysis": "选项B描述了需要立即从DOM中读取布局信息并同步更新状态或样式以避免视觉闪烁的场景，这正符合`useLayoutEffect`的设计目的：它在DOM更新后、浏览器绘制前同步执行，可以避免用户看到布局变化导致的闪烁。相比之下，`useEffect`在浏览器绘制后异步执行，可能造成视觉闪烁。选项A、C、D更适合`useEffect`：A的数据获取是异步操作不依赖布局；C的定时器设置和清理是常规副作用；D的首次执行通过`useEffect`的空依赖数组实现即可，无需阻塞渲染的`useLayoutEffect`。"
+    },
+    {
+      "question_id": 2376807,
+      "uuid": "47b7f7844fca4e90953280e843dd0fd5",
+      "type": 1,
+      "title": "下面是对refs使用不合适的是",
+      "content": "<div>  <div>   <div>    <p>     下面是对refs使用不合适的是    </p>   </div>  </div> </div>",
+      "options": [
+        {
+          "id": 3715799,
+          "content": "<div><div><div><p>获取子组件的实例，直接通过子组件的setState方法修改子组件的state</p></div></div></div>"
+        },
+        {
+          "id": 3715800,
+          "content": "<div><div><div><p>管理焦点，文本选择或媒体播放</p></div></div></div>"
+        },
+        {
+          "id": 3715801,
+          "content": "<div><div><div><p>集成第三方 DOM 库</p></div></div></div>"
+        },
+        {
+          "id": 3715802,
+          "content": "<div><div><div><p>触发强制动画</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3715799
+      ],
+      "correct_options": [
+        "<div><div><div><p>获取子组件的实例，直接通过子组件的setState方法修改子组件的state</p></div></div></div>"
+      ],
+      "analysis": "<div>  避免使用refs来做任何可以通过声明式实现来完成的事情，下面是几个适合使用refs的情况： </div> <div>  <div>   <div>    <div>     <p>      1.管理焦点，文本选择或媒体播放。     </p>     <p>      2.触发强制动画。     </p>     <p>      3.集成第三方 DOM 库     </p>    </div>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 2388938,
+      "uuid": "f1d8c053bd4e4e70bb502f6e73303e06",
+      "type": 1,
+      "title": "以下不属于React复合事件的是",
+      "content": "以下不属于React复合事件的是",
+      "options": [
+        {
+          "id": 3746993,
+          "content": "onCompositionEnd"
+        },
+        {
+          "id": 3746994,
+          "content": "onCompositionRender"
+        },
+        {
+          "id": 3746995,
+          "content": "onCompositionUpdate"
+        },
+        {
+          "id": 3746996,
+          "content": "onCompositionStart"
+        }
+      ],
+      "correct_option_ids": [
+        3746994
+      ],
+      "correct_options": [
+        "onCompositionRender"
+      ],
+      "analysis": "React复合事件有onCompositionEnd，onCompositionStart，onCompositionUpdate"
+    },
+    {
+      "question_id": 2388930,
+      "uuid": "1df2239c90fb407aa4a631615ba6b58e",
+      "type": 1,
+      "title": "可以使子节点渲染到存在于父组件以外的DOM节点上的方法是",
+      "content": "可以使子节点渲染到存在于父组件以外的DOM节点上的方法是",
+      "options": [
+        {
+          "id": 3746961,
+          "content": "React.createPortal"
+        },
+        {
+          "id": 3746962,
+          "content": "React.createElement"
+        },
+        {
+          "id": 3746963,
+          "content": "ReactDOM.createPortal"
+        },
+        {
+          "id": 3746964,
+          "content": "ReactDom.render"
+        }
+      ],
+      "correct_option_ids": [
+        3746963
+      ],
+      "correct_options": [
+        "ReactDOM.createPortal"
+      ],
+      "analysis": "ReactDOM.createPortal函数可以将子节点渲染到存在于父组件以外的DOM节点上。"
+    },
+    {
+      "question_id": 11403214,
+      "uuid": "c7ed10246121461aaeee775ab86535d0",
+      "type": 1,
+      "title": "在一个React组件中，使用了`useEffect`来设置一个每秒执行一次...",
+      "content": "在一个React组件中，使用了`useEffect`来设置一个每秒执行一次的`setInterval`。该interval的回调函数中读取了组件的一个`state`值。如果这个`useEffect`的依赖项数组为空`[]`，并且在组件挂载后，该`state`通过用户交互发生了改变，那么`setInterval`的回调函数会读取到什么样的`state`值？",
+      "options": [
+        {
+          "id": 7430603,
+          "content": "回调函数将始终读取到该`state`在组件首次渲染时的初始值。"
+        },
+        {
+          "id": 7430604,
+          "content": "回调函数将能读取到该`state`的最新值。"
+        },
+        {
+          "id": 7430605,
+          "content": "组件会因为`state`变化而自动重新执行`useEffect`，并重置定时器。"
+        },
+        {
+          "id": 7430606,
+          "content": "这种用法会直接导致内存泄漏，因为定时器无法被清除。"
+        }
+      ],
+      "correct_option_ids": [
+        7430603
+      ],
+      "correct_options": [
+        "回调函数将始终读取到该`state`在组件首次渲染时的初始值。"
+      ],
+      "analysis": "选项A正确：由于`useEffect`的依赖项数组为空（`[]`），effect仅在组件挂载时执行一次，`setInterval`的回调函数通过闭包捕获了首次渲染时的state值。因此，即使state后续变化，回调函数始终读取初始值。选项B错误，因为effect不会重新运行，无法获取最新值。选项C错误，state变化不会触发effect重新执行。选项D错误，定时器是否导致内存泄漏取决于是否返回清理函数（如`return () => clearInterval(intervalId)`；但此非题目焦点，且非'直接导致'，存在可避免方式。题目无文字、逻辑、专业名称或规则破坏错误。"
+    },
+    {
+      "question_id": 2388905,
+      "uuid": "72b6e64607094c1cb6b8368bba734c39",
+      "type": 1,
+      "title": "以下关于Mobx中原则说法错误的是",
+      "content": "以下关于Mobx中原则说法错误的是",
+      "options": [
+        {
+          "id": 3746861,
+          "content": "Mobx 支持单向数据流"
+        },
+        {
+          "id": 3746862,
+          "content": "当状态改变时，所有衍生都会进行自动更新，可以观察到中间值"
+        },
+        {
+          "id": 3746863,
+          "content": "所有衍生默认都是同步更新"
+        },
+        {
+          "id": 3746864,
+          "content": "所有的计算值都应该是纯净的"
+        }
+      ],
+      "correct_option_ids": [
+        3746862
+      ],
+      "correct_options": [
+        "当状态改变时，所有衍生都会进行自动更新，可以观察到中间值"
+      ],
+      "analysis": "当状态改变时，所有衍生都会进行原子级的自动更新。因此永远不可能观察到中间值。"
+    },
+    {
+      "question_id": 11403183,
+      "uuid": "90f41a45426742e4b96006c7baf1b916",
+      "type": 1,
+      "title": "在React中，使用useEffect时指定了依赖数组[count]，以下...",
+      "content": "在React中，使用useEffect时指定了依赖数组[count]，以下关于其清理函数的描述正确的是？",
+      "options": [
+        {
+          "id": 7430951,
+          "content": "清理函数会在count变化后、新的effect执行前调用"
+        },
+        {
+          "id": 7430952,
+          "content": "清理函数会在组件每次重新渲染前调用"
+        },
+        {
+          "id": 7430953,
+          "content": "清理函数只会在组件发生错误时执行"
+        },
+        {
+          "id": 7430954,
+          "content": "清理函数的执行时机与count的变化无关"
+        }
+      ],
+      "correct_option_ids": [
+        7430951
+      ],
+      "correct_options": [
+        "清理函数会在count变化后、新的effect执行前调用"
+      ],
+      "analysis": "在React中，当useEffect指定了依赖数组[count]时，清理函数（cleanup function）的调用时机是：在count值变化后、新的effect执行前调用，或者在组件卸载时调用。选项A正确描述了这种依赖变化时的行为。选项B错误，因为清理函数不会在组件每次重新渲染前调用，它只在依赖项变化（如此处的count变化）或组件卸载时执行。选项C错误，因为清理函数与组件错误无关，它主要用于资源清理（如取消订阅或定时器），而React错误由错误边界处理。选项D错误，因为清理函数的执行时机与count的变化直接相关，当count在依赖数组中变化时，会触发清理函数的运行。"
+    },
+    {
+      "question_id": 11403226,
+      "uuid": "04ecbfb14cc84e1ca5d17a318bab9f50",
+      "type": 1,
+      "title": "在下面的 React 组件中，每次父组件重新渲染导致 `UserProfi...",
+      "content": "<div>\n\t在下面的&nbsp;React&nbsp;组件中，每次父组件重新渲染导致&nbsp;`UserProfile`&nbsp;组件也重新渲染时，`useEffect`&nbsp;的行为会是什么？\n</div>\n<div>\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">function&nbsp;UserProfile({&nbsp;id&nbsp;})&nbsp;{\n&nbsp;&nbsp;const&nbsp;[user,&nbsp;setUser]&nbsp;=&nbsp;useState(null);\n&nbsp;&nbsp;const&nbsp;fetchData&nbsp;=&nbsp;()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;console.log('Fetching&nbsp;data&nbsp;for&nbsp;user:',&nbsp;id);\n&nbsp;&nbsp;&nbsp;&nbsp;//&nbsp;fetch(API_URL&nbsp;+&nbsp;id).then(res&nbsp;=&gt;&nbsp;res.json()).then(setUser);\n&nbsp;&nbsp;};\n&nbsp;&nbsp;useEffect(()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;&nbsp;&nbsp;fetchData();\n&nbsp;&nbsp;},&nbsp;[fetchData]);\n&nbsp;&nbsp;return&nbsp;&lt;div&gt;{user&nbsp;?&nbsp;user.name&nbsp;:&nbsp;'Loading...'}&lt;/div&gt;;\n}</pre>\n</div>",
+      "options": [
+        {
+          "id": 7430675,
+          "content": "`useEffect` 内的回调函数只会在组件首次挂载时执行一次。"
+        },
+        {
+          "id": 7430676,
+          "content": "只有当 `id` prop 发生变化时，`useEffect` 内的回调函数才会执行。"
+        },
+        {
+          "id": 7430677,
+          "content": "由于 `fetchData` 函数在每次渲染时都是一个新的引用，`useEffect` 的回调函数将在每次组件渲染后都重新执行。"
+        },
+        {
+          "id": 7430678,
+          "content": "代码会产生一个编译错误，因为函数不能作为 `useEffect` 的依赖项。"
+        }
+      ],
+      "correct_option_ids": [
+        7430677
+      ],
+      "correct_options": [
+        "由于 `fetchData` 函数在每次渲染时都是一个新的引用，`useEffect` 的回调函数将在每次组件渲染后都重新执行。"
+      ],
+      "analysis": "在React中，每次渲染时，组件内部定义的函数（如fetchData）会被重新创建，导致其引用改变。React的useEffect钩子会对依赖项进行浅比较。由于依赖数组[fetchData]中的fetchData函数在每次渲染时都是新引用，useEffect的回调函数将在每次组件渲染后执行。选项A错误，因为依赖项变化导致非仅挂载执行；选项B错误，依赖项是fetchData而非id；选项D错误，函数可以作为useEffect依赖项，不会编译错误。"
+    },
+    {
+      "question_id": 11403206,
+      "uuid": "add21d78b751462fb85bcdcf6d0eb1f1",
+      "type": 1,
+      "title": "函数组件中执行以下代码，点击按钮后count的最终值是？（注：初始coun...",
+      "content": "<div>\n\t函数组件中执行以下代码，点击按钮后count的最终值是？（注：初始count为0）\n</div><div>\n\tconst&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0);\n</div><div>\n\tconst&nbsp;handleClick&nbsp;=&nbsp;()&nbsp;=&gt;&nbsp;{\n</div><div>\n\t&nbsp;&nbsp;setCount(count&nbsp;+&nbsp;1);\n</div><div>\n\t&nbsp;&nbsp;setCount(count&nbsp;+&nbsp;1);\n</div><div>\n\t&nbsp;&nbsp;setCount(c&nbsp;=&gt;&nbsp;c&nbsp;+&nbsp;1);\n</div><div>\n\t};\n</div>",
+      "options": [
+        {
+          "id": 7430551,
+          "content": "1"
+        },
+        {
+          "id": 7430552,
+          "content": "2"
+        },
+        {
+          "id": 7430553,
+          "content": "3"
+        },
+        {
+          "id": 7430554,
+          "content": "0"
+        }
+      ],
+      "correct_option_ids": [
+        7430552
+      ],
+      "correct_options": [
+        "2"
+      ],
+      "analysis": "在React函数组件中，状态更新是异步和批处理的。初始count为0。handleClick函数中：第一次setCount(count + 1)基于闭包中的count（0）计划设置count为1；第二次setCount(count + 1)同样基于count=0计划设置count为1，覆盖前一个更新；第三次setCount(c => c + 1)是更新函数，基于pending状态（1）将count增加到2。因此，点击按钮后count的最终值为2。"
+    },
+    {
+      "question_id": 2388953,
+      "uuid": "ddf2a47278314bc8a3bcacdbae2eec44",
+      "type": 1,
+      "title": "以下关于state和props说法错误的是",
+      "content": "以下关于state和props说法错误的是",
+      "options": [
+        {
+          "id": 3747053,
+          "content": "props和state都是普通的JavaScript对象"
+        },
+        {
+          "id": 3747054,
+          "content": "state是在组件内被组件自己管理的"
+        },
+        {
+          "id": 3747055,
+          "content": "props是外部传递给组件的"
+        },
+        {
+          "id": 3747056,
+          "content": "它们都是用来保存信息的，但是只有state中的信息可以控制组件的渲染输出"
+        }
+      ],
+      "correct_option_ids": [
+        3747056
+      ],
+      "correct_options": [
+        "它们都是用来保存信息的，但是只有state中的信息可以控制组件的渲染输出"
+      ],
+      "analysis": "state和props都可以控制组件的渲染输出"
+    },
+    {
+      "question_id": 11403232,
+      "uuid": "54d5b24fa80641b79dd9571e24557800",
+      "type": 1,
+      "title": "在React中实现表单时，关于受控组件与非受控组件的描述，哪项是最准确的？",
+      "content": "在React中实现表单时，关于受控组件与非受控组件的描述，哪项是最准确的？",
+      "options": [
+        {
+          "id": 7430727,
+          "content": "受控组件通过ref直接操作DOM，非受控组件通过state管理"
+        },
+        {
+          "id": 7430728,
+          "content": "非受控组件更适合复杂表单验证场景"
+        },
+        {
+          "id": 7430729,
+          "content": "受控组件将表单值交由React state管理，非受控组件依赖DOM自身状态"
+        },
+        {
+          "id": 7430730,
+          "content": "非受控组件在性能上始终优于受控组件"
+        }
+      ],
+      "correct_option_ids": [
+        7430729
+      ],
+      "correct_options": [
+        "受控组件将表单值交由React state管理，非受控组件依赖DOM自身状态"
+      ],
+      "analysis": "在React中，受控组件将表单值交由React state管理，非受控组件则依赖DOM自身的状态存储值，这是官方文档的定义。选项C准确地描述了这一区别。选项A错误：受控组件通过state管理值而非ref操作DOM，非受控组件才通过ref访问DOM；选项B错误：非受控组件不适合复杂表单验证，因为它依赖DOM，状态分散；选项D错误：非受控组件在性能上并非始终优于受控组件，性能取决于实现细节，如事件处理优化。"
+    },
+    {
+      "question_id": 11403211,
+      "uuid": "9707e9b6caec4672a83c06c38a58c7c4",
+      "type": 1,
+      "title": "在一个搜索组件中，用户的输入会同时更新输入框的显示和下方一个大数据列表的筛...",
+      "content": "在一个搜索组件中，用户的输入会同时更新输入框的显示和下方一个大数据列表的筛选结果。当用户快速输入时，可能会感到输入框卡顿。使用&nbsp;React&nbsp;18&nbsp;的&nbsp;`startTransition`&nbsp;API&nbsp;将列表筛选的&nbsp;state&nbsp;更新操作包裹起来，会带来什么效果？",
+      "options": [
+        {
+          "id": 7430583,
+          "content": "它会延迟整个组件的渲染，直到用户停止输入。"
+        },
+        {
+          "id": 7430584,
+          "content": "它会降低列表筛选更新的优先级，允许输入框的紧急更新优先渲染，从而保持 UI 的响应性。"
+        },
+        {
+          "id": 7430585,
+          "content": "它会完全跳过中间状态的列表渲染，只在用户输入完成时渲染最终结果。"
+        },
+        {
+          "id": 7430586,
+          "content": "它会将列表筛选的计算移到 Web Worker 中执行，避免阻塞主线程。"
+        }
+      ],
+      "correct_option_ids": [
+        7430584
+      ],
+      "correct_options": [
+        "它会降低列表筛选更新的优先级，允许输入框的紧急更新优先渲染，从而保持 UI 的响应性。"
+      ],
+      "analysis": "React 18 的 startTransition API 用于将非紧急的状态更新（如列表筛选）标记为过渡更新，降低其优先级，从而允许紧急更新（如输入框显示）优先渲染，避免输入卡顿，保持 UI 响应性。选项 A 错误，因为它不会延迟整个组件渲染；选项 C 错误，因为它不会完全跳过中间状态，而是可能中断或合并渲染；选项 D 错误，因为 startTransition 不涉及 Web Worker，仅用于 React 的调度机制。"
+    },
+    {
+      "question_id": 2376803,
+      "uuid": "9d149676de594f259bf04da9ac75fedd",
+      "type": 1,
+      "title": "在React中渲染列表应该使用哪种方法？",
+      "content": "<div>  <div>   <div>    <p>     在React中渲染列表应该使用哪种方法？    </p>   </div>  </div> </div>",
+      "options": [
+        {
+          "id": 3715783,
+          "content": "<div><div><div><p>map()</p></div></div></div>"
+        },
+        {
+          "id": 3715784,
+          "content": "<div><div><div><p>reduce()</p></div></div></div>"
+        },
+        {
+          "id": 3715785,
+          "content": "<div><div><div><p>createList()</p></div></div></div>"
+        },
+        {
+          "id": 3715786,
+          "content": "<div><div><div><p>every()</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3715783
+      ],
+      "correct_options": [
+        "<div><div><div><p>map()</p></div></div></div>"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     map()方法将数组中的每个元素变成标签，最后将得到的标签数组插入父元素即可。    </p>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 11403166,
+      "uuid": "7a5b57f98804448c942e5fcbe02d77ad",
+      "type": 1,
+      "title": "以下关于`useEffect`的写法，最可能导致组件无限重新渲染的是？",
+      "content": "以下关于`useEffect`的写法，最可能导致组件无限重新渲染的是？",
+      "options": [
+        {
+          "id": 7430703,
+          "content": "`useEffect(() =&gt; { fetchData(id); }, [id]);`"
+        },
+        {
+          "id": 7430704,
+          "content": "`useEffect(() =&gt; { setCount(count + 1); }, []);`"
+        },
+        {
+          "id": 7430705,
+          "content": "`useEffect(() =&gt; { handleClick(); }, [handleClick]);`（`handleClick`是组件内部定义的普通函数）"
+        },
+        {
+          "id": 7430706,
+          "content": "`useEffect(() =&gt; { console.log('mounted'); }, []);`"
+        }
+      ],
+      "correct_option_ids": [
+        7430705
+      ],
+      "correct_options": [
+        "`useEffect(() =&gt; { handleClick(); }, [handleClick]);`（`handleClick`是组件内部定义的普通函数）"
+      ],
+      "analysis": "选项A中，依赖项[id]可能导致effect在id变化时重复执行，但不会必然引起无限循环；选项B依赖数组为空[]，只在挂载时执行一次，状态更新仅触发一次重新渲染，不会无限循环；选项C中，handleClick是组件内部定义的普通函数，每次渲染都会创建新实例，导致依赖[handleClick]在每次渲染后触发effect执行。如果handleClick内部有状态更新（如setState），会引发重新渲染，进而重复创建handleClick和触发effect，形成无限循环；选项D依赖数组为空[]，只在挂载时执行且无状态更新，不会导致重新渲染。因此，最可能导致无限重新渲染的是选项C。"
+    },
+    {
+      "question_id": 11403174,
+      "uuid": "17b96c5279f54bc18f7c700b88abb285",
+      "type": 1,
+      "title": "在一个复杂的组件中，有一个函数 `calculateValue` 依赖于 ...",
+      "content": "在一个 React 函数组件中，`calculateValue` 依赖于 props `a` 和 `b`。组件内部还维护了一个与它们无关的本地状态 `c`。为优化性能，你使用了：<br> <pre class=\"prettyprint lang-js\">const memoizedCalculateValue = useCallback(() =&gt; calculateValue(a, b), [a, b]);</pre> 当父组件因为本地状态 `c` 的变化而重渲染（此时 `a`、`b` 未变化）时，`memoizedCalculateValue` 将如何表现（）。<br>",
+      "options": [
+        {
+          "id": 7430819,
+          "content": "会重新创建一个新的函数实例，因为父组件本身重渲染了。"
+        },
+        {
+          "id": 7430821,
+          "content": "不会重新创建，`useCallback` 会从缓存中返回上一次的函数实例。"
+        },
+        {
+          "id": 7430825,
+          "content": "函数实例是否重新创建取决于 `calculateValue` 函数内部的实现逻辑。"
+        },
+        {
+          "id": 7430826,
+          "content": "`useCallback` 在这种情况下会失效，其行为与不使用它时完全相同。"
+        }
+      ],
+      "correct_option_ids": [
+        7430821
+      ],
+      "correct_options": [
+        "不会重新创建，`useCallback` 会从缓存中返回上一次的函数实例。"
+      ],
+      "analysis": "`useCallback` 会根据其依赖项数组（在这里是 `[a, b]`）决定是否重新创建函数实例。题目中父组件重渲染是由与 `a` 和 `b` 无关的 state `c` 变化引起，因此依赖项 `a` 和 `b` 未改变，`useCallback` 会从缓存中返回上一次的函数实例，引用不变。选项 A 错误，因为父组件重渲染本身不会导致新函数创建；选项 C 错误，`useCallback` 的行为只取决于依赖项，而非函数内部实现；选项 D 错误，`useCallback` 在此场景下有效，避免了每次重渲染创建新函数的问题（不使用 `useCallback` 则会每次创建新函数）。题目中所有文字、专业术语（如 `useCallback`、`React.memo`）和逻辑均无误。"
+    },
+    {
+      "question_id": 11403152,
+      "uuid": "82ea5d7afb264496bffb67a8f9326a3e",
+      "type": 1,
+      "title": "在渲染一个可能增删、排序的列表时，关于 key 的最佳实践，下列哪项是正确的？",
+      "content": "在渲染一个可能增删、排序的列表时，关于&nbsp;key&nbsp;的最佳实践，下列哪项是正确的？",
+      "options": [
+        {
+          "id": 7427827,
+          "content": "使用数组索引作为 key，可以避免因重排导致的状态错位。"
+        },
+        {
+          "id": 7427828,
+          "content": "使用每项的业务唯一标识作为 key，保证跨渲染稳定且不随位置变化。"
+        },
+        {
+          "id": 7427829,
+          "content": "忽略 key 由 React 自动分配，效果等同于使用唯一 id。"
+        },
+        {
+          "id": 7427830,
+          "content": "为了减少 diff 开销，所有列表项使用相同的 key 也可行。"
+        }
+      ],
+      "correct_option_ids": [
+        7427828
+      ],
+      "correct_options": [
+        "使用每项的业务唯一标识作为 key，保证跨渲染稳定且不随位置变化。"
+      ],
+      "analysis": "在React中，使用每项的业务唯一标识（如唯一ID）作为key，能确保key在跨渲染时稳定，不随位置变化，从而避免增删、排序操作导致的状态错位。选项A错误，因为使用数组索引在重排时会导致状态错位；选项C错误，React自动分配key等同于使用索引，而非唯一id；选项D错误，所有列表项使用相同key会导致渲染错误和diff算法失效。"
+    },
+    {
+      "question_id": 11403208,
+      "uuid": "40323f9abe0840f6b7a3a60aca4aa2f4",
+      "type": 1,
+      "title": "考虑以下场景：一个父组件 `Parent` 传递一个通过复杂计算生成的对象...",
+      "content": "考虑以下场景：一个父组件&nbsp;`Parent`&nbsp;传递一个通过复杂计算生成的对象&nbsp;`data`&nbsp;给一个被&nbsp;`React.memo`&nbsp;包裹的子组件&nbsp;`Child`。当&nbsp;`Parent`&nbsp;组件因为自身其他&nbsp;state&nbsp;变化而重新渲染时，为了防止&nbsp;`Child`&nbsp;组件进行不必要的重新渲染，最有效的优化方式是什么？",
+      "options": [
+        {
+          "id": 7430565,
+          "content": "在 Child 组件内部使用 `useEffect` 比较 `data` 的前后值，手动阻止渲染。"
+        },
+        {
+          "id": 7430567,
+          "content": "在 Parent 组件中使用 `useCallback` 来包裹 `data` 对象的创建过程。"
+        },
+        {
+          "id": 7430568,
+          "content": "在 Parent 组件中使用 `useMemo` 来缓存 `data` 对象的计算结果。"
+        },
+        {
+          "id": 7430569,
+          "content": "将 `data` 提升到 Parent 组件的父组件中，通过 props 传递下来。"
+        }
+      ],
+      "correct_option_ids": [
+        7430568
+      ],
+      "correct_options": [
+        "在 Parent 组件中使用 `useMemo` 来缓存 `data` 对象的计算结果。"
+      ],
+      "analysis": "使用 useMemo 可以缓存 data 对象的计算结果，当 Parent 重新渲染时，如果依赖项未变，则返回相同引用，使 React.memo 的浅比较能防止 Child 不必要的重新渲染。选项 A 无效，因为 useEffect 在渲染后运行，无法阻止渲染；选项 B 错误，因为 useCallback 用于缓存函数而非对象；选项 D 通过提升 state 间接优化，但非最有效方式，且可能引入冗余层级。"
+    },
+    {
+      "question_id": 11403218,
+      "uuid": "fd566e51055146d7bab587c2a84bfff0",
+      "type": 1,
+      "title": "父组件在渲染时内联创建了一个对象并作为 prop 传给子组件 Child（...",
+      "content": "父组件在渲染时内联创建了一个对象并作为&nbsp;prop&nbsp;传给子组件&nbsp;Child（Child&nbsp;是函数组件）。父组件某些与&nbsp;Child&nbsp;无关的&nbsp;state&nbsp;变化也会导致&nbsp;Child&nbsp;频繁重新渲染。更合适的优化方式是？",
+      "options": [
+        {
+          "id": 7430627,
+          "content": "使用 useCallback 包裹该对象，以稳定其引用"
+        },
+        {
+          "id": 7430628,
+          "content": "在父组件用 useMemo 创建并稳定该对象引用，同时用 React.memo 包裹 Child"
+        },
+        {
+          "id": 7430629,
+          "content": "将所有状态提升到更高层组件，减少层级间传递"
+        },
+        {
+          "id": 7430630,
+          "content": "用 useLayoutEffect 在父组件中拦截无关更新"
+        }
+      ],
+      "correct_option_ids": [
+        7430628
+      ],
+      "correct_options": [
+        "在父组件用 useMemo 创建并稳定该对象引用，同时用 React.memo 包裹 Child"
+      ],
+      "analysis": "题目描述的问题是父组件每次渲染时内联创建新对象导致子组件在无关状态变化时频繁重新渲染。优化方式应稳定对象引用并使用 React.memo 防止不必要的重新渲染：选项 A 中 useCallback 仅适用于函数，不适用于对象；选项 B 使用 useMemo 稳定对象引用并配合 React.memo 包裹子组件以浅比较 props，是合适的优化；选项 C 状态提升可能减少层级但无法直接解决内联对象引用变化问题；选项 D 的 useLayoutEffect 用于副作用操作，不能拦截更新。题目无文字错误、专业名词错误、逻辑矛盾或规则破坏错误。"
+    },
+    {
+      "question_id": 11403140,
+      "uuid": "f291612e11d24f14b7f6d3846b24a7ed",
+      "type": 1,
+      "title": "某子组件使用 React.memo 包裹，但父组件每次渲染都传入一个内联回...",
+      "content": "某子组件使用&nbsp;React.memo&nbsp;包裹，但父组件每次渲染都传入一个内联回调，仍导致子组件重渲染。以下哪种改法最有效减少不必要的重渲染，同时不改变功能？",
+      "options": [
+        {
+          "id": 7427927,
+          "content": "使用 useCallback 包裹该回调，并将依赖列表限制在真正需要的值"
+        },
+        {
+          "id": 7427928,
+          "content": "使用 useMemo 包裹该回调，从而缓存其计算结果"
+        },
+        {
+          "id": 7427929,
+          "content": "将回调定义移动到模块顶层，避免每次创建新函数"
+        },
+        {
+          "id": 7427930,
+          "content": "给子组件传入新的 key，强制其每次重新挂载"
+        }
+      ],
+      "correct_option_ids": [
+        7427927
+      ],
+      "correct_options": [
+        "使用 useCallback 包裹该回调，并将依赖列表限制在真正需要的值"
+      ],
+      "analysis": "React.memo 会对子组件的 props 进行浅比较，以决定是否重渲染。父组件每次渲染时传入的内联回调函数会创建新的函数引用，导致子组件即使使用 React.memo 也会因 props 改变而重渲染。选项 A 使用 useCallback 包裹回调函数，可以缓存函数引用，仅在依赖项变化时更新，从而减少不必要的重渲染。选项 B 中 useMemo 主要用于缓存计算结果，而非函数引用，用于包裹回调函数不恰当；选项 C 将回调移动到模块顶层仅在回调不依赖父组件状态时有效，否则会丢失上下文；选项 D 通过传入新 key 强制子组件重新挂载，反而增加渲染开销，不符合减少不必要重渲染的目标。所有选项均未改变功能，但 A 是最有效且通用的解决方案。"
+    },
+    {
+      "question_id": 11403176,
+      "uuid": "b9d2452d454a4beb93357ec988013bd8",
+      "type": 1,
+      "title": "在 React 的并发模式 (Concurrent Mode) 下，一个计...",
+      "content": "在&nbsp;React&nbsp;的并发模式&nbsp;(Concurrent&nbsp;Mode)&nbsp;下，一个计算量较大的渲染任务正在进行中。此时，一个高优先级的用户交互事件（如输入框输入）触发了一个新的状态更新。React&nbsp;的调度器会如何响应？",
+      "options": [
+        {
+          "id": 7430851,
+          "content": "等待当前的低优先级渲染任务完成后，再开始处理高优先级的更新，以保证渲染的原子性。"
+        },
+        {
+          "id": 7430852,
+          "content": "立即中断当前的低优先级渲染任务，优先处理高优先级更新，完成后再从头开始或继续之前的渲染任务。"
+        },
+        {
+          "id": 7430853,
+          "content": "同时并行执行两个渲染任务，利用浏览器的 Web Worker 来避免阻塞主线程。"
+        },
+        {
+          "id": 7430854,
+          "content": "丢弃当前的低优先级渲染任务，并向控制台抛出一个警告，提示开发者需要进行代码分割。"
+        }
+      ],
+      "correct_option_ids": [
+        7430852
+      ],
+      "correct_options": [
+        "立即中断当前的低优先级渲染任务，优先处理高优先级更新，完成后再从头开始或继续之前的渲染任务。"
+      ],
+      "analysis": "在React的并发模式下，调度器会根据更新优先级进行工作调度。当高优先级事件（如用户输入）触发时，调度器会中断当前的低优先级渲染任务，优先处理高优先级更新，之后可能从头开始或继续之前的渲染任务。选项B正确描述此行为。选项A错误，因为并发模式设计允许中断低优先级任务以保持响应性，渲染不具备原子性。选项C错误，React并发模式依赖时间分片和调度器在主线程实现，不使用Web Worker并行执行渲染任务。选项D错误，调度器不会丢弃渲染任务或警告代码分割；代码分割用于懒加载，与优先级调度无关。"
+    },
+    {
+      "question_id": 11403223,
+      "uuid": "dcf5c63f6f174888ad84ec494a4ab091",
+      "type": 1,
+      "title": "在React中，虚拟DOM的主要作用是什么？",
+      "content": "在React中，虚拟DOM的主要作用是什么？",
+      "options": [
+        {
+          "id": 7430659,
+          "content": "直接操作浏览器DOM以提高渲染速度"
+        },
+        {
+          "id": 7430660,
+          "content": "提供一个抽象层，通过diff算法最小化DOM操作次数"
+        },
+        {
+          "id": 7430661,
+          "content": "管理组件的props和state的变化"
+        },
+        {
+          "id": 7430662,
+          "content": "实现异步数据请求处理"
+        }
+      ],
+      "correct_option_ids": [
+        7430660
+      ],
+      "correct_options": [
+        "提供一个抽象层，通过diff算法最小化DOM操作次数"
+      ],
+      "analysis": "虚拟DOM在React中提供一个抽象层，React使用diff算法比较虚拟DOM的旧版本和新版本，计算最小DOM操作，然后批量应用到实际DOM上，从而提高渲染性能。选项A错误，因为虚拟DOM不直接操作浏览器DOM；选项C涉及组件的状态管理，由React自身处理，不是虚拟DOM的主要作用；选项D与异步数据请求无关，由其他机制（如fetch或axios）处理。"
+    },
+    {
+      "question_id": 11403145,
+      "uuid": "37d5fda15c2348949347d9af8c72c94b",
+      "type": 1,
+      "title": "在React函数组件中，执行以下代码并点击按钮5次后，控制台会输出多少次'...",
+      "content": "<div>\n\t在React函数组件中，执行以下代码并点击按钮5次后，控制台会输出多少次'Count&nbsp;updated'？\n</div>\n<div>\n</div>\n<div>\n\t代码示例：\n</div>\n<div>\n<pre class=\"prettyprint lang-js\">const&nbsp;[count,&nbsp;setCount]&nbsp;=&nbsp;useState(0);\nuseEffect(()&nbsp;=&gt;&nbsp;{\n&nbsp;&nbsp;console.log('Count&nbsp;updated');\n&nbsp;&nbsp;setCount(count&nbsp;+&nbsp;1);\n},&nbsp;[]);\nreturn&nbsp;&lt;button&nbsp;onClick={()&nbsp;=&gt;&nbsp;setCount(count&nbsp;+&nbsp;1)}&gt;点击&lt;/button&gt;</pre>\n</div>",
+      "options": [
+        {
+          "id": 7427883,
+          "content": "1次"
+        },
+        {
+          "id": 7427884,
+          "content": "5次"
+        },
+        {
+          "id": 7427885,
+          "content": "6次"
+        },
+        {
+          "id": 7427886,
+          "content": "0次"
+        }
+      ],
+      "correct_option_ids": [
+        7427883
+      ],
+      "correct_options": [
+        "1次"
+      ],
+      "analysis": "在React函数组件中，`useEffect`的依赖数组为空（`[]`），因此它只在组件挂载时运行一次。组件首次渲染后，`useEffect`执行，控制台输出一次'Count updated'，并调用`setCount(count + 1)`将`count`从0更新为1，触发重新渲染。但依赖数组为空，`useEffect`不会在后续状态更新（如点击按钮）时重新运行。点击按钮5次，每次调用`setCount(count + 1)`更新状态，但不会触发`useEffect`，因此不会输出额外的'Count updated'。点击5次后，控制台只输出1次'Count updated'。选项A正确。"
+    },
+    {
+      "question_id": 11403224,
+      "uuid": "03fc3e755e1f4a9ca9e8bc5271654e4c",
+      "type": 1,
+      "title": "在React Hooks中，useCallback的主要用途是什么？",
+      "content": "在React&nbsp;Hooks中，useCallback的主要用途是什么？",
+      "options": [
+        {
+          "id": 7430663,
+          "content": "生成随机ID用于组件渲染"
+        },
+        {
+          "id": 7430664,
+          "content": "缓存回调函数的引用，避免因重新创建函数导致子组件无效渲染"
+        },
+        {
+          "id": 7430665,
+          "content": "处理表单输入事件"
+        },
+        {
+          "id": 7430666,
+          "content": "组合多个状态更新为一个批次执行"
+        }
+      ],
+      "correct_option_ids": [
+        7430664
+      ],
+      "correct_options": [
+        "缓存回调函数的引用，避免因重新创建函数导致子组件无效渲染"
+      ],
+      "analysis": "在React Hooks中，useCallback的主要用途是缓存回调函数的引用，以避免在依赖项未改变时重新创建函数，从而防止子组件因函数引用变化导致不必要的重新渲染（特别当子组件使用React.memo时）。选项A错误，useCallback不生成随机ID（useId或其他方法可能用于此）；选项C错误，处理表单输入事件通常由useState或useEffect管理，并非useCallback的主要用途；选项D错误，组合状态更新批处理由React自动完成或使用useTransition等，与useCallback无关。题目文字和专业术语无错误，逻辑自洽。"
+    },
+    {
+      "question_id": 2388945,
+      "uuid": "f2e13ec96cb84aeb8612a7e01365e138",
+      "type": 1,
+      "title": "JSX代码最终会被转换成使用（）方法生成的react元素",
+      "content": "<span>JSX</span>代码最终会被转换成使用（）方法生成的react元素",
+      "options": [
+        {
+          "id": 3747021,
+          "content": "React.jsx"
+        },
+        {
+          "id": 3747022,
+          "content": "React.cloneElement"
+        },
+        {
+          "id": 3747023,
+          "content": "React.createElement"
+        },
+        {
+          "id": 3747024,
+          "content": "React.createJsx"
+        }
+      ],
+      "correct_option_ids": [
+        3747023
+      ],
+      "correct_options": [
+        "React.createElement"
+      ],
+      "analysis": "使用JSX编写的代码将会被转换成使用React.createElement()的形式，React.createElement：创建并返回指定类型的新React元素。"
+    },
+    {
+      "question_id": 11403148,
+      "uuid": "cace26cd4848417db6f7e1a67d73e2cd",
+      "type": 1,
+      "title": "考虑以下场景：一个父组件 `Parent` 定义了一个内联函数 `hand...",
+      "content": "考虑以下场景：一个父组件&nbsp;`Parent`&nbsp;定义了一个内联函数&nbsp;`handleClick`，并将其作为&nbsp;prop&nbsp;传递给一个用&nbsp;`React.memo`&nbsp;包装的子组件&nbsp;`Child`。如果父组件因为自身状态变化而重新渲染，但传递给&nbsp;`Child`&nbsp;的其他&nbsp;props&nbsp;均未改变，那么&nbsp;`Child`&nbsp;组件的行为会是怎样的？",
+      "options": [
+        {
+          "id": 7427859,
+          "content": "`Child` 组件不会重新渲染，因为 `React.memo` 会对 props 进行浅比较，函数的内容没有变化。"
+        },
+        {
+          "id": 7427860,
+          "content": "`Child` 组件会重新渲染，因为每次 `Parent` 渲染时都会创建一个新的 `handleClick` 函数实例，导致 prop 引用变化。"
+        },
+        {
+          "id": 7427861,
+          "content": "`Child` 组件是否重新渲染取决于 `handleClick` 函数内部是否使用了父组件的 state。"
+        },
+        {
+          "id": 7427862,
+          "content": "`Child` 组件不会重新渲染，因为 `React.memo` 会智能地忽略函数类型的 prop 的比较。"
+        }
+      ],
+      "correct_option_ids": [
+        7427860
+      ],
+      "correct_options": [
+        "`Child` 组件会重新渲染，因为每次 `Parent` 渲染时都会创建一个新的 `handleClick` 函数实例，导致 prop 引用变化。"
+      ],
+      "analysis": "React.memo 会对 props 进行浅比较（shallow comparison），即比较 props 的引用是否相同。在每次父组件重新渲染时，内联函数 handleClick 会被重新创建，导致传递给 Child 组件的 handleClick prop 引用发生变化。尽管函数内容未变，但引用变化会触发浅比较认为 props 已改变，因此 Child 组件会重新渲染。选项 A 错误，因为 React.memo 比较的是引用而非内容；选项 C 错误，重新渲染取决于 prop 引用变化，而不依赖函数内部是否使用了父组件的 state；选项 D 错误，React.memo 不会智能忽略函数类型的 prop 比较。"
+    },
+    {
+      "question_id": 11403136,
+      "uuid": "59353bb1f271435dbec08ee8310cc94b",
+      "type": 1,
+      "title": "在 React 中为列表渲染选择 key 的最佳实践，下列哪项说法最恰当？",
+      "content": "在&nbsp;React&nbsp;中为列表渲染选择&nbsp;key&nbsp;的最佳实践，下列哪项说法最恰当？",
+      "options": [
+        {
+          "id": 7427959,
+          "content": "key 仅用于提高渲染性能，与组件状态无关"
+        },
+        {
+          "id": 7427960,
+          "content": "使用数组索引作为 key 对任何列表都安全，只要不进行排序"
+        },
+        {
+          "id": 7427961,
+          "content": "为每个元素提供稳定且在同一层级唯一的 key 可帮助 React 正确保留组件实例，避免受控输入错位问题"
+        },
+        {
+          "id": 7427962,
+          "content": "key 必须是全局唯一，否则应用会崩溃"
+        }
+      ],
+      "correct_option_ids": [
+        7427961
+      ],
+      "correct_options": [
+        "为每个元素提供稳定且在同一层级唯一的 key 可帮助 React 正确保留组件实例，避免受控输入错位问题"
+      ],
+      "analysis": "React官方文档强调，key应具有在同一层级下的稳定性与唯一性，以帮助React正确识别元素变化。选项A错误，因为key不仅关系性能还影响状态保持；选项B错误，数组索引在插入/删除操作时会导致问题；选项D错误，key仅需同级唯一而非全局唯一。选项C准确描述了避免受控输入错位等问题的关键机制。"
+    },
+    {
+      "question_id": 11403236,
+      "uuid": "07ad0ab285d04c62b0a2bc5b9f7c8ec9",
+      "type": 1,
+      "title": "关于React.memo的描述，以下正确的是？",
+      "content": "关于React.memo的描述，以下正确的是？",
+      "options": [
+        {
+          "id": 7430759,
+          "content": "A. React.memo会对props进行深比较以决定是否跳过渲染"
+        },
+        {
+          "id": 7430760,
+          "content": "B. 当props中对象属性内部值变但引用不变时，React.memo会跳过渲染"
+        },
+        {
+          "id": 7430761,
+          "content": "C. React.memo可以完全替代shouldComponentUpdate方法"
+        },
+        {
+          "id": 7430762,
+          "content": "D. 即使组件state变化，React.memo也会阻止重新渲染"
+        }
+      ],
+      "correct_option_ids": [
+        7430760
+      ],
+      "correct_options": [
+        "B. 当props中对象属性内部值变但引用不变时，React.memo会跳过渲染"
+      ],
+      "analysis": "选项B正确：React.memo默认使用浅比较（shallow comparison），只检查props对象的引用是否改变。如果引用不变，即使对象内部值变化，也会跳过渲染。选项A错误：React.memo默认不是深比较（deep comparison），而是浅比较。选项C错误：React.memo仅基于props优化，无法处理state变化，而shouldComponentUpdate可以基于props和state，因此不能完全替代。选项D错误：当组件state变化时，无论props如何，都会触发重新渲染。"
+    },
+    {
+      "question_id": 11403235,
+      "uuid": "4993f16fad394fc3b962394053ac44e2",
+      "type": 1,
+      "title": "在React中进行列表渲染时，若使用数组索引作为key，以下哪种场景会导致...",
+      "content": "在React中进行列表渲染时，若使用数组索引作为key，以下哪种场景会导致潜在的组件状态错误或性能问题？",
+      "options": [
+        {
+          "id": 7430749,
+          "content": "A. 列表项的顺序发生调整（如排序、插入/删除中间项）时"
+        },
+        {
+          "id": 7430751,
+          "content": "B. 列表项的内容发生更新但顺序不变时"
+        },
+        {
+          "id": 7430752,
+          "content": "C. 列表项的数量增加时"
+        },
+        {
+          "id": 7430753,
+          "content": "D. 列表项为纯展示组件（无内部状态）时"
+        }
+      ],
+      "correct_option_ids": [
+        7430749
+      ],
+      "correct_options": [
+        "A. 列表项的顺序发生调整（如排序、插入/删除中间项）时"
+      ],
+      "analysis": "在React列表渲染中，使用数组索引作为key时，当列表项的顺序发生调整（如排序、插入或删除中间项），会导致key值不稳定，从而引发组件状态错误（例如状态错位或丢失）或性能问题（如不必要的重新渲染）。对于选项B：列表项内容更新但顺序不变时，索引key通常能正确工作；选项C：列表项数量增加时，若仅在末尾追加，问题较小，但若在中间插入则类似A；选项D：当列表项为纯展示组件（无内部状态）时，状态错误不会发生，性能影响也较小。综上，A是唯一明确导致潜在问题的场景。题目文字、专业术语（如“React”、“key”、“数组索引”、“组件状态”）均正确无误，无逻辑矛盾或考试规则违规。"
+    },
+    {
+      "question_id": 11403198,
+      "uuid": "5490fe7d82ed4fdaa0445364c1a56061",
+      "type": 1,
+      "title": "在一个列表中渲染了多个 `Item` 组件，每个 `Item` 组件内部包...",
+      "content": "在一个列表中渲染了多个&nbsp;`Item`&nbsp;组件，每个&nbsp;`Item`&nbsp;组件内部包含一个非受控的&nbsp;`&lt;input&gt;`&nbsp;元素。列表的初始数据为&nbsp;`[{id:&nbsp;1},&nbsp;{id:&nbsp;2}]`，对应的&nbsp;`key`&nbsp;分别为&nbsp;`1`&nbsp;和&nbsp;`2`。用户在第一个&nbsp;`Item`&nbsp;的输入框中输入了文本&nbsp;\"hello\"。随后，由于父组件状态变更，列表数据更新为&nbsp;`[{id:&nbsp;10},&nbsp;{id:&nbsp;2}]`，导致第一个&nbsp;`Item`&nbsp;的&nbsp;`key`&nbsp;从&nbsp;`1`&nbsp;变为了&nbsp;`10`。请问这次重新渲染后，第一个输入框的状态是什么？",
+      "options": [
+        {
+          "id": 7431169,
+          "content": "输入框中依然是 \"hello\"，因为 React 复用了 DOM 节点"
+        },
+        {
+          "id": 7431170,
+          "content": "输入框变为空，因为 `key` 变化导致旧组件被卸载，新组件被挂载"
+        },
+        {
+          "id": 7431172,
+          "content": "文本 \"hello\" 会转移到第二个 `Item` 的输入框中"
+        },
+        {
+          "id": 7431174,
+          "content": "由于渲染期间 `key` 发生变化，应用会崩溃"
+        }
+      ],
+      "correct_option_ids": [
+        7431170
+      ],
+      "correct_options": [
+        "输入框变为空，因为 `key` 变化导致旧组件被卸载，新组件被挂载"
+      ],
+      "analysis": "在React中，组件的key用于唯一标识其身份。当key发生变化时，React会卸载旧组件并挂载新组件。本场景中，第一个Item的key从1变为10，导致key=1的组件被卸载，其对应的非受控<input>的DOM节点被销毁，输入内容'hello'随之丢失；新挂载的key=10组件中，input元素初始状态为空。因此，重新渲染后第一个输入框为空。选项A错误，因为key变化阻止了DOM复用；选项C错误，文本不会转移（key=2的组件未被卸载，其input状态保持原样）；选项D错误，key变化不会导致应用崩溃，仅为正常重新渲染。题目中无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    }
+  ]
+}

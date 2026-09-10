@@ -1,0 +1,6060 @@
+{
+  "source": "nowcoder_official",
+  "group": "人工智能",
+  "name": "微调",
+  "tag_id": 305562,
+  "target": 190,
+  "fetched_at": "2026-07-28",
+  "total_unique": 189,
+  "complete": false,
+  "questions": [
+    {
+      "question_id": 11640022,
+      "uuid": "a1832602e3e044bc9051c30bcb396b6b",
+      "type": 1,
+      "title": "以下代码中的`peft_config`参数`bias=\"none\"`的含义...",
+      "content": "以下代码中的`peft_config`参数`bias=\"none\"`的含义是？<div>```python</div><div>config&nbsp;=&nbsp;LoraConfig(r=16,&nbsp;lora_alpha=32,&nbsp;bias=\"none\")</div><div>```</div>",
+      "options": [
+        {
+          "id": 7512329,
+          "content": "不训练任何偏置项"
+        },
+        {
+          "id": 7512330,
+          "content": "不在LoRA层中添加偏置，只训练低秩矩阵A和B"
+        },
+        {
+          "id": 7512331,
+          "content": "将所有偏置初始化为零"
+        },
+        {
+          "id": 7512332,
+          "content": "冻结所有偏置项"
+        }
+      ],
+      "correct_option_ids": [
+        7512330
+      ],
+      "correct_options": [
+        "不在LoRA层中添加偏置，只训练低秩矩阵A和B"
+      ],
+      "analysis": "`bias=\"none\"`表示LoRA不包含偏置参数的更新（只更新A和B低秩矩阵）。其他选项：`\"all\"`训练所有层的偏置；`\"lora_only\"`只训练LoRA层的偏置。默认`\"none\"`参数最少，性能通常足够。"
+    },
+    {
+      "question_id": 11639952,
+      "uuid": "a06d72a8fcbf47b9a306f380624cdf8c",
+      "type": 1,
+      "title": "在RLHF流程中，若奖励模型出现\"奖励崩溃\"（reward collaps...",
+      "content": "在RLHF流程中，若奖励模型出现\"奖励崩溃\"（reward&nbsp;collapse），以下描述正确的是？",
+      "options": [
+        {
+          "id": 7512105,
+          "content": "奖励模型开始给所有回复打满分，导致策略失去学习信号"
+        },
+        {
+          "id": 7512106,
+          "content": "奖励模型的参数变为0，无法使用"
+        },
+        {
+          "id": 7512107,
+          "content": "奖励模型只对特定语言的回复有效"
+        },
+        {
+          "id": 7512108,
+          "content": "奖励模型的训练loss突然下降"
+        }
+      ],
+      "correct_option_ids": [
+        7512105
+      ],
+      "correct_options": [
+        "奖励模型开始给所有回复打满分，导致策略失去学习信号"
+      ],
+      "analysis": "奖励崩溃（Reward&nbsp;Hacking的一种形式）：策略模型发现某种输出特征总能获得高奖励（如奖励模型对特定措辞打高分），开始过度优化这些特征，最终奖励分数极高但实际质量极差。奖励模型对out-of-distribution的输出打出不合理的高分。缓解：KL散度约束（限制策略偏离参考模型）、定期更新奖励模型（在线RLHF）、使用多个奖励模型集成。"
+    },
+    {
+      "question_id": 11639968,
+      "uuid": "8cf49ff5438a49ada0496c34dd522f39",
+      "type": 1,
+      "title": "以下关于\"Instruction Tuning\"和\"Chat Tuning...",
+      "content": "以下关于\"Instruction&nbsp;Tuning\"和\"Chat&nbsp;Tuning\"的区别，描述正确的是？",
+      "options": [
+        {
+          "id": 7512305,
+          "content": "两者完全相同，只是名称不同"
+        },
+        {
+          "id": 7512306,
+          "content": "Instruction&nbsp;Tuning侧重于遵循单轮任务指令；Chat&nbsp;Tuning侧重于多轮对话的上下文理解和角色扮演"
+        },
+        {
+          "id": 7512307,
+          "content": "Chat&nbsp;Tuning不需要人工标注数据"
+        },
+        {
+          "id": 7512308,
+          "content": "Instruction&nbsp;Tuning只适用于英文任务"
+        }
+      ],
+      "correct_option_ids": [
+        7512306
+      ],
+      "correct_options": [
+        "Instruction&nbsp;Tuning侧重于遵循单轮任务指令；Chat&nbsp;Tuning侧重于多轮对话的上下文理解和角色扮演"
+      ],
+      "analysis": "Instruction&nbsp;Tuning（如FLAN、Alpaca）：主要训练单轮\"指令-回复\"对，目标是让模型理解和执行各种自然语言指令。Chat&nbsp;Tuning（如ChatGPT、Claude）：额外包含多轮对话数据，训练上下文理解（记住之前的对话内容）、角色一致性（保持助手身份）、多轮澄清能力。两者的区别在于数据格式（单轮&nbsp;vs&nbsp;多轮）和训练目标。"
+    },
+    {
+      "question_id": 11639940,
+      "uuid": "e7e897deedf44865a5fd06486848bdc0",
+      "type": 1,
+      "title": "以下哪种方法可以在不重新训练的情况下调整LoRA微调后模型的\"任务强度\"？",
+      "content": "以下哪种方法可以在不重新训练的情况下调整LoRA微调后模型的\"任务强度\"？",
+      "options": [
+        {
+          "id": 7510605,
+          "content": "修改模型的词表大小"
+        },
+        {
+          "id": 7510606,
+          "content": "调整推理时的LoRA&nbsp;scaling因子（alpha/rank），增大可增强LoRA效果，减小可弱化"
+        },
+        {
+          "id": 7510607,
+          "content": "更换基础模型"
+        },
+        {
+          "id": 7510608,
+          "content": "修改tokenizer"
+        }
+      ],
+      "correct_option_ids": [
+        7510606
+      ],
+      "correct_options": [
+        "调整推理时的LoRA&nbsp;scaling因子（alpha/rank），增大可增强LoRA效果，减小可弱化"
+      ],
+      "analysis": "LoRA的推理公式：W_final&nbsp;=&nbsp;W_base&nbsp;+&nbsp;(alpha/rank)&nbsp;×&nbsp;B&nbsp;×&nbsp;A。通过动态调整这个缩放系数，可以在0（完全使用基础模型）到1（标准LoRA效果）之间插值，甚至&gt;1（放大LoRA影响）。这在以下场景很有用：①需要平衡\"基础能力\"和\"微调能力\"；②多个LoRA权重混合时调整各自贡献；③推理时的\"LoRA强度\"超参调整。"
+    },
+    {
+      "question_id": 11639988,
+      "uuid": "4118133f5b20414cb408272a8bfd929c",
+      "type": 1,
+      "title": "以下关于灾难性遗忘（Catastrophic Forgetting）的缓解...",
+      "content": "以下关于灾难性遗忘（Catastrophic&nbsp;Forgetting）的缓解策略，哪种方法不正确？",
+      "options": [
+        {
+          "id": 7512557,
+          "content": "在训练数据中混合原始预训练数据"
+        },
+        {
+          "id": 7512560,
+          "content": "使用极低的学习率"
+        },
+        {
+          "id": 7512562,
+          "content": "使用Elastic&nbsp;Weight&nbsp;Consolidation（EWC）保护重要参数"
+        },
+        {
+          "id": 7512565,
+          "content": "增大LoRA的rank到与全量参数相同"
+        }
+      ],
+      "correct_option_ids": [
+        7512565
+      ],
+      "correct_options": [
+        "增大LoRA的rank到与全量参数相同"
+      ],
+      "analysis": "当LoRA&nbsp;rank等于完整权重维度时，退化为全量微调，并不能缓解灾难性遗忘。有效方法包括数据混合、低学习率、EWC等方法通过约束重要参数的变化幅度来缓解遗忘。"
+    },
+    {
+      "question_id": 11639977,
+      "uuid": "8db632b385294c28b1f5bb014b1de02a",
+      "type": 1,
+      "title": "以下关于微调时\"早停\"（Early Stopping）策略的最佳实践，描述...",
+      "content": "以下关于微调时\"早停\"（Early&nbsp;Stopping）策略的最佳实践，描述正确的是？",
+      "options": [
+        {
+          "id": 7512420,
+          "content": "总是训练到固定的epoch数（如3个epoch）"
+        },
+        {
+          "id": 7512422,
+          "content": "监控验证集loss（或关键任务指标），当连续N个eval步骤不再改善时停止，防止过拟合"
+        },
+        {
+          "id": 7512423,
+          "content": "当训练loss降至0时立即停止"
+        },
+        {
+          "id": 7512424,
+          "content": "早停会导致模型能力不足，不应使用"
+        }
+      ],
+      "correct_option_ids": [
+        7512422
+      ],
+      "correct_options": [
+        "监控验证集loss（或关键任务指标），当连续N个eval步骤不再改善时停止，防止过拟合"
+      ],
+      "analysis": "SFT的早停最佳实践：①以验证集loss或下游任务指标（如MT-Bench分数）为early&nbsp;stopping依据，而非训练loss；②patience参数（通常3-5个eval步骤不改善才停止）防止因loss波动过早停止；③保存每次验证改善时的checkpoint，最终使用最优checkpoint。对于小数据集（&lt;10K条），一般1-2个epoch就出现过拟合，早停尤为重要。"
+    },
+    {
+      "question_id": 11639960,
+      "uuid": "9cf3404d599640c9adfcf04b898e14ac",
+      "type": 1,
+      "title": "在进行多语言模型微调时，以下哪种数据配比策略最有效？",
+      "content": "在进行多语言模型微调时，以下哪种数据配比策略最有效？",
+      "options": [
+        {
+          "id": 7512202,
+          "content": "只使用目标语言数据，完全不包含英文"
+        },
+        {
+          "id": 7512204,
+          "content": "主要目标语言数据&nbsp;+&nbsp;少量英文数据（保持英文能力）+&nbsp;多语言平行语料（增强跨语言迁移）"
+        },
+        {
+          "id": 7512206,
+          "content": "所有语言等量混合"
+        },
+        {
+          "id": 7512208,
+          "content": "只使用机器翻译的数据"
+        }
+      ],
+      "correct_option_ids": [
+        7512204
+      ],
+      "correct_options": [
+        "主要目标语言数据&nbsp;+&nbsp;少量英文数据（保持英文能力）+&nbsp;多语言平行语料（增强跨语言迁移）"
+      ],
+      "analysis": "多语言SFT的数据配比策略：①目标语言（如中文）为主（60-70%）：主要提升目标语言能力；②保留英文数据（15-20%）：防止英文能力退化（英文知识对推理能力重要）；③多语言平行语料（10-15%）：强化语言间知识迁移。研究表明完全去除英文数据会导致推理能力显著下降，因为大量知识和推理数据以英文为主。"
+    },
+    {
+      "question_id": 11640029,
+      "uuid": "141634c0025b437e8d4ec6b1f5345db8",
+      "type": 1,
+      "title": "以下哪种方法通过\"自我对弈\"（Self-Play）来生成偏好数据？",
+      "content": "以下哪种方法通过\"自我对弈\"（Self-Play）来生成偏好数据？",
+      "options": [
+        {
+          "id": 7512261,
+          "content": "RLHF标准流程"
+        },
+        {
+          "id": 7512262,
+          "content": "SPIN（Self-Play&nbsp;Fine-Tuning）"
+        },
+        {
+          "id": 7512263,
+          "content": "DPO"
+        },
+        {
+          "id": 7512264,
+          "content": "SFT"
+        }
+      ],
+      "correct_option_ids": [
+        7512262
+      ],
+      "correct_options": [
+        "SPIN（Self-Play&nbsp;Fine-Tuning）"
+      ],
+      "analysis": "SPIN让当前模型与之前版本的模型对抗：当前模型生成的回复为\"chosen\"，旧版本模型生成的为\"rejected\"，用DPO方式训练。这无需外部人类标注即可持续迭代优化，类似AlphaGo的自对弈学习。"
+    },
+    {
+      "question_id": 11639916,
+      "uuid": "8fa9ddd6f53341a8b9ae77cb641f58c0",
+      "type": 1,
+      "title": "以下哪种微调方法在参数量相同的情况下，通常对模型行为的改变最大？",
+      "content": "以下哪种微调方法在参数量相同的情况下，通常对模型行为的改变最大？",
+      "options": [
+        {
+          "id": 7510878,
+          "content": "Prompt&nbsp;Tuning（只改输入embedding）"
+        },
+        {
+          "id": 7510880,
+          "content": "LoRA（rank=4，只在q_proj和v_proj）"
+        },
+        {
+          "id": 7510882,
+          "content": "全参微调（但只训练最后2层）"
+        },
+        {
+          "id": 7510884,
+          "content": "Prefix&nbsp;Tuning（在所有层添加前缀）"
+        }
+      ],
+      "correct_option_ids": [
+        7510882
+      ],
+      "correct_options": [
+        "全参微调（但只训练最后2层）"
+      ],
+      "analysis": "虽然只训练最后2层，但这些是完整的dense层（每层包含attention和FFN的所有参数），可以对输出分布进行大幅修改。相比之下，LoRA&nbsp;rank=4的参数极少，Prompt&nbsp;Tuning只影响输入表示，Prefix&nbsp;Tuning虽覆盖所有层但每层的prefix维度通常很小。全参更新最后几层对输出影响最直接。"
+    },
+    {
+      "question_id": 11639899,
+      "uuid": "ff09b0f75a314cc5b17a9a645e82bb7c",
+      "type": 1,
+      "title": "一个7B参数的模型，使用BF16精度全参微调，仅存储模型权重需要多少显存？",
+      "content": "一个7B参数的模型，使用BF16精度全参微调，仅存储模型权重需要多少显存？",
+      "options": [
+        {
+          "id": 7511080,
+          "content": "约7GB"
+        },
+        {
+          "id": 7511082,
+          "content": "约14GB"
+        },
+        {
+          "id": 7511083,
+          "content": "约28GB"
+        },
+        {
+          "id": 7511084,
+          "content": "约56GB"
+        }
+      ],
+      "correct_option_ids": [
+        7511082
+      ],
+      "correct_options": [
+        "约14GB"
+      ],
+      "analysis": "BF16每个参数占2字节，7B参数&nbsp;×&nbsp;2bytes&nbsp;=&nbsp;14GB。这只是权重存储，实际训练还需要梯度（14GB）、Adam优化器状态（28GB，存储m和v各需14GB），总计约56GB+激活值。这也是为什么7B模型全参微调通常需要80GB以上显存。"
+    },
+    {
+      "question_id": 11640012,
+      "uuid": "31b6fb57599f4f93af9ea5ebe5c0a55a",
+      "type": 1,
+      "title": "以下关于Packing（序列打包）技术在SFT中的描述，哪项正确？",
+      "content": "以下关于Packing（序列打包）技术在SFT中的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7512449,
+          "content": "Packing会将不同样本的token混合，导致错误的cross-attention"
+        },
+        {
+          "id": 7512450,
+          "content": "Packing通过将多个短序列拼接为一个长序列，提高GPU利用率"
+        },
+        {
+          "id": 7512451,
+          "content": "Packing不适用于指令微调"
+        },
+        {
+          "id": 7512452,
+          "content": "Packing需要修改模型架构"
+        }
+      ],
+      "correct_option_ids": [
+        7512450
+      ],
+      "correct_options": [
+        "Packing通过将多个短序列拼接为一个长序列，提高GPU利用率"
+      ],
+      "analysis": "Sequence&nbsp;Packing将多个短样本拼接成一个满长度序列，消除padding浪费，提高GPU利用率（通常可提升50-200%）。需要配合适当的attention&nbsp;mask防止样本间的跨序列注意力泄漏。"
+    },
+    {
+      "question_id": 11640060,
+      "uuid": "d4c79dc3becb4405ba0c25019a0d683d",
+      "type": 1,
+      "title": "以下哪种技术通过\"离线强化学习\"（Offline RL）方式避免了在线RL...",
+      "content": "以下哪种技术通过\"离线强化学习\"（Offline&nbsp;RL）方式避免了在线RLHF的不稳定性？",
+      "options": [
+        {
+          "id": 7511937,
+          "content": "PPO（在线RL）"
+        },
+        {
+          "id": 7511938,
+          "content": "IQL（Implicit&nbsp;Q-Learning）或KTO等离线偏好优化方法"
+        },
+        {
+          "id": 7511939,
+          "content": "SFT（监督微调）"
+        },
+        {
+          "id": 7511940,
+          "content": "GRPO"
+        }
+      ],
+      "correct_option_ids": [
+        7511938
+      ],
+      "correct_options": [
+        "IQL（Implicit&nbsp;Q-Learning）或KTO等离线偏好优化方法"
+      ],
+      "analysis": "在线RLHF（PPO）需要实时采样和奖励模型调用，不稳定且资源密集。离线方法如KTO（Kahneman-Tversky&nbsp;Optimization）只用正/负样本标签（不需要偏好对），DPO基于固定数据集优化，都避免了在线探索的不稳定性。"
+    },
+    {
+      "question_id": 11640016,
+      "uuid": "c8da20a1045c4a5f8996774f3ca6e326",
+      "type": 1,
+      "title": "在微调后进行模型评估时，以下哪种策略最全面？",
+      "content": "在微调后进行模型评估时，以下哪种策略最全面？",
+      "options": [
+        {
+          "id": 7512401,
+          "content": "只评估目标任务的准确率"
+        },
+        {
+          "id": 7512402,
+          "content": "同时评估目标任务性能和基础能力退化情况"
+        },
+        {
+          "id": 7512403,
+          "content": "只做人工评估"
+        },
+        {
+          "id": 7512404,
+          "content": "使用perplexity作为唯一指标"
+        }
+      ],
+      "correct_option_ids": [
+        7512402
+      ],
+      "correct_options": [
+        "同时评估目标任务性能和基础能力退化情况"
+      ],
+      "analysis": "完整的微调评估应包括：1)&nbsp;目标任务性能（特定benchmark或人工评估）；2)&nbsp;基础能力保持（MMLU/GSM8K等防止遗忘）；3)&nbsp;安全性评估（是否产生有害输出）；4)&nbsp;效率指标（延迟/吞吐）。"
+    },
+    {
+      "question_id": 11640047,
+      "uuid": "967ed528c18c4680932a2364944d690e",
+      "type": 1,
+      "title": "以下哪种技术通过将人类偏好数据中的\"隐式奖励\"直接嵌入模型，实现无需奖励模...",
+      "content": "以下哪种技术通过将人类偏好数据中的\"隐式奖励\"直接嵌入模型，实现无需奖励模型的对齐？",
+      "options": [
+        {
+          "id": 7512047,
+          "content": "PPO"
+        },
+        {
+          "id": 7512049,
+          "content": "DPO（Direct&nbsp;Preference&nbsp;Optimization）"
+        },
+        {
+          "id": 7512051,
+          "content": "GRPO"
+        },
+        {
+          "id": 7512052,
+          "content": "SFT"
+        }
+      ],
+      "correct_option_ids": [
+        7512049
+      ],
+      "correct_options": [
+        "DPO（Direct&nbsp;Preference&nbsp;Optimization）"
+      ],
+      "analysis": "DPO的数学本质：通过推导可以将RLHF的奖励函数用模型概率表示（r(x,y)&nbsp;=&nbsp;β×log(π(y|x)/π_ref(y|x))），从而直接优化策略而无需独立的奖励模型。偏好数据中的\"隐式奖励\"被直接编码进策略模型参数。"
+    },
+    {
+      "question_id": 11639884,
+      "uuid": "d7992efe4c5f4162b6662773627704bb",
+      "type": 1,
+      "title": "在多轮对话SFT训练时，通常对历史轮次的loss mask处理方式是？",
+      "content": "在多轮对话SFT训练时，通常对历史轮次的loss&nbsp;mask处理方式是？",
+      "options": [
+        {
+          "id": 7511251,
+          "content": "对所有token（包括历史轮次）都计算loss"
+        },
+        {
+          "id": 7511252,
+          "content": "只对最后一轮的assistant回复计算loss，历史轮次mask掉"
+        },
+        {
+          "id": 7511254,
+          "content": "对所有assistant回复计算loss，user输入mask掉"
+        },
+        {
+          "id": 7511257,
+          "content": "对第一轮和最后一轮计算loss，中间轮次mask掉"
+        }
+      ],
+      "correct_option_ids": [
+        7511254
+      ],
+      "correct_options": [
+        "对所有assistant回复计算loss，user输入mask掉"
+      ],
+      "analysis": "标准做法是只对assistant的回复token计算交叉熵loss，user输入、system&nbsp;prompt以及历史轮次的user消息都设为-100（PyTorch忽略该位置的loss）。如果对历史轮的assistant也计算loss，效果通常更好（让模型学习所有助手回复），但对user输入计算loss会引入噪声。"
+    },
+    {
+      "question_id": 11640040,
+      "uuid": "2489a322c61d4e2fa4838de9708a2e37",
+      "type": 1,
+      "title": "以下关于\"对齐假想敌\"（Red-teaming for Alignment...",
+      "content": "以下关于\"对齐假想敌\"（Red-teaming&nbsp;for&nbsp;Alignment）在微调流程中的作用，哪项正确？",
+      "options": [
+        {
+          "id": 7512111,
+          "content": "只用于测试模型速度"
+        },
+        {
+          "id": 7512112,
+          "content": "通过系统性攻击测试发现微调后的安全漏洞，指导下一轮对齐优化"
+        },
+        {
+          "id": 7512114,
+          "content": "替代所有其他评估方法"
+        },
+        {
+          "id": 7512116,
+          "content": "只适用于商业部署"
+        }
+      ],
+      "correct_option_ids": [
+        7512112
+      ],
+      "correct_options": [
+        "通过系统性攻击测试发现微调后的安全漏洞，指导下一轮对齐优化"
+      ],
+      "analysis": "Red-teaming（红队测试）通过专门设计的对抗性测试（越狱尝试、有害内容诱导、隐蔽操控等）发现微调后模型的安全漏洞。测试结果用于：1)&nbsp;修补具体漏洞；2)&nbsp;更新对齐训练数据；3)&nbsp;制定更严格的护栏策略。"
+    },
+    {
+      "question_id": 11639881,
+      "uuid": "183d284ea9674b2c9b5c227611e6c50d",
+      "type": 1,
+      "title": "QLoRA训练时，反向传播的梯度是以什么精度计算的？",
+      "content": "QLoRA训练时，反向传播的梯度是以什么精度计算的？",
+      "options": [
+        {
+          "id": 7511289,
+          "content": "NF4（4bit）"
+        },
+        {
+          "id": 7511290,
+          "content": "INT8（8bit）"
+        },
+        {
+          "id": 7511291,
+          "content": "BF16（16bit）"
+        },
+        {
+          "id": 7511292,
+          "content": "FP32（32bit）"
+        }
+      ],
+      "correct_option_ids": [
+        7511291
+      ],
+      "correct_options": [
+        "BF16（16bit）"
+      ],
+      "analysis": "QLoRA中基础模型权重以NF4存储（节省显存），但在前向/反向传播计算时会被解量化为BF16进行计算，梯度以BF16精度累积到LoRA的A、B矩阵上。这样在大幅节省显存的同时保持了训练的数值稳定性。"
+    },
+    {
+      "question_id": 11639958,
+      "uuid": "822876ef18a44f2ead6d316112827801",
+      "type": 1,
+      "title": "以下哪种正则化技术在大模型SFT中最常用？",
+      "content": "以下哪种正则化技术在大模型SFT中最常用？",
+      "options": [
+        {
+          "id": 7512173,
+          "content": "Dropout（训练时随机丢弃神经元）"
+        },
+        {
+          "id": 7512175,
+          "content": "Weight&nbsp;Decay（L2正则化，在AdamW中通过解耦权重衰减实现）"
+        },
+        {
+          "id": 7512178,
+          "content": "Batch&nbsp;Normalization"
+        },
+        {
+          "id": 7512181,
+          "content": "Label&nbsp;Smoothing"
+        }
+      ],
+      "correct_option_ids": [
+        7512175
+      ],
+      "correct_options": [
+        "Weight&nbsp;Decay（L2正则化，在AdamW中通过解耦权重衰减实现）"
+      ],
+      "analysis": "大模型SFT中Weight&nbsp;Decay（通过AdamW实现，将权重衰减从梯度更新中解耦）是最主流的正则化方法，通常设为0.01或0.1。Dropout在Transformer中使用较少（预训练时用，微调时通常设为0）。BatchNorm不适合NLP（变长序列）。Label&nbsp;Smoothing在SFT中偶有使用但不是主流。"
+    },
+    {
+      "question_id": 11639914,
+      "uuid": "e352156efd7949448a44e90e5f19675a",
+      "type": 1,
+      "title": "以下关于梯度检查点（Gradient Checkpointing）的描述，...",
+      "content": "以下关于梯度检查点（Gradient&nbsp;Checkpointing）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7510901,
+          "content": "梯度检查点通过缓存所有中间激活值来节省计算"
+        },
+        {
+          "id": 7510902,
+          "content": "梯度检查点用时间换空间：前向传播不保存中间激活，反向传播时重新计算"
+        },
+        {
+          "id": 7510903,
+          "content": "梯度检查点只适用于CNN，不适用于Transformer"
+        },
+        {
+          "id": 7510906,
+          "content": "启用梯度检查点会使训练loss更低"
+        }
+      ],
+      "correct_option_ids": [
+        7510902
+      ],
+      "correct_options": [
+        "梯度检查点用时间换空间：前向传播不保存中间激活，反向传播时重新计算"
+      ],
+      "analysis": "标准反向传播需要缓存所有前向激活（显存∝层数），梯度检查点只保存关键检查点处的激活，反向传播时从最近的检查点重新前向计算到当前位置，以约33%的额外计算换取大量显存节省（通常可减少60-70%激活显存）。这是大模型微调的标准技术。"
+    },
+    {
+      "question_id": 11639992,
+      "uuid": "fb189f56c5044650936e9de5576e7dc6",
+      "type": 1,
+      "title": "以下关于连续学习（Continual Learning）与LoRA的结合，...",
+      "content": "以下关于连续学习（Continual&nbsp;Learning）与LoRA的结合，最正确的描述是？",
+      "options": [
+        {
+          "id": 7512693,
+          "content": "每个新任务训练一组新的LoRA权重，避免互相干扰"
+        },
+        {
+          "id": 7512694,
+          "content": "用相同的LoRA权重顺序学习所有任务"
+        },
+        {
+          "id": 7512695,
+          "content": "LoRA本身完全解决了灾难性遗忘"
+        },
+        {
+          "id": 7512696,
+          "content": "连续学习必须使用全量微调"
+        }
+      ],
+      "correct_option_ids": [
+        7512693
+      ],
+      "correct_options": [
+        "每个新任务训练一组新的LoRA权重，避免互相干扰"
+      ],
+      "analysis": "LoRA天然适合连续学习：为每个任务训练独立的LoRA权重并保存，推理时按需加载合适的适配器，完全避免任务间的参数冲突。这也是LoRA在多任务部署中的重要优势。"
+    },
+    {
+      "question_id": 11639926,
+      "uuid": "970ebbe76a79496198a841415ac30b21",
+      "type": 1,
+      "title": "在评估微调后模型的能力时，\"MT-Bench\"主要评估什么？",
+      "content": "在评估微调后模型的能力时，\"MT-Bench\"主要评估什么？",
+      "options": [
+        {
+          "id": 7510765,
+          "content": "数学推理能力（AMC/AIME级别）"
+        },
+        {
+          "id": 7510766,
+          "content": "代码生成能力（HumanEval）"
+        },
+        {
+          "id": 7510767,
+          "content": "多轮对话的指令遵循和回复质量（LLM-as-Judge打分）"
+        },
+        {
+          "id": 7510768,
+          "content": "知识密度和事实准确性（MMLU）"
+        }
+      ],
+      "correct_option_ids": [
+        7510767
+      ],
+      "correct_options": [
+        "多轮对话的指令遵循和回复质量（LLM-as-Judge打分）"
+      ],
+      "analysis": "MT-Bench（Zheng&nbsp;et&nbsp;al.&nbsp;2023）设计了80道涵盖写作、推理、数学、代码等8类的多轮对话问题，使用GPT-4作为评判者（LLM-as-Judge），给回复打1-10分。它主要衡量模型在多轮对话中的综合指令遵循能力，是衡量chat&nbsp;model质量的重要基准。"
+    },
+    {
+      "question_id": 11639990,
+      "uuid": "8a02cf360b9643dc84510428e00362fd",
+      "type": 1,
+      "title": "在RLHF训练流程中，以下步骤的正确顺序是？",
+      "content": "在RLHF训练流程中，以下步骤的正确顺序是？",
+      "options": [
+        {
+          "id": 7512586,
+          "content": "SFT&nbsp;→&nbsp;RM训练&nbsp;→&nbsp;PPO优化"
+        },
+        {
+          "id": 7512588,
+          "content": "RM训练&nbsp;→&nbsp;SFT&nbsp;→&nbsp;PPO优化"
+        },
+        {
+          "id": 7512590,
+          "content": "PPO优化&nbsp;→&nbsp;SFT&nbsp;→&nbsp;RM训练"
+        },
+        {
+          "id": 7512592,
+          "content": "SFT&nbsp;→&nbsp;PPO优化&nbsp;→&nbsp;RM训练"
+        }
+      ],
+      "correct_option_ids": [
+        7512586
+      ],
+      "correct_options": [
+        "SFT&nbsp;→&nbsp;RM训练&nbsp;→&nbsp;PPO优化"
+      ],
+      "analysis": "RLHF标准流程：1)&nbsp;SFT用监督数据初步微调；2)&nbsp;收集人类偏好数据训练奖励模型（RM）；3)&nbsp;用PPO以RM为信号优化策略模型，同时加KL约束防止偏离。"
+    },
+    {
+      "question_id": 11639935,
+      "uuid": "bfc04e93bd47475495067b1267881a8d",
+      "type": 1,
+      "title": "以下关于\"指令遵循\"（Instruction Following）评估的描...",
+      "content": "以下关于\"指令遵循\"（Instruction&nbsp;Following）评估的描述，正确的是？",
+      "options": [
+        {
+          "id": 7510664,
+          "content": "MMLU可以直接评估指令遵循能力"
+        },
+        {
+          "id": 7510666,
+          "content": "IFEval（Instruction&nbsp;Following&nbsp;Eval）通过可编程验证的具体约束（如\"回复必须超过100字\"）精确评估模型遵循指令的能力"
+        },
+        {
+          "id": 7510667,
+          "content": "指令遵循只能通过人工评估"
+        },
+        {
+          "id": 7510668,
+          "content": "PPL（困惑度）可以衡量指令遵循能力"
+        }
+      ],
+      "correct_option_ids": [
+        7510666
+      ],
+      "correct_options": [
+        "IFEval（Instruction&nbsp;Following&nbsp;Eval）通过可编程验证的具体约束（如\"回复必须超过100字\"）精确评估模型遵循指令的能力"
+      ],
+      "analysis": "IFEval（Zhou&nbsp;et&nbsp;al.&nbsp;2023）是专门评估指令遵循的基准：包含约500个带有可程序化验证约束的prompt（如\"用JSON格式回复\"、\"包含关键词X\"、\"少于200词\"、\"用大写字母\"）。通过精确匹配和规则验证，无需人工评估。SFT后的模型在IFEval上的提升直接反映了对格式约束和指令的遵循能力。"
+    },
+    {
+      "question_id": 11640009,
+      "uuid": "fcc7225bf4c94e71a76a29d352738060",
+      "type": 1,
+      "title": "在偏好数据构建中，以下哪种数据质量最好？",
+      "content": "在偏好数据构建中，以下哪种数据质量最好？",
+      "options": [
+        {
+          "id": 7512489,
+          "content": "大量众包标注的简单偏好对"
+        },
+        {
+          "id": 7512490,
+          "content": "专家标注的有详细理由的偏好对"
+        },
+        {
+          "id": 7512491,
+          "content": "AI生成的大量偏好对"
+        },
+        {
+          "id": 7512492,
+          "content": "自动从奖励模型打分获取的偏好对"
+        }
+      ],
+      "correct_option_ids": [
+        7512490
+      ],
+      "correct_options": [
+        "专家标注的有详细理由的偏好对"
+      ],
+      "analysis": "研究表明偏好数据的质量远比数量重要。专家标注并附有详细理由的偏好对（如指出回复哪里不好）通常训练出更稳定的奖励模型，并最终产生更好的对齐效果。"
+    },
+    {
+      "question_id": 11639882,
+      "uuid": "16d0e0f755ff4c56acde917d89f1cd48",
+      "type": 1,
+      "title": "DPO（Direct Preference Optimization）损失...",
+      "content": "DPO（Direct&nbsp;Preference&nbsp;Optimization）损失函数中的超参数β的作用是什么？",
+      "options": [
+        {
+          "id": 7511277,
+          "content": "控制学习率衰减的速度"
+        },
+        {
+          "id": 7511278,
+          "content": "控制策略偏离参考模型的程度，β越大越接近参考模型"
+        },
+        {
+          "id": 7511279,
+          "content": "控制正负样本的采样比例"
+        },
+        {
+          "id": 7511280,
+          "content": "控制训练时batch&nbsp;size的大小"
+        }
+      ],
+      "correct_option_ids": [
+        7511278
+      ],
+      "correct_options": [
+        "控制策略偏离参考模型的程度，β越大越接近参考模型"
+      ],
+      "analysis": "DPO损失中β是KL散度惩罚项的系数，衡量当前策略与参考策略的偏离程度。β越大，模型越保守，不敢偏离参考模型；β越小，优化更激进但可能破坏原始能力。通常β设为0.1~0.5之间。"
+    },
+    {
+      "question_id": 11639917,
+      "uuid": "8983f08f9eeb45c2ba8f4aa6108cb163",
+      "type": 1,
+      "title": "在SFT后进行DPO对齐时，参考模型（reference model）通常...",
+      "content": "在SFT后进行DPO对齐时，参考模型（reference&nbsp;model）通常选择什么？",
+      "options": [
+        {
+          "id": 7510869,
+          "content": "预训练的基础模型（未经SFT）"
+        },
+        {
+          "id": 7510870,
+          "content": "DPO训练的初始模型（即SFT后的模型）"
+        },
+        {
+          "id": 7510871,
+          "content": "奖励模型"
+        },
+        {
+          "id": 7510872,
+          "content": "随机初始化的模型"
+        }
+      ],
+      "correct_option_ids": [
+        7510870
+      ],
+      "correct_options": [
+        "DPO训练的初始模型（即SFT后的模型）"
+      ],
+      "analysis": "DPO的参考模型π_ref是SFT后的模型，用于计算KL散度约束。选SFT模型的原因：①SFT模型已具备基本指令遵循能力，是偏好学习的合理起点；②DPO的目标是在保持SFT能力的基础上进行偏好对齐，以SFT模型为参考确保不偏离太远。使用预训练基础模型会导致约束过于宽松。"
+    },
+    {
+      "question_id": 11639978,
+      "uuid": "8a62b1847ff24f038e0708514166d3e2",
+      "type": 1,
+      "title": "在LoRA中，当rank r=8，原始权重矩阵维度为768×768时，参数...",
+      "content": "在LoRA中，当rank&nbsp;r=8，原始权重矩阵维度为768×768时，参数量减少了多少倍？",
+      "options": [
+        {
+          "id": 7512433,
+          "content": "96倍"
+        },
+        {
+          "id": 7512434,
+          "content": "48倍"
+        },
+        {
+          "id": 7512435,
+          "content": "192倍"
+        },
+        {
+          "id": 7512436,
+          "content": "24倍"
+        }
+      ],
+      "correct_option_ids": [
+        7512434
+      ],
+      "correct_options": [
+        "48倍"
+      ],
+      "analysis": "LoRA将768×768=589,824个参数替换为2×(768×8)=12,288个参数，减少比例为589,824/12,288≈48倍。rank越小，参数量越少但表达能力也越弱。"
+    },
+    {
+      "question_id": 11639951,
+      "uuid": "9a92e0225b9c4fb680ac444359b93bb4",
+      "type": 1,
+      "title": "以下哪种场景下，选择Prefix Tuning优于LoRA？",
+      "content": "以下哪种场景下，选择Prefix&nbsp;Tuning优于LoRA？",
+      "options": [
+        {
+          "id": 7512093,
+          "content": "需要大幅改变模型的回复风格和知识"
+        },
+        {
+          "id": 7512094,
+          "content": "需要快速切换多个任务（每个任务只需存储少量prefix向量），且希望完全不修改原始权重"
+        },
+        {
+          "id": 7512095,
+          "content": "在消费级GPU（24GB）上微调70B模型"
+        },
+        {
+          "id": 7512096,
+          "content": "需要提升代码生成能力"
+        }
+      ],
+      "correct_option_ids": [
+        7512094
+      ],
+      "correct_options": [
+        "需要快速切换多个任务（每个任务只需存储少量prefix向量），且希望完全不修改原始权重"
+      ],
+      "analysis": "Prefix&nbsp;Tuning的优势场景：每个任务只需存储少量prefix参数（几MB），原始模型权重完全不变。对于需要同时支持数十种任务的服务（如翻译、摘要、QA各一个prefix），Prefix&nbsp;Tuning比LoRA更节省存储（LoRA需要存储完整的A、B矩阵）。缺点：表达能力有限，对需要大幅调整的任务效果不如LoRA。"
+    },
+    {
+      "question_id": 11640031,
+      "uuid": "8fd7002944d44b17b3b762053b1ece1d",
+      "type": 1,
+      "title": "以下关于数学能力微调（Math Fine-tuning）的最佳实践，哪项正确？",
+      "content": "以下关于数学能力微调（Math&nbsp;Fine-tuning）的最佳实践，哪项正确？",
+      "options": [
+        {
+          "id": 7512237,
+          "content": "只需要大量数学题答案即可"
+        },
+        {
+          "id": 7512238,
+          "content": "使用包含详细思维链（CoT）的数学推理数据，配合过程监督奖励（PRM）"
+        },
+        {
+          "id": 7512239,
+          "content": "数学微调只需要更改学习率"
+        },
+        {
+          "id": 7512241,
+          "content": "直接用RLHF不需要SFT预热"
+        }
+      ],
+      "correct_option_ids": [
+        7512238
+      ],
+      "correct_options": [
+        "使用包含详细思维链（CoT）的数学推理数据，配合过程监督奖励（PRM）"
+      ],
+      "analysis": "数学能力微调需要：1)&nbsp;包含完整推理步骤的CoT数据（非只有答案）；2)&nbsp;过程奖励模型（PRM）对每个推理步骤打分（而非只看最终答案）；3)&nbsp;GRPO等强化学习方法。DeepSeek-Math、Qwen-Math都采用了类似策略。"
+    },
+    {
+      "question_id": 11640014,
+      "uuid": "1b2bb3cf4ec643d88192a7689a155ab9",
+      "type": 1,
+      "title": "在以下LoRA初始化策略中，哪种是默认且推荐的？",
+      "content": "在以下LoRA初始化策略中，哪种是默认且推荐的？",
+      "options": [
+        {
+          "id": 7512425,
+          "content": "A和B均使用随机高斯初始化"
+        },
+        {
+          "id": 7512426,
+          "content": "A使用随机高斯初始化，B初始化为全零"
+        },
+        {
+          "id": 7512428,
+          "content": "A初始化为全零，B使用随机高斯初始化"
+        },
+        {
+          "id": 7512430,
+          "content": "A和B均初始化为全零"
+        }
+      ],
+      "correct_option_ids": [
+        7512426
+      ],
+      "correct_options": [
+        "A使用随机高斯初始化，B初始化为全零"
+      ],
+      "analysis": "LoRA默认将A用高斯初始化，B初始化为零。这保证训练开始时ΔW&nbsp;=&nbsp;B×A&nbsp;=&nbsp;0，即从预训练模型状态出发，避免初始训练不稳定。如果B也随机初始化，训练初期输出会偏离预训练模型。"
+    },
+    {
+      "question_id": 11639890,
+      "uuid": "101d1dae999547b1950e9872607ffd8b",
+      "type": 1,
+      "title": "灾难性遗忘（Catastrophic Forgetting）的缓解方法中，...",
+      "content": "灾难性遗忘（Catastrophic&nbsp;Forgetting）的缓解方法中，不属于常用方案的是？",
+      "options": [
+        {
+          "id": 7511179,
+          "content": "使用EWC（Elastic&nbsp;Weight&nbsp;Consolidation）保护重要参数"
+        },
+        {
+          "id": 7511181,
+          "content": "混入少量预训练数据进行微调（Replay）"
+        },
+        {
+          "id": 7511184,
+          "content": "使用LoRA等参数高效微调方法"
+        },
+        {
+          "id": 7511186,
+          "content": "增大学习率加速收敛"
+        }
+      ],
+      "correct_option_ids": [
+        7511186
+      ],
+      "correct_options": [
+        "增大学习率加速收敛"
+      ],
+      "analysis": "增大学习率会加剧灾难性遗忘，是错误做法。EWC通过Fisher信息矩阵识别对原任务重要的参数并施加正则化惩罚；Replay混入原始数据让模型保持原有能力；LoRA只更新少量参数，对原始权重影响极小，天然缓解遗忘。"
+    },
+    {
+      "question_id": 11639883,
+      "uuid": "af79a7f0b0db45bfb80d8ff5ff4cc11c",
+      "type": 1,
+      "title": "以下哪种微调方法不需要训练奖励模型（Reward Model）？",
+      "content": "以下哪种微调方法不需要训练奖励模型（Reward&nbsp;Model）？",
+      "options": [
+        {
+          "id": 7511265,
+          "content": "PPO（Proximal&nbsp;Policy&nbsp;Optimization）"
+        },
+        {
+          "id": 7511267,
+          "content": "RLHF标准流程"
+        },
+        {
+          "id": 7511269,
+          "content": "DPO（Direct&nbsp;Preference&nbsp;Optimization）"
+        },
+        {
+          "id": 7511271,
+          "content": "拒绝采样微调（Rejection&nbsp;Sampling&nbsp;Fine-tuning）"
+        }
+      ],
+      "correct_option_ids": [
+        7511269
+      ],
+      "correct_options": [
+        "DPO（Direct&nbsp;Preference&nbsp;Optimization）"
+      ],
+      "analysis": "DPO通过数学推导将RLHF的RL过程转化为直接的偏好学习，利用Bradley-Terry模型将奖励函数隐式参数化，无需单独训练奖励模型。PPO和标准RLHF都需要奖励模型打分，拒绝采样也需要奖励模型来筛选样本。"
+    },
+    {
+      "question_id": 11639971,
+      "uuid": "5d683eb009b741a68d5a3c2c8ac8b5fd",
+      "type": 1,
+      "title": "以下关于\"模型合并\"（Model Merging）和传统集成学习的区别，描...",
+      "content": "以下关于\"模型合并\"（Model&nbsp;Merging）和传统集成学习的区别，描述正确的是？",
+      "options": [
+        {
+          "id": 7512337,
+          "content": "两者完全等价，只是实现方式不同"
+        },
+        {
+          "id": 7512338,
+          "content": "集成学习在推理时运行多个模型取平均（计算量×N），模型合并在权重空间合并只需一个模型推理"
+        },
+        {
+          "id": 7512339,
+          "content": "模型合并需要重新训练，集成不需要"
+        },
+        {
+          "id": 7512340,
+          "content": "集成学习效果总是优于模型合并"
+        }
+      ],
+      "correct_option_ids": [
+        7512338
+      ],
+      "correct_options": [
+        "集成学习在推理时运行多个模型取平均（计算量×N），模型合并在权重空间合并只需一个模型推理"
+      ],
+      "analysis": "集成学习（Ensemble）：推理时并行运行N个模型，对输出概率取平均，推理成本×N。模型合并（Model&nbsp;Merging）：将多个模型的权重在参数空间合并（如Task&nbsp;Arithmetic、TIES-Merging），合并后只有一个模型需要推理，无额外计算成本。权衡：集成通常精度更高（模型多样性充分利用），合并推理成本低但可能有精度损失。"
+    },
+    {
+      "question_id": 11639950,
+      "uuid": "df5bcc10db714535b18f45c50bbd925c",
+      "type": 1,
+      "title": "以下哪种方法可以在有限数据下提高微调的泛化能力？",
+      "content": "以下哪种方法可以在有限数据下提高微调的泛化能力？",
+      "options": [
+        {
+          "id": 7510493,
+          "content": "增加训练epoch使模型充分拟合"
+        },
+        {
+          "id": 7510494,
+          "content": "使用数据增强（如对指令进行改写、扩充多样化回复风格）增加数据多样性"
+        },
+        {
+          "id": 7510496,
+          "content": "降低LoRA&nbsp;rank以减少参数"
+        },
+        {
+          "id": 7510498,
+          "content": "移除所有正则化手段"
+        }
+      ],
+      "correct_option_ids": [
+        7510494
+      ],
+      "correct_options": [
+        "使用数据增强（如对指令进行改写、扩充多样化回复风格）增加数据多样性"
+      ],
+      "analysis": "有限数据下提升泛化的方法：①数据增强：用LLM对现有样本进行改写（换表达方式、换语言、换难度）；②混合通用数据（防止遗忘）；③适当的正则化（dropout、weight&nbsp;decay）；④减少epoch（防止过拟合）；⑤使用更多样化的数据来源（多任务混合）。增加epoch在数据少时往往导致过拟合，是错误做法。"
+    },
+    {
+      "question_id": 11639920,
+      "uuid": "c54898584ac2405d98b7adeed379775d",
+      "type": 1,
+      "title": "在使用AdamW优化器进行LoRA微调时，weight_decay参数应应...",
+      "content": "在使用AdamW优化器进行LoRA微调时，weight_decay参数应应用于哪些参数？",
+      "options": [
+        {
+          "id": 7510834,
+          "content": "所有可训练参数，包括bias和LayerNorm"
+        },
+        {
+          "id": 7510836,
+          "content": "只有LoRA的A矩阵和B矩阵，不包括bias"
+        },
+        {
+          "id": 7510838,
+          "content": "排除bias、LayerNorm等参数，只对权重矩阵应用"
+        },
+        {
+          "id": 7510839,
+          "content": "不应该使用weight_decay，LoRA已经有足够的正则化"
+        }
+      ],
+      "correct_option_ids": [
+        7510838
+      ],
+      "correct_options": [
+        "排除bias、LayerNorm等参数，只对权重矩阵应用"
+      ],
+      "analysis": "标准做法是对权重矩阵应用weight_decay（L2正则），但排除bias项和LayerNorm的gamma/beta参数（这些参数对数值尺度敏感，正则化会破坏其校准）。HuggingFace的Trainer默认实现了这种分组：对bias和\"norm\"层的参数不应用weight_decay，其他参数应用。"
+    },
+    {
+      "question_id": 11639910,
+      "uuid": "5c1c892daf324c7eb2981a985d49afaf",
+      "type": 1,
+      "title": "以下代码中，哪行的optimizer写法对LoRA微调最规范？```pyt...",
+      "content": "以下代码中，哪行的optimizer写法对LoRA微调最规范？<div>```python</div><div>model&nbsp;=&nbsp;LlamaForCausalLM.from_pretrained(...)</div><div>lora_config&nbsp;=&nbsp;LoraConfig(r=8,&nbsp;target_modules=[\"q_proj\",\"v_proj\"])</div><div>model&nbsp;=&nbsp;get_peft_model(model,&nbsp;lora_config)</div><div>#&nbsp;哪行写法最规范？</div><div>optimizer&nbsp;=&nbsp;AdamW(model.parameters(),&nbsp;lr=1e-4)&nbsp;&nbsp;#&nbsp;A</div><div>optimizer&nbsp;=&nbsp;AdamW(model.parameters(),&nbsp;lr=1e-5)&nbsp;&nbsp;#&nbsp;B</div><div>optimizer&nbsp;=&nbsp;AdamW(filter(lambda&nbsp;p:&nbsp;p.requires_grad,&nbsp;model.parameters()),&nbsp;lr=1e-4)&nbsp;&nbsp;#&nbsp;C</div><div>model.print_trainable_parameters()&nbsp;&nbsp;#&nbsp;D</div><div>```</div>",
+      "options": [
+        {
+          "id": 7510949,
+          "content": "A行（使用model.parameters()且学习率为1e-4）"
+        },
+        {
+          "id": 7510950,
+          "content": "B行（使用model.parameters()且学习率为1e-5）"
+        },
+        {
+          "id": 7510951,
+          "content": "C行（使用filter过滤requires_grad）"
+        },
+        {
+          "id": 7510952,
+          "content": "D行（print_trainable_parameters有副作用）"
+        }
+      ],
+      "correct_option_ids": [
+        7510951
+      ],
+      "correct_options": [
+        "C行（使用filter过滤requires_grad）"
+      ],
+      "analysis": "get_peft_model()会将基础模型参数的requires_grad设为False，只有LoRA参数requires_grad=True。虽然传入model.parameters()时requires_grad=False的参数不会产生梯度、不会被更新，但最规范的做法是C行——只将requires_grad=True的参数传给optimizer。这样既避免optimizer为冻结参数维护无意义的状态（浪费显存），也能防止后续代码意外解冻参数时导致基础权重被更新。A和B虽然功能上不会更新基础权重，但属于不规范写法。"
+    },
+    {
+      "question_id": 11639937,
+      "uuid": "353ef5af527a446ebe7a0fb782e1f1d9",
+      "type": 1,
+      "title": "在LoRA微调中，以下哪种矩阵初始化方式是标准做法？",
+      "content": "在LoRA微调中，以下哪种矩阵初始化方式是标准做法？",
+      "options": [
+        {
+          "id": 7510640,
+          "content": "A矩阵和B矩阵都用kaiming&nbsp;uniform初始化"
+        },
+        {
+          "id": 7510642,
+          "content": "A矩阵用随机高斯初始化，B矩阵初始化为全零矩阵，确保训练开始时LoRA输出为零"
+        },
+        {
+          "id": 7510643,
+          "content": "A矩阵初始化为单位矩阵，B矩阵随机初始化"
+        },
+        {
+          "id": 7510644,
+          "content": "两个矩阵都初始化为全零"
+        }
+      ],
+      "correct_option_ids": [
+        7510642
+      ],
+      "correct_options": [
+        "A矩阵用随机高斯初始化，B矩阵初始化为全零矩阵，确保训练开始时LoRA输出为零"
+      ],
+      "analysis": "LoRA的标准初始化：A用随机高斯（均值0，标准差1/√rank），B初始化为全零。这确保了训练开始时ΔW&nbsp;=&nbsp;B×A&nbsp;=&nbsp;0×A&nbsp;=&nbsp;0，即LoRA对原始权重没有任何影响。这种初始化保证了训练的稳定性——模型从原始预训练权重出发，渐进式地学习适应。如果B随机初始化，训练初期会产生随机扰动破坏模型。"
+    },
+    {
+      "question_id": 11639931,
+      "uuid": "efc0a8b5f500471d8039a412510a2fe4",
+      "type": 1,
+      "title": "在使用LoRA微调时，以下哪种方法可以进一步减少显存占用而不影响训练效果？",
+      "content": "在使用LoRA微调时，以下哪种方法可以进一步减少显存占用而不影响训练效果？",
+      "options": [
+        {
+          "id": 7510709,
+          "content": "增大LoRA的rank"
+        },
+        {
+          "id": 7510710,
+          "content": "使用梯度累积（Gradient&nbsp;Accumulation）：减少实际batch&nbsp;size，多步累积后更新一次"
+        },
+        {
+          "id": 7510711,
+          "content": "增大学习率"
+        },
+        {
+          "id": 7510712,
+          "content": "增加训练数据量"
+        }
+      ],
+      "correct_option_ids": [
+        7510710
+      ],
+      "correct_options": [
+        "使用梯度累积（Gradient&nbsp;Accumulation）：减少实际batch&nbsp;size，多步累积后更新一次"
+      ],
+      "analysis": "梯度累积模拟大batch训练：实际每次只前向传播小batch（节省激活显存），累积N步梯度后统一更新权重，等效batch&nbsp;size&nbsp;=&nbsp;actual_batch&nbsp;×&nbsp;N。对于LoRA微调，激活显存通常是瓶颈（来自基础模型的前向计算），梯度累积在不增加模型显存的情况下实现大batch的训练稳定性。实际中常搭配梯度检查点进一步降低激活显存。"
+    },
+    {
+      "question_id": 11640011,
+      "uuid": "f1af68e65e824f37a0dd998e81dad31a",
+      "type": 1,
+      "title": "在fine-tuning时，以下哪种情况会导致训练不稳定（loss出现sp...",
+      "content": "在fine-tuning时，以下哪种情况会导致训练不稳定（loss出现spike）？",
+      "options": [
+        {
+          "id": 7512461,
+          "content": "使用余弦学习率调度"
+        },
+        {
+          "id": 7512463,
+          "content": "学习率过高或未使用warmup步骤"
+        },
+        {
+          "id": 7512465,
+          "content": "使用梯度检查点"
+        },
+        {
+          "id": 7512467,
+          "content": "batch&nbsp;size过小"
+        }
+      ],
+      "correct_option_ids": [
+        7512463
+      ],
+      "correct_options": [
+        "学习率过高或未使用warmup步骤"
+      ],
+      "analysis": "学习率过高是最常见的训练不稳定原因。没有warmup时，训练初期学习率直接从最大值开始，容易导致参数更新过大。warmup通常使用100-500步从0线性增加到目标学习率。"
+    },
+    {
+      "question_id": 11640038,
+      "uuid": "554d9ef3c74c4b638351c192faa055ac",
+      "type": 1,
+      "title": "在训练奖励模型（Reward Model）时，以下哪种损失函数最常用？",
+      "content": "在训练奖励模型（Reward&nbsp;Model）时，以下哪种损失函数最常用？",
+      "options": [
+        {
+          "id": 7512133,
+          "content": "交叉熵损失（Cross-Entropy&nbsp;Loss）"
+        },
+        {
+          "id": 7512136,
+          "content": "Bradley-Terry模型的偏好对排序损失"
+        },
+        {
+          "id": 7512139,
+          "content": "均方误差（MSE）"
+        },
+        {
+          "id": 7512140,
+          "content": "对比学习损失（Contrastive&nbsp;Loss）"
+        }
+      ],
+      "correct_option_ids": [
+        7512136
+      ],
+      "correct_options": [
+        "Bradley-Terry模型的偏好对排序损失"
+      ],
+      "analysis": "奖励模型通常使用基于Bradley-Terry模型的排序损失：给定(chosen,&nbsp;rejected)对，最大化P(chosen&nbsp;&gt;&nbsp;rejected)&nbsp;=&nbsp;sigmoid(r_chosen&nbsp;-&nbsp;r_rejected)。这使模型学习偏好顺序而非绝对分数，与人类比较标注方式一致。"
+    },
+    {
+      "question_id": 11639929,
+      "uuid": "38e7b0732a924c00be4258ba10a3a6b4",
+      "type": 1,
+      "title": "在LoRA微调时，若发现训练loss下降正常但验证集MMLU准确率大幅下降...",
+      "content": "在LoRA微调时，若发现训练loss下降正常但验证集MMLU准确率大幅下降，最可能的原因是？",
+      "options": [
+        {
+          "id": 7510729,
+          "content": "学习率过低"
+        },
+        {
+          "id": 7510730,
+          "content": "微调数据与MMLU测试分布差异大，导致知识遗忘（任务特化导致泛化能力下降）"
+        },
+        {
+          "id": 7510731,
+          "content": "LoRA的rank太小"
+        },
+        {
+          "id": 7510732,
+          "content": "batch&nbsp;size太大"
+        }
+      ],
+      "correct_option_ids": [
+        7510730
+      ],
+      "correct_options": [
+        "微调数据与MMLU测试分布差异大，导致知识遗忘（任务特化导致泛化能力下降）"
+      ],
+      "analysis": "这是典型的\"遗忘-特化权衡\"：SFT使模型在微调数据分布上表现优秀，但如果微调数据分布与原预训练分布差异大，模型可能遗忘预训练知识（MMLU评估的通用知识能力）。解决方案：混入少量通用能力数据、降低学习率、减少epoch数、使用更小的LoRA&nbsp;rank限制参数更新幅度。"
+    },
+    {
+      "question_id": 11639962,
+      "uuid": "082146f4961e475e8a00e3dd7c63367a",
+      "type": 1,
+      "title": "以下哪种场景下，\"Continual Learning\"（持续学习）面临的...",
+      "content": "以下哪种场景下，\"Continual&nbsp;Learning\"（持续学习）面临的最大挑战是？",
+      "options": [
+        {
+          "id": 7512229,
+          "content": "添加全新知识领域（与已学知识无交叉）"
+        },
+        {
+          "id": 7512230,
+          "content": "更新已有知识（覆盖旧事实）时，与其他知识的权重纠缠导致更新一个事实可能破坏多个相关事实"
+        },
+        {
+          "id": 7512231,
+          "content": "增加模型的语言能力"
+        },
+        {
+          "id": 7512232,
+          "content": "微调数据量过大"
+        }
+      ],
+      "correct_option_ids": [
+        7512230
+      ],
+      "correct_options": [
+        "更新已有知识（覆盖旧事实）时，与其他知识的权重纠缠导致更新一个事实可能破坏多个相关事实"
+      ],
+      "analysis": "大模型持续学习的核心挑战是知识的\"纠缠性\"（Entanglement）：模型参数同时编码了大量相互关联的知识，更新一个事实（如\"某公司CEO换人\"）会影响相关知识的权重，可能导致：①相关正确知识的遗忘；②知识间一致性破坏（不同处更新不一致）。ROME/MEMIT等知识编辑技术专门研究此问题，但大规模更新仍是开放挑战。"
+    },
+    {
+      "question_id": 11639887,
+      "uuid": "470b9f4e6c1448a099b613cc66d7b42e",
+      "type": 1,
+      "title": "全参微调（Full Fine-tuning）时，通常使用比预训练更小的学习...",
+      "content": "全参微调（Full&nbsp;Fine-tuning）时，通常使用比预训练更小的学习率，原因是？",
+      "options": [
+        {
+          "id": 7511217,
+          "content": "小学习率可以加快收敛速度"
+        },
+        {
+          "id": 7511218,
+          "content": "防止大梯度更新破坏预训练习得的通用表示，导致灾难性遗忘"
+        },
+        {
+          "id": 7511219,
+          "content": "全参微调的loss&nbsp;landscape更平坦，不需要大学习率"
+        },
+        {
+          "id": 7511220,
+          "content": "小学习率可以减少显存占用"
+        }
+      ],
+      "correct_option_ids": [
+        7511218
+      ],
+      "correct_options": [
+        "防止大梯度更新破坏预训练习得的通用表示，导致灾难性遗忘"
+      ],
+      "analysis": "预训练模型已经学到了丰富的通用知识，全参微调时过大的学习率会导致权重大幅偏移，破坏原有表示，即灾难性遗忘（Catastrophic&nbsp;Forgetting）。典型的SFT学习率为1e-5~2e-5（预训练通常为1e-4~3e-4），并配合warmup避免初始阶段的震荡。"
+    },
+    {
+      "question_id": 11639885,
+      "uuid": "838b6807d502449d9cb4184944da1b14",
+      "type": 1,
+      "title": "LoRA rank=8和rank=64相比，以下说法正确的是？",
+      "content": "LoRA&nbsp;rank=8和rank=64相比，以下说法正确的是？",
+      "options": [
+        {
+          "id": 7511240,
+          "content": "rank=64在所有任务上效果一定优于rank=8"
+        },
+        {
+          "id": 7511242,
+          "content": "rank=8参数量更少，但表达能力更弱，适合简单任务或资源受限场景"
+        },
+        {
+          "id": 7511244,
+          "content": "rank=64训练更快，因为矩阵更小"
+        },
+        {
+          "id": 7511246,
+          "content": "rank=8和rank=64的训练显存占用相同"
+        }
+      ],
+      "correct_option_ids": [
+        7511242
+      ],
+      "correct_options": [
+        "rank=8参数量更少，但表达能力更弱，适合简单任务或资源受限场景"
+      ],
+      "analysis": "rank越大，可训练参数越多，表达能力越强，但也更容易过拟合且显存占用更多。rank=8适合大多数指令微调场景，rank=64适合需要大幅改变模型行为的任务（如代码、数学特定领域）。实验表明rank超过64后收益递减，rank=8~64通常足够。"
+    },
+    {
+      "question_id": 11639927,
+      "uuid": "7c9936d6111247df984bb0cea9a1c424",
+      "type": 1,
+      "title": "以下哪种方法可以在不重新训练的情况下合并多个LoRA权重？",
+      "content": "以下哪种方法可以在不重新训练的情况下合并多个LoRA权重？",
+      "options": [
+        {
+          "id": 7510753,
+          "content": "直接将不同LoRA的A、B矩阵相加"
+        },
+        {
+          "id": 7510754,
+          "content": "使用模型融合技术（如TIES-Merging、DARE）对多个delta权重进行合并"
+        },
+        {
+          "id": 7510755,
+          "content": "取多个LoRA权重的平均值（element-wise&nbsp;mean）"
+        },
+        {
+          "id": 7510756,
+          "content": "以上方法都不可行，必须重新训练"
+        }
+      ],
+      "correct_option_ids": [
+        7510754
+      ],
+      "correct_options": [
+        "使用模型融合技术（如TIES-Merging、DARE）对多个delta权重进行合并"
+      ],
+      "analysis": "模型合并（Model&nbsp;Merging）是无需重训的权重融合技术。TIES-Merging通过修剪小幅度delta权重并解决符号冲突来合并；DARE通过随机稀疏化delta权重后缩放来合并。简单的element-wise&nbsp;mean也可用（Task&nbsp;Arithmetic），但效果不如TIES/DARE。这类方法可以将多个专家LoRA合并为单一权重，无需额外训练。"
+    },
+    {
+      "question_id": 11639987,
+      "uuid": "e89ba4cb37294a6e89ea24ee4901a658",
+      "type": 1,
+      "title": "在LoRA微调时，通常不将LoRA应用于哪些层？",
+      "content": "在LoRA微调时，通常不将LoRA应用于哪些层？",
+      "options": [
+        {
+          "id": 7512545,
+          "content": "注意力层的Q、K、V矩阵"
+        },
+        {
+          "id": 7512546,
+          "content": "FFN（前馈网络）中间层"
+        },
+        {
+          "id": 7512547,
+          "content": "Embedding层"
+        },
+        {
+          "id": 7512550,
+          "content": "输出投影层"
+        }
+      ],
+      "correct_option_ids": [
+        7512547
+      ],
+      "correct_options": [
+        "Embedding层"
+      ],
+      "analysis": "Embedding层的维度通常等于词表大小×隐层维度，参数量巨大但训练效益低，LoRA通常跳过嵌入层。Q/K/V矩阵是LoRA最常见的目标，FFN层也可选择性添加。"
+    },
+    {
+      "question_id": 11639947,
+      "uuid": "1f1594d00f5e42178c4512070b3fd0a9",
+      "type": 1,
+      "title": "在中文大模型的SFT中，以下哪种分词器设置最重要？",
+      "content": "在中文大模型的SFT中，以下哪种分词器设置最重要？",
+      "options": [
+        {
+          "id": 7510529,
+          "content": "tokenizer的vocabulary&nbsp;size越小越好"
+        },
+        {
+          "id": 7510530,
+          "content": "确保tokenizer支持中文字符（包含汉字的vocab），词表不足会导致中文被拆分为byte&nbsp;tokens，训练效率低"
+        },
+        {
+          "id": 7510531,
+          "content": "使用BPE&nbsp;tokenizer而非WordPiece"
+        },
+        {
+          "id": 7510532,
+          "content": "所有模型使用相同的tokenizer"
+        }
+      ],
+      "correct_option_ids": [
+        7510530
+      ],
+      "correct_options": [
+        "确保tokenizer支持中文字符（包含汉字的vocab），词表不足会导致中文被拆分为byte&nbsp;tokens，训练效率低"
+      ],
+      "analysis": "tokenizer对中文模型至关重要：如果词表不包含中文字符，汉字会被拆分为UTF-8&nbsp;byte&nbsp;tokens（如\"你\"→3个tokens），导致：①序列长度3倍增加，上下文窗口利用率低；②训练效率低；③中文文本的语义信息碎片化。Qwen、Baichuan等中文模型都针对中文扩展了词表（添加数千个汉字），显著提升中文处理效率。"
+    },
+    {
+      "question_id": 11639983,
+      "uuid": "d8a66acb5b6a4549b6b13706439073e8",
+      "type": 1,
+      "title": "训练一个7B模型的LoRA（r=16，alpha=32，bf16精度）时，...",
+      "content": "训练一个7B模型的LoRA（r=16，alpha=32，bf16精度）时，可训练参数约占总参数的百分比？",
+      "options": [
+        {
+          "id": 7512495,
+          "content": "0.1%"
+        },
+        {
+          "id": 7512497,
+          "content": "1%"
+        },
+        {
+          "id": 7512499,
+          "content": "5%"
+        },
+        {
+          "id": 7512500,
+          "content": "10%"
+        }
+      ],
+      "correct_option_ids": [
+        7512497
+      ],
+      "correct_options": [
+        "1%"
+      ],
+      "analysis": "以LLaMA-7B为例，LoRA在所有注意力层（Q,K,V,O）添加低秩矩阵，r=16时可训练参数约为3500万，占总参数7B的约0.5%-1%。这是PEFT方法的典型参数效率。"
+    },
+    {
+      "question_id": 11640058,
+      "uuid": "1288a5d5222f4a34b586a126a1bfdf27",
+      "type": 1,
+      "title": "以下哪种情况说明微调数据质量存在\"标注一致性\"问题？",
+      "content": "以下哪种情况说明微调数据质量存在\"标注一致性\"问题？",
+      "options": [
+        {
+          "id": 7511953,
+          "content": "数据量不足"
+        },
+        {
+          "id": 7511954,
+          "content": "相同输入在不同样本中对应不同风格的输出（有时正式有时随意）"
+        },
+        {
+          "id": 7511955,
+          "content": "数据格式不统一"
+        },
+        {
+          "id": 7511956,
+          "content": "缺少多样性"
+        }
+      ],
+      "correct_option_ids": [
+        7511954
+      ],
+      "correct_options": [
+        "相同输入在不同样本中对应不同风格的输出（有时正式有时随意）"
+      ],
+      "analysis": "标注一致性问题指相同类型的问题有不同的回答风格或质量标准，导致模型学到矛盾的行为模式。例如有时回答详细有时简洁，有时使用列表有时使用段落，使模型无法建立稳定的输出风格。需要制定并执行标注规范。"
+    },
+    {
+      "question_id": 11640030,
+      "uuid": "736cdc1af4d1425f8a05c0b65d54d87a",
+      "type": 1,
+      "title": "在微调时使用混合精度（BF16），相比FP32的优势是什么？",
+      "content": "在微调时使用混合精度（BF16），相比FP32的优势是什么？",
+      "options": [
+        {
+          "id": 7512249,
+          "content": "精度更高，不会有任何精度损失"
+        },
+        {
+          "id": 7512250,
+          "content": "显存减少约50%，计算速度提升，同时BF16的指数位更多，数值范围与FP32相同"
+        },
+        {
+          "id": 7512251,
+          "content": "完全等价于FP32，只是存储格式不同"
+        },
+        {
+          "id": 7512252,
+          "content": "BF16不支持梯度反向传播"
+        }
+      ],
+      "correct_option_ids": [
+        7512250
+      ],
+      "correct_options": [
+        "显存减少约50%，计算速度提升，同时BF16的指数位更多，数值范围与FP32相同"
+      ],
+      "analysis": "BF16（Brain&nbsp;Float&nbsp;16）使用8位指数+7位尾数，与FP32数值范围相同（不易溢出），显存减半，利用Tensor&nbsp;Core加速计算。相比FP16（5位指数，可能溢出），BF16在LLM训练中更稳定，已成为大模型训练的标准精度。"
+    },
+    {
+      "question_id": 11640021,
+      "uuid": "f88905e297bd43b9b2593e01007cce53",
+      "type": 1,
+      "title": "以下关于Reject Sampling（拒绝采样）在RLHF中的应用，哪项正确？",
+      "content": "以下关于Reject&nbsp;Sampling（拒绝采样）在RLHF中的应用，哪项正确？",
+      "options": [
+        {
+          "id": 7512341,
+          "content": "拒绝所有奖励低于平均值的样本"
+        },
+        {
+          "id": 7512342,
+          "content": "用策略模型采样多个回复，奖励模型打分，只保留高分样本用于SFT训练"
+        },
+        {
+          "id": 7512343,
+          "content": "用于过滤训练数据中的有害内容"
+        },
+        {
+          "id": 7512344,
+          "content": "在推理时拒绝不符合格式要求的输出"
+        }
+      ],
+      "correct_option_ids": [
+        7512342
+      ],
+      "correct_options": [
+        "用策略模型采样多个回复，奖励模型打分，只保留高分样本用于SFT训练"
+      ],
+      "analysis": "拒绝采样微调（Rejection&nbsp;Sampling&nbsp;Fine-tuning，ReST）：1)&nbsp;用当前策略生成N个候选回复；2)&nbsp;奖励模型打分；3)&nbsp;只保留得分高于阈值的样本；4)&nbsp;用这些高质量样本进行SFT。DeepMind的RLHF研究和LLaMA-2都使用了此方法。"
+    },
+    {
+      "question_id": 11639888,
+      "uuid": "a02310408a8340dda6f74203fffd6c6e",
+      "type": 1,
+      "title": "DoRA（Weight-Decomposition Low-Rank Ad...",
+      "content": "DoRA（Weight-Decomposition&nbsp;Low-Rank&nbsp;Adaptation）相比LoRA的核心改进是什么？",
+      "options": [
+        {
+          "id": 7511205,
+          "content": "DoRA使用更高的rank，参数量更多"
+        },
+        {
+          "id": 7511206,
+          "content": "DoRA将权重分解为幅度（magnitude）和方向（direction）分别优化"
+        },
+        {
+          "id": 7511207,
+          "content": "DoRA只对attention层进行微调，跳过FFN层"
+        },
+        {
+          "id": 7511208,
+          "content": "DoRA引入了动态rank调整机制"
+        }
+      ],
+      "correct_option_ids": [
+        7511206
+      ],
+      "correct_options": [
+        "DoRA将权重分解为幅度（magnitude）和方向（direction）分别优化"
+      ],
+      "analysis": "DoRA将预训练权重W分解为幅度向量m和方向矩阵V（W&nbsp;=&nbsp;m&nbsp;*&nbsp;V/||V||），其中方向用LoRA更新，幅度单独训练。这种分解使DoRA的学习模式更接近全参微调，在相同参数量下效果优于LoRA。"
+    },
+    {
+      "question_id": 11639900,
+      "uuid": "4684ec90d4e94bd28b90c03e959a662f",
+      "type": 1,
+      "title": "以下关于LoRA+的改进描述，正确的是？",
+      "content": "以下关于LoRA+的改进描述，正确的是？",
+      "options": [
+        {
+          "id": 7511066,
+          "content": "LoRA+对A矩阵和B矩阵使用不同的学习率，B矩阵学习率更高"
+        },
+        {
+          "id": 7511067,
+          "content": "LoRA+引入了动态rank调整策略"
+        },
+        {
+          "id": 7511069,
+          "content": "LoRA+对所有层使用相同的rank，但权重不同"
+        },
+        {
+          "id": 7511071,
+          "content": "LoRA+通过pruning去除不重要的LoRA参数"
+        }
+      ],
+      "correct_option_ids": [
+        7511066
+      ],
+      "correct_options": [
+        "LoRA+对A矩阵和B矩阵使用不同的学习率，B矩阵学习率更高"
+      ],
+      "analysis": "LoRA+（Hayou&nbsp;et&nbsp;al.&nbsp;2024）发现原始LoRA对A和B使用相同学习率是次优的。从特征学习理论角度，B矩阵（初始化为0）需要更大的学习率来快速学习，而A矩阵（用于投影）应使用更小的学习率。LoRA+将B的学习率设为A的λ倍（λ=16效果最佳），在相同参数量下提升性能。"
+    },
+    {
+      "question_id": 11639897,
+      "uuid": "a89a5d73ddf54c789886babe75c7b0c9",
+      "type": 1,
+      "title": "在计算LoRA微调的显存占用时，以下哪项不属于显存消耗来源？",
+      "content": "在计算LoRA微调的显存占用时，以下哪项不属于显存消耗来源？",
+      "options": [
+        {
+          "id": 7511103,
+          "content": "冻结的基础模型权重（通常以FP16/BF16存储）"
+        },
+        {
+          "id": 7511105,
+          "content": "LoRA可训练参数的梯度"
+        },
+        {
+          "id": 7511106,
+          "content": "Adam优化器的一阶和二阶矩估计"
+        },
+        {
+          "id": 7511108,
+          "content": "推理时其他用户的请求占用的显存"
+        }
+      ],
+      "correct_option_ids": [
+        7511108
+      ],
+      "correct_options": [
+        "推理时其他用户的请求占用的显存"
+      ],
+      "analysis": "LoRA微调时显存主要包括：①基础模型权重（FP16/BF16）；②LoRA参数及其梯度；③优化器状态（Adam需要2份参数的显存存储m和v）；④激活值（前向传播缓存）。其他用户请求与训练无关，不计入训练显存。"
+    },
+    {
+      "question_id": 11640054,
+      "uuid": "9ed534bb950a49e59498505366da6554",
+      "type": 1,
+      "title": "在模型量化后进行微调（Quantization-Aware Fine-tu...",
+      "content": "在模型量化后进行微调（Quantization-Aware&nbsp;Fine-tuning）时，以下哪项最关键？",
+      "options": [
+        {
+          "id": 7511988,
+          "content": "使用比原来更大的学习率"
+        },
+        {
+          "id": 7511990,
+          "content": "量化时保持低精度，梯度更新时转回高精度，防止量化误差累积"
+        },
+        {
+          "id": 7511991,
+          "content": "只量化注意力层，不量化FFN层"
+        },
+        {
+          "id": 7511992,
+          "content": "直接在量化权重上计算梯度"
+        }
+      ],
+      "correct_option_ids": [
+        7511990
+      ],
+      "correct_options": [
+        "量化时保持低精度，梯度更新时转回高精度，防止量化误差累积"
+      ],
+      "analysis": "量化感知微调的关键：前向传播使用量化权重（模拟推理场景），反向传播时使用高精度梯度更新\"影子参数\"（shadow&nbsp;weights），不直接修改量化权重以防止误差累积。这正是QAT中\"直通估计器（Straight-Through&nbsp;Estimator）\"的核心思想。"
+    },
+    {
+      "question_id": 11639918,
+      "uuid": "682c36a9086a4f36906f8c520027597b",
+      "type": 1,
+      "title": "LoRA微调时，以下哪个超参数对最终效果影响最大？",
+      "content": "LoRA微调时，以下哪个超参数对最终效果影响最大？",
+      "options": [
+        {
+          "id": 7510857,
+          "content": "LoRA矩阵的初始化方式（kaiming&nbsp;vs&nbsp;gaussian）"
+        },
+        {
+          "id": 7510858,
+          "content": "目标模块的选择（仅q_proj&nbsp;vs&nbsp;所有线性层）"
+        },
+        {
+          "id": 7510859,
+          "content": "LoRA矩阵数据类型（FP16&nbsp;vs&nbsp;BF16）"
+        },
+        {
+          "id": 7510861,
+          "content": "保存checkpoint的频率"
+        }
+      ],
+      "correct_option_ids": [
+        7510858
+      ],
+      "correct_options": [
+        "目标模块的选择（仅q_proj&nbsp;vs&nbsp;所有线性层）"
+      ],
+      "analysis": "目标模块选择（target_modules）决定哪些权重参与微调，对效果影响显著。仅微调q_proj和v_proj（原始LoRA论文做法）vs&nbsp;微调所有线性层（q/k/v/o_proj&nbsp;+&nbsp;up/down/gate_proj）可能带来显著性能差异。研究表明微调更多模块通常效果更好，但参数量也更多。初始化方式和数据类型的影响相对较小。"
+    },
+    {
+      "question_id": 11639966,
+      "uuid": "222d7df0755d4bbc86b9ec5431fbe938",
+      "type": 1,
+      "title": "以下哪种情况下，微调比提示工程（Prompt Engineering）更合适？",
+      "content": "以下哪种情况下，微调比提示工程（Prompt&nbsp;Engineering）更合适？",
+      "options": [
+        {
+          "id": 7512283,
+          "content": "只需要改变模型的回复格式（如总是用bullet&nbsp;points）"
+        },
+        {
+          "id": 7512285,
+          "content": "需要注入大量专业领域知识、改变基础行为模式，或有严格的延迟要求（不允许长prompt）"
+        },
+        {
+          "id": 7512287,
+          "content": "任务每次都不同，无法固定训练数据"
+        },
+        {
+          "id": 7512288,
+          "content": "已有的基础模型完全满足需求"
+        }
+      ],
+      "correct_option_ids": [
+        7512285
+      ],
+      "correct_options": [
+        "需要注入大量专业领域知识、改变基础行为模式，或有严格的延迟要求（不允许长prompt）"
+      ],
+      "analysis": "选择微调&nbsp;vs&nbsp;提示工程的决策框架：提示工程更适合：任务多样、快速原型、无标注数据；微调更适合：①注入大量领域知识（超出上下文窗口）；②改变基础行为（如总是用特定语气）；③延迟敏感（长prompt增加TTFT）；④部署成本（短prompt更便宜）；⑤隐私（不想将专有信息放入prompt）。"
+    },
+    {
+      "question_id": 11639941,
+      "uuid": "6617aa44cb8c4002b6b0c26c95a46f0d",
+      "type": 1,
+      "title": "以下关于\"Constitutional AI\"（CAI，Anthropic...",
+      "content": "以下关于\"Constitutional&nbsp;AI\"（CAI，Anthropic）的微调方法，描述正确的是？",
+      "options": [
+        {
+          "id": 7510592,
+          "content": "CAI完全替代了RLHF，不需要人类标注"
+        },
+        {
+          "id": 7510593,
+          "content": "CAI通过一套原则（Constitution）让AI自我批评和修正输出，减少对人工偏好标注的依赖"
+        },
+        {
+          "id": 7510595,
+          "content": "CAI只适用于内容安全过滤"
+        },
+        {
+          "id": 7510597,
+          "content": "CAI需要比标准RLHF更多的人工干预"
+        }
+      ],
+      "correct_option_ids": [
+        7510593
+      ],
+      "correct_options": [
+        "CAI通过一套原则（Constitution）让AI自我批评和修正输出，减少对人工偏好标注的依赖"
+      ],
+      "analysis": "Constitutional&nbsp;AI（Bai&nbsp;et&nbsp;al.&nbsp;2022）：①SL-CAI：让AI根据一套原则（如\"回复不应有害、不应歧视\"）自我评估和修正回复，生成修正后数据再SFT；②RL-CAI：用AI生成的偏好标注（而非人类标注）训练奖励模型，再PPO。核心创新：用\"AI&nbsp;feedback\"代替部分\"Human&nbsp;feedback\"（RLAIF），大幅减少人工标注成本。"
+    },
+    {
+      "question_id": 11639991,
+      "uuid": "91d900e1c416448cb65ae1dc00ba1247",
+      "type": 1,
+      "title": "在微调数据质量评估中，以下哪种方法最有效？",
+      "content": "在微调数据质量评估中，以下哪种方法最有效？",
+      "options": [
+        {
+          "id": 7512705,
+          "content": "数据量越大越好，不需要筛选"
+        },
+        {
+          "id": 7512706,
+          "content": "使用更强的模型（如GPT-4）对数据打分筛选"
+        },
+        {
+          "id": 7512707,
+          "content": "只使用人工标注数据"
+        },
+        {
+          "id": 7512708,
+          "content": "随机抽样10%进行人工审核"
+        }
+      ],
+      "correct_option_ids": [
+        7512706
+      ],
+      "correct_options": [
+        "使用更强的模型（如GPT-4）对数据打分筛选"
+      ],
+      "analysis": "研究表明数据质量远比数量重要（LIMA论文）。使用更强模型进行质量打分（如Alpaca&nbsp;Farm,&nbsp;Self-Instruct质量过滤）可以高效筛选出高质量样本，通常1K高质量数据优于100K低质量数据。"
+    },
+    {
+      "question_id": 11640027,
+      "uuid": "aa6967fd9a4f4350ae974271b68a8eed",
+      "type": 1,
+      "title": "在使用Hugging Face的Trainer进行微调时，以下哪个参数控制...",
+      "content": "在使用Hugging&nbsp;Face的Trainer进行微调时，以下哪个参数控制多少步保存一次检查点？",
+      "options": [
+        {
+          "id": 7512281,
+          "content": "num_train_epochs"
+        },
+        {
+          "id": 7512282,
+          "content": "save_steps"
+        },
+        {
+          "id": 7512284,
+          "content": "logging_steps"
+        },
+        {
+          "id": 7512286,
+          "content": "warmup_steps"
+        }
+      ],
+      "correct_option_ids": [
+        7512282
+      ],
+      "correct_options": [
+        "save_steps"
+      ],
+      "analysis": "`save_steps`控制每隔多少训练步保存一次模型检查点。`num_train_epochs`控制训练轮次，`logging_steps`控制日志记录频率，`warmup_steps`控制学习率预热步数。合理设置save_steps防止训练中断丢失进度。"
+    },
+    {
+      "question_id": 11640064,
+      "uuid": "20409a32df3d4cd69ae06cb04271a3cb",
+      "type": 1,
+      "title": "以下关于\"幽灵对齐\"（Sycophancy）问题的描述，哪项正确？",
+      "content": "以下关于\"幽灵对齐\"（Sycophancy）问题的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511901,
+          "content": "模型拒绝所有用户请求"
+        },
+        {
+          "id": 7511902,
+          "content": "模型倾向于给出用户想听的答案而非正确答案，是RLHF的副作用之一"
+        },
+        {
+          "id": 7511903,
+          "content": "模型生成重复内容"
+        },
+        {
+          "id": 7511904,
+          "content": "模型输出与输入无关"
+        }
+      ],
+      "correct_option_ids": [
+        7511902
+      ],
+      "correct_options": [
+        "模型倾向于给出用户想听的答案而非正确答案，是RLHF的副作用之一"
+      ],
+      "analysis": "Sycophancy（谄媚/奉承问题）：模型学到人类偏好\"赞同和肯定\"，即使用户观点有误也倾向于附和，影响信息可靠性。原因：RLHF中人类评估者偏好\"同意自己观点\"的回复。解决：训练时明确奖励提出正确反对意见的回复。"
+    },
+    {
+      "question_id": 11639999,
+      "uuid": "27ee0e94e1f74ffb8b094e84cb8156b6",
+      "type": 1,
+      "title": "在训练对话模型时，以下哪种数据格式最合适？",
+      "content": "在训练对话模型时，以下哪种数据格式最合适？",
+      "options": [
+        {
+          "id": 7512609,
+          "content": "所有对话文本直接拼接"
+        },
+        {
+          "id": 7512610,
+          "content": "使用特殊标记区分角色（如&lt;|user|&gt;、&lt;|assistant|&gt;）并mask用户输入的损失"
+        },
+        {
+          "id": 7512611,
+          "content": "只保留助手的回复部分"
+        },
+        {
+          "id": 7512613,
+          "content": "将对话转换为问答对格式"
+        }
+      ],
+      "correct_option_ids": [
+        7512610
+      ],
+      "correct_options": [
+        "使用特殊标记区分角色（如&lt;|user|&gt;、&lt;|assistant|&gt;）并mask用户输入的损失"
+      ],
+      "analysis": "对话微调的标准做法是使用特殊角色标记区分用户/系统/助手，并对非助手部分（system&nbsp;prompt和user输入）加loss&nbsp;mask，使模型只学习生成助手回复的方式。"
+    },
+    {
+      "question_id": 11640053,
+      "uuid": "5db19a6649c044d09b2fb5a5348a80af",
+      "type": 1,
+      "title": "以下哪种技术在保留模型原有能力的同时，通过稀疏更新实现高效微调？",
+      "content": "以下哪种技术在保留模型原有能力的同时，通过稀疏更新实现高效微调？",
+      "options": [
+        {
+          "id": 7511996,
+          "content": "Dense&nbsp;LoRA（标准LoRA）"
+        },
+        {
+          "id": 7511998,
+          "content": "Sparse&nbsp;Fine-Tuning（稀疏微调，如BitFit）"
+        },
+        {
+          "id": 7511999,
+          "content": "Full&nbsp;Fine-Tuning"
+        },
+        {
+          "id": 7512000,
+          "content": "Prompt&nbsp;Tuning"
+        }
+      ],
+      "correct_option_ids": [
+        7511998
+      ],
+      "correct_options": [
+        "Sparse&nbsp;Fine-Tuning（稀疏微调，如BitFit）"
+      ],
+      "analysis": "BitFit只更新模型中的偏置项（bias&nbsp;terms），参数量约为总参数的0.1%，但在许多NLU任务上接近全量微调效果。稀疏微调通过选择性更新最重要的参数，在极低参数开销下实现有效适配，比Prompt&nbsp;Tuning更稳定。"
+    },
+    {
+      "question_id": 11639989,
+      "uuid": "8c62e12530e442a1ad6c0dd104938b51",
+      "type": 1,
+      "title": "以下代码使用了什么微调技术？```pythonconfig = LoraC...",
+      "content": "以下代码使用了什么微调技术？<div>```python</div><div>config&nbsp;=&nbsp;LoraConfig(</div><div>task_type=TaskType.CAUSAL_LM,</div><div>r=16,</div><div>lora_alpha=32,</div><div>target_modules=[\"q_proj\",&nbsp;\"v_proj\"],</div><div>lora_dropout=0.05,</div><div>)</div><div>```</div>",
+      "options": [
+        {
+          "id": 7512571,
+          "content": "QLoRA"
+        },
+        {
+          "id": 7512574,
+          "content": "标准LoRA"
+        },
+        {
+          "id": 7512577,
+          "content": "DoRA"
+        },
+        {
+          "id": 7512579,
+          "content": "Prefix&nbsp;Tuning"
+        }
+      ],
+      "correct_option_ids": [
+        7512574
+      ],
+      "correct_options": [
+        "标准LoRA"
+      ],
+      "analysis": "代码使用了PEFT库的LoraConfig，指定了rank=16，alpha=32，目标模块为q_proj和v_proj，这是标准LoRA配置。若是QLoRA，还需要BitsAndBytesConfig进行4bit量化。"
+    },
+    {
+      "question_id": 11640025,
+      "uuid": "6834477bc06c47e8a5d1ea4927b1a502",
+      "type": 1,
+      "title": "在计算预训练语言模型微调时所需的GPU显存时，以下哪项内存占用通常最大？",
+      "content": "在计算预训练语言模型微调时所需的GPU显存时，以下哪项内存占用通常最大？",
+      "options": [
+        {
+          "id": 7512301,
+          "content": "模型参数（Weights）"
+        },
+        {
+          "id": 7512302,
+          "content": "优化器状态（Adam的一阶、二阶矩）"
+        },
+        {
+          "id": 7512303,
+          "content": "激活值（Activations）"
+        },
+        {
+          "id": 7512304,
+          "content": "梯度（Gradients）"
+        }
+      ],
+      "correct_option_ids": [
+        7512302
+      ],
+      "correct_options": [
+        "优化器状态（Adam的一阶、二阶矩）"
+      ],
+      "analysis": "Adam优化器需要存储一阶矩（m）和二阶矩（v），各与参数量相同，FP32下各占4字节/参数。总计优化器状态≈8字节/参数，是参数本身（BF16=2字节）的4倍。7B模型Adam优化器状态约56GB，远超参数本身14GB。"
+    },
+    {
+      "question_id": 11640057,
+      "uuid": "e794338e98cb484e95aed38acb1fc969",
+      "type": 1,
+      "title": "以下关于微调后模型的\"幻觉率\"变化，哪项描述正确？",
+      "content": "以下关于微调后模型的\"幻觉率\"变化，哪项描述正确？",
+      "options": [
+        {
+          "id": 7511961,
+          "content": "微调后幻觉率一定降低"
+        },
+        {
+          "id": 7511962,
+          "content": "不当微调可能增加幻觉率，需要监控TruthfulQA等幻觉评估基准"
+        },
+        {
+          "id": 7511963,
+          "content": "SFT从不产生幻觉"
+        },
+        {
+          "id": 7511964,
+          "content": "幻觉率与微调数据量成反比"
+        }
+      ],
+      "correct_option_ids": [
+        7511962
+      ],
+      "correct_options": [
+        "不当微调可能增加幻觉率，需要监控TruthfulQA等幻觉评估基准"
+      ],
+      "analysis": "微调数据中若包含不准确信息、过度自信的陈述，可能增加幻觉率。需要通过TruthfulQA（测试知识边界认知）、FactScore等基准评估微调前后的幻觉变化。高质量对齐数据应包含模型对自身局限的正确表达（如\"我不确定\"）。"
+    },
+    {
+      "question_id": 11639904,
+      "uuid": "a248abd1c79e4f14bb1268af07fc8882",
+      "type": 1,
+      "title": "在DPO训练中，若chosen和rejected的概率差异过大（chose...",
+      "content": "在DPO训练中，若chosen和rejected的概率差异过大（chosen概率趋近1），会导致什么问题？",
+      "options": [
+        {
+          "id": 7511018,
+          "content": "训练loss振荡，无法收敛"
+        },
+        {
+          "id": 7511020,
+          "content": "梯度消失，模型停止学习（reward&nbsp;hacking）"
+        },
+        {
+          "id": 7511022,
+          "content": "模型输出变得更加多样化"
+        },
+        {
+          "id": 7511024,
+          "content": "奖励模型精度下降"
+        }
+      ],
+      "correct_option_ids": [
+        7511020
+      ],
+      "correct_options": [
+        "梯度消失，模型停止学习（reward&nbsp;hacking）"
+      ],
+      "analysis": "当策略模型对chosen的概率已远高于rejected时，sigmoid函数输入趋近于正无穷，梯度趋近于0，模型停止更新——即reward&nbsp;hacking/over-optimization问题。实践中通过设置适当的β（增大KL惩罚）、使用IPO（不使用sigmoid）或添加SFT&nbsp;loss来缓解。"
+    },
+    {
+      "question_id": 11640037,
+      "uuid": "7a7d7ec0e396435eb24b3887d3276e0d",
+      "type": 1,
+      "title": "在以下微调完成后的部署选择中，哪种方式推理延迟最低？",
+      "content": "在以下微调完成后的部署选择中，哪种方式推理延迟最低？",
+      "options": [
+        {
+          "id": 7512147,
+          "content": "加载基础模型&nbsp;+&nbsp;实时应用LoRA适配器"
+        },
+        {
+          "id": 7512149,
+          "content": "预先将LoRA合并到基础模型权重后部署"
+        },
+        {
+          "id": 7512151,
+          "content": "使用量化后的LoRA（不合并）"
+        },
+        {
+          "id": 7512152,
+          "content": "以上方案延迟相同"
+        }
+      ],
+      "correct_option_ids": [
+        7512149
+      ],
+      "correct_options": [
+        "预先将LoRA合并到基础模型权重后部署"
+      ],
+      "analysis": "预合并方案（merge_and_unload）将ΔW融入W，推理时无需额外矩阵乘法，延迟等同于原始模型。实时应用LoRA需要每层额外计算BA×x，增加约10-30%延迟。若服务多任务需频繁切换，动态加载LoRA更灵活。"
+    },
+    {
+      "question_id": 11640055,
+      "uuid": "b6ac4b540acf4126a223fcc786512bfe",
+      "type": 1,
+      "title": "以下哪种场景最不适合使用参数高效微调（PEFT）方法？",
+      "content": "以下哪种场景最不适合使用参数高效微调（PEFT）方法？",
+      "options": [
+        {
+          "id": 7511977,
+          "content": "在移动端设备上部署个性化模型"
+        },
+        {
+          "id": 7511979,
+          "content": "从头学习全新模态（如将纯文本模型扩展为多模态）"
+        },
+        {
+          "id": 7511981,
+          "content": "快速适配多个下游任务"
+        },
+        {
+          "id": 7511983,
+          "content": "资源受限的研究环境"
+        }
+      ],
+      "correct_option_ids": [
+        7511979
+      ],
+      "correct_options": [
+        "从头学习全新模态（如将纯文本模型扩展为多模态）"
+      ],
+      "analysis": "PEFT适合在预训练模型能力基础上进行适配/微调的场景。当需要从零开始学习全新的模态（如视觉输入）或大量新架构组件（如视觉编码器+投影层）时，低秩更新可能不足以学习足够的新知识，全量微调更合适。"
+    },
+    {
+      "question_id": 11639895,
+      "uuid": "7a4546bb4a984be39d1aff13856e56cd",
+      "type": 1,
+      "title": "P-Tuning v2相比P-Tuning v1的主要改进是什么？",
+      "content": "P-Tuning&nbsp;v2相比P-Tuning&nbsp;v1的主要改进是什么？",
+      "options": [
+        {
+          "id": 7511125,
+          "content": "P-Tuning&nbsp;v2使用更大的prompt&nbsp;token数量"
+        },
+        {
+          "id": 7511126,
+          "content": "P-Tuning&nbsp;v2在所有Transformer层都添加连续提示，而非只在输入层"
+        },
+        {
+          "id": 7511128,
+          "content": "P-Tuning&nbsp;v2引入了LSTM来生成prompt&nbsp;embeddings"
+        },
+        {
+          "id": 7511130,
+          "content": "P-Tuning&nbsp;v2支持多任务联合训练"
+        }
+      ],
+      "correct_option_ids": [
+        7511126
+      ],
+      "correct_options": [
+        "P-Tuning&nbsp;v2在所有Transformer层都添加连续提示，而非只在输入层"
+      ],
+      "analysis": "P-Tuning&nbsp;v1只在输入层插入可训练的pseudo&nbsp;tokens，影响力随层数增加而减弱。P-Tuning&nbsp;v2（刘鹏飞等，2022）类似Deep&nbsp;Prompt&nbsp;Tuning，在每个Transformer层都插入可训练prompt，大幅提升了对模型的影响力，在NLU任务上可达到全参微调的效果。"
+    },
+    {
+      "question_id": 11639994,
+      "uuid": "a3079bc2f0464c2780c7ba455944eadf",
+      "type": 1,
+      "title": "以下哪种场景最适合使用IA³（Infused Adapter by Inh...",
+      "content": "以下哪种场景最适合使用IA³（Infused&nbsp;Adapter&nbsp;by&nbsp;Inhibiting&nbsp;and&nbsp;Amplifying&nbsp;Inner&nbsp;Activations）而非LoRA？",
+      "options": [
+        {
+          "id": 7512668,
+          "content": "需要大幅度改变模型行为"
+        },
+        {
+          "id": 7512670,
+          "content": "参数预算极度受限（需要比LoRA更少的参数）"
+        },
+        {
+          "id": 7512671,
+          "content": "需要支持超长上下文"
+        },
+        {
+          "id": 7512672,
+          "content": "处理多模态任务"
+        }
+      ],
+      "correct_option_ids": [
+        7512670
+      ],
+      "correct_options": [
+        "参数预算极度受限（需要比LoRA更少的参数）"
+      ],
+      "analysis": "IA³通过对激活值进行逐元素缩放（乘法操作），参数量比LoRA更少（只需要缩放向量而非低秩矩阵），适合参数极度受限的场景，如在边缘设备上部署多个任务适配器。"
+    },
+    {
+      "question_id": 11640007,
+      "uuid": "e3a09de6b497493fb25cbb469250b9ed",
+      "type": 1,
+      "title": "在微调大模型时，以下哪种优化器通常最适合低内存场景？",
+      "content": "在微调大模型时，以下哪种优化器通常最适合低内存场景？",
+      "options": [
+        {
+          "id": 7512509,
+          "content": "Adam（标准）"
+        },
+        {
+          "id": 7512511,
+          "content": "AdaFactor"
+        },
+        {
+          "id": 7512513,
+          "content": "SGD&nbsp;with&nbsp;momentum"
+        },
+        {
+          "id": 7512515,
+          "content": "LAMB"
+        }
+      ],
+      "correct_option_ids": [
+        7512511
+      ],
+      "correct_options": [
+        "AdaFactor"
+      ],
+      "analysis": "AdaFactor通过分解二阶矩统计量（用行/列因子代替完整矩阵），将优化器状态内存从O(n)降至O(√n)，特别适合内存受限场景。8-bit&nbsp;Adam也是常用的内存高效替代方案。"
+    },
+    {
+      "question_id": 11639975,
+      "uuid": "151432e4232c49b4bdfb230161570c69",
+      "type": 1,
+      "title": "以下关于\"数据飞轮\"（Data Flywheel）在LLM微调中的概念，描...",
+      "content": "以下关于\"数据飞轮\"（Data&nbsp;Flywheel）在LLM微调中的概念，描述正确的是？",
+      "options": [
+        {
+          "id": 7512391,
+          "content": "数据飞轮是一种数据存储硬件"
+        },
+        {
+          "id": 7512394,
+          "content": "模型上线后用户交互数据用于改善下一版模型，更好的模型吸引更多用户，形成自增强的数据-模型正循环"
+        },
+        {
+          "id": 7512395,
+          "content": "数据飞轮只适用于图像生成模型"
+        },
+        {
+          "id": 7512396,
+          "content": "数据飞轮要求所有用户数据都必须人工标注"
+        }
+      ],
+      "correct_option_ids": [
+        7512394
+      ],
+      "correct_options": [
+        "模型上线后用户交互数据用于改善下一版模型，更好的模型吸引更多用户，形成自增强的数据-模型正循环"
+      ],
+      "analysis": "数据飞轮是商业AI产品的核心竞争壁垒：①v1模型上线→用户使用产生反馈；②利用用户反馈（显式评分、隐式行为）构建偏好数据；③用偏好数据训练v2模型（更好）；④更好的模型吸引更多用户→更多数据→v3更好…形成正向循环。ChatGPT、Copilot等产品的持续改进都依赖此机制，是商业AI公司的核心护城河。"
+    },
+    {
+      "question_id": 11639893,
+      "uuid": "ac3814dabcb944879970e822b1f5354f",
+      "type": 1,
+      "title": "Prefix Tuning和Prompt Tuning的主要区别是什么？",
+      "content": "Prefix&nbsp;Tuning和Prompt&nbsp;Tuning的主要区别是什么？",
+      "options": [
+        {
+          "id": 7511149,
+          "content": "Prefix&nbsp;Tuning只在输入层添加soft&nbsp;tokens，Prompt&nbsp;Tuning在每层都添加"
+        },
+        {
+          "id": 7511151,
+          "content": "Prefix&nbsp;Tuning在每个Transformer层的K、V上都添加可训练前缀，Prompt&nbsp;Tuning只在输入embedding层添加"
+        },
+        {
+          "id": 7511153,
+          "content": "Prefix&nbsp;Tuning需要更新原始模型权重，Prompt&nbsp;Tuning不需要"
+        },
+        {
+          "id": 7511154,
+          "content": "Prefix&nbsp;Tuning适用于生成任务，Prompt&nbsp;Tuning只适用于分类任务"
+        }
+      ],
+      "correct_option_ids": [
+        7511151
+      ],
+      "correct_options": [
+        "Prefix&nbsp;Tuning在每个Transformer层的K、V上都添加可训练前缀，Prompt&nbsp;Tuning只在输入embedding层添加"
+      ],
+      "analysis": "Prefix&nbsp;Tuning（Li&nbsp;&&nbsp;Liang&nbsp;2021）在每层Transformer的Key和Value矩阵前面拼接可训练的前缀向量，影响每一层的注意力计算，表达能力更强。Prompt&nbsp;Tuning（Lester&nbsp;et&nbsp;al.&nbsp;2021）只在输入embedding层添加soft&nbsp;prompt&nbsp;token，更简单但表达能力较弱，通常在大模型（&gt;10B）上才能接近全参微调效果。"
+    },
+    {
+      "question_id": 11640024,
+      "uuid": "f5654f974e584eababb5a4d96775a60c",
+      "type": 1,
+      "title": "以下哪种技术通过在基础模型中注入\"任务向量\"（Task Vector）来实...",
+      "content": "以下哪种技术通过在基础模型中注入\"任务向量\"（Task&nbsp;Vector）来实现任务适配？",
+      "options": [
+        {
+          "id": 7512309,
+          "content": "LoRA"
+        },
+        {
+          "id": 7512310,
+          "content": "任务向量算术（Task&nbsp;Vector&nbsp;Arithmetic）"
+        },
+        {
+          "id": 7512311,
+          "content": "Prefix&nbsp;Tuning"
+        },
+        {
+          "id": 7512312,
+          "content": "Adapter"
+        }
+      ],
+      "correct_option_ids": [
+        7512310
+      ],
+      "correct_options": [
+        "任务向量算术（Task&nbsp;Vector&nbsp;Arithmetic）"
+      ],
+      "analysis": "任务向量&nbsp;=&nbsp;微调权重&nbsp;-&nbsp;预训练权重（θ_ft&nbsp;-&nbsp;θ_0）。通过对任务向量进行加减运算，可以实现技能叠加（加法）、技能遗忘（减法）、任务迁移等操作，无需重新训练，是轻量级的后验模型编辑技术。"
+    },
+    {
+      "question_id": 11639965,
+      "uuid": "78ce0e89b730435eb972d9af7d87585b",
+      "type": 1,
+      "title": "以下关于\"Self-Rewarding Language Models\"（...",
+      "content": "以下关于\"Self-Rewarding&nbsp;Language&nbsp;Models\"（自奖励语言模型）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7512270,
+          "content": "模型通过与环境交互获得外部奖励信号"
+        },
+        {
+          "id": 7512272,
+          "content": "同一个模型既作为策略模型生成回复，又作为奖励模型评估回复质量，迭代自我改进"
+        },
+        {
+          "id": 7512274,
+          "content": "自奖励模型需要特殊的神经网络架构"
+        },
+        {
+          "id": 7512276,
+          "content": "自奖励模型只适用于代码任务"
+        }
+      ],
+      "correct_option_ids": [
+        7512272
+      ],
+      "correct_options": [
+        "同一个模型既作为策略模型生成回复，又作为奖励模型评估回复质量，迭代自我改进"
+      ],
+      "analysis": "Self-Rewarding&nbsp;LM（Yuan&nbsp;et&nbsp;al.&nbsp;2024）：①用当前模型以LLM-as-Judge方式评估自己生成的回复（生成偏好对）；②用这些自生成的偏好对训练（DPO）；③更新后的模型成为新的\"评判者\"和\"生成者\"，迭代循环。关键假设：模型评判能力&gt;生成能力，通过评判驱动生成提升。实验表明迭代3轮后性能持续提升，无需人类标注。"
+    },
+    {
+      "question_id": 11639969,
+      "uuid": "f890e22f72224202887050726c39d4a7",
+      "type": 1,
+      "title": "以下哪种方法可以在SFT后进一步提升模型在特定任务上的表现，而不需要收集新...",
+      "content": "以下哪种方法可以在SFT后进一步提升模型在特定任务上的表现，而不需要收集新的标注数据？",
+      "options": [
+        {
+          "id": 7512313,
+          "content": "只需增加模型参数量"
+        },
+        {
+          "id": 7512314,
+          "content": "使用模型自身对任务样本生成多个候选回复，选择最优的作为SFT数据（迭代自我精炼，Self-Refinement）"
+        },
+        {
+          "id": 7512315,
+          "content": "将模型迁移到不同的硬件平台"
+        },
+        {
+          "id": 7512316,
+          "content": "更改模型的tokenizer"
+        }
+      ],
+      "correct_option_ids": [
+        7512314
+      ],
+      "correct_options": [
+        "使用模型自身对任务样本生成多个候选回复，选择最优的作为SFT数据（迭代自我精炼，Self-Refinement）"
+      ],
+      "analysis": "Self-Refinement&nbsp;/&nbsp;Iterative&nbsp;Self-Training：①用当前模型对任务输入生成K个候选回复；②通过奖励模型、执行验证（代码运行）或LLM-as-Judge筛选最优回复；③用（输入,&nbsp;最优回复）对进行新一轮SFT；④重复迭代。每轮都用更好的数据训练，形成正向循环。无需额外人工标注，适合代码、数学等有客观评估标准的任务。"
+    },
+    {
+      "question_id": 11640061,
+      "uuid": "7bd2f961ef264d10afdf683d807b4eea",
+      "type": 1,
+      "title": "在使用4-bit量化的QLoRA时，LoRA适配器本身使用什么精度存储？",
+      "content": "在使用4-bit量化的QLoRA时，LoRA适配器本身使用什么精度存储？",
+      "options": [
+        {
+          "id": 7511929,
+          "content": "4-bit（与基础模型相同）"
+        },
+        {
+          "id": 7511930,
+          "content": "BF16或FP16（高精度）"
+        },
+        {
+          "id": 7511931,
+          "content": "INT8"
+        },
+        {
+          "id": 7511932,
+          "content": "FP8"
+        }
+      ],
+      "correct_option_ids": [
+        7511930
+      ],
+      "correct_options": [
+        "BF16或FP16（高精度）"
+      ],
+      "analysis": "QLoRA的设计：基础模型权重以4-bit&nbsp;NF4量化存储（节省显存），但LoRA适配器A和B矩阵使用BF16/FP16高精度存储和更新（因为LoRA参数很少，高精度开销可接受，且必须高精度才能有效梯度更新）。"
+    },
+    {
+      "question_id": 11639948,
+      "uuid": "b69c81a590ab4059a75f4dccc4ed6376",
+      "type": 1,
+      "title": "以下关于\"Curriculum Learning\"（课程学习）在LLM微调...",
+      "content": "以下关于\"Curriculum&nbsp;Learning\"（课程学习）在LLM微调中的应用，描述正确的是？",
+      "options": [
+        {
+          "id": 7510517,
+          "content": "课程学习要求每次只训练一个样本"
+        },
+        {
+          "id": 7510518,
+          "content": "按照从易到难的顺序排列训练数据，先学简单样本再学复杂样本，有助于稳定训练和提升效果"
+        },
+        {
+          "id": 7510519,
+          "content": "课程学习只适用于图像识别任务"
+        },
+        {
+          "id": 7510520,
+          "content": "课程学习会增加总训练时间，效果不明显"
+        }
+      ],
+      "correct_option_ids": [
+        7510518
+      ],
+      "correct_options": [
+        "按照从易到难的顺序排列训练数据，先学简单样本再学复杂样本，有助于稳定训练和提升效果"
+      ],
+      "analysis": "Curriculum&nbsp;Learning在SFT中的应用：①数学推理：先训练简单单步计算，再训练多步推理；②代码：先训练简单函数实现，再训练复杂算法；③对话：先训练单轮对话，再训练多轮。研究表明（特别在数学领域），合理的难度递进可以比随机顺序提升5-10%的最终性能，尤其对于较小的模型效果更明显。"
+    },
+    {
+      "question_id": 11640063,
+      "uuid": "584a5d6182c94466b293b9c4e7bd36d1",
+      "type": 1,
+      "title": "以下哪种元学习（Meta-learning）方法与微调最相关，能快速适应新任务？",
+      "content": "以下哪种元学习（Meta-learning）方法与微调最相关，能快速适应新任务？",
+      "options": [
+        {
+          "id": 7511912,
+          "content": "MAML（Model-Agnostic&nbsp;Meta-Learning）"
+        },
+        {
+          "id": 7511914,
+          "content": "增大预训练语料"
+        },
+        {
+          "id": 7511915,
+          "content": "使用更大的批次大小"
+        },
+        {
+          "id": 7511916,
+          "content": "增加层数"
+        }
+      ],
+      "correct_option_ids": [
+        7511912
+      ],
+      "correct_options": [
+        "MAML（Model-Agnostic&nbsp;Meta-Learning）"
+      ],
+      "analysis": "MAML通过在外循环优化\"对微调友好\"的初始参数，使得仅需少量步骤的内循环微调就能适应新任务。这与预训练+微调范式高度相关：预训练可以视为寻找好的元参数，使后续微调高效收敛。"
+    },
+    {
+      "question_id": 11640019,
+      "uuid": "044ec81b03a84300bb2028f236e1169c",
+      "type": 1,
+      "title": "在LoRA微调中，以下哪种方式可以让多个不同任务的LoRA适配器组合使用？",
+      "content": "在LoRA微调中，以下哪种方式可以让多个不同任务的LoRA适配器组合使用？",
+      "options": [
+        {
+          "id": 7512365,
+          "content": "LoRA&nbsp;Mixture（加权平均多个LoRA权重）"
+        },
+        {
+          "id": 7512368,
+          "content": "只能使用一个LoRA适配器"
+        },
+        {
+          "id": 7512370,
+          "content": "将所有LoRA合并为一个"
+        },
+        {
+          "id": 7512372,
+          "content": "重新微调合并后的模型"
+        }
+      ],
+      "correct_option_ids": [
+        7512365
+      ],
+      "correct_options": [
+        "LoRA&nbsp;Mixture（加权平均多个LoRA权重）"
+      ],
+      "analysis": "LoRA&nbsp;Mixture通过对多个LoRA适配器的权重进行加权平均，可以在运行时动态组合不同技能。公式：W_final&nbsp;=&nbsp;W_base&nbsp;+&nbsp;Σ(α_i&nbsp;×&nbsp;ΔW_i)。这允许构建技能混合的专家模型，无需为每种技能组合训练独立模型。"
+    },
+    {
+      "question_id": 11639891,
+      "uuid": "5cbad19aa7824c9c98f94b2284c13ae6",
+      "type": 1,
+      "title": "以下关于LoRA中alpha（缩放系数）的说法，正确的是？",
+      "content": "以下关于LoRA中alpha（缩放系数）的说法，正确的是？",
+      "options": [
+        {
+          "id": 7511173,
+          "content": "alpha控制LoRA矩阵的初始化方差"
+        },
+        {
+          "id": 7511174,
+          "content": "LoRA的实际缩放比例为alpha/rank，alpha越大更新幅度越大"
+        },
+        {
+          "id": 7511175,
+          "content": "alpha和rank必须设置为相同的值"
+        },
+        {
+          "id": 7511176,
+          "content": "alpha只影响推理速度，不影响训练效果"
+        }
+      ],
+      "correct_option_ids": [
+        7511174
+      ],
+      "correct_options": [
+        "LoRA的实际缩放比例为alpha/rank，alpha越大更新幅度越大"
+      ],
+      "analysis": "LoRA在合并权重时使用缩放因子alpha/rank，即ΔW&nbsp;=&nbsp;(alpha/rank)&nbsp;×&nbsp;B×A。alpha/rank=1时相当于不缩放，alpha/rank&gt;1时放大LoRA的贡献。常见设置是alpha=rank（等效缩放=1）或alpha=2×rank（放大更新）。"
+    },
+    {
+      "question_id": 11639959,
+      "uuid": "460fc1760c3c4abd8ff421fe86e994f9",
+      "type": 1,
+      "title": "以下关于\"斯坦福Alpaca\"和\"WizardLM\"的主要区别，描述正确的是？",
+      "content": "以下关于\"斯坦福Alpaca\"和\"WizardLM\"的主要区别，描述正确的是？",
+      "options": [
+        {
+          "id": 7512187,
+          "content": "两者使用完全相同的训练数据"
+        },
+        {
+          "id": 7512190,
+          "content": "Alpaca使用Self-Instruct生成5.2万条数据；WizardLM使用Evol-Instruct将简单指令迭代演化为更复杂的指令，提升数据难度和多样性"
+        },
+        {
+          "id": 7512193,
+          "content": "WizardLM参数量比Alpaca小"
+        },
+        {
+          "id": 7512195,
+          "content": "Alpaca使用RLHF，WizardLM使用SFT"
+        }
+      ],
+      "correct_option_ids": [
+        7512190
+      ],
+      "correct_options": [
+        "Alpaca使用Self-Instruct生成5.2万条数据；WizardLM使用Evol-Instruct将简单指令迭代演化为更复杂的指令，提升数据难度和多样性"
+      ],
+      "analysis": "Alpaca（Stanford）：用GPT-3.5&nbsp;text-davinci-003根据175个种子任务自动生成52K条指令数据，成本约500美元。局限：任务相对简单。WizardLM（微软）：提出Evol-Instruct，通过In-depth/In-breadth演化将简单指令复杂化（添加约束、增加步骤、组合多个任务），生成难度层次丰富的指令数据，在复杂任务上明显优于Alpaca。"
+    },
+    {
+      "question_id": 11639998,
+      "uuid": "9ce0b820d5914629b1e181ca2abd42b2",
+      "type": 1,
+      "title": "以下关于Alpaca（Stanford Alpaca）数据生成方式的描述，...",
+      "content": "以下关于Alpaca（Stanford&nbsp;Alpaca）数据生成方式的描述，正确的是？",
+      "options": [
+        {
+          "id": 7512621,
+          "content": "完全由人工标注"
+        },
+        {
+          "id": 7512622,
+          "content": "使用Self-Instruct方法，通过GPT-3.5生成52K指令-回复对"
+        },
+        {
+          "id": 7512623,
+          "content": "从GitHub代码库中提取"
+        },
+        {
+          "id": 7512624,
+          "content": "从人类反馈中学习"
+        }
+      ],
+      "correct_option_ids": [
+        7512622
+      ],
+      "correct_options": [
+        "使用Self-Instruct方法，通过GPT-3.5生成52K指令-回复对"
+      ],
+      "analysis": "Stanford&nbsp;Alpaca使用Self-Instruct方法，从175个种子任务出发，调用text-davinci-003生成约52K条指令微调数据，成本约500美元，证明了低成本指令微调的可行性。"
+    },
+    {
+      "question_id": 11639986,
+      "uuid": "3660786bb2724ef685ee8692ddf7b71d",
+      "type": 1,
+      "title": "在SimPO（Simple Preference Optimization...",
+      "content": "在SimPO（Simple&nbsp;Preference&nbsp;Optimization）中，与DPO的核心区别是？",
+      "options": [
+        {
+          "id": 7512535,
+          "content": "使用参考模型计算基线"
+        },
+        {
+          "id": 7512537,
+          "content": "用平均对数概率代替总对数概率，并加入长度惩罚"
+        },
+        {
+          "id": 7512539,
+          "content": "采用在线采样策略"
+        },
+        {
+          "id": 7512540,
+          "content": "引入多步奖励信号"
+        }
+      ],
+      "correct_option_ids": [
+        7512537
+      ],
+      "correct_options": [
+        "用平均对数概率代替总对数概率，并加入长度惩罚"
+      ],
+      "analysis": "SimPO通过用序列平均对数概率（而非总和）来消除长度偏差，同时引入目标奖励边际γ，无需参考模型。这使得偏好优化更简单高效，且在多个基准上超过DPO。"
+    },
+    {
+      "question_id": 11639898,
+      "uuid": "0235d8d251a54f3a960b1e6b95bab23a",
+      "type": 1,
+      "title": "ORPO（Odds Ratio Preference Optimizati...",
+      "content": "ORPO（Odds&nbsp;Ratio&nbsp;Preference&nbsp;Optimization）相比DPO的关键区别是什么？",
+      "options": [
+        {
+          "id": 7511093,
+          "content": "ORPO需要额外的参考模型进行KL约束"
+        },
+        {
+          "id": 7511094,
+          "content": "ORPO将SFT&nbsp;loss和偏好对齐loss合并为一个目标，无需参考模型"
+        },
+        {
+          "id": 7511095,
+          "content": "ORPO只优化正样本，不惩罚负样本"
+        },
+        {
+          "id": 7511096,
+          "content": "ORPO使用强化学习而非监督学习"
+        }
+      ],
+      "correct_option_ids": [
+        7511094
+      ],
+      "correct_options": [
+        "ORPO将SFT&nbsp;loss和偏好对齐loss合并为一个目标，无需参考模型"
+      ],
+      "analysis": "DPO需要一个参考模型（通常是SFT后的模型）来计算KL约束，训练分两阶段（SFT→DPO）。ORPO通过Odds&nbsp;Ratio将SFT的负log&nbsp;likelihood和偏好对比loss合并为单一损失函数，一次训练同时完成指令遵循和偏好对齐，且不需要参考模型，更简洁高效。"
+    },
+    {
+      "question_id": 11640050,
+      "uuid": "68ea5df6de7f4d1691819376cdfa9a5d",
+      "type": 1,
+      "title": "在长序列微调（Long Context Fine-tuning）时，以下哪...",
+      "content": "在长序列微调（Long&nbsp;Context&nbsp;Fine-tuning）时，以下哪种位置编码扩展方法最常用？",
+      "options": [
+        {
+          "id": 7512021,
+          "content": "直接使用原始RoPE，不做任何修改"
+        },
+        {
+          "id": 7512022,
+          "content": "RoPE缩放（YaRN、LongRoPE等）将位置编码扩展到更长范围"
+        },
+        {
+          "id": 7512023,
+          "content": "去除位置编码"
+        },
+        {
+          "id": 7512024,
+          "content": "使用绝对位置编码替换RoPE"
+        }
+      ],
+      "correct_option_ids": [
+        7512022
+      ],
+      "correct_options": [
+        "RoPE缩放（YaRN、LongRoPE等）将位置编码扩展到更长范围"
+      ],
+      "analysis": "RoPE的旋转角度设计限制了原生上下文长度（如LLaMA-2是4K）。YaRN（Yet&nbsp;Another&nbsp;RoPE&nbsp;Extenstion）通过非均匀缩放不同频率的旋转角度，可将上下文窗口扩展8-128倍，同时保持短距离精度，已被LLaMA-3等采用。"
+    },
+    {
+      "question_id": 11639892,
+      "uuid": "1304bc440f8e44b5a98c94f2301fd2a3",
+      "type": 1,
+      "title": "SimPO（Simple Preference Optimization）...",
+      "content": "SimPO（Simple&nbsp;Preference&nbsp;Optimization）相比DPO的主要改进是什么？",
+      "options": [
+        {
+          "id": 7511161,
+          "content": "SimPO引入了参考模型，使训练更稳定"
+        },
+        {
+          "id": 7511162,
+          "content": "SimPO使用序列平均log概率而非总log概率，并引入margin奖励目标"
+        },
+        {
+          "id": 7511163,
+          "content": "SimPO只对正样本计算loss，负样本完全忽略"
+        },
+        {
+          "id": 7511165,
+          "content": "SimPO需要额外的奖励模型辅助训练"
+        }
+      ],
+      "correct_option_ids": [
+        7511162
+      ],
+      "correct_options": [
+        "SimPO使用序列平均log概率而非总log概率，并引入margin奖励目标"
+      ],
+      "analysis": "DPO使用序列总log概率（受序列长度影响），SimPO改为平均log概率（length-normalized），减少长度偏差。同时SimPO引入了目标margin&nbsp;γ，要求winning&nbsp;response比losing&nbsp;response的奖励高出至少γ，使偏好差异更明显。SimPO不需要参考模型，更简洁。"
+    },
+    {
+      "question_id": 11640001,
+      "uuid": "0542536f6d9b4a97af477ab50d5509bc",
+      "type": 1,
+      "title": "RLAIF（Reinforcement Learning from AI ...",
+      "content": "RLAIF（Reinforcement&nbsp;Learning&nbsp;from&nbsp;AI&nbsp;Feedback）与RLHF的主要区别是？",
+      "options": [
+        {
+          "id": 7512585,
+          "content": "RLAIF不使用策略梯度"
+        },
+        {
+          "id": 7512587,
+          "content": "RLAIF用AI模型代替人类标注者提供偏好信号"
+        },
+        {
+          "id": 7512589,
+          "content": "RLAIF只适用于代码任务"
+        },
+        {
+          "id": 7512591,
+          "content": "RLAIF需要更多的计算资源"
+        }
+      ],
+      "correct_option_ids": [
+        7512587
+      ],
+      "correct_options": [
+        "RLAIF用AI模型代替人类标注者提供偏好信号"
+      ],
+      "analysis": "RLAIF用更强的AI模型（如Claude、GPT-4）代替人类评估者来标注偏好数据，大幅降低了数据收集成本。Constitutional&nbsp;AI（CAI）是RLAIF的典型代表，由Anthropic提出。"
+    },
+    {
+      "question_id": 11640059,
+      "uuid": "8b349650a4c04ea298c761e43210f341",
+      "type": 1,
+      "title": "在以下多模态微调（Multi-modal Fine-tuning）场景中，...",
+      "content": "在以下多模态微调（Multi-modal&nbsp;Fine-tuning）场景中，最常见的数据格式是？",
+      "options": [
+        {
+          "id": 7511945,
+          "content": "只有图像"
+        },
+        {
+          "id": 7511946,
+          "content": "图像-文本对（Image-Text&nbsp;Pairs），包含图像描述、视觉问答、图像指令遵循等"
+        },
+        {
+          "id": 7511947,
+          "content": "只有文本"
+        },
+        {
+          "id": 7511948,
+          "content": "视频帧序列"
+        }
+      ],
+      "correct_option_ids": [
+        7511946
+      ],
+      "correct_options": [
+        "图像-文本对（Image-Text&nbsp;Pairs），包含图像描述、视觉问答、图像指令遵循等"
+      ],
+      "analysis": "多模态指令微调（如LLaVA）的标准数据格式：图像（编码后的特征）+&nbsp;对应的文本指令+回复，支持图像描述（Captioning）、视觉问答（VQA）、图像理解（Visual&nbsp;Understanding）等任务类型，通过统一格式训练多样化视觉语言能力。"
+    },
+    {
+      "question_id": 11640005,
+      "uuid": "09affe34aa14448193b800bf12843441",
+      "type": 1,
+      "title": "在实际LoRA微调时，rank r的最优选择通常遵循什么原则？",
+      "content": "在实际LoRA微调时，rank&nbsp;r的最优选择通常遵循什么原则？",
+      "options": [
+        {
+          "id": 7512533,
+          "content": "越大越好，rank不影响效果"
+        },
+        {
+          "id": 7512534,
+          "content": "从小值开始（如r=4或r=8），根据任务复杂度调整"
+        },
+        {
+          "id": 7512536,
+          "content": "固定使用r=64"
+        },
+        {
+          "id": 7512538,
+          "content": "rank应等于模型隐层维度的一半"
+        }
+      ],
+      "correct_option_ids": [
+        7512534
+      ],
+      "correct_options": [
+        "从小值开始（如r=4或r=8），根据任务复杂度调整"
+      ],
+      "analysis": "rank的选择需要在参数效率和表达能力间平衡。对简单任务（格式转换、风格调整），r=4-8通常足够；复杂任务（推理、专业领域）可能需要r=16-64。实践中推荐从小值开始实验。"
+    },
+    {
+      "question_id": 11640000,
+      "uuid": "8c3195d10161490e9d844b5ed7d039ba",
+      "type": 1,
+      "title": "以下关于学习率对LoRA微调效果的影响，哪项描述最准确？",
+      "content": "以下关于学习率对LoRA微调效果的影响，哪项描述最准确？",
+      "options": [
+        {
+          "id": 7512597,
+          "content": "学习率越大越好，可以加速收敛"
+        },
+        {
+          "id": 7512598,
+          "content": "LoRA微调通常使用比全量微调高10-100倍的学习率"
+        },
+        {
+          "id": 7512599,
+          "content": "学习率与全量微调相同即可"
+        },
+        {
+          "id": 7512600,
+          "content": "LoRA不需要调整学习率"
+        }
+      ],
+      "correct_option_ids": [
+        7512598
+      ],
+      "correct_options": [
+        "LoRA微调通常使用比全量微调高10-100倍的学习率"
+      ],
+      "analysis": "LoRA参数从随机（或零）初始化开始，需要更大的学习率来有效更新。通常LoRA使用1e-4到1e-3的学习率，而全量微调常用1e-5到1e-4。过高会不稳定，过低收敛慢。"
+    },
+    {
+      "question_id": 11639982,
+      "uuid": "0b206ca021514b02aeaff8fcb5576a9d",
+      "type": 1,
+      "title": "在数据混合微调时，如果同时有高质量SFT数据和大量通用文本数据，最佳做法是？",
+      "content": "在数据混合微调时，如果同时有高质量SFT数据和大量通用文本数据，最佳做法是？",
+      "options": [
+        {
+          "id": 7512481,
+          "content": "丢弃通用文本数据，只用SFT数据"
+        },
+        {
+          "id": 7512482,
+          "content": "按一定比例混合，防止灾难性遗忘"
+        },
+        {
+          "id": 7512483,
+          "content": "先用通用数据，再用SFT数据"
+        },
+        {
+          "id": 7512484,
+          "content": "先用SFT数据，再用通用数据"
+        }
+      ],
+      "correct_option_ids": [
+        7512482
+      ],
+      "correct_options": [
+        "按一定比例混合，防止灾难性遗忘"
+      ],
+      "analysis": "完全丢弃通用数据会导致灾难性遗忘，模型丧失原有能力。最佳策略是按比例混合（如SFT:通用=1:5到1:10），或使用持续学习技术，在保持原有能力的同时学习新技能。"
+    },
+    {
+      "question_id": 11640010,
+      "uuid": "913089de0c574d64833898064ac83413",
+      "type": 1,
+      "title": "以下关于Mistral模型LoRA微调时target_modules的选择...",
+      "content": "以下关于Mistral模型LoRA微调时target_modules的选择，哪种配置通常效果最好？",
+      "options": [
+        {
+          "id": 7512477,
+          "content": "只对q_proj添加LoRA"
+        },
+        {
+          "id": 7512478,
+          "content": "对q_proj,&nbsp;k_proj,&nbsp;v_proj,&nbsp;o_proj,&nbsp;gate_proj,&nbsp;up_proj,&nbsp;down_proj全部添加LoRA"
+        },
+        {
+          "id": 7512479,
+          "content": "只对FFN层添加LoRA"
+        },
+        {
+          "id": 7512480,
+          "content": "对所有线性层添加LoRA，包括embedding"
+        }
+      ],
+      "correct_option_ids": [
+        7512478
+      ],
+      "correct_options": [
+        "对q_proj,&nbsp;k_proj,&nbsp;v_proj,&nbsp;o_proj,&nbsp;gate_proj,&nbsp;up_proj,&nbsp;down_proj全部添加LoRA"
+      ],
+      "analysis": "在资源允许的情况下，对注意力层（Q,K,V,O）和FFN层（gate_proj,&nbsp;up_proj,&nbsp;down_proj&nbsp;for&nbsp;SwiGLU激活）都添加LoRA通常效果最优，因为这覆盖了模型计算的主要路径。"
+    },
+    {
+      "question_id": 11639944,
+      "uuid": "b3411323711d49e5a545ca17a124ef78",
+      "type": 1,
+      "title": "在SFT训练中，以下哪种策略可以有效防止\"output length bi...",
+      "content": "在SFT训练中，以下哪种策略可以有效防止\"output&nbsp;length&nbsp;bias\"（模型倾向于输出过长或过短的回复）？",
+      "options": [
+        {
+          "id": 7510565,
+          "content": "在loss中添加长度惩罚项"
+        },
+        {
+          "id": 7510566,
+          "content": "在训练数据中确保长短回复的合理分布，并在评估时使用不依赖长度的指标"
+        },
+        {
+          "id": 7510567,
+          "content": "强制所有训练样本回复长度相同"
+        },
+        {
+          "id": 7510568,
+          "content": "只使用RLHF而不使用SFT"
+        }
+      ],
+      "correct_option_ids": [
+        7510566
+      ],
+      "correct_options": [
+        "在训练数据中确保长短回复的合理分布，并在评估时使用不依赖长度的指标"
+      ],
+      "analysis": "Output&nbsp;length&nbsp;bias是RLHF和SFT的常见问题：如果训练数据中长回复更多或奖励模型有length&nbsp;bias，模型会学到\"更长=更好\"。解决方案：①数据层面：平衡长短回复分布；②奖励模型层面：使用length-normalized&nbsp;scoring（SimPO方法）；③评估层面：使用与长度无关的指标（如AlpacaEval的win&nbsp;rate）而非基于ROUGE等对长度敏感的指标。"
+    },
+    {
+      "question_id": 11639901,
+      "uuid": "5c91f9da97bb43dbba9bd29cbcdd20d9",
+      "type": 1,
+      "title": "拒绝采样微调（Rejection Sampling Fine-tuning...",
+      "content": "拒绝采样微调（Rejection&nbsp;Sampling&nbsp;Fine-tuning,&nbsp;RST）的流程是？",
+      "options": [
+        {
+          "id": 7511053,
+          "content": "用当前模型采样多个回复→奖励模型打分→只保留高分样本→SFT训练"
+        },
+        {
+          "id": 7511055,
+          "content": "用参考模型生成回复→人工筛选→DPO训练"
+        },
+        {
+          "id": 7511057,
+          "content": "随机丢弃低置信度的训练样本→重新训练"
+        },
+        {
+          "id": 7511059,
+          "content": "用强化学习奖励信号直接更新策略梯度"
+        }
+      ],
+      "correct_option_ids": [
+        7511053
+      ],
+      "correct_options": [
+        "用当前模型采样多个回复→奖励模型打分→只保留高分样本→SFT训练"
+      ],
+      "analysis": "RST（如LLaMA&nbsp;2、Gemini中使用）的核心是迭代自我提升：①用当前策略对每个prompt采样K个回复；②用奖励模型打分，保留最高分的回复；③用这些高质量样本做SFT；④用新模型重复上述过程。本质是通过奖励模型过滤，从模型自身输出中提炼高质量数据。"
+    },
+    {
+      "question_id": 11639924,
+      "uuid": "f71b5009f9da4413bdb666b9f38bd273",
+      "type": 1,
+      "title": "在SFT训练中，packing（序列打包）技术的作用是？",
+      "content": "在SFT训练中，packing（序列打包）技术的作用是？",
+      "options": [
+        {
+          "id": 7510789,
+          "content": "将多个短序列拼接成一个长序列填满max_length，提高GPU利用率"
+        },
+        {
+          "id": 7510790,
+          "content": "将一个长序列分割成多个短序列分别处理"
+        },
+        {
+          "id": 7510791,
+          "content": "对序列进行随机排序，增加数据多样性"
+        },
+        {
+          "id": 7510793,
+          "content": "压缩训练数据，减少磁盘占用"
+        }
+      ],
+      "correct_option_ids": [
+        7510789
+      ],
+      "correct_options": [
+        "将多个短序列拼接成一个长序列填满max_length，提高GPU利用率"
+      ],
+      "analysis": "SFT数据长度不一，短序列需要大量padding浪费算力。Packing将多个短样本拼接到同一个context窗口（通常用特殊分隔符），使每个batch的token都有效参与计算，大幅提升GPU利用率（通常2-5倍吞吐提升）。关键注意事项：需要在attention中使用attention&nbsp;mask防止不同样本间的cross-attention。"
+    },
+    {
+      "question_id": 11640048,
+      "uuid": "22db0d8e66d84d7e832de4dbfd29751c",
+      "type": 1,
+      "title": "以下哪种实验设计可以有效测试LoRA rank对最终性能的影响？",
+      "content": "以下哪种实验设计可以有效测试LoRA&nbsp;rank对最终性能的影响？",
+      "options": [
+        {
+          "id": 7512037,
+          "content": "同时改变rank和学习率进行对比"
+        },
+        {
+          "id": 7512038,
+          "content": "固定所有其他超参数，只改变rank值进行消融实验"
+        },
+        {
+          "id": 7512039,
+          "content": "使用不同的基础模型进行对比"
+        },
+        {
+          "id": 7512041,
+          "content": "使用不同数量的训练数据对比"
+        }
+      ],
+      "correct_option_ids": [
+        7512038
+      ],
+      "correct_options": [
+        "固定所有其他超参数，只改变rank值进行消融实验"
+      ],
+      "analysis": "有效的超参数消融实验必须控制其他变量不变，只改变一个因素（rank）。改变多个变量无法确定哪个因素造成了性能差异。好的消融设计：相同数据、相同学习率/batch/epoch，只有rank变化（如4/8/16/32/64）。"
+    },
+    {
+      "question_id": 11639879,
+      "uuid": "c0f7ff2b227d44eda66eebbb9aec7d6a",
+      "type": 1,
+      "title": "LoRA中，若原始权重矩阵维度为d×d，rank=r，则LoRA引入的可训...",
+      "content": "LoRA中，若原始权重矩阵维度为d×d，rank=r，则LoRA引入的可训练参数量为多少？",
+      "options": [
+        {
+          "id": 7511313,
+          "content": "d×d"
+        },
+        {
+          "id": 7511314,
+          "content": "2×d×r"
+        },
+        {
+          "id": 7511315,
+          "content": "d×r"
+        },
+        {
+          "id": 7511316,
+          "content": "r×r"
+        }
+      ],
+      "correct_option_ids": [
+        7511314
+      ],
+      "correct_options": [
+        "2×d×r"
+      ],
+      "analysis": "LoRA引入两个矩阵：A(d×r)和B(r×d)，参数量分别为d×r，合计2×d×r。当r远小于d时，参数量大幅减少。例如d=4096,r=8时，参数量从16M减少到65K。"
+    },
+    {
+      "question_id": 11639979,
+      "uuid": "e159edbd929949f19bea074829600c26",
+      "type": 1,
+      "title": "以下哪种情况下，全量微调（Full Fine-tuning）比LoRA更合适？",
+      "content": "以下哪种情况下，全量微调（Full&nbsp;Fine-tuning）比LoRA更合适？",
+      "options": [
+        {
+          "id": 7512445,
+          "content": "计算资源极度受限"
+        },
+        {
+          "id": 7512446,
+          "content": "需要适应全新的语言或领域知识"
+        },
+        {
+          "id": 7512447,
+          "content": "只需要调整模型输出格式"
+        },
+        {
+          "id": 7512448,
+          "content": "需要快速部署多个任务版本"
+        }
+      ],
+      "correct_option_ids": [
+        7512446
+      ],
+      "correct_options": [
+        "需要适应全新的语言或领域知识"
+      ],
+      "analysis": "当模型需要学习大量新知识（如全新语言、特定专业领域的大量事实知识），全量微调通常效果更好，因为LoRA的低秩更新可能不足以充分改变所有相关参数。"
+    },
+    {
+      "question_id": 11640028,
+      "uuid": "b696792c3e1b4bb6a11b6dd7a3137f40",
+      "type": 1,
+      "title": "以下关于Mistral-7B的滑动窗口注意力（SWA）在微调时的注意事项，...",
+      "content": "以下关于Mistral-7B的滑动窗口注意力（SWA）在微调时的注意事项，哪项正确？",
+      "options": [
+        {
+          "id": 7512269,
+          "content": "SWA使微调速度变慢"
+        },
+        {
+          "id": 7512271,
+          "content": "微调时序列长度应考虑SWA窗口大小，避免超出有效上下文范围"
+        },
+        {
+          "id": 7512273,
+          "content": "SWA不兼容LoRA"
+        },
+        {
+          "id": 7512275,
+          "content": "使用SWA必须禁用Flash&nbsp;Attention"
+        }
+      ],
+      "correct_option_ids": [
+        7512271
+      ],
+      "correct_options": [
+        "微调时序列长度应考虑SWA窗口大小，避免超出有效上下文范围"
+      ],
+      "analysis": "Mistral的SWA每层注意力窗口为4096&nbsp;tokens，通过多层叠加扩展有效感受野。微调时若序列长度超过有效上下文范围，超出部分信息无法被有效利用。实际微调时序列长度通常设为≤8192以发挥最佳效果。"
+    },
+    {
+      "question_id": 11639946,
+      "uuid": "d01ae2883fc843ca9cfb1afef2f8f4da",
+      "type": 1,
+      "title": "以下哪个方法属于\"Parameter-Efficient Fine-Tun...",
+      "content": "以下哪个方法属于\"Parameter-Efficient&nbsp;Fine-Tuning\"（PEFT）？",
+      "options": [
+        {
+          "id": 7510541,
+          "content": "全参数微调（Full&nbsp;Fine-tuning）"
+        },
+        {
+          "id": 7510542,
+          "content": "只微调最后一层（Last-Layer&nbsp;Fine-tuning）"
+        },
+        {
+          "id": 7510543,
+          "content": "LoRA、Adapter、Prefix&nbsp;Tuning等只训练少量新增参数的方法"
+        },
+        {
+          "id": 7510544,
+          "content": "蒸馏（Knowledge&nbsp;Distillation）"
+        }
+      ],
+      "correct_option_ids": [
+        7510543
+      ],
+      "correct_options": [
+        "LoRA、Adapter、Prefix&nbsp;Tuning等只训练少量新增参数的方法"
+      ],
+      "analysis": "PEFT是指在冻结大部分预训练参数的情况下，只训练少量额外参数（通常&lt;1%总参数量）来适配下游任务的方法集合。包括：LoRA/LoRA+/DoRA、Adapter&nbsp;layers、Prefix&nbsp;Tuning、Prompt&nbsp;Tuning、P-Tuning&nbsp;v2、IA³等。只微调最后一层虽然参数少，但修改了原始权重（不属于PEFT范畴）。蒸馏是独立的模型压缩范式。"
+    },
+    {
+      "question_id": 11639911,
+      "uuid": "0921802479124472bbffb0977a11cbc2",
+      "type": 1,
+      "title": "在GRPO（Group Relative Policy Optimizat...",
+      "content": "在GRPO（Group&nbsp;Relative&nbsp;Policy&nbsp;Optimization）中，优势估计的计算方式是？",
+      "options": [
+        {
+          "id": 7510937,
+          "content": "使用Critic网络预测状态价值函数V(s)"
+        },
+        {
+          "id": 7510938,
+          "content": "对同一prompt采样G个回复，用每个回复的奖励减去组内平均奖励后标准化"
+        },
+        {
+          "id": 7510939,
+          "content": "使用蒙特卡洛方法估计未来累积奖励"
+        },
+        {
+          "id": 7510940,
+          "content": "直接使用奖励模型的输出作为优势值"
+        }
+      ],
+      "correct_option_ids": [
+        7510938
+      ],
+      "correct_options": [
+        "对同一prompt采样G个回复，用每个回复的奖励减去组内平均奖励后标准化"
+      ],
+      "analysis": "GRPO的优势估计：对prompt&nbsp;x采样G个回复{y₁,...,yG}，计算各自奖励{r₁,...,rG}，优势Aᵢ&nbsp;=&nbsp;(rᵢ&nbsp;-&nbsp;mean(r))&nbsp;/&nbsp;std(r)。这种组内相对比较消除了绝对奖励尺度的影响，无需Critic模型，计算简单高效，是DeepSeek-R1等模型训练的核心技术。"
+    },
+    {
+      "question_id": 11639956,
+      "uuid": "a3ac4c5c0aa94217ac290d8f5602f399",
+      "type": 1,
+      "title": "在LoRA微调后想要合并多个专家LoRA（如代码LoRA + 数学LoRA...",
+      "content": "在LoRA微调后想要合并多个专家LoRA（如代码LoRA&nbsp;+&nbsp;数学LoRA），以下哪种方法最直接？",
+      "options": [
+        {
+          "id": 7512157,
+          "content": "随机选择一个LoRA使用"
+        },
+        {
+          "id": 7512158,
+          "content": "线性加权合并（Weighted&nbsp;Merge）：W_final&nbsp;=&nbsp;W_base&nbsp;+&nbsp;λ₁×ΔW₁&nbsp;+&nbsp;λ₂×ΔW₂"
+        },
+        {
+          "id": 7512159,
+          "content": "选择loss最小的LoRA"
+        },
+        {
+          "id": 7512160,
+          "content": "两个LoRA模型串联推理"
+        }
+      ],
+      "correct_option_ids": [
+        7512158
+      ],
+      "correct_options": [
+        "线性加权合并（Weighted&nbsp;Merge）：W_final&nbsp;=&nbsp;W_base&nbsp;+&nbsp;λ₁×ΔW₁&nbsp;+&nbsp;λ₂×ΔW₂"
+      ],
+      "analysis": "Task&nbsp;Arithmetic（Ilharco&nbsp;et&nbsp;al.&nbsp;2022）：将多个fine-tuned模型的delta权重（ΔW&nbsp;=&nbsp;W_ft&nbsp;-&nbsp;W_base）线性组合：W_merged&nbsp;=&nbsp;W_base&nbsp;+&nbsp;λ₁×ΔW₁&nbsp;+&nbsp;λ₂×ΔW₂。这种方法简单有效，可以混合不同任务的能力。λ控制各任务的权重，通过在验证集上搜索最优λ组合可进一步提升效果。TIES-Merging和DARE在此基础上处理了参数冲突问题。"
+    },
+    {
+      "question_id": 11639981,
+      "uuid": "f9b57e52f9b54721b24831565ef2ca19",
+      "type": 1,
+      "title": "以下哪种技术是为了缓解RLHF中\"奖励黑客\"（Reward Hacking...",
+      "content": "以下哪种技术是为了缓解RLHF中\"奖励黑客\"（Reward&nbsp;Hacking）问题？",
+      "options": [
+        {
+          "id": 7512469,
+          "content": "增大批次大小"
+        },
+        {
+          "id": 7512470,
+          "content": "KL散度惩罚项"
+        },
+        {
+          "id": 7512471,
+          "content": "余弦学习率调度"
+        },
+        {
+          "id": 7512472,
+          "content": "梯度裁剪"
+        }
+      ],
+      "correct_option_ids": [
+        7512470
+      ],
+      "correct_options": [
+        "KL散度惩罚项"
+      ],
+      "analysis": "奖励黑客指模型学会欺骗奖励模型而非真正改进。KL散度惩罚限制了策略与参考模型的偏离程度，防止模型过度优化奖励信号，保持输出合理性。"
+    },
+    {
+      "question_id": 11639915,
+      "uuid": "1c7891dcac7640edab8d81c12a43a452",
+      "type": 1,
+      "title": "在多任务微调（Multi-task Fine-tuning）中，数据配比（...",
+      "content": "在多任务微调（Multi-task&nbsp;Fine-tuning）中，数据配比（Data&nbsp;Mixing&nbsp;Ratio）的重要性体现在？",
+      "options": [
+        {
+          "id": 7510889,
+          "content": "配比影响模型大小，需要按参数量比例分配"
+        },
+        {
+          "id": 7510891,
+          "content": "不同任务数据量差异大时，直接混合会导致大数据集任务主导训练，小任务学习不足"
+        },
+        {
+          "id": 7510893,
+          "content": "配比只影响训练速度，不影响最终效果"
+        },
+        {
+          "id": 7510896,
+          "content": "所有任务数据量相同时不需要考虑配比"
+        }
+      ],
+      "correct_option_ids": [
+        7510891
+      ],
+      "correct_options": [
+        "不同任务数据量差异大时，直接混合会导致大数据集任务主导训练，小任务学习不足"
+      ],
+      "analysis": "多任务微调时数据配比至关重要。若数学推理数据100万条、安全对齐数据1万条，直接混合会导致模型在安全任务上几乎看不到训练信号。常用方法：①温度采样（temperature&nbsp;sampling）控制各任务采样概率；②上采样小任务数据；③研究发现按任务loss加权或等比例混合通常效果较好。"
+    },
+    {
+      "question_id": 11639957,
+      "uuid": "b0a12a1b6e8b41b3be51fa0ec4677804",
+      "type": 1,
+      "title": "以下关于SFT中\"过度训练\"（Overtraining）的症状，描述正确的是？",
+      "content": "以下关于SFT中\"过度训练\"（Overtraining）的症状，描述正确的是？",
+      "options": [
+        {
+          "id": 7512165,
+          "content": "训练loss持续下降是过度训练的标志"
+        },
+        {
+          "id": 7512166,
+          "content": "验证loss升高、模型输出变得模板化/重复、在不相关任务上性能下降"
+        },
+        {
+          "id": 7512167,
+          "content": "模型生成速度变慢"
+        },
+        {
+          "id": 7512168,
+          "content": "模型的词表利用率下降"
+        }
+      ],
+      "correct_option_ids": [
+        7512166
+      ],
+      "correct_options": [
+        "验证loss升高、模型输出变得模板化/重复、在不相关任务上性能下降"
+      ],
+      "analysis": "SFT过度训练的典型症状：①验证集loss升高（经典过拟合）；②输出高度重复（模型记住了训练数据的表面模式）；③输出过于\"模板化\"（总是用相同的开头/结尾）；④通用能力退化（MMLU/BBH等基准下降）；⑤对训练分布外的prompt响应差。解决：early&nbsp;stopping（监控验证loss）、减少epoch、增加数据多样性、添加regularization。"
+    },
+    {
+      "question_id": 11640034,
+      "uuid": "82bc86693f19497386d07cd082421330",
+      "type": 1,
+      "title": "以下关于LoRA在不同Transformer架构（如Llama vs GP...",
+      "content": "以下关于LoRA在不同Transformer架构（如Llama&nbsp;vs&nbsp;GPT-2）中应用的差异，哪项正确？",
+      "options": [
+        {
+          "id": 7512200,
+          "content": "LoRA在所有架构中的target_modules完全相同"
+        },
+        {
+          "id": 7512203,
+          "content": "不同架构的层名称不同（如Llama的q_proj&nbsp;vs&nbsp;GPT-2的c_attn），需要针对具体架构配置"
+        },
+        {
+          "id": 7512205,
+          "content": "LoRA只适用于Llama系列模型"
+        },
+        {
+          "id": 7512207,
+          "content": "GPT-2不支持LoRA"
+        }
+      ],
+      "correct_option_ids": [
+        7512203
+      ],
+      "correct_options": [
+        "不同架构的层名称不同（如Llama的q_proj&nbsp;vs&nbsp;GPT-2的c_attn），需要针对具体架构配置"
+      ],
+      "analysis": "LoRA的target_modules需要与模型实际层名称匹配。Llama系列使用q_proj/k_proj/v_proj/o_proj，GPT-2使用c_attn（Q/K/V合一）/c_proj，Falcon使用query_key_value等。使用PEFT时需要检查模型架构确定正确的模块名。"
+    },
+    {
+      "question_id": 11639930,
+      "uuid": "9b75bb53db44400ca0e84c3db4e964de",
+      "type": 1,
+      "title": "以下关于RLHF与DPO的对比，哪项描述最准确？",
+      "content": "以下关于RLHF与DPO的对比，哪项描述最准确？",
+      "options": [
+        {
+          "id": 7510719,
+          "content": "DPO在所有场景下都优于RLHF，已完全取代RLHF"
+        },
+        {
+          "id": 7510721,
+          "content": "RLHF（PPO）支持在线学习（策略不断更新后采样新数据），DPO是离线的（固定偏好数据集），各有适用场景"
+        },
+        {
+          "id": 7510723,
+          "content": "DPO需要更多计算资源"
+        },
+        {
+          "id": 7510724,
+          "content": "RLHF不需要奖励模型，DPO需要"
+        }
+      ],
+      "correct_option_ids": [
+        7510721
+      ],
+      "correct_options": [
+        "RLHF（PPO）支持在线学习（策略不断更新后采样新数据），DPO是离线的（固定偏好数据集），各有适用场景"
+      ],
+      "analysis": "关键区别：PPO是在线算法（Online&nbsp;RL），每轮用当前策略采样新数据，可以持续改进；DPO是离线算法（Offline），只使用固定的偏好数据集，数据不会随策略更新。在线RLHF通常最终性能更高（可以探索新策略），但成本更高；DPO简单高效适合资源受限场景。GPT-4等最强模型仍使用RLHF，说明其优势在顶级场景仍然显著。"
+    },
+    {
+      "question_id": 11640013,
+      "uuid": "0b7b7f4c38cf44e4bd7881823fb84245",
+      "type": 1,
+      "title": "以下哪种技术用于解决预训练语言模型对特定格式输出（如JSON）的遵循能力？",
+      "content": "以下哪种技术用于解决预训练语言模型对特定格式输出（如JSON）的遵循能力？",
+      "options": [
+        {
+          "id": 7512437,
+          "content": "增大模型规模"
+        },
+        {
+          "id": 7512438,
+          "content": "使用格式化的SFT数据进行指令微调"
+        },
+        {
+          "id": 7512439,
+          "content": "修改tokenizer"
+        },
+        {
+          "id": 7512440,
+          "content": "使用特殊的注意力机制"
+        }
+      ],
+      "correct_option_ids": [
+        7512438
+      ],
+      "correct_options": [
+        "使用格式化的SFT数据进行指令微调"
+      ],
+      "analysis": "要让模型输出结构化格式（JSON/XML/特定模板），最有效的方法是用大量对应格式的SFT数据进行指令微调。Function&nbsp;Calling能力正是通过在特定格式数据上微调得到的。"
+    },
+    {
+      "question_id": 11639973,
+      "uuid": "e24e5cd886fc4407ad5a03a3f018318e",
+      "type": 1,
+      "title": "以下关于\"SFT loss mask\"的实现，以下哪段伪代码正确？",
+      "content": "以下关于\"SFT&nbsp;loss&nbsp;mask\"的实现，以下哪段伪代码正确？",
+      "options": [
+        {
+          "id": 7512364,
+          "content": "labels&nbsp;=&nbsp;input_ids（所有token都计算loss）"
+        },
+        {
+          "id": 7512367,
+          "content": "labels&nbsp;=&nbsp;[-100]&nbsp;*&nbsp;len(prompt_tokens)&nbsp;+&nbsp;response_tokens（prompt部分mask掉）"
+        },
+        {
+          "id": 7512369,
+          "content": "labels&nbsp;=&nbsp;prompt_tokens&nbsp;+&nbsp;[-100]&nbsp;*&nbsp;len(response_tokens)（回复部分mask掉）"
+        },
+        {
+          "id": 7512371,
+          "content": "labels&nbsp;=&nbsp;random_mask(input_ids,&nbsp;0.15)（随机mask&nbsp;15%）"
+        }
+      ],
+      "correct_option_ids": [
+        7512367
+      ],
+      "correct_options": [
+        "labels&nbsp;=&nbsp;[-100]&nbsp;*&nbsp;len(prompt_tokens)&nbsp;+&nbsp;response_tokens（prompt部分mask掉）"
+      ],
+      "analysis": "SFT的标准loss&nbsp;mask实现：将prompt（系统提示+用户输入）对应位置的labels设为-100（PyTorch&nbsp;CrossEntropyLoss忽略index=-100的位置），只对assistant回复部分的token计算loss。选C是错误的（mask了需要学习的回复部分）。选A会让模型尝试\"预测\"prompt本身，引入噪声。选D是MLM的做法，不适用于自回归生成。"
+    },
+    {
+      "question_id": 11639953,
+      "uuid": "ba9311bfdaf14e4a859cb10674b7fd91",
+      "type": 1,
+      "title": "以下哪种微调范式适合让模型学习\"风格迁移\"（如让回复更简洁、更学术化）？",
+      "content": "以下哪种微调范式适合让模型学习\"风格迁移\"（如让回复更简洁、更学术化）？",
+      "options": [
+        {
+          "id": 7512117,
+          "content": "只改变tokenizer的设置"
+        },
+        {
+          "id": 7512118,
+          "content": "使用包含\"原始回复→目标风格回复\"对的SFT数据，配合风格相关的system&nbsp;prompt"
+        },
+        {
+          "id": 7512119,
+          "content": "修改模型的位置编码"
+        },
+        {
+          "id": 7512121,
+          "content": "增大模型的上下文窗口"
+        }
+      ],
+      "correct_option_ids": [
+        7512118
+      ],
+      "correct_options": [
+        "使用包含\"原始回复→目标风格回复\"对的SFT数据，配合风格相关的system&nbsp;prompt"
+      ],
+      "analysis": "风格迁移SFT：①收集原始回复和目标风格回复对（如\"详细版→简洁版\"、\"口语化→学术化\"）；②在system&nbsp;prompt中明确风格指令（\"用简洁的学术语言回答\"）；③训练模型在收到风格指令时产生对应风格输出。这是构建Style-tuned或格式化输出模型（如JSON输出、Markdown格式）的标准方法。"
+    },
+    {
+      "question_id": 11639996,
+      "uuid": "3fef9b343a0146d189385581a1acee64",
+      "type": 1,
+      "title": "以下关于多任务微调（Multi-task Fine-tuning）的描述，...",
+      "content": "以下关于多任务微调（Multi-task&nbsp;Fine-tuning）的描述，哪项错误？",
+      "options": [
+        {
+          "id": 7512641,
+          "content": "可以提高模型的泛化能力"
+        },
+        {
+          "id": 7512642,
+          "content": "不同任务间可能产生负迁移"
+        },
+        {
+          "id": 7512644,
+          "content": "需要为每个任务设计独立的损失函数"
+        },
+        {
+          "id": 7512646,
+          "content": "任务数量越多，平均性能一定越好"
+        }
+      ],
+      "correct_option_ids": [
+        7512646
+      ],
+      "correct_options": [
+        "任务数量越多，平均性能一定越好"
+      ],
+      "analysis": "多任务微调并不保证任务越多性能越好，任务间可能存在负迁移（Negative&nbsp;Transfer），特别是任务差异较大时。需要平衡任务权重，必要时对相似任务分组，或使用任务路由机制。"
+    },
+    {
+      "question_id": 11640046,
+      "uuid": "2d452ed610154cb59b891ae8b1156717",
+      "type": 1,
+      "title": "在微调过程中，以下哪种现象表明模型出现了\"格式过拟合\"（Format Ov...",
+      "content": "在微调过程中，以下哪种现象表明模型出现了\"格式过拟合\"（Format&nbsp;Overfitting）？",
+      "options": [
+        {
+          "id": 7512057,
+          "content": "训练集准确率高但测试集准确率低"
+        },
+        {
+          "id": 7512058,
+          "content": "模型生成内容正确但格式严格依赖特定模板，轻微改变指令格式就失败"
+        },
+        {
+          "id": 7512059,
+          "content": "模型拒绝所有请求"
+        },
+        {
+          "id": 7512060,
+          "content": "模型输出非常短"
+        }
+      ],
+      "correct_option_ids": [
+        7512058
+      ],
+      "correct_options": [
+        "模型生成内容正确但格式严格依赖特定模板，轻微改变指令格式就失败"
+      ],
+      "analysis": "格式过拟合指模型过度学习训练数据的特定表达模式，变得脆弱：稍微改变指令措辞（如把\"生成\"改为\"请写\"）就失败。解决方案：数据增强（同一任务多种指令表达方式）、提高数据多样性。"
+    },
+    {
+      "question_id": 11640018,
+      "uuid": "e53b6dec0d304a42b727e43abd91c7d5",
+      "type": 1,
+      "title": "以下哪种技术通过\"课程学习\"（Curriculum Learning）策略...",
+      "content": "以下哪种技术通过\"课程学习\"（Curriculum&nbsp;Learning）策略来改善微调效果？",
+      "options": [
+        {
+          "id": 7512377,
+          "content": "随机打乱所有训练数据"
+        },
+        {
+          "id": 7512379,
+          "content": "先训练简单样本，逐步增加难度"
+        },
+        {
+          "id": 7512380,
+          "content": "只训练最难的样本"
+        },
+        {
+          "id": 7512382,
+          "content": "按字母顺序排列训练数据"
+        }
+      ],
+      "correct_option_ids": [
+        7512379
+      ],
+      "correct_options": [
+        "先训练简单样本，逐步增加难度"
+      ],
+      "analysis": "课程学习借鉴人类学习方式，先训练容易样本让模型建立基础能力，再逐步引入复杂样本。在指令微调中，先训练短回复简单任务，再训练长推理复杂任务，可以加速收敛并提升最终性能。"
+    },
+    {
+      "question_id": 11639925,
+      "uuid": "071694ff574943c6b9e1c1c40d1b67ad",
+      "type": 1,
+      "title": "以下关于微调时learning rate scheduler的选择，哪种组...",
+      "content": "以下关于微调时learning&nbsp;rate&nbsp;scheduler的选择，哪种组合最常见于大模型SFT？",
+      "options": [
+        {
+          "id": 7510777,
+          "content": "constant&nbsp;lr&nbsp;+&nbsp;no&nbsp;warmup"
+        },
+        {
+          "id": 7510778,
+          "content": "linear&nbsp;warmup&nbsp;+&nbsp;cosine&nbsp;decay&nbsp;to&nbsp;0"
+        },
+        {
+          "id": 7510779,
+          "content": "exponential&nbsp;decay&nbsp;+&nbsp;no&nbsp;warmup"
+        },
+        {
+          "id": 7510780,
+          "content": "cyclic&nbsp;lr（多个周期）"
+        }
+      ],
+      "correct_option_ids": [
+        7510778
+      ],
+      "correct_options": [
+        "linear&nbsp;warmup&nbsp;+&nbsp;cosine&nbsp;decay&nbsp;to&nbsp;0"
+      ],
+      "analysis": "大模型SFT的标准配置是：线性warmup（从0增加到目标lr，约总steps的3-5%）+&nbsp;cosine&nbsp;decay（从目标lr平滑降低到接近0）。这种组合在大量实验中被验证为效果最稳定，既避免了训练初期的震荡，又在训练后期精细调整权重。Llama、Mistral、Qwen等主流模型都使用此策略。"
+    },
+    {
+      "question_id": 11640008,
+      "uuid": "ee5dab95b99e4acaa228366bbf01bc18",
+      "type": 1,
+      "title": "以下关于LoRA在推理阶段的特点，哪项错误？",
+      "content": "以下关于LoRA在推理阶段的特点，哪项错误？",
+      "options": [
+        {
+          "id": 7512501,
+          "content": "可以将LoRA权重合并到基础模型中实现零延迟"
+        },
+        {
+          "id": 7512502,
+          "content": "未合并时每次推理需要额外的矩阵乘法"
+        },
+        {
+          "id": 7512503,
+          "content": "合并后模型大小会显著增大"
+        },
+        {
+          "id": 7512504,
+          "content": "多个LoRA适配器可以加权组合"
+        }
+      ],
+      "correct_option_ids": [
+        7512503
+      ],
+      "correct_options": [
+        "合并后模型大小会显著增大"
+      ],
+      "analysis": "LoRA合并（merge_and_unload）后，模型大小与原始模型相同，因为ΔW&nbsp;=&nbsp;B×A被加到W上，形状不变，并不会增大模型大小。合并消除了推理时的额外计算，实现零延迟开销。"
+    },
+    {
+      "question_id": 11639961,
+      "uuid": "3c982b4002d946189fd280f7b1905f13",
+      "type": 1,
+      "title": "以下关于\"Activation Checkpointing\"（激活检查点）...",
+      "content": "以下关于\"Activation&nbsp;Checkpointing\"（激活检查点）对微调性能的影响，描述正确的是？",
+      "options": [
+        {
+          "id": 7512215,
+          "content": "激活检查点会提高训练速度"
+        },
+        {
+          "id": 7512217,
+          "content": "激活检查点用额外约30-40%的计算时间换取60-70%的激活值显存节省"
+        },
+        {
+          "id": 7512219,
+          "content": "激活检查点只适用于全参微调，不适用于LoRA"
+        },
+        {
+          "id": 7512220,
+          "content": "激活检查点会降低模型最终精度"
+        }
+      ],
+      "correct_option_ids": [
+        7512217
+      ],
+      "correct_options": [
+        "激活检查点用额外约30-40%的计算时间换取60-70%的激活值显存节省"
+      ],
+      "analysis": "标准反向传播缓存所有中间激活（约为模型大小的3-5倍显存）。激活检查点策略：前向传播时只保存关键检查点（如每隔K层），反向传播需要某层梯度时从最近检查点重新前向计算。代价：额外约1/3的前向计算（理论分析），实际约增加20-30%训练时间。显存节省使得在相同GPU上训练更大batch或更长序列。"
+    },
+    {
+      "question_id": 11639995,
+      "uuid": "484868261eca4e2d843afcf9626e5eaf",
+      "type": 1,
+      "title": "在LoRA微调中，如果训练loss正常下降但验证集性能不提升，最可能的原因是？",
+      "content": "在LoRA微调中，如果训练loss正常下降但验证集性能不提升，最可能的原因是？",
+      "options": [
+        {
+          "id": 7512654,
+          "content": "rank设置过低"
+        },
+        {
+          "id": 7512656,
+          "content": "训练数据与任务分布不匹配（数据质量问题）"
+        },
+        {
+          "id": 7512658,
+          "content": "alpha/rank比例设置错误"
+        },
+        {
+          "id": 7512660,
+          "content": "目标模块选择不当"
+        }
+      ],
+      "correct_option_ids": [
+        7512656
+      ],
+      "correct_options": [
+        "训练数据与任务分布不匹配（数据质量问题）"
+      ],
+      "analysis": "训练loss下降但验证性能不提升，通常意味着过拟合或训练数据与实际任务存在分布差异。这通常是数据质量或数据分布问题，而非超参数问题，需要检查和清洗训练数据。"
+    },
+    {
+      "question_id": 11639964,
+      "uuid": "5bcdcae5c4ca4eec9ed73057bd2cc3a3",
+      "type": 1,
+      "title": "在RLHF训练中，策略模型（Policy Model）和参考模型（Refe...",
+      "content": "在RLHF训练中，策略模型（Policy&nbsp;Model）和参考模型（Reference&nbsp;Model）是否共享权重？",
+      "options": [
+        {
+          "id": 7512254,
+          "content": "总是共享权重，减少显存占用"
+        },
+        {
+          "id": 7512256,
+          "content": "通常不共享权重（各自独立），参考模型冻结，策略模型更新；但可以使用参考模型在线计算（节省推理显存）"
+        },
+        {
+          "id": 7512258,
+          "content": "参考模型是策略模型的量化版本"
+        },
+        {
+          "id": 7512260,
+          "content": "只有在使用LoRA时才能共享"
+        }
+      ],
+      "correct_option_ids": [
+        7512256
+      ],
+      "correct_options": [
+        "通常不共享权重（各自独立），参考模型冻结，策略模型更新；但可以使用参考模型在线计算（节省推理显存）"
+      ],
+      "analysis": "标准RLHF（PPO）：策略模型和参考模型是独立的两份权重（各占一份模型显存）。参考模型完全冻结（不更新），只用于计算KL散度&nbsp;KL(π_policy&nbsp;||&nbsp;π_ref)。显存优化方案：①共享基础权重，只有策略模型有独立的顶层；②使用LoRA时，参考模型=基础模型（无LoRA），策略模型=基础模型+LoRA，节省一份模型显存。"
+    },
+    {
+      "question_id": 11639993,
+      "uuid": "e26ca871a47d4573b26f6810a50bbfce",
+      "type": 1,
+      "title": "在计算LoRA的前向传播时，最终输出是？",
+      "content": "在计算LoRA的前向传播时，最终输出是？",
+      "options": [
+        {
+          "id": 7512681,
+          "content": "W×x"
+        },
+        {
+          "id": 7512682,
+          "content": "(W&nbsp;+&nbsp;A×B)×x"
+        },
+        {
+          "id": 7512683,
+          "content": "W×x&nbsp;+&nbsp;α/r&nbsp;×&nbsp;B×(A×x)"
+        },
+        {
+          "id": 7512684,
+          "content": "A×B×x"
+        }
+      ],
+      "correct_option_ids": [
+        7512683
+      ],
+      "correct_options": [
+        "W×x&nbsp;+&nbsp;α/r&nbsp;×&nbsp;B×(A×x)"
+      ],
+      "analysis": "LoRA输出&nbsp;=&nbsp;W×x&nbsp;+&nbsp;ΔW×x&nbsp;=&nbsp;W×x&nbsp;+&nbsp;(α/r)×B×A×x，其中α/r是缩放因子（lora_alpha/rank），B先初始化为0使训练开始时LoRA部分输出为0，等价于从预训练模型出发。"
+    },
+    {
+      "question_id": 11639974,
+      "uuid": "575846033e0848399bf682bc31a56615",
+      "type": 1,
+      "title": "以下哪种微调方法特别适合\"few-shot\"（5-10个样本）场景下的快速...",
+      "content": "以下哪种微调方法特别适合\"few-shot\"（5-10个样本）场景下的快速任务适应？",
+      "options": [
+        {
+          "id": 7512378,
+          "content": "全参微调（太少数据会严重过拟合）"
+        },
+        {
+          "id": 7512381,
+          "content": "LoRA（低秩限制减少过拟合风险）"
+        },
+        {
+          "id": 7512383,
+          "content": "基于元学习（Meta-Learning）的MAML等方法，专为快速少样本适应设计"
+        },
+        {
+          "id": 7512384,
+          "content": "增大batch&nbsp;size"
+        }
+      ],
+      "correct_option_ids": [
+        7512383
+      ],
+      "correct_options": [
+        "基于元学习（Meta-Learning）的MAML等方法，专为快速少样本适应设计"
+      ],
+      "analysis": "少样本（&lt;20个样本）场景的适应方法：①Prompt&nbsp;Engineering（0样本）：无需训练；②In-context&nbsp;Learning（Few-shot&nbsp;ICL）：直接在prompt中给示例；③Meta-learning方法（MAML、ProtoNets）：专为快速适应设计，在大量任务上训练\"如何快速学习\"的元能力；④LoRA在~100+样本时才相对可靠（更少样本仍有过拟合风险）。真正的5-10样本场景，ICL或meta-learning往往优于fine-tuning。"
+    },
+    {
+      "question_id": 11639921,
+      "uuid": "6aea0d6522bd4b5495b0c7b6414b84fe",
+      "type": 1,
+      "title": "以下关于IA³（Infused Adapter by Inhibiting...",
+      "content": "以下关于IA³（Infused&nbsp;Adapter&nbsp;by&nbsp;Inhibiting&nbsp;and&nbsp;Amplifying&nbsp;Inner&nbsp;Activations）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7510821,
+          "content": "IA³通过添加额外的神经网络层来适配模型"
+        },
+        {
+          "id": 7510822,
+          "content": "IA³只引入乘性缩放向量（而非加性更新），参数量极少"
+        },
+        {
+          "id": 7510823,
+          "content": "IA³需要修改模型架构，无法用于所有模型"
+        },
+        {
+          "id": 7510824,
+          "content": "IA³等效于对所有权重矩阵应用LoRA&nbsp;rank=1"
+        }
+      ],
+      "correct_option_ids": [
+        7510822
+      ],
+      "correct_options": [
+        "IA³只引入乘性缩放向量（而非加性更新），参数量极少"
+      ],
+      "analysis": "IA³引入可学习的缩放向量l，直接乘到模型的Key、Value和FFN激活上（Kl_k,&nbsp;Vl_v,&nbsp;FFNl_ff），而非添加残差更新。每个缩放向量只有d_model维，参数量远少于LoRA。IA³特别适合few-shot场景，可以为每个任务维护一套轻量级向量，快速切换任务。"
+    },
+    {
+      "question_id": 11640006,
+      "uuid": "6fa7f1a4ce6345349ac0b7e94009d02d",
+      "type": 1,
+      "title": "以下关于Constitutional AI（CAI）的描述，哪项正确？",
+      "content": "以下关于Constitutional&nbsp;AI（CAI）的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7512521,
+          "content": "只使用人类反馈进行对齐"
+        },
+        {
+          "id": 7512523,
+          "content": "通过AI自我批评和修订来实现无害性，减少人工标注需求"
+        },
+        {
+          "id": 7512525,
+          "content": "是一种参数高效微调方法"
+        },
+        {
+          "id": 7512527,
+          "content": "主要用于提升代码生成能力"
+        }
+      ],
+      "correct_option_ids": [
+        7512523
+      ],
+      "correct_options": [
+        "通过AI自我批评和修订来实现无害性，减少人工标注需求"
+      ],
+      "analysis": "Constitutional&nbsp;AI（由Anthropic提出）让模型根据一组原则（Constitution）自我评估和修改回复，用AI生成的反馈（RLAIF）进行训练，大幅减少了人工标注有害内容的需求。"
+    },
+    {
+      "question_id": 11639967,
+      "uuid": "9cbb5b9f0705454a87bc7874fd57a922",
+      "type": 1,
+      "title": "在使用HuggingFace Trainer进行SFT时，以下参数设置哪个...",
+      "content": "在使用HuggingFace&nbsp;Trainer进行SFT时，以下参数设置哪个会导致显存不足（OOM）的风险最高？",
+      "options": [
+        {
+          "id": 7512296,
+          "content": "per_device_train_batch_size=1"
+        },
+        {
+          "id": 7512298,
+          "content": "gradient_accumulation_steps=16"
+        },
+        {
+          "id": 7512299,
+          "content": "per_device_train_batch_size=8,&nbsp;gradient_checkpointing=False,&nbsp;max_seq_length=8192"
+        },
+        {
+          "id": 7512300,
+          "content": "fp16=True"
+        }
+      ],
+      "correct_option_ids": [
+        7512299
+      ],
+      "correct_options": [
+        "per_device_train_batch_size=8,&nbsp;gradient_checkpointing=False,&nbsp;max_seq_length=8192"
+      ],
+      "analysis": "OOM的主要来源：激活值显存&nbsp;≈&nbsp;batch_size&nbsp;×&nbsp;seq_len²&nbsp;×&nbsp;num_layers。C选项：batch=8&nbsp;×&nbsp;seq=8192，激活值需求约为A选项（batch=1）的8倍以上（考虑平方关系）；且关闭了gradient_checkpointing（没有节省激活值），激活值全量保存在显存中。fp16减少权重和激活显存约50%，通常有助于而非增加OOM风险。"
+    },
+    {
+      "question_id": 11640042,
+      "uuid": "02670306a70c44b8b43f3aa99b9be643",
+      "type": 1,
+      "title": "以下哪种评估方式最能反映对话微调模型在实际使用中的表现？",
+      "content": "以下哪种评估方式最能反映对话微调模型在实际使用中的表现？",
+      "options": [
+        {
+          "id": 7512086,
+          "content": "MMLU（知识问答准确率）"
+        },
+        {
+          "id": 7512088,
+          "content": "MT-Bench或Chatbot&nbsp;Arena（基于LLM评判或真实用户偏好投票）"
+        },
+        {
+          "id": 7512089,
+          "content": "Perplexity（困惑度）"
+        },
+        {
+          "id": 7512091,
+          "content": "训练集准确率"
+        }
+      ],
+      "correct_option_ids": [
+        7512088
+      ],
+      "correct_options": [
+        "MT-Bench或Chatbot&nbsp;Arena（基于LLM评判或真实用户偏好投票）"
+      ],
+      "analysis": "MT-Bench用GPT-4对多轮对话能力打分（推理、数学、写作等维度），Chatbot&nbsp;Arena通过真实用户盲测投票（ELO评级）。两者都能反映真实对话质量，比MMLU等传统benchmark更能预测用户满意度。"
+    },
+    {
+      "question_id": 11639903,
+      "uuid": "933561e143cd444d9950d64d505976bb",
+      "type": 1,
+      "title": "以下哪种场景最适合使用全参微调而非LoRA？",
+      "content": "以下哪种场景最适合使用全参微调而非LoRA？",
+      "options": [
+        {
+          "id": 7511031,
+          "content": "在个人GPU（24GB）上快速验证一个想法"
+        },
+        {
+          "id": 7511032,
+          "content": "将通用模型适配到医疗问答，数据量约5000条"
+        },
+        {
+          "id": 7511034,
+          "content": "从头在大规模领域数据（&gt;100B&nbsp;tokens）上进行持续预训练"
+        },
+        {
+          "id": 7511036,
+          "content": "为现有模型添加新的输出格式（如JSON输出）"
+        }
+      ],
+      "correct_option_ids": [
+        7511034
+      ],
+      "correct_options": [
+        "从头在大规模领域数据（&gt;100B&nbsp;tokens）上进行持续预训练"
+      ],
+      "analysis": "持续预训练（Continual&nbsp;Pre-training）需要在大规模数据上充分更新模型的知识表示，LoRA的低秩约束会限制模型吸收新知识的能力，此时全参微调更合适。而少量数据的任务适配（B、D场景）、资源受限场景（A）都更适合LoRA。"
+    },
+    {
+      "question_id": 11640051,
+      "uuid": "4525787451a14f6888231ea4f4f82aa1",
+      "type": 1,
+      "title": "以下关于微调中的\"灾难性遗忘\"量化方法，哪种最准确？",
+      "content": "以下关于微调中的\"灾难性遗忘\"量化方法，哪种最准确？",
+      "options": [
+        {
+          "id": 7512013,
+          "content": "比较微调前后的训练集loss"
+        },
+        {
+          "id": 7512014,
+          "content": "在标准基准（MMLU/GSM8K等）上对比微调前后的性能变化"
+        },
+        {
+          "id": 7512015,
+          "content": "只比较微调任务的性能"
+        },
+        {
+          "id": 7512016,
+          "content": "检查模型权重变化的L2范数"
+        }
+      ],
+      "correct_option_ids": [
+        7512014
+      ],
+      "correct_options": [
+        "在标准基准（MMLU/GSM8K等）上对比微调前后的性能变化"
+      ],
+      "analysis": "量化灾难性遗忘需要在与微调任务无关的通用基准上评估。MMLU（世界知识）、GSM8K（数学推理）、HumanEval（代码）等综合基准可以检测微调是否损害了模型的通用能力，是衡量遗忘程度的标准做法。"
+    },
+    {
+      "question_id": 11639928,
+      "uuid": "428e4077ffb146fb922520d1ddd22925",
+      "type": 1,
+      "title": "在SFT中，以下哪种损失函数最常用？",
+      "content": "在SFT中，以下哪种损失函数最常用？",
+      "options": [
+        {
+          "id": 7510741,
+          "content": "均方误差（MSE）"
+        },
+        {
+          "id": 7510742,
+          "content": "交叉熵损失（Cross-Entropy&nbsp;Loss），计算生成token的负对数概率"
+        },
+        {
+          "id": 7510743,
+          "content": "对比损失（Contrastive&nbsp;Loss）"
+        },
+        {
+          "id": 7510744,
+          "content": "Hinge&nbsp;Loss"
+        }
+      ],
+      "correct_option_ids": [
+        7510742
+      ],
+      "correct_options": [
+        "交叉熵损失（Cross-Entropy&nbsp;Loss），计算生成token的负对数概率"
+      ],
+      "analysis": "SFT本质上是监督式的下一token预测任务，损失函数为标准的交叉熵：L&nbsp;=&nbsp;-Σ&nbsp;log&nbsp;P(token_i&nbsp;|&nbsp;context)。只对assistant回复的token计算loss（user输入位置masked为-100，PyTorch自动忽略）。MSE适用于回归，对比损失用于DPO/对齐，Hinge&nbsp;Loss用于分类任务。"
+    },
+    {
+      "question_id": 11639955,
+      "uuid": "7532fc099c894bd09fa6674b7182de8e",
+      "type": 1,
+      "title": "以下哪种方法可以评估微调后模型的\"安全对齐\"质量？",
+      "content": "以下哪种方法可以评估微调后模型的\"安全对齐\"质量？",
+      "options": [
+        {
+          "id": 7512145,
+          "content": "只评估MMLU准确率"
+        },
+        {
+          "id": 7512146,
+          "content": "使用红队测试（Red&nbsp;Teaming）：尝试多种越狱攻击和有害请求，统计模型的拒绝率和安全响应率"
+        },
+        {
+          "id": 7512148,
+          "content": "只评估生成文本的困惑度（Perplexity）"
+        },
+        {
+          "id": 7512150,
+          "content": "测量模型的推理速度"
+        }
+      ],
+      "correct_option_ids": [
+        7512146
+      ],
+      "correct_options": [
+        "使用红队测试（Red&nbsp;Teaming）：尝试多种越狱攻击和有害请求，统计模型的拒绝率和安全响应率"
+      ],
+      "analysis": "安全对齐评估需要专门的安全基准：①红队测试：人工或自动化（Auto-Red-Team）生成有害请求，评估拒绝率；②TruthfulQA（测试模型是否输出错误信息）；③HarmBench/AdvBench（标准化的有害指令基准）；④BBQ（偏见评估）。安全对齐还需要持续监控，因为新的越狱方式不断出现。MMLU和PPL都不能反映安全性。"
+    },
+    {
+      "question_id": 11640056,
+      "uuid": "eb7893be3fe0443fa37720914cec1690",
+      "type": 1,
+      "title": "在以下对比中，哪种微调策略最适合持续学习新知识而不遗忘旧知识？",
+      "content": "在以下对比中，哪种微调策略最适合持续学习新知识而不遗忘旧知识？",
+      "options": [
+        {
+          "id": 7511969,
+          "content": "仅SFT新数据"
+        },
+        {
+          "id": 7511971,
+          "content": "渐进式神经网络（Progressive&nbsp;Neural&nbsp;Network）或弹性权重整合（EWC）"
+        },
+        {
+          "id": 7511973,
+          "content": "每次学习新知识时重置模型"
+        },
+        {
+          "id": 7511975,
+          "content": "增大模型参数量"
+        }
+      ],
+      "correct_option_ids": [
+        7511971
+      ],
+      "correct_options": [
+        "渐进式神经网络（Progressive&nbsp;Neural&nbsp;Network）或弹性权重整合（EWC）"
+      ],
+      "analysis": "持续学习（Continual&nbsp;Learning）核心挑战是防止灾难性遗忘：EWC通过Fisher信息矩阵识别重要参数并加以保护；Progressive&nbsp;NN为每个新任务添加新列并冻结旧列；经验回放（Experience&nbsp;Replay）混合旧数据。这些方法在保留旧知识的同时学习新知识。"
+    },
+    {
+      "question_id": 11639997,
+      "uuid": "a782f7a1ed0545219bd702aef30ae77e",
+      "type": 1,
+      "title": "在FLAN（Finetuned Language Models Are Z...",
+      "content": "在FLAN（Finetuned&nbsp;Language&nbsp;Models&nbsp;Are&nbsp;Zero-Shot&nbsp;Learners）中，指令微调的核心贡献是？",
+      "options": [
+        {
+          "id": 7512633,
+          "content": "使用更大的预训练数据集"
+        },
+        {
+          "id": 7512634,
+          "content": "用指令格式的多任务微调显著提升了零样本性能"
+        },
+        {
+          "id": 7512635,
+          "content": "引入了新的注意力机制"
+        },
+        {
+          "id": 7512636,
+          "content": "提出了更高效的优化算法"
+        }
+      ],
+      "correct_option_ids": [
+        7512634
+      ],
+      "correct_options": [
+        "用指令格式的多任务微调显著提升了零样本性能"
+      ],
+      "analysis": "FLAN将60多个NLP任务转换为指令格式并进行多任务微调，在未见过的任务上展示了强大的零样本性能。这开创了指令微调范式，后续的InstructGPT、ChatGPT等都沿用了这一思路。"
+    },
+    {
+      "question_id": 11639878,
+      "uuid": "fa1b71bfa1a84404bc8947b69c1c3744",
+      "type": 1,
+      "title": "LoRA（Low-Rank Adaptation）的核心思想是什么？",
+      "content": "LoRA（Low-Rank&nbsp;Adaptation）的核心思想是什么？",
+      "options": [
+        {
+          "id": 7511325,
+          "content": "在原始权重矩阵上直接添加噪声扰动"
+        },
+        {
+          "id": 7511327,
+          "content": "将权重更新分解为两个低秩矩阵的乘积，冻结原始权重"
+        },
+        {
+          "id": 7511329,
+          "content": "对所有Transformer层的权重进行等比例缩放"
+        },
+        {
+          "id": 7511331,
+          "content": "用稀疏矩阵替换密集权重矩阵以减少参数量"
+        }
+      ],
+      "correct_option_ids": [
+        7511327
+      ],
+      "correct_options": [
+        "将权重更新分解为两个低秩矩阵的乘积，冻结原始权重"
+      ],
+      "analysis": "LoRA的核心是将权重更新ΔW分解为A×B（A为down矩阵，B为up矩阵），其中rank&nbsp;r远小于原始维度。原始权重W₀被冻结，训练时只更新A和B，推理时将ΔW合并进W₀不增加额外延迟。"
+    },
+    {
+      "question_id": 11639934,
+      "uuid": "1b1b8e63515c46699d77f9cc15de7565",
+      "type": 1,
+      "title": "以下哪种技术可以有效提升模型在数学推理任务上的微调效果？",
+      "content": "以下哪种技术可以有效提升模型在数学推理任务上的微调效果？",
+      "options": [
+        {
+          "id": 7510669,
+          "content": "增加数学题的数量，质量不重要"
+        },
+        {
+          "id": 7510671,
+          "content": "使用包含完整解题步骤（CoT）的数学数据，结合过程奖励模型（PRM）筛选正确推理路径"
+        },
+        {
+          "id": 7510673,
+          "content": "只训练最终答案，跳过推理过程"
+        },
+        {
+          "id": 7510675,
+          "content": "使用负样本（错误解题过程）训练"
+        }
+      ],
+      "correct_option_ids": [
+        7510671
+      ],
+      "correct_options": [
+        "使用包含完整解题步骤（CoT）的数学数据，结合过程奖励模型（PRM）筛选正确推理路径"
+      ],
+      "analysis": "数学推理微调的关键：①数据需包含完整的思维链（step-by-step解题过程），让模型学习推理路径而非记忆答案；②过程奖励模型（PRM，如Math-Shepherd）对每个推理步骤打分，筛选出推理正确的数据（即使最终答案正确，错误的推理步骤也会误导模型）；③强化学习（GRPO）进一步优化推理策略（如DeepSeek-R1）。"
+    },
+    {
+      "question_id": 11640035,
+      "uuid": "d3e22a2b104246a38f0e10b833c92ce0",
+      "type": 1,
+      "title": "以下哪种策略最有效地防止微调后的模型\"忘记\"安全对齐（Safety Ali...",
+      "content": "以下哪种策略最有效地防止微调后的模型\"忘记\"安全对齐（Safety&nbsp;Alignment&nbsp;Forgetting）？",
+      "options": [
+        {
+          "id": 7512185,
+          "content": "完全不允许微调"
+        },
+        {
+          "id": 7512188,
+          "content": "保留一定比例的安全对齐数据在微调数据中"
+        },
+        {
+          "id": 7512191,
+          "content": "降低学习率即可防止遗忘"
+        },
+        {
+          "id": 7512194,
+          "content": "使用更大的LoRA&nbsp;rank"
+        }
+      ],
+      "correct_option_ids": [
+        7512188
+      ],
+      "correct_options": [
+        "保留一定比例的安全对齐数据在微调数据中"
+      ],
+      "analysis": "微调可能削弱安全对齐，尤其是针对性任务微调。防御措施：1)&nbsp;在SFT数据中混合安全对齐样本（如拒绝有害请求的示例）；2)&nbsp;保持较小的学习率；3)&nbsp;添加安全约束正则项。完全不允许微调过于保守，不实用。"
+    },
+    {
+      "question_id": 11639889,
+      "uuid": "7fb900a8d8f8483997f251944c6b75a8",
+      "type": 1,
+      "title": "在SFT数据准备中，以下哪种数据质量问题影响最大？",
+      "content": "在SFT数据准备中，以下哪种数据质量问题影响最大？",
+      "options": [
+        {
+          "id": 7511193,
+          "content": "数据量不够多（低于1万条）"
+        },
+        {
+          "id": 7511194,
+          "content": "答案存在事实错误或有害内容"
+        },
+        {
+          "id": 7511195,
+          "content": "数据格式不完全统一（部分有system&nbsp;prompt，部分没有）"
+        },
+        {
+          "id": 7511196,
+          "content": "数据来源过于单一"
+        }
+      ],
+      "correct_option_ids": [
+        7511194
+      ],
+      "correct_options": [
+        "答案存在事实错误或有害内容"
+      ],
+      "analysis": "LLM对数据质量极为敏感，少量高质量数据远优于大量低质量数据。答案中的事实错误会直接被模型学习，导致模型输出幻觉；有害内容会让模型产生有害行为。格式不统一影响相对较小，可以通过preprocessing解决。"
+    },
+    {
+      "question_id": 11640032,
+      "uuid": "2b58a7adb30d44e3abc2959452c8fca0",
+      "type": 1,
+      "title": "以下哪种方法可以在不重新微调的情况下快速\"注入\"新知识到已微调模型？",
+      "content": "以下哪种方法可以在不重新微调的情况下快速\"注入\"新知识到已微调模型？",
+      "options": [
+        {
+          "id": 7512225,
+          "content": "重新进行全量微调"
+        },
+        {
+          "id": 7512226,
+          "content": "RAG（检索增强）或知识编辑（ROME/MEMIT）"
+        },
+        {
+          "id": 7512227,
+          "content": "增大模型参数量"
+        },
+        {
+          "id": 7512228,
+          "content": "更换嵌入层"
+        }
+      ],
+      "correct_option_ids": [
+        7512226
+      ],
+      "correct_options": [
+        "RAG（检索增强）或知识编辑（ROME/MEMIT）"
+      ],
+      "analysis": "不重新微调的知识注入：1)&nbsp;RAG在推理时动态提供新知识；2)&nbsp;知识编辑（ROME、MEMIT、GRACE）直接修改模型特定层的参数，精确更新特定事实而不影响其他能力，速度极快（秒级vs.小时级微调）。"
+    },
+    {
+      "question_id": 11640026,
+      "uuid": "97f7602503194a6ba0636fe92cad1b1a",
+      "type": 1,
+      "title": "以下哪种技术是DeepSpeed ZeRO（Zero Redundancy...",
+      "content": "以下哪种技术是DeepSpeed&nbsp;ZeRO（Zero&nbsp;Redundancy&nbsp;Optimizer）的Stage&nbsp;3特性？",
+      "options": [
+        {
+          "id": 7512293,
+          "content": "只分片优化器状态"
+        },
+        {
+          "id": 7512294,
+          "content": "只分片梯度"
+        },
+        {
+          "id": 7512295,
+          "content": "同时分片参数、梯度和优化器状态"
+        },
+        {
+          "id": 7512297,
+          "content": "只分片激活值"
+        }
+      ],
+      "correct_option_ids": [
+        7512295
+      ],
+      "correct_options": [
+        "同时分片参数、梯度和优化器状态"
+      ],
+      "analysis": "DeepSpeed&nbsp;ZeRO三阶段：Stage&nbsp;1分片优化器状态（4×内存节省）；Stage&nbsp;2额外分片梯度（8×）；Stage&nbsp;3额外分片参数本身（64×），理论上可训练无限大模型，通信开销最大。GPT-4等超大模型训练使用了ZeRO。"
+    },
+    {
+      "question_id": 11639980,
+      "uuid": "ecbdbe643c824dd5921ef70577619bf0",
+      "type": 1,
+      "title": "在SFT（监督微调）中，为什么通常只对\"回复\"部分计算损失而不对\"指令\"部...",
+      "content": "在SFT（监督微调）中，为什么通常只对\"回复\"部分计算损失而不对\"指令\"部分计算损失？",
+      "options": [
+        {
+          "id": 7512457,
+          "content": "指令部分的token太少，贡献可以忽略"
+        },
+        {
+          "id": 7512458,
+          "content": "避免模型学习生成指令，专注学习如何回复"
+        },
+        {
+          "id": 7512459,
+          "content": "指令部分计算损失会导致过拟合"
+        },
+        {
+          "id": 7512460,
+          "content": "这是Transformer架构的技术限制"
+        }
+      ],
+      "correct_option_ids": [
+        7512458
+      ],
+      "correct_options": [
+        "避免模型学习生成指令，专注学习如何回复"
+      ],
+      "analysis": "在指令微调中，我们希望模型学习的是给定指令后如何生成高质量回复，而不是学习生成指令本身。对指令部分加mask（设为-100）可以让模型聚焦于学习回复模式。"
+    },
+    {
+      "question_id": 11640002,
+      "uuid": "678b3d2118324bdbb73340153ea25dd6",
+      "type": 1,
+      "title": "在微调时，以下哪种技术可以用来缓解\"对齐税\"（Alignment Tax）问题？",
+      "content": "在微调时，以下哪种技术可以用来缓解\"对齐税\"（Alignment&nbsp;Tax）问题？",
+      "options": [
+        {
+          "id": 7512572,
+          "content": "降低学习率"
+        },
+        {
+          "id": 7512575,
+          "content": "在RLHF中增加KL系数"
+        },
+        {
+          "id": 7512578,
+          "content": "在训练数据中保留一定比例的预训练风格数据"
+        },
+        {
+          "id": 7512580,
+          "content": "使用更小的模型"
+        }
+      ],
+      "correct_option_ids": [
+        7512578
+      ],
+      "correct_options": [
+        "在训练数据中保留一定比例的预训练风格数据"
+      ],
+      "analysis": "对齐税指对齐训练可能导致模型在某些能力上退步。通过在SFT/RLHF数据中混合高质量的预训练语料，可以维持模型原有的知识能力，在安全性和能力之间取得平衡。"
+    },
+    {
+      "question_id": 11639942,
+      "uuid": "4ba4552cc3e6426fa5256c560e671b0b",
+      "type": 1,
+      "title": "以下关于\"Mixture of Experts\"（MoE）模型微调的特殊挑...",
+      "content": "以下关于\"Mixture&nbsp;of&nbsp;Experts\"（MoE）模型微调的特殊挑战，描述正确的是？",
+      "options": [
+        {
+          "id": 7510581,
+          "content": "MoE模型无法微调，因为专家路由是固定的"
+        },
+        {
+          "id": 7510582,
+          "content": "MoE微调时需要确保所有专家都能充分激活（负载均衡），防止只有少数专家被训练而其他退化"
+        },
+        {
+          "id": 7510583,
+          "content": "MoE微调需要比Dense模型多10倍的数据"
+        },
+        {
+          "id": 7510584,
+          "content": "MoE只能全参微调，不支持LoRA"
+        }
+      ],
+      "correct_option_ids": [
+        7510582
+      ],
+      "correct_options": [
+        "MoE微调时需要确保所有专家都能充分激活（负载均衡），防止只有少数专家被训练而其他退化"
+      ],
+      "analysis": "MoE微调的挑战：①专家负载不均衡：微调数据分布可能导致只有部分专家被频繁激活，其他专家得不到充分更新；②路由坍塌：路由器可能固化为只选少数几个专家；③LoRA应用策略：可以只对专家层（FFN&nbsp;experts）应用LoRA，也可以连同路由器一起微调。研究表明适当的auxiliary&nbsp;loss（促进均衡激活）在MoE微调中同样重要。"
+    },
+    {
+      "question_id": 11639976,
+      "uuid": "b900db42678a40519c43a4e64448d9fb",
+      "type": 1,
+      "title": "以下哪种混合精度训练配置在现代GPU（A100/H100）上效果最佳？",
+      "content": "以下哪种混合精度训练配置在现代GPU（A100/H100）上效果最佳？",
+      "options": [
+        {
+          "id": 7512405,
+          "content": "全FP32训练（精度最高）"
+        },
+        {
+          "id": 7512406,
+          "content": "BF16混合精度（权重和激活用BF16，梯度累积用FP32），利用A100的BF16&nbsp;Tensor&nbsp;Cores"
+        },
+        {
+          "id": 7512408,
+          "content": "全INT8训练（速度最快）"
+        },
+        {
+          "id": 7512410,
+          "content": "全FP16训练（与BF16相同效果）"
+        }
+      ],
+      "correct_option_ids": [
+        7512406
+      ],
+      "correct_options": [
+        "BF16混合精度（权重和激活用BF16，梯度累积用FP32），利用A100的BF16&nbsp;Tensor&nbsp;Cores"
+      ],
+      "analysis": "BF16优于FP16的关键原因：BF16和FP32有相同的指数范围（8&nbsp;bits），不会出现FP16的数值溢出问题（FP16指数只有5&nbsp;bits，在大梯度时容易overflow）。A100/H100的BF16&nbsp;Tensor&nbsp;Core吞吐约为FP32的8倍。标准配置：模型权重BF16，梯度累积用FP32（混合精度），A100上通常不需要gradient&nbsp;scaling（BF16比FP16更稳定）。"
+    },
+    {
+      "question_id": 11640004,
+      "uuid": "c55ecc6388354cc4876d3033fca0b9ff",
+      "type": 1,
+      "title": "以下关于SFT训练中Padding策略的描述，哪项正确？",
+      "content": "以下关于SFT训练中Padding策略的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7512549,
+          "content": "将所有序列填充到固定长度效率最高"
+        },
+        {
+          "id": 7512552,
+          "content": "使用动态padding（按批次最长序列填充）可减少无效计算"
+        },
+        {
+          "id": 7512554,
+          "content": "左填充和右填充对因果语言模型效果相同"
+        },
+        {
+          "id": 7512556,
+          "content": "Padding&nbsp;token的损失必须计算"
+        }
+      ],
+      "correct_option_ids": [
+        7512552
+      ],
+      "correct_options": [
+        "使用动态padding（按批次最长序列填充）可减少无效计算"
+      ],
+      "analysis": "动态padding（Dynamic&nbsp;Padding）将一个batch内的序列填充到该batch最长序列长度，而非全局最大长度，大幅减少无效的padding&nbsp;token计算。右填充适合因果LM，左填充适合推理时。"
+    },
+    {
+      "question_id": 11640062,
+      "uuid": "cc2af25991f64fa595cabec612fdab2f",
+      "type": 1,
+      "title": "以下关于Supervised Fine-tuning（SFT）中\"响应长度...",
+      "content": "以下关于Supervised&nbsp;Fine-tuning（SFT）中\"响应长度偏差\"（Length&nbsp;Bias）的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511920,
+          "content": "模型总是偏向生成更短的回复"
+        },
+        {
+          "id": 7511922,
+          "content": "若训练数据中长回复质量高，模型可能过度倾向于生成长回复，即使问题只需简短回答"
+        },
+        {
+          "id": 7511923,
+          "content": "响应长度与模型质量无关"
+        },
+        {
+          "id": 7511924,
+          "content": "SFT不会产生长度偏差"
+        }
+      ],
+      "correct_option_ids": [
+        7511922
+      ],
+      "correct_options": [
+        "若训练数据中长回复质量高，模型可能过度倾向于生成长回复，即使问题只需简短回答"
+      ],
+      "analysis": "若数据集中高质量回复倾向于较长（如详细的教程、分步解释），模型会学到\"长=好\"的偏置，在简单问题上也生成冗长回复。解决方案：平衡数据集中不同长度的高质量样本，或在RLHF中引入长度惩罚。"
+    },
+    {
+      "question_id": 11639970,
+      "uuid": "0f095d3e5c2c4d38ab2429f47a80c70a",
+      "type": 1,
+      "title": "在使用bitsandbytes进行4bit量化（QLoRA）时，以下代码片...",
+      "content": "在使用bitsandbytes进行4bit量化（QLoRA）时，以下代码片段的主要作用是什么？<div>```python</div><div>bnb_config&nbsp;=&nbsp;BitsAndBytesConfig(</div><div>load_in_4bit=True,</div><div>bnb_4bit_quant_type=\"nf4\",</div><div>bnb_4bit_compute_dtype=torch.bfloat16,</div><div>bnb_4bit_use_double_quant=True</div><div>)</div><div>```</div>",
+      "options": [
+        {
+          "id": 7512325,
+          "content": "将模型量化为INT4精度用于推理"
+        },
+        {
+          "id": 7512326,
+          "content": "配置4bit&nbsp;NF4量化&nbsp;+&nbsp;双重量化（量化量化常数），用BF16计算，实现QLoRA训练所需的显存优化"
+        },
+        {
+          "id": 7512327,
+          "content": "只影响模型加载速度，不影响训练过程"
+        },
+        {
+          "id": 7512328,
+          "content": "将所有层量化为4bit，包括LoRA参数"
+        }
+      ],
+      "correct_option_ids": [
+        7512326
+      ],
+      "correct_options": [
+        "配置4bit&nbsp;NF4量化&nbsp;+&nbsp;双重量化（量化量化常数），用BF16计算，实现QLoRA训练所需的显存优化"
+      ],
+      "analysis": "BitsAndBytesConfig各参数：①load_in_4bit=True：以4bit&nbsp;NF4格式加载基础模型权重；②bnb_4bit_quant_type=\"nf4\"：使用NormalFloat4量化格式（正态分布最优）；③bnb_4bit_compute_dtype=bfloat16：计算时解量化为BF16；④bnb_4bit_use_double_quant=True：双重量化（对量化常数再量化），额外节省约0.37bits/parameter。这是QLoRA的标准配置，使7B模型在8GB&nbsp;GPU上训练成为可能。"
+    },
+    {
+      "question_id": 11639984,
+      "uuid": "76ea7e827e3b4b838502cd9657bdfb4d",
+      "type": 1,
+      "title": "P-Tuning v2相比P-Tuning v1的主要改进是？",
+      "content": "P-Tuning&nbsp;v2相比P-Tuning&nbsp;v1的主要改进是？",
+      "options": [
+        {
+          "id": 7512510,
+          "content": "使用更多的软提示token"
+        },
+        {
+          "id": 7512512,
+          "content": "在所有Transformer层而非只在输入层添加软提示"
+        },
+        {
+          "id": 7512514,
+          "content": "引入硬提示模板"
+        },
+        {
+          "id": 7512516,
+          "content": "支持多语言"
+        }
+      ],
+      "correct_option_ids": [
+        7512512
+      ],
+      "correct_options": [
+        "在所有Transformer层而非只在输入层添加软提示"
+      ],
+      "analysis": "P-Tuning&nbsp;v1只在输入层添加可学习的软提示，对深层任务（如序列标注）效果有限。P-Tuning&nbsp;v2在每个Transformer层都添加软提示，类似于Deep&nbsp;Prompt&nbsp;Tuning，大幅提升了对各类NLU任务的效果。"
+    },
+    {
+      "question_id": 11639902,
+      "uuid": "1efa055a7b7f41c38a388110d5c9f433",
+      "type": 1,
+      "title": "在SFT中，若发现模型在验证集上loss不降反升（过拟合），以下哪种方法最...",
+      "content": "在SFT中，若发现模型在验证集上loss不降反升（过拟合），以下哪种方法最不适合？",
+      "options": [
+        {
+          "id": 7511041,
+          "content": "减少训练epoch数"
+        },
+        {
+          "id": 7511043,
+          "content": "增大dropout率"
+        },
+        {
+          "id": 7511045,
+          "content": "添加L2正则化"
+        },
+        {
+          "id": 7511047,
+          "content": "增大batch&nbsp;size至内存上限"
+        }
+      ],
+      "correct_option_ids": [
+        7511047
+      ],
+      "correct_options": [
+        "增大batch&nbsp;size至内存上限"
+      ],
+      "analysis": "增大batch&nbsp;size不能缓解过拟合，甚至可能加剧（大batch倾向于收敛到sharp&nbsp;minimum，泛化性更差）。正确方法包括：减少epoch（early&nbsp;stopping）、增大dropout、添加weight&nbsp;decay（L2正则）、减少训练数据或增加数据多样性、降低学习率等。"
+    },
+    {
+      "question_id": 11639913,
+      "uuid": "b618ee9f31eb48ff962e952e93a10d38",
+      "type": 1,
+      "title": "Flash Attention在LoRA微调中的主要作用是？",
+      "content": "Flash&nbsp;Attention在LoRA微调中的主要作用是？",
+      "options": [
+        {
+          "id": 7510913,
+          "content": "替换LoRA的矩阵乘法计算"
+        },
+        {
+          "id": 7510914,
+          "content": "减少Attention计算的HBM读写，降低训练时的显存峰值和时间"
+        },
+        {
+          "id": 7510915,
+          "content": "自动选择最优的LoRA&nbsp;rank"
+        },
+        {
+          "id": 7510916,
+          "content": "加速LoRA权重的合并过程"
+        }
+      ],
+      "correct_option_ids": [
+        7510914
+      ],
+      "correct_options": [
+        "减少Attention计算的HBM读写，降低训练时的显存峰值和时间"
+      ],
+      "analysis": "Flash&nbsp;Attention通过分块计算和在线softmax技术，将Attention的中间激活值保存在SRAM（快速片上内存）而非HBM（慢速显存），显著减少内存带宽消耗。在微调中，Flash&nbsp;Attention可将激活值显存从O(n²)降至O(n)，支持更长的序列长度，在相同显存下训练更长的上下文。"
+    },
+    {
+      "question_id": 11640043,
+      "uuid": "34970844a4b6414b8d7a8cbe924263a0",
+      "type": 1,
+      "title": "以下关于微调时\"数据去污染\"（Data Contamination）的重要...",
+      "content": "以下关于微调时\"数据去污染\"（Data&nbsp;Contamination）的重要性，哪项正确？",
+      "options": [
+        {
+          "id": 7512077,
+          "content": "数据污染不影响评估结果"
+        },
+        {
+          "id": 7512078,
+          "content": "若训练数据包含评估集数据，评估分数会虚高，无法真实反映泛化能力"
+        },
+        {
+          "id": 7512080,
+          "content": "数据污染只影响代码类任务"
+        },
+        {
+          "id": 7512082,
+          "content": "使用公开数据集不会有污染问题"
+        }
+      ],
+      "correct_option_ids": [
+        7512078
+      ],
+      "correct_options": [
+        "若训练数据包含评估集数据，评估分数会虚高，无法真实反映泛化能力"
+      ],
+      "analysis": "数据污染（Test&nbsp;Set&nbsp;Contamination）指训练数据包含评估集样本，导致评估分数虚高（相当于\"背题\"）。多项研究发现很多开源模型因数据污染高估了性能。去污染方法：n-gram过滤、嵌入相似度检测、评估集隔离。"
+    },
+    {
+      "question_id": 11639909,
+      "uuid": "a7954ba057334ed7a1cf3f5fbe4d5540",
+      "type": 1,
+      "title": "在RLHF的PPO阶段，KL散度惩罚项的作用是？",
+      "content": "在RLHF的PPO阶段，KL散度惩罚项的作用是？",
+      "options": [
+        {
+          "id": 7510961,
+          "content": "加速策略梯度更新，提高训练速度"
+        },
+        {
+          "id": 7510962,
+          "content": "防止策略模型过度优化奖励导致偏离参考策略（奖励作弊）"
+        },
+        {
+          "id": 7510963,
+          "content": "平衡不同任务之间的奖励差异"
+        },
+        {
+          "id": 7510964,
+          "content": "减少奖励模型的方差"
+        }
+      ],
+      "correct_option_ids": [
+        7510962
+      ],
+      "correct_options": [
+        "防止策略模型过度优化奖励导致偏离参考策略（奖励作弊）"
+      ],
+      "analysis": "PPO训练中在奖励中减去KL(π||π_ref)×β，目的是防止策略模型发现奖励模型的漏洞（如输出重复内容获得高分），约束优化后的模型不偏离参考模型（通常是SFT模型）太远。这是平衡\"获得高奖励\"和\"保持合理输出\"的核心机制。"
+    },
+    {
+      "question_id": 11640049,
+      "uuid": "f876627cb56f4e908c27a50ead30780c",
+      "type": 1,
+      "title": "以下关于Unsloth对LoRA微调加速的描述，哪项正确？",
+      "content": "以下关于Unsloth对LoRA微调加速的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7512029,
+          "content": "Unsloth通过压缩模型权重加速"
+        },
+        {
+          "id": 7512030,
+          "content": "Unsloth通过手写优化的CUDA算子重写了关键操作，训练速度比标准LoRA快2-5倍"
+        },
+        {
+          "id": 7512031,
+          "content": "Unsloth只支持特定GPU型号"
+        },
+        {
+          "id": 7512033,
+          "content": "Unsloth会降低微调精度"
+        }
+      ],
+      "correct_option_ids": [
+        7512030
+      ],
+      "correct_options": [
+        "Unsloth通过手写优化的CUDA算子重写了关键操作，训练速度比标准LoRA快2-5倍"
+      ],
+      "analysis": "Unsloth通过手动优化的Triton/CUDA算子重写了RoPE嵌入、LayerNorm、Cross-Entropy等关键操作，减少内存读写和重复计算，在保持精度的同时实现2-5倍加速，同时显存降低约50%，适合消费级GPU微调。"
+    },
+    {
+      "question_id": 11639939,
+      "uuid": "d98ca27a814044cb808ff86873b3368c",
+      "type": 1,
+      "title": "以下关于FLAN（Fine-tuned LAnguage Net）指令微调...",
+      "content": "以下关于FLAN（Fine-tuned&nbsp;LAnguage&nbsp;Net）指令微调的贡献，正确的是？",
+      "options": [
+        {
+          "id": 7510615,
+          "content": "FLAN首次提出了LoRA方法"
+        },
+        {
+          "id": 7510617,
+          "content": "FLAN证明了在海量多样化的指令任务上进行微调可以显著提升模型在新任务上的零样本泛化能力"
+        },
+        {
+          "id": 7510619,
+          "content": "FLAN只在英文任务上有效"
+        },
+        {
+          "id": 7510620,
+          "content": "FLAN使用强化学习而非监督微调"
+        }
+      ],
+      "correct_option_ids": [
+        7510617
+      ],
+      "correct_options": [
+        "FLAN证明了在海量多样化的指令任务上进行微调可以显著提升模型在新任务上的零样本泛化能力"
+      ],
+      "analysis": "FLAN（Wei&nbsp;et&nbsp;al.&nbsp;2022）将超过60个NLP数据集转化为指令格式（\"将以下句子翻译为法语：...\"、\"回答以下问题：...\"），在混合任务上微调模型。关键发现：任务数量越多（从9到62），在未见任务上的零样本性能越强，且规模越大的模型受益越明显。这奠定了\"指令微调\"（Instruction&nbsp;Tuning）的基础范式。"
+    },
+    {
+      "question_id": 11640045,
+      "uuid": "5eef158e41a94184b51e213fda8fab0f",
+      "type": 1,
+      "title": "以下哪种Benchmark用于全面评估大语言模型的指令遵循能力（而非知识准...",
+      "content": "以下哪种Benchmark用于全面评估大语言模型的指令遵循能力（而非知识准确性）？",
+      "options": [
+        {
+          "id": 7512062,
+          "content": "MMLU"
+        },
+        {
+          "id": 7512063,
+          "content": "IFEval（Instruction&nbsp;Following&nbsp;Evaluation）"
+        },
+        {
+          "id": 7512065,
+          "content": "HumanEval"
+        },
+        {
+          "id": 7512067,
+          "content": "GSM8K"
+        }
+      ],
+      "correct_option_ids": [
+        7512063
+      ],
+      "correct_options": [
+        "IFEval（Instruction&nbsp;Following&nbsp;Evaluation）"
+      ],
+      "analysis": "IFEval（Google提出）专门测试模型对精确指令的遵循能力，包括格式约束（字数限制、特定词语使用/避免、大小写要求等），通过程序化验证而非语义评估。这与MMLU（知识）、HumanEval（代码）等侧重不同。"
+    },
+    {
+      "question_id": 11639954,
+      "uuid": "11642e94837a424db2b11a01b48dd4b2",
+      "type": 1,
+      "title": "以下关于\"Long Context Fine-tuning\"（长上下文微调...",
+      "content": "以下关于\"Long&nbsp;Context&nbsp;Fine-tuning\"（长上下文微调）的挑战，描述正确的是？",
+      "options": [
+        {
+          "id": 7512130,
+          "content": "长上下文微调比短上下文微调更简单"
+        },
+        {
+          "id": 7512131,
+          "content": "长上下文微调面临：显存需求平方级增长、RoPE外推问题、注意力分散（关键信息被稀释）、训练数据稀缺等"
+        },
+        {
+          "id": 7512134,
+          "content": "只需要增大max_position_embeddings参数即可实现"
+        },
+        {
+          "id": 7512137,
+          "content": "短上下文模型可以直接处理长上下文，无需微调"
+        }
+      ],
+      "correct_option_ids": [
+        7512131
+      ],
+      "correct_options": [
+        "长上下文微调面临：显存需求平方级增长、RoPE外推问题、注意力分散（关键信息被稀释）、训练数据稀缺等"
+      ],
+      "analysis": "长上下文微调的工程挑战：①显存：标准attention的显存O(n²)，32K&nbsp;context约是4K的64倍；②RoPE外推：超出预训练长度需要YaRN/NTK缩放；③数据：高质量长文档数据稀缺；④\"Lost&nbsp;in&nbsp;the&nbsp;Middle\"：长上下文中注意力稀释。实践方案：使用Flash&nbsp;Attention&nbsp;+&nbsp;梯度检查点&nbsp;+&nbsp;序列并行，用少量长文档数据继续预训练（如LLaMA-2-Long）。"
+    },
+    {
+      "question_id": 11639894,
+      "uuid": "07b72ffe09494723a2171ff874aa2744",
+      "type": 1,
+      "title": "在RLHF中，奖励模型（Reward Model）的训练数据格式是？",
+      "content": "在RLHF中，奖励模型（Reward&nbsp;Model）的训练数据格式是？",
+      "options": [
+        {
+          "id": 7511139,
+          "content": "（prompt,&nbsp;response）对，以人工评分为标签"
+        },
+        {
+          "id": 7511141,
+          "content": "（prompt,&nbsp;chosen_response,&nbsp;rejected_response）偏好对"
+        },
+        {
+          "id": 7511143,
+          "content": "（prompt）单独输入，以模型置信度为标签"
+        },
+        {
+          "id": 7511144,
+          "content": "（system_prompt,&nbsp;user_prompt,&nbsp;response）三元组"
+        }
+      ],
+      "correct_option_ids": [
+        7511141
+      ],
+      "correct_options": [
+        "（prompt,&nbsp;chosen_response,&nbsp;rejected_response）偏好对"
+      ],
+      "analysis": "奖励模型通过人类偏好标注训练，数据格式为同一prompt下的胜出回复（chosen）和失败回复（rejected）对。训练目标是让chosen的奖励分数高于rejected，通常使用Bradley-Terry模型的排名损失（log&nbsp;sigmoid(r_chosen&nbsp;-&nbsp;r_rejected)）。"
+    },
+    {
+      "question_id": 11640065,
+      "uuid": "57cea0d7027f435aad526a7773c14f4a",
+      "type": 1,
+      "title": "以下哪种技术通过\"神经元重要性分析\"来决定哪些参数需要微调？",
+      "content": "以下哪种技术通过\"神经元重要性分析\"来决定哪些参数需要微调？",
+      "options": [
+        {
+          "id": 7511893,
+          "content": "随机选择可训练参数"
+        },
+        {
+          "id": 7511894,
+          "content": "稀疏微调&nbsp;+&nbsp;重要性评分（如Fisher信息、梯度幅度）"
+        },
+        {
+          "id": 7511895,
+          "content": "均匀选择所有层的部分参数"
+        },
+        {
+          "id": 7511896,
+          "content": "只微调最后几层"
+        }
+      ],
+      "correct_option_ids": [
+        7511894
+      ],
+      "correct_options": [
+        "稀疏微调&nbsp;+&nbsp;重要性评分（如Fisher信息、梯度幅度）"
+      ],
+      "analysis": "基于重要性的稀疏微调（如AdaLoRA动态分配LoRA秩）：通过Fisher信息矩阵或梯度幅度评估每个参数的\"重要性\"，优先更新对任务影响大的参数，对影响小的参数施加约束或跳过，实现更精准的参数效率。"
+    },
+    {
+      "question_id": 11640015,
+      "uuid": "be364bf3cde241958f4f76456e4305b0",
+      "type": 1,
+      "title": "以下关于知识蒸馏（Knowledge Distillation）在LLM对...",
+      "content": "以下关于知识蒸馏（Knowledge&nbsp;Distillation）在LLM对齐中的应用，哪项正确？",
+      "options": [
+        {
+          "id": 7512413,
+          "content": "只能用于减小模型规模"
+        },
+        {
+          "id": 7512414,
+          "content": "可以用教师模型生成SFT数据（如Alpaca方式），是一种软知识迁移"
+        },
+        {
+          "id": 7512415,
+          "content": "知识蒸馏必须使用KL散度损失"
+        },
+        {
+          "id": 7512416,
+          "content": "知识蒸馏不能与LoRA结合使用"
+        }
+      ],
+      "correct_option_ids": [
+        7512414
+      ],
+      "correct_options": [
+        "可以用教师模型生成SFT数据（如Alpaca方式），是一种软知识迁移"
+      ],
+      "analysis": "用更强的教师模型（如GPT-4）生成训练数据来微调学生模型本质上是一种知识蒸馏。除传统的logit-level蒸馏外，数据生成式蒸馏（Alpaca/Orca/WizardLM）也是重要的对齐方法。"
+    },
+    {
+      "question_id": 11639972,
+      "uuid": "c4cb706c759746b6845d6084118d67a5",
+      "type": 1,
+      "title": "以下哪种方法可以在微调时有效地扩展模型的词表（如添加新语言的字符）？",
+      "content": "以下哪种方法可以在微调时有效地扩展模型的词表（如添加新语言的字符）？",
+      "options": [
+        {
+          "id": 7512349,
+          "content": "直接随机初始化新token的embedding"
+        },
+        {
+          "id": 7512350,
+          "content": "用新token在已有词表中的近义词/相关词的embedding平均值初始化，再进行embedding层的微调"
+        },
+        {
+          "id": 7512353,
+          "content": "词表扩展必须从头预训练，无法微调实现"
+        },
+        {
+          "id": 7512356,
+          "content": "只修改tokenizer配置文件，不需要调整模型权重"
+        }
+      ],
+      "correct_option_ids": [
+        7512350
+      ],
+      "correct_options": [
+        "用新token在已有词表中的近义词/相关词的embedding平均值初始化，再进行embedding层的微调"
+      ],
+      "analysis": "词表扩展的最佳实践：①不能随机初始化新token&nbsp;embedding（会引入随机噪声，需要大量训练才能稳定）；②用语义近似的已有token&nbsp;embedding平均来初始化（如新字\"喵\"用\"猫\"的embedding初始化）；③只训练embedding层（或使用LoRA）而非全参；④使用足够多的包含新token的数据进行微调使embedding稳定。研究表明此方法比随机初始化收敛更快。"
+    },
+    {
+      "question_id": 11639908,
+      "uuid": "b49437e506914b1da3f40b9d39e5a69d",
+      "type": 1,
+      "title": "以下哪种数据增强方法在SFT中通常有效？",
+      "content": "以下哪种数据增强方法在SFT中通常有效？",
+      "options": [
+        {
+          "id": 7510973,
+          "content": "对回复文本随机插入噪声token"
+        },
+        {
+          "id": 7510975,
+          "content": "Self-Instruct：用模型自身生成指令-回复对扩充数据"
+        },
+        {
+          "id": 7510976,
+          "content": "对所有训练样本随机打乱词序"
+        },
+        {
+          "id": 7510978,
+          "content": "将长回复随机截断为短回复"
+        }
+      ],
+      "correct_option_ids": [
+        7510975
+      ],
+      "correct_options": [
+        "Self-Instruct：用模型自身生成指令-回复对扩充数据"
+      ],
+      "analysis": "Self-Instruct（Wang&nbsp;et&nbsp;al.&nbsp;2023）利用强大的LLM（如GPT-4）生成大量多样化的指令-回复对，是扩充SFT数据的常用方法（如Alpaca、WizardLM都使用此方法）。随机噪声和截断会破坏数据质量。随机打乱词序会完全改变语义，不适用于文本。"
+    },
+    {
+      "question_id": 11640036,
+      "uuid": "3d1dc0698a4f45869924b182c9078416",
+      "type": 1,
+      "title": "以下关于代码微调（Code Fine-tuning）数据质量的描述，哪项最重要？",
+      "content": "以下关于代码微调（Code&nbsp;Fine-tuning）数据质量的描述，哪项最重要？",
+      "options": [
+        {
+          "id": 7512174,
+          "content": "只需要大量代码文件即可"
+        },
+        {
+          "id": 7512177,
+          "content": "代码必须能够正确执行（语法正确且通过测试），同时包含清晰的注释和文档"
+        },
+        {
+          "id": 7512180,
+          "content": "越复杂的代码越好"
+        },
+        {
+          "id": 7512183,
+          "content": "代码语言必须统一"
+        }
+      ],
+      "correct_option_ids": [
+        7512177
+      ],
+      "correct_options": [
+        "代码必须能够正确执行（语法正确且通过测试），同时包含清晰的注释和文档"
+      ],
+      "analysis": "代码微调的数据质量核心：1)&nbsp;可执行性（语法正确、逻辑正确、能通过测试）；2)&nbsp;文档质量（清晰的注释和docstring）；3)&nbsp;风格一致性（遵循代码规范）；4)&nbsp;覆盖多种编程范式。低质量/有Bug的代码数据会严重损害模型能力。"
+    },
+    {
+      "question_id": 11639963,
+      "uuid": "c87e407e22184bbf9f27eadc1e007156",
+      "type": 1,
+      "title": "以下哪种方法可以检测SFT数据中的\"有毒\"（toxic）或不当内容？",
+      "content": "以下哪种方法可以检测SFT数据中的\"有毒\"（toxic）或不当内容？",
+      "options": [
+        {
+          "id": 7512240,
+          "content": "只检查数据长度，过短的数据通常有毒"
+        },
+        {
+          "id": 7512242,
+          "content": "使用内容安全分类器（如Perspective&nbsp;API、LlamaGuard）对训练数据进行自动过滤"
+        },
+        {
+          "id": 7512244,
+          "content": "随机抽样10%数据人工审核即可"
+        },
+        {
+          "id": 7512245,
+          "content": "使用困惑度（Perplexity）过滤，高PPL数据通常有毒"
+        }
+      ],
+      "correct_option_ids": [
+        7512242
+      ],
+      "correct_options": [
+        "使用内容安全分类器（如Perspective&nbsp;API、LlamaGuard）对训练数据进行自动过滤"
+      ],
+      "analysis": "训练数据安全过滤的方法：①自动化分类器：LlamaGuard（Meta）、Perspective&nbsp;API等专门训练的安全分类器对有害类别（暴力、色情、歧视等）打分过滤；②规则过滤：检测特定有害关键词、URL黑名单；③嵌入相似度过滤：与已知有害样本的相似度。多层过滤（自动+人工抽检）是生产环境数据清洗的标准流程。"
+    },
+    {
+      "question_id": 11639919,
+      "uuid": "a59cd0faa3e84358a0551c35e9bdf704",
+      "type": 1,
+      "title": "以下哪种情况表明SFT模型可能出现了\"格式遵循但内容错误\"的问题（即syc...",
+      "content": "以下哪种情况表明SFT模型可能出现了\"格式遵循但内容错误\"的问题（即sycophancy/谄媚）？",
+      "options": [
+        {
+          "id": 7510845,
+          "content": "模型拒绝回答危险问题"
+        },
+        {
+          "id": 7510847,
+          "content": "用户说\"你上面说的是错的\"后，模型立即改变正确答案"
+        },
+        {
+          "id": 7510849,
+          "content": "模型回复过长，包含大量解释"
+        },
+        {
+          "id": 7510850,
+          "content": "模型在不同对话中给出不一致的答案"
+        }
+      ],
+      "correct_option_ids": [
+        7510847
+      ],
+      "correct_options": [
+        "用户说\"你上面说的是错的\"后，模型立即改变正确答案"
+      ],
+      "analysis": "Sycophancy（谄媚/迎合）是SFT/RLHF的常见问题：模型学到了\"用户赞同=好回复\"的错误模式，当用户质疑时会放弃正确答案。这是因为RLHF中人类标注者倾向于给\"同意自己观点\"的回复打高分。解决方案包括：在训练数据中加入抗争性样本、使用更好的评估协议等。"
+    },
+    {
+      "question_id": 11639938,
+      "uuid": "c067fa3fb57a45e38d2c33f01305d1df",
+      "type": 1,
+      "title": "以下关于多GPU分布式SFT训练中\"数据并行\"（Data Parallel...",
+      "content": "以下关于多GPU分布式SFT训练中\"数据并行\"（Data&nbsp;Parallelism）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7510628,
+          "content": "数据并行将模型不同层分配到不同GPU"
+        },
+        {
+          "id": 7510630,
+          "content": "数据并行在每个GPU上保存完整的模型副本，不同GPU处理不同的数据batch，梯度通过all-reduce聚合"
+        },
+        {
+          "id": 7510631,
+          "content": "数据并行只适用于小模型（&lt;1B参数）"
+        },
+        {
+          "id": 7510632,
+          "content": "数据并行不需要GPU间通信"
+        }
+      ],
+      "correct_option_ids": [
+        7510630
+      ],
+      "correct_options": [
+        "数据并行在每个GPU上保存完整的模型副本，不同GPU处理不同的数据batch，梯度通过all-reduce聚合"
+      ],
+      "analysis": "数据并行（DDP）：每个GPU持有完整模型权重（同步），各自处理不同mini-batch，前向/反向传播独立完成。反向传播结束后，通过all-reduce将所有GPU的梯度平均，确保所有GPU权重同步更新。优点：实现简单，适合模型能放入单GPU的情况。缺点：每个GPU都要存储完整模型和优化器状态，显存要求高。"
+    },
+    {
+      "question_id": 11640020,
+      "uuid": "4f49b391e8c84dfab42f49b2fbbbee6b",
+      "type": 1,
+      "title": "在FSDP（Fully Sharded Data Parallel）训练大...",
+      "content": "在FSDP（Fully&nbsp;Sharded&nbsp;Data&nbsp;Parallel）训练大模型时，与DDP（Distributed&nbsp;Data&nbsp;Parallel）的主要区别是？",
+      "options": [
+        {
+          "id": 7512352,
+          "content": "FSDP速度更快，DDP精度更高"
+        },
+        {
+          "id": 7512355,
+          "content": "FSDP将模型参数、梯度和优化器状态都分片到多个GPU，支持超大模型训练"
+        },
+        {
+          "id": 7512358,
+          "content": "FSDP只适用于单机多卡"
+        },
+        {
+          "id": 7512360,
+          "content": "DDP支持更大的模型"
+        }
+      ],
+      "correct_option_ids": [
+        7512355
+      ],
+      "correct_options": [
+        "FSDP将模型参数、梯度和优化器状态都分片到多个GPU，支持超大模型训练"
+      ],
+      "analysis": "DDP每个GPU保留完整模型副本，通信All-Reduce梯度。FSDP将参数、梯度、优化器状态全部分片（shard），每个GPU只存储1/N的参数，通过All-Gather在计算时重组。训练7B+模型时FSDP可节省约4倍显存。"
+    },
+    {
+      "question_id": 11639880,
+      "uuid": "3ca2be0e37e54679a6c6d5bc546cb1ff",
+      "type": 1,
+      "title": "在QLoRA中，NF4（NormalFloat4）量化相比普通INT4量化...",
+      "content": "在QLoRA中，NF4（NormalFloat4）量化相比普通INT4量化的优势是什么？",
+      "options": [
+        {
+          "id": 7511301,
+          "content": "NF4计算速度更快，推理延迟更低"
+        },
+        {
+          "id": 7511302,
+          "content": "NF4对正态分布数据的量化误差更小，更适合神经网络权重"
+        },
+        {
+          "id": 7511303,
+          "content": "NF4支持更大的量化范围，不会出现溢出"
+        },
+        {
+          "id": 7511304,
+          "content": "NF4只需要2bit存储，压缩比更高"
+        }
+      ],
+      "correct_option_ids": [
+        7511302
+      ],
+      "correct_options": [
+        "NF4对正态分布数据的量化误差更小，更适合神经网络权重"
+      ],
+      "analysis": "神经网络权重通常近似正态分布，NF4专为正态分布设计，将量化区间按等面积划分，使得量化点均匀覆盖权重的概率密度，从而最小化期望量化误差。普通INT4的量化区间是均匀分布，对正态分布数据不够高效。"
+    },
+    {
+      "question_id": 11639906,
+      "uuid": "2ab7e89de3e8491fa48a6edf973789a7",
+      "type": 1,
+      "title": "以下关于微调学习率warmup的描述，正确的是？",
+      "content": "以下关于微调学习率warmup的描述，正确的是？",
+      "options": [
+        {
+          "id": 7510993,
+          "content": "warmup阶段应使用比正常训练更大的学习率"
+        },
+        {
+          "id": 7510994,
+          "content": "warmup步数通常设为总训练步数的1%~10%，从0线性增加到目标学习率"
+        },
+        {
+          "id": 7510997,
+          "content": "warmup只对全参微调必要，LoRA不需要warmup"
+        },
+        {
+          "id": 7511000,
+          "content": "warmup后学习率保持恒定，不再变化"
+        }
+      ],
+      "correct_option_ids": [
+        7510994
+      ],
+      "correct_options": [
+        "warmup步数通常设为总训练步数的1%~10%，从0线性增加到目标学习率"
+      ],
+      "analysis": "Warmup使学习率从0（或极小值）线性增加到目标值，避免训练初期大梯度导致权重剧烈震荡。典型设置为总steps的3%~5%作为warmup期，之后使用cosine&nbsp;decay或linear&nbsp;decay降低学习率。LoRA也受益于warmup，尤其是B矩阵初始化为0时，需要warmup稳定早期训练。"
+    },
+    {
+      "question_id": 11639945,
+      "uuid": "5fbe240216aa45f39b5e263c027fad1d",
+      "type": 1,
+      "title": "以下关于\"Prompt Sensitivity\"（提示敏感性）的描述，正确的是？",
+      "content": "以下关于\"Prompt&nbsp;Sensitivity\"（提示敏感性）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7510553,
+          "content": "经过充分SFT的模型对提示措辞不敏感"
+        },
+        {
+          "id": 7510554,
+          "content": "LLM对提示词的微小变化（如换一种问法）可能产生截然不同的输出，这是SFT未完全解决的问题"
+        },
+        {
+          "id": 7510555,
+          "content": "提示敏感性只在few-shot场景中出现"
+        },
+        {
+          "id": 7510556,
+          "content": "提示敏感性可以通过增大模型参数量完全消除"
+        }
+      ],
+      "correct_option_ids": [
+        7510554
+      ],
+      "correct_options": [
+        "LLM对提示词的微小变化（如换一种问法）可能产生截然不同的输出，这是SFT未完全解决的问题"
+      ],
+      "analysis": "Prompt&nbsp;sensitivity是LLM的固有特性：即使语义相同的问题，不同的措辞可能触发完全不同的回答。例如：\"What&nbsp;is&nbsp;2+2?\"&nbsp;vs&nbsp;\"Calculate&nbsp;2+2\"&nbsp;vs&nbsp;\"两加二等于几\"可能得到不同质量的答案。SFT后仍存在此问题，对模型鲁棒性评估是挑战。缓解：使用多种表达方式的数据增强、测试时多次采样取平均（self-consistency）。"
+    },
+    {
+      "question_id": 11640052,
+      "uuid": "8aad34a1aaac4468b940262fa6eba584",
+      "type": 1,
+      "title": "在以下场景中，LoRA微调比全量微调在生产环境中的哪个方面更具优势？",
+      "content": "在以下场景中，LoRA微调比全量微调在生产环境中的哪个方面更具优势？",
+      "options": [
+        {
+          "id": 7512005,
+          "content": "微调后模型推理速度更快"
+        },
+        {
+          "id": 7512006,
+          "content": "同一基础模型可服务多个任务（多LoRA切换），节省显存"
+        },
+        {
+          "id": 7512007,
+          "content": "LoRA模型的生成质量更高"
+        },
+        {
+          "id": 7512008,
+          "content": "LoRA不需要GPU进行推理"
+        }
+      ],
+      "correct_option_ids": [
+        7512006
+      ],
+      "correct_options": [
+        "同一基础模型可服务多个任务（多LoRA切换），节省显存"
+      ],
+      "analysis": "多租户生产环境中：加载一份基础模型（如7B，14GB显存），按需动态加载/切换不同任务的LoRA适配器（每个约几十MB），理论上可支持无限数量的任务版本，显存效率远高于分别部署多个全量微调模型。"
+    },
+    {
+      "question_id": 11639896,
+      "uuid": "dfbc6326d7574b35b81f2896bfde80eb",
+      "type": 1,
+      "title": "以下代码片段中，LoRA微调LLaMA时，哪个模块通常不需要应用LoRA？",
+      "content": "以下代码片段中，LoRA微调LLaMA时，哪个模块通常不需要应用LoRA？",
+      "options": [
+        {
+          "id": 7511113,
+          "content": "q_proj（Query投影）"
+        },
+        {
+          "id": 7511115,
+          "content": "v_proj（Value投影）"
+        },
+        {
+          "id": 7511118,
+          "content": "embed_tokens（词嵌入层）"
+        },
+        {
+          "id": 7511120,
+          "content": "gate_proj（FFN门控层）"
+        }
+      ],
+      "correct_option_ids": [
+        7511118
+      ],
+      "correct_options": [
+        "embed_tokens（词嵌入层）"
+      ],
+      "analysis": "LoRA通常应用于Transformer的线性层，最常见的是attention中的q_proj、k_proj、v_proj、o_proj，以及FFN层。embed_tokens是词嵌入查找表，不是线性变换层，通常不应用LoRA（除非有特殊需求如扩展词表）。对embed_tokens应用LoRA效果通常不显著。"
+    },
+    {
+      "question_id": 11639932,
+      "uuid": "77107704eee94a31b75d04d8926675f2",
+      "type": 1,
+      "title": "以下关于SFT数据中\"System Prompt\"的作用，正确的是？",
+      "content": "以下关于SFT数据中\"System&nbsp;Prompt\"的作用，正确的是？",
+      "options": [
+        {
+          "id": 7510695,
+          "content": "System&nbsp;Prompt只是装饰性文本，不影响模型输出"
+        },
+        {
+          "id": 7510696,
+          "content": "System&nbsp;Prompt定义了模型的角色、能力边界和行为准则，在SFT中学习后成为模型行为的隐式约束"
+        },
+        {
+          "id": 7510698,
+          "content": "System&nbsp;Prompt在训练中会被忽略，只在推理时有效"
+        },
+        {
+          "id": 7510700,
+          "content": "所有SFT数据必须包含相同的System&nbsp;Prompt"
+        }
+      ],
+      "correct_option_ids": [
+        7510696
+      ],
+      "correct_options": [
+        "System&nbsp;Prompt定义了模型的角色、能力边界和行为准则，在SFT中学习后成为模型行为的隐式约束"
+      ],
+      "analysis": "SFT训练时，System&nbsp;Prompt作为上下文的一部分参与训练（通常计入loss&nbsp;mask之外，或部分框架也对system&nbsp;prompt计算loss）。模型学习到\"遇到特定system&nbsp;prompt时应表现出相应行为\"的条件模式。这也是为什么使用与训练不匹配的system&nbsp;prompt推理效果较差——模型未见过该提示词的分布。"
+    },
+    {
+      "question_id": 11639936,
+      "uuid": "49d36a659607486c83ef2c2e18d4ec13",
+      "type": 1,
+      "title": "以下哪种情况下，微调后模型表现反而不如基础模型？",
+      "content": "以下哪种情况下，微调后模型表现反而不如基础模型？",
+      "options": [
+        {
+          "id": 7510653,
+          "content": "训练数据质量极高时"
+        },
+        {
+          "id": 7510654,
+          "content": "SFT数据量过少（&lt;100条）且与评估任务分布完全不同，导致遗忘而无收益"
+        },
+        {
+          "id": 7510655,
+          "content": "使用了预训练模型的所有层进行微调"
+        },
+        {
+          "id": 7510656,
+          "content": "学习率warmup步数过多"
+        }
+      ],
+      "correct_option_ids": [
+        7510654
+      ],
+      "correct_options": [
+        "SFT数据量过少（&lt;100条）且与评估任务分布完全不同，导致遗忘而无收益"
+      ],
+      "analysis": "少量低质量或分布不匹配的SFT数据可能\"污染\"预训练模型的能力。例如：用100条中文闲聊数据微调英文数学模型，可能导致：①数学能力下降（遗忘）；②英文能力下降（中文数据覆盖）；③新增的对话能力收益极小。这强调了微调数据\"质&gt;量\"的原则：宁可少而精，也不要多而杂。"
+    },
+    {
+      "question_id": 11639907,
+      "uuid": "de553821242c4c6d92bb0cd33285e4b9",
+      "type": 1,
+      "title": "在使用PEFT（Parameter-Efficient Fine-Tuni...",
+      "content": "在使用PEFT（Parameter-Efficient&nbsp;Fine-Tuning）时，以下哪种方式可以让LoRA权重与基础模型权重合并，实现推理时零额外延迟？",
+      "options": [
+        {
+          "id": 7510985,
+          "content": "在每次推理时动态计算LoRA输出并相加"
+        },
+        {
+          "id": 7510986,
+          "content": "调用merge_and_unload()将ΔW=B×A合并进原始权重W"
+        },
+        {
+          "id": 7510987,
+          "content": "将LoRA模块作为独立的inference&nbsp;branch并行推理"
+        },
+        {
+          "id": 7510989,
+          "content": "用知识蒸馏将LoRA能力蒸馏回基础模型"
+        }
+      ],
+      "correct_option_ids": [
+        7510986
+      ],
+      "correct_options": [
+        "调用merge_and_unload()将ΔW=B×A合并进原始权重W"
+      ],
+      "analysis": "LoRA的推理时实际上有两种方式：①保持分离（每次推理计算W₀x&nbsp;+&nbsp;BAx，有轻微额外计算）；②合并权重W&nbsp;=&nbsp;W₀&nbsp;+&nbsp;(alpha/rank)×B×A，合并后推理与原始模型完全相同，零额外开销。HuggingFace&nbsp;PEFT库的merge_and_unload()函数实现此操作，合并后无法再单独访问LoRA参数。"
+    },
+    {
+      "question_id": 11639886,
+      "uuid": "7b25a574123a418a8f9f670dda0995e2",
+      "type": 1,
+      "title": "GRPO（Group Relative Policy Optimizati...",
+      "content": "GRPO（Group&nbsp;Relative&nbsp;Policy&nbsp;Optimization）相比PPO在大模型训练中的主要优势是什么？",
+      "options": [
+        {
+          "id": 7511229,
+          "content": "GRPO收敛速度更快，训练steps更少"
+        },
+        {
+          "id": 7511230,
+          "content": "GRPO不需要单独的Critic/Value模型，节省显存和计算"
+        },
+        {
+          "id": 7511231,
+          "content": "GRPO支持更大的batch&nbsp;size"
+        },
+        {
+          "id": 7511232,
+          "content": "GRPO的梯度更新更稳定，不需要clip操作"
+        }
+      ],
+      "correct_option_ids": [
+        7511230
+      ],
+      "correct_options": [
+        "GRPO不需要单独的Critic/Value模型，节省显存和计算"
+      ],
+      "analysis": "PPO需要维护一个与策略模型等大的Critic（价值）模型来估计优势函数，显存占用翻倍。GRPO通过组内相对奖励（同一prompt采样多个response，以组内均值为基线）来估计优势，无需Critic模型，显存大幅减少，特别适合大模型（如DeepSeek-R1训练）。"
+    },
+    {
+      "question_id": 11639943,
+      "uuid": "6a05d8390cfd41d288f9c9e925258004",
+      "type": 1,
+      "title": "以下关于\"Reward Model\"（奖励模型）训练数据的质量要求，描述正...",
+      "content": "以下关于\"Reward&nbsp;Model\"（奖励模型）训练数据的质量要求，描述正确的是？",
+      "options": [
+        {
+          "id": 7510571,
+          "content": "奖励模型只需要正样本，不需要负样本"
+        },
+        {
+          "id": 7510572,
+          "content": "偏好对（chosen/rejected）的质量比数量更重要，标注者间一致性（inter-annotator&nbsp;agreement）低的样本会引入噪声"
+        },
+        {
+          "id": 7510575,
+          "content": "奖励模型训练数据越多越好，质量不重要"
+        },
+        {
+          "id": 7510578,
+          "content": "奖励模型使用与SFT完全相同的数据格式"
+        }
+      ],
+      "correct_option_ids": [
+        7510572
+      ],
+      "correct_options": [
+        "偏好对（chosen/rejected）的质量比数量更重要，标注者间一致性（inter-annotator&nbsp;agreement）低的样本会引入噪声"
+      ],
+      "analysis": "奖励模型训练的关键挑战是数据质量：①标注者偏差（annotator&nbsp;bias）：不同人对\"好回复\"的标准不同；②边界案例：chosen和rejected质量相近时标注噪声大；③一致性（Kappa系数）低的数据对训练有害。实践中通常：①只保留标注一致性高的样本；②过滤边界案例（chosen和rejected分数差异&lt;阈值）；③多次标注取多数投票。"
+    },
+    {
+      "question_id": 11640039,
+      "uuid": "e38d4d5f828c4d5688e9c66040107b25",
+      "type": 1,
+      "title": "以下哪种技术可以在微调后检测模型是否存在\"后门\"（Backdoor）攻击？",
+      "content": "以下哪种技术可以在微调后检测模型是否存在\"后门\"（Backdoor）攻击？",
+      "options": [
+        {
+          "id": 7512124,
+          "content": "增加训练数据量"
+        },
+        {
+          "id": 7512126,
+          "content": "对模型输出进行统计分析，检测特定触发词是否导致异常输出"
+        },
+        {
+          "id": 7512127,
+          "content": "降低学习率"
+        },
+        {
+          "id": 7512128,
+          "content": "使用更小的模型"
+        }
+      ],
+      "correct_option_ids": [
+        7512126
+      ],
+      "correct_options": [
+        "对模型输出进行统计分析，检测特定触发词是否导致异常输出"
+      ],
+      "analysis": "后门攻击在训练时嵌入隐藏触发词，触发后导致模型特定行为（如泄露信息、产生有害输出）。检测方法：1)&nbsp;神经元激活分析（找异常激活模式）；2)&nbsp;触发词扫描（测试大量输入寻找异常行为跳变）；3)&nbsp;模型解释性分析。"
+    },
+    {
+      "question_id": 11639912,
+      "uuid": "0f08a6fc5f7e45f8b473309a978c9c13",
+      "type": 1,
+      "title": "微调数据的质量过滤中，以下哪种方法最不可靠？",
+      "content": "微调数据的质量过滤中，以下哪种方法最不可靠？",
+      "options": [
+        {
+          "id": 7510925,
+          "content": "用更强的LLM（如GPT-4）对回复质量打分过滤"
+        },
+        {
+          "id": 7510926,
+          "content": "基于规则过滤（长度过短、重复内容、乱码等）"
+        },
+        {
+          "id": 7510927,
+          "content": "仅根据回复长度判断质量（长回复=高质量）"
+        },
+        {
+          "id": 7510928,
+          "content": "人工抽样审核代表性样本"
+        }
+      ],
+      "correct_option_ids": [
+        7510927
+      ],
+      "correct_options": [
+        "仅根据回复长度判断质量（长回复=高质量）"
+      ],
+      "analysis": "回复长度与质量相关性弱，\"更长=更好\"是错误假设。研究表明过长的SFT样本可能包含冗余信息，反而降低指令遵循能力。此外，奖励模型有length&nbsp;bias问题（倾向于给长回复高分）本身就是需要修正的偏差，不应将长度直接作为质量指标。"
+    },
+    {
+      "question_id": 11639905,
+      "uuid": "c74c430da7fb4bf19d05077a712a1821",
+      "type": 1,
+      "title": "LLaMA-Adapter的核心思想是什么？",
+      "content": "LLaMA-Adapter的核心思想是什么？",
+      "options": [
+        {
+          "id": 7511005,
+          "content": "在每个Transformer层的attention后添加零初始化的线性adapter层，用门控机制控制影响"
+        },
+        {
+          "id": 7511006,
+          "content": "对LLaMA的所有权重进行均匀缩放"
+        },
+        {
+          "id": 7511008,
+          "content": "只微调LLaMA的最后几层Transformer块"
+        },
+        {
+          "id": 7511010,
+          "content": "用知识蒸馏将GPT-4的能力迁移到LLaMA"
+        }
+      ],
+      "correct_option_ids": [
+        7511005
+      ],
+      "correct_options": [
+        "在每个Transformer层的attention后添加零初始化的线性adapter层，用门控机制控制影响"
+      ],
+      "analysis": "LLaMA-Adapter在Transformer层中插入可学习的适配向量，关键是使用零初始化的门控机制（zero-init&nbsp;attention）：训练初期门控值接近0，不影响预训练权重，随着训练进行逐渐学习有用的适配。这样避免了训练初期随机初始化的adapter破坏原始模型。"
+    },
+    {
+      "question_id": 11639922,
+      "uuid": "afd337c244994a1f86df5bfe0a6db28e",
+      "type": 1,
+      "title": "在强化学习对齐（如PPO）中，\"奖励作弊\"（reward hacking）...",
+      "content": "在强化学习对齐（如PPO）中，\"奖励作弊\"（reward&nbsp;hacking）的典型表现是？",
+      "options": [
+        {
+          "id": 7510809,
+          "content": "模型拒绝回答所有问题"
+        },
+        {
+          "id": 7510810,
+          "content": "模型输出非常长但内容空洞的回复，因为奖励模型倾向于给长回复高分"
+        },
+        {
+          "id": 7510811,
+          "content": "模型的训练loss不收敛"
+        },
+        {
+          "id": 7510812,
+          "content": "奖励模型给所有回复相同的分数"
+        }
+      ],
+      "correct_option_ids": [
+        7510810
+      ],
+      "correct_options": [
+        "模型输出非常长但内容空洞的回复，因为奖励模型倾向于给长回复高分"
+      ],
+      "analysis": "奖励作弊是指模型发现奖励模型的漏洞并利用，而不是真正提升输出质量。常见案例包括：①输出超长内容（利用length&nbsp;bias）；②大量重复词语；③输出人类看似有礼貌但空洞无意义的内容。这是KL惩罚存在的根本原因——约束策略不偏离参考模型太远。"
+    },
+    {
+      "question_id": 11640044,
+      "uuid": "6c274fe6de084ae59f01ac6771c1f049",
+      "type": 1,
+      "title": "在以下SFT数据处理步骤中，哪步对最终微调质量影响最大？",
+      "content": "在以下SFT数据处理步骤中，哪步对最终微调质量影响最大？",
+      "options": [
+        {
+          "id": 7512070,
+          "content": "随机打乱数据顺序"
+        },
+        {
+          "id": 7512072,
+          "content": "质量过滤（去除低质量、有害、重复的样本）"
+        },
+        {
+          "id": 7512074,
+          "content": "统一文本编码格式"
+        },
+        {
+          "id": 7512076,
+          "content": "按文本长度排序"
+        }
+      ],
+      "correct_option_ids": [
+        7512072
+      ],
+      "correct_options": [
+        "质量过滤（去除低质量、有害、重复的样本）"
+      ],
+      "analysis": "LIMA论文的核心发现：1000条高质量数据优于100K低质量数据。质量过滤是最关键步骤：去除格式错误、逻辑不一致、有害内容、重复样本、翻译腔样本，保留清晰指令+高质量回复的样本，直接决定微调效果上限。"
+    },
+    {
+      "question_id": 11640041,
+      "uuid": "526dadd5eeed4f8cb4c73552ff963627",
+      "type": 1,
+      "title": "在以下场景中，哪种情况下使用LoRA+量化（QLoRA）相比纯LoRA更有优势？",
+      "content": "在以下场景中，哪种情况下使用LoRA+量化（QLoRA）相比纯LoRA更有优势？",
+      "options": [
+        {
+          "id": 7512100,
+          "content": "有充足的A100&nbsp;GPU资源"
+        },
+        {
+          "id": 7512102,
+          "content": "需要在消费级GPU（如RTX&nbsp;3090&nbsp;24GB）上微调70B以上的模型"
+        },
+        {
+          "id": 7512103,
+          "content": "追求最快的训练速度"
+        },
+        {
+          "id": 7512104,
+          "content": "需要微调嵌入层"
+        }
+      ],
+      "correct_option_ids": [
+        7512102
+      ],
+      "correct_options": [
+        "需要在消费级GPU（如RTX&nbsp;3090&nbsp;24GB）上微调70B以上的模型"
+      ],
+      "analysis": "QLoRA通过4bit量化基础模型，将70B模型的基础权重从140GB压缩至约35GB，使其能在消费级GPU（如RTX&nbsp;4090&nbsp;24GB）上微调，配合分页优化器处理内存峰值。纯LoRA没有量化，需要标准精度的基础模型存储。"
+    },
+    {
+      "question_id": 11640033,
+      "uuid": "cb5fea0a9bf14cfaa064e6271fb56160",
+      "type": 1,
+      "title": "在以下微调数据格式中，哪种格式最适合训练\"函数调用\"（Function C...",
+      "content": "在以下微调数据格式中，哪种格式最适合训练\"函数调用\"（Function&nbsp;Calling）能力？",
+      "options": [
+        {
+          "id": 7512213,
+          "content": "纯对话格式"
+        },
+        {
+          "id": 7512214,
+          "content": "包含工具定义JSON、工具调用结构和工具结果的特殊格式"
+        },
+        {
+          "id": 7512216,
+          "content": "只包含自然语言描述"
+        },
+        {
+          "id": 7512218,
+          "content": "代码注释格式"
+        }
+      ],
+      "correct_option_ids": [
+        7512214
+      ],
+      "correct_options": [
+        "包含工具定义JSON、工具调用结构和工具结果的特殊格式"
+      ],
+      "analysis": "Function&nbsp;Calling训练需要专门的数据格式：系统提示包含工具定义（JSON&nbsp;Schema）、对话中包含LLM生成的结构化工具调用（tool_use块）和工具结果（tool_result块）。这种格式教会模型何时调用工具及如何格式化输出。"
+    },
+    {
+      "question_id": 11639985,
+      "uuid": "72aa72aeeabc4143a9b2c36447fb2c26",
+      "type": 1,
+      "title": "以下关于Flash Attention在微调中的作用，哪项正确？",
+      "content": "以下关于Flash&nbsp;Attention在微调中的作用，哪项正确？",
+      "options": [
+        {
+          "id": 7512522,
+          "content": "减少可训练参数数量"
+        },
+        {
+          "id": 7512524,
+          "content": "降低注意力计算的内存复杂度，支持更长序列微调"
+        },
+        {
+          "id": 7512526,
+          "content": "自动选择最优的LoRA&nbsp;rank"
+        },
+        {
+          "id": 7512528,
+          "content": "加速权重初始化"
+        }
+      ],
+      "correct_option_ids": [
+        7512524
+      ],
+      "correct_options": [
+        "降低注意力计算的内存复杂度，支持更长序列微调"
+      ],
+      "analysis": "Flash&nbsp;Attention通过IO感知的分块计算，将注意力的内存复杂度从O(N²)降至O(N)，使得微调时可以使用更长的序列长度，对长文档微调和代码微调尤其重要。"
+    },
+    {
+      "question_id": 11639923,
+      "uuid": "e26778fdcc9e4532917c1c28cff80cd4",
+      "type": 1,
+      "title": "以下哪项是LoRA微调与全参SFT在实际部署中的关键差异？",
+      "content": "以下哪项是LoRA微调与全参SFT在实际部署中的关键差异？",
+      "options": [
+        {
+          "id": 7510797,
+          "content": "LoRA模型只能在特定硬件上运行"
+        },
+        {
+          "id": 7510798,
+          "content": "多个不同任务的LoRA权重可以与同一基础模型共享，节省显存（LoRA&nbsp;switching）"
+        },
+        {
+          "id": 7510799,
+          "content": "LoRA模型的推理速度一定慢于全参SFT模型"
+        },
+        {
+          "id": 7510801,
+          "content": "LoRA不支持量化推理"
+        }
+      ],
+      "correct_option_ids": [
+        7510798
+      ],
+      "correct_options": [
+        "多个不同任务的LoRA权重可以与同一基础模型共享，节省显存（LoRA&nbsp;switching）"
+      ],
+      "analysis": "LoRA的重要优势之一是多租户场景：服务器加载一份基础模型权重，针对不同用户/任务动态加载对应的LoRA权重（delta&nbsp;weights很小），显存利用率极高。全参SFT则需要为每个任务维护完整的模型副本。这也是LoRA在生产部署中备受青睐的原因之一。"
+    },
+    {
+      "question_id": 11639933,
+      "uuid": "0e890a3a3d644810a6120d04afe5f2b0",
+      "type": 1,
+      "title": "在进行代码能力微调时，以下哪种数据格式最有效？",
+      "content": "在进行代码能力微调时，以下哪种数据格式最有效？",
+      "options": [
+        {
+          "id": 7510683,
+          "content": "只包含代码注释，让模型推断代码实现"
+        },
+        {
+          "id": 7510684,
+          "content": "问题描述+代码实现+测试用例三元组，包含可执行的正确代码"
+        },
+        {
+          "id": 7510686,
+          "content": "只有代码片段，无上下文说明"
+        },
+        {
+          "id": 7510688,
+          "content": "错误代码示例（让模型学习避免错误）"
+        }
+      ],
+      "correct_option_ids": [
+        7510684
+      ],
+      "correct_options": [
+        "问题描述+代码实现+测试用例三元组，包含可执行的正确代码"
+      ],
+      "analysis": "代码SFT的高质量数据格式：①问题描述（清晰的自然语言需求）；②正确的代码实现（经过测试验证）；③测试用例（验证代码正确性）。可执行且通过测试的代码是关键——WizardCoder、DeepSeek-Coder等代码模型都强调数据质量（执行通过率）而非数量。错误代码示例在某些对比学习场景有效，但主要训练数据应为正确实现。"
+    },
+    {
+      "question_id": 11640017,
+      "uuid": "833b3a5da6fc4b4d8aec388aeb144bbf",
+      "type": 1,
+      "title": "以下关于LoRA在Vision-Language Model（VLM）微调...",
+      "content": "以下关于LoRA在Vision-Language&nbsp;Model（VLM）微调中的应用，哪项正确？",
+      "options": [
+        {
+          "id": 7512389,
+          "content": "LoRA只能应用于文本编码器部分"
+        },
+        {
+          "id": 7512390,
+          "content": "LoRA可以同时应用于视觉编码器、多模态投影层和语言模型"
+        },
+        {
+          "id": 7512392,
+          "content": "VLM微调必须使用全量微调"
+        },
+        {
+          "id": 7512393,
+          "content": "LoRA不支持多模态任务"
+        }
+      ],
+      "correct_option_ids": [
+        7512390
+      ],
+      "correct_options": [
+        "LoRA可以同时应用于视觉编码器、多模态投影层和语言模型"
+      ],
+      "analysis": "LoRA在VLM微调中可灵活配置：可以只微调语言模型部分，或同时对视觉编码器、投影层（如MLP&nbsp;connector）和LLM都应用LoRA。LLaVA、InternVL等模型都采用了这种策略。"
+    },
+    {
+      "question_id": 11640003,
+      "uuid": "0c1b5ca07d7141228dcb9ce855d13056",
+      "type": 1,
+      "title": "以下哪种方法可以在LoRA微调后动态切换不同的任务适配器？",
+      "content": "以下哪种方法可以在LoRA微调后动态切换不同的任务适配器？",
+      "options": [
+        {
+          "id": 7512558,
+          "content": "每次切换都重新加载完整模型"
+        },
+        {
+          "id": 7512561,
+          "content": "只加载基础模型一次，动态加载/卸载LoRA权重"
+        },
+        {
+          "id": 7512564,
+          "content": "同时加载所有适配器"
+        },
+        {
+          "id": 7512567,
+          "content": "使用模型蒸馏合并所有适配器"
+        }
+      ],
+      "correct_option_ids": [
+        7512561
+      ],
+      "correct_options": [
+        "只加载基础模型一次，动态加载/卸载LoRA权重"
+      ],
+      "analysis": "LoRA适配器的优势在于可以在固定基础模型上动态切换。使用PEFT库的`model.load_adapter()`和`model.set_adapter()`可以在不重载基础模型的情况下切换任务，这对多租户服务非常高效。"
+    },
+    {
+      "question_id": 11640023,
+      "uuid": "caa77bacf9014b05af96359f5076f0e2",
+      "type": 1,
+      "title": "在指令微调数据中，\"多样性\"（Diversity）最关键的维度是？",
+      "content": "在指令微调数据中，\"多样性\"（Diversity）最关键的维度是？",
+      "options": [
+        {
+          "id": 7512317,
+          "content": "数据量要大于100万条"
+        },
+        {
+          "id": 7512318,
+          "content": "覆盖多样的任务类型、指令格式、领域知识和难度级别"
+        },
+        {
+          "id": 7512319,
+          "content": "所有指令使用相同的格式模板"
+        },
+        {
+          "id": 7512320,
+          "content": "只使用英文数据"
+        }
+      ],
+      "correct_option_ids": [
+        7512318
+      ],
+      "correct_options": [
+        "覆盖多样的任务类型、指令格式、领域知识和难度级别"
+      ],
+      "analysis": "LIMA和Self-Instruct研究证明，多样性比数量更重要。关键多样性维度：任务类型多样（问答/摘要/代码/推理）、指令表达方式多样（同一任务不同说法）、领域覆盖广、难度分布合理，共同保证模型的泛化能力。"
+    },
+    {
+      "question_id": 11640066,
+      "uuid": "cf2f02c81b3f4c42bc8ef0bd384f4f81",
+      "type": 1,
+      "title": "在以下关于\"数据飞轮\"（Data Flywheel）在LLM迭代改进中的描...",
+      "content": "在以下关于\"数据飞轮\"（Data&nbsp;Flywheel）在LLM迭代改进中的描述，哪项最准确？",
+      "options": [
+        {
+          "id": 7511885,
+          "content": "只需收集一次数据，后续无需更新"
+        },
+        {
+          "id": 7511886,
+          "content": "用模型服务用户→收集用户反馈→过滤高质量数据→微调改进模型→循环迭代"
+        },
+        {
+          "id": 7511887,
+          "content": "数据飞轮只适用于推荐系统"
+        },
+        {
+          "id": 7511888,
+          "content": "数据量达到一定规模后飞轮效应停止"
+        }
+      ],
+      "correct_option_ids": [
+        7511886
+      ],
+      "correct_options": [
+        "用模型服务用户→收集用户反馈→过滤高质量数据→微调改进模型→循环迭代"
+      ],
+      "analysis": "数据飞轮是LLM持续改进的核心机制：部署模型积累真实用户交互数据→通过人工审核或自动过滤提取高质量样本→用于下一轮微调→更好的模型吸引更多用户→循环加速改进。ChatGPT的成功很大程度上依赖此机制。"
+    },
+    {
+      "question_id": 11640067,
+      "uuid": "6d89a92487844f77bc009c37b3767922",
+      "type": 1,
+      "title": "综合考虑，在资源极度受限（单个16GB显存GPU）的情况下，微调一个7B参...",
+      "content": "综合考虑，在资源极度受限（单个16GB显存GPU）的情况下，微调一个7B参数LLaMA-3模型最推荐的技术组合是？",
+      "options": [
+        {
+          "id": 7511877,
+          "content": "全量微调&nbsp;+&nbsp;AdamW优化器&nbsp;+&nbsp;FP32精度"
+        },
+        {
+          "id": 7511878,
+          "content": "QLoRA（4bit量化）+&nbsp;LoRA(r=16)&nbsp;+&nbsp;AdaFactor&nbsp;+&nbsp;梯度检查点&nbsp;+&nbsp;BF16计算"
+        },
+        {
+          "id": 7511879,
+          "content": "只进行Prompt&nbsp;Engineering，不微调"
+        },
+        {
+          "id": 7511880,
+          "content": "使用P-Tuning&nbsp;v2，全精度"
+        }
+      ],
+      "correct_option_ids": [
+        7511878
+      ],
+      "correct_options": [
+        "QLoRA（4bit量化）+&nbsp;LoRA(r=16)&nbsp;+&nbsp;AdaFactor&nbsp;+&nbsp;梯度检查点&nbsp;+&nbsp;BF16计算"
+      ],
+      "analysis": "16GB&nbsp;GPU上微调7B模型：QLoRA的4bit量化将基础模型压缩至约4GB；LoRA&nbsp;r=16只有少量可训练参数；梯度检查点降低激活内存；BF16加速计算；AdaFactor节省优化器状态内存。全量微调7B模型至少需要150GB显存（FP32+Adam）。"
+    }
+  ]
+}

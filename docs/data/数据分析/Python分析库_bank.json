@@ -1,0 +1,4742 @@
+{
+  "source": "nowcoder_official",
+  "group": "数据分析",
+  "name": "Python分析库",
+  "tag_id": 21055,
+  "target": 149,
+  "fetched_at": "2026-07-28",
+  "total_unique": 148,
+  "complete": false,
+  "questions": [
+    {
+      "question_id": 11403420,
+      "uuid": "3fb36883851947a6b81fbeca378bfe21",
+      "type": 1,
+      "title": "在机器学习模型训练前，Scikit-learn的特征缩放步骤（如标准化或归...",
+      "content": "在机器学习模型训练前，Scikit-learn的特征缩放步骤（如标准化或归一化）为何被广泛采用？",
+      "options": [
+        {
+          "id": 7430111,
+          "content": "使特征处于相似数值范围，加速优化算法的收敛"
+        },
+        {
+          "id": 7430112,
+          "content": "直接提高模型精度"
+        },
+        {
+          "id": 7430113,
+          "content": "避免过拟合"
+        },
+        {
+          "id": 7430114,
+          "content": "所有模型都要求缩放"
+        }
+      ],
+      "correct_option_ids": [
+        7430111
+      ],
+      "correct_options": [
+        "使特征处于相似数值范围，加速优化算法的收敛"
+      ],
+      "analysis": "特征缩放（如标准化或归一化）被广泛采用的主要原因是通过使特征处于相似数值范围，加速梯度下降等优化算法的收敛，避免因特征尺度差异导致的收敛问题（选项A正确）。选项B错误，因为特征缩放不一定直接提高模型精度，它可能间接帮助某些模型（如SVM或KNN）但在其他模型中无影响。选项C错误，特征缩放与避免过拟合无关，过拟合主要受模型复杂度和正则化影响。选项D错误，因为并非所有模型都要求缩放，例如决策树和随机森林对特征尺度不敏感。"
+    },
+    {
+      "question_id": 11403389,
+      "uuid": "d5b15a5f53344dd68d426b885d4667d1",
+      "type": 1,
+      "title": "给定一个具有两级行索引（MultiIndex）的 Pandas DataF...",
+      "content": "给定一个具有两级行索引（MultiIndex）的&nbsp;Pandas&nbsp;DataFrame，第一级索引为&nbsp;'region'，第二级为&nbsp;'month'。现在需要高效地选择所有&nbsp;'region'，但只选择&nbsp;'month'&nbsp;为&nbsp;'Mar'&nbsp;或&nbsp;'Sep'&nbsp;的行。使用&nbsp;`pd.IndexSlice`&nbsp;的最推荐、最简洁的写法是？",
+      "options": [
+        {
+          "id": 7430769,
+          "content": "`df.loc[(['Mar', 'Sep'], slice(None)), :]`"
+        },
+        {
+          "id": 7430772,
+          "content": "`df.query(\"month in ['Mar', 'Sep']\")`"
+        },
+        {
+          "id": 7430773,
+          "content": "`df.loc[pd.IndexSlice[:, ['Mar', 'Sep']], :]`"
+        },
+        {
+          "id": 7430774,
+          "content": "`df.xs(['Mar', 'Sep'], level='month', drop_level=False)`"
+        }
+      ],
+      "correct_option_ids": [
+        7430773
+      ],
+      "correct_options": [
+        "`df.loc[pd.IndexSlice[:, ['Mar', 'Sep']], :]`"
+      ],
+      "analysis": "题目要求使用 `pd.IndexSlice` 进行切片，选择所有 'region'，但只选择 'month' 为 'Mar' 或 'Sep' 的行。选项 C `df.loc[pd.IndexSlice[:, ['Mar', 'Sep']], :]` 正确使用了 `pd.IndexSlice`，其中 `:` 表示选择所有第一级索引（'region'），`['Mar', 'Sep']` 表示选择第二级索引（'month'）为 'Mar' 或 'Sep'。选项 A 切片顺序错误，可能选择错误索引；选项 B 和 D 未使用 `pd.IndexSlice`，不满足题目要求。题目文字、专业名词无错误，逻辑一致，无规则破坏错误。"
+    },
+    {
+      "question_id": 2400253,
+      "uuid": "391ad6c3ded0490688378528fcb16574",
+      "type": 1,
+      "title": "提取出a和b两个数组中的公共项,可以使用numpy库中的哪个函数（）",
+      "content": "提取出a和b两个数组中的公共项,可以使用numpy库中的哪个函数（）",
+      "options": [
+        {
+          "id": 3771040,
+          "content": "np.intersect1d(a,b)"
+        },
+        {
+          "id": 3771041,
+          "content": "np.setdiff1d(a,b)"
+        },
+        {
+          "id": 3771042,
+          "content": "np.where(a == b)"
+        },
+        {
+          "id": 3771043,
+          "content": "np.lexsort((a,b))"
+        }
+      ],
+      "correct_option_ids": [
+        3771040
+      ],
+      "correct_options": [
+        "np.intersect1d(a,b)"
+      ],
+      "analysis": "A选项，np.intersect1d用来获取数组a和数组b之间的公共项；B选项，np.setdiff1d(a,b)用来从a数组中删除存在于b数组中的项；C选项，np.where(a == b)方法用来获取a数组和b数组元素相匹配的位置；D选项，是一种排序算法，按键序列对数组进行排序，它返回一个已排序的索引数组；因此正确答案选择A。"
+    },
+    {
+      "question_id": 11403404,
+      "uuid": "eeee8b0a68174a2687297e1a6bbe6d3e",
+      "type": 1,
+      "title": "假设有两个 Pandas DataFrame `df_A` 和 `df_B...",
+      "content": "假设有两个&nbsp;Pandas&nbsp;DataFrame&nbsp;`df_A`&nbsp;和&nbsp;`df_B`。`df_A`&nbsp;使用一个名为&nbsp;`user_id`&nbsp;的列作为连接键，而&nbsp;`df_B`&nbsp;的连接信息存储在其索引&nbsp;(index)&nbsp;中且该索引已命名。为了将&nbsp;`df_B`&nbsp;的信息合并到&nbsp;`df_A`&nbsp;中，以下哪种操作最为直接且符合&nbsp;`join`&nbsp;方法的设计初衷？",
+      "options": [
+        {
+          "id": 7430575,
+          "content": "df_A.join(df_B, on='user_id')"
+        },
+        {
+          "id": 7430576,
+          "content": "pd.merge(df_A, df_B, left_on='user_id', right_on=df_B.index)"
+        },
+        {
+          "id": 7430577,
+          "content": "df_A.join(df_B.reset_index(), on='user_id', lsuffix='_left')"
+        },
+        {
+          "id": 7430578,
+          "content": "pd.concat([df_A.set_index('user_id'), df_B], axis=1)"
+        }
+      ],
+      "correct_option_ids": [
+        7430575
+      ],
+      "correct_options": [
+        "df_A.join(df_B, on='user_id')"
+      ],
+      "analysis": "选项A的`df_A.join(df_B, on='user_id')`直接满足题目要求：通过`on='user_id'`指定df_A的连接列，与df_B的命名索引自动对齐，符合join方法的设计初衷。其他选项存在缺陷：\n- B：merge函数需用`right_index=True`而非`right_on=df_B.index`；\n- C：`reset_index()`会破坏df_B的索引结构，导致连接失效；\n- D：concat要求索引严格对齐，未显式指定连接键可能造成数据错位。"
+    },
+    {
+      "question_id": 2400251,
+      "uuid": "58a4d5ba1aa240de8f315ae7795f8c11",
+      "type": 1,
+      "title": "应用matplotlib数据库绘制图像的时候，其中plt.savefig(...",
+      "content": "应用matplotlib数据库绘制图像的时候，其中plt.savefig('test', dpi=600)中的dpi参数代表了是什么意思（）",
+      "options": [
+        {
+          "id": 3771032,
+          "content": "像素"
+        },
+        {
+          "id": 3771033,
+          "content": "图形尺寸"
+        },
+        {
+          "id": 3771034,
+          "content": "颜色"
+        },
+        {
+          "id": 3771035,
+          "content": "每英寸点数"
+        }
+      ],
+      "correct_option_ids": [
+        3771035
+      ],
+      "correct_options": [
+        "每英寸点数"
+      ],
+      "analysis": "dpi为设置图形每英寸的像素点数;"
+    },
+    {
+      "question_id": 11403442,
+      "uuid": "02a8c103d76b44babefe2b0509218363",
+      "type": 1,
+      "title": "在处理一个包含数百万条记录的 Pandas DataFrame `df_s...",
+      "content": "在处理一个包含数百万条记录的&nbsp;Pandas&nbsp;DataFrame&nbsp;`df_sales`&nbsp;时，其索引为多级索引&nbsp;`['region_id',&nbsp;'product_id']`。另有一个较小的&nbsp;DataFrame&nbsp;`df_products`，以&nbsp;`product_id`&nbsp;为索引，存储了每个产品的价格&nbsp;`price`。为了给&nbsp;`df_sales`&nbsp;添加一个&nbsp;`price`&nbsp;列，在重点考虑性能的情况下，以下哪种操作通常是最高效的？",
+      "options": [
+        {
+          "id": 7429959,
+          "content": "df_sales.apply(lambda row: df_products.loc[row.name[1]]['price'], axis=1)"
+        },
+        {
+          "id": 7429960,
+          "content": "pd.merge(df_sales.reset_index(), df_products, on='product_id')"
+        },
+        {
+          "id": 7429961,
+          "content": "df_sales.join(df_products, on='product_id')"
+        },
+        {
+          "id": 7429962,
+          "content": "df_sales['price'] = df_sales.index.get_level_values('product_id').map(df_products['price'])"
+        }
+      ],
+      "correct_option_ids": [
+        7429962
+      ],
+      "correct_options": [
+        "df_sales['price'] = df_sales.index.get_level_values('product_id').map(df_products['price'])"
+      ],
+      "analysis": "在考虑性能时，选项A使用apply逐行操作，效率最低；选项B使用merge但需reset_index()创建新DataFrame，增加内存开销；选项C语法可能无效，因df_sales的'product_id'为索引级别而非列，直接使用join(on='product_id')会导致错误；选项D使用get_level_values结合map，向量化操作高效，直接利用索引匹配。D通常最高效。"
+    },
+    {
+      "question_id": 2400276,
+      "uuid": "883313f46a4d454785030021184803c8",
+      "type": 1,
+      "title": "以下选项中哪项不是数据标准化的方法（）",
+      "content": "以下选项中哪项不是数据标准化的方法（）",
+      "options": [
+        {
+          "id": 3771131,
+          "content": "Z-score方法"
+        },
+        {
+          "id": 3771132,
+          "content": "PCA方法"
+        },
+        {
+          "id": 3771133,
+          "content": "Min-Max标准化"
+        },
+        {
+          "id": 3771134,
+          "content": "极大化法"
+        }
+      ],
+      "correct_option_ids": [
+        3771132
+      ],
+      "correct_options": [
+        "PCA方法"
+      ],
+      "analysis": "<span>经常使用的标准化方法包括：极差标准化法（min-max方法）；Z-score标准化法；线性比例标准化法：极大化法、极小值法、log函数标准化法和反正切函数标准化法；PCA方法又名主成分分析方法，是一种数据降维方法，并不是标准化方法；</span>"
+    },
+    {
+      "question_id": 11403361,
+      "uuid": "e49e1e3e082c47a1b297214c195436b6",
+      "type": 1,
+      "title": "对于一个包含数百万行数据、名为 `df` 的 Pandas DataFra...",
+      "content": "对于一个包含数百万行数据、名为&nbsp;`df`&nbsp;的&nbsp;Pandas&nbsp;DataFrame，需要基于&nbsp;'A'&nbsp;列和&nbsp;'B'&nbsp;列计算新列&nbsp;'C'。在以下选项中，哪种方式通常具有最高的计算性能？",
+      "options": [
+        {
+          "id": 7431205,
+          "content": "df['C'] = df['A'] + df['B']"
+        },
+        {
+          "id": 7431206,
+          "content": "df['C'] = df.apply(lambda row: row['A'] + row['B'], axis=1)"
+        },
+        {
+          "id": 7431207,
+          "content": "df['C'] = [row.A + row.B for row in df.itertuples()]"
+        },
+        {
+          "id": 7431208,
+          "content": "df['C'] = [a + b for a, b in zip(df['A'], df['B'])]"
+        }
+      ],
+      "correct_option_ids": [
+        7431205
+      ],
+      "correct_options": [
+        "df['C'] = df['A'] + df['B']"
+      ],
+      "analysis": "向量化操作（选项A）利用Pandas和NumPy的底层优化，直接在列级别计算，避免了Python层面的逐行处理开销，通常具有最高性能。选项B使用apply函数逐行应用lambda表达式，性能较低；选项C使用itertuples()逐行迭代，尽管比iterrows()快，但不如向量化；选项D使用zip和列表推导，需要创建中间数据结构和逐元素处理，效率不及向量化操作。"
+    },
+    {
+      "question_id": 11403355,
+      "uuid": "435220abca5e4c2091f59c1ea1b432d4",
+      "type": 1,
+      "title": "在Matplotlib中，以下关于面向对象（OO）接口与pyplot接口的...",
+      "content": "在Matplotlib中，以下关于面向对象（OO）接口与pyplot接口的描述，**正确**的是？",
+      "options": [
+        {
+          "id": 7431281,
+          "content": "pyplot接口更适合复杂的多子图布局，OO接口适合快速绘制单图"
+        },
+        {
+          "id": 7431282,
+          "content": "OO接口中，Figure对象是整个绘图区域的容器，Axes对象代表单个子图（含坐标轴）"
+        },
+        {
+          "id": 7431283,
+          "content": "使用pyplot的plot()函数后，必须显式调用gca()获取Axes对象才能修改坐标轴标签"
+        },
+        {
+          "id": 7431284,
+          "content": "OO接口中，plt.subplots()返回Figure对象，plt.figure()返回Axes对象列表"
+        }
+      ],
+      "correct_option_ids": [
+        7431282
+      ],
+      "correct_options": [
+        "OO接口中，Figure对象是整个绘图区域的容器，Axes对象代表单个子图（含坐标轴）"
+      ],
+      "analysis": "选项B正确：Matplotlib面向对象接口中，Figure对象是顶级容器，代表整个图形窗口；Axes对象代表单个子图，包含坐标轴、标签等元素。\n\n其他选项错误分析：\nA：描述相反——pyplot适合快速单图绘制，OO接口因提供细粒度控制更适合复杂多子图布局。\nC：错误——使用plt.plot()后可直接用plt.xlabel()/plt.ylabel()设置标签，无需显式调用gca()获取Axes对象。\nD：描述颠倒——plt.subplots()返回(Figure, Axes)元组；plt.figure()仅返回Figure对象。\n\n题目无文字错误（含专业名词拼写）、逻辑矛盾或规则破坏错误，选项设置合理。"
+    },
+    {
+      "question_id": 2400246,
+      "uuid": "1fbd1c13273942479fa2cd9ffaa94945",
+      "type": 1,
+      "title": "以下为DataFrame类型数据df: Name Goodlabel 0 ...",
+      "content": "<div>  以下为DataFrame类型数据df: </div> <div>  <table border=\"1\" cellpadding=\"2\" cellspacing=\"0\">   <tbody>    <tr>     <td>      <br>     </td>     <td>      <div>       <div>        <div>         <p>          Name         </p>        </div>       </div>      </div>     </td>     <td>      <div>       <div>        <div>         <p>          Goodlabel         </p>        </div>       </div>      </div>     </td>    </tr>    <tr>     <td>      0     </td>     <td>      <div>       <div>        <div>         <p>          Xiaoming         </p>        </div>       </div>      </div>     </td>     <td>      <div>       <div>        <div>         <p>          001         </p>        </div>       </div>      </div>     </td>    </tr>    <tr>     <td>      1     </td>     <td>      <div>       <div>        <div>         <p>          Liming         </p>        </div>       </div>      </div>     </td>     <td>      003     </td>    </tr>    <tr>     <td>      2     </td>     <td>      <span></span>       <div>       <div>        <div>         <p>          Daming         </p>        </div>       </div>      </div>     </td>     <td>      005     </td>    </tr>    <tr>     <td>      3     </td>     <td>      <div>       <div>        <div>         <p>          Zhongming         </p>        </div>       </div>      </div>     </td>     <td>      006     </td>    </tr>    <tr>     <td>      4     </td>     <td>      <div>       <div>        <div>         <p>          Liming         </p>        </div>       </div>      </div>     </td>     <td>      011     </td>    </tr>    <tr>     <td>      5     </td>     <td>      <div>       <div>        <div>         <p>          Lining         </p>        </div>       </div>      </div>     </td>     <td>      002     </td>    </tr>   </tbody>  </table>  <div>   <div>    <div>     <p>      选项中哪个不能够提取出Name列中含有姓名为&quot;Liming&quot;的行( )     </p>    </div>   </div>  </div> <br> </div>",
+      "options": [
+        {
+          "id": 3771012,
+          "content": "df[df['Name']=='Liming']"
+        },
+        {
+          "id": 3771013,
+          "content": "df[df['Name'].str.contains('Liming')]"
+        },
+        {
+          "id": 3771014,
+          "content": "df[df['Name'].str.contains('Lim*')]"
+        },
+        {
+          "id": 3771015,
+          "content": "df[df['name'].str.startswith('Li')]"
+        }
+      ],
+      "correct_option_ids": [
+        3771015
+      ],
+      "correct_options": [
+        "df[df['name'].str.startswith('Li')]"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     </p><p>      要判断哪个选项不能提取出Name列中含有姓名为&quot;Liming&quot;的行，首先分析给定的DataFrame数据：     </p>     <ul>      <li>       索引0: Name = &quot;Xiaoming&quot;            <li>       索引1: Name = &quot;Liming&quot;            <li>       索引2: Name = &quot;Daming&quot;            <li>       索引3: Name = &quot;Zhongming&quot;            <li>       索引4: Name = &quot;Liming&quot;            <li>       索引5: Name = &quot;Lining&quot;           </ul>     <p>      目标行是索引1和索引4（Name为&quot;Liming&quot;的行）。     </p>     <p>      现在逐一分析选项：     </p>     <ul>      <li>       <p>        <strong>选项A:df[df['Name']=='Liming']</strong><br> 此选项使用精确匹配，检查Name列是否等于&quot;Liming&quot;。它将正确返回索引1和索引4的行（Name为&quot;Liming&quot;的行）。因此，该选项能够提取目标行。       </p>            <li>       <p>        <strong>选项B:df[df['Name'].str.contains('Liming')]</strong><br> 此选项使用str.contains方法，检查Name列是否包含子串&quot;Liming&quot;。对于&quot;Liming&quot;（索引1和4），字符串包含&quot;Liming&quot;，因此匹配；其他行（如&quot;Xiaoming&quot;或&quot;Lining&quot;）不包含完整子串&quot;Liming&quot;，因此不匹配。该选项返回索引1和4的行。因此，该选项能够提取目标行。       </p>            <li>       <p>        <strong>选项C:df[df['Name'].str.contains('Lim*')]</strong><br> 此选项使用str.contains方法，并传入正则表达式模式'Lim<em>'。在正则表达式中，'</em>'表示前一个字符（'m'）的零次或多次重复，因此'Lim*'可以匹配&quot;Li&quot;（m出现零次）、&quot;Lim&quot;（m出现一次）、&quot;Limm&quot;（m出现多次）等子串。       </p>       <ul>        <li>         对于&quot;Liming&quot;（索引1和4），包含子串&quot;Lim&quot;，因此匹配。                <li>         对于&quot;Lining&quot;（索引5），包含子串&quot;Li&quot;（m出现零次），因此也匹配。<br> 该选项返回索引1、4和5的行。虽然它提取了目标行（索引1和4），但也错误地包含了索引5（&quot;Lining&quot;）的行。但问题要求提取&quot;含有姓名为'Liming'的行&quot;，选项C确实提取了目标行，尽管有额外行。因此，严格来说，它能够提取目标行。               </ul>            <li>       <p>        <strong>选项D:df[df['name'].str.startswith('Li')]</strong><br> 此选项使用str.startswith方法，但列名写为'name'（小写）。在给定的DataFrame中，列名是'Name'（首字母大写），Python的pandas列名区分大小写。因此，df['name']会引发KeyError: 'name'（因为不存在小写'name'列），导致代码无法执行，更无法提取任何行，包括目标行（索引1和4）。因此，该选项不能提取目标行。       </p>           </ul>     <h3>      结论     </h3>     <ul>      <li>       选项A、B和C都能够提取Name为&quot;Liming&quot;的行（索引1和4），尽管选项C可能包含额外行（索引5），但它仍然提取了目标行。            <li>       选项D由于列名拼写错误（'name'vs'Name'），导致代码出错，无法提取任何行，因此不能提取目标行。           </ul>     <p>      <strong>答案: D</strong>     </p>       </div>  </div> </div>"
+    },
+    {
+      "question_id": 11403415,
+      "uuid": "b31a3941c11c44a9a12cb9da97eed3db",
+      "type": 1,
+      "title": "在 Scikit-learn 中，对训练好的分类模型进行交叉验证时，交叉验...",
+      "content": "在&nbsp;Scikit-learn&nbsp;中，对训练好的分类模型进行交叉验证时，交叉验证的评估指标（如准确率或召回率）通常如何计算？",
+      "options": [
+        {
+          "id": 7430143,
+          "content": "对每个折叠的测试结果取平均值"
+        },
+        {
+          "id": 7430144,
+          "content": "直接在整个测试集上计算"
+        },
+        {
+          "id": 7430145,
+          "content": "选择最佳折叠的测试结果作为最终指标"
+        },
+        {
+          "id": 7430146,
+          "content": "忽略测试集，使用训练集结果"
+        }
+      ],
+      "correct_option_ids": [
+        7430143
+      ],
+      "correct_options": [
+        "对每个折叠的测试结果取平均值"
+      ],
+      "analysis": "在Scikit-learn中，交叉验证的评估指标（如准确率或召回率）通常是通过对每个折叠的测试结果取平均值来计算。这可以避免因特定数据划分导致的偏差，并提供模型整体性能的稳健估计。选项B错误，因为交叉验证不使用单一整个测试集，而是将数据分割成多个折叠；选项C错误，因为交叉验证旨在评估平均性能，而非选择最佳折叠；选项D错误，因为训练集结果会导致过拟合，评估应基于测试集。"
+    },
+    {
+      "question_id": 11403413,
+      "uuid": "2e849db787b94e238dd4cb2adbf00798",
+      "type": 1,
+      "title": "某时间序列DataFrame包含连续日期索引和缺失的PM2.5浓度数据，需...",
+      "content": "某时间序列DataFrame包含连续日期索引和缺失的PM2.5浓度数据，需要对缺失值进行线性插值，但要求每个连续缺失段最多填充3个值，以下哪个方法正确？",
+      "options": [
+        {
+          "id": 7430155,
+          "content": "df['pm25'].fillna(method='linear', limit=3)"
+        },
+        {
+          "id": 7430156,
+          "content": "df['pm25'].interpolate(method='linear', limit=3)"
+        },
+        {
+          "id": 7430157,
+          "content": "df['pm25'].fillna(method='ffill', limit=3)"
+        },
+        {
+          "id": 7430158,
+          "content": "df['pm25'].interpolate(method='pad', limit=3)"
+        }
+      ],
+      "correct_option_ids": [
+        7430156
+      ],
+      "correct_options": [
+        "df['pm25'].interpolate(method='linear', limit=3)"
+      ],
+      "analysis": "选项B正确，因为使用interpolate方法结合method='linear'进行线性插值，且limit=3限制每个连续缺失段最多填充3个值，符合题目要求。选项A无效，因为fillna方法不支持method='linear'参数（正确应使用interpolate）。选项C和D错误，因为它们分别使用ffill和pad（前向填充），不是线性插值。"
+    },
+    {
+      "question_id": 2400262,
+      "uuid": "fa065c49645f4605aa1033e052c50933",
+      "type": 1,
+      "title": "下列关于sklearn中的train_test_split函数说法正确的是（）",
+      "content": "下列关于sklearn中的train_test_split函数说法正确的是（）",
+      "options": [
+        {
+          "id": 3771075,
+          "content": "数据集划分的比例是固定不变的"
+        },
+        {
+          "id": 3771076,
+          "content": "从样本中随机的按比例选取训练集、验证集和测试集"
+        },
+        {
+          "id": 3771077,
+          "content": "train_test_split函数是随机选取样本，所以无法保证每次数据一样"
+        },
+        {
+          "id": 3771078,
+          "content": "设置stratify参数，可以处理数据不平衡问题"
+        }
+      ],
+      "correct_option_ids": [
+        3771078
+      ],
+      "correct_options": [
+        "设置stratify参数，可以处理数据不平衡问题"
+      ],
+      "analysis": "A项，数据集划分的比例可以通过test_size样本占比参数进行指定；B项，通过train_test_split函数只能划分训练集和测试集两个集合；C项，虽然train_test_split函数是从样本中随机的按比例选取训练数据和测试数据，但是可以通过random_state随机数的种子参数进行固定划分；D项，参数stratify可以处理数据类型不平衡问题，依据标签y，按原数据y中各类比例，分配给train和test，使得train和test中各类数据的比例与原数据集一致。"
+    },
+    {
+      "question_id": 11403422,
+      "uuid": "3ef7ec258945482f92a2ed63eb92dbad",
+      "type": 1,
+      "title": "关于Seaborn库的设计理念和特性，以下说法正确的是？",
+      "content": "关于Seaborn库的设计理念和特性，以下说法正确的是？",
+      "options": [
+        {
+          "id": 7430099,
+          "content": "仅支持NumPy数组作为输入，不兼容Pandas DataFrame"
+        },
+        {
+          "id": 7430100,
+          "content": "自动对categorical变量进行分组可视化，无需手动处理"
+        },
+        {
+          "id": 7430101,
+          "content": "所有绘图函数均返回Matplotlib的Figure对象，无法调整Axes属性"
+        },
+        {
+          "id": 7430102,
+          "content": "不支持统计分析，仅用于静态图表绘制"
+        }
+      ],
+      "correct_option_ids": [
+        7430100
+      ],
+      "correct_options": [
+        "自动对categorical变量进行分组可视化，无需手动处理"
+      ],
+      "analysis": "Seaborn库的设计理念强调简化统计数据可视化，其中一个关键特性是自动处理分类变量，如通过hue参数自动分组，无需手动处理，因此选项B正确。选项A错误，因为Seaborn支持Pandas DataFrame作为输入，常用于数据可视化。选项C错误，因为Seaborn绘图函数（如sns.scatterplot）可能返回Matplotlib的Axes对象，允许调整Axes属性。选项D错误，因为Seaborn集成了统计分析功能，例如在sns.lmplot()中支持线性回归，且支持交互式图表。"
+    },
+    {
+      "question_id": 11403430,
+      "uuid": "3cafe139b6f245d696983e439f615032",
+      "type": 1,
+      "title": "在使用 pandas.merge(left, right, on='id'...",
+      "content": "在使用&nbsp;pandas.merge(left,&nbsp;right,&nbsp;on='id',&nbsp;how='inner')&nbsp;合并时，左右表包含同名的非键列且希望两者都保留但避免列名冲突，应当设置哪个参数？",
+      "options": [
+        {
+          "id": 7430045,
+          "content": "validate"
+        },
+        {
+          "id": 7430046,
+          "content": "suffixes"
+        },
+        {
+          "id": 7430047,
+          "content": "copy"
+        },
+        {
+          "id": 7430048,
+          "content": "indicator"
+        }
+      ],
+      "correct_option_ids": [
+        7430046
+      ],
+      "correct_options": [
+        "suffixes"
+      ],
+      "analysis": "在pandas.merge函数中，suffixes参数用于指定左右表同名列的后缀，以避免列名冲突。例如，设置suffixes=('_left', '_right')可使同名列变为'column_left'和'column_right'，从而保留二者。其他参数：A: validate用于验证合并类型（如'one_to_one'），不解决列名冲突；C: copy控制是否复制数据，不影响列名；D: indicator添加合并来源指示列，也不解决冲突。本题描述清晰，无文字错误、专业名称错误或逻辑矛盾。"
+    },
+    {
+      "question_id": 11403351,
+      "uuid": "5ac5202c4e9a41089d51125a3a83fb21",
+      "type": 1,
+      "title": "对 DataFrame df，含列 'grp' 和数值列 'val'。需按...",
+      "content": "对&nbsp;DataFrame&nbsp;df，含列&nbsp;'grp'&nbsp;和数值列&nbsp;'val'。需按&nbsp;'grp'&nbsp;分组对&nbsp;'val'&nbsp;做&nbsp;z-score&nbsp;标准化，并将结果作为新列&nbsp;'val_z'&nbsp;与原表逐行对齐（避免改变行数或索引），下列哪种方式最合适？",
+      "options": [
+        {
+          "id": 7431321,
+          "content": "df['val_z'] = df.groupby('grp')['val'].transform(lambda s: (s - s.mean()) / s.std(ddof=0))"
+        },
+        {
+          "id": 7431322,
+          "content": "df['val_z'] = df.groupby('grp').apply(lambda g: (g['val'] - g['val'].mean()) / g['val'].std(ddof=0))"
+        },
+        {
+          "id": 7431323,
+          "content": "df['val_z'] = df.groupby('grp')['val'].agg(lambda s: (s - s.mean()) / s.std(ddof=0))"
+        },
+        {
+          "id": 7431327,
+          "content": "df['val_z'] = df['val'].apply(lambda v: (v - df['val'].mean()) / df['val'].std(ddof=0))"
+        }
+      ],
+      "correct_option_ids": [
+        7431321
+      ],
+      "correct_options": [
+        "df['val_z'] = df.groupby('grp')['val'].transform(lambda s: (s - s.mean()) / s.std(ddof=0))"
+      ],
+      "analysis": "在题目中，要求按'grp'分组对'val'进行z-score标准化，并将结果作为新列'val_z'与原表逐行对齐，不改变行数和索引。在pandas中，groupby.transform方法设计用于这种逐元素操作，返回的对象与输入大小相同、索引对齐。选项A使用transform(lambda s: (s - s.mean()) / s.std(ddof=0))，在每组内计算z-score，ddof=0指定使用总体标准差，且能正确广播回原索引。选项B使用apply，虽然可能工作但不高效，且在某些情况下索引处理不如transform直接。选项C使用agg，agg设计用于聚合，会改变输出大小，导致索引不匹配。选项D未分组，对整个列标准化，忽略分组要求。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 2400265,
+      "uuid": "001f4c1f2d5c4aafa5e7a3e0d695ffad",
+      "type": 1,
+      "title": "Python Pandas处理缺失值，以下选项中哪个是将缺失值NaN用前一...",
+      "content": "Python Pandas处理缺失值，以下选项中哪个是将缺失值NaN用前一组数据进行填充（）",
+      "options": [
+        {
+          "id": 3771087,
+          "content": "df.fillna(0)"
+        },
+        {
+          "id": 3771088,
+          "content": "df.fillna(1)"
+        },
+        {
+          "id": 3771089,
+          "content": "df.fillna(method='ffill')"
+        },
+        {
+          "id": 3771090,
+          "content": "df.fillna(method='bfill')"
+        }
+      ],
+      "correct_option_ids": [
+        3771089
+      ],
+      "correct_options": [
+        "df.fillna(method='ffill')"
+      ],
+      "analysis": "在Python Pandas处理缺失值操作中，fillna()函数是用来填充空缺值NaN时使用。Fillna(0)和fillna(1)表示分别使用0和1填充空缺值；fillna()中method参数用来控制向前和向后填充NaN，method=’ffill’表示向前填充，bfill() 表示向后填充。因此选择C选项。"
+    },
+    {
+      "question_id": 2400286,
+      "uuid": "b9764ef80cd44b2996ea712514d40196",
+      "type": 1,
+      "title": "以下不是聚类算法的是（）",
+      "content": "以下不是聚类算法的是（）",
+      "options": [
+        {
+          "id": 3771171,
+          "content": "k-means"
+        },
+        {
+          "id": 3771172,
+          "content": "KNN"
+        },
+        {
+          "id": 3771173,
+          "content": "DBSCAN"
+        },
+        {
+          "id": 3771174,
+          "content": "GCN"
+        }
+      ],
+      "correct_option_ids": [
+        3771172
+      ],
+      "correct_options": [
+        "KNN"
+      ],
+      "analysis": "A. k-means是最基础的聚类算法了，它的输入需要簇的个数k，聚类目标是使得类内的点足够近，类间的点足够远，因此A正确；B.KNN是机器学习中的一种分类算法，并不是聚类算法；C.DBSCAN是基于密度的聚类的算法，要求聚类空间的一定区域所包含的对象的数目不小于某一给定阈值，当邻近区域的密度超过某个阈值，则继续聚类；D.GCN分类本质上是基于图的聚类，然而基于GCN的聚类算法会有深度学习中的训练的概念，而传统的聚类算法则是通过人工设定阈值来决定的。"
+    },
+    {
+      "question_id": 2400268,
+      "uuid": "a2e32a57c8754de2983b8a2e15822efa",
+      "type": 1,
+      "title": "在ndarray类型的数组中，以下哪项不是用于切割数组的函数（）",
+      "content": "在ndarray类型的数组中，以下哪项不是用于切割数组的函数（）",
+      "options": [
+        {
+          "id": 3771099,
+          "content": "split()"
+        },
+        {
+          "id": 3771100,
+          "content": "array_split()"
+        },
+        {
+          "id": 3771101,
+          "content": "hsplit()"
+        },
+        {
+          "id": 3771102,
+          "content": "groupby()"
+        }
+      ],
+      "correct_option_ids": [
+        3771102
+      ],
+      "correct_options": [
+        "groupby()"
+      ],
+      "analysis": "ABC选项都属于ndarray类型数组的切割操作。A项split()可以实现水平切割或者垂直切割，split必须要均等分；B项array_split()可以实现水平切割或者垂直切割（强制切割），指定切割后的数目实现近似均匀切割；C项hsplit()可以沿横轴(纵向)拆分原array，可以实现均匀切割或者指定位置切割；D项groupby() 是用于pandas库中对DataFrame数据进行数据的分组以及分组后地组内运算；"
+    },
+    {
+      "question_id": 11403444,
+      "uuid": "a183feebe4784f4a96f2b978c364a973",
+      "type": 1,
+      "title": "考虑以下 NumPy 代码片段。请问 `result` 数组的 `shap...",
+      "content": "<div>\n\t考虑以下&nbsp;NumPy&nbsp;代码片段。请问&nbsp;`result`&nbsp;数组的&nbsp;`shape`&nbsp;属性是什么？\n</div>\n<div>\n</div>\n<div>\n<pre class=\"prettyprint lang-py3\">import&nbsp;numpy&nbsp;as&nbsp;np\na&nbsp;=&nbsp;np.arange(12).reshape((3,&nbsp;4,&nbsp;1))\nb&nbsp;=&nbsp;np.arange(5).reshape((1,&nbsp;5))</pre>\n</div>\n<div>\n</div>\n<div>\n</div>\n<div>\n\t#&nbsp;假设后续代码会尝试执行\n</div>\n<div>\n<pre class=\"prettyprint lang-py3\">try:\n&nbsp;&nbsp;&nbsp;&nbsp;result&nbsp;=&nbsp;a&nbsp;+&nbsp;b\nexcept&nbsp;ValueError:\n&nbsp;&nbsp;&nbsp;&nbsp;result&nbsp;=&nbsp;None</pre>\n</div>",
+      "options": [
+        {
+          "id": 7429939,
+          "content": "(3, 4, 5)"
+        },
+        {
+          "id": 7429940,
+          "content": "(3, 5, 4)"
+        },
+        {
+          "id": 7429941,
+          "content": "(3, 4, 1)"
+        },
+        {
+          "id": 7429943,
+          "content": "代码会引发 ValueError，result 为 None"
+        }
+      ],
+      "correct_option_ids": [
+        7429939
+      ],
+      "correct_options": [
+        "(3, 4, 5)"
+      ],
+      "analysis": "NumPy广播规则：数组a的形状为(3,4,1)，数组b的形状为(1,5)。由于维度数不同，b在左侧添加大小为1的维度，扩展为(1,1,5)。与a比较：第1维度（最左）max(3,1)=3，第2维度max(4,1)=4，第3维度（最右）max(1,5)=5，因此广播后形状为(3,4,5)。选项A正确。不会引发ValueError，因此D错误。"
+    },
+    {
+      "question_id": 11403372,
+      "uuid": "acc07412ba104703bbea49b80ca32edb",
+      "type": 1,
+      "title": "在一个包含用户行为的 DataFrame 中，现需对每个用户 user_i...",
+      "content": "在一个包含用户行为的&nbsp;DataFrame&nbsp;中，现需对每个用户&nbsp;user_id&nbsp;的&nbsp;score&nbsp;列计算组内均值，并将该均值对齐回原&nbsp;DataFrame&nbsp;作为新列&nbsp;mean_score（要求行数不变、索引顺序保持不变）。下列哪种写法最合适且开销最小？",
+      "options": [
+        {
+          "id": 7431029,
+          "content": "df.groupby('user_id')['score'].agg('mean')"
+        },
+        {
+          "id": 7431034,
+          "content": "df.merge(df.groupby('user_id')['score'].mean().rename('mean_score'), on='user_id')"
+        },
+        {
+          "id": 7431035,
+          "content": "df['mean_score'] = df.groupby('user_id')['score'].transform('mean')"
+        },
+        {
+          "id": 7431036,
+          "content": "df['mean_score'] = df.groupby('user_id').apply(lambda g: g['score'].mean())"
+        }
+      ],
+      "correct_option_ids": [
+        7431035
+      ],
+      "correct_options": [
+        "df['mean_score'] = df.groupby('user_id')['score'].transform('mean')"
+      ],
+      "analysis": "选项C使用groupby后transform方法，能够高效地将分组均值广播回原DataFrame的每一行，保持行数和索引顺序不变，开销最小，因为它避免了额外合并操作。其他选项不满足要求：A返回聚合结果导致行数减少；B通过merge操作可能导致索引顺序改变或行数变化，开销较大；D使用apply方法返回分组聚合结果，无法直接赋值给新列，会因形状不匹配引发错误。题目和选项的文字无错别字、逻辑无矛盾、专业术语正确（如'DataFrame'、'groupby'等均为Pandas标准术语），且无规则破坏错误。"
+    },
+    {
+      "question_id": 11285663,
+      "uuid": "a995a0ee8102494ab18bc419f0521d9a",
+      "type": 1,
+      "title": "执行以下程序，输出结果为（） import numpy as np arr...",
+      "content": "<span> <p>  <span>执行以下程序，输出结果为（） <pre class=\"prettyprint lang-py\">import numpy as np\narr = np.arange(4).reshape(2, 2)\nprint(arr[::-1])</pre> </span> </p> </span>",
+      "options": [
+        {
+          "id": 7401652,
+          "content": "[[1, 0], [2, 3]]"
+        },
+        {
+          "id": 7401653,
+          "content": "[[3, 2], [1, 0]]"
+        },
+        {
+          "id": 7401654,
+          "content": "[[1, 0], [3, 2]]"
+        },
+        {
+          "id": 7401655,
+          "content": "[[2, 3], [0, 1]]"
+        }
+      ],
+      "correct_option_ids": [
+        7401655
+      ],
+      "correct_options": [
+        "[[2, 3], [0, 1]]"
+      ],
+      "analysis": "<span>本题考察numpy。arr是二维数组，其值为[[0, 1], [2, 3]]，使用arr[::-1]可以反转arr数组的行，得到结果为[[2, 3], [0, 1]]，D选项符合题意。</span>"
+    },
+    {
+      "question_id": 2400248,
+      "uuid": "7cbf86dcd9054decb9bf5e33d1839032",
+      "type": 1,
+      "title": "使用可视化扩展库matplotlib中的pyplot模块中的legend(...",
+      "content": "使用可视化扩展库matplotlib中的pyplot模块中的legend()函数设置图像标题时，下面哪个参数用来设置文本的字体（）",
+      "options": [
+        {
+          "id": 3771020,
+          "content": "loc"
+        },
+        {
+          "id": 3771021,
+          "content": "prop"
+        },
+        {
+          "id": 3771022,
+          "content": "fontsize"
+        },
+        {
+          "id": 3771023,
+          "content": "frameon"
+        }
+      ],
+      "correct_option_ids": [
+        3771021
+      ],
+      "correct_options": [
+        "prop"
+      ],
+      "analysis": "A选项，loc参数设置图列位置；B选项，prop设置字体参数；C选项，fontsize参数设置图例字体大小；D选项，frameon控制是否应在图例周围绘制框架；因此选择B选项。  第五十题 numpy数据库可以创建ndarray数组，以下哪个函数可以创建指定步长的一组ndarray数组（A） undefined. numpy.arange undefined. numpy.linspace undefined. numpy.logspace undefined. numpy.random.randint 解析 A选项，numpy.arange(start, stop, step, dtype)根据 start 与 stop 指定的范围以及 step 设定的步长，生成一个 ndarray；B选项，numpy.linspace 函数用于创建一个一维数组，数组是一个等差数列构成的；C选项，numpy.logspace 函数用于创建一个于等比数列；D选项，返回一个随机整型数；"
+    },
+    {
+      "question_id": 11403384,
+      "uuid": "95fe6e29a973420b9564c1581310954a",
+      "type": 1,
+      "title": "关于numpy数组的广播（broadcasting）机制，以下说法正确的是？",
+      "content": "关于numpy数组的广播（broadcasting）机制，以下说法正确的是？",
+      "options": [
+        {
+          "id": 7430844,
+          "content": "两个数组必须形状完全相同才能进行广播运算"
+        },
+        {
+          "id": 7430848,
+          "content": "数组a形状为(3,1)、数组b形状为(1,3)时，相加会广播为(3,3)的数组"
+        },
+        {
+          "id": 7430849,
+          "content": "广播机制仅适用于一维numpy数组"
+        },
+        {
+          "id": 7430850,
+          "content": "数组a形状为(2,3)、数组b形状为(2,)时，可以直接执行a + b运算"
+        }
+      ],
+      "correct_option_ids": [
+        7430848
+      ],
+      "correct_options": [
+        "数组a形状为(3,1)、数组b形状为(1,3)时，相加会广播为(3,3)的数组"
+      ],
+      "analysis": "选项A错误：广播机制允许形状不完全相同的数组进行运算，并非必须形状完全相同（例如形状(3,1)和(1,3)可广播）。选项B正确：形状(3,1)和(1,3)的数组广播时，会在缺失维度上扩展，最终形成(3,3)形状的数组并完成加法。选项C错误：广播机制适用于多维数组（如二维或更高维度），不限于一维数组。选项D错误：形状(2,3)和(2,)的数组维度不兼容（(2,)需先调整为(2,1)才能广播到(2,3)），直接执行a + b会引发广播错误。"
+    },
+    {
+      "question_id": 11403365,
+      "uuid": "389e0c9cdb6542e99897df60b1d94f94",
+      "type": 1,
+      "title": "以下关于NumPy数组广播（Broadcasting）机制的描述，正确的是？",
+      "content": "以下关于NumPy数组广播（Broadcasting）机制的描述，正确的是？",
+      "options": [
+        {
+          "id": 7431137,
+          "content": "两个数组必须具有相同的维度数才能进行广播运算"
+        },
+        {
+          "id": 7431138,
+          "content": "广播时，形状不匹配的维度必须满足“其中一个维度大小为1”"
+        },
+        {
+          "id": 7431139,
+          "content": "广播会复制原始数组的数据到新内存以匹配目标形状"
+        },
+        {
+          "id": 7431140,
+          "content": "形状为(2,3)和(3,2)的数组可以通过广播进行元素级运算"
+        }
+      ],
+      "correct_option_ids": [
+        7431138
+      ],
+      "correct_options": [
+        "广播时，形状不匹配的维度必须满足“其中一个维度大小为1”"
+      ],
+      "analysis": "选项A错误，因为NumPy广播机制不要求两个数组具有相同的维度数；如果维度数不同，NumPy会自动在较小的形状前添加长度为1的维度以使其兼容。选项B正确，因为广播规则要求比较形状时，从后向前逐维度检查，对于不匹配的维度（大小不等），必须满足其中一个维度大小为1才可广播。选项C错误，因为广播机制通常不复制数据到新内存，而是通过虚拟扩展和步幅调整来避免数据复制，只在必要时创建临时视图。选项D错误，因为形状(2,3)和(3,2)的数组从后向前比较维度时，第一维大小为3和2（不等且都不为1）、第二维大小为2和3（不等且都不为1），维度均不兼容，因此无法广播进行元素级运算。"
+    },
+    {
+      "question_id": 11403405,
+      "uuid": "77e65335218247689b71c51103d83576",
+      "type": 1,
+      "title": "在 NumPy 中，有以下两个数组：`A = np.ones((500, ...",
+      "content": "在&nbsp;NumPy&nbsp;中，有以下两个数组：`A&nbsp;=&nbsp;np.ones((500,&nbsp;1,&nbsp;1024))`&nbsp;和&nbsp;`B&nbsp;=&nbsp;np.ones((500,&nbsp;1024))`。当执行&nbsp;`C&nbsp;=&nbsp;A&nbsp;+&nbsp;B`&nbsp;操作时，关于广播（Broadcasting）机制和潜在的性能影响，以下哪个说法是最准确的？",
+      "options": [
+        {
+          "id": 7430563,
+          "content": "该操作会失败，因为 A 是 3 维数组，而 B 是 2 维数组，维度不匹配。"
+        },
+        {
+          "id": 7430564,
+          "content": "B 数组在概念上被扩展，与 A 共同形成一个形状为 `(500, 500, 1024)` 的结果数组 C，这会占用大量内存。"
+        },
+        {
+          "id": 7430566,
+          "content": "广播仅是一个视图操作，不会实际创建新的大型数组 C，因此对内存消耗没有显著影响。"
+        },
+        {
+          "id": 7430570,
+          "content": "为了使操作成功，必须先使用 `B.reshape(1, 500, 1024)` 显式地改变 B 的形状。"
+        }
+      ],
+      "correct_option_ids": [
+        7430564
+      ],
+      "correct_options": [
+        "B 数组在概念上被扩展，与 A 共同形成一个形状为 `(500, 500, 1024)` 的结果数组 C，这会占用大量内存。"
+      ],
+      "analysis": "A 数组形状为 (500, 1, 1024)，B 数组形状为 (500, 1024)。NumPy 广播机制会将 B 在概念上扩展为形状 (1, 500, 1024)，然后与 A 比较维度：第一维（500 与 1）兼容，广播后大小为 500；第二维（1 与 500）兼容，广播后大小为 500；第三维（1024 与 1024）相等。结果数组 C 的形状为 (500, 500, 1024)，其元素数量为 500 * 500 * 1024 = 256,000,000，每个元素占用 8 字节时约需 2 GB 内存，因此会占用大量内存。选项 A 错误，因为操作会成功；选项 C 错误，因为广播虽概念上是视图，但 + 操作会创建新数组，导致内存消耗；选项 D 错误，因为 NumPy 会自动处理广播，无需显式 reshape。"
+    },
+    {
+      "question_id": 2400278,
+      "uuid": "38f80adb57fe4521853f7ca56f68792b",
+      "type": 1,
+      "title": "以下哪个不是主成分分析的作用（）",
+      "content": "以下哪个不是主成分分析的作用（）",
+      "options": [
+        {
+          "id": 3771139,
+          "content": "降低所研究数据空间的维度"
+        },
+        {
+          "id": 3771140,
+          "content": "用主成分分析法构建回归模型"
+        },
+        {
+          "id": 3771141,
+          "content": "用主成分分析筛选回归变量"
+        },
+        {
+          "id": 3771142,
+          "content": "可以对输入数据做线性变换和非线性变换"
+        }
+      ],
+      "correct_option_ids": [
+        3771142
+      ],
+      "correct_options": [
+        "可以对输入数据做线性变换和非线性变换"
+      ],
+      "analysis": "主成分分析方法的主要作用：降低所研究数据空间的维度；用主成分分析法构建回归模型；用主成分分析筛选回归变量；多维数据的一种图形表示方法；可以通过因子负荷aij的结论，弄清X变量间的某些关系；选项D：主成分分析法只能做线性变换，所以D项错误；"
+    },
+    {
+      "question_id": 11403373,
+      "uuid": "f50e3e0b0d1343b68159b478be21039c",
+      "type": 1,
+      "title": "需要比较两组独立样本的均值是否有显著差异，且初步检验表明两组方差不等。使用...",
+      "content": "需要比较两组独立样本的均值是否有显著差异，且初步检验表明两组方差不等。使用 SciPy 的哪种调用更合适？",
+      "options": [
+        {
+          "id": 7431019,
+          "content": "scipy.stats.ttest_ind(a, b, equal_var=False)"
+        },
+        {
+          "id": 7431020,
+          "content": "scipy.stats.ttest_ind(a, b, equal_var=True)"
+        }
+      ],
+      "correct_option_ids": [
+        7431019
+      ],
+      "correct_options": [
+        "scipy.stats.ttest_ind(a, b, equal_var=False)"
+      ],
+      "analysis": "题目要求比较两组独立样本的均值差异且方差不等。选项A使用ttest_ind(a, b, equal_var=False)对应Welch's t-test，专门处理方差不等情况；选项B的equal_var=True仅适用于方差齐性；选项C（配对t检验）和选项D（配对非参数检验）均用于相关样本，不符合'独立样本'要求。未发现题目存在文字错误、逻辑矛盾、专业名词错误或规则破坏问题。"
+    },
+    {
+      "question_id": 11403394,
+      "uuid": "e63e86b379324a06a037a2cd8a295e77",
+      "type": 1,
+      "title": "DataFrame df 含列：sensor_id、ts（已为 datet...",
+      "content": "DataFrame&nbsp;df&nbsp;含列：sensor_id、ts（已为&nbsp;datetime64&nbsp;类型，时间戳不等间隔）、value。希望对每个传感器按&nbsp;30&nbsp;分钟滚动窗口计算&nbsp;value&nbsp;的均值（基于时间窗口的&nbsp;rolling，而非固定行数），且不重采样为固定刻度。以下哪种写法既正确又具可读性？",
+      "options": [
+        {
+          "id": 7430695,
+          "content": "df.sort_values('ts').groupby('sensor_id').rolling('30min', on='ts')['value'].mean()"
+        },
+        {
+          "id": 7430696,
+          "content": "df.groupby('sensor_id')['value'].rolling(30).mean()"
+        },
+        {
+          "id": 7430697,
+          "content": "df.set_index('sensor_id').rolling('30min', on='ts')['value'].mean()"
+        },
+        {
+          "id": 7430698,
+          "content": "df.resample('30min', on='ts')['value'].mean()"
+        }
+      ],
+      "correct_option_ids": [
+        7430695
+      ],
+      "correct_options": [
+        "df.sort_values('ts').groupby('sensor_id').rolling('30min', on='ts')['value'].mean()"
+      ],
+      "analysis": "题目要求对每个传感器（sensor_id）按30分钟时间窗口（基于时间戳ts）进行滚动（rolling）均值计算，不重采样为固定刻度。选项A通过先排序时间戳（sort_values('ts')），再按sensor_id分组（groupby('sensor_id')），然后基于ts列应用rolling('30min', on='ts')计算value的均值，满足要求。选项B的rolling(30)基于固定行数而非时间窗口，违反要求。选项C设置sensor_id为索引后，rolling('30min', on='ts')无法分组处理每个传感器，且索引冲突可能导致错误。选项D使用resample重采样为固定刻度，违反'不重采样'要求。"
+    },
+    {
+      "question_id": 11403383,
+      "uuid": "71f3399e4e17409e9091ea77303cc843",
+      "type": 1,
+      "title": "在Pandas中，我们有两个DataFrame：`df_A`有一个名为'u...",
+      "content": "在Pandas中，我们有两个DataFrame：`df_A`有一个名为'user_id'的列，`df_B`有一个名为'user_id'的索引。为了将`df_A`（左）与`df_B`（右）基于`df_A`的'user_id'列和`df_B`的'user_id'索引进行左连接（left&nbsp;join），以下哪种操作是最高效且最符合惯例的？",
+      "options": [
+        {
+          "id": 7430861,
+          "content": "`pd.merge(df_A, df_B, on='user_id', how='left')`"
+        },
+        {
+          "id": 7430864,
+          "content": "`df_A.join(df_B, on='user_id', how='left')`"
+        },
+        {
+          "id": 7430866,
+          "content": "`pd.merge(df_A.set_index('user_id'), df_B, left_index=True, right_index=True, how='left')`"
+        },
+        {
+          "id": 7430868,
+          "content": "`pd.concat([df_A.set_index('user_id'), df_B], axis=1, join='left')`"
+        }
+      ],
+      "correct_option_ids": [
+        7430864
+      ],
+      "correct_options": [
+        "`df_A.join(df_B, on='user_id', how='left')`"
+      ],
+      "analysis": "Option B (`df_A.join(df_B, on='user_id', how='left')`) 是最高效且最符合Pandas惯例的操作。它使用DataFrame的`join`方法，参数`on='user_id'`指定左表df_A的'user_id'列作为连接键，与右表df_B的索引（名为'user_id'）进行左连接，无需显式修改索引，保持代码简洁高效。其他选项：A 要求df_B有'user_id'列（但df_B仅有索引），可能失败；C 虽有效但显式设置df_A索引（`set_index`）增加不必要开销；D 使用`pd.concat`适用于轴拼接而非键值合并，可能因索引对齐问题导致意外结果，不符合惯例。"
+    },
+    {
+      "question_id": 2400256,
+      "uuid": "07c9ba2bea844c47b1fd4bc5b890a6d8",
+      "type": 1,
+      "title": "以下对pandas库中的to_ numeric(arg,errors,do...",
+      "content": "以下对pandas库中的to_<span style=\"color: rgb(51,51,51);\">numeric</span>(arg,errors,downcast)函数的参数解释错误的选项（）",
+      "options": [
+        {
+          "id": 3771052,
+          "content": "errors=’raise’将非数字字符串转换为数字，数据中如果存在非数字字符串则会返回出错误，时间类型转换为int。"
+        },
+        {
+          "id": 3771053,
+          "content": "errors=’ignore’只对数字字符串进行转换，其他类型一律不转换。"
+        },
+        {
+          "id": 3771054,
+          "content": "errors='coerce'将数字字符串和bool类型转换为数字,其他均转换为NaN。"
+        },
+        {
+          "id": 3771055,
+          "content": "downcast =’signed’所有值都将转换为浮点型"
+        }
+      ],
+      "correct_option_ids": [
+        3771055
+      ],
+      "correct_options": [
+        "downcast =’signed’所有值都将转换为浮点型"
+      ],
+      "analysis": "errors存在三个参数{'ignore'，'raise'，'coerce'}，默认情况下为'raise'。如果为“ raise”，则无效的解析将引发异常；如果为“强制”，则无效的解析将设置为NaN；如果为“ ignore”，则无效的解析将返回输入。downcast =’signed’所有值都将转换为整型。"
+    },
+    {
+      "question_id": 2400272,
+      "uuid": "653394f13ba14f5291330732805f82d8",
+      "type": 1,
+      "title": "在回归分析中需要相关的两个变量（）",
+      "content": "在回归分析中需要相关的两个变量（）",
+      "options": [
+        {
+          "id": 3771115,
+          "content": "因变量是随机的量，自变量也是随机的量"
+        },
+        {
+          "id": 3771116,
+          "content": "因变量是随机的量，自变量是控制的量"
+        },
+        {
+          "id": 3771117,
+          "content": "因变量是控制的量，自变量是随机的量"
+        },
+        {
+          "id": 3771118,
+          "content": "因变量是控制的量，自变量也是控制的量"
+        }
+      ],
+      "correct_option_ids": [
+        3771116
+      ],
+      "correct_options": [
+        "因变量是随机的量，自变量是控制的量"
+      ],
+      "analysis": "进行回归分析时，必须事先确定自变量和因变量，而两个变量中只有自变量是可以控制的量，因变量是随机的量。"
+    },
+    {
+      "question_id": 2400241,
+      "uuid": "bccd4f72d43f4628b6b955f1c4169057",
+      "type": 1,
+      "title": "造成缺失值的因素有哪些（） ①信息暂时无法获取 ②因人为因素没有被记录 ③...",
+      "content": "<div>  造成缺失值的因素有哪些（） </div> <div>  <div>   <div>    <div>     <p>      ①信息暂时无法获取  ②因人为因素没有被记录  ③获取这些信息的代价太大  ④有些对象的某个或某些属性是不可用的  ⑤系统实时性能要求较高     </p>    </div>   </div>  </div> </div>",
+      "options": [
+        {
+          "id": 3770992,
+          "content": "<div><div><div><p>①②③</p></div></div></div>"
+        },
+        {
+          "id": 3770993,
+          "content": "<div><div><div><p>①③④ </p></div></div></div>"
+        },
+        {
+          "id": 3770994,
+          "content": "<div><div><div><p>③④⑤ </p></div></div></div>"
+        },
+        {
+          "id": 3770995,
+          "content": "<div><div><div><p>①②③④⑤</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3770995
+      ],
+      "correct_options": [
+        "<div><div><div><p>①②③④⑤</p></div></div></div>"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     缺失值产生的原因：    </p>    <p>     信息暂时无法获取。如某种产品的收益等具有滞后效应。    </p>    <p>     数据因人为因素没有被记录、遗漏或丢失，这个是数据缺失的主要原因。    </p>    <p>     数据采集设备的故障、存储介质、传输媒体故障而造成数据丢失。    </p>    <p>     获取这些信息的代价太大。    </p>    <p>     有些对象的某个或某些属性是不可用的；如：未婚者的配偶姓名、儿童的固定收入状况等。    </p>    <p>     系统实时性能要求较高，即要求得到这些信息前迅速做出判断或决策。    </p>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 11403401,
+      "uuid": "dd7a4b677c3b427fa66263fc0120ad88",
+      "type": 1,
+      "title": "NumPy广播机制允许对不同形状的数组进行元素级操作。以下哪个选项正确描述...",
+      "content": "NumPy广播机制允许对不同形状的数组进行元素级操作。以下哪个选项正确描述了广播的基本规则？",
+      "options": [
+        {
+          "id": 7430611,
+          "content": "数组的维度必须完全相同"
+        },
+        {
+          "id": 7430612,
+          "content": "从尾部维度开始比较，维度大小必须相等或其中一个为1"
+        },
+        {
+          "id": 7430613,
+          "content": "广播仅适用于相同大小的数组"
+        },
+        {
+          "id": 7430614,
+          "content": "必须使用np.expand_dims手动添加维度"
+        }
+      ],
+      "correct_option_ids": [
+        7430612
+      ],
+      "correct_options": [
+        "从尾部维度开始比较，维度大小必须相等或其中一个为1"
+      ],
+      "analysis": "选项B正确描述了NumPy广播的基本规则：从尾部维度开始比较，维度大小必须相等或其中一个为1，这是NumPy官方定义的广播机制核心原则。选项A错误，因为广播允许维度不完全相同；选项C错误，广播专门设计用于处理不同大小的数组；选项D错误，广播机制可以自动添加维度，无需手动使用np.expand_dims。"
+    },
+    {
+      "question_id": 11403356,
+      "uuid": "0f71b5a512a94c6d8b16b8343b029cbe",
+      "type": 1,
+      "title": "在Pandas中，对DataFrame按‘group’列分组后，需对‘va...",
+      "content": "在Pandas中，对DataFrame按‘group’列分组后，需对‘value’列同时计算均值和中位数，且结果列名分别自定义为‘avg_value’和‘med_value’。以下正确的groupby.agg用法是？",
+      "options": [
+        {
+          "id": 7431269,
+          "content": "agg(avg_value=('value', 'mean'), med_value=('value', 'median'))"
+        },
+        {
+          "id": 7431270,
+          "content": "agg({'value': ['mean', 'median']})"
+        },
+        {
+          "id": 7431271,
+          "content": "agg(value=['mean', 'median'])"
+        },
+        {
+          "id": 7431272,
+          "content": "agg([('avg_value', 'mean'), ('med_value', 'median')])"
+        }
+      ],
+      "correct_option_ids": [
+        7431269
+      ],
+      "correct_options": [
+        "agg(avg_value=('value', 'mean'), med_value=('value', 'median'))"
+      ],
+      "analysis": "题目要求对'value'列同时计算均值和中位数，且结果列名自定义为'avg_value'和'med_value'。选项A：agg(avg_value=('value', 'mean'), med_value=('value', 'median')) 使用Pandas命名聚合语法，直接指定自定义列名和聚合函数，符合要求。选项B：agg({'value': ['mean', 'median']}) 输出默认列名'mean'和'median'，未自定义列名，不符合要求。选项C：agg(value=['mean', 'median']) 语法无效或等效于选项B，未自定义列名，不符合要求。选项D：agg([('avg_value', 'mean'), ('med_value', 'median')]) 语法不完整，未指定应用到哪一列，会导致错误或应用到所有列，不符合要求。题目无文字错误、专业名称错误、逻辑矛盾或规则破坏错误。"
+    },
+    {
+      "question_id": 2400285,
+      "uuid": "99ab36b872f246f489f5c17afbff44f5",
+      "type": 1,
+      "title": "以下哪个选项中的函数能够返回标准的正态分布的数组（）",
+      "content": "以下哪个选项中的函数能够返回标准的正态分布的数组（）",
+      "options": [
+        {
+          "id": 3771167,
+          "content": "numpy.random.randn"
+        },
+        {
+          "id": 3771168,
+          "content": "numpy.random.uniform"
+        },
+        {
+          "id": 3771169,
+          "content": "numpy.random.rand"
+        },
+        {
+          "id": 3771170,
+          "content": "numpy.random.randint"
+        }
+      ],
+      "correct_option_ids": [
+        3771167
+      ],
+      "correct_options": [
+        "numpy.random.randn"
+      ],
+      "analysis": "A. randn函数返回一个指定形状的数组，数组中的值服从标准正态分布（均值为0，标准差为1）；B.uniform函数从一个均匀分布的区域中随机采样；C.rand函数返回一个或一组服从“0~1”均匀分布的随机样本值，随机样本取值范围是[0,1)，不包括1；D.randint函数从给定的区域中随机选取设定数量的整数；"
+    },
+    {
+      "question_id": 11403362,
+      "uuid": "c7e56e52b8b74f289a67f543d074301a",
+      "type": 1,
+      "title": "在使用pandas处理大型数据集时，以下哪种方法能最有效地优化内存使用？",
+      "content": "在使用pandas处理大型数据集时，以下哪种方法能最有效地优化内存使用？",
+      "options": [
+        {
+          "id": 7431188,
+          "content": "使用object数据类型存储所有列"
+        },
+        {
+          "id": 7431190,
+          "content": "为分类数据指定categorical数据类型"
+        },
+        {
+          "id": 7431191,
+          "content": "并行加载多个CSV文件"
+        },
+        {
+          "id": 7431192,
+          "content": "将所有数据转换为字符串格式"
+        }
+      ],
+      "correct_option_ids": [
+        7431190
+      ],
+      "correct_options": [
+        "为分类数据指定categorical数据类型"
+      ],
+      "analysis": "题目是关于使用pandas优化大型数据集的内存使用。A选项：使用object数据类型存储所有列通常会增加内存消耗，因为object类型存储字符串或混合数据时不如数值类型高效。B选项：为分类数据指定categorical数据类型是最有效的方法，因为它使用整数编码减少内存占用，尤其适用于低基数字符串数据。C选项：并行加载多个CSV文件主要优化加载速度而非内存，可能因同时加载多个文件而增加内存使用。D选项：将所有数据转换为字符串格式会显著增加内存使用，因为字符串存储通常比数值更耗费资源。因此，仅B选项能最有效地优化内存使用。"
+    },
+    {
+      "question_id": 11403406,
+      "uuid": "38ebce4b7b854380b6ad5299c1f8b15e",
+      "type": 1,
+      "title": "在使用 Scikit-learn 进行机器学习建模时，一个标准流程是先对特...",
+      "content": "<div>\n\t在使用&nbsp;Scikit-learn&nbsp;进行机器学习建模时，一个标准流程是先对特征进行标准化（例如使用&nbsp;`StandardScaler`），然后再训练模型。考虑以下两种处理方式：\n</div><div>\n\t方式一：在划分训练集和测试集之前，对整个数据集进行标准化。\n</div><div>\n\t方式二：构建一个&nbsp;`Pipeline`，将&nbsp;`StandardScaler`&nbsp;和模型封装在一起，然后用此&nbsp;`Pipeline`&nbsp;对象对训练数据进行&nbsp;`.fit()`。\n</div><div>\n\t方式二能解决方式一带来的什么核心问题？\n</div>",
+      "options": [
+        {
+          "id": 7430555,
+          "content": "方式二的代码更简洁，但与方式一在模型性能评估的可靠性上没有本质区别。"
+        },
+        {
+          "id": 7430556,
+          "content": "方式二能确保标准化过程和模型训练过程共享相同的随机状态（random_state），以保证结果可复现。"
+        },
+        {
+          "id": 7430557,
+          "content": "方式二防止了测试集（或交叉验证中的验证集）的信息泄露到预处理步骤中，从而得到更公允、可靠的模型性能评估。"
+        },
+        {
+          "id": 7430558,
+          "content": "方式二的执行速度更快，因为它利用了内部缓存机制来优化预处理和模型训练的衔接。"
+        }
+      ],
+      "correct_option_ids": [
+        7430557
+      ],
+      "correct_options": [
+        "方式二防止了测试集（或交叉验证中的验证集）的信息泄露到预处理步骤中，从而得到更公允、可靠的模型性能评估。"
+      ],
+      "analysis": "在机器学习中，方式一（在整个数据集划分前标准化）会导致测试集信息泄露到预处理步骤中，因为标准化使用了包括测试集在内的所有数据来计算均值和方差，从而在模型评估时引入了偏差，使结果不公允。方式二通过Pipeline封装StandardScaler和模型，确保预处理只基于训练数据进行（例如，在交叉验证的每个折叠中也仅使用训练部分），防止了测试集或验证集信息泄露，从而提供更可靠的模型性能评估。选项A错误，因为方式二在可靠性上有本质区别；选项B错误，Pipeline不涉及共享random_state（StandardScaler无随机状态）；选项D错误，Pipeline的主要目的不是执行速度优化，而是流程封装以防止泄露。"
+    },
+    {
+      "question_id": 11403387,
+      "uuid": "5ebe091620e64ff4924b968ce1620ff4",
+      "type": 1,
+      "title": "在一个包含数百万行数据的 Pandas DataFrame 中，对一个列进...",
+      "content": "在一个包含数百万行数据的&nbsp;Pandas&nbsp;DataFrame&nbsp;中，对一个列进行分组聚合操作。以下哪项操作的性能通常最差？",
+      "options": [
+        {
+          "id": 7430799,
+          "content": "`df.groupby('category')['value'].sum()`"
+        },
+        {
+          "id": 7430800,
+          "content": "`df.groupby('category')['value'].transform('mean')`"
+        },
+        {
+          "id": 7430801,
+          "content": "`df.groupby('category').apply(lambda x: x.max() - x.min())`"
+        },
+        {
+          "id": 7430803,
+          "content": "`df.groupby('category').agg({'value': ['mean', 'std']})`"
+        }
+      ],
+      "correct_option_ids": [
+        7430801
+      ],
+      "correct_options": [
+        "`df.groupby('category').apply(lambda x: x.max() - x.min())`"
+      ],
+      "analysis": "在 Pandas 中，groupby.apply() 配合自定义 lambda 函数（如选项 C：`df.groupby('category').apply(lambda x: x.max() - x.min())`）通常性能最差，因为它需要为每个组单独调用 Python 函数，导致较高的函数调用开销，且不能利用 Pandas 的底层优化（如矢量化操作）。对于数百万行大数据集，这种模式会显著降低性能。相比之下：A (`sum()`) 和 D (`agg()`) 使用高效的内置聚合路径；B (`transform('mean')`) 虽然涉及数据广播，但仍优化良好。题目中无文字错误、专业名词错误、逻辑矛盾或规则破坏错误。"
+    },
+    {
+      "question_id": 11403408,
+      "uuid": "13ace4785ed84448b9159cdd52d905c9",
+      "type": 1,
+      "title": "在使用 Pandas 读取大型 CSV 数据文件时，如果数据包含缺失值（N...",
+      "content": "在使用&nbsp;Pandas&nbsp;读取大型&nbsp;CSV&nbsp;数据文件时，如果数据包含缺失值（NaN），默认的读取行为是什么？",
+      "options": [
+        {
+          "id": 7430531,
+          "content": "自动删除所有包含缺失值的行"
+        },
+        {
+          "id": 7430532,
+          "content": "自动替换缺失值为 0"
+        },
+        {
+          "id": 7430533,
+          "content": "保留缺失值为 NaN"
+        },
+        {
+          "id": 7430534,
+          "content": "引发 ValueError 异常"
+        }
+      ],
+      "correct_option_ids": [
+        7430533
+      ],
+      "correct_options": [
+        "保留缺失值为 NaN"
+      ],
+      "analysis": "Pandas 的 read_csv() 函数在读取 CSV 文件时，如果数据包含缺失值，默认行为是将这些缺失值保留为 NaN（Not a Number），而不会自动删除行（A 错误）、替换为 0（B 错误）或引发 ValueError 异常（D 错误）。用户需要手动处理缺失值，例如使用 dropna() 删除或 fillna() 替换。"
+    },
+    {
+      "question_id": 11403396,
+      "uuid": "8e44c1b37b164a2eab527c47fc7bf683",
+      "type": 1,
+      "title": "有 DataFrame df，包含列 city、value。需要按 cit...",
+      "content": "有&nbsp;DataFrame&nbsp;df，包含列&nbsp;city、value。需要按&nbsp;city&nbsp;对&nbsp;value&nbsp;做&nbsp;z-score&nbsp;标准化（(value&nbsp;-&nbsp;组均值)/组标准差），要求输出与原行数一致，且尽量避免&nbsp;Python&nbsp;层循环。以下哪种写法最合适？",
+      "options": [
+        {
+          "id": 7430667,
+          "content": "g = df.groupby('city')['value']; (df['value'] - g.transform('mean')) / g.transform('std')"
+        },
+        {
+          "id": 7430668,
+          "content": "df.groupby('city')['value'].agg(lambda s: (s - s.mean()) / s.std())"
+        },
+        {
+          "id": 7430669,
+          "content": "先 pivot 成列为各 city 的宽表，再对每列标准化后回堆叠"
+        },
+        {
+          "id": 7430670,
+          "content": "使用 groupby.apply 计算后再 reset_index(drop=True) 恢复行数"
+        }
+      ],
+      "correct_option_ids": [
+        7430667
+      ],
+      "correct_options": [
+        "g = df.groupby('city')['value']; (df['value'] - g.transform('mean')) / g.transform('std')"
+      ],
+      "analysis": "题目要求按 city 对 value 做 z-score 标准化，输出行数与原一致，并尽量避免 Python 层循环。选项 A 使用 groupby 和 transform 计算组均值和标准差，然后通过向量化操作直接计算标准化值，transform 返回相同索引的 Series，确保行数一致，且避免循环，高效简洁。选项 B 使用 agg 和 lambda 函数，但 agg 通常用于聚合（返回每组一个值），而非元素级操作，可能导致输出行数不一致或索引混乱。选项 C 通过 pivot 和堆叠虽可行，但涉及数据重塑，效率较低且可能引入不必要的复杂性。选项 D 使用 groupby.apply 结合 reset_index 可保持行数一致，但 apply 可能引入组级别的迭代，效率不如 transform。因此，A 是最合适的写法。题目内容无文字错误、专业名称错误、逻辑矛盾或规则破坏错误。"
+    },
+    {
+      "question_id": 11403369,
+      "uuid": "7bd1ae90e4c6416087df768ebe58c782",
+      "type": 1,
+      "title": "在 NumPy 中，广播（Broadcasting）是一种强大的机制，允许...",
+      "content": "在&nbsp;NumPy&nbsp;中，广播（Broadcasting）是一种强大的机制，允许对不同形状的数组进行算术运算。假设有两个数组&nbsp;`a&nbsp;=&nbsp;np.arange(120).reshape(8,&nbsp;1,&nbsp;5,&nbsp;3)`&nbsp;和&nbsp;`b&nbsp;=&nbsp;np.arange(35).reshape(7,&nbsp;5,&nbsp;1)`，在执行&nbsp;`c&nbsp;=&nbsp;a&nbsp;+&nbsp;b`&nbsp;操作后，结果数组&nbsp;`c`&nbsp;的形状（shape）是什么？",
+      "options": [
+        {
+          "id": 7431077,
+          "content": "(8, 7, 5, 3)"
+        },
+        {
+          "id": 7431078,
+          "content": "(8, 7, 1, 1)"
+        },
+        {
+          "id": 7431079,
+          "content": "(1, 7, 5, 3)"
+        },
+        {
+          "id": 7431080,
+          "content": "操作会失败，并引发 ValueError，因为形状不兼容。"
+        }
+      ],
+      "correct_option_ids": [
+        7431077
+      ],
+      "correct_options": [
+        "(8, 7, 5, 3)"
+      ],
+      "analysis": "数组a的形状为(8, 1, 5, 3)，数组b的形状为(7, 5, 1)。根据NumPy广播规则：首先比较维度，从右向左对齐，b的形状在缺少维度时自动添加前导1，成为(1, 7, 5, 1)。比较维度：最右维度3和1兼容（大小为3），次右维度5和5相同（大小为5），次左维度1和7兼容（大小为7），最左维度8和1兼容（大小为8）。因此，广播后结果形状为(8, 7, 5, 3)。选项A正确。题目中无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11403374,
+      "uuid": "7b0c2ff6301749afb77fb354ca60ad15",
+      "type": 1,
+      "title": "一个 CSV 文件大小为 50GB，单机内存无法一次性装载。希望尽量沿用 ...",
+      "content": "一个&nbsp;CSV&nbsp;文件大小为&nbsp;50GB，单机内存无法一次性装载。希望尽量沿用&nbsp;pandas&nbsp;风格&nbsp;API，并利用懒计算与多核并行来完成&nbsp;groupby&nbsp;聚合。下列方案中优先级最高的是？",
+      "options": [
+        {
+          "id": 7431003,
+          "content": "使用 pandas.read_csv(chunksize=...) 逐块处理，再手工 concat"
+        },
+        {
+          "id": 7431004,
+          "content": "使用 Dask DataFrame 读取并对 DataFrame 直接 groupby 聚合"
+        },
+        {
+          "id": 7431005,
+          "content": "使用 NumPy memmap 加载，再自行解析 CSV"
+        },
+        {
+          "id": 7431006,
+          "content": "先导入到本地 SQLite，再用 pandas.read_sql 聚合"
+        }
+      ],
+      "correct_option_ids": [
+        7431004
+      ],
+      "correct_options": [
+        "使用 Dask DataFrame 读取并对 DataFrame 直接 groupby 聚合"
+      ],
+      "analysis": "题目要求处理50GB CSV文件，单机内存不足，需沿用pandas风格API，并利用懒计算与多核并行完成groupby聚合。选项分析：A使用pandas逐块处理但不支持多核并行；B使用Dask DataFrame，其API与pandas相似，支持懒计算和内置多核并行；C使用NumPy memmap需手动解析CSV，非pandas风格且不直接支持多核并行；D导入SQLite后使用pandas.read_sql，API风格不一致且不直接支持懒计算与多核并行。因此，B完全满足要求，优先级最高。题目文字无错误，逻辑无矛盾，专业术语正确，无规则破坏错误。"
+    },
+    {
+      "question_id": 2400280,
+      "uuid": "49cf205fa6464033940542c34cd18497",
+      "type": 1,
+      "title": "以下哪个选项是处理缺失值的方法（）①删除遗漏信息的样本 ②对缺失部分进行插...",
+      "content": "以下哪个选项是处理缺失值的方法（）<div>①删除遗漏信息的样本  ②对缺失部分进行插补  ③对缺失值的样本不处理</div>",
+      "options": [
+        {
+          "id": 3771147,
+          "content": "①②"
+        },
+        {
+          "id": 3771148,
+          "content": "①③"
+        },
+        {
+          "id": 3771149,
+          "content": "②③"
+        },
+        {
+          "id": 3771150,
+          "content": "①②③"
+        }
+      ],
+      "correct_option_ids": [
+        3771150
+      ],
+      "correct_options": [
+        "①②③"
+      ],
+      "analysis": "对于缺失值的处理方式包括：删除样本、插补和保留不处理三种方式；"
+    },
+    {
+      "question_id": 2400239,
+      "uuid": "5552ea0c79b34b1f98159f5785025ba6",
+      "type": 1,
+      "title": "下面选项中有关异常值检测说法错误的是（）",
+      "content": "<div>  <div>   <div>    <p>     下面选项中有关异常值检测说法错误的是（）    </p>   </div>  </div> </div>",
+      "options": [
+        {
+          "id": 3770984,
+          "content": "<div><div><div><p>使用3σ方法需要保证历史异常值较少</p></div></div></div>"
+        },
+        {
+          "id": 3770985,
+          "content": "<div><div><div><p>可以使用pandas库的describe()方法来简单统计</p></div></div></div>"
+        },
+        {
+          "id": 3770986,
+          "content": "<div><div><div><p>使用3σ方法必须保证数据为正态分布</p></div></div></div>"
+        },
+        {
+          "id": 3770987,
+          "content": "<div><div><div><p>DBSCAN聚类算法可以用来异常值检测</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3770986
+      ],
+      "correct_options": [
+        "<div><div><div><p>使用3σ方法必须保证数据为正态分布</p></div></div></div>"
+      ],
+      "analysis": "<div>  A选项，使用3σ方法要保证历史数据异常点较少，因为异常点多的话均值容易被异常点拉偏，使用3σ方法的话数据就不太可靠； </div> <div>  B.describe()方法粗略的观察一些统计量； </div> <div>  C.3σ方法的条件是数据需要服从正态分布，在3∂原则下，异常值如超过3倍标准差，那么可以将其视为异常值，在处理数据时，应剔除高度异常的异常值。如果数据不服从正态分布，也可以用远离平均值的多少倍标准差来描述，再进行剔除。因此C项错误； </div> <div>  D.DBSCAN聚类算法是一种基于密度的离群点检测，可以用来做异常值检测； </div>"
+    },
+    {
+      "question_id": 11403399,
+      "uuid": "d1ee9a36dc154fca884aa888ee223639",
+      "type": 1,
+      "title": "现有两个Pandas Series：s1 = pd.Series([10,...",
+      "content": "现有两个Pandas&nbsp;Series：s1&nbsp;=&nbsp;pd.Series([10,20,30],&nbsp;index=['产品A','产品B','产品C'])，s2&nbsp;=&nbsp;pd.Series([15,25],&nbsp;index=['产品B','产品D'])。执行s1&nbsp;+&nbsp;s2操作后，结果中“产品A”和“产品D”对应的数值是？",
+      "options": [
+        {
+          "id": 7430631,
+          "content": "NaN 和 NaN"
+        },
+        {
+          "id": 7430632,
+          "content": "10 和 25"
+        },
+        {
+          "id": 7430635,
+          "content": "直接报错（索引不匹配）"
+        },
+        {
+          "id": 7430638,
+          "content": "10 和 15"
+        }
+      ],
+      "correct_option_ids": [
+        7430631
+      ],
+      "correct_options": [
+        "NaN 和 NaN"
+      ],
+      "analysis": "执行s1 + s2操作时，Pandas Series基于索引对齐进行元素级加法。'产品A'在s1中的值为10，但s2中无对应索引，因此结果为NaN；'产品D'在s2中的值为25，但s1中无对应索引，因此结果为NaN。选项A正确描述了结果。选项B错误，因为结果不是10和25；选项C错误，Pandas在索引不匹配时不报错，而是返回NaN；选项D错误，因为15是'产品B'的值而非'产品D'的结果，且'产品A'和'产品D'的结果应为NaN而非10和15。"
+    },
+    {
+      "question_id": 2400267,
+      "uuid": "3cd05bbad14349e7bdf8687bda418b2b",
+      "type": 1,
+      "title": "进行数据预处理时，使用pandas模块中去重函数drop_duplicat...",
+      "content": "进行数据预处理时，使用pandas模块中去重函数drop_duplicates，代码如下，选项中说法不正确的是（） <div> <pre class=\"prettyprint lang-cpp\">&gt;&gt;&gt; df.drop_duplicates(subset=['A','B','C'],keep= ,inplace= )</pre> <br> <br> </div>",
+      "options": [
+        {
+          "id": 3771095,
+          "content": "参数subset用于指定要去重的列名"
+        },
+        {
+          "id": 3771096,
+          "content": "keep指定要保留行，有两个可选参数first和last"
+        },
+        {
+          "id": 3771097,
+          "content": "inplace表示是否要在原数据操作或者存为副本"
+        },
+        {
+          "id": 3771098,
+          "content": "去重后行标签不变，如需改变可使用df.reset_index()重置索引"
+        }
+      ],
+      "correct_option_ids": [
+        3771096
+      ],
+      "correct_options": [
+        "keep指定要保留行，有两个可选参数first和last"
+      ],
+      "analysis": "subset：表示要进行去重的列名，A项正确；keep：有三个可选参数，分别是 first、last、False，默认为 first，表示只保留第一次出现的重复项，删除其余重复项，last 表示只保留最后一次出现的重复项，False 则表示删除所有重复项，B项错误；inplace：布尔值参数，默认为 False 表示删除重复项后返回一个副本，若为 Ture 则表示直接在原数据上删除重复项，C项正确；重置索引函数为reset_index()，因此D正确；"
+    },
+    {
+      "question_id": 2400244,
+      "uuid": "462267bc3e164867adc1cb766535d95d",
+      "type": 1,
+      "title": "Z-score标准化公式,中的表示的是什么（）",
+      "content": "<div>  <div>   <div>    <p>     Z-score标准化公式<img alt=\"\" src=\"https://www.nowcoder.com/equation?tex=z%3D%5Cfrac%7Bx-%5Cmu%7D%7B%5Csigma%7D\">,中的<img alt=\"\" src=\"https://www.nowcoder.com/equation?tex=%5Csigma\">表示的是什么（）    </p>   </div>  </div> </div> <div>  <p>  </p> </div>",
+      "options": [
+        {
+          "id": 3771004,
+          "content": "<div><div><div><p>总体平均值</p></div></div></div>"
+        },
+        {
+          "id": 3771005,
+          "content": "<div><div><div><p>数据的方差</p></div></div></div>"
+        },
+        {
+          "id": 3771006,
+          "content": "<div><div><div><p>数据的标准差</p></div></div></div>"
+        },
+        {
+          "id": 3771007,
+          "content": "<div><div><div><p>数据的众数</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3771006
+      ],
+      "correct_options": [
+        "<div><div><div><p>数据的标准差</p></div></div></div>"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     Z-score标准化也叫标准差标准化法，其中X表示数据样本值，μ表示数据样本的平均值，σ表示的是数据的标准差。    </p>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 2400250,
+      "uuid": "a4b8c549db4a4e2d9bf5ed3fc0d1786e",
+      "type": 1,
+      "title": "下列哪个选项不是处理数据中缺失值的方法（）",
+      "content": "下列哪个选项不是处理数据中缺失值的方法（）",
+      "options": [
+        {
+          "id": 3771028,
+          "content": "df.dropna()"
+        },
+        {
+          "id": 3771029,
+          "content": "df.fillna()"
+        },
+        {
+          "id": 3771030,
+          "content": "np.empty()"
+        },
+        {
+          "id": 3771031,
+          "content": "sklearn.impute.SimpleImputer()"
+        }
+      ],
+      "correct_option_ids": [
+        3771030
+      ],
+      "correct_options": [
+        "np.empty()"
+      ],
+      "analysis": "A选项，采用pandas库中的dropna()函数来丢掉DataFrame数据中存在缺失值的样本；B选项，采用pandas库中的fillna() 函数来填充缺失值；C选项，np.empty()函数创建未初始化的数组，并不是处理缺失值的方法；D选项，采用的用sklearn包中的impute的SimpleImputer()<div>函数来对缺失值进行填充；因此选择不正确的应该选择C选项。</div>"
+    },
+    {
+      "question_id": 11403382,
+      "uuid": "d45cb93210534565a8c67a7ffb78360d",
+      "type": 1,
+      "title": "给定一个包含'department'和'salary'列的员工信息Pand...",
+      "content": "给定一个包含'department'和'salary'列的员工信息Pandas&nbsp;DataFrame，你的任务是计算每位员工薪水在其所在部门内的Z-score（标准化分数），并将结果作为一个新列添加到原始DataFrame中。以下哪种方法最高效且最符合Pandas的设计思想？&nbsp;(Z-score&nbsp;=&nbsp;(value&nbsp;-&nbsp;group_mean)&nbsp;/&nbsp;group_std)",
+      "options": [
+        {
+          "id": 7430875,
+          "content": "`df.groupby('department')['salary'].apply(lambda s: (s - s.mean()) / s.std())`"
+        },
+        {
+          "id": 7430876,
+          "content": "`df.groupby('department')['salary'].transform(lambda s: (s - s.mean()) / s.std())`"
+        },
+        {
+          "id": 7430878,
+          "content": "`df.groupby('department')['salary'].agg(lambda s: (s - s.mean()) / s.std())`"
+        },
+        {
+          "id": 7430885,
+          "content": "遍历所有唯一的部门，对每个部门的子DataFrame进行筛选和计算，然后逐行更新原始DataFrame。"
+        }
+      ],
+      "correct_option_ids": [
+        7430876
+      ],
+      "correct_options": [
+        "`df.groupby('department')['salary'].transform(lambda s: (s - s.mean()) / s.std())`"
+      ],
+      "analysis": "选项B使用`groupby`后接`transform`方法，可以高效地在分组后计算Z-score并返回与原始DataFrame索引对齐的结果，因此可直接添加为新列。这符合Pandas的向量化操作设计，避免索引对齐问题。选项A中`apply`可能返回不一致的索引，需要额外处理；选项C中`agg`适用于聚合而非元素级转换；选项D涉及低效的循环操作，违背Pandas思想。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 2400249,
+      "uuid": "02ce0251afc748bbb5dc37418467356b",
+      "type": 1,
+      "title": "对列表listname中的元素进行删除操作时候，以下哪个选项是根据元素值来...",
+      "content": "对列表listname中的元素进行删除操作时候，以下哪个选项是根据元素值来进行删除操作的方法或函数（）",
+      "options": [
+        {
+          "id": 3771024,
+          "content": "del listname[]"
+        },
+        {
+          "id": 3771025,
+          "content": "listname.pop()"
+        },
+        {
+          "id": 3771026,
+          "content": "listname.remove()"
+        },
+        {
+          "id": 3771027,
+          "content": "listname.clear()"
+        }
+      ],
+      "correct_option_ids": [
+        3771026
+      ],
+      "correct_options": [
+        "listname.remove()"
+      ],
+      "analysis": "A选项和B选项都是根据列表中的索引值来删除元素的操作；D选项，则是删除列表中的所有元素的操作；C选项，是根据列表中的元素值来进行元素的删除；所以选择C选项。"
+    },
+    {
+      "question_id": 11403403,
+      "uuid": "747890bab995434aac711f0b978d5f30",
+      "type": 1,
+      "title": "使用Scikit-learn的StandardScaler进行特征标准化时...",
+      "content": "使用Scikit-learn的StandardScaler进行特征标准化时，为了确保模型测试阶段使用与训练相同的缩放尺度，应该在哪部分数据上调用fit_transform方法？",
+      "options": [
+        {
+          "id": 7430587,
+          "content": "测试数据集"
+        },
+        {
+          "id": 7430588,
+          "content": "全部数据集"
+        },
+        {
+          "id": 7430589,
+          "content": "训练数据集"
+        },
+        {
+          "id": 7430590,
+          "content": "验证数据集"
+        }
+      ],
+      "correct_option_ids": [
+        7430589
+      ],
+      "correct_options": [
+        "训练数据集"
+      ],
+      "analysis": "在训练数据集上调用 fit_transform 方法，计算特征的均值和标准差并应用缩放。在测试阶段，对测试数据集调用 transform 方法，使用训练时计算的相同缩放尺度，确保一致性并避免数据泄露。选项 A（测试数据集）会导致重新拟合新尺度，破坏一致性；选项 B（全部数据集）会导致测试数据泄露到训练过程；选项 D（验证数据集）类似测试集，应仅使用 transform 应用训练尺度。"
+    },
+    {
+      "question_id": 11403424,
+      "uuid": "2bbf631f6b924a918100c8c3a3a73774",
+      "type": 1,
+      "title": "关于Matplotlib的面向对象（Object-Oriented, OO...",
+      "content": "关于Matplotlib的面向对象（Object-Oriented,&nbsp;OO）接口，以下描述正确的是？",
+      "options": [
+        {
+          "id": 7430087,
+          "content": "必须通过plt.show()才能显示图表，无法直接操作Figure对象"
+        },
+        {
+          "id": 7430088,
+          "content": "适合简单快速绘图，复杂多子图场景推荐用pyplot接口"
+        },
+        {
+          "id": 7430089,
+          "content": "通过Figure和Axes对象直接控制图表的标题、坐标轴等元素"
+        },
+        {
+          "id": 7430090,
+          "content": "无法与Pandas的plot方法配合使用"
+        }
+      ],
+      "correct_option_ids": [
+        7430089
+      ],
+      "correct_options": [
+        "通过Figure和Axes对象直接控制图表的标题、坐标轴等元素"
+      ],
+      "analysis": "C选项正确：在Matplotlib的面向对象接口中，通过创建Figure和Axes对象后，可直接调用其方法（如ax.set_title()、ax.set_xlabel()等）控制标题和坐标轴等元素。A选项错误：OO接口虽需plt.show()显示图表，但可直接操作Figure对象（如fig.savefig()）。B选项错误：OO接口更适合处理复杂多子图场景，而pyplot接口更适用于简单快速绘图。D选项错误：Pandas的plot()方法默认返回Axes对象，可与OO接口无缝配合（如ax = df.plot(); ax.set_title(\"Title\")）。"
+    },
+    {
+      "question_id": 11403381,
+      "uuid": "7bdf502eb6a049aea935ecf91885ae64",
+      "type": 1,
+      "title": "假设有两个NumPy数组 `a = np.ones((5, 1, 4))`...",
+      "content": "假设有两个NumPy数组&nbsp;`a&nbsp;=&nbsp;np.ones((5,&nbsp;1,&nbsp;4))`&nbsp;和&nbsp;`b&nbsp;=&nbsp;np.ones((3,&nbsp;4))`。在执行&nbsp;`a&nbsp;+&nbsp;b`&nbsp;的广播（broadcasting）操作后，结果数组的形状（shape）是什么？",
+      "options": [
+        {
+          "id": 7430891,
+          "content": "操作会因维度不匹配而失败。"
+        },
+        {
+          "id": 7430892,
+          "content": "(5, 3, 4)"
+        },
+        {
+          "id": 7430894,
+          "content": "(5, 1, 4)"
+        },
+        {
+          "id": 7430896,
+          "content": "(15, 4)"
+        }
+      ],
+      "correct_option_ids": [
+        7430892
+      ],
+      "correct_options": [
+        "(5, 3, 4)"
+      ],
+      "analysis": "数组a的形状为(5,1,4)，数组b的形状为(3,4)。根据NumPy广播规则，数组从尾部维度开始比较：最后一个维度均为4，兼容；倒数第二个维度a为1、b为3，1可广播到3；a有额外维度5，b缺少该维度，因此b广播为(1,3,4)再与a相加。广播后，a的第1维（尺寸1）扩展为3，第0维（5）不变，结果形状为(5,3,4)。选项B正确；选项A错误，广播可行；选项C忽略维度扩展；选项D错误地将数组展平，不符合广播机制。"
+    },
+    {
+      "question_id": 11403376,
+      "uuid": "18bcf86438ab4a479a512d9a808d665f",
+      "type": 1,
+      "title": "使用NumPy进行数组操作时，以下哪个场景最能体现广播机制（Broadca...",
+      "content": "使用NumPy进行数组操作时，以下哪个场景最能体现广播机制（Broadcasting）的优势？",
+      "options": [
+        {
+          "id": 7430971,
+          "content": "对两个形状完全相同的数组执行逐元素加法"
+        },
+        {
+          "id": 7430972,
+          "content": "将标量值与5维张量进行乘法运算"
+        },
+        {
+          "id": 7430973,
+          "content": "用for循环处理两个等长一维数组的运算"
+        },
+        {
+          "id": 7430976,
+          "content": "通过np.concatenate合并多个同维数组"
+        }
+      ],
+      "correct_option_ids": [
+        7430972
+      ],
+      "correct_options": [
+        "将标量值与5维张量进行乘法运算"
+      ],
+      "analysis": "广播机制（Broadcasting）的优势在于允许不同形状的数组进行算术运算，而无需显式复制数据或使用循环，从而提高效率和代码简洁性。选项B（将标量值与5维张量进行乘法运算）最能体现这一优势，因为标量（0维）会根据广播规则自动扩展到5维张量的形状，实现逐元素乘法。其他选项不体现广播优势：选项A（形状完全相同的数组逐元素加法）无需广播；选项C（用for循环处理等长一维数组）使用低效循环，与广播无关；选项D（通过np.concatenate合并同维数组）是数组连接操作，不涉及广播机制。"
+    },
+    {
+      "question_id": 11403375,
+      "uuid": "cc338bb08ce14eebbee83e8573dd1cb6",
+      "type": 1,
+      "title": "在Pandas中处理大型数据集时，若需要高效筛选满足特定条件的行，应优先采...",
+      "content": "在Pandas中处理大型数据集时，若需要高效筛选满足特定条件的行，应优先采用以下哪种方法？",
+      "options": [
+        {
+          "id": 7430987,
+          "content": "使用for循环遍历DataFrame并逐一判断"
+        },
+        {
+          "id": 7430988,
+          "content": "将DataFrame转换为列表后使用列表推导式"
+        },
+        {
+          "id": 7430989,
+          "content": "通过query()方法配合条件表达式"
+        },
+        {
+          "id": 7430990,
+          "content": "先调用iterrows()再逐行处理"
+        }
+      ],
+      "correct_option_ids": [
+        7430989
+      ],
+      "correct_options": [
+        "通过query()方法配合条件表达式"
+      ],
+      "analysis": "在Pandas中处理大型数据集时，高效筛选行应优先使用向量化操作或内置优化方法。A选项（for循环遍历）和D选项（iterrows()逐行处理）由于逐行迭代，性能低下，不适合大型数据集；B选项（转换为列表后使用列表推导式）涉及数据转换开销和Python层级处理，同样低效；C选项（query()方法）允许使用条件表达式，内部解析为向量化操作，在大型数据集上效率高，且可读性好，因此是优先采用的方法。"
+    },
+    {
+      "question_id": 2400266,
+      "uuid": "2e711a126b2346e1b4584c6638144813",
+      "type": 1,
+      "title": "进行数据处理过程中，需要对DataFrame数据进行排序，以下哪种方法是按...",
+      "content": "进行数据处理过程中，需要对DataFrame数据进行排序，以下哪种方法是按值排序从大到小顺序排列的（）",
+      "options": [
+        {
+          "id": 3771091,
+          "content": "sort_index(, ascending=False)"
+        },
+        {
+          "id": 3771092,
+          "content": "sort_values(, ascending=False)"
+        },
+        {
+          "id": 3771093,
+          "content": "sort_index(, ascending=True)"
+        },
+        {
+          "id": 3771094,
+          "content": "sort_values(, ascending=True)"
+        }
+      ],
+      "correct_option_ids": [
+        3771092
+      ],
+      "correct_options": [
+        "sort_values(, ascending=False)"
+      ],
+      "analysis": "Pands 提供了两种排序方法，分别是按标签排序和按数值排序。按照标签排序的话采用的是sort_index()函数；按照值排序的话采用sort_values() 函数；两个函数都有一个控制排序顺序的参数ascending，ascending=False时由大到小排序，ascending=True时由小到大排序；因此选择B选项。"
+    },
+    {
+      "question_id": 11403410,
+      "uuid": "62bb298294bc4311b243935527a7896d",
+      "type": 1,
+      "title": "在 NumPy 中，进行数组广播操作时，以下哪种情况会导致形状不兼容的错误？",
+      "content": "在&nbsp;NumPy&nbsp;中，进行数组广播操作时，以下哪种情况会导致形状不兼容的错误？",
+      "options": [
+        {
+          "id": 7430175,
+          "content": "形状为 (3,4) 的数组与形状为 (4,) 的数组相加"
+        },
+        {
+          "id": 7430176,
+          "content": "形状为 (5,1) 的数组与形状为 (1,5) 的数组相乘"
+        },
+        {
+          "id": 7430177,
+          "content": "形状为 (3,3) 的数组与形状为 (2,2) 的数组进行点乘"
+        },
+        {
+          "id": 7430178,
+          "content": "形状为 (10,) 的数组与形状为 (10,1) 的数组进行元素级运算"
+        }
+      ],
+      "correct_option_ids": [
+        7430177
+      ],
+      "correct_options": [
+        "形状为 (3,3) 的数组与形状为 (2,2) 的数组进行点乘"
+      ],
+      "analysis": "在 NumPy 广播规则中，形状兼容性要求从最右边的维度开始比较，维度大小相等或其中一个是 1。选项 A: 形状 (3,4) 和 (4,) 相加，(4,) 广播为 (1,4)，与 (3,4) 兼容，无错误。选项 B: 形状 (5,1) 和 (1,5) 相乘（元素级），广播为 (5,5)，兼容，无错误。选项 C: 形状 (3,3) 和 (2,2) 进行点乘（dot product），点乘操作要求第一个数组的列数与第二个数组的行数相等（此处 3 ≠ 2），导致形状不兼容错误；即使元素级运算比较也会因维度 3 和 2 均不为 1 而错误。选项 D: 形状 (10,) 和 (10,1) 进行元素级运算，(10,) 广播为 (1,10)，与 (10,1) 广播到 (10,10)，兼容，无错误。因此，只有选项 C 会导致错误。"
+    },
+    {
+      "question_id": 11403398,
+      "uuid": "d87742e4c67642aa9dedca4804c71c30",
+      "type": 1,
+      "title": "在Pandas中处理销售数据时，需要按“地区”列分组后，为每个地区计算月销...",
+      "content": "在Pandas中处理销售数据时，需要按“地区”列分组后，为每个地区计算月销售额的均值，并将结果映射回原DataFrame（保持原数据行数不变），以下哪个方法最适合该需求？",
+      "options": [
+        {
+          "id": 7430643,
+          "content": "df.groupby('地区')['销售额'].agg('mean')"
+        },
+        {
+          "id": 7430644,
+          "content": "df.groupby('地区')['销售额'].transform('mean')"
+        },
+        {
+          "id": 7430645,
+          "content": "df.groupby('地区')['销售额'].apply(lambda x: x.mean())"
+        },
+        {
+          "id": 7430646,
+          "content": "df.groupby('地区')['销售额'].filter(lambda x: x.mean() &gt; 10000)"
+        }
+      ],
+      "correct_option_ids": [
+        7430644
+      ],
+      "correct_options": [
+        "df.groupby('地区')['销售额'].transform('mean')"
+      ],
+      "analysis": "题目需求是按'地区'分组计算销售额均值并映射回原DataFrame（保持行数不变）。B选项使用transform('mean')，该方法为每个组计算统计量（此处为均值）并在组内广播，返回与原数据相同行数的Series，可直接映射回原数据。A选项agg('mean')和C选项apply(lambda x: x.mean())返回聚合结果（大小为组数），无法直接映射。D选项filter基于条件（均值>10000）过滤组，返回行数减小的子集，违反行数不变要求。未发现文字错误、逻辑矛盾、专业名词错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11403437,
+      "uuid": "1fc96c08f5044575a47e5ae5ce113cd2",
+      "type": 1,
+      "title": "关于NumPy的广播（Broadcasting）机制，以下说法正确的是？",
+      "content": "关于NumPy的广播（Broadcasting）机制，以下说法正确的是？",
+      "options": [
+        {
+          "id": 7429999,
+          "content": "广播仅支持数组与标量的运算"
+        },
+        {
+          "id": 7430000,
+          "content": "若两个数组维度数不同，维度少的数组会在末尾补1维以匹配维度数"
+        },
+        {
+          "id": 7430002,
+          "content": "当两个数组某一维度的大小既不相等也不为1时，无法进行广播"
+        },
+        {
+          "id": 7430003,
+          "content": "广播会复制数组数据以扩展维度，因此会增加内存消耗"
+        }
+      ],
+      "correct_option_ids": [
+        7430002
+      ],
+      "correct_options": [
+        "当两个数组某一维度的大小既不相等也不为1时，无法进行广播"
+      ],
+      "analysis": "选项C正确：根据NumPy广播机制规则，当两个数组在某一维度的大小既不相等也不为1时，确实无法进行广播，因为这是广播失败的条件之一。选项A错误：广播不只支持数组与标量的运算，还支持不同形状的数组之间的运算（如数组与数组）。选项B错误：若维度数不同，维度少的数组是在形状前面（而非末尾）补1维以匹配维度数。选项D错误：广播机制通过创建视图（view）来模拟扩展维度，通常不会复制数组数据，因此不会增加内存消耗；只有在特定操作中可能临时创建数组，但广播本身设计为最小化内存使用。"
+    },
+    {
+      "question_id": 2400258,
+      "uuid": "7175a9f55186433dbd052ab84493df87",
+      "type": 1,
+      "title": "Matplotlib 使用plt.subplots(m,n)函数绘制多图的...",
+      "content": "Matplotlib 使用plt.subplots(m,n)函数绘制多图的时候，下列说法不正确的是（）",
+      "options": [
+        {
+          "id": 3771059,
+          "content": "plt.subplots()函数返回的是图形对象和所有的axes对象"
+        },
+        {
+          "id": 3771060,
+          "content": "ax.flatten()函数可以将m*n的子图展平成1*nm的axes组"
+        },
+        {
+          "id": 3771061,
+          "content": "subplot()函数和subplots() 函数相比，只创建了一个figure图形对象"
+        },
+        {
+          "id": 3771062,
+          "content": "axes对象使用set_title()函数为子图添加标题"
+        }
+      ],
+      "correct_option_ids": [
+        3771061
+      ],
+      "correct_options": [
+        "subplot()函数和subplots() 函数相比，只创建了一个figure图形对象"
+      ],
+      "analysis": "选项A，plt.subplots(m,n)函数的返回值是一个元组，包括一个图形对象(fig)和所有的axes对象,其中axes 对象数量为m*n，因此A描述正确；选项B，在用plt.subplots(m,n)画多个子图时，ax=ax.flatten()操作将ax由n*m的Axes组展平成1*nm的Axes组，因此B项描述正确；选项C，subplots() 函数和 subplot() 函数使用方法类似。其不同之处在于，subplots() 既创建了一个包含子图区域的画布，又创建了一个 figure 图形对象，而 subplot()只是创建一个包含子图区域的画布。因此C项描述不正确；选项D，ax.set_title()是给ax子图设置标题，当子图存在多个的时候，可以通过ax设置不同的标题；"
+    },
+    {
+      "question_id": 11403386,
+      "uuid": "d4f822fd4bcf4428b596d973a7cc325b",
+      "type": 1,
+      "title": "使用scipy.stats.ttest_ind进行独立样本t检验时，若两样...",
+      "content": "使用scipy.stats.ttest_ind进行独立样本t检验时，若两样本的方差不相等，以下正确的处理方式是？",
+      "options": [
+        {
+          "id": 7430815,
+          "content": "必须先对数据做方差齐性转换，否则无法进行检验"
+        },
+        {
+          "id": 7430816,
+          "content": "在函数中设置equal_var=False参数，使用Welch-Satterthwaite近似"
+        },
+        {
+          "id": 7430817,
+          "content": "要求两样本的样本量必须相同，否则无法修正方差不等问题"
+        },
+        {
+          "id": 7430818,
+          "content": "无需处理，ttest_ind会自动识别方差差异并调整"
+        }
+      ],
+      "correct_option_ids": [
+        7430816
+      ],
+      "correct_options": [
+        "在函数中设置equal_var=False参数，使用Welch-Satterthwaite近似"
+      ],
+      "analysis": "在独立样本t检验中，当两样本方差不相等时，scipy.stats.ttest_ind函数提供了处理方式。选项B正确：在函数中设置equal_var=False参数会使用Welch-Satterthwaite近似（也称为Welch's t-test），它不假设方差齐性，能有效处理方差不等的场景。\n\n选项A错误：数据方差齐性转换不是必须的，因为scipy提供了直接参数设置来避免转换。\n选项C错误：两样本的样本量不需要相同，Welch's t-test能处理样本量不等的情况。\n选项D错误：ttest_ind不会自动识别方差差异，默认equal_var=True（假设方差齐性），需手动设置参数来调整。"
+    },
+    {
+      "question_id": 11403353,
+      "uuid": "cbb7db149b5441b4ae364d1caeb54720",
+      "type": 1,
+      "title": "在使用pandas的`groupby`进行聚合操作时，若想避免分组键成为结...",
+      "content": "在使用pandas的`groupby`进行聚合操作时，若想避免分组键成为结果的索引，并将分组键保留为普通列，最合适的做法是什么？",
+      "options": [
+        {
+          "id": 7431301,
+          "content": "在聚合操作后调用`reset_index()`"
+        },
+        {
+          "id": 7431302,
+          "content": "在`groupby`方法中设置`as_index=False`"
+        },
+        {
+          "id": 7431303,
+          "content": "在`agg`函数中使用特殊的分组键占位符"
+        },
+        {
+          "id": 7431304,
+          "content": "对分组键手动调用`pd.Series`转换"
+        }
+      ],
+      "correct_option_ids": [
+        7431302
+      ],
+      "correct_options": [
+        "在`groupby`方法中设置`as_index=False`"
+      ],
+      "analysis": "题目描述了在使用pandas的`groupby`进行聚合操作时，希望避免分组键成为索引并保留为普通列的需求。根据pandas官方API，在`groupby`方法中设置`as_index=False`是最直接和高效的做法，它会直接在聚合过程中将分组键作为普通列保留，避免成为索引。选项A（聚合后调用`reset_index()`）虽然也能实现相同效果，但它是事后操作，效率较低，因此不是最合适的做法。选项C（在agg函数中使用特殊的分组键占位符）无效，因为pandas的agg函数没有这样的占位符机制；分组键是隐式处理的。选项D（对分组键手动调用`pd.Series`转换）不相关，无法改变索引状态。题目和选项文字准确，无错别字、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11403423,
+      "uuid": "d8f58829f0f04e50bcd9be9d1358d8af",
+      "type": 1,
+      "title": "在Pandas中，对DataFrame执行groupby后使用agg方法，...",
+      "content": "<div>\n\t在Pandas中，对DataFrame执行groupby后使用agg方法，以下代码的执行结果描述正确的是？\n</div>\n<div>\n<pre class=\"prettyprint lang-py3\">import&nbsp;pandas&nbsp;as&nbsp;pd\ndf&nbsp;=&nbsp;pd.DataFrame({'A':&nbsp;['x','x','y','y'],&nbsp;'B':&nbsp;[1,2,3,4],&nbsp;'C':&nbsp;[5,6,7,8]})\nresult&nbsp;=&nbsp;df.groupby('A').agg(B_sum=('B',&nbsp;'sum'),&nbsp;C_mean=('C',&nbsp;'mean'))</pre>\n</div>",
+      "options": [
+        {
+          "id": 7430091,
+          "content": "result的列名为['B_sum', 'C_mean']，索引为['x','y']"
+        },
+        {
+          "id": 7430092,
+          "content": "result的列名为['B', 'C']，索引为['x','y']"
+        },
+        {
+          "id": 7430093,
+          "content": "result的列是多级索引，第一层为原列名，第二层为聚合函数名"
+        },
+        {
+          "id": 7430094,
+          "content": "代码执行错误，因为agg不能同时使用不同聚合函数"
+        }
+      ],
+      "correct_option_ids": [
+        7430091
+      ],
+      "correct_options": [
+        "result的列名为['B_sum', 'C_mean']，索引为['x','y']"
+      ],
+      "analysis": "代码使用Pandas的groupby和agg方法，按列'A'分组后对列'B'应用sum聚合函数命名为'B_sum'，对列'C'应用mean聚合函数命名为'C_mean'，因此result的索引为分组值['x','y']，列名为['B_sum','C_mean']。选项A正确描述了此结果。选项B错误，因为列名应为['B_sum','C_mean']而非['B','C']；选项C错误，因为agg的命名聚合（如B_sum=('B','sum')）创建平铺单级列索引，而非多级索引；选项D错误，因为agg允许对不同列使用不同聚合函数（如sum和mean），代码执行无误。"
+    },
+    {
+      "question_id": 2400283,
+      "uuid": "47c983ba07004b53b4c65f556feadb09",
+      "type": 1,
+      "title": "存在一组numpy.ndarrry类型数据a=np.array([1,2,...",
+      "content": "存在一组numpy.ndarrry类型数据a=np.array([1,2,3,4])和各个数值的权重w=np.array([4,3,2,1])，以下哪种方法可以求得权重平均值（）",
+      "options": [
+        {
+          "id": 3771159,
+          "content": "np.mean()"
+        },
+        {
+          "id": 3771160,
+          "content": "np.nanmean()"
+        },
+        {
+          "id": 3771161,
+          "content": "np.average()"
+        },
+        {
+          "id": 3771162,
+          "content": "np.std()"
+        }
+      ],
+      "correct_option_ids": [
+        3771161
+      ],
+      "correct_options": [
+        "np.average()"
+      ],
+      "analysis": "A. mean()的功能是求取平均值；B. nanmean()的功能是计算忽略NaN值的数组平均值。如果数组具有NaN值，我们可以找出不受NaN值影响的均值；C. mean() 和 average(）都有取平均数的意思， 在不考虑加权平均的前提下，两者的输出是一样的 ,但是考虑权重的情况下， np.average(a,weights=w) 还可以计算加权平均值；D.std()计算矩阵或者数组的标准差；"
+    },
+    {
+      "question_id": 11403368,
+      "uuid": "9454b9c230764eb58aaeccfe2bb15515",
+      "type": 1,
+      "title": "假设需要为一个大型 Pandas DataFrame 添加一个新列 `D`...",
+      "content": "假设需要为一个大型&nbsp;Pandas&nbsp;DataFrame&nbsp;添加一个新列&nbsp;`D`，其值由现有列&nbsp;`A`&nbsp;和&nbsp;`B`&nbsp;计算得出（例如&nbsp;`D&nbsp;=&nbsp;A&nbsp;*&nbsp;2&nbsp;+&nbsp;B`）。从计算性能的角度考虑，以下哪种方法通常是最高效的？",
+      "options": [
+        {
+          "id": 7431093,
+          "content": "使用 `df.apply(lambda row: row['A'] * 2 + row['B'], axis=1)`"
+        },
+        {
+          "id": 7431094,
+          "content": "使用循环和 `.iterrows()` 遍历每一行进行计算和赋值。"
+        },
+        {
+          "id": 7431095,
+          "content": "使用直接的向量化操作，即 `df['D'] = df['A'] * 2 + df['B']`。"
+        },
+        {
+          "id": 7431096,
+          "content": "将 DataFrame 转换为 Python 字典列表，在循环中计算后再转换回 DataFrame。"
+        }
+      ],
+      "correct_option_ids": [
+        7431095
+      ],
+      "correct_options": [
+        "使用直接的向量化操作，即 `df['D'] = df['A'] * 2 + df['B']`。"
+      ],
+      "analysis": "在Pandas中，向量化操作利用底层优化（如NumPy）进行批量计算，避免Python循环开销，是计算最高效的方式。选项A使用df.apply逐行应用函数，引入函数调用开销；选项B使用.iterrows()显式循环遍历行，性能最差；选项D转换为字典列表后循环再转回DataFrame，增加额外转换开销。因此选项C的df[\"D\"] = df[\"A\"] * 2 + df[\"B\"] 是最佳选择。"
+    },
+    {
+      "question_id": 11403411,
+      "uuid": "4a4bae67b43e45dfb9a4c23e161391c9",
+      "type": 1,
+      "title": "某numpy数组X的形状为(100, 5)（100个样本，5个特征），需要...",
+      "content": "某numpy数组X的形状为(100,&nbsp;5)（100个样本，5个特征），需要对每个特征进行均值标准化（即每个特征减去自身均值，除以自身标准差），以下哪个方法正确应用了广播机制？",
+      "options": [
+        {
+          "id": 7430167,
+          "content": "(X - X.mean(axis=0)) / X.std(axis=0)"
+        },
+        {
+          "id": 7430168,
+          "content": "(X - X.mean(axis=1)) / X.std(axis=1)"
+        },
+        {
+          "id": 7430169,
+          "content": "(X - X.mean()) / X.std()"
+        },
+        {
+          "id": 7430170,
+          "content": "(X - X.mean(axis=1, keepdims=True)) / X.std(axis=1, keepdims=True)"
+        }
+      ],
+      "correct_option_ids": [
+        7430167
+      ],
+      "correct_options": [
+        "(X - X.mean(axis=0)) / X.std(axis=0)"
+      ],
+      "analysis": "选项A正确：X.mean(axis=0)和X.std(axis=0)计算每个特征的均值和标准差，形状为(5,)，在广播机制下，该数组被扩展为(1,5)，然后与形状(100,5)的X进行运算，相当于每个样本都减去对应特征的均值并除以标准差，符合每个特征标准化的要求。选项B错误：X.mean(axis=1)和X.std(axis=1)计算每行的均值和标准差，形状为(100,)，广播后针对样本（行）而非特征进行操作。选项C错误：X.mean()和X.std()计算全局均值和标准差（标量），所有特征使用同一值，不符合每个特征自身统计的要求。选项D错误：虽然使用keepdims=True保持维度，形状为(100,1)，但axis=1针对样本（行）统计，广播后仍错误地对每行所有特征应用相同值。"
+    },
+    {
+      "question_id": 2400247,
+      "uuid": "3b2cf861f3a540fe8a310e745d2da31a",
+      "type": 1,
+      "title": "numpy数据库可以创建ndarray数组，以下哪个函数可以创建指定步长的...",
+      "content": "numpy数据库可以创建ndarray数组，以下哪个函数可以创建指定步长的一组ndarray数组（）",
+      "options": [
+        {
+          "id": 3771016,
+          "content": "numpy.arange"
+        },
+        {
+          "id": 3771017,
+          "content": "numpy.linspace"
+        },
+        {
+          "id": 3771018,
+          "content": "numpy.logspace"
+        },
+        {
+          "id": 3771019,
+          "content": "numpy.random.randint"
+        }
+      ],
+      "correct_option_ids": [
+        3771016
+      ],
+      "correct_options": [
+        "numpy.arange"
+      ],
+      "analysis": "A选项，numpy.arange(start, stop, step, dtype)根据 start 与 stop 指定的范围以及 step 设定的步长，生成一个 ndarray；B选项，numpy.linspace 函数用于创建一个一维数组，数组是一个等差数列构成的；C选项，numpy.logspace 函数用于创建一个于等比数列；D选项，返回一个随机整型数；"
+    },
+    {
+      "question_id": 11403395,
+      "uuid": "b562a275b89b4c13bf528d2992e159de",
+      "type": 1,
+      "title": "需要将两个大表 A 与 B 按 ['user_id', 'day'] 进行...",
+      "content": "需要将两个大表&nbsp;A&nbsp;与&nbsp;B&nbsp;按&nbsp;['user_id',&nbsp;'day']&nbsp;进行左连接（A&nbsp;left&nbsp;merge&nbsp;B）。A.user_id&nbsp;为字符串，B.user_id&nbsp;由整数编码左侧补零形成（如&nbsp;'000123'），且部分键列可能包含前后空格。为了避免隐式类型转换带来的性能开销和连接错配，最关键的前置步骤是？",
+      "options": [
+        {
+          "id": 7430679,
+          "content": "统一两侧连接键的 dtype 与取值形态（如先 strip 空白并用 astype 明确转为同一字符串格式）"
+        },
+        {
+          "id": 7430680,
+          "content": "将两张表的所有列都统一转换为字符串类型"
+        },
+        {
+          "id": 7430681,
+          "content": "在 merge 时设置 validate='one_to_one'，可自动修正类型并提升性能"
+        },
+        {
+          "id": 7430682,
+          "content": "在 merge 前将两张表随机打乱行顺序以避免热点"
+        }
+      ],
+      "correct_option_ids": [
+        7430679
+      ],
+      "correct_options": [
+        "统一两侧连接键的 dtype 与取值形态（如先 strip 空白并用 astype 明确转为同一字符串格式）"
+      ],
+      "analysis": "题目要求避免隐式类型转换带来的性能开销和连接错配。A.user_id为字符串，B.user_id由整数编码左侧补零形成（如'000123'），但部分键列可能包含前后空格。这可能导致值不一致（如'123'与'000123'不同）或空格导致匹配失败。选项A统一连接键的dtype和取值形态（如使用strip()去除空格并用astype转为同一字符串格式）能直接解决这些问题：确保类型一致、值格式标准化、避免隐式转换。选项B将所有列转为字符串类型不必要，仅转换连接键即可，且不处理空格问题。选项C设置validate='one_to_one'仅验证键的唯一性，不会自动修正类型或提升性能。选项D随机打乱行顺序与连接键类型和值匹配问题无关，无法解决性能开销或错配。"
+    },
+    {
+      "question_id": 11403371,
+      "uuid": "fc83785371c349c49cde9e5ea60fac5d",
+      "type": 1,
+      "title": "在进行机器学习项目时，你有一个包含数百万条记录的数据集，其中一列 `qua...",
+      "content": "在进行机器学习项目时，你有一个包含数百万条记录的数据集，其中一列&nbsp;`quality`&nbsp;存储了有序的文本标签（'low',&nbsp;'medium',&nbsp;'high'）。为了在不显著增加内存占用的前提下，最有效地将其转换为数值特征以供模型使用，最佳实践是什么？",
+      "options": [
+        {
+          "id": 7431045,
+          "content": "使用 `pandas.get_dummies()` 函数将该列进行独热编码（One-Hot Encoding）。"
+        },
+        {
+          "id": 7431046,
+          "content": "使用 `sklearn.preprocessing.LabelEncoder` 直接将字符串转换为 0, 1, 2 等整数。"
+        },
+        {
+          "id": 7431047,
+          "content": "使用 `pandas.CategoricalDtype` 定义一个有序的分类类型，并将该列的数据类型转换为此类型，然后通过 `.cat.codes` 访问其整数编码。"
+        },
+        {
+          "id": 7431052,
+          "content": "编写一个 Python 字典 `{'low': 0, 'medium': 1, 'high': 2}` 并使用 `.map()` 方法应用到该列。"
+        }
+      ],
+      "correct_option_ids": [
+        7431047
+      ],
+      "correct_options": [
+        "使用 `pandas.CategoricalDtype` 定义一个有序的分类类型，并将该列的数据类型转换为此类型，然后通过 `.cat.codes` 访问其整数编码。"
+      ],
+      "analysis": "题目要求将有序文本标签（'low', 'medium', 'high'）转换为数值特征，且不显著增加内存占用。选项分析如下：A的独热编码会创建多个新列（如low、medium、high三列），显著增加内存，且不保留顺序，不满足要求；B的LabelEncoder直接将字符串编码为整数（如0、1、2），内存占用小但可能不保留指定顺序（LabelEncoder按字母或出现顺序编码，而非显式有序），且通常用于标签而非特征；C使用CategoricalDtype定义有序类型并获取.cat.codes，不仅保留顺序（通过ordered=True指定），还通过pandas分类类型在内部存储类别映射，大幅减少内存占用（共享字符串，避免重复存储）；D手动映射到整数，内存占用小且保留顺序，但不如C内存高效（C在数据类型转换时直接优化内存，而D需额外处理原字符串列）。因此，C是最佳实践，符合要求。题目文字及专业术语无错误，无逻辑矛盾。"
+    },
+    {
+      "question_id": 11403435,
+      "uuid": "eabd314f181d4f899f5dff98ac9d58c4",
+      "type": 1,
+      "title": "在使用Seaborn的FacetGrid绘制多子图以展示不同类别数据的分布...",
+      "content": "在使用Seaborn的FacetGrid绘制多子图以展示不同类别数据的分布时，以下说法正确的是？",
+      "options": [
+        {
+          "id": 7430014,
+          "content": "FacetGrid的map方法只能传递Seaborn的绘图函数，不能使用Matplotlib的函数（如plt.hist）"
+        },
+        {
+          "id": 7430016,
+          "content": "通过col参数指定分类列时，子图会按列排列，每个列对应一个分类值"
+        },
+        {
+          "id": 7430017,
+          "content": "必须调用add_legend()方法才能显示任何图例"
+        },
+        {
+          "id": 7430018,
+          "content": "使用hue参数时，不同hue类别的数据会被分配到不同的子图中"
+        }
+      ],
+      "correct_option_ids": [
+        7430016
+      ],
+      "correct_options": [
+        "通过col参数指定分类列时，子图会按列排列，每个列对应一个分类值"
+      ],
+      "analysis": "分析题目选项：\n- A错误：FacetGrid的map方法可以传递Matplotlib函数（如plt.hist），官方文档支持此用法。\n- B正确：col参数控制列方向分面，每个分类值生成一列子图。\n- C错误：图例可通过add_legend()添加，但部分绘图函数（如sns.scatterplot）会自动生成图例。\n- D错误：hue参数在同一子图内用颜色区分类别，与分配子图无关（由row/col参数控制子图分配）。\n题目无专业名词错误（FacetGrid、map、col、hue等术语准确）和逻辑矛盾，符合考试筛选要求。"
+    },
+    {
+      "question_id": 11403391,
+      "uuid": "93b9b3fd4de34adfb1b833de14bc06e9",
+      "type": 1,
+      "title": "假设有两个 NumPy 数组 `a = np.arange(12).res...",
+      "content": "假设有两个&nbsp;NumPy&nbsp;数组&nbsp;`a&nbsp;=&nbsp;np.arange(12).reshape(4,&nbsp;3,&nbsp;1)`&nbsp;和&nbsp;`b&nbsp;=&nbsp;np.arange(3).reshape(1,&nbsp;3)`。执行&nbsp;`c&nbsp;=&nbsp;a&nbsp;+&nbsp;b`&nbsp;操作后，数组&nbsp;`c`&nbsp;的形状（shape）是什么？",
+      "options": [
+        {
+          "id": 7430739,
+          "content": "(4, 3, 3)"
+        },
+        {
+          "id": 7430740,
+          "content": "(4, 3, 1)"
+        },
+        {
+          "id": 7430741,
+          "content": "(1, 3, 3)"
+        },
+        {
+          "id": 7430742,
+          "content": "操作会因形状不匹配而引发 ValueError"
+        }
+      ],
+      "correct_option_ids": [
+        7430739
+      ],
+      "correct_options": [
+        "(4, 3, 3)"
+      ],
+      "analysis": "数组 `a` 的形状为 (4, 3, 1)，数组 `b` 的形状为 (1, 3)。执行 `a + b` 操作时，NumPy 的广播规则会从后向前比较维度：首先，调整维度数以匹配，`b` 的形状被视为 (1, 1, 3)；然后比较：维度2（最右），a 的 1 与 b 的 3 兼容，扩展为 3；维度1，a 的 3 与 b 的 1 兼容，扩展为 3；维度0，a 的 4 与 b 的 1 兼容，扩展为 4。因此广播后两数组形状均为 (4, 3, 3)，结果 `c` 的形状为 (4, 3, 3)。选项 A 正确，无文字、逻辑或专业名称错误。"
+    },
+    {
+      "question_id": 11403440,
+      "uuid": "c19519c0e01c48498d7a17211aec466e",
+      "type": 1,
+      "title": "使用SciPy的统计模块进行独立样本t检验时，如果返回的p值小于0.05，...",
+      "content": "使用SciPy的统计模块进行独立样本t检验时，如果返回的p值小于0.05，应该如何正确解释这一结果？",
+      "options": [
+        {
+          "id": 7429975,
+          "content": "零假设成立"
+        },
+        {
+          "id": 7429976,
+          "content": "拒绝零假设"
+        },
+        {
+          "id": 7429977,
+          "content": "样本均无显著差异"
+        },
+        {
+          "id": 7429978,
+          "content": "检验方法有误"
+        }
+      ],
+      "correct_option_ids": [
+        7429976
+      ],
+      "correct_options": [
+        "拒绝零假设"
+      ],
+      "analysis": "在独立样本t检验中，p值小于0.05表示在5%显著性水平下拒绝零假设，通常意味着样本均值存在显著差异。选项A错误，因为p值小说明证据反对零假设；选项C错误，因为p值小表示样本存在显著差异，而非无差异；选项D错误，p值大小不直接反映检验方法错误。"
+    },
+    {
+      "question_id": 11403363,
+      "uuid": "700f3ae78a804af992ead0435f1e4c5e",
+      "type": 1,
+      "title": "使用pandas处理包含时间序列数据的DataFrame时，以下哪种方法能...",
+      "content": "使用pandas处理包含时间序列数据的DataFrame时，以下哪种方法能高效地进行重采样（resample）操作？",
+      "options": [
+        {
+          "id": 7431171,
+          "content": "使用apply()函数逐行计算"
+        },
+        {
+          "id": 7431173,
+          "content": "先将数据分割为小块后分别处理"
+        },
+        {
+          "id": 7431175,
+          "content": "直接使用resample()方法并指定聚合函数"
+        },
+        {
+          "id": 7431176,
+          "content": "转换为列表后迭代处理"
+        }
+      ],
+      "correct_option_ids": [
+        7431175
+      ],
+      "correct_options": [
+        "直接使用resample()方法并指定聚合函数"
+      ],
+      "analysis": "在pandas中处理时间序列数据时，重采样操作的高效方法是直接使用resample()方法并指定聚合函数（选项C），因为resample()是pandas专门为时间序列设计的向量化函数，利用了底层优化算法，高效且简单。而其他选项均不高效：A使用apply()函数逐行计算在数据量大时会非常慢；B先将数据分割为小块后分别处理会导致额外分割和合并开销；D转换为列表后迭代处理效率最低，破坏了pandas的向量化优势。题目无文字错误、逻辑矛盾或专业名称错误，选项设置有效。"
+    },
+    {
+      "question_id": 11403439,
+      "uuid": "f45f60a29ce441cb8d92e2f2d1c7526d",
+      "type": 1,
+      "title": "当处理两个大型NumPy数组时，哪种方法能最有效地计算它们的点积，同时避免...",
+      "content": "当处理两个大型NumPy数组时，哪种方法能最有效地计算它们的点积，同时避免内存开销和高计算延迟？",
+      "options": [
+        {
+          "id": 7429982,
+          "content": "使用Python的for循环迭代计算"
+        },
+        {
+          "id": 7429983,
+          "content": "使用np.dot函数"
+        },
+        {
+          "id": 7429984,
+          "content": "先将数组转换为列表再用sum计算"
+        },
+        {
+          "id": 7429986,
+          "content": "使用np.apply_along_axis逐元素处理"
+        }
+      ],
+      "correct_option_ids": [
+        7429983
+      ],
+      "correct_options": [
+        "使用np.dot函数"
+      ],
+      "analysis": "np.dot函数是NumPy库中专用于计算点积的优化函数，它利用底层高效库（如BLAS）实现，对大型数组能避免Python循环的内存开销和高计算延迟。选项A（for循环）在Python中执行缓慢；选项C（转换为列表再用sum）会增加内存占用和计算时间；选项D（np.apply_along_axis）不是点积的标准方法，效率类似循环，因此都不符合题目要求的高效性。"
+    },
+    {
+      "question_id": 10959802,
+      "uuid": "f5307dd40aad4ca3b4e186b102c13236",
+      "type": 1,
+      "title": "下列关于 XGBoost 的说法，错误的是（）",
+      "content": "下列关于 XGBoost 的说法，错误的是（）",
+      "options": [
+        {
+          "id": 6615682,
+          "content": "XGBoost 支持单颗树粒度的并行"
+        },
+        {
+          "id": 6615683,
+          "content": "XGBoost 支持特征抽样"
+        },
+        {
+          "id": 6615684,
+          "content": "XGBoost 在代价函数里加入了正则项"
+        },
+        {
+          "id": 6615685,
+          "content": "XGBoost 支持对缺失值的自动处理"
+        }
+      ],
+      "correct_option_ids": [
+        6615682
+      ],
+      "correct_options": [
+        "XGBoost 支持单颗树粒度的并行"
+      ],
+      "analysis": "XGBoost 在特征粒度上支持并行，A 说法错误；XGBoost 支持列抽样，即特征抽样，B 说法正确；XGBoost 在代价函数里加入了正则项用于控制模型的复杂度，C 说法正确；XGBoost 对于特征的值有缺失的样本，可以自动学习出它的分裂方向，D 说法正确。因此选择 A 选项。"
+    },
+    {
+      "question_id": 11403428,
+      "uuid": "c2d19e1b3a184705ae2a63c61a43fb69",
+      "type": 1,
+      "title": "在 Pandas 中，你需要基于 'group_id' 列对数据进行分组，...",
+      "content": "在&nbsp;Pandas&nbsp;中，你需要基于&nbsp;'group_id'&nbsp;列对数据进行分组，并计算每个组内&nbsp;'score'&nbsp;列的&nbsp;Z-score&nbsp;标准化值，然后将这个标准化的值作为一个新列添加到原始&nbsp;DataFrame&nbsp;中。以下哪个&nbsp;`groupby`&nbsp;链式调用最适合直接完成这个任务？",
+      "options": [
+        {
+          "id": 7430059,
+          "content": "`df.groupby('group_id')['score'].agg(lambda x: (x - x.mean()) / x.std())`"
+        },
+        {
+          "id": 7430060,
+          "content": "`df.groupby('group_id')['score'].transform(lambda x: (x - x.mean()) / x.std())`"
+        },
+        {
+          "id": 7430061,
+          "content": "`df.groupby('group_id').filter(lambda x: len(x) &gt; 1)`"
+        },
+        {
+          "id": 7430062,
+          "content": "`df.groupby('group_id')['score'].apply(lambda x: x.mean())`"
+        }
+      ],
+      "correct_option_ids": [
+        7430060
+      ],
+      "correct_options": [
+        "`df.groupby('group_id')['score'].transform(lambda x: (x - x.mean()) / x.std())`"
+      ],
+      "analysis": "题目要求基于 'group_id' 列分组，计算每个组内 'score' 列的 Z-score 标准化值，并将其作为新列添加到原始 DataFrame 中。Z-score 计算公式为 (x - μ) / σ，其中 μ 是组内均值，σ 是组内标准差，且需返回与原 DataFrame 行数对齐的序列以便直接添加为新列。\n- 选项 A：使用 `agg` 方法，但 `agg` 用于聚合操作，默认返回每个组的汇总结果（标量或缩减后的值）。lambda 函数返回一个 Series，但 `agg` 的输出索引与原始 DataFrame 不直接对齐，无法直接添加为新列，需额外处理。\n- 选项 B：使用 `transform` 方法，`transform` 在每个组上应用函数后返回与原 DataFrame 索引对齐的序列，lambda 函数正确计算 Z-score，结果可直接赋值给新列，满足题目要求。\n- 选项 C：使用 `filter` 方法，仅用于根据组级条件（如组大小 >1）过滤行，不返回计算值，也无法添加新列。\n- 选项 D：使用 `apply` 方法，但 lambda 函数返回每个组的均值（标量），输出为组级索引的 Series，无法广播回每个元素，不能直接添加为新列。\n题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11403378,
+      "uuid": "4bbd1f245ab944068226df61b398081b",
+      "type": 1,
+      "title": "给定 NumPy 数组 X 形状为 (1000, 3)，mean 为通过对...",
+      "content": "给定&nbsp;NumPy&nbsp;数组&nbsp;X&nbsp;形状为&nbsp;(1000,&nbsp;3)，mean&nbsp;为通过对列求均值后得到的列向量，形状为&nbsp;(3,&nbsp;1)。希望对&nbsp;X&nbsp;做按列中心化（每列减去对应列的均值），下列哪一写法在不复制多余数据的前提下能正确广播并完成计算？",
+      "options": [
+        {
+          "id": 7430943,
+          "content": "X - mean"
+        },
+        {
+          "id": 7430944,
+          "content": "X - mean.T"
+        },
+        {
+          "id": 7430945,
+          "content": "X - mean.reshape(-1, 1)"
+        },
+        {
+          "id": 7430946,
+          "content": "X - mean[:, None]"
+        }
+      ],
+      "correct_option_ids": [
+        7430944
+      ],
+      "correct_options": [
+        "X - mean.T"
+      ],
+      "analysis": "选项 B: X - mean.T 能够正确广播并完成计算。mean 形状为 (3, 1)，其转置 mean.T 形状为 (1, 3)。X 形状为 (1000, 3)，广播时比较维度：最后一个维度都为 3，兼容；前一个维度 X 为 1000，mean.T 为 1，1 可广播到 1000。因此，广播后 mean.T 变为 (1000, 3)，每行都是列均值的行向量，从而实现每列减去对应列的均值，且广播机制不复制多余数据。选项 A: X - mean 形状不兼容，X (1000,3) 和 mean (3,1) 的维度 1000 和 3 无法广播，会出错。选项 C: X - mean.reshape(-1,1) 中，mean 已为 (3,1)，reshape 后形状不变，等同于 A，错误。选项 D: X - mean[:, None] 中，mean[:, None] 形状为 (3,1,1)，与 X (1000,3) 广播后维度不匹配，会创建额外维度 (3,1000,3)，导致结果错误，且可能复制数据。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 2400279,
+      "uuid": "a0ec4e225ab54eaf98efb420c34d3d56",
+      "type": 1,
+      "title": "如何统计DataFrame数据df的某一列中每种字符串出现的次数（）",
+      "content": "如何统计DataFrame数据df的某一列中每种字符串出现的次数（）",
+      "options": [
+        {
+          "id": 3771143,
+          "content": "df[].unique()"
+        },
+        {
+          "id": 3771144,
+          "content": "df[].value_counts()"
+        },
+        {
+          "id": 3771145,
+          "content": "df[].nunique()"
+        },
+        {
+          "id": 3771146,
+          "content": "df[].count()"
+        }
+      ],
+      "correct_option_ids": [
+        3771144
+      ],
+      "correct_options": [
+        "df[].value_counts()"
+      ],
+      "analysis": "B. unique():返回NumPy数组ndarray中唯一元素值的列表；B.value_counts():返回唯一元素的值及其在出现的次数；C.nunique()以整数int形式返回唯一元素的数量；D.count()方法用于统计非空字符串数量；"
+    },
+    {
+      "question_id": 11403443,
+      "uuid": "d79f115ef7f04f11b46cc63d02576276",
+      "type": 1,
+      "title": "在处理一个大型数据集时，你发现一个名为 `city` 的列，它包含了大约 ...",
+      "content": "在处理一个大型数据集时，你发现一个名为&nbsp;`city`&nbsp;的列，它包含了大约&nbsp;300&nbsp;个唯一的城市名称，但在整个&nbsp;DataFrame&nbsp;中有数千万行记录。为了显著优化内存使用并提升后续分组（groupby）操作的性能，最推荐对该列进行哪种类型转换？",
+      "options": [
+        {
+          "id": 7429947,
+          "content": "df['city'].astype('string')"
+        },
+        {
+          "id": 7429948,
+          "content": "df['city'].astype('category')"
+        },
+        {
+          "id": 7429949,
+          "content": "使用一个 Python 字典手动将城市名映射为整数 ID"
+        },
+        {
+          "id": 7429950,
+          "content": "df['city'].astype('object')"
+        }
+      ],
+      "correct_option_ids": [
+        7429948
+      ],
+      "correct_options": [
+        "df['city'].astype('category')"
+      ],
+      "analysis": "在城市名称唯一值较少（约300个）但总行数庞大（数千万）的情况下，使用category dtype（选项B）能够将每个唯一值存储一次，并为每行使用整数代码，从而显著减少内存占用并提升分组操作性能，因为整数比较比字符串更快。选项C也能实现类似优化，但需手动处理，不如内置的category方法简洁高效；选项A和D（字符串或对象类型）会增加内存使用并降低性能。"
+    },
+    {
+      "question_id": 11403436,
+      "uuid": "bea9a3829a7d43219b47c40ed345ab86",
+      "type": 1,
+      "title": "在Pandas中，以下关于interpolate()方法处理缺失值的说法，...",
+      "content": "在Pandas中，以下关于interpolate()方法处理缺失值的说法，错误的是？",
+      "options": [
+        {
+          "id": 7430007,
+          "content": "默认采用线性插值方法填充缺失值"
+        },
+        {
+          "id": 7430008,
+          "content": "支持通过method=\"time\"基于时间索引进行插值"
+        },
+        {
+          "id": 7430009,
+          "content": "可以直接用于填充categorical类型列的缺失值"
+        },
+        {
+          "id": 7430010,
+          "content": "插值结果会保留原DataFrame的索引结构"
+        }
+      ],
+      "correct_option_ids": [
+        7430009
+      ],
+      "correct_options": [
+        "可以直接用于填充categorical类型列的缺失值"
+      ],
+      "analysis": "A选项正确，因为interpolate()方法默认采用线性插值（method='linear'）；B选项正确，因为它支持method='time'基于时间索引进行插值，当索引为datetime-like时；D选项正确，因为interpolate()不会改变原DataFrame的索引结构；C选项错误，因为interpolate()方法主要用于数值数据，不能直接用于填充categorical类型列的缺失值，Pandas在处理categorical数据时可能需要其他方法（如fillna()或自定义逻辑），否则会报错或无效。"
+    },
+    {
+      "question_id": 11403390,
+      "uuid": "34a2a6e31f024937987c24527f4eef7b",
+      "type": 1,
+      "title": "在使用 Scikit-learn 进行机器学习建模时，为了在交叉验证过程中...",
+      "content": "在使用&nbsp;Scikit-learn&nbsp;进行机器学习建模时，为了在交叉验证过程中正确地对数据进行预处理（如使用&nbsp;`StandardScaler`&nbsp;进行特征缩放）并避免数据泄露（data&nbsp;leakage），最佳实践是什么？",
+      "options": [
+        {
+          "id": 7430755,
+          "content": "在交叉验证之前，先对整个数据集（包括训练集和测试集）进行 `fit_transform`。"
+        },
+        {
+          "id": 7430756,
+          "content": "将预处理器和模型封装在一个 `Pipeline` 对象中，然后对整个 `Pipeline` 对象进行交叉验证。"
+        },
+        {
+          "id": 7430757,
+          "content": "只对训练集进行 `fit_transform`，然后用相同的预处理器对未缩放的测试集进行预测。"
+        },
+        {
+          "id": 7430758,
+          "content": "在每个交叉验证折叠中，仅对当前折叠的训练部分进行 `fit_transform`，而忽略对验证部分的处理。"
+        }
+      ],
+      "correct_option_ids": [
+        7430756
+      ],
+      "correct_options": [
+        "将预处理器和模型封装在一个 `Pipeline` 对象中，然后对整个 `Pipeline` 对象进行交叉验证。"
+      ],
+      "analysis": "在交叉验证过程中避免数据泄露的最佳实践是将预处理器（如 StandardScaler）和模型封装在一个 Pipeline 对象中，然后对整个 Pipeline 进行交叉验证。这样，在每次折叠时，Pipeline 会仅在训练部分上调用 fit_transform，并在验证部分上调用 transform，从而防止测试集信息泄露。选项 A 会导致数据泄露，因为它对整个数据集（包括测试集）进行预处理。选项 C 中“对未缩放的测试集进行预测”表述模糊，在交叉验证上下文中，验证集需要基于训练集参数进行缩放，直接对未缩放数据预测会出错。选项 D 错误，因为它忽略验证部分的处理，导致无法正确评估模型。题目文字、专业术语（如 StandardScaler）和逻辑均无误。"
+    },
+    {
+      "question_id": 11403412,
+      "uuid": "41dd92f6511b4765b21e0c9ea3792d5c",
+      "type": 1,
+      "title": "在使用seaborn分析某电商平台的用户购物数据时，需要绘制不同性别（ge...",
+      "content": "在使用seaborn分析某电商平台的用户购物数据时，需要绘制不同性别（gender）用户在不同年龄段（age_group）的平均消费金额（spend）的柱状图，以下哪个catplot的参数设置是正确的？",
+      "options": [
+        {
+          "id": 7430163,
+          "content": "sns.catplot(data=df, x='age_group', y='spend', hue='gender', kind='bar')"
+        },
+        {
+          "id": 7430164,
+          "content": "sns.catplot(data=df, x='gender', y='spend', col='age_group', kind='point')"
+        },
+        {
+          "id": 7430165,
+          "content": "sns.catplot(data=df, x='age_group', y='gender', hue='spend', kind='bar')"
+        },
+        {
+          "id": 7430166,
+          "content": "sns.catplot(data=df, x='spend', y='age_group', row='gender', kind='count')"
+        }
+      ],
+      "correct_option_ids": [
+        7430163
+      ],
+      "correct_options": [
+        "sns.catplot(data=df, x='age_group', y='spend', hue='gender', kind='bar')"
+      ],
+      "analysis": "选项A正确设置参数：x='age_group'对应年龄段，y='spend'对应平均消费金额（默认聚合为平均值），hue='gender'实现按性别分组柱状图，kind='bar'符合柱状图要求。选项B错误：kind='point'非柱状图；选项C错误：y='gender'不能作为数值轴，hue='spend'应为分类变量而非数值变量；选项D错误：x和y轴颠倒，且kind='count'显示计数而非平均值。"
+    },
+    {
+      "question_id": 11403366,
+      "uuid": "7999d9900eff4c989ea5976f89526813",
+      "type": 1,
+      "title": "在Pandas的groupby操作中，若需对每个分组应用函数并返回与原数据...",
+      "content": "在Pandas的groupby操作中，若需对每个分组应用函数并返回与原数据行数相同的结果（保持原DataFrame的索引和行数），应优先使用哪个方法？",
+      "options": [
+        {
+          "id": 7431125,
+          "content": "apply"
+        },
+        {
+          "id": 7431126,
+          "content": "transform"
+        },
+        {
+          "id": 7431127,
+          "content": "agg"
+        },
+        {
+          "id": 7431128,
+          "content": "filter"
+        }
+      ],
+      "correct_option_ids": [
+        7431126
+      ],
+      "correct_options": [
+        "transform"
+      ],
+      "analysis": "在Pandas的groupby操作中，transform方法设计用于对每个分组应用函数（如lambda函数），并返回一个与原DataFrame行数相同的结果，同时保持原索引。这是因为transform会将函数应用于每个元素，并将结果广播到原分组大小。相比之下：A选项apply虽然灵活，但它默认可能返回聚合结果（行数减少）或需额外处理才能保持行数相同，不是优先选择；C选项agg专门用于聚合（返回每个分组的摘要统计，行数减少）；D选项filter用于过滤分组（行数可能不同）。因此，题目要求优先使用transform方法。题目文字无错误：无错别字、专业术语（如'Pandas'、'groupby'、'apply'等）拼写正确，无逻辑矛盾，且选项未泄露答案。"
+    },
+    {
+      "question_id": 2400261,
+      "uuid": "e4de6cc2121145f7b16f031a8f7773bb",
+      "type": 1,
+      "title": "使用箱线图四分位距(IQR)对异常进行检测，下列哪种说法是错误的（）",
+      "content": "使用箱线图四分位距(IQR)对异常进行检测，下列哪种说法是错误的（）",
+      "options": [
+        {
+          "id": 3771071,
+          "content": "第一四分位数与第三四分位数的差距称四分位距"
+        },
+        {
+          "id": 3771072,
+          "content": "值大于上四分位+1.5*IQR为异常值"
+        },
+        {
+          "id": 3771073,
+          "content": "值小于&quot;下四分位-1.5*IQR&quot;为异常值"
+        },
+        {
+          "id": 3771074,
+          "content": "中位数必然等于第三四分位数与第一四分位数的算术平均数"
+        }
+      ],
+      "correct_option_ids": [
+        3771074
+      ],
+      "correct_options": [
+        "中位数必然等于第三四分位数与第一四分位数的算术平均数"
+      ],
+      "analysis": "A项，四分位距(IQR)定义：第一四分位数与第三四分位数的差距称四分位距；B项，处理异常值时候，一般使用IQR的1.5倍为标准，值大于上四分位+1.5*IQR为异常值，值小于&quot;下四分位-1.5*IQR&quot;为异常值；D项:对一个对称性分布数据，中位数必然等于第三四分位数与第一四分位数的算术平均数；"
+    },
+    {
+      "question_id": 11403407,
+      "uuid": "a541774a539e4b4999f709914e92b5e6",
+      "type": 1,
+      "title": "在一个按索引排序 (`sort_index()`) 的 Pandas Da...",
+      "content": "在一个按索引排序&nbsp;(`sort_index()`)&nbsp;的&nbsp;Pandas&nbsp;DataFrame&nbsp;`df`&nbsp;中，该&nbsp;DataFrame&nbsp;使用&nbsp;`date`&nbsp;和&nbsp;`ticker`&nbsp;两列创建了&nbsp;MultiIndex。现在需要高效地查询&nbsp;`ticker`&nbsp;为&nbsp;'XYZ'&nbsp;且日期在&nbsp;'2023-01-01'&nbsp;到&nbsp;'2023-03-31'&nbsp;范围内的所有数据。以下哪种方法最能利用排序后&nbsp;MultiIndex&nbsp;的&nbsp;B-Tree&nbsp;结构优势，从而实现最高效的查询？",
+      "options": [
+        {
+          "id": 7430543,
+          "content": "df.xs('XYZ', level='ticker').loc['2023-01-01':'2023-03-31']"
+        },
+        {
+          "id": 7430544,
+          "content": "df.loc[(slice('2023-01-01', '2023-03-31'), 'XYZ'), :]"
+        },
+        {
+          "id": 7430545,
+          "content": "df.query(\"ticker == 'XYZ' and '2023-01-01' &lt;= date &lt;= '2023-03-31'\")"
+        },
+        {
+          "id": 7430546,
+          "content": "df.reset_index() 后，使用 `(df['date'] &gt;= ...) & (df['ticker'] == ...)` 进行布尔过滤。"
+        }
+      ],
+      "correct_option_ids": [
+        7430544
+      ],
+      "correct_options": [
+        "df.loc[(slice('2023-01-01', '2023-03-31'), 'XYZ'), :]"
+      ],
+      "analysis": "题目描述了DataFrame具有按'dat e'和'ticker'两列创建的MultiIndex，并且已使用sort_index()排序。查询要求高效检索ticker为'XYZ'且日期在'2023-01-01'到'2023-03-31'范围内的数据。选项A使用xs方法在ticker上点查询后，在子DataFrame上应用日期范围loc，但由于xs可能返回副本且涉及两步操作，未能充分利用MultiIndex的B-Tree结构。选项B通过loc直接结合slice对象指定日期范围和ticker值，在排序的MultiIndex上能高效利用B-Tree进行二分查找，实现单步O(log n)查询。选项C使用query方法，但由于'ticker'和'date'是索引级别而非列，直接引用会导致NameError或无法利用索引；即使重置索引，query方法通常生成全扫描布尔掩码，效率低。选项D显式重置索引后进行布尔过滤，完全忽略索引结构，效率最低。因此，选项B是最优方法。题目文字、专业名词（如'MultiIndex'、'B-Tree'）和逻辑无错误。"
+    },
+    {
+      "question_id": 11403418,
+      "uuid": "99fc99b8571b47bb9c4f11eb1d2ed33a",
+      "type": 1,
+      "title": "在NumPy中进行数组操作时，广播机制用于不同形状数组间的运算。以下哪个描...",
+      "content": "在NumPy中进行数组操作时，广播机制用于不同形状数组间的运算。以下哪个描述正确解释了广播的核心原理？",
+      "options": [
+        {
+          "id": 7430123,
+          "content": "自动扩展较小数组的形状以匹配较大数组的维度"
+        },
+        {
+          "id": 7430124,
+          "content": "强制数组转换为相同形状后再计算"
+        },
+        {
+          "id": 7430125,
+          "content": "优先使用Python内置循环"
+        },
+        {
+          "id": 7430126,
+          "content": "仅适用于二维数组"
+        }
+      ],
+      "correct_option_ids": [
+        7430123
+      ],
+      "correct_options": [
+        "自动扩展较小数组的形状以匹配较大数组的维度"
+      ],
+      "analysis": "广播机制的核心原理是自动扩展较小数组的形状以匹配较大数组的维度，前提是数组形状兼容（如维度相等或其中一方为1）。选项A正确描述了这一原理。选项B错误：广播并非强制转换数组形状，而是通过虚拟扩展实现运算，避免实际复制数据；选项C错误：广播优先使用NumPy的矢量化操作，而非Python内置循环，以提高效率；选项D错误：广播适用于任意维度的数组，不限于二维。题目和选项中未发现文字错误、专业名词错误、逻辑矛盾或规则破坏错误。"
+    },
+    {
+      "question_id": 11285664,
+      "uuid": "57f3ca4625d045e38a618780eabcc590",
+      "type": 1,
+      "title": "某手游统计了在2021-03-01到2021-03-07这七天内，每天用户...",
+      "content": "<div>  某手游统计了在2021-03-01到2021-03-07这七天内，每天用户登录手游的数据users： </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220228/388948_1646059463742/FB5C81ED3A220004B71069645F112867\"><br> </div> <div>  <div>   <div>    现要<strong>统计这七天用户的DAU（日活，这里定义为每天登录手游的去重用户数）</strong>，最后输出如下：   </div>  </div>  <div>   <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220228/388948_1646059496352/10FB15C77258A991B0028080A64FB42D\"><br>  </div>  <div>   <div>    <div>     <p>      下列语句正确输出如上结果的是：     </p>    </div>   </div>  </div> </div>",
+      "options": [
+        {
+          "id": 7401648,
+          "content": "<div>\n<div>\n<pre>import pandas as pd\n\ndau = users.groupby('date').agg('nunique', axis='columns')\ndau = dau.reset_index()\ndau = dau.rename(columns={'user_id': 'dau'})\ndau</pre>\n</div>\n</div>"
+        },
+        {
+          "id": 7401649,
+          "content": "<div>\n<div>\n<pre>import pandas as pd\n\ndau = users.groupby('date').agg('user_id': lambda x: x.nunique())\ndau = dau.reset_index()\ndau = dau.rename(columns={'user_id': 'dau'})\ndau</pre>\n</div>\n</div>"
+        },
+        {
+          "id": 7401650,
+          "content": "<div>\n<div>\n<pre>import pandas as pd\n\ndau = users.groupby('date').count()\ndau = dau.reset_index()\ndau = dau.rename(columns={'user_id': 'dau'})\ndau</pre>\n</div>\n</div>"
+        },
+        {
+          "id": 7401651,
+          "content": "<div>\n<div>\n<pre>import pandas as pd\n\ndau = users.groupby('date').agg('nunique')\ndau = dau.reset_index()\ndau = dau.rename(columns={'user_id': 'dau'})\ndau</pre>\n</div>\n</div>"
+        }
+      ],
+      "correct_option_ids": [
+        7401651
+      ],
+      "correct_options": [
+        "<div>\n<div>\n<pre>import pandas as pd\n\ndau = users.groupby('date').agg('nunique')\ndau = dau.reset_index()\ndau = dau.rename(columns={'user_id': 'dau'})\ndau</pre>\n</div>\n</div>"
+      ],
+      "analysis": "<ul>  <li>   <div>    <strong>本题考察知识点：pandas求日活的方法（分组函数groupby()、聚合函数agg()、索引重置函数reset_index()以及rename()列名重置函数的综合应用）</strong>   </div>    <li>   解题思路：   <div>    <ul>     <li>      <p>       根据括号里的这句“日活，这里定义为每天登录手游的去重用户数”，就可以知道<strong>dau的求解需要用到按天分组的groupby()函数和对user_id列的去重（即unique()函数的使用）</strong>。      </p>          <li>      <p>       <strong>首先可以排除C选项，因为count()函数并不会去重</strong>，所以得到的结果包含重复值。      </p>          <li>      <p>       接着看输出的最终结果，是包含列名为date和dau的两列，所以需要对聚合后的数据重置索引和列名的重置，所以会用到reset_index()函数以及rename()函数。      </p>          <li>      <div>       <strong>A选项错在聚合函数agg()这里</strong>，当agg()要聚合多列的时候才需要用axis参数，让它等于columns；否则单列使用会出现TypeError：      </div>          <li>      <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220228/388948_1646059681868/09DD8C2662B96CE14928333F055C5580\">      <div>       <p>        因此也排除A选项。       </p>       <li>        <strong>B选项错在agg()函数里面的必要参数func这里</strong>，它的格式可以以下四种：              <ul>        <li>         function（函数）                <li>         string function name（字符串函数名）                <li>         list of functions and/or function names（列表包含函数名）, e.g. [np.sum, 'mean']                <li>         dict of axis labels（轴标签的字典） -&gt; functions, function names or list of such.               </ul>       <p>        B选项这里是轴标签的字典格式，所以agg里面缺少一个中括号{}来表示映射关系，因此也排除B选项。       </p>       <p>        最后D选项就是func参数的第二种格式，直接使用去重函数nunique()，因此D才是正确答案。       </p>      </div> <br> <br>         </ul>   </div>   </ul>"
+    },
+    {
+      "question_id": 11403426,
+      "uuid": "fba77f03c8934d05870e1923bdabb651",
+      "type": 1,
+      "title": "你正在加载一个大型数据集，其中有一个 'user_level' 列，该列有...",
+      "content": "你正在加载一个大型数据集，其中有一个&nbsp;'user_level'&nbsp;列，该列有千万行数据，但只包含&nbsp;'Bronze',&nbsp;'Silver',&nbsp;'Gold',&nbsp;'Platinum'&nbsp;四种不同的字符串。为了最有效地优化内存占用，你应该对该列采取什么操作？",
+      "options": [
+        {
+          "id": 7430071,
+          "content": "保持默认的 `object` dtype，因为它能灵活存储任何 Python 对象。"
+        },
+        {
+          "id": 7430072,
+          "content": "使用 `df['user_level'].astype('string')` 将其转换为 Pandas 专用的字符串类型。"
+        },
+        {
+          "id": 7430073,
+          "content": "使用 `df['user_level'].astype('category')` 将其转换为分类类型。"
+        },
+        {
+          "id": 7430074,
+          "content": "手动创建一个映射字典将字符串转换为整数，并用整数替换原始列。"
+        }
+      ],
+      "correct_option_ids": [
+        7430073
+      ],
+      "correct_options": [
+        "使用 `df['user_level'].astype('category')` 将其转换为分类类型。"
+      ],
+      "analysis": "题目中数据集有千万行数据，但'user_level'列只包含四种不同字符串值。优化内存占用的最有效方法是将该列转换为分类类型（category dtype），因为Pandas内部使用整数编码存储数据，并只存储一次类别字符串，从而大幅减少内存占用（尤其在高行数、低基数列场景）。选项C直接使用`astype('category')`实现此操作；而选项A和B内存占用较高（对象或字符串类型存储每个元素），选项D虽可节省内存但需手动维护映射，不如C高效。"
+    },
+    {
+      "question_id": 11285666,
+      "uuid": "106202d42146453fb9a25566b61169ba",
+      "type": 1,
+      "title": "执行以下程序，输出结果为（） import numpy as np a =...",
+      "content": "<p>\n\t执行以下程序，输出结果为（）\n</p>\n<p>\n\t<br />\n</p>\n<pre class=\"prettyprint lang-py\">import&nbsp;numpy&nbsp;as&nbsp;np\na&nbsp;=&nbsp;np.array([[1.0,2.0,3.0],[1.0,2.0,3.0]],order=\"F\")\nprint(a.strides)</pre>\n<p>\n\t<br />\n</p>",
+      "options": [
+        {
+          "id": 7401640,
+          "content": "<p>(24,4)</p>"
+        },
+        {
+          "id": 7401641,
+          "content": "<p>(4,24)</p>"
+        },
+        {
+          "id": 7401642,
+          "content": "<p>(8,16)</p>"
+        },
+        {
+          "id": 7401643,
+          "content": "<p>(16,8)</p>"
+        }
+      ],
+      "correct_option_ids": [
+        7401642
+      ],
+      "correct_options": [
+        "<p>(8,16)</p>"
+      ],
+      "analysis": "<span>当numpy.array()的order参数取值为F时，表示数组在内存中将按照列主序进行存储，即按照1.0-&gt;1.0-&gt;2.0-&gt;2.0-&gt;3.0-&gt;3.0的顺序存储。数组的strides属性表示存储在内存中数组元素从一个维度跨越到另外一个维度所需要越过的字节数，返回一个元组。本题中，数组a是一个二维数组，a.strides返回的元组有两个元素，第一个元素表示行跨越，例如，从第一行的1.0跨越到第二行的1.0，在内存中只需要跨越一个数组元素，由于元素的类型为float64，因此需要跨越8个字节；第二个元素表示列跨越，例如，从第一列的1.0跨越到第二列的2.0，在内存中只需要2个数组元素，跨越的字节数为16。综上，正确答案为C选项。</span>"
+    },
+    {
+      "question_id": 11403392,
+      "uuid": "f3c980576863432b8e833a96306ce22f",
+      "type": 1,
+      "title": "给定一个形状为 (n, m) 的 NumPy 浮点数组 X，需要对每一行做...",
+      "content": "给定一个形状为&nbsp;(n,&nbsp;m)&nbsp;的&nbsp;NumPy&nbsp;浮点数组&nbsp;X，需要对每一行做零均值化（每行元素减去该行的均值），要求尽量使用向量化、避免&nbsp;Python&nbsp;层循环。以下哪种写法最合适？",
+      "options": [
+        {
+          "id": 7430723,
+          "content": "X - X.mean(axis=1, keepdims=True)"
+        },
+        {
+          "id": 7430724,
+          "content": "使用 for 循环逐行计算均值并相减"
+        },
+        {
+          "id": 7430725,
+          "content": "使用 np.apply_along_axis(np.mean, 1, X) 取行均值后再手动对齐相减"
+        },
+        {
+          "id": 7430726,
+          "content": "用列表推导收集每行均值，再构造新的数组相减"
+        }
+      ],
+      "correct_option_ids": [
+        7430723
+      ],
+      "correct_options": [
+        "X - X.mean(axis=1, keepdims=True)"
+      ],
+      "analysis": "题目要求对NumPy数组X的每一行进行零均值化（减去该行均值），并要求使用向量化操作避免Python层循环。选项A使用X - X.mean(axis=1, keepdims=True)，其中keepdims=True确保了均值的形状为(n,1)，使得减法操作通过NumPy广播机制高效完成，完全向量化无循环，符合题目要求。选项B使用了for循环，选项D使用列表推导，两者都涉及Python层循环，不符合向量化要求。选项C使用了np.apply_along_axis，但其内部实现可能依赖循环，且需要手动对齐维度，效率较低。因此，A是最合适的写法。题目文字、专业名词和逻辑均无错误，无需标注问题。"
+    },
+    {
+      "question_id": 11403350,
+      "uuid": "b9e1386d63c94510b74562596afc0e1a",
+      "type": 1,
+      "title": "有一个按小时采样的时间序列 DataFrame df（索引为 Dateti...",
+      "content": "有一个按小时采样的时间序列&nbsp;DataFrame&nbsp;df（索引为&nbsp;DatetimeIndex），包含列&nbsp;'x'&nbsp;和&nbsp;'y'。需要计算以&nbsp;7&nbsp;天为时间窗口、对齐到窗口末端的滚动皮尔逊相关系数，返回与&nbsp;df&nbsp;索引对齐的一维结果序列。下列哪种写法最合适？",
+      "options": [
+        {
+          "id": 7431333,
+          "content": "df['x'].rolling('7D').corr(df['y'])"
+        },
+        {
+          "id": 7431334,
+          "content": "df[['x','y']].rolling(7).corr()"
+        },
+        {
+          "id": 7431336,
+          "content": "df['x'].rolling(7, center=True).corr('y')"
+        },
+        {
+          "id": 7431340,
+          "content": "pd.rolling_corr(df['x'], df['y'], window='7D')"
+        }
+      ],
+      "correct_option_ids": [
+        7431333
+      ],
+      "correct_options": [
+        "df['x'].rolling('7D').corr(df['y'])"
+      ],
+      "analysis": "选项A：df['x'].rolling('7D').corr(df['y']) 正确使用了基于时间的窗口（'7D'）与DatetimeIndex对齐，默认右对齐（窗口末端），并返回一维Series，与df索引对齐。选项B：rolling(7)使用固定点数，而非时间窗口，且.corr()返回相关系数矩阵，非一维序列。选项C：.corr('y')语法错误（pandas的corr方法需Series参数，而非字符串），且center=True中心对齐，但题目要求窗口末端对齐。选项D：pd.rolling_corr为过时函数，不支持时间窗口字符串，且不推荐使用。因此A最合适。"
+    },
+    {
+      "question_id": 11403429,
+      "uuid": "7b5dca37fb9c46608fe0ba3e8deb34e6",
+      "type": 1,
+      "title": "关于 Pandas 中常见的 `SettingWithCopyWarnin...",
+      "content": "关于&nbsp;Pandas&nbsp;中常见的&nbsp;`SettingWithCopyWarning`，以下哪项描述最为准确？",
+      "options": [
+        {
+          "id": 7430051,
+          "content": "这是一个严重的错误（Error），它会中断代码执行，说明赋值操作完全失败。"
+        },
+        {
+          "id": 7430052,
+          "content": "该警告意味着你可能正在尝试修改一个 DataFrame 切片的副本，导致修改可能不会反映在原始 DataFrame 上。"
+        },
+        {
+          "id": 7430053,
+          "content": "只要坚持使用 `.loc` 进行索引赋值，就绝对不会触发这个警告。"
+        },
+        {
+          "id": 7430054,
+          "content": "这个警告可以被安全地忽略，因为 Pandas 内部机制总能确保最终数据的一致性。"
+        }
+      ],
+      "correct_option_ids": [
+        7430052
+      ],
+      "correct_options": [
+        "该警告意味着你可能正在尝试修改一个 DataFrame 切片的副本，导致修改可能不会反映在原始 DataFrame 上。"
+      ],
+      "analysis": "选项B最准确地描述了`SettingWithCopyWarning`：该警告表示用户可能尝试修改DataFrame切片的副本而非视图，导致修改可能不会反映在原始DataFrame上。这符合Pandas的设计意图。选项A错误，因为`SettingWithCopyWarning`是警告（Warning），不是错误（Error），它不会中断代码执行。选项C错误，因为即使使用`.loc`索引，也可能在链式赋值等情况下触发警告。选项D错误，因为忽略警告可能导致数据不一致，Pandas无法总是确保修改生效。题目文字和选项拼写正确，无逻辑矛盾或专业名词错误。"
+    },
+    {
+      "question_id": 2400288,
+      "uuid": "d2d455e27d4f4ccab53d1c9280fab192",
+      "type": 1,
+      "title": "下列语句能创建下图这个DataFrame表格的是（ ）",
+      "content": "<div>  <span style=\"color: rgb(51,51,51);\">下列语句能创建下图这个DataFrame表格的是（ ）</span>  </div> <div>  <span style=\"color: rgb(51,51,51);\"><img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220307/396998_1646645935520/B4B76ED72C3589EF3B46B96AFFD40F45\"><br> </span>  </div>",
+      "options": [
+        {
+          "id": 3771179,
+          "content": "<pre>import pandas as pd\nimport numpy as np\n\ndata = \n{'Coffee': 'Latte', 'Flat White', 'Mocha', 'Americano', 'Cappuccino'},\n{'Price': 29, 32, 36, 22, 36}\ndf = pd.DataFrame(data)\ndf</pre>"
+        },
+        {
+          "id": 3771180,
+          "content": "<pre>import pandas as pd\nimport numpy as np\n\ndata = {\n'Coffee': ['Latte', 'Flat White', 'Mocha', 'Americano', 'Cappuccino'],\n'Price': [29, 32, 36, 22, 36]}\ndf = pd.DataFrame(data)\ndf</pre>"
+        },
+        {
+          "id": 3771181,
+          "content": "<pre>import pandas as pd\nimport numpy as np\n\ndata = [['Latte', 29], ['Flat White', 32], ['Mocha', 36], ['Americano', 22], [ 'Cappuccino', 36]]\ndf = pd.DataFrame(data)\ndf</pre>"
+        },
+        {
+          "id": 3771182,
+          "content": "<pre>import pandas as pd\nimport numpy as np\n\ndata = {{'Coffee': 'Latte', 'Price': 29}, {'Coffee': 'Flat White', 'Price': 32}, {'Coffee': 'Mocha', 'Price': 36}, {'Coffee': 'Americano', 'Price': 22}, {'Coffee': 'Cappuccino', 'Price': 36}}\ndf = pd.DataFrame(data)\ndf</pre>"
+        }
+      ],
+      "correct_option_ids": [
+        3771180
+      ],
+      "correct_options": [
+        "<pre>import pandas as pd\nimport numpy as np\n\ndata = {\n'Coffee': ['Latte', 'Flat White', 'Mocha', 'Americano', 'Cappuccino'],\n'Price': [29, 32, 36, 22, 36]}\ndf = pd.DataFrame(data)\ndf</pre>"
+      ],
+      "analysis": "<ul>  <li>   <div>    <span>本题考察知识点：pandas创建DataFrame的多种方法</span>    </div>    <li>   解题思路：   <div>    <ul>     <li>      <p>       <span>pandas中创建DataFrame</span>有多种方法，<span>常用的有以下三种：</span>       </p>      <ul>       <li>        <div>         <span>第一种：用列表来创建</span>。具体语法就是        </div>              <li> <pre class=\"prettyprint lang-py\">data = [[第一行的第一列值,第一行的第二列值],[第二行的第一列值,第二行的第二列值]]\ndf = pd.DataFrame(data, columns=['列名','列名'])\ndf</pre>        <div>         <div>          其中中括号里面的子中括号表示每一行数据；然后放入DataFrame函数中。不过<span>记得利用columns参数来设置DataFrame的列名，不然会默认使用从0开始的数字作为列名</span>。         </div>        </div>              <li>        <div>         <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220121/388948_1642697137053/4A47A0DB6E60853DEDFCFDF08A5CA249\" style=\"\">         </div>              <li>        <div>         因此，<span>可以排除C选项，它没设置列名</span>。        </div>              <li>        <div>        </div>              <li>        <span>第二种：用字典dict来创建。</span>         <p>         具体语法：        </p>             </ul>         </ul>   </div> <pre class=\"prettyprint lang-py\">data = [{key1：value1}, {key2：value2}, {key3：value3}]\ndf = pd.DataFrame(data)\ndf</pre>   <div>    <p>     <span>这里的key就是DataFrame的列名，value就是每一行对应的列值。</span>     </p>    <p>     <span>因此也可以排除D选项，因为最外围是中括号[]，不是大括号{}。</span>     </p>   </div>    <li>   <span>第三种：用ndarrays创建</span>。   <div>    <div>     具体语法：    </div> <pre class=\"prettyprint lang-py\">data = {'columns_1':[values1],\n     'columns_2':[values2]}\ndf = pd.DataFrame(data)\ndf</pre>    <div>     <div>      <p>       这里<span>columns_1就是每一列的列名；values1就是每一列对应的数值或数据。</span>       </p>      <p>       <span>因此可以排除A选项，它列名后对应的列值少了中括号[]，只有B才是正确的</span>。      </p>     </div>    </div>   </div>   </ul>"
+    },
+    {
+      "question_id": 11403441,
+      "uuid": "85aa0aa4f8d24eafa05642e8d9d2e533",
+      "type": 1,
+      "title": "在Pandas中，使用groupby对一个数据集按关键列分组后，需要同时计...",
+      "content": "在Pandas中，使用groupby对一个数据集按关键列分组后，需要同时计算各组的平均值和标准差，并将结果作为新DataFrame输出。实现此目标的最优方法是什么？",
+      "options": [
+        {
+          "id": 7429963,
+          "content": "df.groupby('key').mean()"
+        },
+        {
+          "id": 7429964,
+          "content": "df.groupby('key').agg(['mean', 'std'])"
+        },
+        {
+          "id": 7429966,
+          "content": "df.groupby('key').apply(lambda x: x.mean() and x.std())"
+        },
+        {
+          "id": 7429967,
+          "content": "df.groupby('key').transform('mean')"
+        }
+      ],
+      "correct_option_ids": [
+        7429964
+      ],
+      "correct_options": [
+        "df.groupby('key').agg(['mean', 'std'])"
+      ],
+      "analysis": "B选项使用groupby.agg可以同时指定多个聚合函数（如mean和std），并返回一个新DataFrame，其中每个分组对应平均值和标准差的统计结果。A选项只计算平均值，缺少标准差；C选项中lambda函数使用and运算符会导致仅返回标准差（因为and运算符在非布尔序列中返回最后一个真值），无法同时输出平均值和标准差；D选项使用transform只计算平均值，且返回对象与原始数据形状相同（广播回原索引），而非汇总每个组结果的新DataFrame。因此，B是最优方法。题目中无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11403400,
+      "uuid": "21f4516acbeb41588ac1596ee7fc7f8a",
+      "type": 1,
+      "title": "使用SciPy的scipy.stats.ttest_ind进行独立样本t检...",
+      "content": "使用SciPy的scipy.stats.ttest_ind进行独立样本t检验时，若两组数据的方差差异显著（不满足齐性），以下哪种处理方式正确？",
+      "options": [
+        {
+          "id": 7430623,
+          "content": "忽略方差齐性，直接执行检验"
+        },
+        {
+          "id": 7430624,
+          "content": "使用equal_var=False参数进行 Welch 修正"
+        },
+        {
+          "id": 7430625,
+          "content": "对数据做对数转换后再检验"
+        },
+        {
+          "id": 7430626,
+          "content": "改用卡方检验替代"
+        }
+      ],
+      "correct_option_ids": [
+        7430624
+      ],
+      "correct_options": [
+        "使用equal_var=False参数进行 Welch 修正"
+      ],
+      "analysis": "当独立样本t检验的方差齐性假设不满足时，正确的处理方式是使用Welch修正的t检验。在SciPy的ttest_ind函数中，设置equal_var=False参数即可执行Welch修正的t检验，该检验不需要方差齐性假设，从而提供更准确的结果。其他选项无效：选项A忽略方差齐性可能增加错误风险；选项C对数转换旨在稳定方差或改善正态性，但不保证解决方差不齐问题；选项D卡方检验适用于分类数据，不适用于连续变量的均值比较场景。题目文字和专业术语无误，无逻辑矛盾或规则破坏错误。"
+    },
+    {
+      "question_id": 2400284,
+      "uuid": "97c7a7c943b0481ab448e42f6b64bd7f",
+      "type": 1,
+      "title": "下列代码中绘制饼状图的是()。",
+      "content": "下列代码中绘制饼状图的是()。",
+      "options": [
+        {
+          "id": 3771163,
+          "content": "plt.boxplot()"
+        },
+        {
+          "id": 3771164,
+          "content": "plt.plot()"
+        },
+        {
+          "id": 3771165,
+          "content": "plt.bar()"
+        },
+        {
+          "id": 3771166,
+          "content": "plt.pie()"
+        }
+      ],
+      "correct_option_ids": [
+        3771166
+      ],
+      "correct_options": [
+        "plt.pie()"
+      ],
+      "analysis": "A. boxplot()用于绘制箱线图； B.plot()绘制折线图；  C.bar()绘制柱状图；  D.pie()绘制饼状图；"
+    },
+    {
+      "question_id": 11403427,
+      "uuid": "09ccb27b69024701a00f643d642086f2",
+      "type": 1,
+      "title": "在 NumPy 中，广播（Broadcasting）机制允许在不同形状的数...",
+      "content": "在&nbsp;NumPy&nbsp;中，广播（Broadcasting）机制允许在不同形状的数组之间进行算术运算。现有两个数组&nbsp;`a&nbsp;=&nbsp;np.arange(12).reshape(4,&nbsp;3)`&nbsp;和&nbsp;`b&nbsp;=&nbsp;np.array([1,&nbsp;0,&nbsp;1])`。执行&nbsp;`c&nbsp;=&nbsp;a&nbsp;*&nbsp;b`&nbsp;后，`c[2,&nbsp;1]`&nbsp;的值是多少？",
+      "options": [
+        {
+          "id": 7430063,
+          "content": "7"
+        },
+        {
+          "id": 7430064,
+          "content": "6"
+        },
+        {
+          "id": 7430065,
+          "content": "1"
+        },
+        {
+          "id": 7430066,
+          "content": "0"
+        }
+      ],
+      "correct_option_ids": [
+        7430066
+      ],
+      "correct_options": [
+        "0"
+      ],
+      "analysis": "数组 a 为 np.arange(12).reshape(4, 3)，即 [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]]，数组 b 为 [1, 0, 1]。在 NumPy 广播机制下，b 被扩展为与 a 形状匹配的 [[1, 0, 1], [1, 0, 1], [1, 0, 1], [1, 0, 1]]。执行元素乘法 c = a * b 后，c 为 [[0, 0, 2], [3, 0, 5], [6, 0, 8], [9, 0, 11]]。索引 c[2, 1] 对应第三行第二列（索引从 0 开始），值为 0，因此正确选项为 D。"
+    },
+    {
+      "question_id": 2400274,
+      "uuid": "caed765ce0ba4fe3ab725d03d17cff4a",
+      "type": 1,
+      "title": "以下选项中哪个是numpy库中的拼接函数（）",
+      "content": "以下选项中哪个是numpy库中的拼接函数（）",
+      "options": [
+        {
+          "id": 3771123,
+          "content": "join()"
+        },
+        {
+          "id": 3771124,
+          "content": "concatenate()"
+        },
+        {
+          "id": 3771125,
+          "content": "concat()"
+        },
+        {
+          "id": 3771126,
+          "content": "merge()"
+        }
+      ],
+      "correct_option_ids": [
+        3771124
+      ],
+      "correct_options": [
+        "concatenate()"
+      ],
+      "analysis": "join()方法、concat() 方法和merge()方法都是属于pandas库中的拼接函数；concatenate()方法属于numpy库中的拼接的方法，除此之外numpy库中拼接的方法还有np.append() 、np.stack()、 np. Hstack()、np.vstack()和np.vstack()等操作；"
+    },
+    {
+      "question_id": 11403348,
+      "uuid": "ad12f4f6c38b46f89e88b3d92272b217",
+      "type": 1,
+      "title": "有两组相互独立的样本数组 x 和 y，均可能包含 NaN，且不假设方差齐性...",
+      "content": "有两组相互独立的样本数组&nbsp;x&nbsp;和&nbsp;y，均可能包含&nbsp;NaN，且不假设方差齐性。需要进行双侧均值差异显著性检验，并正确忽略&nbsp;NaN。下列&nbsp;SciPy&nbsp;调用最合适的是？",
+      "options": [
+        {
+          "id": 7431357,
+          "content": "scipy.stats.ttest_ind(x, y, equal_var=False, nan_policy='omit')"
+        },
+        {
+          "id": 7431358,
+          "content": "scipy.stats.ttest_ind(x, y, equal_var=True)"
+        },
+        {
+          "id": 7431359,
+          "content": "scipy.stats.ttest_rel(x, y, nan_policy='omit')"
+        },
+        {
+          "id": 7431360,
+          "content": "scipy.stats.ttest_1samp(x - y, 0, nan_policy='omit')"
+        }
+      ],
+      "correct_option_ids": [
+        7431357
+      ],
+      "correct_options": [
+        "scipy.stats.ttest_ind(x, y, equal_var=False, nan_policy='omit')"
+      ],
+      "analysis": "题目要求对两组相互独立的样本进行双侧均值差异显著性检验，且不假设方差齐性，并正确忽略NaN。选项A（scipy.stats.ttest_ind(x, y, equal_var=False, nan_policy='omit')）使用独立样本t检验（ttest_ind），设置equal_var=False以处理方差不齐（Welch's t-test），并设置nan_policy='omit'忽略NaN值，完全符合要求。选项B未设置nan_policy且equal_var=True，无法忽略NaN并错误假设方差齐性。选项C（ttest_rel）为配对样本t检验，适用于相关样本，与题目中样本独立相矛盾。选项D（ttest_1samp）通过x-y计算进行单样本检验，隐含配对关系，同样不适用于独立样本。"
+    },
+    {
+      "question_id": 11403414,
+      "uuid": "2eb172c1cca4444ca640f12542da8710",
+      "type": 1,
+      "title": "某食品企业想验证两种配方（A和B）的饼干口感评分是否有显著差异，收集了两组...",
+      "content": "某食品企业想验证两种配方（A和B）的饼干口感评分是否有显著差异，收集了两组独立消费者的评分数据（每组20个样本），但数据不服从正态分布，以下哪个统计检验方法最适合？",
+      "options": [
+        {
+          "id": 7430150,
+          "content": "独立样本t检验"
+        },
+        {
+          "id": 7430151,
+          "content": "威尔科克森秩和检验（Wilcoxon Rank-Sum Test）"
+        },
+        {
+          "id": 7430152,
+          "content": "配对t检验"
+        },
+        {
+          "id": 7430153,
+          "content": "卡方检验"
+        }
+      ],
+      "correct_option_ids": [
+        7430151
+      ],
+      "correct_options": [
+        "威尔科克森秩和检验（Wilcoxon Rank-Sum Test）"
+      ],
+      "analysis": "该题考察统计检验方法的选择。题目描述两组独立样本（每组20个，共40个样本），数据为饼干口感评分（连续变量），但不服从正态分布。独立样本t检验（选项A）要求数据满足正态分布或样本量足够大（一般各样本量≥30），但此处样本量小且数据不正态，因此不适合。配对t检验（选项C）适用于配对数据（如同一组消费者测试两种配方），但题目指定'两组独立消费者'，非配对设计。卡方检验（选项D）主要用于分类数据（如频数表），而评分数据是连续的，因此不适用。威尔科克森秩和检验（Wilcoxon Rank-Sum Test，选项B）是非参数检验，专门用于两个独立样本组的差异比较，不要求数据正态分布，故最适合此场景。无题目文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 2400242,
+      "uuid": "16d8de43158c45c7b4a1dc7ec82bf19b",
+      "type": 1,
+      "title": "存在一组DataFrame类型数据data数据输出结果如表格所示： ind...",
+      "content": "<div>  存在一组DataFrame类型数据data数据输出结果如表格所示： </div> <div>  <span></span>  <table border=\"1\" cellpadding=\"2\" cellspacing=\"0\" style=\"width: 100.0%;\">   <tbody>    <tr>     <td>      index     </td>     <td>      A     </td>     <td>      B     </td>     <td>      C     </td>    </tr>    <tr>     <td>      0     </td>     <td>      1     </td>     <td>      4     </td>     <td>      7     </td>    </tr>    <tr>     <td>      1     </td>     <td>      2     </td>     <td>      5     </td>     <td>      8     </td>    </tr>    <tr>     <td>      2     </td>     <td>      3     </td>     <td>      6     </td>     <td>      9     </td>    </tr>   </tbody>  </table>  <div>   <div>    <div>     <p>      那么以下可以获得DataFrame数据中‘5’的选项是哪个（）     </p>    </div>   </div>  </div> <span></span><br> </div>",
+      "options": [
+        {
+          "id": 3770996,
+          "content": "<div><div><div><p>data.iloc[1,’B’] </p></div></div></div>"
+        },
+        {
+          "id": 3770997,
+          "content": "<div><div><div><p>data.iloc[1,1]</p></div></div></div>"
+        },
+        {
+          "id": 3770998,
+          "content": "<div><div><div><p>data.loc(1,’B’)</p></div></div></div>"
+        },
+        {
+          "id": 3770999,
+          "content": "<div><div><div><p>data.loc[1,1]</p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3770997
+      ],
+      "correct_options": [
+        "<div><div><div><p>data.iloc[1,1]</p></div></div></div>"
+      ],
+      "analysis": "<div>  <div>   <div>    <p>     在panda包中处理DataFrame类型数据时候，iloc按照索引值来定位数据元素，loc是按照标签值来定位元素，所以在这个题目当中应该选择B。    </p>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 11403388,
+      "uuid": "88f48514dc6c4dc08128e4a3cb4dfe51",
+      "type": 1,
+      "title": "你正在处理一个大型 Pandas DataFrame，其中有一个名为 'u...",
+      "content": "你正在处理一个大型&nbsp;Pandas&nbsp;DataFrame，其中有一个名为&nbsp;'user_level'&nbsp;的列，该列存储字符串类型（object&nbsp;dtype），但只包含&nbsp;5&nbsp;个唯一的等级（如&nbsp;'Bronze',&nbsp;'Silver',&nbsp;'Gold',&nbsp;'Platinum',&nbsp;'Diamond'）。为了最有效地减少该列在内存中的占用，你应该采取以下哪种措施？",
+      "options": [
+        {
+          "id": 7430783,
+          "content": "parquet 文件再重新读取"
+        },
+        {
+          "id": 7430784,
+          "content": "将 DataFrame 保存为"
+        },
+        {
+          "id": 7430787,
+          "content": "使用 `pd.to_numeric(df['user_level'], errors='coerce')` 尝试转换为数字"
+        },
+        {
+          "id": 7430790,
+          "content": "使用 `df['user_level'] = df['user_level'].astype('category')` 转换其数据类型"
+        }
+      ],
+      "correct_option_ids": [
+        7430790
+      ],
+      "correct_options": [
+        "使用 `df['user_level'] = df['user_level'].astype('category')` 转换其数据类型"
+      ],
+      "analysis": "题目中描述了 'user_level' 列存储为字符串类型（object dtype），但只包含5个唯一等级值（如 'Bronze'、'Silver' 等）。在Pandas中，对于这种低基数列，使用 category 数据类型可以最有效地减少内存占用，因为它内部使用整数编码和值映射，避免了重复存储字符串副本。选项 A（astype(str)）不会减少内存，因为列已为字符串类型；选项 B（保存为Parquet文件再读取）可能通过文件压缩间接降低内存，但重新读取时若未指定数据类型，内存占用未必优化；选项 C（pd.to_numeric）错误，因为值不是数字，转换后可能全变为NaN，丢失信息。因此，只有选项 D 正确解决内存优化问题。"
+    },
+    {
+      "question_id": 2400255,
+      "uuid": "65721774bbcb46978c4ca99bfc4c8ac0",
+      "type": 1,
+      "title": "NumPy 库中提供了多种排序函数，下列哪种排序函数能够返回排序后的元素索...",
+      "content": "NumPy 库中提供了多种排序函数，下列哪种排序函数能够返回排序后的元素索引数组（）",
+      "options": [
+        {
+          "id": 3771048,
+          "content": "numpy.sort()"
+        },
+        {
+          "id": 3771049,
+          "content": "numpy.argsort()"
+        },
+        {
+          "id": 3771050,
+          "content": "numpy.where()"
+        },
+        {
+          "id": 3771051,
+          "content": "numpy.nonzero()"
+        }
+      ],
+      "correct_option_ids": [
+        3771049
+      ],
+      "correct_options": [
+        "numpy.argsort()"
+      ],
+      "analysis": "A选项，numpy.sort()对输入数组执行排序，并返回一个排序好的数组副本；B选项，numpy.argsort()对输入数组的元素值进行排序，并返回排序后的元素索引数组；C选项，numpy.where() 的返回值是满足了给定条件的元素索引值；D选项，numpy.nonzero()该函数从数组中查找非零元素的索引位置；"
+    },
+    {
+      "question_id": 2400257,
+      "uuid": "cdb1b3f763e64a5990ddbcab6be2538e",
+      "type": 1,
+      "title": "使用Matplotlib绘图，以下哪个选项描述不正确（）",
+      "content": "使用Matplotlib绘图，以下哪个选项描述不正确（）",
+      "options": [
+        {
+          "id": 3771056,
+          "content": "ax.violinplot()是用来绘制小提琴图的函数"
+        },
+        {
+          "id": 3771057,
+          "content": "ax.boxplot()是用来绘制直方图的函数"
+        },
+        {
+          "id": 3771058,
+          "content": "ax.bar()是用来绘制柱状图的函数"
+        },
+        {
+          "id": 7366016,
+          "content": "ax.scatter()是用来绘制散点图的函数"
+        }
+      ],
+      "correct_option_ids": [
+        3771057
+      ],
+      "correct_options": [
+        "ax.boxplot()是用来绘制直方图的函数"
+      ],
+      "analysis": "B选项boxplot()是用来绘制箱线图的函数，用来绘制直方图的函数是ax.hist()，因此应该选择B选项；"
+    },
+    {
+      "question_id": 11403432,
+      "uuid": "b7b13baedc854a0180851cf544953f5a",
+      "type": 1,
+      "title": "针对两组独立样本且方差不齐的均值差异检验，SciPy 中应使用哪种函数/参...",
+      "content": "针对两组独立样本且方差不齐的均值差异检验，SciPy&nbsp;中应使用哪种函数/参数组合？",
+      "options": [
+        {
+          "id": 7430032,
+          "content": "scipy.stats.ttest_ind(x, y, equal_var=False)"
+        },
+        {
+          "id": 7430033,
+          "content": "scipy.stats.ttest_rel(x, y)"
+        },
+        {
+          "id": 7430034,
+          "content": "scipy.stats.ttest_1samp(x, popmean=0)"
+        },
+        {
+          "id": 7430035,
+          "content": "scipy.stats.f_oneway(x, y)"
+        }
+      ],
+      "correct_option_ids": [
+        7430032
+      ],
+      "correct_options": [
+        "scipy.stats.ttest_ind(x, y, equal_var=False)"
+      ],
+      "analysis": "针对两组独立样本且方差不齐的均值差异检验，在 SciPy 中应使用独立样本 t 检验（Welch's t-test），因为它不假设方差齐性。选项 A：scipy.stats.ttest_ind(x, y, equal_var=False) 符合要求，其中 equal_var=False 表示方差不齐。选项 B：scipy.stats.ttest_rel(x, y) 是配对样本 t 检验，适用于相关样本，不适用于独立样本；选项 C：scipy.stats.ttest_1samp(x, popmean=0) 是单样本 t 检验，不涉及两组比较；选项 D：scipy.stats.f_oneway(x, y) 是单因素方差分析（ANOVA），虽可用于两组比较，但假设方差齐性，不适合方差不齐情况。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11403425,
+      "uuid": "d87d07ef9ad4423ba19ffa4968ddb41e",
+      "type": 1,
+      "title": "在处理一个百万级行的 Pandas DataFrame 时，需要对其中一列...",
+      "content": "在处理一个百万级行的&nbsp;Pandas&nbsp;DataFrame&nbsp;时，需要对其中一列&nbsp;'value'&nbsp;的每个元素应用一个自定义的平方根计算（`x**0.5`）。考虑到执行效率，以下哪种方法通常是最佳选择？",
+      "options": [
+        {
+          "id": 7430079,
+          "content": "使用 `df.iterrows()` 遍历每一行，并对 'value' 列的元素进行计算和赋值。"
+        },
+        {
+          "id": 7430080,
+          "content": "使用 `df['value'].apply(lambda x: x**0.5)`。"
+        },
+        {
+          "id": 7430081,
+          "content": "使用 NumPy 的通用函数 (ufunc) 直接在整个 Series 上进行操作，例如 `np.sqrt(df['value'])`。"
+        },
+        {
+          "id": 7430082,
+          "content": "使用列表推导式生成新列数据，例如 `[x**0.5 for x in df['value']]`。"
+        }
+      ],
+      "correct_option_ids": [
+        7430081
+      ],
+      "correct_options": [
+        "使用 NumPy 的通用函数 (ufunc) 直接在整个 Series 上进行操作，例如 `np.sqrt(df['value'])`。"
+      ],
+      "analysis": "在处理百万级行DataFrame时，执行效率是关键。选项A（df.iterrows()）逐行迭代，生成大量Series对象，效率最低；选项B（apply with lambda）和选项D（列表推导式）涉及Python级别循环，在百万行数据集上开销大，效率不高；选项C（NumPy ufunc np.sqrt）利用C级别优化，直接在数组上向量化操作，避免Python循环开销，执行速度最快，是通常最佳选择。题目无文字、逻辑、专业术语或规则类错误。"
+    },
+    {
+      "question_id": 11403367,
+      "uuid": "5cad1674a19146a8a1b664bf4a6c17e4",
+      "type": 1,
+      "title": "在Matplotlib中，关于面向对象（Object-Oriented, ...",
+      "content": "在Matplotlib中，关于面向对象（Object-Oriented,&nbsp;OO）API与pyplot&nbsp;API的对比，以下说法正确的是？",
+      "options": [
+        {
+          "id": 7431109,
+          "content": "pyplot API更适合构建复杂的多子图布局"
+        },
+        {
+          "id": 7431110,
+          "content": "OO API通过Figure和Axes对象直接操作，更灵活且可控"
+        },
+        {
+          "id": 7431111,
+          "content": "使用OO API时无法调用plt.plot()等pyplot函数"
+        },
+        {
+          "id": 7431112,
+          "content": "OO API必须手动设置所有绘图参数，没有默认值"
+        }
+      ],
+      "correct_option_ids": [
+        7431110
+      ],
+      "correct_options": [
+        "OO API通过Figure和Axes对象直接操作，更灵活且可控"
+      ],
+      "analysis": "选项A错误，因为pyplot API更适用于简单脚本和快速绘图，但构建复杂的多子图布局时，OO API通过显式创建和操作Figure和Axes对象更灵活；选项B正确，OO API直接使用Figure和Axes对象，允许精确控制绘图元素，提供更高的灵活性和可控性；选项C错误，使用OO API时仍可调用plt.plot()等pyplot函数，尽管混合使用可能干扰全局状态，但不意味着无法调用；选项D错误，OO API同样有默认绘图参数（如颜色、线型等），不需要手动设置所有参数。"
+    },
+    {
+      "question_id": 11403349,
+      "uuid": "3a319dda6dda4f9c8d5743d81032e234",
+      "type": 1,
+      "title": "关于 NumPy 数组的视图与拷贝，下列哪一项操作一定会返回一个新的独立数...",
+      "content": "关于&nbsp;NumPy&nbsp;数组的视图与拷贝，下列哪一项操作一定会返回一个新的独立数组（即总是拷贝）？",
+      "options": [
+        {
+          "id": 7431345,
+          "content": "a[::2]"
+        },
+        {
+          "id": 7431346,
+          "content": "a.reshape(-1)"
+        },
+        {
+          "id": 7431347,
+          "content": "a.flatten()"
+        },
+        {
+          "id": 7431348,
+          "content": "a.T"
+        }
+      ],
+      "correct_option_ids": [
+        7431347
+      ],
+      "correct_options": [
+        "a.flatten()"
+      ],
+      "analysis": "在NumPy中，a.flatten()总是返回一个新数组的拷贝（即独立数组）。而选项A（a[::2]）切片操作通常返回视图而非拷贝；选项B（a.reshape(-1)）可能返回视图或拷贝，但不保证总是拷贝；选项D（a.T）转置操作返回视图。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 2400281,
+      "uuid": "75e8778c9676412da01953737f4631bc",
+      "type": 1,
+      "title": "以下哪个不是数据缺失的类型（）",
+      "content": "以下哪个不是数据缺失的类型（）",
+      "options": [
+        {
+          "id": 3771151,
+          "content": "随机丢失"
+        },
+        {
+          "id": 3771152,
+          "content": "完全随机丢失"
+        },
+        {
+          "id": 3771153,
+          "content": "非随机丢失"
+        },
+        {
+          "id": 3771154,
+          "content": "故意丢失"
+        }
+      ],
+      "correct_option_ids": [
+        3771154
+      ],
+      "correct_options": [
+        "故意丢失"
+      ],
+      "analysis": "<span>数据缺失的类型包括：随机丢失、完全随机丢失和非随机丢失；随机丢失意味着数据丢失的概率与丢失的数据本身无关，而仅与部分已观测到的数据有关。完全随机丢失指的是数据的缺失依赖于不完全变量自身。非随机丢失数据指的是数据的缺失依赖于不完全变量自身。</span>"
+    },
+    {
+      "question_id": 11403359,
+      "uuid": "b6a47fac0bab41178adcae5b94d4adb0",
+      "type": 1,
+      "title": "在机器学习建模中，将数据预处理步骤（如 `StandardScaler`）...",
+      "content": "在机器学习建模中，将数据预处理步骤（如&nbsp;`StandardScaler`）和模型（如&nbsp;`LogisticRegression`）封装在&nbsp;`sklearn.pipeline.Pipeline`&nbsp;中，并在交叉验证（如&nbsp;`cross_val_score`）中使用该&nbsp;pipeline，其最核心的技术优势是？",
+      "options": [
+        {
+          "id": 7431231,
+          "content": "减少代码行数，使代码更易于阅读"
+        },
+        {
+          "id": 7431233,
+          "content": "提升模型训练速度，因为数据处理和模型训练可以并行执行"
+        },
+        {
+          "id": 7431235,
+          "content": "自动对预处理步骤和模型进行超参数调优"
+        },
+        {
+          "id": 7431239,
+          "content": "防止在交叉验证的每一折中，验证集的信息泄露到训练集的数据预处理过程中"
+        }
+      ],
+      "correct_option_ids": [
+        7431239
+      ],
+      "correct_options": [
+        "防止在交叉验证的每一折中，验证集的信息泄露到训练集的数据预处理过程中"
+      ],
+      "analysis": "在交叉验证中使用pipeline的最核心优势是防止验证集的信息泄露到训练过程。Pipeline确保在每一折中，预处理步骤（如StandardScaler）只基于训练集拟合，然后统一应用于训练集和验证集，从而避免数据泄露（如验证集信息影响均值和标准差的计算）。选项A（减少代码行数）是便利性，但不是技术核心；选项B（提升训练速度）错误，因为pipeline步骤默认顺序执行，不提供并行处理；选项C（自动超参数调优）与pipeline相关，但不是其核心优势，需额外工具如GridSearchCV。"
+    },
+    {
+      "question_id": 2400277,
+      "uuid": "84f52bbec476482d8075aacea0232710",
+      "type": 1,
+      "title": "下面哪个选项可以生成一个4行2列的全1数组？（）",
+      "content": "下面哪个选项可以生成一个4行2列的全1数组？（）",
+      "options": [
+        {
+          "id": 3771135,
+          "content": "np.ones((4,2))"
+        },
+        {
+          "id": 3771136,
+          "content": "np.ones(4,2)"
+        },
+        {
+          "id": 3771137,
+          "content": "np.ones((2,4))"
+        },
+        {
+          "id": 3771138,
+          "content": "np.ones([2,4])"
+        }
+      ],
+      "correct_option_ids": [
+        3771135
+      ],
+      "correct_options": [
+        "np.ones((4,2))"
+      ],
+      "analysis": "python构建指定长度全为零的数组使用numpy.zeros( )函数，书写格式：numpy.zeros(shape, dtype=float, order='C')；定义方法shape的上列数应该书写成这种格式 (行数，列数)，因此此题选择A项；"
+    },
+    {
+      "question_id": 11403419,
+      "uuid": "b77f13f8daa34ab2b61390440ac07dc0",
+      "type": 1,
+      "title": "在数据可视化中，当使用Matplotlib绘制大量数据点时，性能容易下降。...",
+      "content": "在数据可视化中，当使用Matplotlib绘制大量数据点时，性能容易下降。以下哪种方法能有效优化性能？",
+      "options": [
+        {
+          "id": 7430119,
+          "content": "使用scatter函数绘制所有点"
+        },
+        {
+          "id": 7430120,
+          "content": "增加绘图分辨率"
+        },
+        {
+          "id": 7430121,
+          "content": "对数据点进行下采样或减少采样率"
+        },
+        {
+          "id": 7430122,
+          "content": "使用更复杂的自定义绘图"
+        }
+      ],
+      "correct_option_ids": [
+        7430121
+      ],
+      "correct_options": [
+        "对数据点进行下采样或减少采样率"
+      ],
+      "analysis": "在Matplotlib中绘制大量数据点时，使用scatter函数绘制所有点（选项A）会加剧性能问题，因为scatter函数处理每个点计算量大；增加绘图分辨率（选项B）可能增加计算负担，导致性能进一步下降；使用更复杂的自定义绘图（选项D）也会增加计算复杂度，降低性能。而对数据点进行下采样或减少采样率（选项C）能有效减少数据点数量，降低计算开销，从而优化性能。"
+    },
+    {
+      "question_id": 11403434,
+      "uuid": "f072cf57e58f44ea9b1ddca581784eb6",
+      "type": 1,
+      "title": "在Pandas中，对DataFrame按\"category\"列分组后，需为...",
+      "content": "在Pandas中，对DataFrame按\"category\"列分组后，需为每个分组计算数值列\"value\"的均值，并将结果广播回原DataFrame（即每个行保留原索引，新增一列存储对应分组的均值）。以下哪个方法最适合实现该需求？",
+      "options": [
+        {
+          "id": 7430019,
+          "content": "groupby(\"category\")[\"value\"].mean()"
+        },
+        {
+          "id": 7430020,
+          "content": "groupby(\"category\")[\"value\"].transform(lambda x: x.mean())"
+        },
+        {
+          "id": 7430021,
+          "content": "groupby(\"category\")[\"value\"].apply(lambda x: x.mean())"
+        },
+        {
+          "id": 7430022,
+          "content": "groupby(\"category\").agg({\"value\": \"mean\"})"
+        }
+      ],
+      "correct_option_ids": [
+        7430020
+      ],
+      "correct_options": [
+        "groupby(\"category\")[\"value\"].transform(lambda x: x.mean())"
+      ],
+      "analysis": "transform方法用于将分组统计结果广播回原DataFrame，保持原索引并新增一列存储每个分组的均值；选项A、C和D返回聚合结果（减少数据维度，索引为分组键），未实现广播需求。B选项使用groupby(\"category\")[\"value\"].transform(lambda x: x.mean())，其中lambda函数计算每个分组的均值，并通过transform方法广播到每个行，符合题意。"
+    },
+    {
+      "question_id": 11403438,
+      "uuid": "5f8e35c076144a3b8b213354c4351879",
+      "type": 1,
+      "title": "在分析一个包含大量缺失值的数据集时，如果只想删除完全由NaN组成的行（所有...",
+      "content": "在分析一个包含大量缺失值的数据集时，如果只想删除完全由NaN组成的行（所有列都为NaN），应该使用Pandas的哪个方法？",
+      "options": [
+        {
+          "id": 7429990,
+          "content": "df.dropna(how='any')"
+        },
+        {
+          "id": 7429991,
+          "content": "df.dropna(how='all')"
+        },
+        {
+          "id": 7429992,
+          "content": "df.fillna(method='ffill')"
+        },
+        {
+          "id": 7429994,
+          "content": "df.interpolate()"
+        }
+      ],
+      "correct_option_ids": [
+        7429991
+      ],
+      "correct_options": [
+        "df.dropna(how='all')"
+      ],
+      "analysis": "题目要求删除完全由NaN组成的行（所有列都为NaN），Pandas的df.dropna(how='all')会删除所有值均为NaN的行，符合要求；而A选项df.dropna(how='any')会删除任何包含NaN的行，不符合要求；C选项df.fillna(method='ffill')和D选项df.interpolate()是填充缺失值的方法，不删除行，因此也不符合要求。题目无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11403364,
+      "uuid": "3749f463dba749ecb304f5952c60acb2",
+      "type": 1,
+      "title": "在pandas中合并两个大型DataFrame时，使用merge()方法与...",
+      "content": "在pandas中合并两个大型DataFrame时，使用merge()方法与concat()方法的主要区别是什么？",
+      "options": [
+        {
+          "id": 7431153,
+          "content": "merge()基于SQL样式的键连接，而concat()基于索引或轴堆叠"
+        },
+        {
+          "id": 7431154,
+          "content": "merge()只处理等长数据集，而concat()适用于不同长度"
+        },
+        {
+          "id": 7431155,
+          "content": "merge()自动处理缺失值，而concat()需要手动填充"
+        },
+        {
+          "id": 7431156,
+          "content": "merge()提高内存效率，而concat()更适合小数据集"
+        }
+      ],
+      "correct_option_ids": [
+        7431153
+      ],
+      "correct_options": [
+        "merge()基于SQL样式的键连接，而concat()基于索引或轴堆叠"
+      ],
+      "analysis": "在pandas中，merge()方法基于SQL样式的键（列）连接，适用于共享列的合并，如内连接或外连接；而concat()方法基于索引或轴（行或列）堆叠，允许垂直或水平拼接，不依赖于键。选项B错误，因为merge()可以处理不同长度的数据集（例如，通过外连接）；选项C错误，因为concat()默认自动填充缺失值（NaN），无需手动填充，而merge()仅在连接类型为外连接时才处理缺失值；选项D错误，因为内存效率取决于数据结构和操作，concat()同样适用于大型数据集。"
+    },
+    {
+      "question_id": 11403354,
+      "uuid": "bb526bf7662a4298ab2c78b8b03e57dc",
+      "type": 1,
+      "title": "在pandas的`merge`操作中设置`indicator=True`时...",
+      "content": "在pandas的`merge`操作中设置`indicator=True`时，结果中的`_merge`列无法标记以下哪种数据来源？",
+      "options": [
+        {
+          "id": 7431289,
+          "content": "仅左表存在的行"
+        },
+        {
+          "id": 7431290,
+          "content": "仅右表存在的行"
+        },
+        {
+          "id": 7431291,
+          "content": "两表共有的行"
+        },
+        {
+          "id": 7431292,
+          "content": "两表交集外的行"
+        }
+      ],
+      "correct_option_ids": [
+        7431292
+      ],
+      "correct_options": [
+        "两表交集外的行"
+      ],
+      "analysis": "在pandas的merge操作中，设置indicator=True后，结果中的_merge列会添加一个标记列，其取值只能是\"left_only\"、\"right_only\"或\"both\"，分别表示仅左表存在的行、仅右表存在的行和两表共有的行。选项D的\"两表交集外的行\"是指不在两表交集（即共有行）中的所有行，包括仅左表存在的行和仅右表存在的行。但_merge列没有单独的取值（如\"outer\"）来统一标记\"两表交集外的行\"这个整体类别；该类别需通过检查\"left_only\"或\"right_only\"来间接判断，因此无法被_merge列直接标记为一个单一数据来源。而选项A、B、C均可被_merge列直接标记（分别为\"left_only\"、\"right_only\"和\"both\"）。题目及选项文字准确，无错别字、专业名词错误、逻辑矛盾或规则破坏错误。"
+    },
+    {
+      "question_id": 11403370,
+      "uuid": "4532942478814307b55861a17a937799",
+      "type": 1,
+      "title": "在对 Pandas DataFrame 进行数据更新时，链式索引（Chai...",
+      "content": "在对&nbsp;Pandas&nbsp;DataFrame&nbsp;进行数据更新时，链式索引（Chained&nbsp;Indexing）是一种应该避免的模式，因为它可能导致不可预测的结果。在以下选项中，哪个是典型的链式索引赋值操作，并且是官方文档中强烈不推荐的？",
+      "options": [
+        {
+          "id": 7431061,
+          "content": "`df.loc[df['type'] == 'A', 'value'] = 10`"
+        },
+        {
+          "id": 7431062,
+          "content": "`df['value'][df['type'] == 'A'] = 10`"
+        },
+        {
+          "id": 7431063,
+          "content": "`df.iloc[0:10, 5] = 10`"
+        },
+        {
+          "id": 7431064,
+          "content": "`df.at[5, 'value'] = 10`"
+        }
+      ],
+      "correct_option_ids": [
+        7431062
+      ],
+      "correct_options": [
+        "`df['value'][df['type'] == 'A'] = 10`"
+      ],
+      "analysis": "题目询问典型的链式索引（Chained Indexing）赋值操作，即使用多个连续索引操作可能导致不可预测结果的模式。Pandas官方文档强烈推荐避免链式索引，并使用.loc、.iloc、.at或.iat等索引器进行赋值。选项分析：A使用.loc索引（推荐，非链式索引）；B使用连续索引操作（先列选择df['value']，再布尔索引[df['type'] == 'A']），是典型的链式索引；C使用.iloc索引（推荐，非链式索引）；D使用.at索引（推荐，非链式索引）。因此，仅B是链式索引赋值操作。题目文字及专业术语无误，无逻辑矛盾。"
+    },
+    {
+      "question_id": 2400245,
+      "uuid": "aa77d31e2bf84646b550a0b8d34969aa",
+      "type": 2,
+      "title": "以下为DataFrame类型数据df: Name Goodlabel 0 ...",
+      "content": "<div>  以下为DataFrame类型数据df: </div> <div>  <table border=\"1\" cellpadding=\"2\" cellspacing=\"0\">   <tbody>    <tr>     <td>      <br>     </td>     <td>      <div>       <div>        <div>         <p>          Name         </p>        </div>       </div>      </div>     </td>     <td>      <div>       <div>        <div>         <p>          Goodlabel         </p>        </div>       </div>      </div>     </td>    </tr>    <tr>     <td>      0     </td>     <td>      <div>       <div>        <div>         <p>          Xiaoming         </p>        </div>       </div>      </div>     </td>     <td>      001     </td>    </tr>    <tr>     <td>      1     </td>     <td>      <span></span>       <div>       <div>        <div>         <p>          Liming         </p>        </div>       </div>      </div>     </td>     <td>      003     </td>    </tr>    <tr>     <td>      2     </td>     <td>      <div>       <div>        <div>         <p>          Daming         </p>        </div>       </div>      </div>     </td>     <td>      005     </td>    </tr>    <tr>     <td>      3     </td>     <td>      <div>       <div>        <div>         <p>          Zhongming         </p>        </div>       </div>      </div>     </td>     <td>      006     </td>    </tr>    <tr>     <td>      4     </td>     <td>      <div>       <div>        <div>         <p>          Liming         </p>        </div>       </div>      </div>     </td>     <td>      011     </td>    </tr>    <tr>     <td>      5     </td>     <td>      <div>       <div>        <div>         <p>          Lining         </p>        </div>       </div>      </div>     </td>     <td>      002     </td>    </tr>   </tbody>  </table> <br> <span></span>   <div>   <div>    <div>     <p>      选项中哪种操作不能够实现将列名’Goodlabel’换为’label’(  )     </p>    </div>   </div>  </div> <br> </div>",
+      "options": [
+        {
+          "id": 3771008,
+          "content": "<div><div><div><p>df.columns=['Name','label']</p></div></div></div>"
+        },
+        {
+          "id": 3771009,
+          "content": "<div><div><div><p>df=pd.read_excel(&quot;C:/.../工作簿1.xlsx&quot;,columns=['Name','label'])</p></div></div></div>"
+        },
+        {
+          "id": 3771010,
+          "content": "<div><div><div><p>df.rename(columns={'Goodlabel':’label’})</p></div></div></div>"
+        },
+        {
+          "id": 3771011,
+          "content": "<div><div><div><p>df.rename(columns={'Goodlabel':’label’},inplace=True) </p></div></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3771009,
+        3771010
+      ],
+      "correct_options": [
+        "<div><div><div><p>df=pd.read_excel(&quot;C:/.../工作簿1.xlsx&quot;,columns=['Name','label'])</p></div></div></div>",
+        "<div><div><div><p>df.rename(columns={'Goodlabel':’label’})</p></div></div></div>"
+      ],
+      "analysis": "<div>  选项B中的`columns`参数在`pd.read_excel`中不存在，正确参数应为`names`，因此无法修改列名；选项C未使用`inplace=True`或赋值操作，不会修改原DataFrame。选项A直接修改列名，选项D使用`inplace=True`均能实现。 </div> <div>  <div>   <br>  </div> <br> </div>"
+    },
+    {
+      "question_id": 11403360,
+      "uuid": "3c68269c6b7947ed88d8229537b61b80",
+      "type": 1,
+      "title": "在 NumPy 中，对于一个形状为 `(8, 1, 6, 1)` 的数组 ...",
+      "content": "在&nbsp;NumPy&nbsp;中，对于一个形状为&nbsp;`(8,&nbsp;1,&nbsp;6,&nbsp;1)`&nbsp;的数组&nbsp;`X`&nbsp;和一个形状为&nbsp;`(7,&nbsp;1,&nbsp;5)`&nbsp;的数组&nbsp;`Y`，当执行广播操作&nbsp;`X&nbsp;+&nbsp;Y`&nbsp;时，会发生什么？",
+      "options": [
+        {
+          "id": 7431219,
+          "content": "得到一个形状为 `(8, 7, 6, 5)` 的新数组"
+        },
+        {
+          "id": 7431222,
+          "content": "得到一个形状为 `(8, 7, 1, 5)` 的新数组"
+        },
+        {
+          "id": 7431223,
+          "content": "抛出 ValueError，因为在某个维度上尺寸既不相等，其中一个也不是1"
+        },
+        {
+          "id": 7431224,
+          "content": "抛出 TypeError，因为两个数组的维度总数不同"
+        }
+      ],
+      "correct_option_ids": [
+        7431219
+      ],
+      "correct_options": [
+        "得到一个形状为 `(8, 7, 6, 5)` 的新数组"
+      ],
+      "analysis": "根据NumPy广播规则，两个数组的形状从后向前对齐，维度不足者在左边补1。数组X形状(8,1,6,1)与Y形状(7,1,5)对齐后，Y被视为形状(1,7,1,5)。比较每个维度：最后一个维度（X=1 vs Y=5）兼容，因为X=1可广播到5；倒数第二个维度（X=6 vs Y=1）兼容，因为Y=1可广播到6；第二个维度（X=1 vs Y=7）兼容，因为X=1可广播到7；第一个维度（X=8 vs Y=1）兼容，因为Y=1可广播到8。广播后所有维度取最大值，得到形状(8,7,6,5)。因此，X + Y产生一个新数组，形状为(8,7,6,5)。选项A正确，因为它匹配广播后形状；选项B错误，因为它错误地将第二个维度保持为1；选项C错误，因为无维度冲突抛出ValueError；选项D错误，因为维度总数不同不会抛出TypeError，广播规则允许补1处理。"
+    },
+    {
+      "question_id": 11403352,
+      "uuid": "18bd03e05cfe4d26bce115a99f7552ae",
+      "type": 1,
+      "title": "读取一个包含千万行、某列为低基数字符串的 CSV，希望在后续 groupb...",
+      "content": "读取一个包含千万行、某列为低基数字符串的&nbsp;CSV，希望在后续&nbsp;groupby&nbsp;聚合中降低内存并提升性能，同时尽量保持与&nbsp;pandas&nbsp;工作流一致。下列做法中哪一项最合适？",
+      "options": [
+        {
+          "id": 7431310,
+          "content": "在 read_csv 时将该列的 dtype 指定为 'category'"
+        },
+        {
+          "id": 7431314,
+          "content": "读入后将该列 astype('string')"
+        },
+        {
+          "id": 7431315,
+          "content": "使用 converters 将该列解析为 Python list 对象"
+        },
+        {
+          "id": 7431316,
+          "content": "设置 read_csv 的 low_memory=False"
+        }
+      ],
+      "correct_option_ids": [
+        7431310
+      ],
+      "correct_options": [
+        "在 read_csv 时将该列的 dtype 指定为 'category'"
+      ],
+      "analysis": "题目涉及在 pandas 中读取大规模 CSV 文件时优化低基数列的内存和性能。选项 A（在 read_csv 时指定 dtype=\"category\"）最合适，因为 category 类型专为低基数数据设计，可显著减少内存占用（通过存储整数编码而非原始字符串），并提升后续 groupby 聚合性能（整数比较比字符串更快），同时完全兼容 pandas 工作流。选项 B（astype(\"string\")）不会减少内存，可能增加开销，且不优化 groupby；选项 C（使用 converters 解析为 Python list）会极大增加内存（列表对象存储低效），且列表类型不可哈希，违反 groupby 要求；选项 D（设置 low_memory=False）仅影响文件读取时的内存管理，不降低后续操作内存或提升性能。"
+    },
+    {
+      "question_id": 11403380,
+      "uuid": "7bae24dd41f548b08efe62c6da619f99",
+      "type": 1,
+      "title": "在Scikit-learn中，一位工程师使用`StandardScaler...",
+      "content": "在Scikit-learn中，一位工程师使用`StandardScaler`对整个数据集（特征X和目标y）进行了标准化处理，然后调用`cross_val_score(model,&nbsp;X_scaled,&nbsp;y,&nbsp;cv=5)`进行5折交叉验证来评估模型性能。这种方法存在的主要问题是什么？",
+      "options": [
+        {
+          "id": 7430909,
+          "content": "没有任何问题，这是标准的模型评估流程。"
+        },
+        {
+          "id": 7430911,
+          "content": "`cross_val_score`函数无法处理已经标准化的数据，必须传入原始数据。"
+        },
+        {
+          "id": 7430913,
+          "content": "存在数据泄漏（Data Leakage），因为标准化器在训练每一折时“看到”了来自验证折的信息。"
+        },
+        {
+          "id": 7430914,
+          "content": "`StandardScaler`不应该用于分类问题，应该使用`MinMaxScaler`。"
+        }
+      ],
+      "correct_option_ids": [
+        7430913
+      ],
+      "correct_options": [
+        "存在数据泄漏（Data Leakage），因为标准化器在训练每一折时“看到”了来自验证折的信息。"
+      ],
+      "analysis": "在交叉验证中，预处理步骤如标准化必须在每一折训练数据上单独进行。题目中工程师对整个数据集（包括特征X和目标y）应用了`StandardScaler`，这会导致验证折的数据信息被用于计算均值和方差，从而使标准化器在训练每一折时“看到”了验证折的信息，造成数据泄漏（Data Leakage）。正确做法是使用`Pipeline`将预处理和模型组合，以确保在每一折交叉验证时，标准化仅基于训练折数据重新计算。选项A错误，因为该方法有泄漏问题；B错误，因为`cross_val_score`能处理标准化数据；D错误，因为`StandardScaler`可用于分类或回归问题，没有规定必须使用`MinMaxScaler`。"
+    },
+    {
+      "question_id": 2400273,
+      "uuid": "2d48266f88d646369aaaea46fa1a90e5",
+      "type": 1,
+      "title": "两变量之间线性相关程度越强,则相关系数r（）",
+      "content": "两变量之间线性相关程度越强,则相关系数r（）",
+      "options": [
+        {
+          "id": 3771119,
+          "content": "绝对值越接近1"
+        },
+        {
+          "id": 3771120,
+          "content": "绝对值越接近0"
+        },
+        {
+          "id": 3771121,
+          "content": "越接近1"
+        },
+        {
+          "id": 3771122,
+          "content": "越接近0"
+        }
+      ],
+      "correct_option_ids": [
+        3771119
+      ],
+      "correct_options": [
+        "绝对值越接近1"
+      ],
+      "analysis": "两个线性相关变量之间的相关系数r，r的绝对值越接近于1，表示两个变量的线性相关性越强。当r为1是表示完全相关；当r=0时，表示完全不相关；当r为正数时，表示两个变量为正相关，当r为负数时，表示两个变量为负相关；因此正确答案应该选择A"
+    },
+    {
+      "question_id": 11403397,
+      "uuid": "3ac950d6344d44aaa0ac7b7c8d94752a",
+      "type": 1,
+      "title": "已知NumPy数组a = np.array([[1],[2],[3]])（...",
+      "content": "已知NumPy数组a&nbsp;=&nbsp;np.array([[1],[2],[3]])（形状为(3,1)），数组b&nbsp;=&nbsp;np.array([[4,5,6]])（形状为(1,3)），执行a&nbsp;*&nbsp;b运算后结果数组的形状是？",
+      "options": [
+        {
+          "id": 7430655,
+          "content": "(3, 3)"
+        },
+        {
+          "id": 7430656,
+          "content": "(3, 1)"
+        },
+        {
+          "id": 7430657,
+          "content": "(1, 3)"
+        },
+        {
+          "id": 7430658,
+          "content": "(2, 2)"
+        }
+      ],
+      "correct_option_ids": [
+        7430655
+      ],
+      "correct_options": [
+        "(3, 3)"
+      ],
+      "analysis": "根据NumPy广播规则，形状为(3,1)的数组a和形状为(1,3)的数组b相乘时，NumPy会将两个数组扩展至相同形状(3,3)后执行逐元素乘法。具体过程：\n1. a在第二维度扩展：[[1,1,1],[2,2,2],[3,3,3]]\n2. b在第一维度扩展：[[4,5,6],[4,5,6],[4,5,6]]\n3. 结果形状为(3,3)。选项A正确，选项B/C形状未扩展完整，选项D维度不匹配。"
+    },
+    {
+      "question_id": 11403358,
+      "uuid": "09971e18b4374d44a66640670661c5ab",
+      "type": 1,
+      "title": "关于Seaborn的relplot函数，以下说法**错误**的是？",
+      "content": "关于Seaborn的relplot函数，以下说法**错误**的是？",
+      "options": [
+        {
+          "id": 7431245,
+          "content": "relplot是关系型绘图的高阶接口，可通过kind参数指定绘制散点图（默认）或线图"
+        },
+        {
+          "id": 7431246,
+          "content": "若用col参数分栏绘制，返回的FacetGrid对象可通过map()方法添加额外图层"
+        },
+        {
+          "id": 7431247,
+          "content": "relplot默认使用pyplot接口，无法与Matplotlib的面向对象（OO）接口配合使用"
+        },
+        {
+          "id": 7431249,
+          "content": "绘制线图时，ci参数可控制是否显示置信区间（默认显示95%置信区间）"
+        }
+      ],
+      "correct_option_ids": [
+        7431247
+      ],
+      "correct_options": [
+        "relplot默认使用pyplot接口，无法与Matplotlib的面向对象（OO）接口配合使用"
+      ],
+      "analysis": "选项C说法错误：'relplot默认使用pyplot接口，无法与Matplotlib的面向对象（OO）接口配合使用'。Seaborn完全兼容Matplotlib OO接口：relplot返回的FacetGrid对象可通过.fig和.axes属性访问Figure和Axes对象，支持直接使用ax.set()等OO方法操作。其他选项正确：A) relplot默认kind='scatter'，可指定kind='line'；B) FacetGrid对象支持map()方法添加图层；D) ci参数控制置信区间（默认95%）"
+    },
+    {
+      "question_id": 2400269,
+      "uuid": "6ed464bdf82f4dbc9cdabee6f2ff6b0b",
+      "type": 1,
+      "title": "以下选项中哪些是数据离散程度的衡量指标（）①极差 ②四分位差 ③方差 ④标...",
+      "content": "以下选项中哪些是数据离散程度的衡量指标（）<div>①极差 ②四分位差 ③方差 ④标准差 ⑤平均差 ⑥变异系数 ⑦众数</div>",
+      "options": [
+        {
+          "id": 3771103,
+          "content": "①②③④"
+        },
+        {
+          "id": 3771104,
+          "content": "①②③④⑤⑦"
+        },
+        {
+          "id": 3771105,
+          "content": "①③④⑤"
+        },
+        {
+          "id": 3771106,
+          "content": "①②③④⑤⑥"
+        }
+      ],
+      "correct_option_ids": [
+        3771106
+      ],
+      "correct_options": [
+        "①②③④⑤⑥"
+      ],
+      "analysis": "用来衡量数据离散程度的指标包括：极差、四分位差、方差、标准差、平均差和变异系数；A和C选项包含不完整，因此错误；众数不是衡量数据离散程度的指标，所以B选项错误；"
+    },
+    {
+      "question_id": 11403416,
+      "uuid": "25e437d085a24216b4f014774209bbe6",
+      "type": 1,
+      "title": "在处理大型数据集时，Pandas中的矢量化操作比迭代循环更受推荐。这是因为...",
+      "content": "在处理大型数据集时，Pandas中的矢量化操作比迭代循环更受推荐。这是因为矢量化操作能带来什么主要优势？",
+      "options": [
+        {
+          "id": 7430138,
+          "content": "利用底层优化的C代码实现高效计算"
+        },
+        {
+          "id": 7430140,
+          "content": "便于调试和代码可读性"
+        },
+        {
+          "id": 7430141,
+          "content": "减少内存占用"
+        },
+        {
+          "id": 7430142,
+          "content": "支持更多自定义逻辑"
+        }
+      ],
+      "correct_option_ids": [
+        7430138
+      ],
+      "correct_options": [
+        "利用底层优化的C代码实现高效计算"
+      ],
+      "analysis": "矢量化操作的主要优势是它利用底层优化的C代码（如NumPy库）来实现高效计算，从而显著提升处理大型数据集的性能。选项B中便于调试和代码可读性并非矢量化操作的典型优势，实际上矢量化代码可能更简洁但调试难度较高；选项C中减少内存占用不一定是主要优势，向量化操作可能增加临时内存使用；选项D中支持更多自定义逻辑不正确，因为矢量化操作牺牲了灵活性，不如迭代循环灵活。"
+    },
+    {
+      "question_id": 11403357,
+      "uuid": "e449e00a193e41dc920262b685a9d59f",
+      "type": 1,
+      "title": "关于NumPy数组的广播机制，以下哪种情况**无法**通过广播完成元素级运算？",
+      "content": "关于NumPy数组的广播机制，以下哪种情况**无法**通过广播完成元素级运算？",
+      "options": [
+        {
+          "id": 7431257,
+          "content": "形状为(3, 4)的数组与(4,)的数组相加"
+        },
+        {
+          "id": 7431258,
+          "content": "形状为(2, 1, 3)的数组与(5, 3)的数组相乘"
+        },
+        {
+          "id": 7431259,
+          "content": "形状为(5, 1, 4)的数组与(1, 3, 5)的数组相减"
+        },
+        {
+          "id": 7431263,
+          "content": "形状为(3, 2, 4)的数组与(2, 1)的数组相除"
+        }
+      ],
+      "correct_option_ids": [
+        7431259
+      ],
+      "correct_options": [
+        "形状为(5, 1, 4)的数组与(1, 3, 5)的数组相减"
+      ],
+      "analysis": "NumPy广播机制要求数组形状从尾部维度开始比较，对应维度大小必须相等、或其中一个为1、或其中一个缺失（但需通过补1对齐）。选项A：形状(3,4)与(4,)可补1为(1,4)，比较(3,4)与(1,4)，维度3和1兼容、4和4相等，可广播。选项B：形状(2,1,3)与(5,3)可补1为(1,5,3)，比较(2,1,3)与(1,5,3)，维度2和1、1和5、3和3均兼容，可广播。选项C：形状(5,1,4)与(1,3,5)，维度数相同，比较(5,1,4)与(1,3,5)，第一维5和1兼容，第二维1和3兼容，但第三维4和5既不相等也不为1，不兼容，无法广播。选项D：形状(3,2,4)与(2,1)可补1为(1,2,1)，比较(3,2,4)与(1,2,1)，维度3和1、2和2、4和1均兼容，可广播。因此，只有选项C无法通过广播完成元素级运算。题目和选项无文字错误、逻辑矛盾、专业名称错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11403431,
+      "uuid": "2e2b7a42173a4de38087e8c820a5f5c3",
+      "type": 1,
+      "title": "给定 NumPy 数组 a 的形状为 (m, 1)，数组 b 的形状为 (...",
+      "content": "给定&nbsp;NumPy&nbsp;数组&nbsp;a&nbsp;的形状为&nbsp;(m,&nbsp;1)，数组&nbsp;b&nbsp;的形状为&nbsp;(1,&nbsp;n)。执行&nbsp;c&nbsp;=&nbsp;a&nbsp;+&nbsp;b&nbsp;后，c&nbsp;的形状为？",
+      "options": [
+        {
+          "id": 7430039,
+          "content": "(m, n)"
+        },
+        {
+          "id": 7430040,
+          "content": "(m, 1)"
+        },
+        {
+          "id": 7430041,
+          "content": "(1, n)"
+        },
+        {
+          "id": 7430042,
+          "content": "发生广播错误，无法相加"
+        }
+      ],
+      "correct_option_ids": [
+        7430039
+      ],
+      "correct_options": [
+        "(m, n)"
+      ],
+      "analysis": "根据NumPy广播机制：数组a形状为(m,1)，b形状为(1,n)。在加法运算中，a会自动扩展第一维(复制n次)，b会自动扩展第二维(复制m次)，从而使两者形状对齐为(m,n)。因此c的形状为(m,n)。选项B和C是原始维度，不符合广播规则；选项D错误，广播机制允许这种操作。题目文字和专业术语准确无误（如'NumPy'拼写正确），无逻辑矛盾或考试规则破坏情形。"
+    },
+    {
+      "question_id": 11403445,
+      "uuid": "83dd1ca5d35a4c7b8795f164a124950e",
+      "type": 1,
+      "title": "在使用 Scikit-learn 构建机器学习模型时，一位工程师编写了以下...",
+      "content": "<div>\n\t在使用&nbsp;Scikit-learn&nbsp;构建机器学习模型时，一位工程师编写了以下流程来对数据进行标准化和训练。这个流程最核心的问题是什么？\n</div><div>\n\t\n</div><div>\n\t1.&nbsp;加载完整数据集&nbsp;`X`&nbsp;和&nbsp;`y`。\n</div><div>\n\t2.&nbsp;初始化&nbsp;`StandardScaler`&nbsp;并对整个&nbsp;`X`&nbsp;进行&nbsp;`fit_transform`。\n</div><div>\n\t3.&nbsp;使用&nbsp;`train_test_split`&nbsp;将标准化后的数据和标签&nbsp;`y`&nbsp;分为训练集和测试集。\n</div><div>\n\t4.&nbsp;在训练集上训练一个逻辑回归模型。\n</div>",
+      "options": [
+        {
+          "id": 7429931,
+          "content": "逻辑回归模型对数据标准化不敏感，标准化步骤是多余的。"
+        },
+        {
+          "id": 7429932,
+          "content": "标准化操作应该在模型训练之后进行，用于预测新数据。"
+        },
+        {
+          "id": 7429933,
+          "content": "导致数据泄露（Data Leakage），因为测试集的信息（如均值、方差）被用于训练标准化器（Scaler）。"
+        },
+        {
+          "id": 7429934,
+          "content": "`train_test_split` 应该在所有数据处理步骤之前执行，这是唯一的硬性要求。"
+        }
+      ],
+      "correct_option_ids": [
+        7429933
+      ],
+      "correct_options": [
+        "导致数据泄露（Data Leakage），因为测试集的信息（如均值、方差）被用于训练标准化器（Scaler）。"
+      ],
+      "analysis": "流程的核心问题是数据泄露（Data Leakage）。在步骤2中，对整个数据集`X`（包括测试数据）使用`fit_transform`进行标准化，这会导致测试集的统计信息（如均值、方差）被用于训练标准化器，从而污染模型评估结果。选项C正确指出了这一点。选项A错误，因为逻辑回归模型对特征缩放敏感，标准化通常是必要的；选项B错误，因为标准化应在训练前应用于训练集，而不是之后；选项D部分正确（先拆分是避免数据泄露的关键），但表述为‘唯一的硬性要求’不准确，因为还有其他要求如避免测试集污染，且核心问题是数据泄露而非步骤顺序本身。"
+    },
+    {
+      "question_id": 2400259,
+      "uuid": "b3ea0097623c41268d4307d1b6a483e5",
+      "type": 1,
+      "title": "plt.title(&quot;right bottom&quot;, y=0, loc='r...",
+      "content": "plt.title(&quot;right bottom&quot;, y=0, loc='right')其中，loc代表的是什么（）",
+      "options": [
+        {
+          "id": 3771063,
+          "content": "标题文本颜色"
+        },
+        {
+          "id": 3771064,
+          "content": "标题尺寸"
+        },
+        {
+          "id": 3771065,
+          "content": "标题位置"
+        },
+        {
+          "id": 3771066,
+          "content": "字体属性"
+        }
+      ],
+      "correct_option_ids": [
+        3771065
+      ],
+      "correct_options": [
+        "标题位置"
+      ],
+      "analysis": "plt.title()函数中存在两个控制位置的参数，一个是y，另外一个就是loc参数。y参数控制标题在子图中的垂直距离，单位为子图高度的百分比，1.0为子图最顶部，0为子图最底部。loc参数控制取值范围为左、中、右，默认值为中；fontdict参数的类型为字典，控制文本的字体属性，包文本颜色、文本尺寸等信息；"
+    },
+    {
+      "question_id": 2400275,
+      "uuid": "91eec75a24404de0a07095a722b9d934",
+      "type": 1,
+      "title": "下列关于matplotlib中的方法说法错误的是（）",
+      "content": "下列关于matplotlib中的方法说法错误的是（）",
+      "options": [
+        {
+          "id": 3771127,
+          "content": "plt.legend()操作为创建图例"
+        },
+        {
+          "id": 3771128,
+          "content": "plt.title()操作为创建图标题"
+        },
+        {
+          "id": 3771129,
+          "content": "plt.xticks()操作作用仅能显示刻标(locs)"
+        },
+        {
+          "id": 3771130,
+          "content": "plt.savefig()操作保存当前生成的图表"
+        }
+      ],
+      "correct_option_ids": [
+        3771129
+      ],
+      "correct_options": [
+        "plt.xticks()操作作用仅能显示刻标(locs)"
+      ],
+      "analysis": "A中的plt.legend()操作为创建图中的图例，对对象解释使用；B中plt.title()操作为创建图标题；C中plt.xticks()操作可以为X轴创建刻度标签(label)也可以创建刻标(locs)；D中plt.savefig()操作保存当前生成的图表的作用；"
+    },
+    {
+      "question_id": 11403421,
+      "uuid": "ed21e8fad699487c9a7697a7efdc93b7",
+      "type": 1,
+      "title": "关于NumPy数组的广播（Broadcasting）机制，以下哪种情况可以...",
+      "content": "关于NumPy数组的广播（Broadcasting）机制，以下哪种情况可以正确执行？",
+      "options": [
+        {
+          "id": 7430105,
+          "content": "数组A形状为(2,3)，数组B形状为(3,2)，执行A + B"
+        },
+        {
+          "id": 7430107,
+          "content": "数组A形状为(3,1)，数组B形状为(1,4)，执行A * B"
+        },
+        {
+          "id": 7430108,
+          "content": "数组A形状为(2,3)，数组B形状为(4,1)，执行A + B"
+        },
+        {
+          "id": 7430109,
+          "content": "数组A形状为(4,)，数组B形状为(3,)，执行A + B"
+        }
+      ],
+      "correct_option_ids": [
+        7430107
+      ],
+      "correct_options": [
+        "数组A形状为(3,1)，数组B形状为(1,4)，执行A * B"
+      ],
+      "analysis": "选项B中数组A形状为(3,1)和数组B形状为(1,4)可以正确执行广播操作：第一维度（3和1）可广播到3，第二维度（1和4）可广播到4，结果形状为(3,4)。其他选项不可广播：A形状(2,3)与(3,2)在第一维和第二维大小均不匹配且不为1；C形状(2,3)与(4,1)在第一维大小不匹配且不为1；D形状(4,)与(3,)作为一维数组大小不相同且无广播维度。"
+    },
+    {
+      "question_id": 2400287,
+      "uuid": "0023c9ef16a44cf39036b35569a70d17",
+      "type": 1,
+      "title": "关于正态分布不正确的是?（）",
+      "content": "关于正态分布不正确的是?（）",
+      "options": [
+        {
+          "id": 3771175,
+          "content": "正态分布具有集中性和对称性"
+        },
+        {
+          "id": 3771176,
+          "content": "一旦均值和标准差确定，正态分布曲线也就确定"
+        },
+        {
+          "id": 3771177,
+          "content": "正态分布是期望为0，标准差为1的分布"
+        },
+        {
+          "id": 3771178,
+          "content": "标准差决定曲线的“陡峭”或“扁平”程度"
+        }
+      ],
+      "correct_option_ids": [
+        3771177
+      ],
+      "correct_options": [
+        "正态分布是期望为0，标准差为1的分布"
+      ],
+      "analysis": "A. 根据正态曲线性质，概率密度曲线在均值处达到最大，并且对称，因此A正确;<div>B.正态分布均数和标准差的性质；</div><div>C.标准的正态分布曲线是这个样子的，其他的正态分布图像是以μ为均值，以σ为标准差的曲线，因此C错误；</div><div>D.标准差越大，正态曲线越扁平；标准差越小，正态曲线越陡峭，因此标准差决定曲线的“陡峭”或“扁平”程度；</div>"
+    },
+    {
+      "question_id": 2400252,
+      "uuid": "3c1db350370543f0a43b9ae7ae3b7ca2",
+      "type": 1,
+      "title": "通过numpy库定义arr数组，arr = np.arange(9).re...",
+      "content": "通过numpy库定义arr数组，arr = np.arange(9).reshape(3,3)，那么下列选项中哪个可以交换第一列和第二列位置（）",
+      "options": [
+        {
+          "id": 3771036,
+          "content": "arr[[1,0,2], :]"
+        },
+        {
+          "id": 3771037,
+          "content": "arr[:, [1,0,2]]"
+        },
+        {
+          "id": 3771038,
+          "content": "arr[::-1]"
+        },
+        {
+          "id": 3771039,
+          "content": "arr[:, ::-1]"
+        }
+      ],
+      "correct_option_ids": [
+        3771037
+      ],
+      "correct_options": [
+        "arr[:, [1,0,2]]"
+      ],
+      "analysis": "A选项，交换前两行的位置；B选项，交换前两列的位置；C选项，反转二维数组的行；D选项，反转二维数组的列；"
+    },
+    {
+      "question_id": 11403379,
+      "uuid": "9e439193a0d94d9b98a8deee62c1f2b1",
+      "type": 1,
+      "title": "在处理一个包含数百万行用户数据的Pandas DataFrame时，你发现...",
+      "content": "在处理一个包含数百万行用户数据的Pandas&nbsp;DataFrame时，你发现'city'列的数据类型为`object`，但该列实际只包含约50个唯一的城市名称。为了显著减少内存占用并可能提高后续分组（groupby）操作的性能，最佳实践是什么？",
+      "options": [
+        {
+          "id": 7430927,
+          "content": "使用 `df['city'].astype('string')` 将其转换为Pandas专用的字符串类型。"
+        },
+        {
+          "id": 7430928,
+          "content": "使用 `df['city'].astype('category')` 将其转换为分类类型。"
+        },
+        {
+          "id": 7430929,
+          "content": "编写一个函数，将每个城市名映射到一个整数ID，并用这些ID替换原始字符串。"
+        },
+        {
+          "id": 7430930,
+          "content": "无需任何操作，因为Pandas的`object`类型对于字符串存储已经进行了内部优化。"
+        }
+      ],
+      "correct_option_ids": [
+        7430928
+      ],
+      "correct_options": [
+        "使用 `df['city'].astype('category')` 将其转换为分类类型。"
+      ],
+      "analysis": "题目中描述的场景：'city'列仅有约50个唯一值，但DataFrame有数百万行。选项B（转换为分类类型）是最佳实践，因为它将数据存储为整数编码和唯一类别映射，从而显著减少内存占用（每个值仅存储整数引用而非完整字符串副本），并可提高groupby操作性能（整数比较快于字符串比较）。选项A（转换为字符串类型）虽比object类型高效，但对低基数数据不如分类类型节省内存；选项C（手动映射整数ID）功能类似但不如Pandas内置的category类型集成高效；选项D（无需操作）不正确，因为object类型存储字符串对象，内存占用高且未优化。"
+    },
+    {
+      "question_id": 11403377,
+      "uuid": "bae983db25ef428eb03422eeb7a72eec",
+      "type": 1,
+      "title": "在Matplotlib中，当需要创建2×2子图网格并确保共享X轴刻度时，正...",
+      "content": "在Matplotlib中，当需要创建2×2子图网格并确保共享X轴刻度时，正确的实现方式是？",
+      "options": [
+        {
+          "id": 7430955,
+          "content": "fig, ax = plt.subplots(2, 2, constrained_layout=True)"
+        },
+        {
+          "id": 7430959,
+          "content": "fig, axs = plt.subplots(2, 2, sharex='all', sharey='row')"
+        },
+        {
+          "id": 7430961,
+          "content": "axes = plt.GridSpec(2, 2).create_subplots()"
+        },
+        {
+          "id": 7430962,
+          "content": "在每张子图中单独调用ax.set_xscale('linear')"
+        }
+      ],
+      "correct_option_ids": [
+        7430959
+      ],
+      "correct_options": [
+        "fig, axs = plt.subplots(2, 2, sharex='all', sharey='row')"
+      ],
+      "analysis": "在Matplotlib中，创建2×2子图网格并共享X轴刻度的正确方式是使用`plt.subplots`函数并设置`sharex='all'`参数，选项B实现了这一点。选项A缺少共享X轴的参数；选项C的`GridSpec.create_subplots()`方法无效，因为`GridSpec`没有此方法；选项D的`ax.set_xscale('linear')`只设置比例类型，不共享刻度。"
+    },
+    {
+      "question_id": 2400270,
+      "uuid": "ff26b0a8ff4648f5bd438f6db392781a",
+      "type": 1,
+      "title": "K最近邻（KNN）算法属于以下哪种判别分析算法（）",
+      "content": "K最近邻（KNN）算法属于以下哪种判别分析算法（）",
+      "options": [
+        {
+          "id": 3771107,
+          "content": "费希尔判别"
+        },
+        {
+          "id": 3771108,
+          "content": "贝叶斯判别"
+        },
+        {
+          "id": 3771109,
+          "content": "距离判别"
+        },
+        {
+          "id": 3771110,
+          "content": "高斯判别分析"
+        }
+      ],
+      "correct_option_ids": [
+        3771109
+      ],
+      "correct_options": [
+        "距离判别"
+      ],
+      "analysis": "KNN算法的思想是如果一个样本在特征空间中的K个最相似/最近邻的样本中的大多数属于某一个类别，则该样本也属于这个类别。<div>费希尔判别的基本思想就是“投影”，即将高维空间的点向低维空间投影，从而简化问题进行处理；贝叶斯判别就是根据已知的先验概率 P(A|B)，利用贝叶斯公式求后验概率P(B|A)，即该样本属于某一类的概率，然后选择具有最大后验概率的类作为该样本所属的类，该判别算法对应的是朴素贝叶斯的算法；距离判别的基本思想，就是根据待判定样本与已知类别样本之间的距离远近做出判别；高斯判别属于生成模型的一种，并不属于判别分析算法；因此KNN算法是距离判别分析算法；</div>"
+    },
+    {
+      "question_id": 11403446,
+      "uuid": "6d23107f1ba14a6f9c2a199f808b744e",
+      "type": 1,
+      "title": "在 Pandas 中，对一个 DataFrame `df` 执行 `gro...",
+      "content": "在&nbsp;Pandas&nbsp;中，对一个&nbsp;DataFrame&nbsp;`df`&nbsp;执行&nbsp;`groupby('group_key')`&nbsp;操作后，需要计算一个新列，其值为每个分组内&nbsp;`value`&nbsp;列的归一化值（即减去组内均值后除以组内标准差）。以下哪个操作可以最高效、最直接地实现这个目标，并返回一个与&nbsp;`df`&nbsp;原始索引和长度完全相同的&nbsp;Series？",
+      "options": [
+        {
+          "id": 7429922,
+          "content": "df.groupby('group_key')['value'].apply(lambda x: (x - x.mean()) / x.std())"
+        },
+        {
+          "id": 7429923,
+          "content": "df.groupby('group_key')['value'].transform(lambda x: (x - x.mean()) / x.std())"
+        },
+        {
+          "id": 7429925,
+          "content": "df.groupby('group_key')['value'].agg(['mean', 'std'])"
+        },
+        {
+          "id": 7429926,
+          "content": "for name, group in df.groupby('group_key'): group['value'].apply(...)"
+        }
+      ],
+      "correct_option_ids": [
+        7429923
+      ],
+      "correct_options": [
+        "df.groupby('group_key')['value'].transform(lambda x: (x - x.mean()) / x.std())"
+      ],
+      "analysis": "选项分析：A使用apply返回的是按分组重新组织的多级索引Series，不符合原始索引要求；B使用transform能返回与df长度和索引相同的Series；C返回聚合结果会丢失原始行数；D手动循环效率低下。题目无文字错误（如'group_key'、'value'拼写正确）、无逻辑矛盾（所有选项功能描述一致）、无专业名词错误（如'groupby'、'apply'等术语标准）、无规则破坏现象。transform方法通过向量化操作将分组计算广播回原始维度，符合归一化要求且高效。"
+    },
+    {
+      "question_id": 11403433,
+      "uuid": "bdbf6bf876f34fa993f9fbdbde025e2c",
+      "type": 1,
+      "title": "在使用 pandas 对每个分组计算标准分数（z-score）并将结果作为...",
+      "content": "在使用&nbsp;pandas&nbsp;对每个分组计算标准分数（z-score）并将结果作为新列添加到原&nbsp;DataFrame&nbsp;时，下列哪种做法最能保证返回结果与原数据行索引一一对应且长度不变？",
+      "options": [
+        {
+          "id": 7430027,
+          "content": "df.groupby('grp')['val'].apply(lambda s: (s - s.mean()) / s.std())"
+        },
+        {
+          "id": 7430028,
+          "content": "df.groupby('grp')['val'].transform(lambda s: (s - s.mean()) / s.std())"
+        },
+        {
+          "id": 7430029,
+          "content": "df.groupby('grp')['val'].aggregate('zscore')"
+        },
+        {
+          "id": 7430030,
+          "content": "df.pivot_table(values='val', index='grp', aggfunc='mean')"
+        }
+      ],
+      "correct_option_ids": [
+        7430028
+      ],
+      "correct_options": [
+        "df.groupby('grp')['val'].transform(lambda s: (s - s.mean()) / s.std())"
+      ],
+      "analysis": "选项B使用transform方法，它保证对每个分组应用lambda函数后返回一个与原数据相同索引和长度的Series，从而可以直接作为新列添加到原DataFrame，满足一一对应和长度不变的要求。选项A的apply方法在某些情况下（如分组索引变化时）可能返回多索引或索引不匹配的结果，可能导致不一致；选项C的aggregate方法用于聚合计算，返回每个分组的单个摘要值（长度为分组数），无法保持原数据长度；选项D的pivot_table用于创建透视表，返回汇总数据（索引为分组键），长度减少，且不计算z-score。因此，B选项是最可靠的选择。"
+    },
+    {
+      "question_id": 11403385,
+      "uuid": "0c98f92b790d4f068b0a0c82e5a84ce4",
+      "type": 1,
+      "title": "在matplotlib中绘制包含多个子图的复杂图表（如2x2子图，需自定义...",
+      "content": "在matplotlib中绘制包含多个子图的复杂图表（如2x2子图，需自定义每个子图的坐标轴标签、标题）时，关于面向对象（OO）接口的说法正确的是？",
+      "options": [
+        {
+          "id": 7430831,
+          "content": "必须使用plt.subplot()函数创建子图，无法通过OO接口实现"
+        },
+        {
+          "id": 7430832,
+          "content": "OO接口通过Figure和Axes对象操作，比pyplot接口更灵活，支持精细控制"
+        },
+        {
+          "id": 7430833,
+          "content": "OO接口只能绘制单张子图，多子图必须使用pyplot接口"
+        },
+        {
+          "id": 7430834,
+          "content": "OO接口是matplotlib的低级渲染接口，仅用于底层图形绘制"
+        }
+      ],
+      "correct_option_ids": [
+        7430832
+      ],
+      "correct_options": [
+        "OO接口通过Figure和Axes对象操作，比pyplot接口更灵活，支持精细控制"
+      ],
+      "analysis": "B选项正确，因为matplotlib的面向对象接口通过Figure和Axes对象操作，允许对每个子图的坐标轴标签、标题等进行精细控制，比pyplot接口更灵活，尤其适用于多子图复杂图表的绘制。A选项错误，因为OO接口可以使用fig.add_subplot()或plt.subplots()函数创建子图；C选项错误，因为OO接口支持多子图创建；D选项错误，因为OO接口并非仅用于底层图形绘制，而是matplotlib的标准编程接口，适用于所有绘图任务。题目和选项无文字错误、逻辑矛盾、专业名词错误或规则破坏错误。"
+    },
+    {
+      "question_id": 11403447,
+      "uuid": "fe9b7efd60b84d2794e75cd2e4d998c6",
+      "type": 1,
+      "title": "使用StatsModels库进行普通最小二乘（OLS）线性回归分析时，**...",
+      "content": "使用StatsModels库进行普通最小二乘（OLS）线性回归分析时，**必须执行的步骤**是？",
+      "options": [
+        {
+          "id": 7429915,
+          "content": "对所有自变量进行标准化处理"
+        },
+        {
+          "id": 7429916,
+          "content": "手动添加常数项（截距）到自变量矩阵中"
+        },
+        {
+          "id": 7429917,
+          "content": "先将因变量转换为正态分布"
+        },
+        {
+          "id": 7429918,
+          "content": "删除所有包含缺失值的样本"
+        }
+      ],
+      "correct_option_ids": [
+        7429916
+      ],
+      "correct_options": [
+        "手动添加常数项（截距）到自变量矩阵中"
+      ],
+      "analysis": "在StatsModels库中，进行OLS线性回归分析时，必须手动添加常数项（截距）到自变量矩阵中，因为该库默认不包含截距项。选项A（标准化处理）不是必须的，OLS可以在原始数据上运行；选项C（因变量转换为正态分布）是错误的，OLS假设误差项正态而非因变量本身；选项D（删除缺失样本）是处理缺失数据的常见方式，但不是绝对必须步骤，因为可以采用插补等方法，且对于无缺失数据此步不必要。"
+    },
+    {
+      "question_id": 2400282,
+      "uuid": "ba7c24dd0f0a48529889b93136819e1c",
+      "type": 1,
+      "title": "以下选项中哪个可以输出DataFrame类型数据中data的行索引（）",
+      "content": "以下选项中哪个可以输出DataFrame类型数据中data的行索引（）",
+      "options": [
+        {
+          "id": 3771155,
+          "content": "data.columns()"
+        },
+        {
+          "id": 3771156,
+          "content": "data.index()"
+        },
+        {
+          "id": 3771157,
+          "content": "data.head()"
+        },
+        {
+          "id": 3771158,
+          "content": "data.info()"
+        }
+      ],
+      "correct_option_ids": [
+        3771156
+      ],
+      "correct_options": [
+        "data.index()"
+      ],
+      "analysis": "A中的columns()方法是用来提取DataFrame类型数据中的列索引；B中的index()方法是用来提取DataFrame类型数据中的行索引；C.head()方法显示data前n行数据；D.info()函数用于给出样本数据的相关信息概览 ，包括行数，列数，列索引，列非空值个数，列类型，内存占用。"
+    },
+    {
+      "question_id": 2400264,
+      "uuid": "edb213b323a746cbba032e412118059c",
+      "type": 1,
+      "title": "Python Pandas处理缺失值,以下哪个选项是对缺失值NaN进行删除...",
+      "content": "Python Pandas处理缺失值,以下哪个选项是对缺失值NaN进行删除操作（）",
+      "options": [
+        {
+          "id": 3771083,
+          "content": "isnull"
+        },
+        {
+          "id": 3771084,
+          "content": "notnull"
+        },
+        {
+          "id": 3771085,
+          "content": "dropna"
+        },
+        {
+          "id": 3771086,
+          "content": "fillna"
+        }
+      ],
+      "correct_option_ids": [
+        3771085
+      ],
+      "correct_options": [
+        "dropna"
+      ],
+      "analysis": "据预处理时，A选项，Isnull()返回表明哪些值是缺失值的布尔值；B选项，notnull()返回表明哪些值不是缺失值的布尔值；C选项，dropna()对data进行处理,在默认情况下会删除所有包含NA值的行；D选项，fillna()补全data数据中的缺失值。"
+    },
+    {
+      "question_id": 11403393,
+      "uuid": "4bb1dfb3f4534f59a5c3a6660dd02e9e",
+      "type": 1,
+      "title": "有一份约 4000 万行的 CSV 日志数据，包含 user_id(字符串...",
+      "content": "有一份约&nbsp;4000&nbsp;万行的&nbsp;CSV&nbsp;日志数据，包含&nbsp;user_id(字符串)、event_time、event_type&nbsp;三列。需要对&nbsp;user_id&nbsp;做&nbsp;groupby&nbsp;计数，且内存较紧张。为了在不改变结果的前提下尽可能降低内存占用并提升&nbsp;groupby&nbsp;性能，最合适的做法是？",
+      "options": [
+        {
+          "id": 7430707,
+          "content": "在读取时或读取后将 user_id 列转换为分类类型（category），再进行 groupby"
+        },
+        {
+          "id": 7430708,
+          "content": "在 groupby 前对 DataFrame 调用 copy() 生成副本以避免链式赋值"
+        },
+        {
+          "id": 7430709,
+          "content": "将 user_id 列强制转为 object 并保持原样"
+        },
+        {
+          "id": 7430713,
+          "content": "将 user_id 哈希为 float64，以便使用浮点计算"
+        }
+      ],
+      "correct_option_ids": [
+        7430707
+      ],
+      "correct_options": [
+        "在读取时或读取后将 user_id 列转换为分类类型（category），再进行 groupby"
+      ],
+      "analysis": "对于大数据集（约4000万行），内存紧张时，将字符串类型的user_id列转换为category类型可以显著降低内存占用（因category存储唯一值的整数编码，而非重复字符串），并提升groupby操作性能（如计数），且不改变结果。选项B：调用copy()会额外增加内存占用，与目标相悖；选项C：转为object类型（即字符串默认类型）并保持原样，不会减少内存；选项D：哈希为float64可能导致哈希冲突，改变user_id的唯一性，从而改变计数结果，违反题目要求。"
+    },
+    {
+      "question_id": 11403417,
+      "uuid": "446dd828e0b24159a3f9ded30d681b1c",
+      "type": 1,
+      "title": "在数据处理中，使用Pandas处理时间序列数据时，删除缺失值行可能会导致什...",
+      "content": "在数据处理中，使用Pandas处理时间序列数据时，删除缺失值行可能会导致什么问题？",
+      "options": [
+        {
+          "id": 7430131,
+          "content": "破坏数据的时序连续性，影响趋势分析"
+        },
+        {
+          "id": 7430132,
+          "content": "增加内存使用"
+        },
+        {
+          "id": 7430133,
+          "content": "提高计算速度"
+        },
+        {
+          "id": 7430134,
+          "content": "简化数据清洗流程"
+        }
+      ],
+      "correct_option_ids": [
+        7430131
+      ],
+      "correct_options": [
+        "破坏数据的时序连续性，影响趋势分析"
+      ],
+      "analysis": "在时间序列数据处理中，删除缺失值行会破坏数据的时间连续性，因为时间序列数据的顺序和等间隔性对趋势分析（如移动平均或自回归模型）至关重要，缺失行可能导致分析失真。选项B“增加内存使用”不正确，因为删除行通常减少数据量，从而降低内存使用；选项C“提高计算速度”不是问题，而是潜在的益处；选项D“简化数据清洗流程”同样不是问题，而是清洗步骤的优点。题目和选项文字无错别字、逻辑无矛盾、专业名词无误，无规则破坏错误。"
+    },
+    {
+      "question_id": 2400263,
+      "uuid": "05b894363e8843819cc83511b6c59f8c",
+      "type": 1,
+      "title": "python中用Matplotlib画折线图，在下列选项中表示plot线条...",
+      "content": "python中用Matplotlib画折线图，在下列选项中表示plot线条类型、线条颜色和点的形状是蓝色星形点划线的是哪个？（）",
+      "options": [
+        {
+          "id": 3771079,
+          "content": "’b×:’"
+        },
+        {
+          "id": 3771080,
+          "content": "’co--’"
+        },
+        {
+          "id": 3771081,
+          "content": "’ks-’"
+        },
+        {
+          "id": 3771082,
+          "content": "’b*-.’"
+        }
+      ],
+      "correct_option_ids": [
+        3771082
+      ],
+      "correct_options": [
+        "’b*-.’"
+      ],
+      "analysis": "在ABCD四个字符串中，第一个字节表示颜色，第二个字节表示点的形状，第三个字节表示线条形状。颜色的表示'b':蓝色、'c':青色、'k':黑色；点的形状表示’×’:x号标记、’o’:圆形、’s’:正方形、’*’:星形；线条的形状表示’:’:点线、’--’:虚线、’-’:实线、’-.’:点划线；因此该题选择D选项。"
+    },
+    {
+      "question_id": 11403402,
+      "uuid": "9dec272523bb476b857f338d18b19a0a",
+      "type": 1,
+      "title": "在Pandas中合并两个DataFrame时，基于共同的列进行内连接以确保...",
+      "content": "在Pandas中合并两个DataFrame时，基于共同的列进行内连接以确保只保留匹配的行，应该使用哪个函数和参数组合？",
+      "options": [
+        {
+          "id": 7430599,
+          "content": "pd.concat(axis=1)"
+        },
+        {
+          "id": 7430600,
+          "content": "pd.merge(on='key', how='inner')"
+        },
+        {
+          "id": 7430601,
+          "content": "df1.join(df2, lsuffix='_left')"
+        },
+        {
+          "id": 7430602,
+          "content": "df1.append(df2)"
+        }
+      ],
+      "correct_option_ids": [
+        7430600
+      ],
+      "correct_options": [
+        "pd.merge(on='key', how='inner')"
+      ],
+      "analysis": "pd.merge(on='key', how='inner') 指定基于共同列（例如 'key'）进行内连接，只保留两个DataFrame中匹配的行，符合题目要求。其他选项无效：A) pd.concat(axis=1) 是横向堆叠，不基于键进行内连接；C) df1.join(df2, lsuffix='_left') 基于索引合并，默认左连接且不直接基于列；D) df1.append(df2) 是纵向追加行，不涉及键合并。题目无文字、逻辑或专业名称错误。"
+    }
+  ]
+}

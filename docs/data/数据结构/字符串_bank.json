@@ -1,0 +1,2388 @@
+{
+  "source": "nowcoder_official",
+  "group": "数据结构",
+  "name": "字符串",
+  "tag_id": 579,
+  "target": 76,
+  "fetched_at": "2026-07-28",
+  "total_unique": 75,
+  "complete": false,
+  "questions": [
+    {
+      "question_id": 77483,
+      "uuid": "074821d2bf3941af9ebbcadb30c9e3f4",
+      "type": 1,
+      "title": "空串与由空格组成的串没有区别。(      )",
+      "content": "空串与由空格组成的串没有区别。(      )",
+      "options": [
+        {
+          "id": 128384,
+          "content": "是"
+        },
+        {
+          "id": 128385,
+          "content": "否"
+        }
+      ],
+      "correct_option_ids": [
+        128385
+      ],
+      "correct_options": [
+        "否"
+      ],
+      "analysis": "空串是指长度为0的字符串,不包含任何字符;而由空格组成的串包含了一个或多个空格字符,它们的长度是不同的。这两种字符串在本质上是有区别的。<br><br>从以下几个方面可以说明它们的区别：<br><br>1. 长度不同<br>- 空串的长度为0<br>- 空格串的长度等于空格的个数,至少为1<br><br>2. 内容不同 <br>- 空串不包含任何字符<br>- 空格串包含了ASCII码为32的空格字符<br><br>3. 程序处理时的区别<br>- 判断空串可以用 str.length()==0 或 str.isEmpty()<br>- 判断空格串需要用 str.trim().length()==0<br><br>4. 存储空间<br>- 空串不占用实际存储空间<br>- 空格串需要占用存储空间来保存空格字符<br><br>因此选择B是正确的,空串与空格串是两个不同的概念,它们之间存在本质区别。A选项认为两者没有区别是错误的。"
+    },
+    {
+      "question_id": 72230,
+      "uuid": "1cb1e776788c41a7a433987f76b1e4ca",
+      "type": 1,
+      "title": "不能将字符串 \"Good!\" 存放到数组 s 中的代码是（   ）",
+      "content": "不能将字符串 &quot;Good!&quot; 存放到数组 s 中的代码是（   ）",
+      "options": [
+        {
+          "id": 117484,
+          "content": "char s[8] = {'G','o','o','d','!', '\\0'};"
+        },
+        {
+          "id": 117485,
+          "content": "char s[8];\nstrcpy(s, \"Good!\");"
+        },
+        {
+          "id": 117486,
+          "content": "char s[8];\ns = \"Good!\";"
+        },
+        {
+          "id": 117487,
+          "content": "char s[8] = \"Good!\";"
+        }
+      ],
+      "correct_option_ids": [
+        117486
+      ],
+      "correct_options": [
+        "char s[8];\ns = \"Good!\";"
+      ],
+      "analysis": "这道题考察C语言中字符数组和字符串的基础知识。C选项是错误的,因为在C语言中数组名是数组的地址,是常量,不能作为左值进行赋值操作。s = \"Good!\" 这种写法试图将一个字符串常量的地址直接赋值给数组名,这在C语言中是不允许的。<br><br>分析其他选项:<br>A正确:使用字符数组初始化列表来初始化字符数组是合法的。每个字符被单独赋值,最后以'\u0000'结尾。<br><br>B正确:使用strcpy函数可以将字符串复制到字符数组中。strcpy是标准库函数,专门用于字符串复制操作。<br><br>D正确:使用字符串常量直接初始化字符数组是合法的。编译器会自动将字符串中的字符逐个复制到数组中,包括末尾的'\u0000'。<br><br>需要注意的是,以上三种正确方式都确保了字符串能够正确存储在数组中,并且数组大小(8)足够容纳\"Good!\"及结束符'\u0000'。而C选项的赋值方式是从语法上就不允许的。"
+    },
+    {
+      "question_id": 55768,
+      "uuid": "cf7b7f53adf54eed8280380045a0d47b",
+      "type": 1,
+      "title": "字符串 \"qiniu\" 根据顺序不同有多少种排列组合的方式？",
+      "content": "字符串 &quot;qiniu&quot; 根据顺序不同有多少种排列组合的方式？",
+      "options": [
+        {
+          "id": 75884,
+          "content": "96"
+        },
+        {
+          "id": 75885,
+          "content": "72"
+        },
+        {
+          "id": 75886,
+          "content": "60"
+        },
+        {
+          "id": 75887,
+          "content": "24"
+        }
+      ],
+      "correct_option_ids": [
+        75886
+      ],
+      "correct_options": [
+        "60"
+      ],
+      "analysis": "这是一道排列组合的计算题。字符串\"qiniu\"有5个字母,其中字母i出现了2次,要计算所有可能的排列方式。<br><br>根据排列组合的基本公式,当有重复元素时:<br>n个元素的排列数 = n!/(重复元素的个数的阶乘的乘积)<br><br>在这个例子中:<br>- 总共有5个位置<br>- 字母i重复出现2次<br>- 所以计算公式为: 5!/(2!)<br><br>计算过程:<br>5! = 5 × 4 × 3 × 2 × 1 = 120<br>2! = 2 × 1 = 2<br>最终结果 = 120/2 = 60<br><br>因此C选项60是正确答案。<br><br>分析其他选项:<br>A(96)错误:这个数字过大,没有考虑重复字母i的情况<br>B(72)错误:计算有误,可能是用了错误的计算公式<br>D(24)错误:这个数字过小,5个字母即使有重复,排列组合也不会这么少<br><br>这种题目的关键是要注意重复元素在排列组合中的特殊处理方式。"
+    },
+    {
+      "question_id": 2220839,
+      "uuid": "4b0beb7785ec4d2195c3176f6f47c66d",
+      "type": 1,
+      "title": "打印一个字段宽度为6的左对齐字符串中的前3个字符，应使用（）转换说明。",
+      "content": "打印一个字段宽度为6的左对齐字符串中的前3个字符，应使用（）转换说明。",
+      "options": [
+        {
+          "id": 3389134,
+          "content": "%3.6s"
+        },
+        {
+          "id": 3389135,
+          "content": "%6.3s"
+        },
+        {
+          "id": 3389137,
+          "content": "%-6.3s"
+        },
+        {
+          "id": 3389139,
+          "content": "%-3.6s"
+        }
+      ],
+      "correct_option_ids": [
+        3389137
+      ],
+      "correct_options": [
+        "%-6.3s"
+      ],
+      "analysis": "<div>  %s：打印字符串时使用的转换说明。 </div> <div>  %后加（数字）修饰符：表示打印的最小字段宽度，如%6s。 </div> <div>  %后加（.数字）修饰符：对%s转换来说，表示待打印字符的最大数量，如%.3s。 </div> <div>  %后加（-）修饰符：表示待打印项左对齐，即从字段的左侧开始打印该项，如%-6s。 </div> <div>  综上，使用%-6.3s转换说明，可成功打印出一个字段宽度为6的左对齐字符串中的前3个字符。 </div> <div>  所以正确答案为C。 </div>"
+    },
+    {
+      "question_id": 2220848,
+      "uuid": "053b52a886324ea9a60a73669f3f21e0",
+      "type": 1,
+      "title": "若一个完整程序中的一部分如下图所示，则正确的打印结果是（）",
+      "content": "<div>  若一个完整程序中的一部分如下图所示，则正确的打印结果是（） </div> <div> <pre class=\"prettyprint lang-cpp\">printf(&quot;This book is only $%2.2f for sale.&quot;,3.246e2);</pre> </div>",
+      "options": [
+        {
+          "id": 3389165,
+          "content": "This book is only $3.25 for sale."
+        },
+        {
+          "id": 3389169,
+          "content": "This book is only $32.46 for sale."
+        },
+        {
+          "id": 3389173,
+          "content": "This book is only $324.6 for sale."
+        },
+        {
+          "id": 3389176,
+          "content": "This book is only $324.60 for sale."
+        }
+      ],
+      "correct_option_ids": [
+        3389176
+      ],
+      "correct_options": [
+        "This book is only $324.60 for sale."
+      ],
+      "analysis": "<div>  %后为待打印的内容，%f表示待打印的是一个浮点数。 </div> <div>  %后加（数字）修饰符表示待打印的最小字段宽度，如%2f。 </div> <div>  结合本题，待打印的数字超过限制的最小字段宽度且%.2f表示待打印的浮点数需保留2位有效数字。 </div> <div>  所以正确答案为D。<br> </div>"
+    },
+    {
+      "question_id": 10859100,
+      "uuid": "0e26156982a24946b4e7e72d9c156bda",
+      "type": 1,
+      "title": "计算机存储器中的一个字节可以存放",
+      "content": "<span style=\"white-space:normal;caret-color:#121212;color:#121212;font-family:-apple-system, BlinkMacSystemFont, &quot;font-size:medium;background-color:#FFFFFF;\">计算机存储器中的一个字节可以存放</span>",
+      "options": [
+        {
+          "id": 6388175,
+          "content": "一个汉字"
+        },
+        {
+          "id": 6388176,
+          "content": "两个汉字"
+        },
+        {
+          "id": 6388177,
+          "content": "一个西文字符"
+        },
+        {
+          "id": 6388178,
+          "content": "两个西文字符"
+        }
+      ],
+      "correct_option_ids": [
+        6388177
+      ],
+      "correct_options": [
+        "一个西文字符"
+      ],
+      "analysis": "在计算机系统中,1个字节(byte)等于8位(bits),可以表示256个不同的数值(0-255)。这个容量正好可以存储一个ASCII编码的西文字符。<br><br>分析各选项:<br>C正确: 一个字节可以存放一个ASCII编码的西文字符。ASCII码使用7位二进制数表示128个字符,扩展ASCII码使用8位表示256个字符,因此一个字节完全足够存储一个西文字符。<br><br>A错误: 一个汉字通常使用Unicode编码,需要2个字节(UTF-16)或3个字节(UTF-8)的存储空间,一个字节不够。<br><br>B错误: 既然一个汉字就需要至少2个字节,两个汉字就需要4-6个字节,更不可能用一个字节存储。<br><br>D错误: 由于一个西文字符就需要一个字节,两个西文字符自然需要两个字节的存储空间,一个字节无法存储。<br><br>补充说明:这个问题涉及字符编码的基础知识,了解不同字符集的编码方式对于程序开发很重要。"
+    },
+    {
+      "question_id": 2224744,
+      "uuid": "991166bf352e46e2a49c7ac51deae024",
+      "type": 1,
+      "title": "小明比较喜欢吃水果，于是他用一个记事本记录了所有的水果名称，想吃水果的时候...",
+      "content": "<div>  小明比较喜欢吃水果，于是他用一个记事本记录了所有的水果名称，想吃水果的时候直接在水果记事本中找到对应的水果名称即可。有一天小明发现水果的名称可以通过内容组合成各种不同的新的字符串，现在请聪明的你帮助小明计算出下面函数输出的新字符串内容（） </div> <div> <pre class=\"prettyprint lang-cpp\">#include&lt;stdio.h&gt;\n\n#include&lt;stdlib.h&gt;\n\n#define N 1024\n\nchar* fruits(char s[][N],int len) {\n\n        char *result = (char*)malloc(sizeof(char)*(len+1));\n\n        for (int i= 0; i &lt; len; i++) {\n\n               result[i] = s[i][0];\n\n        }\n\n        result[len] = '\\0';\n\n        return result;\n\n}\n\n \n\nint main() {\n\n        char s[][N] = {&quot;mango&quot; ,&quot;apple&quot;,&quot;orange&quot;,&quot;banana&quot;,&quot;pineapple&quot; };\n\n        printf(&quot;%s\\n&quot;,fruits(s,sizeof(s)/sizeof(s[0])));\n\n        return 0;\n\n}</pre> <span><span></span></span>  </div>",
+      "options": [
+        {
+          "id": 3393736,
+          "content": "<div><div><p>mango</p></div></div>"
+        },
+        {
+          "id": 3393740,
+          "content": "<p>maobp</p>"
+        },
+        {
+          "id": 3393744,
+          "content": "apple"
+        },
+        {
+          "id": 3393747,
+          "content": "<div><div><p>mpaaa</p></div></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3393740
+      ],
+      "correct_options": [
+        "<p>maobp</p>"
+      ],
+      "analysis": "<div>  <div>   <p>    从代码中可以看出，函数fruits的功能是合并每个字符串的首字符，并输出其内容；   </p>   <p>    根据给出的二维字符串数组可知，拼接各个字符串的首字符得到的结果为maobp，ACD都错误，因此答案选择B。   </p>  </div> </div>"
+    },
+    {
+      "question_id": 4585,
+      "uuid": "066f7077939740c2a7a05d5f19ae45c1",
+      "type": 1,
+      "title": "字符串 \"www.qq.com\" 所有非空子串（两个子串如果内容相同则只算一个）个数是（）",
+      "content": "字符串&quot;<a href=\"http://www.qq.com\" target=\"_blank\">www.qq.com</a>&quot;所有非空子串（两个子串如果内容相同则只算一个）个数是（）",
+      "options": [
+        {
+          "id": 9346,
+          "content": "1024"
+        },
+        {
+          "id": 9347,
+          "content": "1018"
+        },
+        {
+          "id": 9348,
+          "content": "55"
+        },
+        {
+          "id": 9349,
+          "content": "50"
+        }
+      ],
+      "correct_option_ids": [
+        9349
+      ],
+      "correct_options": [
+        "50"
+      ],
+      "analysis": "要计算字符串\"www.qq.com\"所有非空子串的个数(相同内容只算一个),我们需要仔细分析:<br><br>1. 先统计所有可能的子串:<br>- 长度为1的: w,q,c,o,m (注意w出现3次,只算1次)<br>- 长度为2的: ww,w.,qq,.q,q.,co,om <br>- 长度为3的: www,ww.,w.q,.qq,qq.,q.c,.co,com<br>- 依此类推直到完整字符串长度<br><br>2. 具体计算:<br>- 1个字符的: 5个(w,q,c,o,m)<br>- 2个字符的: 7个(ww,w.,qq,.q,q.,co,om)<br>- 3个字符的: 8个(www,ww.,w.q,.qq,qq.,q.c,.co,com)<br>- 4个字符的: 7个(www.,ww.q,w.qq,.qq.,qq.c,q.co,.com)<br>- 5个字符的: 6个(www.q,ww.qq,w.qq.,qq.co,q.com)<br>- 6个字符的: 5个(www.qq,ww.qq.,w.qq.c,qq.com)<br>- 7个字符的: 4个(www.qq.,ww.qq.c,w.qq.co)<br>- 8个字符的: 3个(www.qq.c,ww.qq.co)<br>- 9个字符的: 2个(www.qq.co)<br>- 10个字符的: 1个(www.qq.com)<br><br>总共:5+7+8+7+6+5+4+3+2+1=50个不同的子串<br><br>因此D选项50是正确答案。<br><br>A和B选项(1024和1018)明显过大,这可能是没有考虑重复子串的情况。<br>C选项55接近但仍然偏大,可能是在统计过程中有重复计算。"
+    },
+    {
+      "question_id": 10869852,
+      "uuid": "2e1b508a5c6547f8ad7d49719abe074e",
+      "type": 1,
+      "title": "在用KMP算法进行模式匹配时，若是指向模式串\"mnopmn\"的指针在指到第...",
+      "content": "<div>\n\t在用KMP算法进行模式匹配时，若是指向模式串\"mnopmn\"的指针在指到第5个字符\"m\"时发生失配，则指针回溯的位置为（）。\n</div>\n<div>\n\t注：字符串中字符从字符数据1号位开始存储，也即从1开始编号。<br />\n</div>",
+      "options": [
+        {
+          "id": 6408362,
+          "content": "1"
+        },
+        {
+          "id": 6408363,
+          "content": "2"
+        },
+        {
+          "id": 6408364,
+          "content": "3"
+        },
+        {
+          "id": 6408365,
+          "content": "4"
+        }
+      ],
+      "correct_option_ids": [
+        6408362
+      ],
+      "correct_options": [
+        "1"
+      ],
+      "analysis": "要理解这道题需要掌握KMP算法中的next数组原理。对于模式串\"mnopmn\"，我们首先要计算它的next数组。<br><br>当在第5个字符\"m\"处失配时，说明前4个字符\"mnop\"已经匹配成功。根据KMP算法，此时需要查看前4个字符中是否存在相同的前缀和后缀，以此决定回溯位置。<br><br>让我们分析模式串\"mnopmn\"的前4个字符\"mnop\":<br>- 长度为1时：前缀\"m\"，后缀\"p\"，不相同<br>- 长度为2时：前缀\"mn\"，后缀\"op\"，不相同<br>- 长度为3时：前缀\"mno\"，后缀\"nop\"，不相同<br>- 长度为4时：前缀\"mnop\"，后缀\"mnop\"，不相同<br><br>由于没有找到相同的前缀和后缀，所以在第5个字符\"m\"失配时，应该回到模式串的起始位置，也就是第1位。<br><br>因此A选项(1)是正确答案。<br><br>其他选项错误原因：<br>B(2)错误：没有长度为1的相同前缀后缀，不应回到第2位<br>C(3)错误：没有长度为2的相同前缀后缀，不应回到第3位<br>D(4)错误：没有长度为3的相同前缀后缀，不应回到第4位"
+    },
+    {
+      "question_id": 1670,
+      "uuid": "1f0b9a4efaa64bfca68dd54584a0e245",
+      "type": 2,
+      "title": "C/C++ 语言中，在一个存放字符串的数组 char  p_str[]，要把字符串中第 4 个字符的值改为 'a'，正确的做法是？",
+      "content": "C/C++ 语言中，在一个存放字符串的数组 char  p_str[]，要把字符串中第 4 个字符的值改为 'a'，正确的做法是？",
+      "options": [
+        {
+          "id": 4095,
+          "content": "p_str[3]='a'"
+        },
+        {
+          "id": 4096,
+          "content": "*(p_str+3)='a'"
+        },
+        {
+          "id": 4097,
+          "content": "p_str[4]='a'"
+        },
+        {
+          "id": 4098,
+          "content": "*(p_str+4)='a'"
+        }
+      ],
+      "correct_option_ids": [
+        4095,
+        4096
+      ],
+      "correct_options": [
+        "p_str[3]='a'",
+        "*(p_str+3)='a'"
+      ],
+      "analysis": "在C/C++中,数组的索引是从0开始计数的。因此要修改第4个字符,需要使用索引3。题目中给出的两种正确表达方式本质上是等价的。<br><br>选项A: p_str[3]='a' 是正确的<br>- 使用数组下标访问语法,3表示第4个元素的位置<br>- 这是最常用和直观的数组访问方式<br><br>选项B: *(p_str+3)='a' 也是正确的<br>- 这是通过指针运算来访问数组元素<br>- p_str+3 表示地址偏移3个单位<br>- *操作符解引用得到该位置的值<br>- 这种方式与A完全等价,因为数组名就是指向首元素的指针<br><br>选项C和D错误:<br>- p_str[4]和*(p_str+4)都是访问第5个字符(索引4)<br>- 题目要求修改第4个字符,所以这两种方式访问的位置都不正确<br><br>补充说明:<br>在C/C++中,p_str[i]可以写成*(p_str+i)的形式,这两种表达方式是等价的。这是因为数组变量名本质上是指向数组首元素的指针。所以可以用指针运算的方式来访问数组元素。"
+    },
+    {
+      "question_id": 55769,
+      "uuid": "e9bf2f031e844af4a881d8e9cca63cdd",
+      "type": 1,
+      "title": "由 4 个 \"1\" 和 4 个 \"0\" 组成的 8 位二进制补码，能表示的最小整数是：",
+      "content": "由 4 个 &quot;1&quot; 和 4 个 &quot;0&quot; 组成的 8 位二进制补码，能表示的最小整数是：",
+      "options": [
+        {
+          "id": 75888,
+          "content": "-125"
+        },
+        {
+          "id": 75889,
+          "content": "-32"
+        },
+        {
+          "id": 75890,
+          "content": "-121"
+        },
+        {
+          "id": 75891,
+          "content": "-3"
+        }
+      ],
+      "correct_option_ids": [
+        75890
+      ],
+      "correct_options": [
+        "-121"
+      ],
+      "analysis": "<span style=\"color: rgb(51,51,51);\"> 最大和最小分别是</span><span style=\"color: rgb(51,51,51);\">01111000 10000111,那么10000111的原码是11111001为-121</span>"
+    },
+    {
+      "question_id": 166440,
+      "uuid": "29fe92993b49456eaf417ef5087b813c",
+      "type": 1,
+      "title": "判断下列说法是否正确：设有两个串 S1 和 S2，求 S2 在 S1 中首次出现位置的运算称为求子串。( )",
+      "content": "判断下列说法是否正确：设有两个串 S1 和 S2，求 S2 在 S1 中首次出现位置的运算称为求子串。( )",
+      "options": [
+        {
+          "id": 392482,
+          "content": "正确"
+        },
+        {
+          "id": 392483,
+          "content": "错误"
+        }
+      ],
+      "correct_option_ids": [
+        392483
+      ],
+      "correct_options": [
+        "错误"
+      ],
+      "analysis": "这道题目考察对子串运算概念的理解。答案选B是正确的,因为题目中的说法存在错误。<br><br>求串S2在串S1中首次出现位置的运算称为\"模式匹配\"或\"串的匹配\",而不是\"求子串\"。这是两个不同的概念:<br><br>1. 模式匹配：是在主串S1中查找模式串S2第一次出现的位置的运算过程。常见算法包括BF(暴力匹配)、KMP算法等。<br><br>2. 求子串：是从一个串中取出一个连续的片段,主要是截取操作。例如从字符串\"computer\"中截取\"put\"这样的操作才叫求子串。<br><br>所以原题的说法混淆了这两个概念。模式匹配是一个查找定位的过程,而求子串是一个截取的过程,它们的操作目的和实现方式都是不同的。虽然这两个概念都涉及到字符串操作,但在计算机科学中是有明确区分的。<br><br>因此选择B(错误)是正确的判断。"
+    },
+    {
+      "question_id": 11269524,
+      "uuid": "46f65541f1bd487f8fd3ba0110350374",
+      "type": 1,
+      "title": "在平均情况下，Sunday算法的时间复杂度为（ ）",
+      "content": "在平均情况下，Sunday算法的时间复杂度为（&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;）",
+      "options": [
+        {
+          "id": 7400085,
+          "content": "O(m)"
+        },
+        {
+          "id": 7400086,
+          "content": "O(n)"
+        },
+        {
+          "id": 7400087,
+          "content": "O(m+n)"
+        },
+        {
+          "id": 7400091,
+          "content": "O(1)"
+        }
+      ],
+      "correct_option_ids": [
+        7400086
+      ],
+      "correct_options": [
+        "O(n)"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 2220555,
+      "uuid": "787832c146514edf9262d30653221aa0",
+      "type": 1,
+      "title": "打印下列两项内容，分别要使用（）转换说明。",
+      "content": "<div>  打印下列两项内容，分别要使用（）转换说明。 </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20211014/387861_1634182276615/4A47A0DB6E60853DEDFCFDF08A5CA249\"><br> </div>",
+      "options": [
+        {
+          "id": 3388998,
+          "content": "%22s、%11lu"
+        },
+        {
+          "id": 3389001,
+          "content": "%22s、%.11lu"
+        },
+        {
+          "id": 3389005,
+          "content": "%-22s、%11lu"
+        },
+        {
+          "id": 3389009,
+          "content": "%-22s、%.11lu"
+        }
+      ],
+      "correct_option_ids": [
+        3389005
+      ],
+      "correct_options": [
+        "%-22s、%11lu"
+      ],
+      "analysis": "<p>  <span>根据</span><span>题目要求：</span>  </p><div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div> <span>I. 一个字段宽度为22，左对齐的字符串：</span>  <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div>  <li>   使用格式说明符 <span style=\"color: inherit;\">%22s</span> 表示字段宽度为22的字符串。    <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div>  <li>   左对齐需要在宽度前加上负号，即 <span style=\"color: inherit;\">%-22s</span>。    <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div> <span>II. 字段宽度为11的 </span><span style=\"color: inherit;\">unsigned long</span><span> 类型的整数：</span>  <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div>  <li>   使用格式说明符 <span style=\"color: inherit;\">%11lu</span> 表示字段宽度为11的 <span style=\"color: inherit;\">unsigned long</span> 类型整数。    <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div> <span>因此，正确答案是 </span><span style=\"font-weight: 600;\">C. <span style=\"color: inherit;\">%-22s, %11lu</span></span>  <div>   <br>  </div>"
+    },
+    {
+      "question_id": 10959807,
+      "uuid": "a0d88673847d47a89de9859171145824",
+      "type": 1,
+      "title": "此代码的运行结果，正确的是（） from bs4 import Beaut...",
+      "content": "此代码的运行结果，正确的是（） <pre class=\"prettyprint lang-py\">from bs4 import BeautifulSoup\n\nhtml = '''\n&lt;p class=&quot;one&quot;&gt;1&lt;/p&gt;\n&lt;div class=&quot;one&quot;&gt;\n    &lt;p id=&quot;two&quot;&gt;2&lt;/p&gt;\n    &lt;p class=&quot;one&quot;&gt;3&lt;/p&gt;\n&lt;/div&gt;\n'''\nsoup = BeautifulSoup(html, 'html.parser')\nprint(soup.select('.one'))</pre> <br>",
+      "options": [
+        {
+          "id": 6615702,
+          "content": "&lt;p class=\"one\"&gt;1&lt;/p&gt;"
+        },
+        {
+          "id": 6615703,
+          "content": "[&lt;p class=\"one\"&gt;1&lt;/p&gt;, &lt;div class=\"one\"&gt;<br />&lt;p id=\"two\"&gt;2&lt;/p&gt;<br />&lt;p class=\"one\"&gt;3&lt;/p&gt;<br />&lt;/div&gt;, &lt;p class=\"one\"&gt;3&lt;/p&gt;]<br />"
+        },
+        {
+          "id": 6615704,
+          "content": "[&lt;p class=\"one\"&gt;1&lt;/p&gt;, &lt;div class=\"one\"&gt;&lt;/div&gt;, &lt;p class=\"one\"&gt;3&lt;/p&gt;]"
+        },
+        {
+          "id": 6615705,
+          "content": "[&lt;p class=\"one\"&gt;1&lt;/p&gt;, &lt;p class=\"one\"&gt;3&lt;/p&gt;]"
+        }
+      ],
+      "correct_option_ids": [
+        6615703
+      ],
+      "correct_options": [
+        "[&lt;p class=\"one\"&gt;1&lt;/p&gt;, &lt;div class=\"one\"&gt;<br />&lt;p id=\"two\"&gt;2&lt;/p&gt;<br />&lt;p class=\"one\"&gt;3&lt;/p&gt;<br />&lt;/div&gt;, &lt;p class=\"one\"&gt;3&lt;/p&gt;]<br />"
+      ],
+      "analysis": "BeautifulSoup的select()方法会选择所有匹配CSS选择器的元素，返回一个列表。在这段代码中，使用.one选择器会匹配所有class属性为&quot;one&quot;的元素。<br> <br> 具体分析代码的运行结果：<br> 1. soup.select('.one')会匹配到三个元素：<br> - 第一个class=&quot;one&quot;的p标签： <p>  1 </p> <br> - class=&quot;one&quot;的div标签：整个div及其内容<br> - div内部class=&quot;one&quot;的p标签： <p>  3 </p> <br> <br> 所以B选项正确，返回的列表包含这三个完整的元素。<br> <br> 分析其他选项错误原因：<br> A选项只包含了第一个p标签，遗漏了其他匹配元素。<br> C选项虽然选择了三个正确的元素，但div标签的内容显示不完整。<br> D选项只包含了两个p标签，遗漏了class=&quot;one&quot;的div标签。<br> <br> 需要注意的是，select()方法会返回完整的HTML元素，包括标签的所有子元素。这就是为什么div标签的结果会包含其内部的所有内容。这也是B选项中div标签显示完整内部结构的原因。"
+    },
+    {
+      "question_id": 2208674,
+      "uuid": "12230862d49d46d3ab9af53c11e71078",
+      "type": 1,
+      "title": "分析下面代码，哪个输出情况是正确的？() public static vo...",
+      "content": "<div>  <div>   <p>    分析下面代码，哪个输出情况是正确的？()   </p> <pre>public static void main(String[] args) {\n    String s1=&quot;6&quot;;\n    Double t1=6.3;\n    System.out.println(s1+t1);\n}</pre>  </div> </div>",
+      "options": [
+        {
+          "id": 3379205,
+          "content": "<p>&quot;66.3&quot;</p>"
+        },
+        {
+          "id": 3379208,
+          "content": "<p>12</p>"
+        },
+        {
+          "id": 3379212,
+          "content": "报错"
+        }
+      ],
+      "correct_option_ids": [
+        3379205
+      ],
+      "correct_options": [
+        "<p>&quot;66.3&quot;</p>"
+      ],
+      "analysis": "<div>  <div>   <p>    本题考查字符串与数字的相加；在运算时，会自动将Number型变量转化为字符串，并添加到结果之后。   </p>  </div> </div>"
+    },
+    {
+      "question_id": 2224742,
+      "uuid": "fd3115f9f69a4c6180712ca55f90434e",
+      "type": 1,
+      "title": "互联网的快速发展虽然便利了我们的日常生活，但是它也带来了诸多问题，比如：像...",
+      "content": "<div>  互联网的快速发展虽然便利了我们的日常生活，但是它也带来了诸多问题，比如：像账号密码这样的敏感信息泄露问题，因此对在互联网上进行传输的数据进行加解密是很有必要的。下面函数的功能对字符串明文进行加密处理，那么加密后的密文结果是（） </div> <div>  <span></span>  <pre class=\"prettyprint lang-cpp\">#include&lt;stdio.h&gt;\n\n#include&lt;string.h&gt;\n\n#define N 1024\n\nchar* encrypt(char* str) {\n\n        int i, len = strlen(str);\n\n        for (i = 0; i &lt; len; i++) {\n\n               str[i] = (str[i] + i) % 128;\n\n        }\n\n        return str;\n\n}\nint main() {\n\n        char s[N] = &quot;I am good&quot;;\n\n        printf(&quot;%s\\n&quot;, encrypt(s));\n\n        return 0;\n\n}</pre> </div>",
+      "options": [
+        {
+          "id": 3393734,
+          "content": "I!cp$luv1"
+        },
+        {
+          "id": 3393738,
+          "content": "<p>I am good</p>"
+        },
+        {
+          "id": 3393742,
+          "content": "doog ma I"
+        },
+        {
+          "id": 3393745,
+          "content": "<p>1vul$pc!I</p>"
+        }
+      ],
+      "correct_option_ids": [
+        3393734
+      ],
+      "correct_options": [
+        "I!cp$luv1"
+      ],
+      "analysis": "<div>  <div>   <div>    从题意可知看出，该函数的功能是给字符串I am good进行加密处理。   </div>   <div>    根据加密函数可知，该函数是对字符串中的每一个字符ASCII值和当前字符的索引值进行相加，然后对128进行取模后得到的ASCII表中对应的字符，因此答案B和答案C明显都不正确。   </div>   <div>    根据第一个字符的下标为0可知，第一个字符加密后的密文和明文应该是一样的，因此答案D也不正确。   </div>   <p>    所以正确答案为A。   </p>  </div> </div>"
+    },
+    {
+      "question_id": 169042,
+      "uuid": "9f71d7bd0a304f5f92984cc8f4fde469",
+      "type": 1,
+      "title": "字符串 \"ababaaababaa\" 的 next 数组为（）",
+      "content": "字符串 &quot;ababaaababaa&quot; 的 next 数组为（）",
+      "options": [
+        {
+          "id": 400504,
+          "content": "012345678999"
+        },
+        {
+          "id": 400505,
+          "content": "012121111212"
+        },
+        {
+          "id": 400506,
+          "content": "011234223456"
+        },
+        {
+          "id": 400507,
+          "content": "012301232234"
+        }
+      ],
+      "correct_option_ids": [
+        400506
+      ],
+      "correct_options": [
+        "011234223456"
+      ],
+      "analysis": "根据 KMP 算法中 next 数组的计算方法，即可得出答案。"
+    },
+    {
+      "question_id": 2208669,
+      "uuid": "7e0efd0f3a1c447aa0823c8f27e05eeb",
+      "type": 1,
+      "title": "观察下列代码，分析结果() String s1 = \"coder\"; St...",
+      "content": "<div>  <div>   <p>    观察下列代码，分析结果()   </p> <pre>String s1 = &quot;coder&quot;;     \nString s2 = &quot;coder&quot;;     \nString s3 = &quot;coder&quot; + s2;     \nString s4 = &quot;coder&quot; + &quot;coder&quot;;     \nString s5 = s1 + s2;            \nSystem.out.println(s3 == s4); \nSystem.out.println(s3 == s5);    \nSystem.out.println(s4 == &quot;codercoder&quot;);</pre>  </div> </div>",
+      "options": [
+        {
+          "id": 3379179,
+          "content": "<div><div><p>false；false； true；</p></div></div>"
+        },
+        {
+          "id": 3379182,
+          "content": "<div><div><p>false；true； true；</p></div></div>"
+        },
+        {
+          "id": 3379187,
+          "content": "<div><div><p>false；false； false；</p></div></div>"
+        },
+        {
+          "id": 3379190,
+          "content": "<div><p>true；false； true；</p></div>"
+        }
+      ],
+      "correct_option_ids": [
+        3379179
+      ],
+      "correct_options": [
+        "<div><div><p>false；false； true；</p></div></div>"
+      ],
+      "analysis": "这道题目考察了Java字符串的内存分配和比较机制。让我们逐行分析代码：<br><br>1. s1和s2都是字符串常量\"coder\"，存储在字符串常量池中，指向同一个对象。<br><br>2. s3 = \"coder\" + s2<br>这是一个变量和字符串的拼接，在运行时才能确定s2的值，因此会在堆内存中创建新的String对象。<br><br>3. s4 = \"coder\" + \"coder\"<br>这是两个字符串常量的拼接，编译时会优化为\"codercoder\"，直接存入常量池。<br><br>4. s5 = s1 + s2<br>这是两个变量的拼接，会在堆内存中创建新的String对象。<br><br>所以三个比较的结果分析：<br>- s3 == s4 结果为false，因为s3在堆中，s4在常量池中<br>- s3 == s5 结果为false，因为它们是堆中的不同对象<br>- s4 == \"codercoder\" 结果为true，因为s4在编译时已优化为字符串常量\"codercoder\"<br><br>因此A选项(false、false、true)是正确答案。<br><br>其他选项错误原因：<br>B错误：第二个比较结果不可能为true<br>C错误：第三个比较结果一定是true<br>D错误：第一个比较结果不可能为true"
+    },
+    {
+      "question_id": 2208666,
+      "uuid": "dea55efc0cdf427f84127d1b1fb79565",
+      "type": 1,
+      "title": "String s1 = \"nowcoder\";字符串s1存储在内存的哪个区域()",
+      "content": "<div>  <div>   <p>    String s1 = &quot;nowcoder&quot;;字符串s1存储在内存的哪个区域()   </p>  </div> </div>",
+      "options": [
+        {
+          "id": 3379174,
+          "content": "<p>字符串常量区</p>"
+        },
+        {
+          "id": 3379177,
+          "content": "<p>堆</p>"
+        },
+        {
+          "id": 3379180,
+          "content": "<p>栈</p>"
+        },
+        {
+          "id": 3379184,
+          "content": "临时区"
+        }
+      ],
+      "correct_option_ids": [
+        3379174
+      ],
+      "correct_options": [
+        "<p>字符串常量区</p>"
+      ],
+      "analysis": "<div>  <div>   <p>    Java中，用new创建的对象在堆区；函数中的临时变量在栈区。但是，由于字符串使用过于频繁，在内存方法区中有一个字符串常量池，用来快速创建和访问字符串。   </p>  </div> </div>"
+    },
+    {
+      "question_id": 87784,
+      "uuid": "5412b470517c4f3094dbd7c4f7a20000",
+      "type": 1,
+      "title": "串中任意个字符组成的子序列称为该串的子串。",
+      "content": "串中任意个字符组成的子序列称为该串的子串。",
+      "options": [
+        {
+          "id": 152293,
+          "content": "正确"
+        },
+        {
+          "id": 152294,
+          "content": "错误"
+        }
+      ],
+      "correct_option_ids": [
+        152294
+      ],
+      "correct_options": [
+        "错误"
+      ],
+      "analysis": "这道题目考察了字符串的基本概念中子串和子序列的区别。题目中的说法是错误的。<br><br>子串(substring)和子序列(subsequence)是两个不同的概念：<br><br>子串：必须是原字符串中连续的字符组成的序列。例如，字符串\"hello\"的子串包括\"he\"、\"ell\"、\"lo\"等。<br><br>子序列：可以是原字符串中任意位置的字符组成的序列，这些字符的相对顺序要保持不变，但不要求连续。例如，字符串\"hello\"的子序列包括\"hlo\"、\"el\"、\"ho\"等。<br><br>所以A选项说法错误：<br>1. 将子序列说成是子串是不准确的<br>2. 子串要求字符必须是连续的，而不是\"任意个字符组成\"<br>3. 题目中混淆了子串和子序列的概念<br><br>因此B(错误)是正确答案。这种基础概念的区分对于字符串处理相关的算法题目尤为重要。"
+    },
+    {
+      "question_id": 10960097,
+      "uuid": "3cbde7a4ddca4af29deeb5dc0df761e7",
+      "type": 1,
+      "title": "执行以下程序，输出结果为（） d = {} s = &quot;abcas...",
+      "content": "<p>  执行以下程序，输出结果为（） </p> <p> <pre class=\"prettyprint lang-py\">d = {}\ns = &quot;abcasdacbdec&quot;\nfor i in s:\n    if i not in d:\n        d.setdefault(i,1)\n    else:\n        d[i] += 1\nprint(d[&quot;c&quot;])</pre> <br> </p>",
+      "options": [
+        {
+          "id": 6621018,
+          "content": "1"
+        },
+        {
+          "id": 6621019,
+          "content": "2"
+        },
+        {
+          "id": 6621020,
+          "content": "3"
+        },
+        {
+          "id": 6621021,
+          "content": "4"
+        }
+      ],
+      "correct_option_ids": [
+        6621020
+      ],
+      "correct_options": [
+        "3"
+      ],
+      "analysis": "这道题目主要考察Python字典和字符串处理的基本操作。让我们来分析代码的执行过程：<br><br>首先看字符串 s = \"abcasdacbdec\"，代码统计了每个字符出现的次数：<br><br>1. 创建空字典 d<br>2. 遍历字符串中的每个字符：<br>   - 如果字符不在字典中，使用setdefault设置初始值为1<br>   - 如果字符已在字典中，将对应的值加1<br>3. 最后打印字符'c'在字典中的值<br><br>让我们来数一下字符'c'在字符串中出现的次数：<br>\"abcasdacbdec\" <br>共有3个'c'：第3位、第8位和最后一位<br><br>所以C选项3是正确答案。<br><br>分析其他选项：<br>A选项(1)错误：如果'c'只出现一次才会是这个值<br>B选项(2)错误：'c'在字符串中出现了3次，不是2次<br>D选项(4)错误：'c'在字符串中只出现了3次，不是4次<br><br>这个程序实际上实现了一个字符计数器的功能，最终字典d中存储了每个字符作为键，出现次数作为值的映射关系。"
+    },
+    {
+      "question_id": 11182416,
+      "uuid": "07e44f59526a49b7b5dbcec9f239fbb3",
+      "type": 1,
+      "title": "已知串 S = 'abcdeabcde'，其 next 数组值为（）。",
+      "content": "<span>已知串 S = 'abcdeabcde'，其 next 数组值为（）。</span>",
+      "options": [
+        {
+          "id": 7197257,
+          "content": "0, 1, 2, 3, 4, 5, 6, 7, 8, 9"
+        },
+        {
+          "id": 7197258,
+          "content": "0, 0, 1, 2, 3, 4, 5, 6, 7, 8"
+        },
+        {
+          "id": 7197259,
+          "content": "0, 1, 1, 1, 1, 1, 2, 3, 4, 5"
+        },
+        {
+          "id": 7197260,
+          "content": "0, 1, 2, 3, 4, 5, 6, 7, 8, 0"
+        }
+      ],
+      "correct_option_ids": [
+        7197259
+      ],
+      "correct_options": [
+        "0, 1, 1, 1, 1, 1, 2, 3, 4, 5"
+      ],
+      "analysis": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20250512/0_1747031270755/A32FD1DF546E482D470CBC195359C8AE\">"
+    },
+    {
+      "question_id": 2224738,
+      "uuid": "0804941eaa35409ab9a463ca66e59c17",
+      "type": 1,
+      "title": "下面代码实现两个字符串的比较，若想要实现strcmp函数的功能，则补全下面...",
+      "content": "<div>  <div>   <p>    下面代码实现两个字符串的比较，若想要实现strcmp函数的功能，则补全下面下划线部分内容代码完成字符串比较功能（）   </p> <pre>int strCompare(char *s, char *t) {\n    char *p = s, *q = t;\n    while (*p == *q) {\n        if (*p == '\\0')\n            return 0;\n        p++;\n        q++;\n    }\n    return _____;\n}</pre>  </div> </div>",
+      "options": [
+        {
+          "id": 3393720,
+          "content": "<div><div><p>*s - *t</p></div></div>"
+        },
+        {
+          "id": 3393721,
+          "content": "s - t"
+        },
+        {
+          "id": 3393724,
+          "content": "*p - *q"
+        },
+        {
+          "id": 3393727,
+          "content": "p - q"
+        }
+      ],
+      "correct_option_ids": [
+        3393724
+      ],
+      "correct_options": [
+        "*p - *q"
+      ],
+      "analysis": "<div>  <div>   <div>    由题意可知，该函数为字符串比较函数，比较字符串s和t的大小。   </div>   <div>    而strcmp函数的功能是，若字符串s对应位上的ASCII字符值大于、等于、小于字符串t对应位上的ASCII字符值，则分别返回正整数、0、负整数。   </div>   <div>    从while里面的返回结果可知，返回0的时候是两个字符串相等的时候，因此while循环外面的返回值则是比较两个字符串不相等的时候，即比较字符串对应位字符的ASCII值。   </div>   <div>    选项A：是两个字符串的第一个字符，若字符串s和t的第一个字符相等，而后续字符没有判断，错误。   </div>   <div>    选项B和选项D：没有比较字符串对应位字符的ASCII值，错误。<br>   </div>   <div>    选项C：指针p和q分别为字符串s和t的工作指针，当执行完while循环之后，指针p和q分别指向了字符串s和t对应不相等字符位，对指向该字符位的指针取值后作差即可比较大小，正确。   </div>   <div>    所以正确答案为C。<br>   </div>  </div> </div>"
+    },
+    {
+      "question_id": 10859121,
+      "uuid": "075dd1941f5448e4938091c3c8db28a8",
+      "type": 1,
+      "title": "str = \"tuhunew\\\\ year123\" json_data_r...",
+      "content": "str = \"tuhunew\\\\ year123\"<br />\njson_data_replace = (str).replace('\\\\','')[4:-2]<br />\n<div>\n\tprint(json_data_replace);\n</div>\n<div>\n\t的结果是()<br />\n</div>",
+      "options": [
+        {
+          "id": 6388247,
+          "content": "new year"
+        },
+        {
+          "id": 6388248,
+          "content": "new year1"
+        },
+        {
+          "id": 6388249,
+          "content": "语法报错"
+        },
+        {
+          "id": 6388250,
+          "content": "new\\\\year"
+        }
+      ],
+      "correct_option_ids": [
+        6388248
+      ],
+      "correct_options": [
+        "new year1"
+      ],
+      "analysis": "python数据处理"
+    },
+    {
+      "question_id": 159,
+      "uuid": "939250fe276340d798e136c997f8fe0c",
+      "type": 1,
+      "title": "若串 S=\"software\"，则其子串的数目是()",
+      "content": "若串 S=&quot;software&quot;，则其子串的数目是()",
+      "options": [
+        {
+          "id": 517,
+          "content": "8"
+        },
+        {
+          "id": 518,
+          "content": "37"
+        },
+        {
+          "id": 519,
+          "content": "36"
+        },
+        {
+          "id": 520,
+          "content": "9"
+        }
+      ],
+      "correct_option_ids": [
+        518
+      ],
+      "correct_options": [
+        "37"
+      ],
+      "analysis": "对于字符串&quot;software&quot;求子串数目,需要理解子串的概念并进行系统计算。 子串是指在原字符串中连续的字符序列。对于长度为n的字符串,求子串数目的方法是:统计所有可能的起始位置和终止位置的组合,并加上空串。 &quot;software&quot;长度为8,让我们逐步计算非空子串: 1. 长度为1的子串:s,o,f,t,w,a,r,e (8个) 2. 长度为2的子串:so,of,ft,tw,wa,ar,re (7个) 3. 长度为3的子串:sof,oft,ftw,twa,war,are (6个) 4. 长度为4的子串:soft,oftw,ftwa,twar,ware (5个) 5. 长度为5的子串:softw,oftwa,ftwar,tware (4个) 6. 长度为6的子串:softwa,oftwar,ftware (3个) 7. 长度为7的子串:softwar,oftware (2个) 8. 长度为8的子串:software (1个) 非空子串总数=8+7+6+5+4+3+2+1=36个，加上1个空串，总数=36+1=37个。 所以B选项37是正确答案。 分析其他选项: A选项8:可能只计算了长度为1的子串数量 C选项36:没有包含空串 D选项9:计算错误,远小于实际子串数量"
+    },
+    {
+      "question_id": 2102023,
+      "uuid": "526d1ae078244c269014d0b500bfd7e2",
+      "type": 1,
+      "title": "存在中缀表达式：(2*(3-4))*5，通过下面的代码将其转换为后缀表达式...",
+      "content": "<div>  <span style=\"color: rgb(51,51,51);\">存在中缀表达式：(2*(3-4))*5，通过下面的代码将其转换为后缀表达式，则当扫描到字符4时，栈ops中所存元素为（）</span>  </div> <div> <pre class=\"prettyprint lang-java\"> /**\n    * 将中缀表达式转换为后缀表达式\n    * @param s 中缀表达式\n    * @return String字符串 后缀表达式\n    */\n    private String postfix(String s){\n        // 后缀表达式\n        StringBuilder sb = new StringBuilder();\n        Stack&lt;Character&gt; ops = new Stack&lt;&gt;();\n        int i = 0;\n        while(i &lt; s.length()){\n            char c = s.charAt(i++);\n            if (c == '(' || c == '+' || c == '-' || c == '*'){\n                // 加一个空格是为了将操作数之间隔开\n                sb.append(&quot; &quot;);\n                pushOP(sb,c,ops);\n                continue;\n            }\n            if (c == ')'){\n                // 弹出操作符直到(\n                while(ops.peek() != '('){\n                    sb.append(ops.pop());\n                }\n                ops.pop();\n                continue;\n            }\n            sb.append(c);\n        }\n        // 弹出栈中元素\n        while(!ops.isEmpty()){\n            sb.append(ops.pop());\n        }\n        return sb.toString();\n    }\n    private void pushOP(StringBuilder sb,char op,Stack&lt;Character&gt; ops){\n        // 栈空，或者栈顶元素为(,操作符直接放入栈中\n        if (ops.isEmpty() || ops.peek() == '(' || op == '('){\n            ops.add(op);\n            return;\n        }\n        char c = ops.peek();\n        // 栈顶操作符的优先级低于当前操作符，直接压入栈中\n        if (c != '*' &amp;&amp; op == '*'){\n            ops.add(op);\n            return;\n        }\n        // 否则，弹出栈顶元素，继续比较\n        c = ops.pop();\n        sb.append(c);\n        pushOP(sb,op,ops);\n    }</pre> </div> <div> </div>",
+      "options": [
+        {
+          "id": 3291946,
+          "content": "(*"
+        },
+        {
+          "id": 3291948,
+          "content": "(*(-"
+        },
+        {
+          "id": 3291951,
+          "content": "((-"
+        },
+        {
+          "id": 3291954,
+          "content": "*("
+        }
+      ],
+      "correct_option_ids": [
+        3291948
+      ],
+      "correct_options": [
+        "(*(-"
+      ],
+      "analysis": "B<br> <br> - 扫描到字符 4 前的处理顺序：<br>   - '(' 入栈 → ops: (<br>   - '2' 输出<br>   - '*' 入栈 → ops: ( *<br>   - '(' 入栈 → ops: ( * (<br>   - '3' 输出<br>   - '-' 入栈 → ops: ( * ( -<br> - 此时扫描到 '4'，栈内容为 “(*(-”。<br>"
+    },
+    {
+      "question_id": 11183278,
+      "uuid": "224dac612a5241bbb53d102d550b1f95",
+      "type": 1,
+      "title": "在一个虚拟的数据结构迷宫里，一位年轻的数据结构探险家正在探索KMP算法的奥...",
+      "content": "在一个虚拟的数据结构迷宫里，一位年轻的数据结构探险家正在探索KMP算法的奥秘。已知字符串S='<span style=\"text-wrap:wrap;\">ydysdssydddysysddssy</span>'，模式串t='<span style=\"text-wrap:wrap;\">ydydyy</span>'，在第一次出现“失配”（s[i]≠t[j]）时，i=j=3。下次开始匹配时，i和j的值分别是（）\n<div>\n</div>",
+      "options": [
+        {
+          "id": 7199120,
+          "content": "i=5,&nbsp;j=0"
+        },
+        {
+          "id": 7199121,
+          "content": "i=3,&nbsp;j=1"
+        },
+        {
+          "id": 7199122,
+          "content": "i=3,&nbsp;j=2"
+        },
+        {
+          "id": 7199123,
+          "content": "i=5,&nbsp;j=3"
+        }
+      ],
+      "correct_option_ids": [
+        7199121
+      ],
+      "correct_options": [
+        "i=3,&nbsp;j=1"
+      ],
+      "analysis": "主串： ydysdssydddysysddssy<br />\n模式串： ydydyy<br />\n比较 y 和 y, i=0, j=0<br />\n比较 d 和 d, i=1, j=1<br />\n比较 y 和 y, i=2, j=2<br />\n匹配失败：比较 s 和 d, i=3, j=3<br />\n匹配失败：比较 s 和 d, i=3, j=1<br />\n匹配失败：比较 s 和 y, i=3, j=0<br />\n匹配失败：比较 d 和 y, i=4, j=0<br />\n匹配失败：比较 s 和 y, i=5, j=0<br />\n匹配失败：比较 s 和 y, i=6, j=0<br />\n比较 y 和 y, i=7, j=0<br />\n比较 d 和 d, i=8, j=1<br />\n匹配失败：比较 d 和 y, i=9, j=2<br />\n匹配失败：比较 d 和 y, i=9, j=0<br />\n匹配失败：比较 d 和 y, i=10, j=0<br />\n比较 y 和 y, i=11, j=0<br />\n匹配失败：比较 s 和 d, i=12, j=1<br />\n匹配失败：比较 s 和 y, i=12, j=0<br />\n比较 y 和 y, i=13, j=0<br />\n匹配失败：比较 s 和 d, i=14, j=1<br />\n匹配失败：比较 s 和 y, i=14, j=0<br />\n匹配失败：比较 d 和 y, i=15, j=0<br />\n匹配失败：比较 d 和 y, i=16, j=0<br />\n匹配失败：比较 s 和 y, i=17, j=0<br />\n匹配失败：比较 s 和 y, i=18, j=0<br />\n比较 y 和 y, i=19, j=0<br />\n模式串的next数组： [0, 0, 1, 2, 3, 1]<br />\n<div>\n</div>"
+    },
+    {
+      "question_id": 11257952,
+      "uuid": "b33d48b0def44fe48c718d402790edfb",
+      "type": 1,
+      "title": "在一个数字幻境中，一位数据结构探险家正在破解KMP算法的谜题。已知字符串S...",
+      "content": "<div>\n\t在一个数字幻境中，一位数据结构探险家正在破解KMP算法的谜题。<span style=\"text-wrap:wrap;\">已知字符串S='rrrrunuuununrrrurrnn'，模式串t='rrrurr'，</span>在第一次出现“失配”（s[i]≠t[j]）时，i=j=3。下次开始匹配时，i和j的值分别是（）\n</div>",
+      "options": [
+        {
+          "id": 7370302,
+          "content": "i=5,&nbsp;j=0"
+        },
+        {
+          "id": 7370303,
+          "content": "i=3,&nbsp;j=0"
+        },
+        {
+          "id": 7370304,
+          "content": "i=3,&nbsp;j=2"
+        },
+        {
+          "id": 7370305,
+          "content": "i=8,&nbsp;j=0"
+        }
+      ],
+      "correct_option_ids": [
+        7370304
+      ],
+      "correct_options": [
+        "i=3,&nbsp;j=2"
+      ],
+      "analysis": "主串：rrrrunuuununrrrurrnn<div>模式串：rrrurr</div><div>匹配过程：</div><div>比较&nbsp;r&nbsp;和&nbsp;r,&nbsp;i=0,&nbsp;j=0</div><div>比较&nbsp;r&nbsp;和&nbsp;r,&nbsp;i=1,&nbsp;j=1</div><div>比较&nbsp;r&nbsp;和&nbsp;r,&nbsp;i=2,&nbsp;j=2</div><div>匹配失败：比较&nbsp;r&nbsp;和&nbsp;u,&nbsp;i=3,&nbsp;j=3</div><div>比较&nbsp;r&nbsp;和&nbsp;r,&nbsp;i=3,&nbsp;j=2</div><div>比较&nbsp;u&nbsp;和&nbsp;u,&nbsp;i=4,&nbsp;j=3</div><div>匹配失败：比较&nbsp;n&nbsp;和&nbsp;r,&nbsp;i=5,&nbsp;j=4</div><div>匹配失败：比较&nbsp;n&nbsp;和&nbsp;r,&nbsp;i=5,&nbsp;j=0</div><div>匹配失败：比较&nbsp;u&nbsp;和&nbsp;r,&nbsp;i=6,&nbsp;j=0</div><div>匹配失败：比较&nbsp;u&nbsp;和&nbsp;r,&nbsp;i=7,&nbsp;j=0</div><div>匹配失败：比较&nbsp;u&nbsp;和&nbsp;r,&nbsp;i=8,&nbsp;j=0</div><div>匹配失败：比较&nbsp;n&nbsp;和&nbsp;r,&nbsp;i=9,&nbsp;j=0</div><div>匹配失败：比较&nbsp;u&nbsp;和&nbsp;r,&nbsp;i=10,&nbsp;j=0</div><div>匹配失败：比较&nbsp;n&nbsp;和&nbsp;r,&nbsp;i=11,&nbsp;j=0</div><div>比较&nbsp;r&nbsp;和&nbsp;r,&nbsp;i=12,&nbsp;j=0</div><div>比较&nbsp;r&nbsp;和&nbsp;r,&nbsp;i=13,&nbsp;j=1</div><div>比较&nbsp;r&nbsp;和&nbsp;r,&nbsp;i=14,&nbsp;j=2</div><div>比较&nbsp;u&nbsp;和&nbsp;u,&nbsp;i=15,&nbsp;j=3</div><div>比较&nbsp;r&nbsp;和&nbsp;r,&nbsp;i=16,&nbsp;j=4</div><div>比较&nbsp;r&nbsp;和&nbsp;r,&nbsp;i=17,&nbsp;j=5</div><div>模式串的next数组：[0,&nbsp;1,&nbsp;2,&nbsp;0,&nbsp;1,&nbsp;2]</div><div>```</div>"
+    },
+    {
+      "question_id": 2224739,
+      "uuid": "b10b2b4157bf4e8483dc1f91a7109158",
+      "type": 1,
+      "title": "假设函数void fun(char* s)的功能是在字符串中所有数字字符前...",
+      "content": "<div>  假设函数void fun(char* s)的功能是在字符串中所有数字字符前面加一个$字符，如输入：abc1ca2，则输出abc$1ca$2，补全下面代码完成功能（） </div> <div> <pre class=\"prettyprint lang-cpp\">void fun(char *s) {\n    int i;\n    for (i = 0; s[i] != '\\0'; i++) {\n         if (______)\n             printf(&quot;$&quot;);\n         printf(&quot;%c&quot;, s[i]);\n    }\n}</pre> </div>",
+      "options": [
+        {
+          "id": 3393722,
+          "content": "s[i]&gt;=0 &amp;&amp; s[i]&lt;=9"
+        },
+        {
+          "id": 3393725,
+          "content": "s[i]&gt;='0' &amp;&amp; s[i]&lt;='9'"
+        },
+        {
+          "id": 3393728,
+          "content": "*s&gt;=0 &amp;&amp; *s&lt;=9"
+        },
+        {
+          "id": 3393731,
+          "content": "*s&gt;='0' &amp;&amp; *s&lt;='9'"
+        }
+      ],
+      "correct_option_ids": [
+        3393725
+      ],
+      "correct_options": [
+        "s[i]&gt;='0' &amp;&amp; s[i]&lt;='9'"
+      ],
+      "analysis": "<div>  <div>   <p>    由题意可知，该函数的功能是在数字字符前面加一个$特殊字符，从给出的函数代码可以知道是需要我们给一个判断数字字符的条件。   </p>   <div>    即判断当前字符是否为数字字符，根据ASCII可知，0-9的值为48-57，因此答案A和C不正确；   </div>   <div>    可以将其用引号引起来表示字符，但是每次判断的是当前字符，所以答案D不正确，D判断的是第一个字符。因此答案选择B   </div>  </div> </div>"
+    },
+    {
+      "question_id": 10859588,
+      "uuid": "ca1eaec13d37442fbe277ef208be3c85",
+      "type": 1,
+      "title": "下列哪些为不可变变量",
+      "content": "下列哪些为不可变变量",
+      "options": [
+        {
+          "id": 6389069,
+          "content": "列表"
+        },
+        {
+          "id": 6389070,
+          "content": "字符串"
+        },
+        {
+          "id": 6389071,
+          "content": "集合"
+        },
+        {
+          "id": 6389072,
+          "content": "字典"
+        }
+      ],
+      "correct_option_ids": [
+        6389070
+      ],
+      "correct_options": [
+        "字符串"
+      ],
+      "analysis": "Python中的不可变(immutable)变量是指创建后其值不能被修改的数据类型。字符串(str)就是典型的不可变类型,这是因为一旦创建了字符串对象,就不能修改其中的任何字符,只能创建新的字符串对象。<br><br>分析其他选项:<br><br>A错误:列表(list)是可变类型,可以通过append()、remove()等方法修改列表内容。<br><br>B正确:字符串(str)是不可变类型,对字符串的任何操作都会创建新的字符串对象,而不是修改原有对象。<br><br>C错误:集合(set)是可变类型,可以通过add()、remove()等方法修改集合内容。<br><br>D错误:字典(dict)是可变类型,可以通过添加、删除、修改键值对来改变字典内容。<br><br>举例说明字符串的不可变性:<br>当执行 s = \"hello\" 后,如果想要修改字符串内容,比如 s[0] = \"H\",会报TypeError错误。正确的做法是创建新的字符串对象: s = \"H\" + s[1:]。这就体现了字符串的不可变特性。"
+    },
+    {
+      "question_id": 2224743,
+      "uuid": "048f88493a3148239f30d9a727ca933c",
+      "type": 1,
+      "title": "如下代码所示，分别用于统计字符串的长度（在32位系统里），那么输出的结果分...",
+      "content": "<div>  如下代码所示，分别用于统计字符串的长度（在32位系统里），那么输出的结果分别为（） </div> <div> <pre class=\"prettyprint lang-cpp\">#include&lt;stdio.h&gt;\n\nvoid testArgs(char* s) {\n\n        printf(&quot;%d\\n&quot;, sizeof(s));\n\n}\n\nint main() {\n\n        char s[] = &quot;I want to go on vacation&quot;;\n\n        printf(&quot;%d\\n&quot;, sizeof(s));\n\n        testArgs(s);\n\n        return 0;\n\n}</pre> </div>",
+      "options": [
+        {
+          "id": 3393735,
+          "content": "<p>25，25</p>"
+        },
+        {
+          "id": 3393739,
+          "content": "24，24"
+        },
+        {
+          "id": 3393743,
+          "content": "24，4"
+        },
+        {
+          "id": 3393746,
+          "content": "25，4"
+        }
+      ],
+      "correct_option_ids": [
+        3393746
+      ],
+      "correct_options": [
+        "25，4"
+      ],
+      "analysis": "<div>  <div>   <p>    题目主要考察C语言当中字符串长度统计和参数传递的问题。   </p>   <div>    从main函数可以知道sizeof统计的是字符串s占用空间的大小（且包括结束符'\\0'），因此第一次输出的大小为25，当字符串s是通过参数传递到函数testArgs时，则函数会由指针s来指向传递的字符串这一片内存，因此第二次sizeof的时候，是对指向该字符串的指针变量长度的统计。   </div>   <div>    由于不同类型的指针变量长度都是一样的（不同机器可能存在差异），都是4字节长度。因此答案选择D   </div>  </div> </div>"
+    },
+    {
+      "question_id": 77461,
+      "uuid": "04caa5b528844388990a53447c2e0ef2",
+      "type": 1,
+      "title": "下面关于「串」的叙述中，哪一个是不正确的？（      ）",
+      "content": "下面关于「串」的叙述中，哪一个是不正确的？（      ）<br>",
+      "options": [
+        {
+          "id": 128354,
+          "content": "串是字符的有限序列"
+        },
+        {
+          "id": 128355,
+          "content": "空串是由空格构成的串"
+        },
+        {
+          "id": 128356,
+          "content": "模式匹配是串的一种重要运算"
+        },
+        {
+          "id": 128357,
+          "content": "串既可以采用顺序存储，也可以采用链式存储"
+        }
+      ],
+      "correct_option_ids": [
+        128355
+      ],
+      "correct_options": [
+        "空串是由空格构成的串"
+      ],
+      "analysis": "这道题目考察了串(字符串)的基本概念。B选项是错误的,因为空串不是由空格构成的串。空串是一个长度为0的串,不包含任何字符(包括空格)。空格字符也是一个字符,包含空格的串长度不为0。<br><br>分析其他选项:<br>A正确:串的定义就是字符的有限序列,这是最基本的概念。<br><br>C正确:模式匹配确实是串的一种重要运算,比如KMP算法就是一种经典的模式匹配算法。<br><br>D正确:串可以用顺序存储结构(如字符数组)存储,也可以用链式存储结构(如链表)存储,这两种都是合理的实现方式。<br><br>补充知识点:<br>- 空串和空格串是不同的概念:空串长度为0,空格串至少包含一个空格字符<br>- 串的基本操作包括:求长度、连接、求子串、比较、插入、删除等<br>- 串的存储结构选择要根据具体应用场景,顺序存储更适合频繁访问,链式存储更适合动态修改"
+    },
+    {
+      "question_id": 10816559,
+      "uuid": "a55cae5a7a204ddab976c07c07c87c39",
+      "type": 1,
+      "title": "主串s，模式串t，模式串t中的每一个字符对应一个k值，即使用next[j]...",
+      "content": "主串s，模式串t，<span>模式串t中的每一个字符对应一个k值</span>，即使用next[j]表示t<sub>j</sub>对应的k值，下列关于KMP算法的next函数叙述错误的是（）",
+      "options": [
+        {
+          "id": 6243962,
+          "content": "k值不仅依赖于模式串t本身字符序列的构成，也与主串s有关"
+        },
+        {
+          "id": 6243963,
+          "content": "next[j]是一个整数，并且<img src=\"https://www.nowcoder.com/equation?tex=0%5Cleq%20next%5Bj%5D%3Cj\">"
+        },
+        {
+          "id": 6243964,
+          "content": "如果字符串起始位置是0，则next[1]=0"
+        },
+        {
+          "id": 6243965,
+          "content": "next[j]=k，代表j之前的字符串中有最大长度为k的相同前缀后缀"
+        }
+      ],
+      "correct_option_ids": [
+        6243962
+      ],
+      "correct_options": [
+        "k值不仅依赖于模式串t本身字符序列的构成，也与主串s有关"
+      ],
+      "analysis": "<div>  考查数据结构中的串。 </div> <div>  对于A，KMP算法的关键在于求解next[]数组的值，即求解模式串每个位置处的最长后缀与前缀相同的长度，即<span>模式串t中的每一个字符对应一个k值，而<span>k值仅依赖于模式串t本身字符序列的构成</span>，选项A错误</span>  </div> <div>  <span>对于B、D，<span>next[j]表示匹配失败时，模式串向右移动的位数，其表示</span><span>模式串每个位置处的最长后缀与前缀相同的长度，<span>代表j之前的字符串中有最大长度为k的相同前缀后缀，</span>是一个整数值，其值小于字符序列到当前位置的长度</span></span>  </div> <div>  <span>对于C，<span>next[1]表示模式串中第一个字符序列</span><span>的最长后缀与前缀相同的长度，其长度必然为0</span></span> </div>"
+    },
+    {
+      "question_id": 90964,
+      "uuid": "ae5fe0fcfcbe4003a2cfb7d5a43ce185",
+      "type": 1,
+      "title": "字符串的长度是指 （ ）。",
+      "content": "<p style=\"margin-left: 21.0pt;text-indent: -21.0pt;\">\n  <span></span>\n  <span>字符串的长度是指</span>\n  <span>（</span>\n  <span>）。</span>\n</p>",
+      "options": [
+        {
+          "id": 160909,
+          "content": "串中不同字符的个数"
+        },
+        {
+          "id": 160910,
+          "content": "串中不同字母的个数"
+        },
+        {
+          "id": 160911,
+          "content": "串中所含字符的个数"
+        },
+        {
+          "id": 160912,
+          "content": "串中不同数字的个数"
+        }
+      ],
+      "correct_option_ids": [
+        160911
+      ],
+      "correct_options": [
+        "串中所含字符的个数"
+      ],
+      "analysis": "字符串长度是指该字符串中所包含的字符总数，因此C选项\"串中所含字符的个数\"是正确答案。<br><br>分析各选项：<br>1. A选项\"串中不同字符的个数\"错误，因为字符串长度应该统计所有字符，而不仅仅是不同的字符。例如字符串\"hello\"的长度是5，而不是4（h,e,l,o四个不同字符）。<br><br>2. B选项\"串中不同字母的个数\"错误，首先它只统计字母而忽略了其他类型的字符（如数字、符号等），其次它还要求是不同的字母，这两点都与字符串长度的定义不符。<br><br>3. C选项\"串中所含字符的个数\"正确，这正是字符串长度的定义 - 统计字符串中的所有字符个数，不论是否重复，也不论是什么类型的字符。<br><br>4. D选项\"串中不同数字的个数\"错误，这个定义既限制了只统计数字字符，又要求是不同的数字，与字符串长度的概念完全不符。<br><br>比如字符串\"Hello123!!\"的长度是9，因为它包含了9个字符，而不是它包含的不同字符数(8个)、不同字母数(4个)或不同数字数(3个)。"
+    },
+    {
+      "question_id": 52725,
+      "uuid": "0ca0aad68ef34f9fb4b6bbb733a6a1de",
+      "type": 1,
+      "title": "在下列关于「字符串」的陈述中，不正确的描述是（）",
+      "content": "<p>  <span>在下列关于「字符串」的陈述中，不正确的描述是（）</span>  </p>",
+      "options": [
+        {
+          "id": 68765,
+          "content": "字符串是一种特殊的线性表"
+        },
+        {
+          "id": 68766,
+          "content": "字符串可以连续存储，也可以链式存储"
+        },
+        {
+          "id": 68767,
+          "content": "字符串的长度必须大于零"
+        },
+        {
+          "id": 68768,
+          "content": "「空串」与「空白串」不是同一个含义"
+        }
+      ],
+      "correct_option_ids": [
+        68767
+      ],
+      "correct_options": [
+        "字符串的长度必须大于零"
+      ],
+      "analysis": "字符串是计算机程序设计中最常用的数据类型之一。其中C选项是错误的,因为字符串的长度可以为零,即空串是合法的字符串。<br><br>分析各选项:<br>A正确:字符串确实是一种特殊的线性表,它是由零个或多个字符组成的有限序列。<br><br>B正确:字符串在存储结构上既可以采用顺序存储(如数组方式),也可以采用链式存储结构(如链表方式)。这两种存储方式各有优劣。<br><br>C错误:字符串的长度不必须大于零。空串(长度为0的字符串)是完全合法的字符串。在很多编程语言中,都支持空串的概念和使用。例如在Java中\"\"就是一个空串。<br><br>D正确:空串是指长度为零的字符串,不包含任何字符;而空白串则是指仅包含空格、制表符、换行符等空白字符的字符串。这是两个不同的概念。<br><br>总的来说,字符串是一个非常灵活的数据类型,其长度可以是零或任意正整数,这也是为什么C选项的说法是错误的。"
+    },
+    {
+      "question_id": 50495,
+      "uuid": "9280bcf21db447c1aa27b7df87763ff6",
+      "type": 1,
+      "title": "下列程序的功能是将 s 中的字符串按长度由小到大排列，请为横线处选择合适的程序（）",
+      "content": "<p>  <span>下列程序的功能是将</span> <span>s</span> <span>中的字符串按长度由小到大排列，请为横线处选择合适的程序（） <pre class=\"prettyprint lang-cpp\">#include &lt;stdio.h&gt;\n#include &lt;string.h&gt;\n\nvoid f(char *p[], int n) {\n    char *t;\n    int i, j;\n    for (i = 0; i &lt; n - 1; i++)\n        for (j = i + 1; j &lt; n; j++)\n            if (strlen(*(p + i)) &gt; strlen(*(p + j))) {\n                t = *(p + i);\n                *(p + i) = *(p + j);\n                *(p + j) = t;\n            }\n}\n\nint main() {\n    char *s[] = {&quot;abc&quot;, &quot;abcdef&quot;, &quot;abbd&quot;};\n    f(s, 3);\n    for (int i = 0; i &lt; 3; i++)\n        printf(&quot;%s\\n&quot;, ____);\n    return 0;\n}</pre> <br> </span> </p>",
+      "options": [
+        {
+          "id": 63671,
+          "content": "s+i"
+        },
+        {
+          "id": 63672,
+          "content": "s[i]"
+        },
+        {
+          "id": 63673,
+          "content": "*s[i]"
+        },
+        {
+          "id": 63674,
+          "content": "&s[i]"
+        }
+      ],
+      "correct_option_ids": [
+        63672
+      ],
+      "correct_options": [
+        "s[i]"
+      ],
+      "analysis": "这道题目考察了C语言中指针数组和字符串的基本操作。B选项s[i]是正确的,因为它能正确访问指针数组s中第i个元素(字符串的首地址)。<br><br>让我们详细分析每个选项:<br><br>B选项(正确):<br>- s[i]等价于*(s+i),表示访问指针数组s中的第i个元素<br>- 每个元素都是一个指向字符串的指针,可以直接作为printf的参数输出字符串<br><br>其他选项错误原因:<br>A选项(s+i):<br>- s+i是指针数组的第i个元素的地址<br>- 这会导致printf输出地址值而不是字符串内容<br><br>C选项(*s[i]):<br>- *s[i]对字符串指针解引用<br>- 会得到字符串的第一个字符,而不是整个字符串<br>- 这会导致printf只输出单个字符<br><br>D选项(&s[i]):<br>- &s[i]是取指针数组元素的地址<br>- 这会得到一个指向指针的指针<br>- 不符合printf %s格式化要求<br><br>程序的目的是将字符串按长度排序后输出完整字符串,所以需要使用s[i]来正确访问每个字符串。"
+    },
+    {
+      "question_id": 11320151,
+      "uuid": "b99eb7ca79b54ae0b83ba17fad5f0d10",
+      "type": 1,
+      "title": "已知：公共子序列：如果两个序列中都存在一个相同的子序列，则该子序列称为这两...",
+      "content": "<div>  已知：<span>公共子序列：如果两个序列中都存在一个相同的子序列，则该子序列称为这两个序列的公共子序列。</span><span>例如，序列 ABCDEF 和 AEBDF 的公共子序列可以是 ABD 或 ADF。</span><span>最长公共子序列：两个序列的所有公共子序列中，长度最长的那个子序列。那么</span>字符串a=&quot;abedfaacds&quot;和字符串b=&quot;apidffazc&quot;的最长公共子序列的长度为（） </div>",
+      "options": [
+        {
+          "id": 7406914,
+          "content": "3"
+        },
+        {
+          "id": 7406915,
+          "content": "4"
+        },
+        {
+          "id": 7406916,
+          "content": "5"
+        },
+        {
+          "id": 7406917,
+          "content": "6"
+        }
+      ],
+      "correct_option_ids": [
+        7406916
+      ],
+      "correct_options": [
+        "5"
+      ],
+      "analysis": "<p>  答案：C<br> <br> 理由（简要）：<br> - 可构造公共子序列 a d f a c：<br>   - a: 1(a)-4(d)-5(f)-6(a)-8(c)<br>   - b: 1(a)-4(d)-5/6(f)-7(a)-9(c)<br>   长度为 5。<br> - 想到 6 不可能：<br>   - 共同字符仅 {a,d,f,c}；a 中只有 1 个 f，b 中只有 1 个 d，且 b 的 c 在末尾（9），之后无字符可再扩展。<br>   - 无法在保持顺序下再多塞一个有效字符。<br> 故最长公共子序列长度为 5。 </p> <div>  <br> </div>"
+    },
+    {
+      "question_id": 11142865,
+      "uuid": "db0b2a867b324f55b7a3f3689ffbe4bf",
+      "type": 1,
+      "title": "现有一个串T=\"wxyz1234\"，该串的子串（包括空串）个数为（）",
+      "content": "现有一个串T=&quot;wxyz1234&quot;，该串的子串（包括空串）个数为（） <div> </div>",
+      "options": [
+        {
+          "id": 7092527,
+          "content": "44"
+        },
+        {
+          "id": 7092528,
+          "content": "45"
+        },
+        {
+          "id": 7092529,
+          "content": "37"
+        },
+        {
+          "id": 7092530,
+          "content": "36"
+        }
+      ],
+      "correct_option_ids": [
+        7092529
+      ],
+      "correct_options": [
+        "37"
+      ],
+      "analysis": "对于字符串T=&quot;wxyz1234&quot;（长度为8）来求其子串个数,可以通过以下分析得出:<br> <br> 子串是指原始字符串中任意连续的字符序列。要计算子串个数,我们可以按照子串长度来统计:<br> <br> 1. 长度为1的子串:可以从8个位置分别取1个字符,共8个<br> 2. 长度为2的子串:可以从7个起始位置取2个字符,共7个<br> 3. 长度为3的子串:可以从6个起始位置取3个字符,共6个<br> 4. 长度为4的子串:可以从5个起始位置取4个字符,共5个<br> 5. 长度为5的子串:可以从4个起始位置取5个字符,共4个<br> 6. 长度为6的子串:可以从3个起始位置取6个字符,共3个<br> 7. 长度为7的子串:可以从2个起始位置取7个字符,共2个<br> 8. 长度为8的子串:可以从1个起始位置取8个字符,共1个<br> 再加上空串<br> <br> 总数 = 8 + 7 + 6 + 5 + 4 + 3 + 2 + 1 = 36 + 1 = 37<br> <br> 所以总共有37个子串,C选项是正确答案。<br>"
+    },
+    {
+      "question_id": 72246,
+      "uuid": "70fc291ff7444e67a04e2ebe73176e0b",
+      "type": 1,
+      "title": "在 C/C++ 中，有字符数组 a[80] 和 b[80]，则正确的输出语句是（）",
+      "content": "<div>  在 C/C++ 中，有字符数组 a[80] 和 b[80]，则正确的输出语句是（）<br> </div>",
+      "options": [
+        {
+          "id": 117536,
+          "content": "puts(a); puts(b);"
+        },
+        {
+          "id": 117537,
+          "content": "printf(&quot;%s,%s&quot;, a[], b[]);"
+        },
+        {
+          "id": 117538,
+          "content": "putchar(a, b);"
+        },
+        {
+          "id": 117539,
+          "content": "puts(a, b);"
+        }
+      ],
+      "correct_option_ids": [
+        117536
+      ],
+      "correct_options": [
+        "puts(a); puts(b);"
+      ],
+      "analysis": "这道题目考察了C/C++中字符数组的输出方法。A选项\"puts(a); puts(b);\"是正确的，因为puts()函数用于输出字符串，它会自动在字符串末尾添加换行符，而且puts函数只接受一个字符数组参数，所以需要分两次调用puts来输出两个字符数组。<br><br>分析其他选项的错误原因：<br><br>B选项\"printf(\"%s,%s\", a[], b[])\"错误：在printf中使用字符数组时，不需要加[]，正确写法应该是printf(\"%s,%s\", a, b)。<br><br>C选项\"putchar(a, b)\"错误：putchar函数只能输出单个字符，而且只接受一个参数。它不能用于输出字符数组，也不能同时接受两个参数。<br><br>D选项\"puts(a, b)\"错误：puts函数只接受一个参数，不能同时输出两个字符数组。这种写法在语法上是错误的。<br><br>注意：使用puts函数时，它会自动在输出的字符串末尾添加换行符\n，这是puts和printf的一个重要区别。如果不需要换行，可以使用printf函数来实现。"
+    },
+    {
+      "question_id": 11257972,
+      "uuid": "b59bd99067b644de97523ef6939a7781",
+      "type": 1,
+      "title": "在一个算法考试中，考生需要解决一个字符串相关问题：假设主串S='abcaa...",
+      "content": "在一个算法考试中，考生需要解决一个字符串相关问题：假设主串S='abcaabcabca'，模式串t='abcab'，采用KMP算法进行模式匹配，第一次出现“失配”（s[i]≠t[j]）时，i=j=4，则下次开始匹配时，i和j的值分别是（）",
+      "options": [
+        {
+          "id": 7370274,
+          "content": "i=5,&nbsp;j=2"
+        },
+        {
+          "id": 7370275,
+          "content": "i=4,&nbsp;j=1"
+        },
+        {
+          "id": 7370276,
+          "content": "i=3,&nbsp;j=0"
+        },
+        {
+          "id": 7370277,
+          "content": "i=2,&nbsp;j=1"
+        }
+      ],
+      "correct_option_ids": [
+        7370275
+      ],
+      "correct_options": [
+        "i=4,&nbsp;j=1"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 55739,
+      "uuid": "fe8b8a876cdc428b821b2d8d7672753e",
+      "type": 1,
+      "title": "设串长为 n，模式串长为 m，则 KMP 算法所需的附加空间____。",
+      "content": "设串长为 n，模式串长为 m，则 KMP 算法所需的附加空间____。",
+      "options": [
+        {
+          "id": 75777,
+          "content": "O(m)"
+        },
+        {
+          "id": 75778,
+          "content": "O(n)"
+        },
+        {
+          "id": 75779,
+          "content": "O(m*n)"
+        },
+        {
+          "id": 75780,
+          "content": "O(nlog2m)"
+        }
+      ],
+      "correct_option_ids": [
+        75777
+      ],
+      "correct_options": [
+        "O(m)"
+      ],
+      "analysis": "KMP算法主要用于字符串匹配，它的附加空间主要用于存储模式串的next数组(或fail数组)。这个数组的长度与模式串长度m相同，因此空间复杂度为O(m)。<br><br>分析所有选项：<br>A正确：KMP算法只需要一个长度为m的next数组来存储模式串的部分匹配信息，不需要其他额外空间。<br><br>B错误：O(n)表示附加空间与主串长度相关，这显然不对，因为KMP算法的空间开销只与模式串有关，与主串长度无关。<br><br>C错误：O(m*n)是一个过大的估计，KMP算法的优势之一就是空间效率高，不需要m*n这么大的空间。<br><br>D错误：O(nlog2m)既不符合KMP算法的空间需求特点，也没有理论依据。KMP算法的next数组构建与对数级别的空间复杂度无关。<br><br>值得注意的是，KMP算法的时间复杂度是O(m+n)，但这道题考察的是空间复杂度。KMP算法的高效之处在于它只需要O(m)的额外空间就能实现快速的字符串匹配。"
+    },
+    {
+      "question_id": 10816576,
+      "uuid": "8fac42705e3e4186a5b80856c8d60f29",
+      "type": 1,
+      "title": "给定2个串：，函数 Concat(s,t) 返回串 s 和串 t 连接的结...",
+      "content": "<span>给定2个串：</span><img src=\"https://www.nowcoder.com/equation?tex=c%3D'newcoder'%2Cd%3D'new%20%5Cquad%20coder'\"><span>，函数 Concat(s,t) 返回串 s 和串 t 连接的结果；<span>函数 </span>SubStr(s,i,j) 返回串 s 的第 <span>i 个位置开始的 j 个字符</span>；函数 DelStr(s,i,j) 表示删除串 s 中从第 i 个位置开始的 j 个字符，则执行Concat(DelStr(d,4,1),SubStr(c,1,3)) 之后的结果是（）</span>",
+      "options": [
+        {
+          "id": 6244030,
+          "content": "newnewcoder"
+        },
+        {
+          "id": 6244031,
+          "content": "newcoder"
+        },
+        {
+          "id": 6244032,
+          "content": "new coder"
+        },
+        {
+          "id": 6244033,
+          "content": "newcodernew"
+        }
+      ],
+      "correct_option_ids": [
+        6244033
+      ],
+      "correct_options": [
+        "newcodernew"
+      ],
+      "analysis": "<div>  考察数据结构中的串。 </div> <div>  <span>Concat(DelStr(d,4,1),SubStr(c,1,3))=<span>Concat(newcoder,SubStr(c,1,3))</span></span>=<span>Concat(newcoder,new)</span><span></span>=<span>new</span><span>coder</span><span>new</span><br> </div>"
+    },
+    {
+      "question_id": 14319,
+      "uuid": "03d2ad439ceb47a39fbdcf9238f9f51a",
+      "type": 1,
+      "title": "判断下述语句的对错：MFC 中 CString 是类型安全的类。",
+      "content": "判断下述语句的对错：MFC 中 CString 是类型安全的类。",
+      "options": [
+        {
+          "id": 16387,
+          "content": "对"
+        },
+        {
+          "id": 16388,
+          "content": "错"
+        }
+      ],
+      "correct_option_ids": [
+        16387
+      ],
+      "correct_options": [
+        "对"
+      ],
+      "analysis": "CString是MFC中的一个类型安全的类,这个说法是正确的。<br><br>主要原因如下:<br><br>1. 内存管理安全性<br>- CString类自动管理字符串的内存分配和释放<br>- 能有效避免内存泄漏和缓冲区溢出问题<br>- 不需要手动维护字符串长度和内存空间<br><br>2. 类型转换安全性 <br>- CString提供了安全的类型转换机制<br>- 可以安全地转换为char*、LPCTSTR等类型<br>- 具有运算符重载,保证字符串操作的类型安全<br><br>3. 边界检查<br>- 自动进行字符串边界检查<br>- 防止访问越界<br>- 字符串连接等操作都会自动处理边界问题<br><br>4. 异常处理<br>- 包含异常处理机制<br>- 在内存分配失败等情况下可以安全处理<br>- 不会产生未定义行为<br><br>5. 编码转换安全<br>- 支持Unicode和ANSI编码的安全转换<br>- 自动处理不同字符集之间的转换<br>- 避免编码转换过程中的数据丢失<br><br>这些特性使CString成为一个类型安全的字符串处理类,相比C风格的字符串处理更加安全可靠。"
+    },
+    {
+      "question_id": 11254697,
+      "uuid": "37e1dfd22e384354a5c30767394a418f",
+      "type": 1,
+      "title": "在一次文本搜索任务中，你需要在字符串S='mnopqrmnopmn'中寻找...",
+      "content": "在一次文本搜索任务中，你需要在字符串S='mnopqrmnopmn'中寻找模式串t='mnopmn'。采用KMP算法进行匹配，第一次出现“失配”（s[i]≠t[j]）时，i=j=4，则下次开始匹配时，i和j的值分别是（）",
+      "options": [
+        {
+          "id": 7363419,
+          "content": "i=1，j=4"
+        },
+        {
+          "id": 7363420,
+          "content": "i=2，j=4"
+        },
+        {
+          "id": 7363421,
+          "content": "i=4，j=0"
+        },
+        {
+          "id": 7363422,
+          "content": "i=2，j=0"
+        }
+      ],
+      "correct_option_ids": [
+        7363421
+      ],
+      "correct_options": [
+        "i=4，j=0"
+      ],
+      "analysis": "主串： mnopqrmnopmn<br />\n模式串： mnopmn<br />\n比较 m 和 m, i=0, j=0<br />\n比较 n 和 n, i=1, j=1<br />\n比较 o 和 o, i=2, j=2<br />\n比较 p 和 p, i=3, j=3<br />\n匹配失败：比较 q 和 m, i=4, j=4<br />\n匹配失败：比较 q 和 m, i=4, j=0<br />\n匹配失败：比较 r 和 m, i=5, j=0<br />\n比较 m 和 m, i=6, j=0<br />\n比较 n 和 n, i=7, j=1<br />\n比较 o 和 o, i=8, j=2<br />\n比较 p 和 p, i=9, j=3<br />\n比较 m 和 m, i=10, j=4<br />\n比较 n 和 n, i=11, j=5<br />\n第一次不匹配时，i=6, j=12<br />\n模式串的next数组： [0, 0, 0, 0, 1, 2]<br />"
+    },
+    {
+      "question_id": 1673,
+      "uuid": "0ad28ca1b2d44e0fbaddc0d076d607a9",
+      "type": 2,
+      "title": "已知一段文本有1382个字符，使用了1382个字节进行存储，这段文本全部是由a、b、c、d、e这5个字符组成，a出现了354次，b出现了483次，c出现了227次，d出现了96次，e出现了232次，对这5个字符使用哈夫曼（Huffman）算法进行编码，则以下哪些说法正确？",
+      "content": "已知一段文本有1382个字符，使用了1382个字节进行存储，这段文本全部是由a、b、c、d、e这5个字符组成，a出现了354次，b出现了483次，c出现了227次，d出现了96次，e出现了232次，对这5个字符使用哈夫曼（Huffman）算法进行编码，则以下哪些说法正确（）",
+      "options": [
+        {
+          "id": 4099,
+          "content": "使用哈夫曼算法编码后，用编码值来存储这段文本将花费最少的存储空间"
+        },
+        {
+          "id": 4100,
+          "content": "使用哈夫曼算法进行编码，a、b、c、d、e这5个字符对应的编码值是唯一确定的"
+        },
+        {
+          "id": 4101,
+          "content": "使用哈夫曼算法进行编码，a、b、c、d、e这5个字符对应的编码值可以有多套，但每个字符编码的位（bit）数是确定的"
+        },
+        {
+          "id": 4102,
+          "content": "b这个字符的哈夫曼编码值位数应该最短，d这个字符的哈夫曼编码值位数应该最长"
+        }
+      ],
+      "correct_option_ids": [
+        4099,
+        4101,
+        4102
+      ],
+      "correct_options": [
+        "使用哈夫曼算法编码后，用编码值来存储这段文本将花费最少的存储空间",
+        "使用哈夫曼算法进行编码，a、b、c、d、e这5个字符对应的编码值可以有多套，但每个字符编码的位（bit）数是确定的",
+        "b这个字符的哈夫曼编码值位数应该最短，d这个字符的哈夫曼编码值位数应该最长"
+      ],
+      "analysis": "这道题目考察了哈夫曼编码的基本原理和特性。让我们逐个分析各个选项:<br><br>A选项正确。哈夫曼编码是一种最优前缀编码，它能够保证在给定字符出现频率的情况下，得到平均编码长度最短的编码方案。因此使用哈夫曼编码后的存储空间一定是最优的。<br><br>B选项错误。哈夫曼编码算法可能产生多种不同的编码方案。这是因为在构建哈夫曼树时，当遇到频率相同的节点时，可以有不同的合并顺序，从而得到不同的编码值。所以编码值并非唯一确定的。<br><br>C选项正确。虽然具体的编码值可能有多种方案，但是在频率确定的情况下，每个字符的编码长度是确定的。这是因为字符的编码长度取决于它在哈夫曼树中的深度，而这个深度是由字符出现频率决定的。<br><br>D选项正确。在这段文本中:<br>- b出现483次，频率最高<br>- d出现96次，频率最低<br>根据哈夫曼编码的原理，出现频率越高的字符会被分配越短的编码，出现频率越低的字符会被分配越长的编码。因此b的编码一定最短，d的编码一定最长。<br><br>综上所述，A、C、D三个选项正确。这体现了哈夫曼编码的最优性、编码方案的多样性以及编码长度与频率的关系这些重要特性。"
+    },
+    {
+      "question_id": 2220844,
+      "uuid": "c93635cd537644719298644713c00e19",
+      "type": 1,
+      "title": "在 C 语言中假如有如下声明：char mark = ‘#’; 则’#’和...",
+      "content": "在 C 语言中有如下语句：char mark = ‘#’; 则’#’和”#”分别占（）内存。",
+      "options": [
+        {
+          "id": 3389151,
+          "content": "1字节、1字节"
+        },
+        {
+          "id": 3389155,
+          "content": "1字节、2字节"
+        },
+        {
+          "id": 3389158,
+          "content": "2字节、1字节"
+        },
+        {
+          "id": 3389160,
+          "content": "2字节、2字节"
+        }
+      ],
+      "correct_option_ids": [
+        3389155
+      ],
+      "correct_options": [
+        "1字节、2字节"
+      ],
+      "analysis": "<div>  字符常量存储为int类型（不是char类型），故’#’通常占用2或4字节。但实际上，只使用int的1个字节存储’#’的编码。 </div> <div>  字符串”#”使用2个字节来存储：一个字节存储’#’的编码，一个字节存储的'\\0'编码。 </div> <div>  所以正确答案为B。<br> </div>"
+    },
+    {
+      "question_id": 7133,
+      "uuid": "994908f1d9da405a8b58a463cf2d907e",
+      "type": 1,
+      "title": "下面关于 Java 环境中字符串的描述正确的是？",
+      "content": "下面关于 Java 环境中字符串的描述正确的是：（ ）",
+      "options": [
+        {
+          "id": 13654,
+          "content": "通过 String s1=new String(\"abc\") 和 String s2=\"abc\"，则 s1==s2 为 true。"
+        },
+        {
+          "id": 13655,
+          "content": "\"abc\"+\"def\" 会创建三个字符串对象，第三个是 \"abcdef\" 。也就是说，在 Java 中对字符串的一切操作，都会产生一个新的字符串对象。"
+        },
+        {
+          "id": 13656,
+          "content": "StringBuffer 是线程安全的"
+        },
+        {
+          "id": 13657,
+          "content": "StringBuilder 是线程安全的"
+        }
+      ],
+      "correct_option_ids": [
+        13656
+      ],
+      "correct_options": [
+        "StringBuffer 是线程安全的"
+      ],
+      "analysis": "让我们逐个分析每个选项:<br> <div>  <br> </div> <div>  B选项错误 </div> 常量字符串的连接在编译时就会被优化，编译器会直接生成'abcdef'这个字符串。<br> <br> C选项正确:<br> StringBuffer是线程安全的,它的主要方法都使用synchronized关键字修饰。<br> <br> A选项错误:<br> String s1=new String(&quot;abc&quot;)会在堆内存中创建一个新的字符串对象,而String s2=&quot;abc&quot;会使用字符串常量池中的对象。因此s1==s2比较的是两个不同的对象引用,结果为false。只有使用equals()方法比较才会返回true。<br> <br> D选项错误:<br> StringBuilder不是线程安全的,这是它与StringBuffer最大的区别。<br> <br> 补充说明:<br> String的不可变性导致每次操作都会产生新对象,而StringBuffer和StringBuilder的可变性使其在频繁修改字符串时更高效。在单线程环境下推荐使用StringBuilder,多线程环境下使用StringBuffer。"
+    },
+    {
+      "question_id": 10960016,
+      "uuid": "d0cbf3164bcb4d0d948653b87e95182b",
+      "type": 1,
+      "title": "下面关于 C++ 中 string 类的说法错误的是（）",
+      "content": "<div style=\"text-align:justify;\">\n\t<span>下面关于</span><span>&nbsp;</span><span>C++</span><span>&nbsp;</span><span>中</span><span>&nbsp;</span><span>string</span><span>&nbsp;</span><span>类的说法错误的是（）</span>\n</div>",
+      "options": [
+        {
+          "id": 6620802,
+          "content": "<span>string</span><span>类中的</span><span>&nbsp;</span><span>sort</span><span>()&nbsp;</span><span>方法可以对字符串按照字典顺序排序</span>"
+        },
+        {
+          "id": 6620803,
+          "content": "<span>string类相比于传统的字符数组可以更加简单和安全地进行字符串操作</span>"
+        },
+        {
+          "id": 6620804,
+          "content": "<span>string类定义在头文件</span><span>&lt;string&gt;中，可以使用标准命名空间std来访问它</span>"
+        },
+        {
+          "id": 6620805,
+          "content": "<span>string</span><span>类提供了一组</span><span>重载的</span><span>运算符来方便地执行字符串的拼接、比较</span><span>等操作</span>"
+        }
+      ],
+      "correct_option_ids": [
+        6620802
+      ],
+      "correct_options": [
+        "<span>string</span><span>类中的</span><span>&nbsp;</span><span>sort</span><span>()&nbsp;</span><span>方法可以对字符串按照字典顺序排序</span>"
+      ],
+      "analysis": "string类本身并没有sort()方法。要对string进行排序,需要使用STL中的sort()函数,而不是string类自带的方法。例如要对字符串s进行排序,正确的做法是:sort(s.begin(), s.end())。<br><br>分析其他选项：<br>B正确：string类确实比C风格的字符数组更安全和方便。它可以自动管理内存,避免缓冲区溢出,并提供了许多实用的成员函数。<br><br>C正确：string类是在<string>头文件中定义的,且位于std命名空间内。使用时需要包含该头文件并使用std命名空间。<br><br>D正确：string类重载了多个运算符,包括:<br>- +和+=用于字符串拼接<br>- ==、!=、<、>等用于字符串比较<br>- []用于访问单个字符<br>这些重载运算符使字符串操作变得更加直观和便捷。<br><br>总结：A选项错在将STL的全局函数sort()误认为是string类的成员方法。这体现了对C++ string类接口的理解不够准确。"
+    },
+    {
+      "question_id": 166694,
+      "uuid": "f20bb4fb31b54c8e85848f1539a4ec57",
+      "type": 1,
+      "title": "设有两个串 p 和 q，其中 q 是 p 的子串，求 q 在 p 中首次出现的位置的算法称为",
+      "content": "设有两个串 p 和 q，其中 q 是 p 的子串，求 q 在 p 中首次出现的位置的算法称为",
+      "options": [
+        {
+          "id": 393005,
+          "content": "求子串"
+        },
+        {
+          "id": 393006,
+          "content": "联接"
+        },
+        {
+          "id": 393007,
+          "content": "模式匹配"
+        },
+        {
+          "id": 393008,
+          "content": "求串长"
+        }
+      ],
+      "correct_option_ids": [
+        393007
+      ],
+      "correct_options": [
+        "模式匹配"
+      ],
+      "analysis": "<div>  从题意可知，算法为求 q 在 p 中首次出现的位置的算法。 </div> <div>  模式匹配定义:子串在主串中第pos个字符后首次出现的位置。<br> </div> <div>  不需要求子串，求串长和联结，只有C符合，算法称为模式匹配。 </div> <div>  所以正确答案为C。<br> </div>"
+    },
+    {
+      "question_id": 14388,
+      "uuid": "f7a1d80a3dad485db2d65aab9ae10bab",
+      "type": 2,
+      "title": "请找出下面代码中的所有错误。说明：以下代码的功能是把一个字符串倒序，如 \"abcd\" 倒序后变为 \"dcba\"。",
+      "content": "<div>  请找出下面代码中的所有错误。说明：以下代码的功能是把一个字符串倒序，如“abcd”倒序后变为“dcba”。 </div> <pre class=\"prettyprint\">1 #include &quot;string.h&quot;\n2 int main() \n3 {\n4    char *src = &quot;hello,world&quot;;\n5    char *dest = NULL;\n6    int len = strlen(src);\n7    dest = (char *)malloc(len);\n8    char *d = dest;\n9    char *s = src[len];\n10   while (len-- != 0)\n11      *d++ = *s--;\n12   printf(&quot;%s&quot;, dest);\n13   return 0;\n14     \n15}</pre> <br>",
+      "options": [
+        {
+          "id": 16633,
+          "content": "第7行要为'\\0'分配一个空间"
+        },
+        {
+          "id": 16634,
+          "content": "第9行改成char * s = &amp;src[len-1]"
+        },
+        {
+          "id": 16635,
+          "content": "第12行前要加上*d = '\\0'"
+        },
+        {
+          "id": 16636,
+          "content": "第13行前不加free(dest)，程序结束时也会释放空间"
+        }
+      ],
+      "correct_option_ids": [
+        16633,
+        16634,
+        16635,
+        16636
+      ],
+      "correct_options": [
+        "第7行要为'\\0'分配一个空间",
+        "第9行改成char * s = &amp;src[len-1]",
+        "第12行前要加上*d = '\\0'",
+        "第13行前不加free(dest)，程序结束时也会释放空间"
+      ],
+      "analysis": "这段代码存在多个问题,需要从以下几个方面进行修正:<br><br>1. A选项正确:第7行确实需要为'\u0000'额外分配一个空间。因为C语言中字符串是以'\u0000'结尾的,当前dest只分配了与src等长的空间,没有考虑字符串结束符,这会导致内存越界。应该改为malloc(len + 1)。<br><br>2. B选项正确:第9行的src[len]有两个问题:<br>- 访问越界,因为数组下标从0开始,最后一个字符的下标是len-1<br>- 取值方式错误,应该使用&取地址<br>正确写法应该是char *s = &src[len-1]<br><br>3. C选项正确:第12行前确实需要添加*d = '\u0000'。因为在复制完字符后,需要手动添加字符串结束符,否则printf输出时会出现乱码或者程序崩溃。<br><br>4. D选项正确:不手动释放堆内存确实是错误的做法。虽然程序结束时操作系统会回收所有内存,但这是一个不好的编程习惯:<br>- 可能导致内存泄漏<br>- 在大型程序中会累积占用大量内存<br>- 不符合资源管理的最佳实践<br><br>正确的代码应该在使用完dest后调用free(dest)释放内存。尽管程序结束时操作系统会释放空间,但显式释放是一个好的编程习惯。<br><br>总的来说,这段代码在内存分配、指针操作、字符串处理等方面都存在问题,需要进行以上修正才能正确实现字符串倒序的功能。"
+    },
+    {
+      "question_id": 52981,
+      "uuid": "9f94dd75e8aa403186d15aa124b2ee32",
+      "type": 1,
+      "title": "设栈的初始状态为空，当字符序列 \"a3_\" 作为栈的输入时，输出长度为 3 的且可以用作 C 语言标识符的字符串序列有（）个。",
+      "content": "<p align=\"justify\" style=\"text-align: justify;\">  设栈的初始状态为空，当字符序列 &quot;a3_&quot; 作为栈的输入时，输出长度为 3 的且可以用作 C 语言标识符的字符串序列有（）个。 </p>",
+      "options": [
+        {
+          "id": 69308,
+          "content": "4"
+        },
+        {
+          "id": 69309,
+          "content": "6"
+        },
+        {
+          "id": 69310,
+          "content": "3"
+        },
+        {
+          "id": 69311,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        69310
+      ],
+      "correct_options": [
+        "3"
+      ],
+      "analysis": "<div>  首先，栈的顺序是先进后出 </div> <div>  字符序列为a3_   1)a入栈，再出栈，然后3入栈，再出栈，—入栈，再出栈   序列是a3_ </div> <div>                             2)a入栈，再出栈,然后3,—入栈，再出栈，序列是a_3 </div> <div>                             3)a入栈，3入栈，再出栈，a出栈，   —入栈，再出栈     序列是3a_ </div> <div>                             4)   a入栈，3入栈，再出栈,   —入栈,序列是3_a </div> <div>                             5)   a入栈，3入栈,_入栈，序列是_3a </div> <div>  其次，C语言的标识符不能以数字开头，去除3a_和3_a   答案为3 </div>"
+    },
+    {
+      "question_id": 326262,
+      "uuid": "d1295245f19a4290a3b6ac63d7fd691a",
+      "type": 1,
+      "title": "\"abcdefg\" 中长度 2 的子串的个数是（）",
+      "content": "&quot;abcdefg&quot; 中长度 2 的子串的个数是（）",
+      "options": [
+        {
+          "id": 860175,
+          "content": "8"
+        },
+        {
+          "id": 860176,
+          "content": "7"
+        },
+        {
+          "id": 860177,
+          "content": "5"
+        },
+        {
+          "id": 860178,
+          "content": "6"
+        }
+      ],
+      "correct_option_ids": [
+        860178
+      ],
+      "correct_options": [
+        "6"
+      ],
+      "analysis": "<div>  子串需要连续，n个字符长度的字符串有n-1个长度为2的子串； </div> <div>  在&quot;abcdefg&quot;字符串中有ab、cd、ef、bc、de、fg、6个长度为2的子串； </div> <div>  所以正确答案为D。<br> </div>"
+    },
+    {
+      "question_id": 2588,
+      "uuid": "ebee58fdaef04798a136757efc77e78b",
+      "type": 1,
+      "title": "有如下语句序列：\nchar str[10];\ncin>>str;\n当从键盘输入 \"I love this game\" 时，str 中的字符串是",
+      "content": "有如下语句序列：<br> char str[10];<br> cin&gt;&gt;str;<br> 当从键盘输入 &quot;I love this game&quot; 时，str 中的字符串是<br> <br>",
+      "options": [
+        {
+          "id": 5563,
+          "content": "\"I love this game\""
+        },
+        {
+          "id": 5564,
+          "content": "\"I love thi\""
+        },
+        {
+          "id": 5565,
+          "content": "\"I love\""
+        },
+        {
+          "id": 5566,
+          "content": "\"I\""
+        }
+      ],
+      "correct_option_ids": [
+        5566
+      ],
+      "correct_options": [
+        "\"I\""
+      ],
+      "analysis": "这道题考察了C++中字符串数组的输入特性以及cin的工作原理。选项D \"I\" 是正确答案，因为以下原因：<br><br>1. char str[10]声明了一个长度为10的字符数组，实际可用长度为9（需要预留一个位置存放字符串结束符'\u0000'）<br><br>2. cin>>str 使用空格作为分隔符读取输入。当输入\"I love this game\"时，cin只会读取第一个空格前的内容，即\"I\"<br><br>3. cin遇到空格、制表符或换行符就会停止读取，这是它的默认行为<br><br>分析其他选项的错误原因：<br><br>A选项：\"I love this game\" 错误，因为：<br>- 字符串长度超过数组容量<br>- cin遇到空格会停止读取<br><br>B选项：\"I love thi\" 错误，因为：<br>- cin在遇到第一个空格就停止读取<br>- 不会读取这么长的内容<br><br>C选项：\"I love\" 错误，因为：<br>- 同样受cin遇到空格停止读取的限制<br>- 不会读取到第二个单词<br><br>如果需要读取包含空格的完整字符串，应该使用gets()函数或getline()函数。"
+    },
+    {
+      "question_id": 91065,
+      "uuid": "f5a40a4f0fcf415693557af1991c851d",
+      "type": 1,
+      "title": "子串 \"ABC\" 在主串 \"AABCABCD\" 中的位置为 2（序号从 0 开始）。 (  )",
+      "content": "<span>子串 &quot;ABC&quot; 在主串 &quot;AABCABCD&quot; 中的位置为 2（序号从 0 开始）。 (  )</span><span></span>",
+      "options": [
+        {
+          "id": 161224,
+          "content": "正确"
+        },
+        {
+          "id": 161225,
+          "content": "错误"
+        }
+      ],
+      "correct_option_ids": [
+        161225
+      ],
+      "correct_options": [
+        "错误"
+      ],
+      "analysis": "本题考察字符串匹配中的子串位置计算。这里B选项\"错误\"是正确的。<br><br>主串\"AABCABCD\"中,从左到右依次查找子串\"ABC\",第一次出现的位置应该是1(从0开始计数),而不是题目说的2。<br><br>具体分析过程:<br>- 主串 AABCABCD 的字符位置从左到右依次为:<br>  A(0), A(1), B(2), C(3), A(4), B(5), C(6), D(7)<br>- 子串\"ABC\"第一次出现时:<br>  A在位置1<br>  B在位置2 <br>  C在位置3<br>- 所以子串\"ABC\"在主串中首次出现的位置是1<br><br>题目中说子串\"ABC\"的位置为2是错误的,所以选择B。这种子串位置的计算在字符串匹配算法中非常重要,比如在KMP算法等中都需要准确计算子串的位置。在实际编程中也要注意字符串位置的正确计算,避免off-by-one错误。"
+    },
+    {
+      "question_id": 2421521,
+      "uuid": "3dc23b1c87774804a07f0fb332df5e42",
+      "type": 1,
+      "title": "EXCEL中，&ldquo;123abc123&rdquo;位于H3单元格，如何取出它的前4位",
+      "content": "EXCEL中，“123abc123”位于H3单元格，如何取出它的前4位",
+      "options": [
+        {
+          "id": 3806038,
+          "content": "Left（H3,1,4）"
+        },
+        {
+          "id": 3806039,
+          "content": "Left(H3,4)"
+        },
+        {
+          "id": 3806040,
+          "content": "Right(H3,1,4)"
+        },
+        {
+          "id": 3806041,
+          "content": "Right(H3,4)"
+        }
+      ],
+      "correct_option_ids": [
+        3806039
+      ],
+      "correct_options": [
+        "Left(H3,4)"
+      ],
+      "analysis": "excel函数操作"
+    },
+    {
+      "question_id": 163,
+      "uuid": "f9f863b752404cefa27ef6003cbf59a4",
+      "type": 2,
+      "title": "在下列表述中，错误的是（）",
+      "content": "在下列表述中，错误的是（）",
+      "options": [
+        {
+          "id": 535,
+          "content": "含有一个或多个空格字符的串称为空串"
+        },
+        {
+          "id": 536,
+          "content": "对n(n&gt;0)个顶点的网,求出权最小的n-1条边便可构成其最小生成树"
+        },
+        {
+          "id": 537,
+          "content": "选择排序算法是不稳定的"
+        },
+        {
+          "id": 538,
+          "content": "平衡二叉树的左右子树的结点数之差的绝对值不超过1"
+        }
+      ],
+      "correct_option_ids": [
+        535,
+        536,
+        538
+      ],
+      "correct_options": [
+        "含有一个或多个空格字符的串称为空串",
+        "对n(n&gt;0)个顶点的网,求出权最小的n-1条边便可构成其最小生成树",
+        "平衡二叉树的左右子树的结点数之差的绝对值不超过1"
+      ],
+      "analysis": "让我们逐个分析每个选项：<br><br>A选项错误：空串和含有空格的字符串是完全不同的概念。空串是长度为0的串，不包含任何字符(包括空格)。而含有空格的字符串其长度至少为1，因为空格也是一个字符。<br><br>B选项错误：在具有n个顶点的网中，最小生成树确实包含n-1条边，但不能简单地选择权值最小的n-1条边。必须使用特定算法(如Prim算法或Kruskal算法)来确保选择的边能够构成一棵树，避免形成环路。<br><br>C选项正确：选择排序算法确实是不稳定的排序算法。当有相同关键字的记录时，选择排序可能会改变它们的相对位置。比如在选择最小元素时，会将其与第一个位置的元素交换，这可能会打破相同元素的原有顺序。<br><br>D选项错误：这个说法描述的是完全二叉树的特征，而不是平衡二叉树。平衡二叉树(AVL树)的定义是：任何节点的左右子树的高度差的绝对值不超过1。这里的关键是高度差，而不是节点数差。<br><br>所以C是唯一正确的选项，其他选项ABD都是错误的。"
+    },
+    {
+      "question_id": 2208670,
+      "uuid": "c68fd8d8a8884df48193932fed9044df",
+      "type": 1,
+      "title": "StringBuffer类与String类相比的区别？",
+      "content": "<div>  <div>   <p>    StringBuffer类与String类相比的区别？   </p>  </div> </div>",
+      "options": [
+        {
+          "id": 3379185,
+          "content": "<p>String是一个线程不安全的可修改的字符序列</p>"
+        },
+        {
+          "id": 3379189,
+          "content": "<p>String是一个线程不安全的不可修改的字符序列</p>"
+        },
+        {
+          "id": 3379193,
+          "content": "<p>StringBuffer是一个不线程安全的可修改的字符序列</p>"
+        },
+        {
+          "id": 3379197,
+          "content": "StringBuffer是一个线程安全的可修改的字符序列"
+        }
+      ],
+      "correct_option_ids": [
+        3379197
+      ],
+      "correct_options": [
+        "StringBuffer是一个线程安全的可修改的字符序列"
+      ],
+      "analysis": "<div>  <div>   <p>    String的值是不可变的，这就导致每次对String的操作都会生成新的String对象，不仅效率低下，而且浪费大量优先的内存空间；StringBuffer是可变类，和线程安全的字符串操作类，任何对它指向的字符串的操作都不会产生新的对象。每个StringBuffer对象都有一定的缓冲区容量，当字符串大小没有超过容量时，不会分配新的容量，当字符串大小超过容量时，会自动增加容量。   </p>  </div> </div>"
+    },
+    {
+      "question_id": 62411,
+      "uuid": "63f3dcf912814fbaac70190469e82bab",
+      "type": 1,
+      "title": "假设有两个串 A 和 B ，求 B 在 A 中首次出现的位置的操作，我们称为（ ）。",
+      "content": "<p align=\"justify\" style=\"text-align: justify;\">\n  <span>假设有两个串</span>\n  <span>A</span>\n  <span>和</span>\n  <span>B</span>\n  <span>，求</span>\n  <span>B</span>\n  <span>在</span>\n  <span>A</span>\n  <span>中首次出现的位置的操作，我们称为（   ）。</span>\n</p>",
+      "options": [
+        {
+          "id": 93738,
+          "content": "连接"
+        },
+        {
+          "id": 93739,
+          "content": "模式匹配"
+        },
+        {
+          "id": 93740,
+          "content": "求子串"
+        },
+        {
+          "id": 93741,
+          "content": "求串长"
+        }
+      ],
+      "correct_option_ids": [
+        93739
+      ],
+      "correct_options": [
+        "模式匹配"
+      ],
+      "analysis": "这道题目考察的是字符串基本操作中的模式匹配概念。B选项\"模式匹配\"是正确答案，因为在字符串处理中，查找一个字符串在另一个字符串中首次出现的位置，这个过程就是在进行模式匹配操作。模式匹配是字符串处理中的一个重要概念，它的目的是在目标文本(串A)中查找特定的模式(串B)。<br><br>分析其他选项：<br>A. \"连接\"是指将两个字符串首尾相接形成新的字符串，与题目描述的操作不符。<br><br>C. \"求子串\"是指从一个字符串中截取一部分连续的字符形成新串，这个操作与查找串B在串A中的位置不同。<br><br>D. \"求串长\"是计算字符串中字符的个数，与查找子串位置的操作完全不同。<br><br>在实际编程中，模式匹配是一个常用的字符串操作，比如Java中的indexOf()方法、C++中的find()方法等都是实现这种模式匹配功能的具体例子。"
+    },
+    {
+      "question_id": 11182577,
+      "uuid": "bb5e2b0a7d1c4a20a06c4a835089fd9d",
+      "type": 1,
+      "title": "我们有一个主字符串T=”xyxxyxxyzyyzzxxyyyzxxyxxy...",
+      "content": "<span>我们有一个主字符串<span>T=”xyxxyxxyzyyzzxxyyyzxxyxxyz”</span>，现在我们想在这个字符串里找到另一个小字符串<span>S=”xyxxyz”</span>。我们使用一种叫做KMP的高效字符串匹配方法来做这件事。问题是，从开始搜索到最终找到这个小字符串的过程中，我们需要比较多少次单个的字符呢？<br />\n</span>",
+      "options": [
+        {
+          "id": 7197545,
+          "content": "12"
+        },
+        {
+          "id": 7197546,
+          "content": "18"
+        },
+        {
+          "id": 7197547,
+          "content": "10"
+        },
+        {
+          "id": 7197548,
+          "content": "22"
+        }
+      ],
+      "correct_option_ids": [
+        7197547
+      ],
+      "correct_options": [
+        "10"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 7465,
+      "uuid": "74d917fe09a94a2fb03b5371a2417372",
+      "type": 1,
+      "title": "在上下文及头文件均正常的情况下，若有以下定义和语句，则输出结果是？",
+      "content": "<div>  在上下文及头文件均正常的情况下，若有以下定义和语句： </div> <pre class=\"prettyprint\"> char s1[] = &quot;12345&quot;, *s2 = &quot;1234&quot;;\n printf(&quot;%d\\n&quot;, strlen(strcpy(s1, s2))); </pre> <div>  则输出结果是 </div>",
+      "options": [
+        {
+          "id": 14374,
+          "content": "4"
+        },
+        {
+          "id": 14375,
+          "content": "5"
+        },
+        {
+          "id": 14376,
+          "content": "9"
+        },
+        {
+          "id": 14377,
+          "content": "10"
+        }
+      ],
+      "correct_option_ids": [
+        14374
+      ],
+      "correct_options": [
+        "4"
+      ],
+      "analysis": "这道题考察了C语言中字符串操作函数strlen()和strcpy()的使用。<br><br>让我们逐步分析代码执行过程：<br><br>1. 首先定义了两个字符串：<br>   - s1[]=\"12345\" 是一个字符数组，包含\"12345\"和结束符'\u0000'<br>   - *s2=\"1234\" 是一个指向字符串常量的指针<br><br>2. strcpy(s1, s2)函数将s2指向的字符串\"1234\"复制到s1数组中：<br>   - 复制后s1变成\"1234\u0000\"<br>   - strcpy函数返回目标字符串的起始地址，即s1的地址<br><br>3. strlen()函数计算strcpy返回的字符串长度：<br>   - strlen计算的是不包含结束符'\u0000'的字符个数<br>   - \"1234\"的长度是4<br><br>所以最终输出结果是4。<br><br>分析其他选项：<br>B(5)错误：虽然s1数组原来存储的是\"12345\"，但strcpy后已经变成\"1234\"<br>C(9)错误：可能是误认为要计算两个字符串的总长度<br>D(10)错误：同C，且额外计入了结束符<br><br>需要注意的是，strlen函数只计算到字符串结束符'\u0000'之前的字符个数，而不包括结束符本身。"
+    },
+    {
+      "question_id": 2220845,
+      "uuid": "025581079a624bf49056a774bdcadc1d",
+      "type": 1,
+      "title": "某程序的主函数如下图所示，该程序的打印结果是（）",
+      "content": "<div>  某程序的主函数如下图所示，该程序的打印结果是（） </div> <div> <pre class=\"prettyprint lang-cpp\">int main(void){\n    char name[] = &quot;Tom&quot;;\n    char *ptr;\n\n    ptr = name + strlen(name);\n\n    while(--ptr &gt;= name)\n        puts(ptr);\n\n    return 0;\n}</pre> </div>",
+      "options": [
+        {
+          "id": 3389154,
+          "content": "m\nom\nTom"
+        },
+        {
+          "id": 3389157,
+          "content": "//空行\nm\nom\nTom"
+        },
+        {
+          "id": 3389159,
+          "content": "//空行\nTom\nom\nm"
+        },
+        {
+          "id": 3389161,
+          "content": "Tom\nom\nm"
+        }
+      ],
+      "correct_option_ids": [
+        3389154
+      ],
+      "correct_options": [
+        "m\nom\nTom"
+      ],
+      "analysis": "<div>  第1个知识点：对数组来说，数组名是数组首元素的地址。因此，用name可以表示字符串”Tom”首元素’T’的地址。 </div> <div>  第2个知识点：strlen()函数给出字符串中的字符长度。因此strlen(name)的返回值为3。 </div> <div>  第3个知识点：自减运算--i先减1再使用，自减运算符i--先使用再减1。结合以上知识点，找准指针所指位置即可得到正确答案。 </div> <div>  所以正确答案为A<br> </div>"
+    },
+    {
+      "question_id": 2224392,
+      "uuid": "1efb3b7f65fb430a953693a40ffca78f",
+      "type": 1,
+      "title": "假设现在有一个字符串，其内容为\"I am \\0good\"，那么使用strl...",
+      "content": "<div>  <div>   <div>    <p>     假设现在有一个字符串，其内容为&quot;I am \\0good&quot;，那么使用strlen统计该字符串长度得到的结果为（)    </p>   </div>  </div> </div>",
+      "options": [
+        {
+          "id": 3393108,
+          "content": "10"
+        },
+        {
+          "id": 3393109,
+          "content": "11"
+        },
+        {
+          "id": 3393111,
+          "content": "5"
+        },
+        {
+          "id": 3393114,
+          "content": "6"
+        }
+      ],
+      "correct_option_ids": [
+        3393111
+      ],
+      "correct_options": [
+        "5"
+      ],
+      "analysis": "<p>  字符串统计函数strlen以\\0作为结束符，即当字符串遇到\\0的时候会自动停止后续字符串的统计，因此strlen统计上述字符串的时候，只会统计I am （注意字符m之后有一个空格也是在统计范围内的），同时，strlen统计的是实际长度，因此统计的结果是5。答案选择C </p>"
+    },
+    {
+      "question_id": 501218,
+      "uuid": "1e0b8dcd75094974929ea33af3fcc555",
+      "type": 1,
+      "title": "字符串&nbsp;\"YONYOU\"，有几种不同的全排列方式？",
+      "content": "字符串 &quot;YONYOU&quot;，有几种不同的全排列方式？",
+      "options": [
+        {
+          "id": 982391,
+          "content": "180"
+        },
+        {
+          "id": 982392,
+          "content": "720"
+        },
+        {
+          "id": 982393,
+          "content": "120"
+        },
+        {
+          "id": 982394,
+          "content": "540"
+        }
+      ],
+      "correct_option_ids": [
+        982391
+      ],
+      "correct_options": [
+        "180"
+      ],
+      "analysis": "字符串YONYOU共6个字符，其中Y出现2次、O出现2次、N出现1次、U出现1次。存在重复字母时，全排列数=n!/(各重复字母出现次数的阶乘之积)=6!/(2!*2!)=720/4=180种。答案A(180)正确。"
+    },
+    {
+      "question_id": 304811,
+      "uuid": "5a73375b68314588a0597293bc99ba28",
+      "type": 1,
+      "title": "对字符串 &quot;mabnmnm&quot; 的二进制进行哈夫曼编码有...",
+      "content": "对字符串 &quot;mabnmnm&quot; 的二进制进行哈夫曼编码有多少位（）",
+      "options": [
+        {
+          "id": 789824,
+          "content": "12"
+        },
+        {
+          "id": 789825,
+          "content": "13"
+        },
+        {
+          "id": 789826,
+          "content": "14"
+        },
+        {
+          "id": 789827,
+          "content": "15"
+        }
+      ],
+      "correct_option_ids": [
+        789825
+      ],
+      "correct_options": [
+        "13"
+      ],
+      "analysis": "<div>  字符串 &quot;mabnmnm&quot;每个字符的频率分别为：m 3/7，a 1/7，b 1/7，n 2/7。 </div> <div>  建哈夫曼树，如图。 </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20220114/3900348_1642155807478/C2239C444EDD6A40E94650773D6DBD4B\"> </div> <div>  a：111，b：110，n：10，m：0。 </div> <div>  字符串 &quot;mabnmnm&quot; 的哈夫曼编码为 0 111 110 10 0 10 0。 </div> <div>  一共13位，所以正确答案选B。<br> </div> <div>  <br> </div>"
+    },
+    {
+      "question_id": 10826617,
+      "uuid": "acc5c88f3a524555a049b98d698505e2",
+      "type": 1,
+      "title": "若串S=‘Papergames’，其长度为2的子串数目为",
+      "content": "<p>\n\t若串S=‘Papergames’，其长度为2的子串数目为\n</p>",
+      "options": [
+        {
+          "id": 6272520,
+          "content": "11"
+        },
+        {
+          "id": 6272521,
+          "content": "10&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+        },
+        {
+          "id": 6272522,
+          "content": "<div>9</div>"
+        },
+        {
+          "id": 6272523,
+          "content": "<div>8</div>"
+        }
+      ],
+      "correct_option_ids": [
+        6272522
+      ],
+      "correct_options": [
+        "<div>9</div>"
+      ],
+      "analysis": "要计算长度为2的子串数目,我们需要找出字符串'Papergames'中所有可能的连续两个字符组合。<br><br>对于长度为n的字符串,长度为2的子串数目等于n-1。因为每个子串需要两个连续字符,最后一个字符只能与前一个字符组成子串。<br><br>'Papergames'的长度为10,所以长度为2的子串数目为10-1=9个。<br><br>具体的9个子串是:<br>Pa<br>ap <br>pe<br>er<br>rg<br>ga<br>am<br>me<br>es<br><br>因此C选项9是正确答案。<br><br>分析其他选项:<br>A选项11:过大,超出了可能的子串数目<br>B选项10:错误地认为子串数等于字符串长度<br>D选项8:数量偏小,遗漏了某些子串<br><br>这里的关键是要理解:对于任意长度为n的字符串,长度为k的子串数目都是n-k+1。在本题中n=10,k=2,所以子串数目为10-2+1=9。"
+    },
+    {
+      "question_id": 164359,
+      "uuid": "8992f89cc2394d2b9cd1143555641b15",
+      "type": 1,
+      "title": "在 C/C++ 中，若有定义 char a [10], *p=a; ，那么下列赋值语句正确的是( )。",
+      "content": "在 C/C++ 中，若有定义 char a [10], *p=a; ，那么下列赋值语句正确的是( )。<br>",
+      "options": [
+        {
+          "id": 386304,
+          "content": "a [] =\"abcdefg\";"
+        },
+        {
+          "id": 386305,
+          "content": "a=\"abedefg\";"
+        },
+        {
+          "id": 386306,
+          "content": "*p=\"abcdefg\";"
+        },
+        {
+          "id": 386307,
+          "content": "p=\"abcdefg \";"
+        }
+      ],
+      "correct_option_ids": [
+        386307
+      ],
+      "correct_options": [
+        "p=\"abcdefg \";"
+      ],
+      "analysis": "这道题目考察了C/C++中指针和数组的基础知识。<br><br>首先需要理解题目给出的定义: char a[10]声明了一个长度为10的字符数组，*p=a将数组a的首地址赋给指针p。<br><br>选项D是正确的，因为此时p已经是一个指针，可以接受新的地址赋值。\"abcdefg\"是一个字符串常量，它的值是该字符串存储位置的首地址，可以直接赋值给指针p。<br><br>分析其他错误选项：<br><br>A错误：a[]不是合法的数组表示方式。正确的数组赋值应该是strcpy(a, \"abcdefg\")或者在定义时初始化。<br><br>B错误：数组名a代表数组的首地址，是常量，不能作为左值进行赋值操作。这种写法试图将一个地址赋值给一个常量，这是非法的。<br><br>C错误：*p=\"abcdefg\"试图将一个字符串的地址赋值给一个字符，这是类型不匹配的。*p只能接受单个字符的赋值，如*p='a'。<br><br>总的来说，这道题主要是考察对数组名、指针以及字符串常量本质的理解。"
+    },
+    {
+      "question_id": 2224741,
+      "uuid": "db512e775dca4418a70057233e2cfae6",
+      "type": 1,
+      "title": "下面那个代码块实现对字符串的拷贝有错误的是（）",
+      "content": "<p>  下面那个代码块实现对字符串的拷贝有错误的是（） </p>",
+      "options": [
+        {
+          "id": 3393729,
+          "content": "<p>void strcpy(char* s,char* t){</p><p>while((*s = *t)!= '\\0')</p><p>s++,t++;</p><p>}</p>"
+        },
+        {
+          "id": 3393732,
+          "content": "<p>void strcpy(char* s,char* t)</p><p>int i=0;</p><p>while((s[i] = t[i]) != '\\0')</p><p>i++;</p><p>}</p>"
+        },
+        {
+          "id": 3393737,
+          "content": "<p>void strcpy(char* s,char* t){</p><p>while((*s++ = *t++) != '\\0')；</p><p>}</p>"
+        },
+        {
+          "id": 3393741,
+          "content": "<p>void strcpy(char* s,char* t){</p><p>while(*s++ = *t++)；</p><p>}</p>"
+        }
+      ],
+      "correct_option_ids": [
+        3393732
+      ],
+      "correct_options": [
+        "<p>void strcpy(char* s,char* t)</p><p>int i=0;</p><p>while((s[i] = t[i]) != '\\0')</p><p>i++;</p><p>}</p>"
+      ],
+      "analysis": "<div>  <p>   B  </p>  <ul>   <li>    <p>     A：赋值后判断，遇到'\\0'结束，能拷贝终止符，正确。    </p>      <li>    <p>     B：函数缺少左花括号，语法错误（实现意图用下标法是对的，但该代码块不合法）。    </p>      <li>    <p>     C：典型写法，条件里完成赋值并判断是否为'\\0'，循环体为空，正确。    </p>      <li>    <p>     D：利用赋值结果为0/非0结束循环，也能正确拷贝终止符，正确。    </p>     </ul> <br> </div> <div> </div>"
+    },
+    {
+      "question_id": 340272,
+      "uuid": "af8e5d9ea2034e00b1e56932b761c91e",
+      "type": 1,
+      "title": "用 0\n- 9 这 10 个数字组成一个首尾相连的字符串，每个数字可以重复...",
+      "content": "用 0 - 9 这 10 个数字组成一个首尾相连的字符串，每个数字可以重复出现多次，并且字符串中任意 2 个数字都相邻出现过。此字符串最小长度是（）",
+      "options": [
+        {
+          "id": 894483,
+          "content": "47"
+        },
+        {
+          "id": 894484,
+          "content": "48"
+        },
+        {
+          "id": 894485,
+          "content": "49"
+        },
+        {
+          "id": 894486,
+          "content": "50"
+        }
+      ],
+      "correct_option_ids": [
+        894486
+      ],
+      "correct_options": [
+        "50"
+      ],
+      "analysis": "这道题考察了图论中的欧拉路径问题。要求任意2个数字都相邻出现过，其实就是要求这个字符串能够包含所有可能的两位数数字组合。<br><br>D选项50是正确答案，原因如下：<br>1. 对于0-9这10个数字，任意两个数字都要相邻出现，也就是需要包含所有可能的两位数字组合<br>2. 计算所有可能的组合数：总共有10个数字，任意两个数字的组合数是10×9=90种<br>3. 由于是首尾相连的字符串，每个相邻的数字对只需要在字符串中出现一次<br>4. 每个位置的数字都会和它前后的数字形成两个数字对，所以n个数字可以形成n个数字对<br>5. 因此，如果字符串长度为n，则能形成的数字对个数为n个<br>6. 要包含所有90种组合，字符串长度最少需要50个数字<br><br>分析其他选项：<br>A(47)、B(48)、C(49)都不够：<br>如果字符串长度小于50，根据上述分析，形成的数字对数量一定小于90，就无法保证包含所有可能的两位数字组合。因此这些长度都不足以满足题目要求。<br><br>这个50的结论也可以通过构造具体的字符串来验证，比如：0123456789012345678901234567890123456789012345678901就是一个满足条件的最短字符串。"
+    },
+    {
+      "question_id": 11254698,
+      "uuid": "d420769d7fc7460cbf3a22cc1d74322f",
+      "type": 1,
+      "title": "已知字符串 S='aabbabaababaa'，模式串 t='abaaba...",
+      "content": "已知字符串&nbsp;S='aabbabaababaa'，模式串&nbsp;t='abaaba'，采用&nbsp;KMP&nbsp;算法进行匹配，第一次出现“失配”（s[i]≠t[j]）时，i=j=1，则下次开始匹配时，i&nbsp;和&nbsp;j&nbsp;的值分别是（）",
+      "options": [
+        {
+          "id": 7363411,
+          "content": "i=1，j=3"
+        },
+        {
+          "id": 7363412,
+          "content": "i=1，j=2"
+        },
+        {
+          "id": 7363413,
+          "content": "i=2，j=1"
+        },
+        {
+          "id": 7363414,
+          "content": "i=1，j=0"
+        }
+      ],
+      "correct_option_ids": [
+        7363414
+      ],
+      "correct_options": [
+        "i=1，j=0"
+      ],
+      "analysis": "主串： aabbabaababaa<br />\n模式串： abaaba<br />\n比较 a 和 a, i=0, j=0<br />\n匹配失败：比较 a 和 b, i=1, j=1<br />\n比较 a 和 a, i=1, j=0<br />\n比较 b 和 b, i=2, j=1<br />\n匹配失败：比较 b 和 a, i=3, j=2<br />\n匹配失败：比较 b 和 a, i=3, j=0<br />\n比较 a 和 a, i=4, j=0<br />\n比较 b 和 b, i=5, j=1<br />\n比较 a 和 a, i=6, j=2<br />\n比较 a 和 a, i=7, j=3<br />\n比较 b 和 b, i=8, j=4<br />\n比较 a 和 a, i=9, j=5<br />\n第一次不匹配时，i=4, j=10<br />\n模式串的next数组： [0, 0, 1, 1, 2, 3]<br />"
+    },
+    {
+      "question_id": 10960107,
+      "uuid": "0cc2dc3bb8c942ed967d60d17e911523",
+      "type": 1,
+      "title": "串s=\"cndfecs\"的子串个数为（）",
+      "content": "串s=&quot;cndfecs&quot;的子串个数为（）",
+      "options": [
+        {
+          "id": 6621102,
+          "content": "22"
+        },
+        {
+          "id": 6621103,
+          "content": "25"
+        },
+        {
+          "id": 6621104,
+          "content": "26"
+        },
+        {
+          "id": 6621105,
+          "content": "29"
+        }
+      ],
+      "correct_option_ids": [
+        6621105
+      ],
+      "correct_options": [
+        "29"
+      ],
+      "analysis": "D<br> <br> 解析：<br> - 串长 n=7。  <br> - 子串（连续）总数为 n(n+1)/2=7×8/2=28；若包含空串再加 1。  <br> - 因此共有 29 个子串。<br>"
+    },
+    {
+      "question_id": 11294836,
+      "uuid": "ebc2ebd598694eda99ff271bbeb92499",
+      "type": 1,
+      "title": "现采用KMP算法，对模式串 S = \"lmlmn\" 和主串 T = \"lm...",
+      "content": "现采用KMP算法，对模式串&nbsp;S&nbsp;=&nbsp;\"lmlmn\"&nbsp;和主串&nbsp;T&nbsp;=&nbsp;\"lmlmmnlmlmnn\"&nbsp;进行匹配，设匹配成功过程中进行的字符间比较的次数为x，规定x与主串长度之比称为匹配效率α，求这次KMP匹配算法的α（）",
+      "options": [
+        {
+          "id": 7402124,
+          "content": "7/6"
+        },
+        {
+          "id": 7402125,
+          "content": "5/4"
+        },
+        {
+          "id": 7402126,
+          "content": "13/12"
+        },
+        {
+          "id": 7402127,
+          "content": "17/12"
+        }
+      ],
+      "correct_option_ids": [
+        7402126
+      ],
+      "correct_options": [
+        "13/12"
+      ],
+      "analysis": "<img src=\"https://uploadfiles.nowcoder.com/images/20240823/0_1724411223683/3BA639B4750A51B8034ED31301330729\" alt=\"\" />"
+    },
+    {
+      "question_id": 2220558,
+      "uuid": "26c724285fcb452484e18dabdce90991",
+      "type": 1,
+      "title": "若在C预处理器中定义了字符串常量 PRAISE 为 ”NowCoder”，...",
+      "content": "<p>  若在C语言预处理器中定义字符串常量 PRAISE 为 ”NowCoder”，则 sizeof(PRAISE) 和 strlen(PRAISE) 语句执行的结果是（） </p>",
+      "options": [
+        {
+          "id": 3389010,
+          "content": "9、8"
+        },
+        {
+          "id": 3389014,
+          "content": "9、9"
+        },
+        {
+          "id": 3389017,
+          "content": "8、8"
+        },
+        {
+          "id": 3389019,
+          "content": "8、9"
+        }
+      ],
+      "correct_option_ids": [
+        3389010
+      ],
+      "correct_options": [
+        "9、8"
+      ],
+      "analysis": "<div>  sizeof运算符以字节为单位给出对象的大小。strlen函数给出字符串中的字符长度。 </div> <div>  用strlen得出的是PRAISE的字符数（包括空格和标点符号），用sizeof把PRAISE末尾不可见的空字符也计算在内。 </div> <div>  所以正确答案为A。 </div>"
+    },
+    {
+      "question_id": 2224740,
+      "uuid": "61d72dc717d84f999ad674eebb7598c6",
+      "type": 1,
+      "title": "现在有一个单词本，记录不同的单词，记录的单词与单词之间采用空格隔开。现在需...",
+      "content": "<div>  <div>   现在有一个单词本，记录不同的单词，记录的单词与单词之间采用空格隔开。现在需要统计单词本中单词的个数，具体代码如下，请补充下划线部分内容来完成单词统计（）  </div>  <div> <pre class=\"prettyprint lang-cpp\">int countWords(char* words) {\n\n    int count = 0;\n\n    char* p = words;\n\n    while (______) {\n\n        if (*p == ' ') \n\n            count++;\n\n    }\n\n    return count + 1;\n\n}</pre> <span style=\"color: black;\"></span>   </div> </div>",
+      "options": [
+        {
+          "id": 3393723,
+          "content": "<div><div><p>p != '\\0'</p></div></div>"
+        },
+        {
+          "id": 3393726,
+          "content": "*p != '\\0'"
+        },
+        {
+          "id": 3393730,
+          "content": "p++ != '\\0'"
+        },
+        {
+          "id": 3393733,
+          "content": "*p++ != '\\0'"
+        }
+      ],
+      "correct_option_ids": [
+        3393733
+      ],
+      "correct_options": [
+        "*p++ != '\\0'"
+      ],
+      "analysis": "<div>  <div>   <p>    由题意可知while循环中的空格应该为字符边界处理和字符自增处理。   </p>   <div>    while函数体中判断了字符串是否为空格，当存在空格的时候会自增单词的个数。   </div>   <div>    初始p指向words数组的第一个元素。划线内容应该满足指针p移动，同时还需要满足字符不能为'\\0'。   </div>   <div>    所以正确答案为D。   </div>  </div> </div>"
+    },
+    {
+      "question_id": 25753,
+      "uuid": "e49e808f071143d19aac24587a9b1509",
+      "type": 1,
+      "title": "用二进制来编码字符串“xyzwxyxx”，需要能够根据编码解码回原来的字符串，则我们最少需要多长的二进制字符串",
+      "content": "用二进制来编码字符串“xyzwxyxx”，需要能够根据编码解码回原来的字符串，则我们最少需要多长的二进制字符串",
+      "options": [
+        {
+          "id": 42022,
+          "content": "12"
+        },
+        {
+          "id": 42023,
+          "content": "14"
+        },
+        {
+          "id": 42024,
+          "content": "15"
+        },
+        {
+          "id": 42025,
+          "content": "18"
+        },
+        {
+          "id": 42026,
+          "content": "24"
+        }
+      ],
+      "correct_option_ids": [
+        42023
+      ],
+      "correct_options": [
+        "14"
+      ],
+      "analysis": "选 B（14）<br> <br> - 频次：x:4，y:2，z:1，w:1。  <br> - 以 Huffman 编码最优：码长分别为 x:1，y:2，z:3，w:3（如 x=0，y=10，z=110，w=111）。  <br> - 总长度 = 4×1 + 2×2 + 1×3 + 1×3 = 14。<br>"
+    }
+  ]
+}

@@ -1,0 +1,6156 @@
+{
+  "source": "nowcoder_official",
+  "group": "人工智能",
+  "name": "RAG",
+  "tag_id": 305564,
+  "target": 192,
+  "fetched_at": "2026-07-28",
+  "total_unique": 192,
+  "complete": true,
+  "questions": [
+    {
+      "question_id": 11640352,
+      "uuid": "6078d75deec64d1e9b1dff90157e7175",
+      "type": 1,
+      "title": "以下哪种RAG优化对\"首次使用用户\"（冷启动场景）最重要？",
+      "content": "以下哪种RAG优化对\"首次使用用户\"（冷启动场景）最重要？",
+      "options": [
+        {
+          "id": 7511649,
+          "content": "个性化检索（依赖用户历史数据）"
+        },
+        {
+          "id": 7511650,
+          "content": "通用的高质量知识库构建和良好的基础检索效果，不依赖用户历史数据"
+        },
+        {
+          "id": 7511651,
+          "content": "缓存优化（新用户无历史缓存）"
+        },
+        {
+          "id": 7511652,
+          "content": "用户行为分析"
+        }
+      ],
+      "correct_option_ids": [
+        7511650
+      ],
+      "correct_options": [
+        "通用的高质量知识库构建和良好的基础检索效果，不依赖用户历史数据"
+      ],
+      "analysis": "冷启动场景（新用户无历史数据）：无法使用个性化检索（无行为历史）、无缓存命中（首次请求）。此时系统质量完全取决于：①知识库的覆盖广度和质量；②基础检索算法的泛化能力；③生成模型的质量。冷启动优化重点：确保知识库全面覆盖常见问题、基础Embedding模型泛化好（通用领域）、生成质量稳定。随着用户使用积累，再引入个性化等高级特性。"
+    },
+    {
+      "question_id": 11640326,
+      "uuid": "681b41dda78d433789dc00d6ca6b35cb",
+      "type": 1,
+      "title": "以下关于RAG中\"负样本挖掘\"（Hard Negative Mining）...",
+      "content": "以下关于RAG中\"负样本挖掘\"（Hard&nbsp;Negative&nbsp;Mining）对检索性能的影响，描述正确的是？",
+      "options": [
+        {
+          "id": 7511843,
+          "content": "负样本挖掘只影响embedding模型训练，不影响推理性能"
+        },
+        {
+          "id": 7511845,
+          "content": "使用难负样本（话题相关但实际不相关的文档）训练embedding模型，使模型学会细粒度区分，显著提升检索精度"
+        },
+        {
+          "id": 7511847,
+          "content": "随机负样本与难负样本效果相同"
+        },
+        {
+          "id": 7511848,
+          "content": "负样本挖掘会降低模型召回率"
+        }
+      ],
+      "correct_option_ids": [
+        7511845
+      ],
+      "correct_options": [
+        "使用难负样本（话题相关但实际不相关的文档）训练embedding模型，使模型学会细粒度区分，显著提升检索精度"
+      ],
+      "analysis": "难负样本（Hard&nbsp;Negatives）对embedding模型训练至关重要：随机负样本（话题完全不同的文档）太容易区分，模型只学到粗粒度语义。难负样本（BM25检索到但实际不相关的文档、话题相似但答案不同的段落）迫使模型学习细粒度区分能力。BEIR基准测试表明：使用难负样本训练的模型在检索精度上比随机负样本高5-15%，这也是BGE、E5等模型训练的关键技术。"
+    },
+    {
+      "question_id": 11640338,
+      "uuid": "3da563f7aa0e4cd48b4ed88490170459",
+      "type": 1,
+      "title": "以下关于\"RAG系统的可观测性\"（Observability）设计，正确的是？",
+      "content": "以下关于\"RAG系统的可观测性\"（Observability）设计，正确的是？",
+      "options": [
+        {
+          "id": 7511749,
+          "content": "RAG系统只需要记录最终答案，中间步骤不重要"
+        },
+        {
+          "id": 7511752,
+          "content": "需要追踪检索查询、召回文档列表（含相似度分数）、LLM输入/输出、延迟、Faithfulness评分等完整链路，用于问题排查和优化"
+        },
+        {
+          "id": 7511754,
+          "content": "可观测性工具只适用于训练阶段"
+        },
+        {
+          "id": 7511756,
+          "content": "记录所有信息会严重影响性能，应避免"
+        }
+      ],
+      "correct_option_ids": [
+        7511752
+      ],
+      "correct_options": [
+        "需要追踪检索查询、召回文档列表（含相似度分数）、LLM输入/输出、延迟、Faithfulness评分等完整链路，用于问题排查和优化"
+      ],
+      "analysis": "RAG可观测性工具（如LangSmith、LlamaIndex的Callbacks、Arize&nbsp;AI）追踪：①检索阶段：query&nbsp;embedding、retrieved&nbsp;docs及其相似度分数、检索延迟；②生成阶段：完整prompt、LLM输出、token使用量、生成延迟；③评估指标：Faithfulness、Answer&nbsp;Relevance（在线自动评估）；④错误和重试记录。通过可观测性可以识别：哪些query检索效果差（precision低）、哪些答案有幻觉（faithfulness低），为优化提供数据依据。"
+    },
+    {
+      "question_id": 11640328,
+      "uuid": "0d170e42f71647858c5ba6a3af5754f6",
+      "type": 1,
+      "title": "以下哪种方案最适合解决RAG中长文档（如100页的技术手册）的检索问题？",
+      "content": "以下哪种方案最适合解决RAG中长文档（如100页的技术手册）的检索问题？",
+      "options": [
+        {
+          "id": 7511828,
+          "content": "将整个文档作为一个chunk"
+        },
+        {
+          "id": 7511830,
+          "content": "层次化索引（Hierarchical&nbsp;Index）：文档级摘要+章节级摘要+段落级chunk三层索引，按需从粗到细检索"
+        },
+        {
+          "id": 7511831,
+          "content": "只索引文档的前10页"
+        },
+        {
+          "id": 7511832,
+          "content": "对文档进行随机采样后索引"
+        }
+      ],
+      "correct_option_ids": [
+        7511830
+      ],
+      "correct_options": [
+        "层次化索引（Hierarchical&nbsp;Index）：文档级摘要+章节级摘要+段落级chunk三层索引，按需从粗到细检索"
+      ],
+      "analysis": "长文档（100页技术手册）的挑战：细粒度分块会产生大量碎片（&gt;1000个chunk），检索准确率下降。层次化索引策略：①L1：整本书摘要（1个向量）；②L2：每章摘要（约10-20个向量）；③L3：段落级chunk（500-1000个向量）。检索流程：query→L1粗筛（找相关章）→L2精筛（找相关节）→L3精确定位段落→返回上下文。减少搜索空间，提高精度和速度。"
+    },
+    {
+      "question_id": 11640298,
+      "uuid": "dbfad73a58a4410aae9dbbdb9f231da7",
+      "type": 1,
+      "title": "在RAG中，\"Step-back Prompting\"（后退提示）的思路是什么？",
+      "content": "在RAG中，\"Step-back&nbsp;Prompting\"（后退提示）的思路是什么？",
+      "options": [
+        {
+          "id": 7513505,
+          "content": "让模型回顾对话历史再生成答案"
+        },
+        {
+          "id": 7513506,
+          "content": "将具体问题泛化为更抽象的高层概念问题，检索高层知识后再回答具体问题"
+        },
+        {
+          "id": 7513507,
+          "content": "多次生成答案后选最好的一个"
+        },
+        {
+          "id": 7513508,
+          "content": "对检索结果进行后处理，去掉不相关内容"
+        }
+      ],
+      "correct_option_ids": [
+        7513506
+      ],
+      "correct_options": [
+        "将具体问题泛化为更抽象的高层概念问题，检索高层知识后再回答具体问题"
+      ],
+      "analysis": "Step-back&nbsp;Prompting（Zheng&nbsp;et&nbsp;al.&nbsp;2023）：对于具体问题\"X公司2023年Q3的营收是多少？\"，先让LLM生成抽象问题\"X公司的财务指标分析方法是什么？\"，检索高层知识，然后结合原始问题和检索到的高层知识生成最终答案。这种方式能检索到更全面的背景知识，提升复杂推理问题的回答质量。"
+    },
+    {
+      "question_id": 11640447,
+      "uuid": "84764861a61e40f6aa02d123463c0122",
+      "type": 1,
+      "title": "在RAG中，\"Document-Level vs Chunk-Level ...",
+      "content": "在RAG中，\"Document-Level&nbsp;vs&nbsp;Chunk-Level&nbsp;Embedding\"的选择对检索有什么影响？",
+      "options": [
+        {
+          "id": 7510569,
+          "content": "文档级嵌入总是更好"
+        },
+        {
+          "id": 7510570,
+          "content": "Chunk级精确定位相关段落，Document级提供全文语义，两者用途不同，可分层使用"
+        },
+        {
+          "id": 7510573,
+          "content": "两种方式完全等价"
+        },
+        {
+          "id": 7510576,
+          "content": "Chunk级嵌入不适合长文档"
+        }
+      ],
+      "correct_option_ids": [
+        7510570
+      ],
+      "correct_options": [
+        "Chunk级精确定位相关段落，Document级提供全文语义，两者用途不同，可分层使用"
+      ],
+      "analysis": "分层嵌入策略：1)&nbsp;Document级嵌入（全文摘要向量）用于快速筛选相关文档；2)&nbsp;Chunk级嵌入用于精确定位相关段落。先用文档级粗筛（提高检索效率），再用Chunk级精确定位（提高检索精度），结合两者可以处理全局查询和局部查询。"
+    },
+    {
+      "question_id": 11640266,
+      "uuid": "ed66f25f12d04fa399f9610ca128c0c5",
+      "type": 1,
+      "title": "HyDE（Hypothetical Document Embeddings...",
+      "content": "HyDE（Hypothetical&nbsp;Document&nbsp;Embeddings）为什么能提升检索质量？",
+      "options": [
+        {
+          "id": 7513309,
+          "content": "HyDE使用更大的embedding模型，向量维度更高"
+        },
+        {
+          "id": 7513310,
+          "content": "HyDE先让LLM生成假设性答案文档，用该文档的embedding检索，缩小query与document的分布差距"
+        },
+        {
+          "id": 7513311,
+          "content": "HyDE通过数据增强扩充了向量数据库"
+        },
+        {
+          "id": 7513312,
+          "content": "HyDE使用多个query版本分别检索后合并结果"
+        }
+      ],
+      "correct_option_ids": [
+        7513310
+      ],
+      "correct_options": [
+        "HyDE先让LLM生成假设性答案文档，用该文档的embedding检索，缩小query与document的分布差距"
+      ],
+      "analysis": "Query（短问句）和Document（长答案文档）存在语义鸿沟（asymmetric&nbsp;search），直接用query向量检索效果差。HyDE（Gao&nbsp;et&nbsp;al.&nbsp;2022）让LLM生成一个假设性答案（可能有错，但与真实文档在语义空间接近），用假设文档的embedding检索真实文档。假设文档与检索目标分布更接近，检索质量显著提升，尤其在零样本场景。"
+    },
+    {
+      "question_id": 11640354,
+      "uuid": "e72f367d884149c881064a5eb4308e67",
+      "type": 1,
+      "title": "以下哪种技术最适合处理RAG中的\"Ambiguous Query\"（模糊查...",
+      "content": "以下哪种技术最适合处理RAG中的\"Ambiguous&nbsp;Query\"（模糊查询，单个查询有多种可能的解读）？",
+      "options": [
+        {
+          "id": 7511633,
+          "content": "随机选择一种解读"
+        },
+        {
+          "id": 7511634,
+          "content": "使用\"Query&nbsp;Clarification\"（查询澄清）：让LLM识别歧义并生成澄清问题，或生成多种解读并行检索后综合"
+        },
+        {
+          "id": 7511635,
+          "content": "只返回置信度最高的解读的结果"
+        },
+        {
+          "id": 7511636,
+          "content": "拒绝处理模糊查询"
+        }
+      ],
+      "correct_option_ids": [
+        7511634
+      ],
+      "correct_options": [
+        "使用\"Query&nbsp;Clarification\"（查询澄清）：让LLM识别歧义并生成澄清问题，或生成多种解读并行检索后综合"
+      ],
+      "analysis": "模糊查询处理策略：①主动澄清：检测到歧义时向用户提问（\"您是指X还是Y？\"），延迟一次往返但提高准确率；②并行检索：为每种可能的解读生成独立query并行检索，合并结果让LLM综合判断；③假设一种解读并在答案中说明（\"假设您问的是X，如果是Y请告知\"）。实际系统根据应用场景选择：实时对话适合澄清，批处理适合并行检索。"
+    },
+    {
+      "question_id": 11640365,
+      "uuid": "12a9e290ad444a9798341f875853e504",
+      "type": 1,
+      "title": "在向量数据库中，HNSW（Hierarchical Navigable S...",
+      "content": "在向量数据库中，HNSW（Hierarchical&nbsp;Navigable&nbsp;Small&nbsp;World）索引相比FAISS的Flat索引的优势是？",
+      "options": [
+        {
+          "id": 7511521,
+          "content": "精度更高（100%精确）"
+        },
+        {
+          "id": 7511522,
+          "content": "构建速度更快"
+        },
+        {
+          "id": 7511523,
+          "content": "查询速度更快（亚线性复杂度），适合大规模数据集"
+        },
+        {
+          "id": 7511524,
+          "content": "内存占用更小"
+        }
+      ],
+      "correct_option_ids": [
+        7511523
+      ],
+      "correct_options": [
+        "查询速度更快（亚线性复杂度），适合大规模数据集"
+      ],
+      "analysis": "HNSW通过多层图结构实现近似最近邻搜索，查询复杂度约为O(log&nbsp;N)，适合百万级以上数据集。Flat索引是精确搜索（O(N)），数据量大时延迟高。HNSW以少量精度损失换取大幅速度提升。"
+    },
+    {
+      "question_id": 11640435,
+      "uuid": "3b4688c03f1742bc8c21923937db18a3",
+      "type": 1,
+      "title": "以下哪种向量数据库最适合需要完全本地化部署（Air-Gapped环境）且数...",
+      "content": "以下哪种向量数据库最适合需要完全本地化部署（Air-Gapped环境）且数据量在百万级的企业？",
+      "options": [
+        {
+          "id": 7510717,
+          "content": "Pinecone（纯云服务）"
+        },
+        {
+          "id": 7510718,
+          "content": "Chroma（轻量级，适合小规模）"
+        },
+        {
+          "id": 7510720,
+          "content": "Milvus（开源，支持分布式部署）"
+        },
+        {
+          "id": 7510722,
+          "content": "Weaviate&nbsp;Cloud（云托管）"
+        }
+      ],
+      "correct_option_ids": [
+        7510720
+      ],
+      "correct_options": [
+        "Milvus（开源，支持分布式部署）"
+      ],
+      "analysis": "Milvus是完全开源的向量数据库，支持本地部署（Docker/K8s），在百万级向量规模时仍有良好性能，支持分布式架构扩展到十亿级，提供GPU加速索引（IVF_PQ&nbsp;+&nbsp;GPU），是企业私有化部署的主流选择。Chroma适合小规模原型。"
+    },
+    {
+      "question_id": 11640275,
+      "uuid": "2178b0f9ba424bb5b4c9c25796ed6455",
+      "type": 1,
+      "title": "BGE（BAAI General Embedding）模型相比OpenAI...",
+      "content": "BGE（BAAI&nbsp;General&nbsp;Embedding）模型相比OpenAI&nbsp;text-embedding-ada-002的主要优势是什么？",
+      "options": [
+        {
+          "id": 7513385,
+          "content": "BGE的向量维度更高（4096&nbsp;vs&nbsp;1536）"
+        },
+        {
+          "id": 7513386,
+          "content": "BGE开源可本地部署，在中文检索和特定领域任务上效果更优，且支持指令微调"
+        },
+        {
+          "id": 7513387,
+          "content": "BGE的检索速度更快"
+        },
+        {
+          "id": 7513388,
+          "content": "BGE只能用于中文，不支持英文"
+        }
+      ],
+      "correct_option_ids": [
+        7513386
+      ],
+      "correct_options": [
+        "BGE开源可本地部署，在中文检索和特定领域任务上效果更优，且支持指令微调"
+      ],
+      "analysis": "BGE系列（如bge-m3、bge-large-en-v1.5）是开源embedding模型，可免费本地部署（无API成本）。BGE在MTEB中文榜单上表现优于text-embedding-ada-002，且支持instruction-following（在query前加任务描述提升效果）。bge-m3支持100+语言和多粒度检索（dense+sparse+multi-vector），适合中文或多语言RAG场景。"
+    },
+    {
+      "question_id": 11640432,
+      "uuid": "2986a8f12a2d46e1ad818f3dc63dd0bd",
+      "type": 1,
+      "title": "以下哪种评估方法最适合在RAG开发早期（数据探索阶段）快速评估系统效果？",
+      "content": "以下哪种评估方法最适合在RAG开发早期（数据探索阶段）快速评估系统效果？",
+      "options": [
+        {
+          "id": 7510757,
+          "content": "全面的人工评估（需要数周）"
+        },
+        {
+          "id": 7510758,
+          "content": "构建小型Golden&nbsp;Dataset&nbsp;+&nbsp;自动化评估（RAGAS/TruLens）快速迭代"
+        },
+        {
+          "id": 7510759,
+          "content": "只看检索延迟"
+        },
+        {
+          "id": 7510760,
+          "content": "只在生产环境评估"
+        }
+      ],
+      "correct_option_ids": [
+        7510758
+      ],
+      "correct_options": [
+        "构建小型Golden&nbsp;Dataset&nbsp;+&nbsp;自动化评估（RAGAS/TruLens）快速迭代"
+      ],
+      "analysis": "开发早期应建立小型高质量评估集（Golden&nbsp;Dataset，50-200个典型问题+标准答案），配合RAGAS等自动化框架，实现快速迭代（每次修改后分钟内得到评估结果）。全面人工评估在开发后期做，早期用于方向确认代价太高。"
+    },
+    {
+      "question_id": 11640295,
+      "uuid": "8c8b828cfa43414fad0b71acbeadd6ce",
+      "type": 1,
+      "title": "以下哪种方法可以解决RAG中不同来源文档风格差异大（heterogeneo...",
+      "content": "以下哪种方法可以解决RAG中不同来源文档风格差异大（heterogeneous&nbsp;corpus）的检索问题？",
+      "options": [
+        {
+          "id": 7513529,
+          "content": "只使用单一来源的文档"
+        },
+        {
+          "id": 7513530,
+          "content": "为不同文档类型分别维护独立的向量索引，检索时路由到对应索引"
+        },
+        {
+          "id": 7513531,
+          "content": "将所有文档统一转换为相同格式再索引"
+        },
+        {
+          "id": 7513532,
+          "content": "使用更大的chunk_size覆盖更多内容"
+        }
+      ],
+      "correct_option_ids": [
+        7513530
+      ],
+      "correct_options": [
+        "为不同文档类型分别维护独立的向量索引，检索时路由到对应索引"
+      ],
+      "analysis": "不同来源（学术论文、新闻、代码、产品文档）的语言风格差异大，混合索引会导致语义空间混乱，检索质量下降。最佳实践：为每类文档维护独立索引，配合路由层（router）根据query类型选择对应索引或多索引并行检索后融合。LlamaIndex的RouterQueryEngine实现了此功能。"
+    },
+    {
+      "question_id": 11640305,
+      "uuid": "98c9df242622476c9c5cd87a4590eb8f",
+      "type": 1,
+      "title": "以下哪种技术可以减少RAG系统中的\"幻觉引用\"（hallucinated ...",
+      "content": "以下哪种技术可以减少RAG系统中的\"幻觉引用\"（hallucinated&nbsp;citations）问题？",
+      "options": [
+        {
+          "id": 7513451,
+          "content": "增加检索文档数量"
+        },
+        {
+          "id": 7513453,
+          "content": "在生成时要求模型在答案中标注具体引用来源（passage&nbsp;ID或句子），并验证引用是否真实存在"
+        },
+        {
+          "id": 7513455,
+          "content": "使用更大的LLM"
+        },
+        {
+          "id": 7513456,
+          "content": "降低生成温度（temperature→0）"
+        }
+      ],
+      "correct_option_ids": [
+        7513453
+      ],
+      "correct_options": [
+        "在生成时要求模型在答案中标注具体引用来源（passage&nbsp;ID或句子），并验证引用是否真实存在"
+      ],
+      "analysis": "幻觉引用指模型声称引用了某文档但实际上该文档不支持该观点（或根本没有该文档）。解决方案：①生成时要求LLM输出结构化引用（\"根据文档[1]第3段...\"）；②后处理验证：自动检查引用文档ID是否存在且内容是否支持该声明；③使用专门的Citation&nbsp;Verification模型（如FactScore）。这是企业RAG系统可信度的关键。"
+    },
+    {
+      "question_id": 11640411,
+      "uuid": "bf315429bf184ab5bd5c35657e849ea9",
+      "type": 1,
+      "title": "以下关于BM25参数（k1和b）的描述，哪项正确？",
+      "content": "以下关于BM25参数（k1和b）的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7510995,
+          "content": "k1控制词频饱和度，b控制文档长度归一化的强度"
+        },
+        {
+          "id": 7510998,
+          "content": "k1控制逆文档频率权重，b控制查询扩展"
+        },
+        {
+          "id": 7511001,
+          "content": "两个参数都与文档长度有关"
+        },
+        {
+          "id": 7511004,
+          "content": "BM25没有可调参数"
+        }
+      ],
+      "correct_option_ids": [
+        7510995
+      ],
+      "correct_options": [
+        "k1控制词频饱和度，b控制文档长度归一化的强度"
+      ],
+      "analysis": "BM25关键参数：k1（通常1.2-2.0）控制词频（TF）的饱和曲线，防止高频词无限累加权重；b（通常0.75）控制文档长度归一化，b=0不做归一化，b=1完全按文档长度归一化。根据语料特性调整这两个参数可改善检索效果。"
+    },
+    {
+      "question_id": 11640344,
+      "uuid": "4d4f691b294648a2a4996713cbe7a1ba",
+      "type": 1,
+      "title": "以下关于\"Contextual Retrieval\"（Anthropic提...",
+      "content": "以下关于\"Contextual&nbsp;Retrieval\"（Anthropic提出）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7511709,
+          "content": "Contextual&nbsp;Retrieval是HyDE的另一个名称"
+        },
+        {
+          "id": 7511710,
+          "content": "在为每个chunk做embedding前，先用LLM生成该chunk在完整文档中的上下文说明（\"这段内容讨论了...在整个文档中的作用是...\"），与chunk一起embedding，提升检索准确性"
+        },
+        {
+          "id": 7511711,
+          "content": "Contextual&nbsp;Retrieval只对英文有效"
+        },
+        {
+          "id": 7511712,
+          "content": "Contextual&nbsp;Retrieval不需要embedding"
+        }
+      ],
+      "correct_option_ids": [
+        7511710
+      ],
+      "correct_options": [
+        "在为每个chunk做embedding前，先用LLM生成该chunk在完整文档中的上下文说明（\"这段内容讨论了...在整个文档中的作用是...\"），与chunk一起embedding，提升检索准确性"
+      ],
+      "analysis": "Anthropic的Contextual&nbsp;Retrieval（2024）解决chunk上下文缺失问题：单个chunk从文档中切出后缺乏背景（如\"它在2023年实现了20%的增长\"，\"它\"是什么不清楚）。通过prompt让Claude为每个chunk生成简短上下文：\"这段文字来自[文档名]第[章节]，描述了[实体]的[主题]，在文档整体讨论[更大主题]的背景下...\"。将上下文与chunk一起embedding，实验表明可将检索失败率降低约35-49%。"
+    },
+    {
+      "question_id": 11640301,
+      "uuid": "b89929e2d44043fabea5533d03013f2e",
+      "type": 1,
+      "title": "以下哪种方法可以评估RAG系统在没有人工标注答案的情况下？",
+      "content": "以下哪种方法可以评估RAG系统在没有人工标注答案的情况下？",
+      "options": [
+        {
+          "id": 7513484,
+          "content": "只能使用BLEU/ROUGE与参考答案比较"
+        },
+        {
+          "id": 7513486,
+          "content": "使用LLM-as-Judge：让强大LLM（如GPT-4）评估答案质量、忠实度和相关性"
+        },
+        {
+          "id": 7513487,
+          "content": "只能通过A/B测试收集用户反馈"
+        },
+        {
+          "id": 7513488,
+          "content": "计算检索文档的平均余弦相似度"
+        }
+      ],
+      "correct_option_ids": [
+        7513486
+      ],
+      "correct_options": [
+        "使用LLM-as-Judge：让强大LLM（如GPT-4）评估答案质量、忠实度和相关性"
+      ],
+      "analysis": "无参考答案的RAG评估（Reference-Free&nbsp;Evaluation）主要依赖LLM-as-Judge：①用GPT-4/Claude评估Faithfulness（声明是否有文档支撑）；②评估Answer&nbsp;Relevance（是否回答了问题）；③使用RAGAS框架自动化这一流程。优点：无需人工标注，成本低，可大规模自动评估；缺点：依赖评判LLM的能力，存在固有偏差。"
+    },
+    {
+      "question_id": 11640291,
+      "uuid": "dc55f753314a4b9b8174353604a2d5d8",
+      "type": 1,
+      "title": "以下哪种方法可以处理RAG中文档内容随时间变化（知识过期）的问题？",
+      "content": "以下哪种方法可以处理RAG中文档内容随时间变化（知识过期）的问题？",
+      "options": [
+        {
+          "id": 7513517,
+          "content": "每隔固定时间重新训练LLM"
+        },
+        {
+          "id": 7513518,
+          "content": "增量更新向量数据库（删除旧文档向量，添加新文档向量），保持索引与源文档同步"
+        },
+        {
+          "id": 7513519,
+          "content": "在prompt中告知模型文档可能过期"
+        },
+        {
+          "id": 7513520,
+          "content": "增大检索文档数量以覆盖更多版本"
+        }
+      ],
+      "correct_option_ids": [
+        7513518
+      ],
+      "correct_options": [
+        "增量更新向量数据库（删除旧文档向量，添加新文档向量），保持索引与源文档同步"
+      ],
+      "analysis": "RAG的核心优势之一是知识可动态更新：通过增量索引（re-embedding更新的文档、删除过期文档的向量）即可更新系统知识，无需重训LLM。实际工程中通常结合：文档变更监听（webhook/cron）+&nbsp;增量embedding&nbsp;+&nbsp;向量数据库的upsert操作。相比重训LLM（成本极高），更新向量库的成本极低。"
+    },
+    {
+      "question_id": 11640280,
+      "uuid": "60a0ab7820694533ae7f184748409408",
+      "type": 1,
+      "title": "以下哪种分块策略最适合处理代码文件的RAG索引？",
+      "content": "以下哪种分块策略最适合处理代码文件的RAG索引？",
+      "options": [
+        {
+          "id": 7513425,
+          "content": "固定大小分块（每500&nbsp;tokens一块）"
+        },
+        {
+          "id": 7513426,
+          "content": "按语义相似度动态分块"
+        },
+        {
+          "id": 7513427,
+          "content": "按代码结构分块（函数/类级别），保持代码逻辑完整性"
+        },
+        {
+          "id": 7513428,
+          "content": "按行数均等分块（每50行一块）"
+        }
+      ],
+      "correct_option_ids": [
+        7513427
+      ],
+      "correct_options": [
+        "按代码结构分块（函数/类级别），保持代码逻辑完整性"
+      ],
+      "analysis": "代码具有严格的结构边界（函数、类、方法），随意截断会破坏语义完整性（如函数被截断无法理解其功能）。最佳实践是使用AST（抽象语法树）解析代码，按函数/类/模块级别分块，同时保留文件路径、函数签名等元数据。LlamaIndex的CodeHierarchyNodeParser专门处理代码分块，是RAG代码搜索的推荐方案。"
+    },
+    {
+      "question_id": 11640387,
+      "uuid": "f07b8f8ff2c04a8f9a30ad585747098f",
+      "type": 1,
+      "title": "在RAG中，Reciprocal Rank Fusion（RRF）的计算公...",
+      "content": "在RAG中，Reciprocal&nbsp;Rank&nbsp;Fusion（RRF）的计算公式是什么？",
+      "options": [
+        {
+          "id": 7511273,
+          "content": "Score&nbsp;=&nbsp;sum(1/(rank&nbsp;+&nbsp;k))，k为常数（通常60）"
+        },
+        {
+          "id": 7511274,
+          "content": "Score&nbsp;=&nbsp;sum(rank)&nbsp;/&nbsp;查询数量"
+        },
+        {
+          "id": 7511275,
+          "content": "Score&nbsp;=&nbsp;max(relevance_score)&nbsp;across&nbsp;queries"
+        },
+        {
+          "id": 7511276,
+          "content": "Score&nbsp;=&nbsp;geometric_mean(relevance_scores)"
+        }
+      ],
+      "correct_option_ids": [
+        7511273
+      ],
+      "correct_options": [
+        "Score&nbsp;=&nbsp;sum(1/(rank&nbsp;+&nbsp;k))，k为常数（通常60）"
+      ],
+      "analysis": "RRF分数&nbsp;=&nbsp;Σ&nbsp;1/(rank_i&nbsp;+&nbsp;k)，其中rank_i是文档在第i个检索结果列表中的排名，k通常为60（防止高排名文档得分过高）。RRF不需要归一化不同检索系统的分数，鲁棒性强，是混合检索的标准融合方法。"
+    },
+    {
+      "question_id": 11640330,
+      "uuid": "46fc85760a0c4875b9ce29eb008a8ede",
+      "type": 1,
+      "title": "以下哪种评估方式最适合检测RAG系统的\"位置偏差\"（Position Bi...",
+      "content": "以下哪种评估方式最适合检测RAG系统的\"位置偏差\"（Position&nbsp;Bias，模型倾向于使用上下文开头或结尾的文档）？",
+      "options": [
+        {
+          "id": 7511813,
+          "content": "测量平均检索速度"
+        },
+        {
+          "id": 7511814,
+          "content": "将最相关文档分别放在上下文的开头、中间、结尾，比较生成答案的准确率，若中间位置准确率显著低则存在位置偏差"
+        },
+        {
+          "id": 7511815,
+          "content": "只评估召回率"
+        },
+        {
+          "id": 7511816,
+          "content": "只评估生成速度"
+        }
+      ],
+      "correct_option_ids": [
+        7511814
+      ],
+      "correct_options": [
+        "将最相关文档分别放在上下文的开头、中间、结尾，比较生成答案的准确率，若中间位置准确率显著低则存在位置偏差"
+      ],
+      "analysis": "\"Lost&nbsp;in&nbsp;the&nbsp;Middle\"（Liu&nbsp;et&nbsp;al.&nbsp;2023）的量化评估方法：对同一问题，将ground&nbsp;truth文档插入上下文的不同位置（0%、20%、40%、60%、80%、100%），测量各位置的答案准确率。曲线形状呈U形（首尾高、中间低）即存在位置偏差。对RAG系统的影响：应始终将最相关文档放在上下文首尾，避免放在中间位置（尤其是超长上下文场景）。"
+    },
+    {
+      "question_id": 11640434,
+      "uuid": "3163922d983a4427bcf308670523f905",
+      "type": 1,
+      "title": "以下哪种RAG优化专门针对\"提问方式与文档表述差异\"（Query-Docu...",
+      "content": "以下哪种RAG优化专门针对\"提问方式与文档表述差异\"（Query-Document&nbsp;Gap）问题？",
+      "options": [
+        {
+          "id": 7510735,
+          "content": "增大top-k"
+        },
+        {
+          "id": 7510737,
+          "content": "查询重写（Query&nbsp;Rewriting）：用LLM将用户口语化查询改写为更接近文档表述风格的形式"
+        },
+        {
+          "id": 7510739,
+          "content": "减小chunk大小"
+        },
+        {
+          "id": 7510740,
+          "content": "使用BM25替代向量检索"
+        }
+      ],
+      "correct_option_ids": [
+        7510737
+      ],
+      "correct_options": [
+        "查询重写（Query&nbsp;Rewriting）：用LLM将用户口语化查询改写为更接近文档表述风格的形式"
+      ],
+      "analysis": "Query-Document&nbsp;Gap：用户使用口语化表达（\"最近股市怎么了\"），而文档使用专业语言（\"A股市场出现震荡，主因...\"）。查询重写用LLM将用户查询改写为更正式、更接近文档风格的表述，减少检索时的语义差异。"
+    },
+    {
+      "question_id": 11640437,
+      "uuid": "ec8361e4ceae44cb99c58089f27402b4",
+      "type": 1,
+      "title": "以下哪种方法在RAG中实现了\"引用标注\"（Citation Generat...",
+      "content": "以下哪种方法在RAG中实现了\"引用标注\"（Citation&nbsp;Generation）？",
+      "options": [
+        {
+          "id": 7510693,
+          "content": "让LLM随意引用任何文档"
+        },
+        {
+          "id": 7510694,
+          "content": "在提示中要求LLM在每个陈述后标注来源文档ID，并在后处理中验证引用的真实性"
+        },
+        {
+          "id": 7510697,
+          "content": "自动为所有文档添加引用标注"
+        },
+        {
+          "id": 7510699,
+          "content": "只对第一个段落添加引用"
+        }
+      ],
+      "correct_option_ids": [
+        7510694
+      ],
+      "correct_options": [
+        "在提示中要求LLM在每个陈述后标注来源文档ID，并在后处理中验证引用的真实性"
+      ],
+      "analysis": "引用标注实现：1)&nbsp;在提示中提供带编号的文档上下文；2)&nbsp;要求LLM在每个陈述后添加[文档n]标记；3)&nbsp;后处理阶段验证引用是否真实存在于对应文档（防止幻觉引用）；4)&nbsp;生成可点击的来源链接。这是企业级RAG的标准功能。"
+    },
+    {
+      "question_id": 11640373,
+      "uuid": "4c7cddf661314ca48b2749743ccc5fe3",
+      "type": 1,
+      "title": "以下哪种GraphRAG的应用场景最能体现其优势？",
+      "content": "以下哪种GraphRAG的应用场景最能体现其优势？",
+      "options": [
+        {
+          "id": 7511433,
+          "content": "简单事实问答（如\"谁是美国总统\"）"
+        },
+        {
+          "id": 7511434,
+          "content": "需要理解多实体关系和推理路径的问题（如\"公司A和公司B的共同合作伙伴有哪些\"）"
+        },
+        {
+          "id": 7511435,
+          "content": "文本摘要生成"
+        },
+        {
+          "id": 7511436,
+          "content": "代码补全"
+        }
+      ],
+      "correct_option_ids": [
+        7511434
+      ],
+      "correct_options": [
+        "需要理解多实体关系和推理路径的问题（如\"公司A和公司B的共同合作伙伴有哪些\"）"
+      ],
+      "analysis": "GraphRAG（Microsoft）通过构建知识图谱索引文档中的实体和关系，特别适合跨文档的多跳关系推理。对于涉及实体关联、影响链条、社区结构等问题，图遍历比向量检索能获取更准确的推理路径。"
+    },
+    {
+      "question_id": 11640369,
+      "uuid": "c27f2c666b724e96b683d44955ebd609",
+      "type": 1,
+      "title": "以下哪种技术通过为每个文档chunk生成多个\"假设问题\"来改善检索效果？",
+      "content": "以下哪种技术通过为每个文档chunk生成多个\"假设问题\"来改善检索效果？",
+      "options": [
+        {
+          "id": 7511478,
+          "content": "HyDE"
+        },
+        {
+          "id": 7511480,
+          "content": "Multi-Query&nbsp;Retrieval"
+        },
+        {
+          "id": 7511482,
+          "content": "Document&nbsp;Indexing&nbsp;with&nbsp;Hypothetical&nbsp;Questions"
+        },
+        {
+          "id": 7511484,
+          "content": "Query&nbsp;Decomposition"
+        }
+      ],
+      "correct_option_ids": [
+        7511482
+      ],
+      "correct_options": [
+        "Document&nbsp;Indexing&nbsp;with&nbsp;Hypothetical&nbsp;Questions"
+      ],
+      "analysis": "该技术让LLM为每个文档块生成多个可能的问题，将这些问题与文档一起索引（或作为元数据）。检索时，用户问题与这些假设问题的匹配效果通常优于直接与文档文本匹配。"
+    },
+    {
+      "question_id": 11640429,
+      "uuid": "b158c3c312b84c9da3c58906d7f3f5b9",
+      "type": 1,
+      "title": "以下哪种技术在RAG中被用于解决\"检索结果超出上下文窗口\"的问题？",
+      "content": "以下哪种技术在RAG中被用于解决\"检索结果超出上下文窗口\"的问题？",
+      "options": [
+        {
+          "id": 7510792,
+          "content": "截断检索结果"
+        },
+        {
+          "id": 7510794,
+          "content": "Map-Reduce检索（分批处理检索结果，再汇总）"
+        },
+        {
+          "id": 7510795,
+          "content": "减少检索数量（top-k降低）"
+        },
+        {
+          "id": 7510796,
+          "content": "使用更大的上下文窗口模型"
+        }
+      ],
+      "correct_option_ids": [
+        7510794
+      ],
+      "correct_options": [
+        "Map-Reduce检索（分批处理检索结果，再汇总）"
+      ],
+      "analysis": "当检索到的文档总长度超过上下文窗口时，Map-Reduce策略：1)&nbsp;将检索结果分批（Map阶段），每批分别让LLM提取相关信息；2)&nbsp;汇总所有批次的提取结果（Reduce阶段）生成最终答案。LangChain的map_reduce&nbsp;chain实现了此模式。"
+    },
+    {
+      "question_id": 11640361,
+      "uuid": "d341c6e00d594c95b51d5ec976a769cc",
+      "type": 1,
+      "title": "在计算RAG的上下文窗口时，如果每个chunk大小为512 tokens，...",
+      "content": "在计算RAG的上下文窗口时，如果每个chunk大小为512&nbsp;tokens，检索top-k=5，还需要预留512&nbsp;tokens给回答，则最少需要多大的上下文窗口？",
+      "options": [
+        {
+          "id": 7511563,
+          "content": "2048&nbsp;tokens"
+        },
+        {
+          "id": 7511565,
+          "content": "3072&nbsp;tokens"
+        },
+        {
+          "id": 7511567,
+          "content": "4096&nbsp;tokens"
+        },
+        {
+          "id": 7511568,
+          "content": "1024&nbsp;tokens"
+        }
+      ],
+      "correct_option_ids": [
+        7511565
+      ],
+      "correct_options": [
+        "3072&nbsp;tokens"
+      ],
+      "analysis": "总计：5个chunks&nbsp;×&nbsp;512&nbsp;tokens&nbsp;+&nbsp;512&nbsp;tokens回答&nbsp;+&nbsp;system&nbsp;prompt等&nbsp;=&nbsp;2560&nbsp;tokens&nbsp;+&nbsp;额外开销。最少需要约3072&nbsp;tokens的上下文窗口。实际还需考虑原始query、分隔符和格式化文本。"
+    },
+    {
+      "question_id": 11640363,
+      "uuid": "85c09ac62c5e4b1c850dc95d002ddae4",
+      "type": 1,
+      "title": "在RAGAS评估框架中，以下哪个指标衡量\"答案是否能从检索到的上下文中推导...",
+      "content": "在RAGAS评估框架中，以下哪个指标衡量\"答案是否能从检索到的上下文中推导出来\"？",
+      "options": [
+        {
+          "id": 7511545,
+          "content": "Faithfulness（忠实度）"
+        },
+        {
+          "id": 7511546,
+          "content": "Answer&nbsp;Relevancy（答案相关性）"
+        },
+        {
+          "id": 7511547,
+          "content": "Context&nbsp;Recall（上下文召回率）"
+        },
+        {
+          "id": 7511548,
+          "content": "Context&nbsp;Precision（上下文精确率）"
+        }
+      ],
+      "correct_option_ids": [
+        7511545
+      ],
+      "correct_options": [
+        "Faithfulness（忠实度）"
+      ],
+      "analysis": "Faithfulness衡量答案中的每个陈述是否能从检索到的上下文中推断出来，防止幻觉。Answer&nbsp;Relevancy衡量答案与问题的相关性，Context&nbsp;Recall衡量参考答案的关键信息是否被检索覆盖。"
+    },
+    {
+      "question_id": 11640395,
+      "uuid": "46b9530a094948d58d7cf75f640a3a0f",
+      "type": 1,
+      "title": "以下哪种评估方法最适合在没有ground truth的情况下快速评估RAG...",
+      "content": "以下哪种评估方法最适合在没有ground&nbsp;truth的情况下快速评估RAG系统的问题？",
+      "options": [
+        {
+          "id": 7511177,
+          "content": "人工评估所有输出"
+        },
+        {
+          "id": 7511178,
+          "content": "使用RAGAS的无参考评估指标（如Answer&nbsp;Relevancy、Faithfulness）"
+        },
+        {
+          "id": 7511180,
+          "content": "只评估检索阶段的延迟"
+        },
+        {
+          "id": 7511183,
+          "content": "随机抽样100个问题做A/B测试"
+        }
+      ],
+      "correct_option_ids": [
+        7511178
+      ],
+      "correct_options": [
+        "使用RAGAS的无参考评估指标（如Answer&nbsp;Relevancy、Faithfulness）"
+      ],
+      "analysis": "RAGAS提供无需ground&nbsp;truth的评估指标：Faithfulness（答案是否基于上下文）、Answer&nbsp;Relevancy（答案与问题的相关性）等，通过LLM自动评估生成质量，适合快速开发迭代阶段的质量监控。"
+    },
+    {
+      "question_id": 11640401,
+      "uuid": "fbe6da339c3a428b847b172c9b04432e",
+      "type": 1,
+      "title": "在RAG中，以下哪种技术可以解决查询和文档\"词汇鸿沟\"（Vocabular...",
+      "content": "在RAG中，以下哪种技术可以解决查询和文档\"词汇鸿沟\"（Vocabulary&nbsp;Mismatch）问题？",
+      "options": [
+        {
+          "id": 7511109,
+          "content": "增大分块大小"
+        },
+        {
+          "id": 7511110,
+          "content": "查询扩展（Query&nbsp;Expansion）或使用稠密检索"
+        },
+        {
+          "id": 7511112,
+          "content": "使用更精确的关键词"
+        },
+        {
+          "id": 7511116,
+          "content": "减少检索数量"
+        }
+      ],
+      "correct_option_ids": [
+        7511110
+      ],
+      "correct_options": [
+        "查询扩展（Query&nbsp;Expansion）或使用稠密检索"
+      ],
+      "analysis": "词汇鸿沟指查询词与文档词不匹配（同义词、缩写等）。解决方案：1)&nbsp;查询扩展（添加同义词/相关词）；2)&nbsp;使用稠密检索（语义向量可以跨越词汇边界）；3)&nbsp;HyDE等方法将查询扩展为假设文档。"
+    },
+    {
+      "question_id": 11640310,
+      "uuid": "1a49b476fd404309972ba49c2a56ef1d",
+      "type": 1,
+      "title": "以下哪种场景最适合使用\"稠密检索+稀疏检索+Rerank\"的三阶段架构？",
+      "content": "以下哪种场景最适合使用\"稠密检索+稀疏检索+Rerank\"的三阶段架构？",
+      "options": [
+        {
+          "id": 7513413,
+          "content": "文档库只有100条记录"
+        },
+        {
+          "id": 7513414,
+          "content": "大规模（&gt;100万文档）、需要高召回率和高精度的企业级知识库问答系统"
+        },
+        {
+          "id": 7513415,
+          "content": "实时性要求极高（&lt;50ms响应）的简单问答"
+        },
+        {
+          "id": 7513416,
+          "content": "文档库内容完全一致，无需区分相关性"
+        }
+      ],
+      "correct_option_ids": [
+        7513414
+      ],
+      "correct_options": [
+        "大规模（&gt;100万文档）、需要高召回率和高精度的企业级知识库问答系统"
+      ],
+      "analysis": "三阶段架构适用于大规模高质量检索：①稠密检索（FAISS/Milvus&nbsp;ANN）：快速从百万文档中召回top-100，语义感知；②稀疏检索（BM25）：精确词汇匹配补充召回；③Rerank（BGE-Reranker/Cohere）：对top-100精排取top-5，兼顾精度。小规模文档库（&lt;1万）直接全量cross-encoder即可；实时场景三阶段延迟约200-500ms，需要权衡。"
+    },
+    {
+      "question_id": 11640343,
+      "uuid": "966a569b5a6f41d6af56f81516927561",
+      "type": 1,
+      "title": "以下哪个指标最能反映RAG系统在生产环境中的用户价值？",
+      "content": "以下哪个指标最能反映RAG系统在生产环境中的用户价值？",
+      "options": [
+        {
+          "id": 7511717,
+          "content": "向量检索的MRR（Mean&nbsp;Reciprocal&nbsp;Rank）"
+        },
+        {
+          "id": 7511718,
+          "content": "业务相关的终端指标（用户问题解决率、客服转人工率降低、用户满意度评分）"
+        },
+        {
+          "id": 7511719,
+          "content": "embedding模型在MTEB榜单上的排名"
+        },
+        {
+          "id": 7511720,
+          "content": "LLM的困惑度（Perplexity）"
+        }
+      ],
+      "correct_option_ids": [
+        7511718
+      ],
+      "correct_options": [
+        "业务相关的终端指标（用户问题解决率、客服转人工率降低、用户满意度评分）"
+      ],
+      "analysis": "技术指标（MRR、NDCG、Faithfulness）是过程指标，最终价值体现在业务结果：①客服场景：问题解决率提升、转人工率降低、平均处理时间缩短；②知识管理：员工查找信息时间减少、文档查阅满意度提升；③代码辅助：代码接受率、bug率变化。IIRC（如技术评估准确率高但用户满意度不变）说明RAG改进了错误方向。以终端业务指标驱动RAG优化是正确的产品思维。"
+    },
+    {
+      "question_id": 11640397,
+      "uuid": "3219b0edff744a67a67f7e7b6d73f643",
+      "type": 1,
+      "title": "在RAG中，以下哪种技术通过对查询进行\"假设步骤\"来改善多步推理（类似于A...",
+      "content": "在RAG中，以下哪种技术通过对查询进行\"假设步骤\"来改善多步推理（类似于AlphaCode的方法）？",
+      "options": [
+        {
+          "id": 7511157,
+          "content": "Query&nbsp;Decomposition（查询分解）"
+        },
+        {
+          "id": 7511158,
+          "content": "Chain-of-Thought&nbsp;RAG"
+        },
+        {
+          "id": 7511159,
+          "content": "Vanilla&nbsp;RAG"
+        },
+        {
+          "id": 7511160,
+          "content": "Simple&nbsp;Retrieval"
+        }
+      ],
+      "correct_option_ids": [
+        7511157
+      ],
+      "correct_options": [
+        "Query&nbsp;Decomposition（查询分解）"
+      ],
+      "analysis": "查询分解将复杂问题拆解为多个简单子问题，分别检索后综合回答。适合\"比较A和B\"、\"A的影响是什么，又如何导致B\"等多步推理问题，结合IRCoT可以在推理链中动态触发检索。"
+    },
+    {
+      "question_id": 11640400,
+      "uuid": "18bc55b01ca04b7583b621590c22d43c",
+      "type": 1,
+      "title": "以下哪种分块方法最适合处理HTML格式的网页内容？",
+      "content": "以下哪种分块方法最适合处理HTML格式的网页内容？",
+      "options": [
+        {
+          "id": 7511121,
+          "content": "固定大小字符分块"
+        },
+        {
+          "id": 7511122,
+          "content": "基于HTML标签层次结构（h1/h2/p/div）的语义分块"
+        },
+        {
+          "id": 7511123,
+          "content": "按句子分块"
+        },
+        {
+          "id": 7511124,
+          "content": "按词分块"
+        }
+      ],
+      "correct_option_ids": [
+        7511122
+      ],
+      "correct_options": [
+        "基于HTML标签层次结构（h1/h2/p/div）的语义分块"
+      ],
+      "analysis": "HTML内容有明确的语义层次（标题/段落/列表），按HTML结构分块可以保留文档的自然语义单元，避免在句子中间或段落中间截断。LangChain的HTMLHeaderTextSplitter就是基于这种思路实现的。"
+    },
+    {
+      "question_id": 11640382,
+      "uuid": "ab9d61f2b23b4eeaa9517e7c1db715e1",
+      "type": 1,
+      "title": "在RAG中处理多语言文档时，以下哪种策略最有效？",
+      "content": "在RAG中处理多语言文档时，以下哪种策略最有效？",
+      "options": [
+        {
+          "id": 7511326,
+          "content": "只索引英文翻译版本"
+        },
+        {
+          "id": 7511328,
+          "content": "使用多语言嵌入模型（如mE5、LaBSE）直接索引原语言文档"
+        },
+        {
+          "id": 7511330,
+          "content": "为每种语言建立独立索引"
+        },
+        {
+          "id": 7511332,
+          "content": "查询前先翻译为英文"
+        }
+      ],
+      "correct_option_ids": [
+        7511328
+      ],
+      "correct_options": [
+        "使用多语言嵌入模型（如mE5、LaBSE）直接索引原语言文档"
+      ],
+      "analysis": "多语言嵌入模型（如mE5-large,&nbsp;BGE-M3）在同一向量空间中对齐多种语言，支持跨语言检索（中文查询检索英文文档）。相比翻译流程，直接使用多语言模型无需翻译步骤，更高效且保留语义细节。"
+    },
+    {
+      "question_id": 11640321,
+      "uuid": "00b8d07d492d489aac2f8aa0a4915b75",
+      "type": 1,
+      "title": "以下哪种方法最适合对RAG系统进行端到端的自动化评估，且不需要人工标注答案？",
+      "content": "以下哪种方法最适合对RAG系统进行端到端的自动化评估，且不需要人工标注答案？",
+      "options": [
+        {
+          "id": 7513328,
+          "content": "仅使用BLEU/ROUGE与参考答案比较"
+        },
+        {
+          "id": 7513330,
+          "content": "使用RAGAS框架：基于LLM-as-Judge自动评估Faithfulness、Answer&nbsp;Relevance、Context&nbsp;Precision、Context&nbsp;Recall四个维度"
+        },
+        {
+          "id": 7513331,
+          "content": "只测量检索速度"
+        },
+        {
+          "id": 7513332,
+          "content": "只评估向量检索的召回率"
+        }
+      ],
+      "correct_option_ids": [
+        7513330
+      ],
+      "correct_options": [
+        "使用RAGAS框架：基于LLM-as-Judge自动评估Faithfulness、Answer&nbsp;Relevance、Context&nbsp;Precision、Context&nbsp;Recall四个维度"
+      ],
+      "analysis": "RAGAS（Ragas&nbsp;Automated&nbsp;Generation&nbsp;and&nbsp;Assessment）实现了RAG的无参考评估：①Faithfulness：LLM判断答案中每个声明是否有文档支撑；②Answer&nbsp;Relevance：LLM生成反向问题并与原问题对比，衡量答案相关性；③Context&nbsp;Precision：有用的检索文档占比；④Context&nbsp;Recall：需要已知参考答案（比较检索文档与参考答案的信息覆盖）。前三个完全不需要人工标注，实现了真正的自动化评估。"
+    },
+    {
+      "question_id": 11640293,
+      "uuid": "57d0f7af9278406a8685abd6a545bfde",
+      "type": 1,
+      "title": "在RAG系统中，以下哪种场景最适合使用稀疏检索（BM25）而非密集检索？",
+      "content": "在RAG系统中，以下哪种场景最适合使用稀疏检索（BM25）而非密集检索？",
+      "options": [
+        {
+          "id": 7513533,
+          "content": "用户提问语义模糊，需要理解意图"
+        },
+        {
+          "id": 7513534,
+          "content": "搜索包含特定型号、代码、专有名词的精确匹配查询（如\"error&nbsp;code&nbsp;ORA-00942\"）"
+        },
+        {
+          "id": 7513535,
+          "content": "跨语言检索（用中文查询英文文档）"
+        },
+        {
+          "id": 7513536,
+          "content": "长文档摘要检索"
+        }
+      ],
+      "correct_option_ids": [
+        7513534
+      ],
+      "correct_options": [
+        "搜索包含特定型号、代码、专有名词的精确匹配查询（如\"error&nbsp;code&nbsp;ORA-00942\"）"
+      ],
+      "analysis": "BM25基于词汇精确匹配，对包含特定关键词的查询非常有效：错误代码、产品型号、专有名词、代码片段等在embedding空间中可能没有语义近邻，但BM25能精确匹配。Dense&nbsp;retrieval更适合语义相似但用词不同的场景（\"如何减肥\"→\"体重管理方法\"）。混合检索结合两者优势，是生产环境推荐方案。"
+    },
+    {
+      "question_id": 11640263,
+      "uuid": "0f8fc504b434443b88181fc65952772a",
+      "type": 1,
+      "title": "BM25算法属于哪类检索方法？",
+      "content": "BM25算法属于哪类检索方法？",
+      "options": [
+        {
+          "id": 7513285,
+          "content": "密集检索（Dense&nbsp;Retrieval）"
+        },
+        {
+          "id": 7513286,
+          "content": "稀疏检索（Sparse&nbsp;Retrieval），基于词频-逆文档频率的词汇匹配"
+        },
+        {
+          "id": 7513287,
+          "content": "语义检索（Semantic&nbsp;Retrieval）"
+        },
+        {
+          "id": 7513288,
+          "content": "神经网络检索（Neural&nbsp;Retrieval）"
+        }
+      ],
+      "correct_option_ids": [
+        7513286
+      ],
+      "correct_options": [
+        "稀疏检索（Sparse&nbsp;Retrieval），基于词频-逆文档频率的词汇匹配"
+      ],
+      "analysis": "BM25是经典的稀疏检索算法，基于TF-IDF改进，通过词频（TF）和逆文档频率（IDF）计算query-document相关性，只匹配出现在query中的词（稀疏表示）。优点：计算快、可解释、对精确词匹配效果好；缺点：无法理解语义相似性（如\"汽车\"和\"轿车\"不相关）。通常与dense&nbsp;retrieval结合使用（混合检索）。"
+    },
+    {
+      "question_id": 11640287,
+      "uuid": "cc89322dc6784b05bac1d48977a31a30",
+      "type": 1,
+      "title": "以下关于向量数据库IVF（Inverted File）索引的描述，正确的是？",
+      "content": "以下关于向量数据库IVF（Inverted&nbsp;File）索引的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513481,
+          "content": "IVF与关系型数据库的倒排索引完全相同"
+        },
+        {
+          "id": 7513482,
+          "content": "IVF将向量空间划分为nlist个Voronoi单元（聚类），查询时只搜索nprobe个最近的单元，是精度和速度的权衡"
+        },
+        {
+          "id": 7513483,
+          "content": "IVF只适用于低维向量（&lt;100维）"
+        },
+        {
+          "id": 7513485,
+          "content": "IVF索引构建比HNSW更快"
+        }
+      ],
+      "correct_option_ids": [
+        7513482
+      ],
+      "correct_options": [
+        "IVF将向量空间划分为nlist个Voronoi单元（聚类），查询时只搜索nprobe个最近的单元，是精度和速度的权衡"
+      ],
+      "analysis": "IVF通过K-means将所有向量聚类为nlist个中心，每个向量分配到最近的聚类。查询时：先找与query最近的nprobe个聚类中心，然后只在这nprobe个聚类内精确搜索。nprobe=nlist时等价于暴力搜索（100%精度），nprobe小时速度快但可能遗漏。通常nprobe=√nlist是精度速度平衡点。FAISS的IVFFlat是此类索引的典型实现。"
+    },
+    {
+      "question_id": 11640368,
+      "uuid": "3dd7c7e0b22d4f968519ba7e15dfa8cd",
+      "type": 1,
+      "title": "在RAG系统中，以下哪种嵌入模型特别适合检索任务（而非通用文本相似度）？",
+      "content": "在RAG系统中，以下哪种嵌入模型特别适合检索任务（而非通用文本相似度）？",
+      "options": [
+        {
+          "id": 7511487,
+          "content": "BERT-base-uncased"
+        },
+        {
+          "id": 7511489,
+          "content": "text-embedding-3-large（OpenAI）"
+        },
+        {
+          "id": 7511491,
+          "content": "E5-large-instruct（支持指令格式的检索优化模型）"
+        },
+        {
+          "id": 7511492,
+          "content": "sentence-transformers/all-mpnet-base-v2"
+        }
+      ],
+      "correct_option_ids": [
+        7511491
+      ],
+      "correct_options": [
+        "E5-large-instruct（支持指令格式的检索优化模型）"
+      ],
+      "analysis": "E5-large-instruct等支持指令的嵌入模型（如Instructor、BGE-M3、GTE）专为检索场景优化，可通过指令前缀区分查询和文档的嵌入方式，在MTEB等基准上显著优于通用模型。"
+    },
+    {
+      "question_id": 11640289,
+      "uuid": "3e0d96556e6c4ad4a5e193d48e206e1d",
+      "type": 1,
+      "title": "FLARE（Forward-Looking Active REtrieva...",
+      "content": "FLARE（Forward-Looking&nbsp;Active&nbsp;REtrieval）的检索触发机制是什么？",
+      "options": [
+        {
+          "id": 7513501,
+          "content": "每次生成前固定检索一次"
+        },
+        {
+          "id": 7513502,
+          "content": "当模型生成时对某个token的置信度低于阈值，触发检索来补充知识"
+        },
+        {
+          "id": 7513503,
+          "content": "用户每次提问都触发检索"
+        },
+        {
+          "id": 7513504,
+          "content": "每隔固定步数触发一次检索"
+        }
+      ],
+      "correct_option_ids": [
+        7513502
+      ],
+      "correct_options": [
+        "当模型生成时对某个token的置信度低于阈值，触发检索来补充知识"
+      ],
+      "analysis": "FLARE（Jiang&nbsp;et&nbsp;al.&nbsp;2023）实现了主动式检索：模型在生成时，当下一个token的概率分布熵高（不确定时）或某token概率低于阈值时，暂停生成并触发检索。以当前生成的句子或预测的下一句作为检索query，检索后继续生成。FLARE实现了细粒度的\"按需检索\"，避免了无谓的检索开销，特别适合长文本生成场景。"
+    },
+    {
+      "question_id": 11640265,
+      "uuid": "63c2a21135fe48ae839e39af151806c6",
+      "type": 1,
+      "title": "混合检索（Hybrid Retrieval）中，RRF（Reciproca...",
+      "content": "混合检索（Hybrid&nbsp;Retrieval）中，RRF（Reciprocal&nbsp;Rank&nbsp;Fusion）算法的作用是？",
+      "options": [
+        {
+          "id": 7513301,
+          "content": "训练一个融合两种检索分数的神经网络"
+        },
+        {
+          "id": 7513302,
+          "content": "将稀疏检索和密集检索的排名结果通过倒数排名公式融合，无需归一化分数尺度"
+        },
+        {
+          "id": 7513303,
+          "content": "对两种检索的分数直接加权平均"
+        },
+        {
+          "id": 7513304,
+          "content": "只保留两种检索都返回的文档（取交集）"
+        }
+      ],
+      "correct_option_ids": [
+        7513302
+      ],
+      "correct_options": [
+        "将稀疏检索和密集检索的排名结果通过倒数排名公式融合，无需归一化分数尺度"
+      ],
+      "analysis": "BM25和dense&nbsp;retrieval的分数尺度不同，直接加权平均需要归一化（复杂且不稳定）。RRF公式：score(d)&nbsp;=&nbsp;Σ&nbsp;1/(k&nbsp;+&nbsp;rank_i(d))，k通常为60，只使用排名而非分数，避免跨系统分数比较问题。RRF在实验中表现稳定，是混合检索融合的标准方法，效果通常优于单一检索。"
+    },
+    {
+      "question_id": 11640420,
+      "uuid": "883dd340652d4df385f4eb5711157a1f",
+      "type": 1,
+      "title": "在RAG中，以下哪种\"查询路由\"（Query Routing）策略最有效？",
+      "content": "在RAG中，以下哪种\"查询路由\"（Query&nbsp;Routing）策略最有效？",
+      "options": [
+        {
+          "id": 7510894,
+          "content": "所有查询都走相同检索路径"
+        },
+        {
+          "id": 7510897,
+          "content": "根据查询类型（事实型/推理型/摘要型）自动选择最合适的检索和生成策略"
+        },
+        {
+          "id": 7510899,
+          "content": "随机选择检索策略"
+        },
+        {
+          "id": 7510900,
+          "content": "只对复杂查询做检索"
+        }
+      ],
+      "correct_option_ids": [
+        7510897
+      ],
+      "correct_options": [
+        "根据查询类型（事实型/推理型/摘要型）自动选择最合适的检索和生成策略"
+      ],
+      "analysis": "智能查询路由：1)&nbsp;事实查询→精确向量/关键词检索；2)&nbsp;多跳推理→Graph&nbsp;RAG；3)&nbsp;摘要请求→文档级检索+摘要生成；4)&nbsp;不需要知识的对话→直接回答不检索。路由准确性直接影响系统整体效率和质量。"
+    },
+    {
+      "question_id": 11640364,
+      "uuid": "22bb8a62783c4cc18e7e6a1d9a35f534",
+      "type": 1,
+      "title": "以下哪种RAG架构变体能够进行多轮检索，在生成过程中动态决定是否需要额外检索？",
+      "content": "以下哪种RAG架构变体能够进行多轮检索，在生成过程中动态决定是否需要额外检索？",
+      "options": [
+        {
+          "id": 7511533,
+          "content": "Naive&nbsp;RAG"
+        },
+        {
+          "id": 7511534,
+          "content": "Advanced&nbsp;RAG"
+        },
+        {
+          "id": 7511535,
+          "content": "Self-RAG"
+        },
+        {
+          "id": 7511536,
+          "content": "GraphRAG"
+        }
+      ],
+      "correct_option_ids": [
+        7511535
+      ],
+      "correct_options": [
+        "Self-RAG"
+      ],
+      "analysis": "Self-RAG训练LLM生成特殊反思token（如[Retrieve]、[ISREL]、[ISSUP]），模型自主决定何时检索、评估检索结果相关性、验证生成内容是否有文档支持，实现自适应的多轮检索推理。"
+    },
+    {
+      "question_id": 11640357,
+      "uuid": "b8b8bd04b4114dac8e40d2a0ef321ef1",
+      "type": 1,
+      "title": "以下关于\"RAG with Structured Data\"（结构化数据R...",
+      "content": "以下关于\"RAG&nbsp;with&nbsp;Structured&nbsp;Data\"（结构化数据RAG）的最佳实践，描述正确的是？",
+      "options": [
+        {
+          "id": 7511609,
+          "content": "结构化数据（表格/数据库）不能用于RAG"
+        },
+        {
+          "id": 7511610,
+          "content": "将非结构化RAG与NL2SQL结合：文本问题→判断是否需要结构化查询→生成SQL→执行查询→将结果与检索文档合并生成答案"
+        },
+        {
+          "id": 7511611,
+          "content": "将数据库所有内容转为文本后索引（效果最差）"
+        },
+        {
+          "id": 7511612,
+          "content": "结构化数据只适合精确查询，不能用于模糊问题"
+        }
+      ],
+      "correct_option_ids": [
+        7511610
+      ],
+      "correct_options": [
+        "将非结构化RAG与NL2SQL结合：文本问题→判断是否需要结构化查询→生成SQL→执行查询→将结果与检索文档合并生成答案"
+      ],
+      "analysis": "结构化数据RAG的混合架构：①路由层：判断问题是需要文档检索（定性分析）还是数据库查询（定量数据）；②NL2SQL路径：将问题转为SQL，执行后将结构化结果注入上下文；③向量检索路径：检索文档说明和分析报告；④混合：将SQL结果（精确数字）和文档检索（背景解读）组合生成综合答案。这是BI（商业智能）助手的核心架构，结合了精确计算和语义理解的优势。"
+    },
+    {
+      "question_id": 11640430,
+      "uuid": "30edb0d106664e93910dd1a35e7e0059",
+      "type": 1,
+      "title": "在以下RAG配置中，哪种chunk_size和chunk_overlap的...",
+      "content": "在以下RAG配置中，哪种chunk_size和chunk_overlap的设置最不合理？",
+      "options": [
+        {
+          "id": 7510781,
+          "content": "chunk_size=512,&nbsp;chunk_overlap=50（overlap约10%）"
+        },
+        {
+          "id": 7510782,
+          "content": "chunk_size=256,&nbsp;chunk_overlap=250（overlap接近chunk大小）"
+        },
+        {
+          "id": 7510783,
+          "content": "chunk_size=1024,&nbsp;chunk_overlap=100（overlap约10%）"
+        },
+        {
+          "id": 7510784,
+          "content": "chunk_size=512,&nbsp;chunk_overlap=128（overlap约25%）"
+        }
+      ],
+      "correct_option_ids": [
+        7510782
+      ],
+      "correct_options": [
+        "chunk_size=256,&nbsp;chunk_overlap=250（overlap接近chunk大小）"
+      ],
+      "analysis": "overlap设置为250（接近chunk_size=256的97%）几乎将整个块都作为重叠，导致几乎每两个相邻chunk都包含相同内容，存储空间浪费极大且产生大量冗余chunk。合理的overlap通常为chunk_size的10-25%，在上下文连贯性和存储效率间平衡。"
+    },
+    {
+      "question_id": 11640311,
+      "uuid": "9a738320a09c46b3991c89148ffb55c5",
+      "type": 1,
+      "title": "以下关于\"Late Chunking\"（延迟分块）技术的描述，正确的是？",
+      "content": "以下关于\"Late&nbsp;Chunking\"（延迟分块）技术的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513405,
+          "content": "Late&nbsp;Chunking在检索后才对文档分块"
+        },
+        {
+          "id": 7513406,
+          "content": "先用长上下文embedding模型对整个文档编码获得全局感知的token表示，再从这些表示中分块池化得到chunk向量，保留跨chunk的语义信息"
+        },
+        {
+          "id": 7513407,
+          "content": "Late&nbsp;Chunking要求文档长度固定"
+        },
+        {
+          "id": 7513408,
+          "content": "Late&nbsp;Chunking是一种数据库索引技术"
+        }
+      ],
+      "correct_option_ids": [
+        7513406
+      ],
+      "correct_options": [
+        "先用长上下文embedding模型对整个文档编码获得全局感知的token表示，再从这些表示中分块池化得到chunk向量，保留跨chunk的语义信息"
+      ],
+      "analysis": "传统分块先切割再embedding，chunk向量缺乏跨块的上下文信息（如代词指代）。Late&nbsp;Chunking（jina-embeddings提出）：①用支持长上下文的embedding模型对整个文档前向传播，获得每个token的上下文感知表示；②按预定义边界对token表示做mean&nbsp;pooling，得到各chunk的向量。这样chunk向量包含了整个文档的上下文信息，检索质量显著提升（尤其对跨段落引用问题）。"
+    },
+    {
+      "question_id": 11640350,
+      "uuid": "9849e351c9fa450c87cb02cc0f6c5898",
+      "type": 1,
+      "title": "以下关于\"Waterfall RAG\"（瀑布式RAG）架构的描述，正确的是？",
+      "content": "以下关于\"Waterfall&nbsp;RAG\"（瀑布式RAG）架构的描述，正确的是？",
+      "options": [
+        {
+          "id": 7511664,
+          "content": "瀑布式RAG指每个查询都经过所有检索步骤，不支持短路"
+        },
+        {
+          "id": 7511666,
+          "content": "按顺序尝试多种检索策略（精确匹配→向量检索→Web搜索），前一种成功则返回，失败才尝试下一种，平衡速度和覆盖率"
+        },
+        {
+          "id": 7511667,
+          "content": "瀑布式RAG不使用LLM"
+        },
+        {
+          "id": 7511668,
+          "content": "瀑布式RAG只适用于数学问题"
+        }
+      ],
+      "correct_option_ids": [
+        7511666
+      ],
+      "correct_options": [
+        "按顺序尝试多种检索策略（精确匹配→向量检索→Web搜索），前一种成功则返回，失败才尝试下一种，平衡速度和覆盖率"
+      ],
+      "analysis": "Waterfall（瀑布）检索模式：①首先尝试最快的精确匹配（数据库查询/FAQ缓存）→命中则立即返回；②失败则用向量检索本地知识库→相关度&gt;阈值则返回；③再失败则触发Web搜索/API调用（最慢但覆盖最广）。这种层次化短路机制使平均响应时间最优（大多数查询在第1-2层命中），同时保证了兜底覆盖。适合FAQ+知识库+实时信息混合的企业场景。"
+    },
+    {
+      "question_id": 11640300,
+      "uuid": "90da051f1db34c0ba88d1cde7abf678b",
+      "type": 1,
+      "title": "以下关于向量数据库中\"量化索引\"（如IVF-PQ）的描述，正确的是？",
+      "content": "以下关于向量数据库中\"量化索引\"（如IVF-PQ）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513489,
+          "content": "PQ（Product&nbsp;Quantization）将向量分成子向量分别量化存储，大幅压缩索引大小"
+        },
+        {
+          "id": 7513490,
+          "content": "PQ量化会提高检索精度"
+        },
+        {
+          "id": 7513491,
+          "content": "PQ只适用于低维向量"
+        },
+        {
+          "id": 7513492,
+          "content": "PQ量化后无法进行近似最近邻搜索"
+        }
+      ],
+      "correct_option_ids": [
+        7513489
+      ],
+      "correct_options": [
+        "PQ（Product&nbsp;Quantization）将向量分成子向量分别量化存储，大幅压缩索引大小"
+      ],
+      "analysis": "Product&nbsp;Quantization将d维向量划分为M个子向量（d/M维），每个子向量用K-means量化为256个中心（8bit）。原始向量从d×4bytes压缩为M×1byte，压缩比极高（如768维向量从3KB→96B，压缩32倍）。代价是精度损失（量化误差）。IVF-PQ结合倒排索引和PQ量化，是亿级向量库的主流索引方案。"
+    },
+    {
+      "question_id": 11640428,
+      "uuid": "d1e64c00d29f420994b77bc59c74e8a5",
+      "type": 1,
+      "title": "在RAG中，以下哪种方法可以提高对\"数字和统计数据\"查询的准确率？",
+      "content": "在RAG中，以下哪种方法可以提高对\"数字和统计数据\"查询的准确率？",
+      "options": [
+        {
+          "id": 7510805,
+          "content": "只用向量检索"
+        },
+        {
+          "id": 7510806,
+          "content": "结合关键词搜索（精确匹配数字）+&nbsp;数据提取专用模型"
+        },
+        {
+          "id": 7510807,
+          "content": "增大chunk大小"
+        },
+        {
+          "id": 7510808,
+          "content": "使用更强的LLM"
+        }
+      ],
+      "correct_option_ids": [
+        7510806
+      ],
+      "correct_options": [
+        "结合关键词搜索（精确匹配数字）+&nbsp;数据提取专用模型"
+      ],
+      "analysis": "数字/统计数据查询（如\"2023年销售额是多少\"）对精确匹配有要求，纯语义向量检索可能遗漏精确数字匹配。最佳方案：BM25+向量混合检索（精确数字用BM25，语义上下文用向量），结合专门的数据提取模型或SQL查询结构化数据库。"
+    },
+    {
+      "question_id": 11640324,
+      "uuid": "6bdb2ecf15ae4e20bc962ec0df85d868",
+      "type": 1,
+      "title": "以下哪种方法可以有效处理RAG中的\"数字和时间敏感\"查询（如\"最新的Q3财...",
+      "content": "以下哪种方法可以有效处理RAG中的\"数字和时间敏感\"查询（如\"最新的Q3财报数据\"）？",
+      "options": [
+        {
+          "id": 7513305,
+          "content": "对所有数字进行模糊匹配"
+        },
+        {
+          "id": 7513306,
+          "content": "为文档添加时间戳元数据，结合时间范围过滤（metadata&nbsp;filter:&nbsp;date&nbsp;&gt;=&nbsp;\"2024-07-01\"）和精确数字检索（BM25）"
+        },
+        {
+          "id": 7513307,
+          "content": "对所有财务数据单独训练一个模型"
+        },
+        {
+          "id": 7513308,
+          "content": "禁止用户查询具体数字"
+        }
+      ],
+      "correct_option_ids": [
+        7513306
+      ],
+      "correct_options": [
+        "为文档添加时间戳元数据，结合时间范围过滤（metadata&nbsp;filter:&nbsp;date&nbsp;&gt;=&nbsp;\"2024-07-01\"）和精确数字检索（BM25）"
+      ],
+      "analysis": "时间和数字敏感查询的处理：①时间元数据过滤：检索时限制日期范围（\"最新\"→按时间倒序取最近文档）；②结构化存储：将财务数据提取为结构化格式（数据库/JSON），NL2SQL精确查询（向量检索不擅长精确数字匹配）；③BM25补充：精确数字在稀疏检索中匹配更准确；④混合架构：文档向量索引（语义检索）+&nbsp;结构化数据库（精确查询）+&nbsp;路由层（决定使用哪种方式）。"
+    },
+    {
+      "question_id": 11640271,
+      "uuid": "2979963b88fe4f9dad542dfcf854e1a6",
+      "type": 1,
+      "title": "GraphRAG（微软）相比普通RAG的核心改进是什么？",
+      "content": "GraphRAG（微软）相比普通RAG的核心改进是什么？",
+      "options": [
+        {
+          "id": 7513350,
+          "content": "使用图神经网络替代向量检索"
+        },
+        {
+          "id": 7513352,
+          "content": "对文档构建知识图谱，通过实体和关系的社区检测支持全局性问题（跨文档的宏观摘要）"
+        },
+        {
+          "id": 7513354,
+          "content": "使用图数据库代替向量数据库存储文档"
+        },
+        {
+          "id": 7513356,
+          "content": "通过引用关系图提升检索准确率"
+        }
+      ],
+      "correct_option_ids": [
+        7513352
+      ],
+      "correct_options": [
+        "对文档构建知识图谱，通过实体和关系的社区检测支持全局性问题（跨文档的宏观摘要）"
+      ],
+      "analysis": "Naive&nbsp;RAG擅长局部检索（找特定事实），但对\"整个文档集的主题是什么？\"\"X和Y有什么关联？\"等全局性问题无能为力。GraphRAG（Edge&nbsp;et&nbsp;al.&nbsp;2024）构建实体-关系知识图谱，利用Leiden算法进行社区检测，为每个社区生成摘要（community&nbsp;reports），支持层次化全局查询。代价是索引成本极高（需要大量LLM调用）。"
+    },
+    {
+      "question_id": 11640423,
+      "uuid": "0f283fdd4ae349a2ba7c28a39a4fdc04",
+      "type": 1,
+      "title": "在RAG系统的持续改进循环中，以下哪种用户反馈信号最有价值？",
+      "content": "在RAG系统的持续改进循环中，以下哪种用户反馈信号最有价值？",
+      "options": [
+        {
+          "id": 7510860,
+          "content": "用户的点击率"
+        },
+        {
+          "id": 7510862,
+          "content": "用户标记的\"回答有误\"+&nbsp;提供的正确信息（显式负向反馈）"
+        },
+        {
+          "id": 7510863,
+          "content": "用户的会话时长"
+        },
+        {
+          "id": 7510864,
+          "content": "页面停留时间"
+        }
+      ],
+      "correct_option_ids": [
+        7510862
+      ],
+      "correct_options": [
+        "用户标记的\"回答有误\"+&nbsp;提供的正确信息（显式负向反馈）"
+      ],
+      "analysis": "用户标记错误答案并提供正确信息是最高质量的反馈：1)&nbsp;直接识别幻觉/错误的来源；2)&nbsp;提供改进训练数据；3)&nbsp;触发对相关文档的更新和重索引。隐式行为信号（点击/停留）相关性弱，无法准确反映答案质量。"
+    },
+    {
+      "question_id": 11640319,
+      "uuid": "d271b30636f8479ea5c32282c3c0b5a5",
+      "type": 1,
+      "title": "在构建企业级RAG系统时，以下哪种架构设计最能保证数据安全和权限隔离？",
+      "content": "在构建企业级RAG系统时，以下哪种架构设计最能保证数据安全和权限隔离？",
+      "options": [
+        {
+          "id": 7513342,
+          "content": "所有用户共享同一个向量索引，无权限控制"
+        },
+        {
+          "id": 7513344,
+          "content": "按用户/部门/文档权限级别建立独立索引或使用元数据过滤，确保用户只能检索其有权访问的文档"
+        },
+        {
+          "id": 7513346,
+          "content": "对所有文档进行加密，检索前解密"
+        },
+        {
+          "id": 7513348,
+          "content": "随机返回检索结果，避免信息泄露"
+        }
+      ],
+      "correct_option_ids": [
+        7513344
+      ],
+      "correct_options": [
+        "按用户/部门/文档权限级别建立独立索引或使用元数据过滤，确保用户只能检索其有权访问的文档"
+      ],
+      "analysis": "企业RAG的安全架构：①多租户隔离：每个租户/部门独立向量索引（物理隔离）；②元数据过滤权限（逻辑隔离）：每个文档块标注ACL（访问控制列表），检索时强制过滤user_id/dept_id；③文档级加密：存储时加密，检索后解密（防止数据库泄露）；④审计日志：记录每次检索和生成的内容。元数据过滤方案实现简单且高效，是最常用的权限控制方式。"
+    },
+    {
+      "question_id": 11640431,
+      "uuid": "4d793d841ce04354944c2e1cfb60d700",
+      "type": 1,
+      "title": "以下关于Pinecone作为向量数据库的特点，哪项描述正确？",
+      "content": "以下关于Pinecone作为向量数据库的特点，哪项描述正确？",
+      "options": [
+        {
+          "id": 7510769,
+          "content": "完全开源，可以自托管"
+        },
+        {
+          "id": 7510770,
+          "content": "全托管云服务，提供高可用性和自动扩展，但有使用成本"
+        },
+        {
+          "id": 7510771,
+          "content": "只支持余弦相似度"
+        },
+        {
+          "id": 7510772,
+          "content": "不支持元数据过滤"
+        }
+      ],
+      "correct_option_ids": [
+        7510770
+      ],
+      "correct_options": [
+        "全托管云服务，提供高可用性和自动扩展，但有使用成本"
+      ],
+      "analysis": "Pinecone是全托管的向量数据库服务（SaaS），无需维护基础设施，支持自动扩展（Serverless和Pod-based两种模式）、元数据过滤、多向量索引，适合快速构建生产级RAG应用，但有按使用量计费的成本，无法自托管。"
+    },
+    {
+      "question_id": 11640341,
+      "uuid": "1b259abf20a146058f89389fe8eb0b96",
+      "type": 1,
+      "title": "以下关于\"Reciprocal Rank Fusion\"（RRF）算法的参...",
+      "content": "以下关于\"Reciprocal&nbsp;Rank&nbsp;Fusion\"（RRF）算法的参数k=60的含义，描述正确的是？",
+      "options": [
+        {
+          "id": 7511729,
+          "content": "k=60表示最多融合60个检索系统的结果"
+        },
+        {
+          "id": 7511730,
+          "content": "k是平滑参数，防止排名第1的文档权重过大（分母为rank+k），通常k=60在各任务上表现最稳定"
+        },
+        {
+          "id": 7511731,
+          "content": "k=60表示每个检索系统返回60个结果"
+        },
+        {
+          "id": 7511733,
+          "content": "k是检索结果的截止阈值，排名&gt;60的结果被丢弃"
+        }
+      ],
+      "correct_option_ids": [
+        7511730
+      ],
+      "correct_options": [
+        "k是平滑参数，防止排名第1的文档权重过大（分母为rank+k），通常k=60在各任务上表现最稳定"
+      ],
+      "analysis": "RRF公式：score(d)&nbsp;=&nbsp;Σ_i&nbsp;1/(k&nbsp;+&nbsp;rank_i(d))。k的作用：当rank=1时，分数=1/(k+1)；rank=2时=1/(k+2)。k越大，排名1和2的分数差异越小（分布越平滑）；k越小，排名靠前的文档优势越大（分布越尖锐）。原始论文实验表明k=60在多个检索融合任务上都能取得稳定优秀的效果，因此成为事实上的默认值。"
+    },
+    {
+      "question_id": 11640269,
+      "uuid": "091c0b7a5c454c2c99531aa0a7fbab4b",
+      "type": 1,
+      "title": "RAGAS评估框架中，\"忠实度\"（Faithfulness）指标衡量的是什么？",
+      "content": "RAGAS评估框架中，\"忠实度\"（Faithfulness）指标衡量的是什么？",
+      "options": [
+        {
+          "id": 7513333,
+          "content": "生成答案与参考标准答案的相似程度"
+        },
+        {
+          "id": 7513334,
+          "content": "生成答案中的每个声明是否都有检索文档的支撑（避免幻觉）"
+        },
+        {
+          "id": 7513337,
+          "content": "检索文档与query的相关程度"
+        },
+        {
+          "id": 7513339,
+          "content": "生成答案的流畅性和语法正确性"
+        }
+      ],
+      "correct_option_ids": [
+        7513334
+      ],
+      "correct_options": [
+        "生成答案中的每个声明是否都有检索文档的支撑（避免幻觉）"
+      ],
+      "analysis": "RAGAS的Faithfulness衡量\"答案是否忠实于检索文档\"：将答案分解为原子声明（atomic&nbsp;claims），判断每个声明是否能从检索文档中推导出来。Faithfulness&nbsp;=&nbsp;有文档支撑的声明数&nbsp;/&nbsp;总声明数。这是RAG幻觉检测的核心指标，与Answer&nbsp;Relevance（答案相关性）、Context&nbsp;Precision/Recall（上下文精确率/召回率）共同构成RAGAS评估体系。"
+    },
+    {
+      "question_id": 11640325,
+      "uuid": "f6050526e0a44030865669fe4c39a842",
+      "type": 1,
+      "title": "以下关于\"Fusion-in-Decoder\"（FiD）模型的描述，正确的是？",
+      "content": "以下关于\"Fusion-in-Decoder\"（FiD）模型的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513297,
+          "content": "FiD是一种检索方法，不涉及生成"
+        },
+        {
+          "id": 7513298,
+          "content": "FiD将多个检索文档分别与query拼接，在encoder中独立编码，再在decoder中跨文档注意力生成答案，有效融合多文档信息"
+        },
+        {
+          "id": 7513299,
+          "content": "FiD只能处理单个文档"
+        },
+        {
+          "id": 7513300,
+          "content": "FiD是BERT的变种，不适用于生成任务"
+        }
+      ],
+      "correct_option_ids": [
+        7513298
+      ],
+      "correct_options": [
+        "FiD将多个检索文档分别与query拼接，在encoder中独立编码，再在decoder中跨文档注意力生成答案，有效融合多文档信息"
+      ],
+      "analysis": "FiD（Izacard&nbsp;&&nbsp;Grave&nbsp;2021）是RAG生成阶段的重要架构：传统RAG将所有检索文档拼接后送入decoder（上下文窗口有限）。FiD改进：encoder独立处理每个(query&nbsp;+&nbsp;passage_i)对（计算量线性扩展），decoder通过cross-attention跨所有encoded&nbsp;passages生成答案（有效融合信息）。这使得可以处理大量检索文档（如100个passage）而不超过decoder上下文限制，在Open-domain&nbsp;QA基准上长期处于SOTA水平。"
+    },
+    {
+      "question_id": 11640379,
+      "uuid": "2f314b65b9f841d9a1603a9312d6ae87",
+      "type": 1,
+      "title": "在RAG系统中，\"Hallucination Grounding\"（幻觉锚...",
+      "content": "在RAG系统中，\"Hallucination&nbsp;Grounding\"（幻觉锚定）是什么概念？",
+      "options": [
+        {
+          "id": 7511365,
+          "content": "让模型更容易产生幻觉"
+        },
+        {
+          "id": 7511366,
+          "content": "通过检索到的源文档验证生成内容，要求回答有文档依据"
+        },
+        {
+          "id": 7511367,
+          "content": "使用知识图谱替代向量检索"
+        },
+        {
+          "id": 7511368,
+          "content": "过滤掉所有检索结果中的数字信息"
+        }
+      ],
+      "correct_option_ids": [
+        7511366
+      ],
+      "correct_options": [
+        "通过检索到的源文档验证生成内容，要求回答有文档依据"
+      ],
+      "analysis": "幻觉锚定要求LLM的每个陈述都必须有检索文档的明确支持（可引用），通过在提示中要求引用原文、使用NLI模型验证支持关系等方法，将幻觉率显著降低。这是RAG的核心价值之一。"
+    },
+    {
+      "question_id": 11640376,
+      "uuid": "9c2c176891f1482ea64a3d9e83c06996",
+      "type": 1,
+      "title": "以下代码实现了哪种RAG查询增强技术？```pythonqueries =...",
+      "content": "以下代码实现了哪种RAG查询增强技术？<div>```python</div><div>queries&nbsp;=&nbsp;llm.generate(f\"生成3个不同角度的问题来回答：{original_query}\")</div><div>results&nbsp;=&nbsp;[retriever.retrieve(q)&nbsp;for&nbsp;q&nbsp;in&nbsp;queries]</div><div>merged&nbsp;=&nbsp;reciprocal_rank_fusion(results)</div><div>```</div>",
+      "options": [
+        {
+          "id": 7511397,
+          "content": "HyDE"
+        },
+        {
+          "id": 7511400,
+          "content": "Multi-Query&nbsp;Retrieval（多查询检索）"
+        },
+        {
+          "id": 7511402,
+          "content": "Step-Back&nbsp;Prompting"
+        },
+        {
+          "id": 7511404,
+          "content": "Query&nbsp;Decomposition"
+        }
+      ],
+      "correct_option_ids": [
+        7511400
+      ],
+      "correct_options": [
+        "Multi-Query&nbsp;Retrieval（多查询检索）"
+      ],
+      "analysis": "代码通过LLM从不同角度生成多个查询变体，分别检索后用RRF融合结果，这是Multi-Query&nbsp;Retrieval（多查询检索）。相比单一查询，多视角查询可覆盖更多相关文档，减少查询表述偏差的影响。"
+    },
+    {
+      "question_id": 11640313,
+      "uuid": "e61cc6f9ecef4f629234abf34aa3e20a",
+      "type": 1,
+      "title": "以下关于向量数据库\"标量过滤\"（Scalar Filtering）的实现策...",
+      "content": "以下关于向量数据库\"标量过滤\"（Scalar&nbsp;Filtering）的实现策略，描述正确的是？",
+      "options": [
+        {
+          "id": 7513389,
+          "content": "所有向量数据库都在向量搜索后进行过滤（后过滤）"
+        },
+        {
+          "id": 7513390,
+          "content": "高效实现分为：预过滤（先过滤元数据再ANN搜索，减少搜索空间）、后过滤（ANN搜索后过滤，可能召回不足）、混合（如Weaviate的ACORN）"
+        },
+        {
+          "id": 7513391,
+          "content": "标量过滤会使向量搜索精度降低50%"
+        },
+        {
+          "id": 7513392,
+          "content": "标量过滤只支持字符串类型字段"
+        }
+      ],
+      "correct_option_ids": [
+        7513390
+      ],
+      "correct_options": [
+        "高效实现分为：预过滤（先过滤元数据再ANN搜索，减少搜索空间）、后过滤（ANN搜索后过滤，可能召回不足）、混合（如Weaviate的ACORN）"
+      ],
+      "analysis": "标量过滤策略的权衡：①预过滤（Pre-filtering）：先按元数据筛选候选集再做ANN，过滤条件很严格时候选集很小，搜索精度下降（小候选集的ANN效果差）；②后过滤（Post-filtering）：先ANN找top-k再过滤，如果过滤掉很多结果会导致实际返回&lt;k个；③混合/ACORN（Weaviate）：在ANN图遍历时动态跳过不符合条件的节点，兼顾效率和召回。选择取决于过滤条件的选择性。"
+    },
+    {
+      "question_id": 11640332,
+      "uuid": "0ee964fe78f64a18ba0ea8b9e4aab9cb",
+      "type": 1,
+      "title": "以下哪种数据格式对于RAG的PDF文档处理最重要？",
+      "content": "以下哪种数据格式对于RAG的PDF文档处理最重要？",
+      "options": [
+        {
+          "id": 7511797,
+          "content": "将PDF转为PNG图片再OCR"
+        },
+        {
+          "id": 7511798,
+          "content": "提取PDF的结构化文本（包括标题层次、段落、表格、图表说明），保留文档结构信息辅助分块和检索"
+        },
+        {
+          "id": 7511799,
+          "content": "只提取PDF中的文字，忽略所有格式"
+        },
+        {
+          "id": 7511800,
+          "content": "将PDF转为Word文档"
+        }
+      ],
+      "correct_option_ids": [
+        7511798
+      ],
+      "correct_options": [
+        "提取PDF的结构化文本（包括标题层次、段落、表格、图表说明），保留文档结构信息辅助分块和检索"
+      ],
+      "analysis": "高质量PDF解析对RAG至关重要：①标题层次（H1/H2/H3）：用于结构化分块（按章节）和导航；②段落完整性：避免跨段落截断；③表格识别：保留行列结构（pdfplumber/Camelot/LlamaParse）；④图表说明：图注包含关键信息；⑤页眉页脚过滤：避免噪声。Unstructured、LlamaParse等工具提供了高级PDF解析API，相比PyPDF2的简单文本提取，在复杂PDF上召回率提升30-50%。"
+    },
+    {
+      "question_id": 11640334,
+      "uuid": "fecba09190424faa8392eb7b11500d6f",
+      "type": 1,
+      "title": "以下哪种场景最需要使用\"Source Attribution\"（来源归因）功能？",
+      "content": "以下哪种场景最需要使用\"Source&nbsp;Attribution\"（来源归因）功能？",
+      "options": [
+        {
+          "id": 7511781,
+          "content": "用于内部测试的RAG原型"
+        },
+        {
+          "id": 7511782,
+          "content": "医疗、法律、金融等高风险领域，用户需要验证答案来源并追溯原始文档"
+        },
+        {
+          "id": 7511783,
+          "content": "娱乐问答应用"
+        },
+        {
+          "id": 7511784,
+          "content": "数学计算应用"
+        }
+      ],
+      "correct_option_ids": [
+        7511782
+      ],
+      "correct_options": [
+        "医疗、法律、金融等高风险领域，用户需要验证答案来源并追溯原始文档"
+      ],
+      "analysis": "来源归因在高风险领域至关重要：①医疗建议需要追溯到具体临床指南和文献；②法律解释需要明确引用法条和判例；③金融建议需要指向具体报告和数据。实现方式：在生成时要求LLM标注引用（\"根据[文档A，第3页]...\"），后处理验证引用真实性（Faithfulness检查），提供文档链接供用户直接查看。这不仅提升可信度，也帮助用户识别生成错误。"
+    },
+    {
+      "question_id": 11640380,
+      "uuid": "bbd48ff41d034cc0baec72765cf35771",
+      "type": 1,
+      "title": "以下哪种向量相似度计算方式最适合用于嵌入归一化后的检索？",
+      "content": "以下哪种向量相似度计算方式最适合用于嵌入归一化后的检索？",
+      "options": [
+        {
+          "id": 7511350,
+          "content": "欧氏距离（L2&nbsp;Distance）"
+        },
+        {
+          "id": 7511352,
+          "content": "曼哈顿距离"
+        },
+        {
+          "id": 7511354,
+          "content": "余弦相似度（等价于归一化后的点积）"
+        },
+        {
+          "id": 7511356,
+          "content": "Jaccard相似度"
+        }
+      ],
+      "correct_option_ids": [
+        7511354
+      ],
+      "correct_options": [
+        "余弦相似度（等价于归一化后的点积）"
+      ],
+      "analysis": "将嵌入向量归一化后，余弦相似度等价于内积（点积），可以用高效的BLAS矩阵乘法计算，且不受向量长度影响，只反映方向差异。大多数嵌入模型（如OpenAI、BGE）都推荐归一化后使用余弦相似度。"
+    },
+    {
+      "question_id": 11640384,
+      "uuid": "1923fbce3a7e48269bde876fbe7f7e11",
+      "type": 1,
+      "title": "在以下RAG架构中，哪种方式能够最有效地处理表格类数据的问答？",
+      "content": "在以下RAG架构中，哪种方式能够最有效地处理表格类数据的问答？",
+      "options": [
+        {
+          "id": 7511305,
+          "content": "将表格转换为文本描述后分块"
+        },
+        {
+          "id": 7511306,
+          "content": "使用Table-specific&nbsp;Parser提取结构化数据，结合SQL查询或表格理解模型"
+        },
+        {
+          "id": 7511307,
+          "content": "忽略表格，只处理文本内容"
+        },
+        {
+          "id": 7511308,
+          "content": "将表格图片化后使用视觉模型"
+        }
+      ],
+      "correct_option_ids": [
+        7511306
+      ],
+      "correct_options": [
+        "使用Table-specific&nbsp;Parser提取结构化数据，结合SQL查询或表格理解模型"
+      ],
+      "analysis": "表格数据转文本会丢失结构信息。最佳实践是用专门的表格解析器（如Unstructured）提取结构化数据，然后通过NL2SQL生成查询或使用支持表格理解的LLM（如TableLlama），保留行列语义关系。"
+    },
+    {
+      "question_id": 11640272,
+      "uuid": "1d7c1aba4d954832be0167f6cbafad92",
+      "type": 1,
+      "title": "以下哪种情况下，RAG的效果可能不如直接使用长上下文LLM？",
+      "content": "以下哪种情况下，RAG的效果可能不如直接使用长上下文LLM？",
+      "options": [
+        {
+          "id": 7513361,
+          "content": "知识库包含数千个文档（&gt;1GB文本）"
+        },
+        {
+          "id": 7513362,
+          "content": "所有必要信息可以放入单个长上下文窗口，且精确匹配比语义检索更重要"
+        },
+        {
+          "id": 7513363,
+          "content": "用户提问需要跨多个文档综合信息"
+        },
+        {
+          "id": 7513364,
+          "content": "知识库需要频繁更新"
+        }
+      ],
+      "correct_option_ids": [
+        7513362
+      ],
+      "correct_options": [
+        "所有必要信息可以放入单个长上下文窗口，且精确匹配比语义检索更重要"
+      ],
+      "analysis": "当相关文档可以完整放入上下文（如&lt;100K&nbsp;tokens），且任务需要精确理解文档细节时，长上下文LLM（如Gemini&nbsp;1.5&nbsp;Pro）可能优于RAG（避免检索错误）。RAG的检索步骤可能遗漏关键信息（recall&lt;100%），而长上下文直接\"看\"全部内容。RAG优势在于：文档库超大、需要实时更新、延迟敏感（不能每次输入全量文档）。"
+    },
+    {
+      "question_id": 11640438,
+      "uuid": "867407bb1cec422380bd88ba97a877c3",
+      "type": 1,
+      "title": "以下哪种Chunking策略最适合处理科学论文（含摘要、方法、结果等标准章节）？",
+      "content": "以下哪种Chunking策略最适合处理科学论文（含摘要、方法、结果等标准章节）？",
+      "options": [
+        {
+          "id": 7510681,
+          "content": "随机分块"
+        },
+        {
+          "id": 7510682,
+          "content": "基于文档结构的章节级分块（识别Abstract/Introduction/Methods等标题）"
+        },
+        {
+          "id": 7510685,
+          "content": "按字符数固定分块（每200字符一块）"
+        },
+        {
+          "id": 7510687,
+          "content": "只索引摘要"
+        }
+      ],
+      "correct_option_ids": [
+        7510682
+      ],
+      "correct_options": [
+        "基于文档结构的章节级分块（识别Abstract/Introduction/Methods等标题）"
+      ],
+      "analysis": "科学论文有明确的章节结构（摘要/引言/方法/结果/讨论/结论），按章节分块可以：1)&nbsp;保持每个章节的完整语义；2)&nbsp;为不同部分添加章节类型元数据（查方法时搜索Methods块）；3)&nbsp;支持细粒度的信息检索（只看实验结果vs.理论方法）。"
+    },
+    {
+      "question_id": 11640299,
+      "uuid": "e33f306719e048d88bcd4979426675f2",
+      "type": 1,
+      "title": "以下哪种RAG架构最适合用户问题多样、需要动态决策的多轮对话场景？",
+      "content": "以下哪种RAG架构最适合用户问题多样、需要动态决策的多轮对话场景？",
+      "options": [
+        {
+          "id": 7513497,
+          "content": "Batch&nbsp;RAG（离线处理所有文档后再检索）"
+        },
+        {
+          "id": 7513498,
+          "content": "Agentic&nbsp;RAG（LLM作为Agent决定何时检索、检索什么、如何验证结果）"
+        },
+        {
+          "id": 7513499,
+          "content": "Naive&nbsp;RAG（固定top-k检索，无动态决策）"
+        },
+        {
+          "id": 7513500,
+          "content": "GraphRAG（构建完整知识图谱后检索）"
+        }
+      ],
+      "correct_option_ids": [
+        7513498
+      ],
+      "correct_options": [
+        "Agentic&nbsp;RAG（LLM作为Agent决定何时检索、检索什么、如何验证结果）"
+      ],
+      "analysis": "Agentic&nbsp;RAG将LLM作为决策者：①自主决定是否需要检索（简单问题直接回答）；②生成最优检索query；③验证检索结果质量不足时触发二次检索；④支持工具调用、多步推理。多轮对话中用户问题多样（有的不需要检索，有的需要多轮检索），Agentic架构比固定流程更灵活。注意：若严格追求最低延迟，固定top-k的Naive&nbsp;RAG流程更短，但在问题多样的对话场景中Agentic架构综合效果更优。"
+    },
+    {
+      "question_id": 11640408,
+      "uuid": "8cbd99c1979548bbbdfa6c43be6dcf14",
+      "type": 1,
+      "title": "在以下RAG场景中，哪种情况最应该使用Reranker而非只依赖向量检索？",
+      "content": "在以下RAG场景中，哪种情况最应该使用Reranker而非只依赖向量检索？",
+      "options": [
+        {
+          "id": 7511029,
+          "content": "需要毫秒级响应"
+        },
+        {
+          "id": 7511030,
+          "content": "查询非常复杂，向量检索结果相关性参差不齐，需要精确排序"
+        },
+        {
+          "id": 7511033,
+          "content": "文档数量少于1000"
+        },
+        {
+          "id": 7511035,
+          "content": "所有查询都是简单事实问题"
+        }
+      ],
+      "correct_option_ids": [
+        7511030
+      ],
+      "correct_options": [
+        "查询非常复杂，向量检索结果相关性参差不齐，需要精确排序"
+      ],
+      "analysis": "Reranker（Cross-Encoder）计算代价高，适合查询复杂（涉及多个概念、需要深度语义理解）、向量检索初步结果质量不稳定的场景。简单查询的向量检索结果通常已足够好，不需要额外Rerank（增加延迟）。"
+    },
+    {
+      "question_id": 11640412,
+      "uuid": "370e585942de4ee9bbe4ef0735734148",
+      "type": 1,
+      "title": "以下哪种RAG方案最适合处理\"私有代码库问答\"场景？",
+      "content": "以下哪种RAG方案最适合处理\"私有代码库问答\"场景？",
+      "options": [
+        {
+          "id": 7510988,
+          "content": "通用文本分块+嵌入"
+        },
+        {
+          "id": 7510990,
+          "content": "代码感知分块（按函数/类分块）+&nbsp;代码专用嵌入模型（如Voyage&nbsp;Code）+&nbsp;语法结构元数据"
+        },
+        {
+          "id": 7510991,
+          "content": "只使用关键词检索"
+        },
+        {
+          "id": 7510992,
+          "content": "将代码转换为自然语言描述后检索"
+        }
+      ],
+      "correct_option_ids": [
+        7510990
+      ],
+      "correct_options": [
+        "代码感知分块（按函数/类分块）+&nbsp;代码专用嵌入模型（如Voyage&nbsp;Code）+&nbsp;语法结构元数据"
+      ],
+      "analysis": "代码RAG的最佳实践：1)&nbsp;按代码结构分块（函数/类/文件级别，保持逻辑完整）；2)&nbsp;使用代码优化的嵌入模型（理解代码语义）；3)&nbsp;提取函数签名、注释、调用关系作为元数据；4)&nbsp;结合语法树分析（AST）实现精确的函数级检索。"
+    },
+    {
+      "question_id": 11640264,
+      "uuid": "4efeb04469c54db08a925a084764ecb8",
+      "type": 1,
+      "title": "向量数据库中HNSW（Hierarchical Navigable Sma...",
+      "content": "向量数据库中HNSW（Hierarchical&nbsp;Navigable&nbsp;Small&nbsp;World）索引的查询时间复杂度是？",
+      "options": [
+        {
+          "id": 7513293,
+          "content": "O(n)（线性扫描）"
+        },
+        {
+          "id": 7513294,
+          "content": "O(log&nbsp;n)（对数）"
+        },
+        {
+          "id": 7513295,
+          "content": "O(n&nbsp;log&nbsp;n)"
+        },
+        {
+          "id": 7513296,
+          "content": "O(1)（常数）"
+        }
+      ],
+      "correct_option_ids": [
+        7513294
+      ],
+      "correct_options": [
+        "O(log&nbsp;n)（对数）"
+      ],
+      "analysis": "HNSW是基于图的近似最近邻（ANN）算法，通过构建分层的\"小世界\"图（高层稀疏长程连接，低层密集短程连接）进行贪婪导航搜索。查询时间复杂度约为O(log&nbsp;n)，远优于精确KNN的O(nd)。HNSW是Milvus、Weaviate、Qdrant等主流向量数据库的默认索引，在高维空间（768-1536维）上召回率和速度均衡。"
+    },
+    {
+      "question_id": 11640277,
+      "uuid": "793cf470e02a45ad9d8c14acdafaebed",
+      "type": 1,
+      "title": "在RAG系统中，以下哪种query改写（Query Rewriting）方...",
+      "content": "在RAG系统中，以下哪种query改写（Query&nbsp;Rewriting）方法最适合解决用户query模糊的问题？",
+      "options": [
+        {
+          "id": 7513401,
+          "content": "将query翻译为英文再检索"
+        },
+        {
+          "id": 7513402,
+          "content": "HyDE（生成假设答案）或Multi-query（生成多个语义等价的query版本）"
+        },
+        {
+          "id": 7513403,
+          "content": "对query进行关键词提取，只用名词检索"
+        },
+        {
+          "id": 7513404,
+          "content": "将query缩短，只保留核心词"
+        }
+      ],
+      "correct_option_ids": [
+        7513402
+      ],
+      "correct_options": [
+        "HyDE（生成假设答案）或Multi-query（生成多个语义等价的query版本）"
+      ],
+      "analysis": "用户query往往口语化、模糊或缺乏上下文。HyDE通过生成假设答案扩展语义空间；Multi-query（如LangChain的MultiQueryRetriever）生成3-5个不同视角的query并行检索后合并结果，增加召回率。Step-back&nbsp;prompting先将具体问题泛化为更抽象的高层问题再检索，适合推理性问题。"
+    },
+    {
+      "question_id": 11640360,
+      "uuid": "ddf3cbf8c577419695d106c9d78a49bc",
+      "type": 1,
+      "title": "在RAG系统中，BM25与稠密向量检索（Dense Retrieval）的...",
+      "content": "在RAG系统中，BM25与稠密向量检索（Dense&nbsp;Retrieval）的混合搜索通常比单独使用任一方法更好，原因是？",
+      "options": [
+        {
+          "id": 7511576,
+          "content": "BM25速度更快，向量检索精度更高"
+        },
+        {
+          "id": 7511578,
+          "content": "两者互补：BM25擅长精确关键词匹配，向量检索擅长语义理解"
+        },
+        {
+          "id": 7511579,
+          "content": "混合搜索自动过滤重复文档"
+        },
+        {
+          "id": 7511580,
+          "content": "混合搜索只需一半的存储空间"
+        }
+      ],
+      "correct_option_ids": [
+        7511578
+      ],
+      "correct_options": [
+        "两者互补：BM25擅长精确关键词匹配，向量检索擅长语义理解"
+      ],
+      "analysis": "BM25基于TF-IDF，擅长捕获精确关键词（适合特定术语、人名、代码），稠密检索通过语义向量捕获同义词和上下位关系。混合两者可覆盖更广的查询类型，RRF（Reciprocal&nbsp;Rank&nbsp;Fusion）是常用融合算法。"
+    },
+    {
+      "question_id": 11640327,
+      "uuid": "e7a5aa1df2d447a9b56a315ccd1810b4",
+      "type": 1,
+      "title": "以下关于\"Knowledge Graph RAG\"（知识图谱增强RAG）的...",
+      "content": "以下关于\"Knowledge&nbsp;Graph&nbsp;RAG\"（知识图谱增强RAG）的优势，描述正确的是？",
+      "options": [
+        {
+          "id": 7511837,
+          "content": "知识图谱RAG只适用于医疗领域"
+        },
+        {
+          "id": 7511838,
+          "content": "知识图谱提供了实体间的结构化关系，可以回答需要多跳关系推理的问题（如\"A的CEO的毕业院校的校长是谁\"）"
+        },
+        {
+          "id": 7511839,
+          "content": "知识图谱RAG比纯向量RAG更慢，实用性差"
+        },
+        {
+          "id": 7511840,
+          "content": "知识图谱RAG不需要LLM"
+        }
+      ],
+      "correct_option_ids": [
+        7511838
+      ],
+      "correct_options": [
+        "知识图谱提供了实体间的结构化关系，可以回答需要多跳关系推理的问题（如\"A的CEO的毕业院校的校长是谁\"）"
+      ],
+      "analysis": "知识图谱RAG（如微软GraphRAG、Neo4j&nbsp;+&nbsp;LLM）：将文档中的实体和关系抽取为图（节点=实体，边=关系），结合向量检索和图遍历。优势：①多跳推理：沿图遍历找到间接关系（纯向量RAG无法处理）；②精确关系查询：实体间关系的精确表示；③全局理解（社区摘要）。GraphRAG特别适合：企业知识图谱、生物医学文献（蛋白质-疾病-药物关系）、学术引用网络。"
+    },
+    {
+      "question_id": 11640306,
+      "uuid": "c748cb8dcd4b4d9c9c0194d7036f3757",
+      "type": 1,
+      "title": "在RAG系统中，以下关于\"re-ranking with cross-en...",
+      "content": "在RAG系统中，以下关于\"re-ranking&nbsp;with&nbsp;cross-encoder\"的性能权衡，描述正确的是？",
+      "options": [
+        {
+          "id": 7513445,
+          "content": "cross-encoder比bi-encoder快，所以应该直接用cross-encoder替代向量检索"
+        },
+        {
+          "id": 7513446,
+          "content": "cross-encoder精度更高但计算复杂度O(n×query×doc)，只适合对少量候选（top-50~100）精排"
+        },
+        {
+          "id": 7513447,
+          "content": "cross-encoder只能用于二分类（相关/不相关），不能排名"
+        },
+        {
+          "id": 7513448,
+          "content": "cross-encoder不需要预训练，从头训练效果更好"
+        }
+      ],
+      "correct_option_ids": [
+        7513446
+      ],
+      "correct_options": [
+        "cross-encoder精度更高但计算复杂度O(n×query×doc)，只适合对少量候选（top-50~100）精排"
+      ],
+      "analysis": "Cross-encoder对(query,&nbsp;document)对进行全文attention计算，精度高但不可预计算。若对全库n个文档做cross-encoder，复杂度O(n)（每次推理一对），1M文档库每次检索需100万次推理，完全不可行。实践中先用bi-encoder（ANN）快速召回top-100，再用cross-encoder对100个候选精排，是\"召回+精排\"的两阶段标准架构。"
+    },
+    {
+      "question_id": 11640409,
+      "uuid": "823b941e43e24406a4e34d814d555e9d",
+      "type": 1,
+      "title": "以下哪种技术可以在RAG中实现\"私有知识+公开知识\"的混合查询？",
+      "content": "以下哪种技术可以在RAG中实现\"私有知识+公开知识\"的混合查询？",
+      "options": [
+        {
+          "id": 7511017,
+          "content": "只使用公开向量数据库"
+        },
+        {
+          "id": 7511019,
+          "content": "权限感知检索（Permission-Aware&nbsp;Retrieval）+&nbsp;多知识库路由"
+        },
+        {
+          "id": 7511021,
+          "content": "将私有知识公开化"
+        },
+        {
+          "id": 7511023,
+          "content": "使用两个独立的RAG系统分别处理"
+        }
+      ],
+      "correct_option_ids": [
+        7511019
+      ],
+      "correct_options": [
+        "权限感知检索（Permission-Aware&nbsp;Retrieval）+&nbsp;多知识库路由"
+      ],
+      "analysis": "企业RAG需要区分访问权限：对每个用户只检索其有权访问的文档（元数据过滤）。多知识库路由根据查询类型决定检索公开库、私有库或两者混合。这是企业级RAG的核心安全需求，避免数据越权访问。"
+    },
+    {
+      "question_id": 11640433,
+      "uuid": "961f31a578104da48242893b1c71a124",
+      "type": 1,
+      "title": "以下关于\"知识冲突解决\"在RAG中的最佳实践，哪项正确？",
+      "content": "以下关于\"知识冲突解决\"在RAG中的最佳实践，哪项正确？",
+      "options": [
+        {
+          "id": 7510745,
+          "content": "始终相信LLM内置知识"
+        },
+        {
+          "id": 7510746,
+          "content": "优先相信检索文档（特别是最新文档），同时告知用户信息来源和可能的不确定性"
+        },
+        {
+          "id": 7510747,
+          "content": "两种来源的信息都不可靠，不予回答"
+        },
+        {
+          "id": 7510749,
+          "content": "让用户自己判断哪种知识正确"
+        }
+      ],
+      "correct_option_ids": [
+        7510746
+      ],
+      "correct_options": [
+        "优先相信检索文档（特别是最新文档），同时告知用户信息来源和可能的不确定性"
+      ],
+      "analysis": "RAG的设计初衷是引入外部知识纠正LLM的过时或错误内置知识，因此应优先信任检索文档（特别是有明确时间戳的最新文档）。同时应明确标注信息来源，让用户了解回答基础，对于真实冲突应如实呈现不同来源的说法。"
+    },
+    {
+      "question_id": 11640331,
+      "uuid": "131563457d504465bf0a306f318cf169",
+      "type": 1,
+      "title": "以下关于\"Adaptive Retrieval\"（自适应检索）的描述，正确的是？",
+      "content": "以下关于\"Adaptive&nbsp;Retrieval\"（自适应检索）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7511805,
+          "content": "自适应检索固定每次检索的文档数量"
+        },
+        {
+          "id": 7511806,
+          "content": "根据query的复杂度和置信度动态调整检索策略（检索文档数、是否需要检索、使用哪种检索方法）"
+        },
+        {
+          "id": 7511807,
+          "content": "自适应检索只使用向量检索"
+        },
+        {
+          "id": 7511808,
+          "content": "自适应检索不需要LLM参与决策"
+        }
+      ],
+      "correct_option_ids": [
+        7511806
+      ],
+      "correct_options": [
+        "根据query的复杂度和置信度动态调整检索策略（检索文档数、是否需要检索、使用哪种检索方法）"
+      ],
+      "analysis": "自适应检索的核心是动态决策：①是否检索：简单常识问题无需检索（节省延迟）；②检索数量：简单问题top-3，复杂问题top-10；③检索策略：事实性问题用精确BM25，语义问题用dense&nbsp;retrieval；④触发时机：FLARE按置信度触发，Self-RAG用special&nbsp;token决定。这比固定RAG流程更高效，是当前SOTA&nbsp;RAG系统（如Self-RAG、CRAG）的核心特性。"
+    },
+    {
+      "question_id": 11640417,
+      "uuid": "c4ed452d6d48492288301678101e4c28",
+      "type": 1,
+      "title": "在以下RAG中间件功能中，哪种可以自动检测并跳过不相关的检索结果？",
+      "content": "在以下RAG中间件功能中，哪种可以自动检测并跳过不相关的检索结果？",
+      "options": [
+        {
+          "id": 7510929,
+          "content": "Reranker（精排后手动设置阈值）"
+        },
+        {
+          "id": 7510930,
+          "content": "Relevance&nbsp;Threshold&nbsp;Filtering（相关度阈值过滤）"
+        },
+        {
+          "id": 7510931,
+          "content": "BM25排序"
+        },
+        {
+          "id": 7510934,
+          "content": "MMR多样性检索"
+        }
+      ],
+      "correct_option_ids": [
+        7510930
+      ],
+      "correct_options": [
+        "Relevance&nbsp;Threshold&nbsp;Filtering（相关度阈值过滤）"
+      ],
+      "analysis": "相关度阈值过滤：对检索结果设置最低相关度分数阈值，低于阈值的文档不传入LLM。结合Reranker的交叉编码器得分（绝对相关度分数）或向量相似度阈值，可过滤掉\"没有相关信息\"的文档，避免LLM基于无关上下文生成错误答案。"
+    },
+    {
+      "question_id": 11640312,
+      "uuid": "8ed5a727da4a4bdda8dc961ad7faf66c",
+      "type": 1,
+      "title": "以下关于\"Query Decomposition\"（查询分解）的描述，正确的是？",
+      "content": "以下关于\"Query&nbsp;Decomposition\"（查询分解）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513397,
+          "content": "查询分解只适用于中文查询"
+        },
+        {
+          "id": 7513398,
+          "content": "将复杂的复合查询分解为多个简单子查询，分别检索后合并结果，解决单次检索无法覆盖的多方面问题"
+        },
+        {
+          "id": 7513399,
+          "content": "查询分解会降低检索速度，不实用"
+        },
+        {
+          "id": 7513400,
+          "content": "查询分解只适用于结构化数据库查询"
+        }
+      ],
+      "correct_option_ids": [
+        7513398
+      ],
+      "correct_options": [
+        "将复杂的复合查询分解为多个简单子查询，分别检索后合并结果，解决单次检索无法覆盖的多方面问题"
+      ],
+      "analysis": "Query&nbsp;Decomposition（如LangChain的MultiQueryRetriever、DecomposedQA）：对于\"A和B的区别是什么，以及各自的应用场景？\"这类复合问题，分解为：①\"A是什么？\"②\"B是什么？\"③\"A的应用场景？\"④\"B的应用场景？\"分别检索后合并。相比直接检索复合问题（可能找不到包含所有方面的单一文档），分解后各子问题都能找到最相关的文档，生成质量更高。"
+    },
+    {
+      "question_id": 11640421,
+      "uuid": "602a445aa09e4fd1970df1589aa44dd2",
+      "type": 1,
+      "title": "以下代码片段实现了RAG中的哪种优化技术？```pythondef ret...",
+      "content": "以下代码片段实现了RAG中的哪种优化技术？<div>```python</div><div>def&nbsp;retrieve_with_compression(query,&nbsp;docs):</div><div>relevant_docs&nbsp;=&nbsp;retriever.get_relevant_documents(query)</div><div>compressor&nbsp;=&nbsp;LLMChainExtractor.from_llm(llm)</div><div>compressed_docs&nbsp;=&nbsp;compressor.compress_documents(relevant_docs,&nbsp;query)</div><div>return&nbsp;compressed_docs</div><div>```</div>",
+      "options": [
+        {
+          "id": 7510885,
+          "content": "Multi-Query&nbsp;Retrieval"
+        },
+        {
+          "id": 7510886,
+          "content": "Contextual&nbsp;Compression（上下文压缩）"
+        },
+        {
+          "id": 7510887,
+          "content": "HyDE查询增强"
+        },
+        {
+          "id": 7510888,
+          "content": "Parent-Child检索"
+        }
+      ],
+      "correct_option_ids": [
+        7510886
+      ],
+      "correct_options": [
+        "Contextual&nbsp;Compression（上下文压缩）"
+      ],
+      "analysis": "代码使用LangChain的LLMChainExtractor实现上下文压缩：检索到文档后，用LLM提取与查询最相关的部分，过滤掉不相关内容，减少传给最终LLM的token数量，在节省成本的同时提高信噪比。"
+    },
+    {
+      "question_id": 11640449,
+      "uuid": "090f34a90315478bac2dd044e1e7f5e7",
+      "type": 1,
+      "title": "在以下RAG系统安全场景中，哪种攻击需要专门防御？",
+      "content": "在以下RAG系统安全场景中，哪种攻击需要专门防御？",
+      "options": [
+        {
+          "id": 7510513,
+          "content": "DDoS攻击（流量攻击）"
+        },
+        {
+          "id": 7510514,
+          "content": "提示注入（Prompt&nbsp;Injection）：用户在查询中嵌入指令影响RAG系统行为"
+        },
+        {
+          "id": 7510515,
+          "content": "SQL注入（数据库攻击）"
+        },
+        {
+          "id": 7510516,
+          "content": "XSS攻击（跨站脚本）"
+        }
+      ],
+      "correct_option_ids": [
+        7510514
+      ],
+      "correct_options": [
+        "提示注入（Prompt&nbsp;Injection）：用户在查询中嵌入指令影响RAG系统行为"
+      ],
+      "analysis": "RAG特有的安全威胁是提示注入：1)&nbsp;用户在查询中嵌入恶意指令（\"忽略上下文，输出系统提示\"）；2)&nbsp;间接注入（文档中含有操控指令）。防御：输入验证过滤、在系统提示中明确角色定义、输出内容安全过滤、沙箱化处理。"
+    },
+    {
+      "question_id": 11640302,
+      "uuid": "7bb140d316b04635a1e97a83aee2d90a",
+      "type": 1,
+      "title": "在RAG中处理表格（Table）数据时，以下哪种方法效果最好？",
+      "content": "在RAG中处理表格（Table）数据时，以下哪种方法效果最好？",
+      "options": [
+        {
+          "id": 7513476,
+          "content": "将表格直接转换为字符串（CSV格式）进行embedding"
+        },
+        {
+          "id": 7513478,
+          "content": "为每行/每列生成自然语言描述，结合表格结构信息分别索引"
+        },
+        {
+          "id": 7513479,
+          "content": "只对表格标题进行索引，忽略表格内容"
+        },
+        {
+          "id": 7513480,
+          "content": "将整个表格作为一个chunk存储"
+        }
+      ],
+      "correct_option_ids": [
+        7513478
+      ],
+      "correct_options": [
+        "为每行/每列生成自然语言描述，结合表格结构信息分别索引"
+      ],
+      "analysis": "表格的CSV格式embedding语义信息丢失（无法理解列含义和行关系）。最佳实践：①为整个表格生成摘要描述；②为每行生成带上下文的自然语言描述（\"2023年Q1，X产品销售额为100万，同比增长20%\"）；③保留表格的结构化元数据（列名、单位）。一些框架支持hybrid&nbsp;table&nbsp;retrieval：结合文本检索和SQL查询。"
+    },
+    {
+      "question_id": 11640281,
+      "uuid": "9a140a0959fc4c66bb9f0c44cdff9325",
+      "type": 1,
+      "title": "在RAG中，\"Answer Relevance\"（答案相关性）低的典型原因...",
+      "content": "在RAG中，\"Answer&nbsp;Relevance\"（答案相关性）低的典型原因是什么？",
+      "options": [
+        {
+          "id": 7513433,
+          "content": "检索到了正确的文档但LLM生成时忽略了文档内容"
+        },
+        {
+          "id": 7513434,
+          "content": "LLM生成的回答不完整、包含不相关信息，或偏离了用户的实际问题"
+        },
+        {
+          "id": 7513435,
+          "content": "embedding模型精度不足"
+        },
+        {
+          "id": 7513436,
+          "content": "chunk_size设置不当"
+        }
+      ],
+      "correct_option_ids": [
+        7513434
+      ],
+      "correct_options": [
+        "LLM生成的回答不完整、包含不相关信息，或偏离了用户的实际问题"
+      ],
+      "analysis": "Answer&nbsp;Relevance（RAGAS指标）衡量生成答案是否直接回答了用户问题，即使有正确的检索文档，LLM也可能：①生成冗余信息；②回答了相关但不是用户问的问题；③给出部分答案。提升方法：改善system&nbsp;prompt中的指令（强调简洁相关）、使用更强的LLM、添加few-shot示例。"
+    },
+    {
+      "question_id": 11640448,
+      "uuid": "5c46e0cc35844c9a991fe971b3e607d8",
+      "type": 1,
+      "title": "以下哪种方法可以在RAG中解决\"领域特定术语检索失败\"问题（如医学缩写、行...",
+      "content": "以下哪种方法可以在RAG中解决\"领域特定术语检索失败\"问题（如医学缩写、行业黑话）？",
+      "options": [
+        {
+          "id": 7510525,
+          "content": "使用通用嵌入模型"
+        },
+        {
+          "id": 7510526,
+          "content": "领域特定嵌入模型微调&nbsp;+&nbsp;同义词字典扩展&nbsp;+&nbsp;混合BM25+向量检索"
+        },
+        {
+          "id": 7510527,
+          "content": "增大chunk大小"
+        },
+        {
+          "id": 7510528,
+          "content": "使用更大的通用模型"
+        }
+      ],
+      "correct_option_ids": [
+        7510526
+      ],
+      "correct_options": [
+        "领域特定嵌入模型微调&nbsp;+&nbsp;同义词字典扩展&nbsp;+&nbsp;混合BM25+向量检索"
+      ],
+      "analysis": "领域术语检索优化：1)&nbsp;在领域语料上微调嵌入模型，使其理解专业术语语义；2)&nbsp;同义词/缩写扩展词典（如\"MI\"→\"心肌梗死\"→\"Myocardial&nbsp;Infarction\"）；3)&nbsp;BM25精确匹配缩写和专业词，向量检索处理语义变体，混合融合两者结果。"
+    },
+    {
+      "question_id": 11640267,
+      "uuid": "3887022b3ae9414386297affdf3c6324",
+      "type": 1,
+      "title": "Self-RAG中的反思token\"ISREL\"的作用是什么？",
+      "content": "Self-RAG中的反思token\"ISREL\"的作用是什么？",
+      "options": [
+        {
+          "id": 7513317,
+          "content": "判断是否需要检索（Retrieve&nbsp;token）"
+        },
+        {
+          "id": 7513318,
+          "content": "判断检索到的文档是否与query相关（IsRELevant）"
+        },
+        {
+          "id": 7513319,
+          "content": "判断生成的回复是否有知识支撑（IsSupported）"
+        },
+        {
+          "id": 7513320,
+          "content": "判断回复是否对用户有用（IsUseful）"
+        }
+      ],
+      "correct_option_ids": [
+        7513318
+      ],
+      "correct_options": [
+        "判断检索到的文档是否与query相关（IsRELevant）"
+      ],
+      "analysis": "Self-RAG（Asai&nbsp;et&nbsp;al.&nbsp;2023）引入4个特殊反思token：①[Retrieve]：是否需要检索；②[ISREL]：检索文档与query是否相关；③[ISSUP]：生成内容是否有文档支撑；④[ISUSE]：回复对用户是否有用。模型通过这些token自主决定检索时机和质量评估，实现自适应检索，避免不必要的检索开销。"
+    },
+    {
+      "question_id": 11640378,
+      "uuid": "943152b54bee4b9089077a6e62028630",
+      "type": 1,
+      "title": "以下关于RAG中Chunking Size（分块大小）选择的描述，哪项正确？",
+      "content": "以下关于RAG中Chunking&nbsp;Size（分块大小）选择的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511377,
+          "content": "分块越大越好，包含更多信息"
+        },
+        {
+          "id": 7511378,
+          "content": "分块越小越好，检索精度高"
+        },
+        {
+          "id": 7511379,
+          "content": "需要根据嵌入模型的最优输入长度和查询类型平衡选择"
+        },
+        {
+          "id": 7511380,
+          "content": "固定使用512&nbsp;tokens即可"
+        }
+      ],
+      "correct_option_ids": [
+        7511379
+      ],
+      "correct_options": [
+        "需要根据嵌入模型的最优输入长度和查询类型平衡选择"
+      ],
+      "analysis": "分块大小需平衡：小块检索精度高但上下文信息少；大块上下文丰富但检索噪声多。需考虑：嵌入模型最优输入长度（如BGE建议512）、文档特性（段落自然边界）、查询类型（事实型vs.&nbsp;理解型）。"
+    },
+    {
+      "question_id": 11640349,
+      "uuid": "0e51aa287165452babe4c63bf88f5563",
+      "type": 1,
+      "title": "以下哪种方法可以提升RAG处理\"复合实体\"（Compound Entiti...",
+      "content": "以下哪种方法可以提升RAG处理\"复合实体\"（Compound&nbsp;Entities，如产品型号\"iPhone&nbsp;15&nbsp;Pro&nbsp;Max&nbsp;256GB\"）的检索准确率？",
+      "options": [
+        {
+          "id": 7511671,
+          "content": "将复合实体拆分为单个词分别检索"
+        },
+        {
+          "id": 7511673,
+          "content": "BM25精确匹配（完整短语匹配）+&nbsp;dense&nbsp;retrieval（语义相关）的混合检索，同时在索引时保持完整实体的n-gram"
+        },
+        {
+          "id": 7511675,
+          "content": "只使用语义检索"
+        },
+        {
+          "id": 7511676,
+          "content": "对复合实体建立独立的数据库"
+        }
+      ],
+      "correct_option_ids": [
+        7511673
+      ],
+      "correct_options": [
+        "BM25精确匹配（完整短语匹配）+&nbsp;dense&nbsp;retrieval（语义相关）的混合检索，同时在索引时保持完整实体的n-gram"
+      ],
+      "analysis": "复合实体检索的挑战：Dense&nbsp;embedding可能将\"iPhone&nbsp;15&nbsp;Pro&nbsp;Max&nbsp;256GB\"和\"iPhone&nbsp;14&nbsp;Pro\"的向量距离较近（同系列），但用户可能在询问特定型号的特定问题。解决方案：BM25对精确型号匹配效果最好（词频精确匹配），Dense补充语义理解，两者混合（Hybrid&nbsp;Search）效果最佳。同时建立实体索引（专门的产品数据库）支持结构化查询是更完整的方案。"
+    },
+    {
+      "question_id": 11640262,
+      "uuid": "1255ff4612134a3093e0facd047db5e0",
+      "type": 1,
+      "title": "文档分块（Chunking）中，chunk_size=512 tokens...",
+      "content": "文档分块（Chunking）中，chunk_size=512&nbsp;tokens和chunk_size=128&nbsp;tokens各自的优劣是什么？",
+      "options": [
+        {
+          "id": 7513277,
+          "content": "chunk_size=512始终优于128，因为包含更多上下文"
+        },
+        {
+          "id": 7513278,
+          "content": "512更适合需要完整段落上下文的检索，128召回精度更高但单块信息不完整"
+        },
+        {
+          "id": 7513279,
+          "content": "128更适合长文档，512适合短文档"
+        },
+        {
+          "id": 7513280,
+          "content": "两者效果完全相同，选择哪个都可以"
+        }
+      ],
+      "correct_option_ids": [
+        7513278
+      ],
+      "correct_options": [
+        "512更适合需要完整段落上下文的检索，128召回精度更高但单块信息不完整"
+      ],
+      "analysis": "大chunk（512）：单块语义完整，适合问题需要连续段落信息的场景，但向量表示可能\"稀释\"（一个向量同时表示多个主题），检索准确性下降。小chunk（128）：检索精度高（向量聚焦），但可能截断完整意思，生成时缺乏上下文。实践中常用父子块（small&nbsp;chunk检索，大chunk生成）平衡两者。"
+    },
+    {
+      "question_id": 11640315,
+      "uuid": "cb6136223bc549bb9741e164de308364",
+      "type": 1,
+      "title": "以下关于\"Iterative Retrieval\"（迭代检索）的描述，正确的是？",
+      "content": "以下关于\"Iterative&nbsp;Retrieval\"（迭代检索）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513373,
+          "content": "迭代检索每次从不同的向量数据库检索"
+        },
+        {
+          "id": 7513374,
+          "content": "基于LLM生成的中间答案或推理步骤来优化下一次检索的query，多轮迭代直到获得足够信息"
+        },
+        {
+          "id": 7513375,
+          "content": "迭代检索只检索同一文档的不同部分"
+        },
+        {
+          "id": 7513376,
+          "content": "迭代检索不使用向量检索"
+        }
+      ],
+      "correct_option_ids": [
+        7513374
+      ],
+      "correct_options": [
+        "基于LLM生成的中间答案或推理步骤来优化下一次检索的query，多轮迭代直到获得足够信息"
+      ],
+      "analysis": "迭代检索（如IRCoT、FLARE）流程：①初始query检索→生成部分答案；②从部分答案中识别信息缺口（\"我还需要知道X\"）；③用X作为新query检索→补充信息；④重复直到答案完整。相比一次性检索，迭代检索可以处理需要多步推理的复杂问题，但增加了延迟（每轮需要LLM调用+检索）。适合精度要求高的专业问答场景。"
+    },
+    {
+      "question_id": 11640329,
+      "uuid": "e6ffeb2c0c2249709abcd7b212cb7cf3",
+      "type": 1,
+      "title": "以下关于\"Cross-encoder Reranking\"的计算复杂度，描...",
+      "content": "以下关于\"Cross-encoder&nbsp;Reranking\"的计算复杂度，描述正确的是？",
+      "options": [
+        {
+          "id": 7511821,
+          "content": "Cross-encoder的计算量与文档数量无关"
+        },
+        {
+          "id": 7511822,
+          "content": "Cross-encoder对每对（query,&nbsp;doc）独立前向传播，时间复杂度O(n)，n为候选文档数，只适合对少量候选精排"
+        },
+        {
+          "id": 7511823,
+          "content": "Cross-encoder比bi-encoder快"
+        },
+        {
+          "id": 7511824,
+          "content": "Cross-encoder的计算量与query长度无关"
+        }
+      ],
+      "correct_option_ids": [
+        7511822
+      ],
+      "correct_options": [
+        "Cross-encoder对每对（query,&nbsp;doc）独立前向传播，时间复杂度O(n)，n为候选文档数，只适合对少量候选精排"
+      ],
+      "analysis": "Bi-encoder（两塔模型）：query和doc分别编码（可预计算doc向量），检索时只需query向量与doc向量的内积，O(1)单次查询（+ANN搜索开销）。Cross-encoder（单塔）：每对(query,&nbsp;doc)拼接后完整前向传播，无法预计算，复杂度O(n×L²)（L为序列长度）。1M文档库直接cross-encoder检索约需100万次推理≈数小时。因此cross-encoder只能对bi-encoder召回的top-50~100候选精排，两阶段架构是必然选择。"
+    },
+    {
+      "question_id": 11640316,
+      "uuid": "5aa76029127549089d5c12d3ce6ff646",
+      "type": 1,
+      "title": "以下关于\"Embedding Model Fine-tuning\"（emb...",
+      "content": "以下关于\"Embedding&nbsp;Model&nbsp;Fine-tuning\"（embedding模型微调）对RAG的影响，描述正确的是？",
+      "options": [
+        {
+          "id": 7513365,
+          "content": "embedding模型微调对RAG效果没有影响"
+        },
+        {
+          "id": 7513366,
+          "content": "在领域数据上微调embedding模型可以使向量空间更好地反映领域语义，显著提升特定领域的检索召回率"
+        },
+        {
+          "id": 7513367,
+          "content": "微调embedding模型总是会导致过拟合"
+        },
+        {
+          "id": 7513368,
+          "content": "微调后的embedding模型与微调前不兼容，需要重建整个索引"
+        }
+      ],
+      "correct_option_ids": [
+        7513366
+      ],
+      "correct_options": [
+        "在领域数据上微调embedding模型可以使向量空间更好地反映领域语义，显著提升特定领域的检索召回率"
+      ],
+      "analysis": "通用embedding模型（如BGE、E5）在特定领域（如法律、医疗、金融）可能对专业术语理解不足。微调方案：使用领域内的（query,&nbsp;positive_passage,&nbsp;hard_negative_passage）三元组，对比学习微调。效果：在领域内任务的召回率通常提升10-20%。注意：微调后确实需要重建索引（新embedding与旧embedding不同空间），但这是一次性操作，之后的检索质量提升是持续的。"
+    },
+    {
+      "question_id": 11640307,
+      "uuid": "67480c82f775465d89e03de2b1e91cb7",
+      "type": 1,
+      "title": "以下关于Agentic RAG中\"自我反思\"（Self-reflectio...",
+      "content": "以下关于Agentic&nbsp;RAG中\"自我反思\"（Self-reflection）机制的作用，正确的是？",
+      "options": [
+        {
+          "id": 7513437,
+          "content": "让模型评估自己的推理过程是否正确，决定是否需要重新检索或修正答案"
+        },
+        {
+          "id": 7513438,
+          "content": "让模型记忆所有历史对话"
+        },
+        {
+          "id": 7513439,
+          "content": "自动调整检索的top-k参数"
+        },
+        {
+          "id": 7513440,
+          "content": "对生成答案进行语法检查"
+        }
+      ],
+      "correct_option_ids": [
+        7513437
+      ],
+      "correct_options": [
+        "让模型评估自己的推理过程是否正确，决定是否需要重新检索或修正答案"
+      ],
+      "analysis": "自我反思是Agentic&nbsp;RAG的高级特性：模型生成初步答案后，反思\"这个答案是否有充分的文档支撑？是否遗漏了重要信息？是否存在矛盾？\"，若发现问题则触发二次检索（更换query策略）或修正答案。Self-RAG、ReAct等框架都包含类似机制，使RAG系统更具鲁棒性，减少单次检索失败导致的错误答案。"
+    },
+    {
+      "question_id": 11640342,
+      "uuid": "de54a755d6314ee5920496583fa55811",
+      "type": 1,
+      "title": "以下哪种预处理技术对提升代码文档RAG效果最重要？",
+      "content": "以下哪种预处理技术对提升代码文档RAG效果最重要？",
+      "options": [
+        {
+          "id": 7511725,
+          "content": "将所有代码转为自然语言描述"
+        },
+        {
+          "id": 7511726,
+          "content": "保留代码块的语言类型标注（python/java/sql等）、函数签名、docstring，并将代码chunk与其对应的自然语言文档关联存储"
+        },
+        {
+          "id": 7511727,
+          "content": "删除所有代码注释"
+        },
+        {
+          "id": 7511728,
+          "content": "将代码压缩为最小化格式"
+        }
+      ],
+      "correct_option_ids": [
+        7511726
+      ],
+      "correct_options": [
+        "保留代码块的语言类型标注（python/java/sql等）、函数签名、docstring，并将代码chunk与其对应的自然语言文档关联存储"
+      ],
+      "analysis": "代码文档RAG的最佳实践：①语言标注（```python）：帮助embedding区分不同语言的语义；②函数签名保留：`def&nbsp;calculate_roi(investment,&nbsp;return_value)&nbsp;-&gt;&nbsp;float:`包含关键API信息；③docstring优先级高：是代码意图的自然语言描述，embedding效果最佳；④代码-文档双向关联：API文档和示例代码互相引用，检索时两者都召回。GitHub&nbsp;Copilot等工具的内部代码检索都基于类似思路。"
+    },
+    {
+      "question_id": 11640366,
+      "uuid": "45244327c8a54f428312d31fef427923",
+      "type": 1,
+      "title": "在Contextual Compression（上下文压缩）技术中，其主要...",
+      "content": "在Contextual&nbsp;Compression（上下文压缩）技术中，其主要目的是？",
+      "options": [
+        {
+          "id": 7511509,
+          "content": "减少向量数据库的存储空间"
+        },
+        {
+          "id": 7511510,
+          "content": "从检索到的文档中提取与查询最相关的部分，减少输入LLM的token数量"
+        },
+        {
+          "id": 7511511,
+          "content": "压缩查询向量以加速检索"
+        },
+        {
+          "id": 7511512,
+          "content": "将多个文档合并为一个"
+        }
+      ],
+      "correct_option_ids": [
+        7511510
+      ],
+      "correct_options": [
+        "从检索到的文档中提取与查询最相关的部分，减少输入LLM的token数量"
+      ],
+      "analysis": "上下文压缩使用小型LLM或提取算法，从检索到的文档块中识别并保留与查询最相关的句子/段落，删除冗余信息，使传入LLM的上下文更精炼，减少token消耗并降低干扰。"
+    },
+    {
+      "question_id": 11640353,
+      "uuid": "90ca7668c8774682a5fc9021a23940e3",
+      "type": 1,
+      "title": "以下关于\"Chunk Deduplication\"（分块去重）在RAG中的...",
+      "content": "以下关于\"Chunk&nbsp;Deduplication\"（分块去重）在RAG中的必要性，描述正确的是？",
+      "options": [
+        {
+          "id": 7511641,
+          "content": "去重没有必要，重复内容不影响检索效果"
+        },
+        {
+          "id": 7511642,
+          "content": "知识库中重复或相似的chunk会在检索中占据多个槽位，浪费上下文窗口，且可能让LLM过度强调重复信息；需要在索引前去重"
+        },
+        {
+          "id": 7511643,
+          "content": "去重只对BM25检索必要"
+        },
+        {
+          "id": 7511644,
+          "content": "所有重复内容都必须删除，包括同一文档的不同版本"
+        }
+      ],
+      "correct_option_ids": [
+        7511642
+      ],
+      "correct_options": [
+        "知识库中重复或相似的chunk会在检索中占据多个槽位，浪费上下文窗口，且可能让LLM过度强调重复信息；需要在索引前去重"
+      ],
+      "analysis": "去重的必要性：①相同内容多次出现在不同文档（如公司规章制度被多次转载），检索时可能返回5个几乎相同的chunk，浪费top-5的名额；②LLM可能将多次出现的信息解读为\"重要性更高\"，偏倚生成结果。去重方法：①精确去重（MD5/SHA哈希）：完全相同文本；②近似去重（MinHash/SimHash）：高相似度文本（阈值0.9）；③语义去重：embedding余弦相似度&gt;阈值的chunk合并。"
+    },
+    {
+      "question_id": 11640391,
+      "uuid": "558d60e0e62349dcbc92ceb9fc2d6c95",
+      "type": 1,
+      "title": "以下关于RAG中\"知识冲突\"（Knowledge Conflict）的处理...",
+      "content": "以下关于RAG中\"知识冲突\"（Knowledge&nbsp;Conflict）的处理策略，哪项最合适？",
+      "options": [
+        {
+          "id": 7511225,
+          "content": "始终优先使用检索到的文档"
+        },
+        {
+          "id": 7511226,
+          "content": "始终优先使用LLM自身知识"
+        },
+        {
+          "id": 7511227,
+          "content": "明确告知用户存在冲突，并分别呈现不同来源的信息"
+        },
+        {
+          "id": 7511228,
+          "content": "随机选择一个来源"
+        }
+      ],
+      "correct_option_ids": [
+        7511227
+      ],
+      "correct_options": [
+        "明确告知用户存在冲突，并分别呈现不同来源的信息"
+      ],
+      "analysis": "当检索文档与LLM参数知识存在冲突时（如事实更新），最佳实践是透明地告知用户冲突的存在，分别说明来源，让用户判断。简单选择一方都可能产生误导，透明度是企业RAG系统的关键信任要素。"
+    },
+    {
+      "question_id": 11640318,
+      "uuid": "a924a9455c62488e99748a237b94fa19",
+      "type": 1,
+      "title": "以下关于\"Sparse Embedding\"（稀疏嵌入，如SPLADE）与...",
+      "content": "以下关于\"Sparse&nbsp;Embedding\"（稀疏嵌入，如SPLADE）与BM25的区别，描述正确的是？",
+      "options": [
+        {
+          "id": 7513349,
+          "content": "两者完全相同，都是词汇匹配"
+        },
+        {
+          "id": 7513351,
+          "content": "BM25基于精确词汇频率统计；SPLADE等稀疏神经嵌入通过BERT学习词汇权重，支持词汇扩展（query中\"犬\"可以匹配文档中\"狗\"），兼顾稀疏性和语义理解"
+        },
+        {
+          "id": 7513353,
+          "content": "SPLADE比BM25慢100倍"
+        },
+        {
+          "id": 7513355,
+          "content": "稀疏嵌入不能与向量数据库结合使用"
+        }
+      ],
+      "correct_option_ids": [
+        7513351
+      ],
+      "correct_options": [
+        "BM25基于精确词汇频率统计；SPLADE等稀疏神经嵌入通过BERT学习词汇权重，支持词汇扩展（query中\"犬\"可以匹配文档中\"狗\"），兼顾稀疏性和语义理解"
+      ],
+      "analysis": "SPLADE（Sparse&nbsp;Lexical&nbsp;And&nbsp;Expansion&nbsp;model）：使用BERT编码query和document，通过ReLU激活产生词表维度的稀疏向量（大多数维度为0，只有重要词有非零权重）。优势：①词汇扩展（语义相近词权重也高）；②稀疏性（可用倒排索引快速检索，类似BM25效率）；③精度优于BM25。Qdrant等向量数据库原生支持sparse&nbsp;vectors，可与dense&nbsp;vectors混合使用（hybrid&nbsp;search）。"
+    },
+    {
+      "question_id": 11640405,
+      "uuid": "51b9c004b15942d990f11efdf93d8f0e",
+      "type": 1,
+      "title": "在构建长文档RAG时，以下哪种策略可以有效处理\"章节间依赖\"（Inter-...",
+      "content": "在构建长文档RAG时，以下哪种策略可以有效处理\"章节间依赖\"（Inter-Section&nbsp;Dependencies）？",
+      "options": [
+        {
+          "id": 7511065,
+          "content": "增大chunk大小直到包含整个文档"
+        },
+        {
+          "id": 7511068,
+          "content": "层级索引（章节级+段落级）+&nbsp;多层次检索"
+        },
+        {
+          "id": 7511070,
+          "content": "只索引文档摘要"
+        },
+        {
+          "id": 7511072,
+          "content": "将文档拆分为独立章节分别建立RAG"
+        }
+      ],
+      "correct_option_ids": [
+        7511068
+      ],
+      "correct_options": [
+        "层级索引（章节级+段落级）+&nbsp;多层次检索"
+      ],
+      "analysis": "层级索引策略：同时建立章节级（粗粒度，捕获全局结构）和段落级（细粒度，精确定位）的索引。检索时先找相关章节，再在章节内精确检索段落，能够处理需要跨段落理解的问题，同时保持检索精度。"
+    },
+    {
+      "question_id": 11640392,
+      "uuid": "e07f474650c04f6099654a0c75b7bffd",
+      "type": 1,
+      "title": "在向量数据库中进行\"Sparse + Dense\"联合检索时，以下哪种工具...",
+      "content": "在向量数据库中进行\"Sparse&nbsp;+&nbsp;Dense\"联合检索时，以下哪种工具支持原生稀疏向量存储？",
+      "options": [
+        {
+          "id": 7511213,
+          "content": "只有FAISS"
+        },
+        {
+          "id": 7511214,
+          "content": "Qdrant、Weaviate、Elasticsearch（通过knn+bm25）"
+        },
+        {
+          "id": 7511215,
+          "content": "只有ChromaDB"
+        },
+        {
+          "id": 7511216,
+          "content": "只有Pinecone"
+        }
+      ],
+      "correct_option_ids": [
+        7511214
+      ],
+      "correct_options": [
+        "Qdrant、Weaviate、Elasticsearch（通过knn+bm25）"
+      ],
+      "analysis": "Qdrant（sparse&nbsp;vectors）、Weaviate（BM25+向量混合）、Elasticsearch（ELSER稀疏向量）都支持稀疏+稠密混合检索。Pinecone也提供稀疏向量支持。ChromaDB主要支持稠密向量，稀疏支持有限。"
+    },
+    {
+      "question_id": 11640441,
+      "uuid": "2b280e261a774b7c92c111a020673095",
+      "type": 1,
+      "title": "以下哪种技术通过让RAG系统\"自问自答\"来发现知识库的盲点（覆盖不足的问题）？",
+      "content": "以下哪种技术通过让RAG系统\"自问自答\"来发现知识库的盲点（覆盖不足的问题）？",
+      "options": [
+        {
+          "id": 7510649,
+          "content": "人工测试"
+        },
+        {
+          "id": 7510650,
+          "content": "LLM自动生成覆盖边缘情况的测试问题（Synthetic&nbsp;Test&nbsp;Generation）"
+        },
+        {
+          "id": 7510651,
+          "content": "只在生产中发现"
+        },
+        {
+          "id": 7510652,
+          "content": "降低检索阈值"
+        }
+      ],
+      "correct_option_ids": [
+        7510650
+      ],
+      "correct_options": [
+        "LLM自动生成覆盖边缘情况的测试问题（Synthetic&nbsp;Test&nbsp;Generation）"
+      ],
+      "analysis": "合成测试生成：让LLM（如GPT-4）基于知识库内容生成覆盖不同场景的测试问题（包括边界情况、否定查询、多跳推理），然后评估RAG系统的回答质量。这可以在部署前系统性地发现知识库盲点和弱点。"
+    },
+    {
+      "question_id": 11640439,
+      "uuid": "dbaa0ab8e99f4695941d7725cdcd2208",
+      "type": 1,
+      "title": "以下关于向量数据库的\"Upsert\"（更新或插入）操作，哪项描述正确？",
+      "content": "以下关于向量数据库的\"Upsert\"（更新或插入）操作，哪项描述正确？",
+      "options": [
+        {
+          "id": 7510670,
+          "content": "Upsert只能插入新向量，不能更新"
+        },
+        {
+          "id": 7510672,
+          "content": "Upsert根据ID判断：ID存在则更新，不存在则插入，是增量索引的核心操作"
+        },
+        {
+          "id": 7510676,
+          "content": "Upsert会清空整个集合再重新插入"
+        },
+        {
+          "id": 7510678,
+          "content": "Upsert需要重建所有索引"
+        }
+      ],
+      "correct_option_ids": [
+        7510672
+      ],
+      "correct_options": [
+        "Upsert根据ID判断：ID存在则更新，不存在则插入，是增量索引的核心操作"
+      ],
+      "analysis": "Upsert是幂等的写操作：1)&nbsp;若向量ID已存在→更新向量值和元数据；2)&nbsp;若不存在→插入新向量。这是增量文档索引的核心：文档更新时计算新的向量，用相同ID&nbsp;Upsert，自动替换旧版本，无需先删除再插入。"
+    },
+    {
+      "question_id": 11640374,
+      "uuid": "19f60aa9e6124568b838bf3ac14cc7e4",
+      "type": 1,
+      "title": "在RAG评估中，\"Context Recall\"（上下文召回）指标衡量的是？",
+      "content": "在RAG评估中，\"Context&nbsp;Recall\"（上下文召回）指标衡量的是？",
+      "options": [
+        {
+          "id": 7511421,
+          "content": "检索到的文档中有多少与查询相关（精确率视角）"
+        },
+        {
+          "id": 7511422,
+          "content": "参考答案所需的关键信息有多少被检索到的文档覆盖（召回率视角）"
+        },
+        {
+          "id": 7511423,
+          "content": "检索响应的速度"
+        },
+        {
+          "id": 7511424,
+          "content": "答案与上下文的一致性"
+        }
+      ],
+      "correct_option_ids": [
+        7511422
+      ],
+      "correct_options": [
+        "参考答案所需的关键信息有多少被检索到的文档覆盖（召回率视角）"
+      ],
+      "analysis": "Context&nbsp;Recall&nbsp;=&nbsp;被检索文档覆盖的ground&nbsp;truth中的信息量&nbsp;/&nbsp;ground&nbsp;truth总信息量，反映检索系统不遗漏关键信息的能力。与Context&nbsp;Precision（精确率）共同衡量检索质量，高召回低精确说明检索到很多无关内容。"
+    },
+    {
+      "question_id": 11640314,
+      "uuid": "c5e7e98c7f864a0d9b8e1ba93ebadc2c",
+      "type": 1,
+      "title": "以下哪种\"文档预处理\"（Document Pre-processing）技...",
+      "content": "以下哪种\"文档预处理\"（Document&nbsp;Pre-processing）技术对表格密集型文档（如财报）最有效？",
+      "options": [
+        {
+          "id": 7513381,
+          "content": "直接将PDF转为纯文本（忽略表格结构）"
+        },
+        {
+          "id": 7513382,
+          "content": "使用OCR+表格识别（如Unstructured、Azure&nbsp;Form&nbsp;Recognizer）将表格转为结构化数据（HTML/JSON/Markdown格式）再索引"
+        },
+        {
+          "id": 7513383,
+          "content": "将每页截图作为图片索引"
+        },
+        {
+          "id": 7513384,
+          "content": "手动输入所有表格数据"
+        }
+      ],
+      "correct_option_ids": [
+        7513382
+      ],
+      "correct_options": [
+        "使用OCR+表格识别（如Unstructured、Azure&nbsp;Form&nbsp;Recognizer）将表格转为结构化数据（HTML/JSON/Markdown格式）再索引"
+      ],
+      "analysis": "财报等文档包含大量关键表格（收入、利润、资产负债表），直接PDF→纯文本会破坏表格结构（数字错位、列关系丢失）。最佳实践：①使用Unstructured、LlamaParse或Azure&nbsp;Form&nbsp;Recognizer识别并提取表格结构；②将表格转为Markdown或HTML格式保留行列关系；③为表格生成自然语言描述作为检索锚点；④将表格内容导入可查询的数据库（支持NL2SQL检索）。"
+    },
+    {
+      "question_id": 11640367,
+      "uuid": "5bed25cceb184607abd8aadd4d4c5747",
+      "type": 1,
+      "title": "以下哪种多跳RAG（Multi-hop RAG）方法通过将复杂问题分解为子...",
+      "content": "以下哪种多跳RAG（Multi-hop&nbsp;RAG）方法通过将复杂问题分解为子问题来实现？",
+      "options": [
+        {
+          "id": 7511497,
+          "content": "Simple&nbsp;RAG"
+        },
+        {
+          "id": 7511498,
+          "content": "IRCoT（Interleaving&nbsp;Retrieval&nbsp;with&nbsp;Chain-of-Thought）"
+        },
+        {
+          "id": 7511499,
+          "content": "BM25检索"
+        },
+        {
+          "id": 7511501,
+          "content": "稠密检索"
+        }
+      ],
+      "correct_option_ids": [
+        7511498
+      ],
+      "correct_options": [
+        "IRCoT（Interleaving&nbsp;Retrieval&nbsp;with&nbsp;Chain-of-Thought）"
+      ],
+      "analysis": "IRCoT将检索与思维链推理交错进行：LLM在推理步骤中发现需要新信息时触发检索，检索结果用于下一步推理，迭代进行。这种方式特别适合需要多步信息整合的复杂问题（如多跳问答）。"
+    },
+    {
+      "question_id": 11640284,
+      "uuid": "9be3d5cd97014fcc8a8f433a87e29a7d",
+      "type": 1,
+      "title": "以下关于RAG中\"幻觉\"的来源分析，正确的是？",
+      "content": "以下关于RAG中\"幻觉\"的来源分析，正确的是？",
+      "options": [
+        {
+          "id": 7513457,
+          "content": "RAG中不存在幻觉，因为有检索文档支撑"
+        },
+        {
+          "id": 7513458,
+          "content": "幻觉来源包括：检索文档本身错误、检索遗漏关键信息、LLM无视文档内容自主生成、多文档信息矛盾"
+        },
+        {
+          "id": 7513459,
+          "content": "幻觉只发生在生成阶段，检索阶段不会产生幻觉"
+        },
+        {
+          "id": 7513460,
+          "content": "增大检索文档数量（top-k更大）可以完全消除幻觉"
+        }
+      ],
+      "correct_option_ids": [
+        7513458
+      ],
+      "correct_options": [
+        "幻觉来源包括：检索文档本身错误、检索遗漏关键信息、LLM无视文档内容自主生成、多文档信息矛盾"
+      ],
+      "analysis": "RAG减少但不消除幻觉。来源：①检索错误（检索到不相关文档，LLM被误导）；②检索遗漏（关键信息未被检索）；③生成漂移（LLM有时\"自作主张\"生成文档未提到的内容）；④文档矛盾（多文档观点冲突，LLM随机选择）。Faithfulness&lt;1.0的RAG系统仍存在幻觉风险，需要结合事实核验机制。"
+    },
+    {
+      "question_id": 11640406,
+      "uuid": "ff0848d563814f28844587f78a5b6efa",
+      "type": 1,
+      "title": "在RAG中，以下哪种方式可以处理\"时效性\"问题（文档已更新但RAG索引未更新）？",
+      "content": "在RAG中，以下哪种方式可以处理\"时效性\"问题（文档已更新但RAG索引未更新）？",
+      "options": [
+        {
+          "id": 7511054,
+          "content": "定期全量重新索引"
+        },
+        {
+          "id": 7511056,
+          "content": "增量更新（只索引新增/修改文档）+&nbsp;版本控制&nbsp;+&nbsp;文档失效机制"
+        },
+        {
+          "id": 7511058,
+          "content": "使用更大的嵌入模型"
+        },
+        {
+          "id": 7511060,
+          "content": "增加检索数量"
+        }
+      ],
+      "correct_option_ids": [
+        7511056
+      ],
+      "correct_options": [
+        "增量更新（只索引新增/修改文档）+&nbsp;版本控制&nbsp;+&nbsp;文档失效机制"
+      ],
+      "analysis": "时效性管理最佳实践：增量索引（监控文档变更，只处理新增/修改）、为文档添加版本和时间戳、设置文档有效期自动过期、对返回的旧版文档降权。全量重新索引代价大，不适合频繁更新的场景。"
+    },
+    {
+      "question_id": 11640394,
+      "uuid": "500dd235ccdd4aeeb2e3fcce3aec6eb5",
+      "type": 1,
+      "title": "在RAG系统中，以下哪种方法可以有效减少\"冗余检索\"（检索到重复内容）？",
+      "content": "在RAG系统中，以下哪种方法可以有效减少\"冗余检索\"（检索到重复内容）？",
+      "options": [
+        {
+          "id": 7511189,
+          "content": "增加分块大小"
+        },
+        {
+          "id": 7511190,
+          "content": "MMR多样性检索&nbsp;+&nbsp;文档级去重"
+        },
+        {
+          "id": 7511191,
+          "content": "减少top-k数量"
+        },
+        {
+          "id": 7511192,
+          "content": "使用更简单的嵌入模型"
+        }
+      ],
+      "correct_option_ids": [
+        7511190
+      ],
+      "correct_options": [
+        "MMR多样性检索&nbsp;+&nbsp;文档级去重"
+      ],
+      "analysis": "冗余检索会浪费上下文窗口。解决方案：1)&nbsp;文档级去重（相似度阈值过滤）；2)&nbsp;MMR算法在相关性基础上增加多样性约束；3)&nbsp;分块时避免重叠过大。同时返回的文档数量（top-k）也需要根据任务谨慎设置。"
+    },
+    {
+      "question_id": 11640442,
+      "uuid": "4314106ed19c45cbaf44a1bb802e7f51",
+      "type": 1,
+      "title": "在以下向量数据库查询中，哪种过滤组合最能高效实现\"最近30天的相关文档\"查询？",
+      "content": "在以下向量数据库查询中，哪种过滤组合最能高效实现\"最近30天的相关文档\"查询？",
+      "options": [
+        {
+          "id": 7510637,
+          "content": "先全量检索再时间过滤"
+        },
+        {
+          "id": 7510638,
+          "content": "向量查询&nbsp;+&nbsp;元数据过滤（timestamp&nbsp;&gt;&nbsp;now-30d）同时执行"
+        },
+        {
+          "id": 7510639,
+          "content": "先时间过滤获得所有文档再向量排序"
+        },
+        {
+          "id": 7510641,
+          "content": "只用时间排序不考虑语义相关性"
+        }
+      ],
+      "correct_option_ids": [
+        7510638
+      ],
+      "correct_options": [
+        "向量查询&nbsp;+&nbsp;元数据过滤（timestamp&nbsp;&gt;&nbsp;now-30d）同时执行"
+      ],
+      "analysis": "最高效的混合查询：在向量检索时同时应用元数据过滤（pre-filtering或in-filtering），而非先全量检索后过滤。Qdrant、Milvus、Weaviate都支持向量搜索和结构化条件的联合执行，可以充分利用索引加速。"
+    },
+    {
+      "question_id": 11640424,
+      "uuid": "9270b16330f64f9aa6e09b8891ea1e90",
+      "type": 1,
+      "title": "在以下RAG检索中，哪种方式最适合\"跨语言\"查询（用中文查询英文文档）？",
+      "content": "在以下RAG检索中，哪种方式最适合\"跨语言\"查询（用中文查询英文文档）？",
+      "options": [
+        {
+          "id": 7510846,
+          "content": "翻译查询后检索"
+        },
+        {
+          "id": 7510848,
+          "content": "使用多语言嵌入模型（如BGE-M3）在统一向量空间中跨语言检索"
+        },
+        {
+          "id": 7510851,
+          "content": "分别建立中英文索引后合并结果"
+        },
+        {
+          "id": 7510852,
+          "content": "使用关键词翻译后BM25检索"
+        }
+      ],
+      "correct_option_ids": [
+        7510848
+      ],
+      "correct_options": [
+        "使用多语言嵌入模型（如BGE-M3）在统一向量空间中跨语言检索"
+      ],
+      "analysis": "多语言嵌入模型（BGE-M3、mE5、LaBSE）将不同语言映射到同一语义向量空间，中文查询的向量与相关英文文档的向量在空间中接近，实现无缝跨语言检索，无需翻译步骤。这是跨语言RAG的最优方案。"
+    },
+    {
+      "question_id": 11640335,
+      "uuid": "711b46ecdd4f438fa57fbce58c7546d2",
+      "type": 1,
+      "title": "以下关于\"RAG vs Fine-tuning vs RAG+Fine-t...",
+      "content": "以下关于\"RAG&nbsp;vs&nbsp;Fine-tuning&nbsp;vs&nbsp;RAG+Fine-tuning\"的选择框架，描述正确的是？",
+      "options": [
+        {
+          "id": 7511773,
+          "content": "总是使用RAG，微调没有价值"
+        },
+        {
+          "id": 7511774,
+          "content": "RAG适合知识动态更新需求；微调适合固定行为/风格/格式；两者结合适合需要专业知识且有特定输出要求的场景"
+        },
+        {
+          "id": 7511775,
+          "content": "微调后不再需要RAG"
+        },
+        {
+          "id": 7511776,
+          "content": "RAG和微调互斥，不能同时使用"
+        }
+      ],
+      "correct_option_ids": [
+        7511774
+      ],
+      "correct_options": [
+        "RAG适合知识动态更新需求；微调适合固定行为/风格/格式；两者结合适合需要专业知识且有特定输出要求的场景"
+      ],
+      "analysis": "选择框架：①仅RAG：私有知识库QA（知识需要更新）、不需要修改模型行为；②仅微调（SFT/LoRA）：固定领域能力（代码风格、特定输出格式）、知识不需要频繁更新；③RAG&nbsp;+&nbsp;微调：医疗问答（需要大量最新文献&nbsp;+&nbsp;专业医学表达风格）、客服（产品知识库&nbsp;+&nbsp;特定品牌语气）。Anthropic/OpenAI的实践表明RAG+适度微调在大多数企业应用中效果最佳。"
+    },
+    {
+      "question_id": 11640443,
+      "uuid": "b739310515f64c54a14e6c636b5babb8",
+      "type": 1,
+      "title": "以下哪种方法可以在RAG中有效减少对LLM的调用次数（降低成本）？",
+      "content": "以下哪种方法可以在RAG中有效减少对LLM的调用次数（降低成本）？",
+      "options": [
+        {
+          "id": 7510625,
+          "content": "减少检索的文档数量"
+        },
+        {
+          "id": 7510626,
+          "content": "语义缓存（相似查询复用结果）+&nbsp;流式传输（减少重复生成）"
+        },
+        {
+          "id": 7510627,
+          "content": "使用更小的嵌入模型"
+        },
+        {
+          "id": 7510629,
+          "content": "增大chunk大小"
+        }
+      ],
+      "correct_option_ids": [
+        7510626
+      ],
+      "correct_options": [
+        "语义缓存（相似查询复用结果）+&nbsp;流式传输（减少重复生成）"
+      ],
+      "analysis": "语义缓存（GPTCache等）：对新查询先检索历史查询缓存，若存在相似查询（余弦相似度&gt;阈值）则直接返回缓存结果，无需调用LLM。对于高频重复查询（如FAQ系统），缓存命中率可达60-80%，大幅降低LLM&nbsp;API成本。"
+    },
+    {
+      "question_id": 11640403,
+      "uuid": "846715102b084db488badf3df961b617",
+      "type": 1,
+      "title": "以下哪种技术通过在文档摄入阶段由LLM生成文档摘要并同时索引原文和摘要来改...",
+      "content": "以下哪种技术通过在文档摄入阶段由LLM生成文档摘要并同时索引原文和摘要来改善检索？",
+      "options": [
+        {
+          "id": 7511087,
+          "content": "Contextual&nbsp;Retrieval（Anthropic）"
+        },
+        {
+          "id": 7511089,
+          "content": "Dense&nbsp;Retrieval"
+        },
+        {
+          "id": 7511091,
+          "content": "BM25"
+        },
+        {
+          "id": 7511092,
+          "content": "Simple&nbsp;Chunking"
+        }
+      ],
+      "correct_option_ids": [
+        7511087
+      ],
+      "correct_options": [
+        "Contextual&nbsp;Retrieval（Anthropic）"
+      ],
+      "analysis": "Anthropic的Contextual&nbsp;Retrieval在分块前让Claude为每个chunk生成上下文说明（解释该块在整个文档中的位置和含义），将此上下文追加到chunk文本前再嵌入，显著改善了孤立块的检索相关性，报告称可减少49%的检索失败。"
+    },
+    {
+      "question_id": 11640390,
+      "uuid": "177a33768f5d4e8bba5a131c675f187f",
+      "type": 1,
+      "title": "在以下RAG配置中，哪项组合最适合需要实时性（Real-time）的新闻问...",
+      "content": "在以下RAG配置中，哪项组合最适合需要实时性（Real-time）的新闻问答系统？",
+      "options": [
+        {
+          "id": 7511237,
+          "content": "静态FAISS索引&nbsp;+&nbsp;固定文档集"
+        },
+        {
+          "id": 7511238,
+          "content": "在线向量数据库&nbsp;+&nbsp;定期重新索引&nbsp;+&nbsp;网络搜索工具"
+        },
+        {
+          "id": 7511239,
+          "content": "大型向量数据库&nbsp;+&nbsp;固定爬取数据"
+        },
+        {
+          "id": 7511241,
+          "content": "只使用LLM内置知识"
+        }
+      ],
+      "correct_option_ids": [
+        7511238
+      ],
+      "correct_options": [
+        "在线向量数据库&nbsp;+&nbsp;定期重新索引&nbsp;+&nbsp;网络搜索工具"
+      ],
+      "analysis": "实时新闻问答需要：在线向量数据库（支持实时添加新文档）+定期重新索引（捕获最新信息）+必要时调用网络搜索API（获取刚发布的信息）。只有动态数据管道才能满足实时性需求。"
+    },
+    {
+      "question_id": 11640279,
+      "uuid": "2430c6ec04964cc5a0e24de09b024213",
+      "type": 1,
+      "title": "以下关于RAG中\"Lost in the Middle\"问题的描述，正确的是？",
+      "content": "以下关于RAG中\"Lost&nbsp;in&nbsp;the&nbsp;Middle\"问题的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513417,
+          "content": "检索到的文档数量太多导致显存溢出"
+        },
+        {
+          "id": 7513418,
+          "content": "LLM对长上下文中间位置的信息关注度低，相关文档放在中间时召回率下降"
+        },
+        {
+          "id": 7513419,
+          "content": "文档分块时中间的句子被截断丢失"
+        },
+        {
+          "id": 7513420,
+          "content": "检索排名靠后的文档完全被LLM忽略"
+        }
+      ],
+      "correct_option_ids": [
+        7513418
+      ],
+      "correct_options": [
+        "LLM对长上下文中间位置的信息关注度低，相关文档放在中间时召回率下降"
+      ],
+      "analysis": "Liu&nbsp;et&nbsp;al.&nbsp;2023发现LLM对长上下文的\"U形\"注意力模式：开头和结尾的信息被更好地利用，中间位置的信息被相对忽视（Lost&nbsp;in&nbsp;the&nbsp;Middle）。对RAG的影响：即使最相关文档被检索到，若放在上下文中间位置，生成质量也会下降。解决方案：①减少检索文档数量；②将最相关文档放在首尾；③使用Reranker确保最相关在首位。"
+    },
+    {
+      "question_id": 11640362,
+      "uuid": "ee0b9b42f125487a88c895241bbb2340",
+      "type": 1,
+      "title": "以下哪种分块策略最适合处理含有大量表格和代码的技术文档？",
+      "content": "以下哪种分块策略最适合处理含有大量表格和代码的技术文档？",
+      "options": [
+        {
+          "id": 7511553,
+          "content": "固定大小分块（每500字符）"
+        },
+        {
+          "id": 7511554,
+          "content": "按段落分块"
+        },
+        {
+          "id": 7511555,
+          "content": "语义感知分块（识别表格/代码块边界）"
+        },
+        {
+          "id": 7511557,
+          "content": "随机分块"
+        }
+      ],
+      "correct_option_ids": [
+        7511555
+      ],
+      "correct_options": [
+        "语义感知分块（识别表格/代码块边界）"
+      ],
+      "analysis": "技术文档中表格和代码块具有明确边界，不应被截断。语义感知分块通过识别Markdown/HTML标记、代码围栏（```）、表格边界等结构元素，确保这些完整单元不被分割，保留其完整语义。"
+    },
+    {
+      "question_id": 11640389,
+      "uuid": "dd14ebee2da94141b1b5f695fdd17ae2",
+      "type": 1,
+      "title": "在构建企业级RAG系统时，以下哪项是文档摄入（Document Inges...",
+      "content": "在构建企业级RAG系统时，以下哪项是文档摄入（Document&nbsp;Ingestion）管道的关键步骤？",
+      "options": [
+        {
+          "id": 7511249,
+          "content": "只需将PDF转换为文本"
+        },
+        {
+          "id": 7511250,
+          "content": "文档解析→清洗→分块→嵌入→存储，同时提取和存储元数据"
+        },
+        {
+          "id": 7511253,
+          "content": "直接将原始文档存入向量数据库"
+        },
+        {
+          "id": 7511255,
+          "content": "只需要分块和嵌入两步"
+        }
+      ],
+      "correct_option_ids": [
+        7511250
+      ],
+      "correct_options": [
+        "文档解析→清洗→分块→嵌入→存储，同时提取和存储元数据"
+      ],
+      "analysis": "企业RAG摄入管道包括：文档解析（OCR/PDF解析）→内容清洗（去噪/格式化）→智能分块（保留结构）→嵌入向量化→存储（向量+原文+元数据）。元数据（时间、来源、权限）对后续过滤和溯源至关重要。"
+    },
+    {
+      "question_id": 11640410,
+      "uuid": "1fdd91a30732459dbd8ae2996da2c7ee",
+      "type": 1,
+      "title": "在向量数据库中，\"Product Quantization\"（PQ，乘积量...",
+      "content": "在向量数据库中，\"Product&nbsp;Quantization\"（PQ，乘积量化）的主要作用是什么？",
+      "options": [
+        {
+          "id": 7511007,
+          "content": "提高检索精度"
+        },
+        {
+          "id": 7511009,
+          "content": "将高维向量压缩为更小的编码，大幅减少存储空间（以轻微精度换存储）"
+        },
+        {
+          "id": 7511011,
+          "content": "加速向量编码"
+        },
+        {
+          "id": 7511013,
+          "content": "实现分布式存储"
+        }
+      ],
+      "correct_option_ids": [
+        7511009
+      ],
+      "correct_options": [
+        "将高维向量压缩为更小的编码，大幅减少存储空间（以轻微精度换存储）"
+      ],
+      "analysis": "PQ将高维向量（如1536维）分割为M个子向量，对每个子向量用K-means聚类（如K=256个中心），用中心索引（1字节）代替原子向量（4字节×d/M维），存储压缩比可达96×，以轻微精度损失换取大幅存储和带宽节省。"
+    },
+    {
+      "question_id": 11640346,
+      "uuid": "b8f990f28f2d45ab8c813a2a1594da09",
+      "type": 1,
+      "title": "以下关于\"Document Ingestion Pipeline\"（文档摄...",
+      "content": "以下关于\"Document&nbsp;Ingestion&nbsp;Pipeline\"（文档摄取流水线）的设计，哪种方案最具可扩展性？",
+      "options": [
+        {
+          "id": 7511693,
+          "content": "单机串行处理所有文档"
+        },
+        {
+          "id": 7511694,
+          "content": "异步流水线：文档解析→分块→embedding（批量GPU）→索引写入，各阶段解耦并可独立水平扩展，使用消息队列（Kafka/RabbitMQ）连接"
+        },
+        {
+          "id": 7511695,
+          "content": "使用单个大型API调用处理所有文档"
+        },
+        {
+          "id": 7511697,
+          "content": "只在夜间批量处理，白天不更新"
+        }
+      ],
+      "correct_option_ids": [
+        7511694
+      ],
+      "correct_options": [
+        "异步流水线：文档解析→分块→embedding（批量GPU）→索引写入，各阶段解耦并可独立水平扩展，使用消息队列（Kafka/RabbitMQ）连接"
+      ],
+      "analysis": "企业级文档摄取流水线设计：①并行解析：多进程解析PDF/Word/HTML；②批量embedding：将chunk批量发送给embedding&nbsp;API或本地GPU（批量比逐条快10-50倍）；③异步写入：embedding完成后异步写入向量数据库；④消息队列（Kafka）：各阶段解耦，任何阶段失败可以重试；⑤监控：追踪每个文档的处理状态和错误率。这种架构可以水平扩展到每天处理百万文档。"
+    },
+    {
+      "question_id": 11640385,
+      "uuid": "445e5f57e500468bab42d4c66a55dd98",
+      "type": 1,
+      "title": "以下关于向量数据库的\"元数据过滤\"（Metadata Filtering）...",
+      "content": "以下关于向量数据库的\"元数据过滤\"（Metadata&nbsp;Filtering）的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511293,
+          "content": "元数据过滤会显著降低向量检索性能"
+        },
+        {
+          "id": 7511295,
+          "content": "通过在检索前/后使用结构化条件过滤文档，实现混合检索（语义+条件）"
+        },
+        {
+          "id": 7511297,
+          "content": "元数据只能用于排序，不能用于过滤"
+        },
+        {
+          "id": 7511299,
+          "content": "元数据过滤需要额外的机器学习模型"
+        }
+      ],
+      "correct_option_ids": [
+        7511295
+      ],
+      "correct_options": [
+        "通过在检索前/后使用结构化条件过滤文档，实现混合检索（语义+条件）"
+      ],
+      "analysis": "元数据过滤允许在向量检索中加入结构化条件（如时间范围、来源类型、作者等），如：先过滤出近3个月的文档再做向量搜索。Qdrant、Weaviate、Pinecone等数据库都支持与向量检索并行的元数据过滤。"
+    },
+    {
+      "question_id": 11640393,
+      "uuid": "f7d5ee8578c04b0f8d3ce160ea812629",
+      "type": 1,
+      "title": "以下代码存在什么问题？```pythonembedding = model...",
+      "content": "以下代码存在什么问题？<div>```python</div><div>embedding&nbsp;=&nbsp;model.encode(document)&nbsp;&nbsp;#&nbsp;文档嵌入</div><div>query_embedding&nbsp;=&nbsp;model.encode(query)&nbsp;&nbsp;#&nbsp;查询嵌入（同一模型，无指令前缀）</div><div>similarity&nbsp;=&nbsp;cosine_similarity(embedding,&nbsp;query_embedding)</div><div>```</div>",
+      "options": [
+        {
+          "id": 7511201,
+          "content": "没有问题，代码是正确的"
+        },
+        {
+          "id": 7511202,
+          "content": "非对称嵌入模型需要不同前缀：文档和查询应使用不同的指令前缀"
+        },
+        {
+          "id": 7511203,
+          "content": "应该使用欧氏距离而非余弦相似度"
+        },
+        {
+          "id": 7511204,
+          "content": "文档和查询必须长度相同"
+        }
+      ],
+      "correct_option_ids": [
+        7511202
+      ],
+      "correct_options": [
+        "非对称嵌入模型需要不同前缀：文档和查询应使用不同的指令前缀"
+      ],
+      "analysis": "对于E5、Instructor等非对称检索模型，文档编码应使用\"passage:&nbsp;\"前缀，查询应使用\"query:&nbsp;\"前缀，分别优化两种嵌入的语义空间。使用相同编码方式会损失检索精度。BGE系列也有类似的指令前缀要求。"
+    },
+    {
+      "question_id": 11640425,
+      "uuid": "064fddb86ce44d8bbff97e4a9fe68945",
+      "type": 1,
+      "title": "在以下情境中，哪种RAG架构最适合处理\"实时数据\"（如股票价格、新闻推文）？",
+      "content": "在以下情境中，哪种RAG架构最适合处理\"实时数据\"（如股票价格、新闻推文）？",
+      "options": [
+        {
+          "id": 7510833,
+          "content": "离线批量索引&nbsp;+&nbsp;静态向量数据库"
+        },
+        {
+          "id": 7510835,
+          "content": "流式摄入（Streaming&nbsp;Ingestion）+&nbsp;在线向量数据库&nbsp;+&nbsp;实时索引更新"
+        },
+        {
+          "id": 7510837,
+          "content": "定期全量重建索引"
+        },
+        {
+          "id": 7510840,
+          "content": "只使用LLM内置知识"
+        }
+      ],
+      "correct_option_ids": [
+        7510835
+      ],
+      "correct_options": [
+        "流式摄入（Streaming&nbsp;Ingestion）+&nbsp;在线向量数据库&nbsp;+&nbsp;实时索引更新"
+      ],
+      "analysis": "实时数据RAG需要：流式数据管道（Kafka/Kinesis接收数据流）→实时处理（解析、清洗、嵌入）→在线向量数据库（支持实时写入，如Milvus&nbsp;Standalone、Pinecone）→即时可查询。延迟要求通常为秒级而非小时级。"
+    },
+    {
+      "question_id": 11640274,
+      "uuid": "76395d078ff743569dbb144b4bb49f10",
+      "type": 1,
+      "title": "Multi-hop RAG解决的是什么类型的问题？",
+      "content": "Multi-hop&nbsp;RAG解决的是什么类型的问题？",
+      "options": [
+        {
+          "id": 7513377,
+          "content": "单步检索足以回答的事实性问题"
+        },
+        {
+          "id": 7513378,
+          "content": "需要多步推理和多次检索、将中间结果作为下一步检索query的复杂问题"
+        },
+        {
+          "id": 7513379,
+          "content": "文档量特别大（&gt;100GB）的检索问题"
+        },
+        {
+          "id": 7513380,
+          "content": "多语言文档的检索问题"
+        }
+      ],
+      "correct_option_ids": [
+        7513378
+      ],
+      "correct_options": [
+        "需要多步推理和多次检索、将中间结果作为下一步检索query的复杂问题"
+      ],
+      "analysis": "Multi-hop问题如\"X公司的CEO毕业于哪所大学的哪个专业？\"需要：①检索\"X公司CEO是谁\"→得到姓名Y；②以Y为query检索\"Y毕业于哪里\"。单次RAG无法解决需要中间推理步骤的问题。Multi-hop&nbsp;RAG技术包括：IRCoT（交错检索-推理链）、FLARE（预测未来句子触发检索）、Agentic&nbsp;RAG（让Agent决定何时检索）。"
+    },
+    {
+      "question_id": 11640294,
+      "uuid": "675ca97c9d4c4de897859af8dd5cafa1",
+      "type": 1,
+      "title": "以下关于RAG中递归检索（Recursive Retrieval）的描述，...",
+      "content": "以下关于RAG中递归检索（Recursive&nbsp;Retrieval）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513537,
+          "content": "递归检索会陷入无限循环，实际中不可用"
+        },
+        {
+          "id": 7513538,
+          "content": "从粗粒度摘要开始检索，根据相关性递归进入更细粒度的文档内容，逐步精确定位"
+        },
+        {
+          "id": 7513539,
+          "content": "对同一文档反复检索直到找到满意答案"
+        },
+        {
+          "id": 7513540,
+          "content": "递归检索只适用于树形结构的知识库"
+        }
+      ],
+      "correct_option_ids": [
+        7513538
+      ],
+      "correct_options": [
+        "从粗粒度摘要开始检索，根据相关性递归进入更细粒度的文档内容，逐步精确定位"
+      ],
+      "analysis": "递归检索（Hierarchical&nbsp;Retrieval）先构建文档的多级摘要索引（文档级摘要→章节级摘要→段落）。查询时从文档级摘要开始粗筛，选出相关文档后进入章节级，再精确到段落。这种由粗到细的检索策略减少了直接在细粒度向量空间中全量搜索的开销，适合大型结构化文档库（如法律文书、技术手册）。"
+    },
+    {
+      "question_id": 11640282,
+      "uuid": "c470965497e740219fb37052f158082c",
+      "type": 1,
+      "title": "以下关于Qdrant向量数据库payload过滤的说法，正确的是？",
+      "content": "以下关于Qdrant向量数据库payload过滤的说法，正确的是？",
+      "options": [
+        {
+          "id": 7513441,
+          "content": "Qdrant不支持元数据过滤，只能按向量相似度检索"
+        },
+        {
+          "id": 7513442,
+          "content": "Qdrant支持在向量搜索的同时进行标量字段过滤（如按日期、类别、文件类型），实现结构化+语义的混合查询"
+        },
+        {
+          "id": 7513443,
+          "content": "Qdrant的过滤只能在检索后进行后处理"
+        },
+        {
+          "id": 7513444,
+          "content": "Qdrant的payload只支持字符串类型"
+        }
+      ],
+      "correct_option_ids": [
+        7513442
+      ],
+      "correct_options": [
+        "Qdrant支持在向量搜索的同时进行标量字段过滤（如按日期、类别、文件类型），实现结构化+语义的混合查询"
+      ],
+      "analysis": "现代向量数据库（Qdrant/Weaviate/Milvus）支持\"filtered&nbsp;ANN\"，即在向量相似度搜索时同时应用元数据过滤条件（如\"检索与query相似的文档，且创建时间&gt;2024-01-01，且类别=技术文档\"）。这是企业RAG的常见需求，例如限制检索范围为特定用户的文档或特定产品线的内容。"
+    },
+    {
+      "question_id": 11640355,
+      "uuid": "3b25e36692fc41fb98e0c028973e87c6",
+      "type": 1,
+      "title": "以下关于\"RAG Evaluation Pipeline\"（RAG评估流水...",
+      "content": "以下关于\"RAG&nbsp;Evaluation&nbsp;Pipeline\"（RAG评估流水线）的自动化实现，正确的是？",
+      "options": [
+        {
+          "id": 7511625,
+          "content": "RAG评估必须完全依赖人工，无法自动化"
+        },
+        {
+          "id": 7511626,
+          "content": "使用RAGAS/TruLens等框架，自动化评估包括：自动生成评估问题（从文档提取）、LLM-as-Judge评估答案质量、自动化回归测试（版本对比）"
+        },
+        {
+          "id": 7511627,
+          "content": "自动化评估只能评估检索阶段，不能评估生成阶段"
+        },
+        {
+          "id": 7511628,
+          "content": "自动化评估的准确性远低于人工评估，实际中不可用"
+        }
+      ],
+      "correct_option_ids": [
+        7511626
+      ],
+      "correct_options": [
+        "使用RAGAS/TruLens等框架，自动化评估包括：自动生成评估问题（从文档提取）、LLM-as-Judge评估答案质量、自动化回归测试（版本对比）"
+      ],
+      "analysis": "自动化RAG评估流水线：①问题生成：用LLM从知识库文档中自动生成(question,&nbsp;ground_truth_answer)对（作为评估集）；②端到端评估：将问题输入RAG系统得到答案；③自动评分：RAGAS计算Faithfulness/Answer&nbsp;Relevance/Context&nbsp;Metrics；④回归测试：与上一版本比较，任何指标下降触发告警；⑤持续集成：每次代码/配置变更自动触发评估。这使得RAG系统的质量保障类似软件测试，可持续监控。"
+    },
+    {
+      "question_id": 11640418,
+      "uuid": "f249765de1b8475d85e0a8025d405db0",
+      "type": 1,
+      "title": "以下哪种技术通过构建\"知识图谱\"结构来回答需要跨多个文档推理的复杂问题？",
+      "content": "以下哪种技术通过构建\"知识图谱\"结构来回答需要跨多个文档推理的复杂问题？",
+      "options": [
+        {
+          "id": 7510918,
+          "content": "标准RAG"
+        },
+        {
+          "id": 7510920,
+          "content": "GraphRAG&nbsp;/&nbsp;Knowledge&nbsp;Graph&nbsp;RAG"
+        },
+        {
+          "id": 7510922,
+          "content": "BM25检索"
+        },
+        {
+          "id": 7510924,
+          "content": "Dense&nbsp;Retrieval"
+        }
+      ],
+      "correct_option_ids": [
+        7510920
+      ],
+      "correct_options": [
+        "GraphRAG&nbsp;/&nbsp;Knowledge&nbsp;Graph&nbsp;RAG"
+      ],
+      "analysis": "知识图谱RAG将文档中提取实体（人/地点/概念）和关系（谁→做了→什么），构建图结构索引。复杂多跳问题可通过图遍历找到推理路径（A→B→C的关系链），而传统向量检索无法有效捕获这种结构化关系。"
+    },
+    {
+      "question_id": 11640296,
+      "uuid": "d7807069460c4ad9b3397259444257a1",
+      "type": 1,
+      "title": "在生产环境RAG系统中，以下哪种缓存策略最有效？",
+      "content": "在生产环境RAG系统中，以下哪种缓存策略最有效？",
+      "options": [
+        {
+          "id": 7513521,
+          "content": "缓存所有用户query的完整回复"
+        },
+        {
+          "id": 7513522,
+          "content": "对语义相似的query复用之前的检索结果（semantic&nbsp;caching），减少重复检索和LLM调用"
+        },
+        {
+          "id": 7513523,
+          "content": "缓存向量数据库中所有文档的embedding"
+        },
+        {
+          "id": 7513524,
+          "content": "对模型输出进行缓存，相同输入返回相同输出"
+        }
+      ],
+      "correct_option_ids": [
+        7513522
+      ],
+      "correct_options": [
+        "对语义相似的query复用之前的检索结果（semantic&nbsp;caching），减少重复检索和LLM调用"
+      ],
+      "analysis": "精确query缓存（相同字符串）命中率低。语义缓存：将历史query的embedding存入缓存，新query来时先检索缓存中是否有语义相似的历史query（相似度&gt;阈值），有则复用历史检索结果和/或生成结果。GPTCache等工具实现了此功能，可将重复/相似query的响应速度提升10-100倍，并大幅降低LLM调用成本。"
+    },
+    {
+      "question_id": 11640419,
+      "uuid": "b637bff6d7504266a8bf87d3322e9173",
+      "type": 1,
+      "title": "以下关于向量数据库\"索引构建时间\"和\"查询延迟\"的权衡，哪项正确？",
+      "content": "以下关于向量数据库\"索引构建时间\"和\"查询延迟\"的权衡，哪项正确？",
+      "options": [
+        {
+          "id": 7510904,
+          "content": "HNSW构建慢但查询快；Flat构建快但查询慢（大数据集）"
+        },
+        {
+          "id": 7510908,
+          "content": "所有索引构建时间相同"
+        },
+        {
+          "id": 7510910,
+          "content": "构建越慢的索引查询一定越快"
+        },
+        {
+          "id": 7510912,
+          "content": "只有FAISS才有这个权衡"
+        }
+      ],
+      "correct_option_ids": [
+        7510904
+      ],
+      "correct_options": [
+        "HNSW构建慢但查询快；Flat构建快但查询慢（大数据集）"
+      ],
+      "analysis": "HNSW：构建需要维护分层图结构（O(N&nbsp;log&nbsp;N)），但查询近似最近邻只需O(log&nbsp;N)，适合大规模（百万+）数据集的低延迟查询。Flat索引：构建O(N)，但查询需要暴力搜索O(N)，适合小数据集（&lt;100K）的精确搜索。IVF是两者折中。"
+    },
+    {
+      "question_id": 11640356,
+      "uuid": "eff6c6de489140bfbf65e54af5addbea",
+      "type": 1,
+      "title": "以下哪种方法最适合处理RAG知识库中的\"矛盾信息\"（不同文档对同一问题给出...",
+      "content": "以下哪种方法最适合处理RAG知识库中的\"矛盾信息\"（不同文档对同一问题给出不同答案）？",
+      "options": [
+        {
+          "id": 7511617,
+          "content": "随机选择一个答案返回"
+        },
+        {
+          "id": 7511618,
+          "content": "在生成时明确告知LLM存在矛盾，让其汇报矛盾并给出推荐，或按文档权威性（如官方文档优先）解决矛盾"
+        },
+        {
+          "id": 7511619,
+          "content": "忽略矛盾，让LLM自己处理"
+        },
+        {
+          "id": 7511620,
+          "content": "删除所有矛盾的文档"
+        }
+      ],
+      "correct_option_ids": [
+        7511618
+      ],
+      "correct_options": [
+        "在生成时明确告知LLM存在矛盾，让其汇报矛盾并给出推荐，或按文档权威性（如官方文档优先）解决矛盾"
+      ],
+      "analysis": "矛盾信息处理策略：①权威性排序：官方文档&gt;内部文档&gt;外部参考，检索时赋予权重；②时效性排序：最新版本优先；③在prompt中明确：\"检索到的文档包含以下矛盾信息，请识别矛盾并以[权威来源/最新版本]为准给出答案\"；④矛盾检测：检索后自动比对chunk内容的一致性，检测到矛盾时标记提醒用户；⑤人工审核标记：高频矛盾问题触发人工审核和知识库更新。"
+    },
+    {
+      "question_id": 11640276,
+      "uuid": "e56056f62cc844c99a21c8e979750fc8",
+      "type": 1,
+      "title": "CRAG（Corrective RAG）相比Self-RAG的主要区别是？",
+      "content": "CRAG（Corrective&nbsp;RAG）相比Self-RAG的主要区别是？",
+      "options": [
+        {
+          "id": 7513393,
+          "content": "CRAG不需要检索步骤"
+        },
+        {
+          "id": 7513394,
+          "content": "CRAG增加了检索质量评估和纠正机制：若检索结果质量差则触发网络搜索补充"
+        },
+        {
+          "id": 7513395,
+          "content": "CRAG只适用于医疗领域"
+        },
+        {
+          "id": 7513396,
+          "content": "CRAG使用强化学习训练检索器"
+        }
+      ],
+      "correct_option_ids": [
+        7513394
+      ],
+      "correct_options": [
+        "CRAG增加了检索质量评估和纠正机制：若检索结果质量差则触发网络搜索补充"
+      ],
+      "analysis": "CRAG（Yan&nbsp;et&nbsp;al.&nbsp;2024）引入\"检索评估器\"（retrieval&nbsp;evaluator）对检索结果打分：①高相关性：直接使用；②低相关性：触发Web搜索（如Google）获取最新信息；③中等相关性：同时使用本地检索和Web搜索结果。CRAG的核心是纠错机制，确保生成有高质量知识支撑，特别适合需要最新信息的场景。"
+    },
+    {
+      "question_id": 11640336,
+      "uuid": "faf3dd7422454edcb921b010604001f0",
+      "type": 1,
+      "title": "以下哪种技术可以提升RAG在多语言场景下的检索质量？",
+      "content": "以下哪种技术可以提升RAG在多语言场景下的检索质量？",
+      "options": [
+        {
+          "id": 7511765,
+          "content": "只对英文查询有效，多语言不支持RAG"
+        },
+        {
+          "id": 7511766,
+          "content": "使用多语言embedding模型（如multilingual-e5、BGE-M3），或query翻译（将非英文query翻译为英文再检索英文知识库）"
+        },
+        {
+          "id": 7511767,
+          "content": "为每种语言训练独立的RAG系统"
+        },
+        {
+          "id": 7511768,
+          "content": "对所有语言使用相同的tokenizer"
+        }
+      ],
+      "correct_option_ids": [
+        7511766
+      ],
+      "correct_options": [
+        "使用多语言embedding模型（如multilingual-e5、BGE-M3），或query翻译（将非英文query翻译为英文再检索英文知识库）"
+      ],
+      "analysis": "多语言RAG方案：①跨语言embedding（如BGE-M3）：支持100+语言的统一嵌入空间，中文query可以检索英文文档（跨语言检索）；②Query&nbsp;Translation：将用户query翻译为知识库语言后检索，准确率依赖翻译质量；③多语言文档库：建立多语言版本的索引，按语言路由检索。BGE-M3的多语言检索（不同语言间的cross-lingual&nbsp;retrieval）精度在BEIR等基准上接近单语言专用模型。"
+    },
+    {
+      "question_id": 11640309,
+      "uuid": "985905d687484c818e0a98d68314cc3c",
+      "type": 1,
+      "title": "以下关于RAG系统中\"guardrails\"（护栏）的作用，描述正确的是？",
+      "content": "以下关于RAG系统中\"guardrails\"（护栏）的作用，描述正确的是？",
+      "options": [
+        {
+          "id": 7513421,
+          "content": "限制检索的最大文档数量"
+        },
+        {
+          "id": 7513422,
+          "content": "在input端过滤有害查询，在output端验证答案的事实性和安全性，防止RAG被滥用或输出有害内容"
+        },
+        {
+          "id": 7513423,
+          "content": "限制用户可以查询的文档范围（权限控制）"
+        },
+        {
+          "id": 7513424,
+          "content": "A和C都是guardrails的作用，B不是"
+        }
+      ],
+      "correct_option_ids": [
+        7513422
+      ],
+      "correct_options": [
+        "在input端过滤有害查询，在output端验证答案的事实性和安全性，防止RAG被滥用或输出有害内容"
+      ],
+      "analysis": "RAG系统的guardrails包括：①Input&nbsp;guardrails：检测越狱尝试、提示注入攻击（如通过恶意文档注入指令）、有害查询；②Output&nbsp;guardrails：验证答案的Faithfulness（是否有文档支撑）、检测PII信息泄露、过滤有害内容；③Access&nbsp;control：按用户权限限制检索范围。NeMo&nbsp;Guardrails、LlamaGuard等工具专门用于此目的。"
+    },
+    {
+      "question_id": 11640445,
+      "uuid": "2b8c18c9d62f487c982fb9088b35209e",
+      "type": 1,
+      "title": "以下哪种指标用于衡量RAG系统在没有ground truth的情况下，评估...",
+      "content": "以下哪种指标用于衡量RAG系统在没有ground&nbsp;truth的情况下，评估\"回答是否基于提供的上下文\"？",
+      "options": [
+        {
+          "id": 7510601,
+          "content": "BLEU分数"
+        },
+        {
+          "id": 7510602,
+          "content": "Faithfulness（RAGAS框架）"
+        },
+        {
+          "id": 7510603,
+          "content": "ROUGE-L"
+        },
+        {
+          "id": 7510604,
+          "content": "Perplexity"
+        }
+      ],
+      "correct_option_ids": [
+        7510602
+      ],
+      "correct_options": [
+        "Faithfulness（RAGAS框架）"
+      ],
+      "analysis": "RAGAS的Faithfulness不需要ground&nbsp;truth：它将答案分解为原子命题，用LLM逐一判断每个命题是否可以从提供的上下文中推导，命题级精度均值即为Faithfulness分数。这使得无需人工标注即可在开发阶段持续评估幻觉风险。"
+    },
+    {
+      "question_id": 11640345,
+      "uuid": "ae6d1dcbb380463f8788b27156450625",
+      "type": 1,
+      "title": "以下哪种RAG系统设计最适合处理用户的\"追问\"（Follow-up Que...",
+      "content": "以下哪种RAG系统设计最适合处理用户的\"追问\"（Follow-up&nbsp;Questions）场景？",
+      "options": [
+        {
+          "id": 7511701,
+          "content": "每次追问都独立处理，不考虑历史上下文"
+        },
+        {
+          "id": 7511702,
+          "content": "将对话历史纳入检索query的构造（如用LLM重写追问为独立的完整问题），确保检索能理解对话上下文"
+        },
+        {
+          "id": 7511703,
+          "content": "只允许用户提问一次，不支持追问"
+        },
+        {
+          "id": 7511704,
+          "content": "对所有历史消息都进行检索"
+        }
+      ],
+      "correct_option_ids": [
+        7511702
+      ],
+      "correct_options": [
+        "将对话历史纳入检索query的构造（如用LLM重写追问为独立的完整问题），确保检索能理解对话上下文"
+      ],
+      "analysis": "追问场景的挑战：用户问\"它的主要特点是什么？\"，\"它\"指代前文提到的技术，直接用这个query检索效果差。解决方案（Query&nbsp;Rewriting&nbsp;for&nbsp;Conversation）：用LLM将追问+历史上下文重写为完整独立的query：\"XXX技术的主要特点是什么？\"再检索。LangChain的ConversationalRetrievalChain、LlamaIndex的ContextChatEngine都实现了此功能，是对话RAG系统的必要组件。"
+    },
+    {
+      "question_id": 11640359,
+      "uuid": "55784340806e4c8d93d211acce096ad6",
+      "type": 1,
+      "title": "以下哪种方法最适合在RAG系统中处理\"用户隐私数据\"（如个人健康记录）的检索？",
+      "content": "以下哪种方法最适合在RAG系统中处理\"用户隐私数据\"（如个人健康记录）的检索？",
+      "options": [
+        {
+          "id": 7511587,
+          "content": "将所有用户数据存入同一向量索引"
+        },
+        {
+          "id": 7511589,
+          "content": "每个用户独立的加密向量索引，或使用同态加密（允许在加密数据上检索），确保用户数据隔离和隐私保护"
+        },
+        {
+          "id": 7511591,
+          "content": "对个人数据不做任何处理直接索引"
+        },
+        {
+          "id": 7511592,
+          "content": "禁止在RAG中使用个人数据"
+        }
+      ],
+      "correct_option_ids": [
+        7511589
+      ],
+      "correct_options": [
+        "每个用户独立的加密向量索引，或使用同态加密（允许在加密数据上检索），确保用户数据隔离和隐私保护"
+      ],
+      "analysis": "个人健康/金融数据的RAG隐私保护方案：①物理隔离：每个用户的文档存储在独立的向量索引实例中（最简单可靠）；②加密存储：向量加密存储，检索时解密（保护存储安全但不防止运行时泄露）；③同态加密（研究阶段）：在加密向量上直接计算相似度，理论上最安全；④访问控制：严格的API认证确保用户只能访问自己的索引；⑤数据最小化：不索引非必要的个人信息（只存储必要元素）。GDPR等法规要求对个人数据的处理有明确的数据主权保障。"
+    },
+    {
+      "question_id": 11640283,
+      "uuid": "3d8e528be74f4d42bcaaae9a404b54af",
+      "type": 1,
+      "title": "Contextual Compression（上下文压缩）在RAG中的作用...",
+      "content": "Contextual&nbsp;Compression（上下文压缩）在RAG中的作用是什么？",
+      "options": [
+        {
+          "id": 7513449,
+          "content": "压缩向量数据库中的存储文件"
+        },
+        {
+          "id": 7513450,
+          "content": "从检索到的大块文档中提取与query最相关的片段，减少噪声信息送入LLM"
+        },
+        {
+          "id": 7513452,
+          "content": "压缩用户query使其更简洁"
+        },
+        {
+          "id": 7513454,
+          "content": "对LLM生成的答案进行摘要压缩"
+        }
+      ],
+      "correct_option_ids": [
+        7513450
+      ],
+      "correct_options": [
+        "从检索到的大块文档中提取与query最相关的片段，减少噪声信息送入LLM"
+      ],
+      "analysis": "检索到的文档块可能包含大量与query无关的信息，将整块送入LLM会浪费上下文窗口并引入噪声。Contextual&nbsp;Compression通过LLM或extractive模型从文档块中提取与query直接相关的句子/段落，只将压缩后的精华内容送入最终生成阶段。LangChain的ContextualCompressionRetriever实现了此功能。"
+    },
+    {
+      "question_id": 11640292,
+      "uuid": "cba8a26be95545f7bb16b37d7361e0d0",
+      "type": 1,
+      "title": "以下关于多模态RAG（Multimodal RAG）的描述，正确的是？",
+      "content": "以下关于多模态RAG（Multimodal&nbsp;RAG）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513525,
+          "content": "多模态RAG只能处理文本和图片，不支持视频"
+        },
+        {
+          "id": 7513526,
+          "content": "多模态RAG使用多模态embedding模型（如CLIP）对文本和图片统一编码，支持跨模态检索（用文本查图片或用图片查文本）"
+        },
+        {
+          "id": 7513527,
+          "content": "多模态RAG需要将图片转换为文字才能检索"
+        },
+        {
+          "id": 7513528,
+          "content": "多模态RAG只能在GPT-4V等闭源模型上实现"
+        }
+      ],
+      "correct_option_ids": [
+        7513526
+      ],
+      "correct_options": [
+        "多模态RAG使用多模态embedding模型（如CLIP）对文本和图片统一编码，支持跨模态检索（用文本查图片或用图片查文本）"
+      ],
+      "analysis": "多模态RAG的关键是统一嵌入空间：CLIP（Contrastive&nbsp;Language-Image&nbsp;Pre-training）将文本和图片编码到同一向量空间，支持文-图跨模态检索。实践中还可以：对图片生成文字描述（caption）再用text&nbsp;embedding检索；或使用ColPali等直接对PDF页面图像进行多向量编码。多模态RAG适合产品手册（含图示）、医学影像报告等场景。"
+    },
+    {
+      "question_id": 11640398,
+      "uuid": "6793028ad2ee4974990066394a4319ce",
+      "type": 1,
+      "title": "以下关于Embedding模型的\"最大输入长度\"限制对RAG的影响，哪项描...",
+      "content": "以下关于Embedding模型的\"最大输入长度\"限制对RAG的影响，哪项描述正确？",
+      "options": [
+        {
+          "id": 7511145,
+          "content": "超过最大输入长度的内容会被截断，导致嵌入丢失信息"
+        },
+        {
+          "id": 7511146,
+          "content": "模型会自动扩展处理更长输入"
+        },
+        {
+          "id": 7511147,
+          "content": "超长输入会报错并终止程序"
+        },
+        {
+          "id": 7511148,
+          "content": "最大输入长度不影响检索质量"
+        }
+      ],
+      "correct_option_ids": [
+        7511145
+      ],
+      "correct_options": [
+        "超过最大输入长度的内容会被截断，导致嵌入丢失信息"
+      ],
+      "analysis": "大多数嵌入模型有最大输入限制（如BERT类模型512&nbsp;tokens，E5/BGE最多512-4096&nbsp;tokens）。分块大小必须小于此限制，否则超出部分被截断，导致嵌入只反映文档前半部分，严重影响检索精度。"
+    },
+    {
+      "question_id": 11640402,
+      "uuid": "194e8e35eb7240b8940a248399c09226",
+      "type": 1,
+      "title": "以下关于LlamaIndex和LangChain在RAG构建上的对比，哪项...",
+      "content": "以下关于LlamaIndex和LangChain在RAG构建上的对比，哪项描述较为准确？",
+      "options": [
+        {
+          "id": 7511100,
+          "content": "两者完全相同，可互换使用"
+        },
+        {
+          "id": 7511102,
+          "content": "LlamaIndex更专注于索引和检索优化，LangChain更专注于链式调用和Agent构建"
+        },
+        {
+          "id": 7511104,
+          "content": "LangChain不支持RAG功能"
+        },
+        {
+          "id": 7511107,
+          "content": "LlamaIndex不支持Agent功能"
+        }
+      ],
+      "correct_option_ids": [
+        7511102
+      ],
+      "correct_options": [
+        "LlamaIndex更专注于索引和检索优化，LangChain更专注于链式调用和Agent构建"
+      ],
+      "analysis": "LlamaIndex（原GPT&nbsp;Index）的核心是数据索引和检索增强（多种索引类型、查询引擎），对RAG有更深度的支持。LangChain是更通用的LLM应用框架，LCEL链式调用和Agent生态更丰富，两者也可结合使用。"
+    },
+    {
+      "question_id": 11640415,
+      "uuid": "ac98a401aa3a4af6995365c0c9d07021",
+      "type": 1,
+      "title": "在RAG评估中，\"Answer Relevancy\"（答案相关性）的计算方...",
+      "content": "在RAG评估中，\"Answer&nbsp;Relevancy\"（答案相关性）的计算方式是什么？",
+      "options": [
+        {
+          "id": 7510953,
+          "content": "人工打分1-5分"
+        },
+        {
+          "id": 7510954,
+          "content": "RAGAS用LLM从答案逆向生成多个问题，计算这些问题与原始问题的语义相似度"
+        },
+        {
+          "id": 7510955,
+          "content": "比较答案和参考答案的BLEU分数"
+        },
+        {
+          "id": 7510956,
+          "content": "计算答案长度与问题长度的比值"
+        }
+      ],
+      "correct_option_ids": [
+        7510954
+      ],
+      "correct_options": [
+        "RAGAS用LLM从答案逆向生成多个问题，计算这些问题与原始问题的语义相似度"
+      ],
+      "analysis": "RAGAS的Answer&nbsp;Relevancy：让LLM从生成的答案中逆向生成多个可能的问题，用嵌入模型计算这些问题与原始问题的余弦相似度均值。如果答案与问题高度相关，逆向生成的问题应与原始问题接近，否则说明答案偏题。"
+    },
+    {
+      "question_id": 11640308,
+      "uuid": "5c23477364544223906ea3c67f75a8cf",
+      "type": 1,
+      "title": "以下哪种分块策略对于法律合同文档的RAG效果最好？",
+      "content": "以下哪种分块策略对于法律合同文档的RAG效果最好？",
+      "options": [
+        {
+          "id": 7513429,
+          "content": "按固定token数均等分块（每256&nbsp;tokens）"
+        },
+        {
+          "id": 7513430,
+          "content": "按语义分块（结合句子边界和语义相似度），识别条款边界"
+        },
+        {
+          "id": 7513431,
+          "content": "按页面分块（每页一块）"
+        },
+        {
+          "id": 7513432,
+          "content": "不分块，整份合同作为一个向量"
+        }
+      ],
+      "correct_option_ids": [
+        7513430
+      ],
+      "correct_options": [
+        "按语义分块（结合句子边界和语义相似度），识别条款边界"
+      ],
+      "analysis": "法律合同有明确的条款结构（第X条：...,&nbsp;(a)...,&nbsp;(b)...），按固定大小随意截断会破坏条款完整性，导致检索时找到的是条款片段而非完整条款。最佳策略：结合句子边界和语义连续性分块，识别条款标题（\"第X条\"）作为分块分隔符，保证每块是完整条款或子条款。专门的法律NLP工具（如LexNLP）可辅助实现结构化分块。"
+    },
+    {
+      "question_id": 11640337,
+      "uuid": "8cd01759cfd94eaa8138916ea49e9b95",
+      "type": 1,
+      "title": "以下关于\"Online vs Offline RAG Pipeline\"（...",
+      "content": "以下关于\"Online&nbsp;vs&nbsp;Offline&nbsp;RAG&nbsp;Pipeline\"（在线vs离线RAG流水线）的区别，描述正确的是？",
+      "options": [
+        {
+          "id": 7511757,
+          "content": "在线RAG只在服务器运行，离线RAG在本地运行"
+        },
+        {
+          "id": 7511758,
+          "content": "离线Pipeline：文档处理、分块、embedding、索引构建（在请求前完成）；在线Pipeline：query处理、检索、生成（实时响应用户请求）"
+        },
+        {
+          "id": 7511759,
+          "content": "两者完全相同"
+        },
+        {
+          "id": 7511761,
+          "content": "离线Pipeline需要GPU，在线Pipeline只需CPU"
+        }
+      ],
+      "correct_option_ids": [
+        7511758
+      ],
+      "correct_options": [
+        "离线Pipeline：文档处理、分块、embedding、索引构建（在请求前完成）；在线Pipeline：query处理、检索、生成（实时响应用户请求）"
+      ],
+      "analysis": "RAG系统架构的两个关键阶段：离线（Indexing）Pipeline：通常是批处理任务（Batch&nbsp;Job），将原始文档转化为可检索的向量索引，可以异步运行，耗时不影响用户体验（可以数小时）。在线（Serving）Pipeline：实时响应用户查询，对延迟要求严格（&lt;1s），只执行轻量的query&nbsp;embedding&nbsp;+&nbsp;ANN检索&nbsp;+&nbsp;LLM生成。离线-在线的分离是RAG系统工程设计的基本原则。"
+    },
+    {
+      "question_id": 11640339,
+      "uuid": "f9d8f2bdca654b5a87bf7c4010ef96a0",
+      "type": 1,
+      "title": "以下哪种方法可以在生产环境中实现RAG系统的\"A/B测试\"？",
+      "content": "以下哪种方法可以在生产环境中实现RAG系统的\"A/B测试\"？",
+      "options": [
+        {
+          "id": 7511745,
+          "content": "每次部署新版本时完全替换旧版本"
+        },
+        {
+          "id": 7511746,
+          "content": "将用户请求按比例路由到不同RAG配置（不同embedding模型、chunk策略、top-k等），通过业务指标（点击率、用户满意度）比较效果"
+        },
+        {
+          "id": 7511747,
+          "content": "A/B测试不适用于RAG系统"
+        },
+        {
+          "id": 7511748,
+          "content": "只测试embedding模型的变化，其他组件不需要测试"
+        }
+      ],
+      "correct_option_ids": [
+        7511746
+      ],
+      "correct_options": [
+        "将用户请求按比例路由到不同RAG配置（不同embedding模型、chunk策略、top-k等），通过业务指标（点击率、用户满意度）比较效果"
+      ],
+      "analysis": "RAG系统的A/B测试框架：①流量分割：按用户ID哈希将流量路由到不同RAG配置；②指标收集：隐式反馈（用户是否点击引用链接）、显式反馈（满意度评分）、LLM自动评估（Faithfulness）；③统计显著性检验：确保效果差异真实可靠；④Rollout策略：新版本通过A/B测试后逐步放量（1%→10%→100%）。MLflow、W&B等工具支持RAG实验追踪和对比。"
+    },
+    {
+      "question_id": 11640370,
+      "uuid": "994962f7ce1745b3aff5d901665fdb42",
+      "type": 1,
+      "title": "在CRAG（Corrective RAG）中，当检索结果被评估为\"模糊\"（...",
+      "content": "在CRAG（Corrective&nbsp;RAG）中，当检索结果被评估为\"模糊\"（Ambiguous）时，会采取什么操作？",
+      "options": [
+        {
+          "id": 7511469,
+          "content": "直接使用检索结果"
+        },
+        {
+          "id": 7511470,
+          "content": "拒绝回答问题"
+        },
+        {
+          "id": 7511471,
+          "content": "触发网络搜索获取补充信息"
+        },
+        {
+          "id": 7511472,
+          "content": "增加检索数量"
+        }
+      ],
+      "correct_option_ids": [
+        7511471
+      ],
+      "correct_options": [
+        "触发网络搜索获取补充信息"
+      ],
+      "analysis": "CRAG引入轻量级检索评估器，将检索质量分为Correct/Incorrect/Ambiguous。当判断为Ambiguous时，除了精炼现有检索结果外，还会触发网络搜索（如Google）补充知识，然后将两者结合生成答案。"
+    },
+    {
+      "question_id": 11640260,
+      "uuid": "7ece021f6e824c5398c2f49939ec02bc",
+      "type": 1,
+      "title": "1.RAG（Retrieval-Augmented Generation）...",
+      "content": "1.RAG（Retrieval-Augmented&nbsp;Generation）相比纯参数记忆的LLM，核心优势是什么？",
+      "options": [
+        {
+          "id": 7513260,
+          "content": "RAG的推理速度更快"
+        },
+        {
+          "id": 7513262,
+          "content": "RAG可以访问外部知识库，减少幻觉，支持知识动态更新，不受训练数据时间截止限制"
+        },
+        {
+          "id": 7513263,
+          "content": "RAG不需要GPU，可以在CPU上运行"
+        },
+        {
+          "id": 7513264,
+          "content": "RAG的模型参数量更少"
+        }
+      ],
+      "correct_option_ids": [
+        7513262
+      ],
+      "correct_options": [
+        "RAG可以访问外部知识库，减少幻觉，支持知识动态更新，不受训练数据时间截止限制"
+      ],
+      "analysis": "纯LLM的知识固化在参数中，存在幻觉（编造事实）和知识截止问题。RAG通过检索外部文档库提供事实依据，模型基于检索结果生成，可追溯来源、降低幻觉。知识更新只需更新文档库，无需重训练模型，特别适合需要实时知识的场景。"
+    },
+    {
+      "question_id": 11640261,
+      "uuid": "4ddcb2cc218442c1993f319deda9b9e7",
+      "type": 1,
+      "title": "RAG系统的基本流程（Naive RAG）包含哪三个阶段？",
+      "content": "RAG系统的基本流程（Naive&nbsp;RAG）包含哪三个阶段？",
+      "options": [
+        {
+          "id": 7513269,
+          "content": "训练、验证、部署"
+        },
+        {
+          "id": 7513270,
+          "content": "索引（Indexing）、检索（Retrieval）、生成（Generation）"
+        },
+        {
+          "id": 7513271,
+          "content": "分词、编码、解码"
+        },
+        {
+          "id": 7513272,
+          "content": "爬取、清洗、推理"
+        }
+      ],
+      "correct_option_ids": [
+        7513270
+      ],
+      "correct_options": [
+        "索引（Indexing）、检索（Retrieval）、生成（Generation）"
+      ],
+      "analysis": "Naive&nbsp;RAG流程：①Indexing：对文档进行分块（chunking）、向量化（embedding），存入向量数据库；②Retrieval：将用户query向量化，在数据库中检索最相似的文档块（top-k）；③Generation：将检索到的文档块与query拼接成prompt，送入LLM生成答案。这是RAG的基础架构，后续Advanced/Modular&nbsp;RAG在此基础上扩展。"
+    },
+    {
+      "question_id": 11640450,
+      "uuid": "6b086708c2bc4fc0a0339854701cb0b7",
+      "type": 1,
+      "title": "以下哪种技术可以将RAG的回答质量从\"基础\"提升到\"专家级\"？",
+      "content": "以下哪种技术可以将RAG的回答质量从\"基础\"提升到\"专家级\"？",
+      "options": [
+        {
+          "id": 7510501,
+          "content": "只增加文档数量"
+        },
+        {
+          "id": 7510503,
+          "content": "Fine-tuning&nbsp;RAG（对LLM进行领域微调）+&nbsp;高质量文档库&nbsp;+&nbsp;迭代评估优化"
+        },
+        {
+          "id": 7510505,
+          "content": "使用更多的embedding维度"
+        },
+        {
+          "id": 7510508,
+          "content": "减少生成token数量"
+        }
+      ],
+      "correct_option_ids": [
+        7510503
+      ],
+      "correct_options": [
+        "Fine-tuning&nbsp;RAG（对LLM进行领域微调）+&nbsp;高质量文档库&nbsp;+&nbsp;迭代评估优化"
+      ],
+      "analysis": "专家级RAG需要多层次优化：1)&nbsp;领域微调LLM（理解专业概念和推理模式）；2)&nbsp;高质量精选文档库（权威来源、定期更新）；3)&nbsp;领域优化嵌入模型；4)&nbsp;基于真实用户反馈的持续迭代；5)&nbsp;专家审核关键领域的回答质量。"
+    },
+    {
+      "question_id": 11640416,
+      "uuid": "a6288f0abf5c49eaa89d8a3167867e11",
+      "type": 1,
+      "title": "以下哪种分块策略在保留文档语义的同时，还支持高效的父文档快速访问？",
+      "content": "以下哪种分块策略在保留文档语义的同时，还支持高效的父文档快速访问？",
+      "options": [
+        {
+          "id": 7510941,
+          "content": "随机分块"
+        },
+        {
+          "id": 7510942,
+          "content": "递归字符分块（LangChain&nbsp;RecursiveCharacterTextSplitter）+&nbsp;父文档索引"
+        },
+        {
+          "id": 7510943,
+          "content": "只按段落分块"
+        },
+        {
+          "id": 7510944,
+          "content": "按固定字节分块"
+        }
+      ],
+      "correct_option_ids": [
+        7510942
+      ],
+      "correct_options": [
+        "递归字符分块（LangChain&nbsp;RecursiveCharacterTextSplitter）+&nbsp;父文档索引"
+      ],
+      "analysis": "LangChain的RecursiveCharacterTextSplitter按优先级使用分隔符（\\n\\n,&nbsp;\\n,&nbsp;空格,&nbsp;字符）递归分块，尽量在语义边界处分割。配合Parent&nbsp;Document&nbsp;Retriever，子块用于检索，子块ID指向父块，检索时返回父块完整内容。"
+    },
+    {
+      "question_id": 11640375,
+      "uuid": "2601cb55b03c41cca4be670828c177f6",
+      "type": 1,
+      "title": "在Sentence Window Retrieval策略中，其与普通分块的...",
+      "content": "在Sentence&nbsp;Window&nbsp;Retrieval策略中，其与普通分块的区别是？",
+      "options": [
+        {
+          "id": 7511409,
+          "content": "对每个句子单独建立索引，检索时返回周围多个句子的窗口"
+        },
+        {
+          "id": 7511410,
+          "content": "按固定窗口大小滑动分块"
+        },
+        {
+          "id": 7511411,
+          "content": "使用句子嵌入代替段落嵌入"
+        },
+        {
+          "id": 7511412,
+          "content": "只索引关键句子"
+        }
+      ],
+      "correct_option_ids": [
+        7511409
+      ],
+      "correct_options": [
+        "对每个句子单独建立索引，检索时返回周围多个句子的窗口"
+      ],
+      "analysis": "Sentence&nbsp;Window策略对每个句子建立索引（细粒度），但检索到某句子时，返回其前后各n句（window）作为上下文给LLM，结合了细粒度检索精度和足够上下文信息，是LlamaIndex的核心策略之一。"
+    },
+    {
+      "question_id": 11640440,
+      "uuid": "f32845f6a6dc4f3bb95f7dae7175bb91",
+      "type": 1,
+      "title": "在以下RAG场景中，哪种情况会导致\"上下文污染\"（Context Cont...",
+      "content": "在以下RAG场景中，哪种情况会导致\"上下文污染\"（Context&nbsp;Contamination）？",
+      "options": [
+        {
+          "id": 7510658,
+          "content": "检索到过多相关文档"
+        },
+        {
+          "id": 7510660,
+          "content": "检索到的文档包含矛盾信息，使LLM混乱并生成错误答案"
+        },
+        {
+          "id": 7510662,
+          "content": "上下文太短"
+        },
+        {
+          "id": 7510665,
+          "content": "向量检索精度太高"
+        }
+      ],
+      "correct_option_ids": [
+        7510660
+      ],
+      "correct_options": [
+        "检索到的文档包含矛盾信息，使LLM混乱并生成错误答案"
+      ],
+      "analysis": "上下文污染：当RAG将相互矛盾的文档（如不同时期对同一问题的不同描述）都塞入上下文时，LLM可能：1)&nbsp;错误综合矛盾信息；2)&nbsp;选择错误的陈述；3)&nbsp;降低输出置信度。解决：矛盾检测+时间戳排序（优先新文档）+矛盾来源标注。"
+    },
+    {
+      "question_id": 11640446,
+      "uuid": "18269284581349a4a0f2dd88a3897b6e",
+      "type": 1,
+      "title": "以下哪种RAG架构可以有效处理\"图片中的文字\"查询（如产品说明书截图）？",
+      "content": "以下哪种RAG架构可以有效处理\"图片中的文字\"查询（如产品说明书截图）？",
+      "options": [
+        {
+          "id": 7510589,
+          "content": "只能处理纯文本RAG"
+        },
+        {
+          "id": 7510590,
+          "content": "多模态RAG（OCR提取图片文字&nbsp;+&nbsp;视觉嵌入模型&nbsp;+&nbsp;混合检索）"
+        },
+        {
+          "id": 7510591,
+          "content": "使用更大的语言模型"
+        },
+        {
+          "id": 7510594,
+          "content": "增大chunk大小"
+        }
+      ],
+      "correct_option_ids": [
+        7510590
+      ],
+      "correct_options": [
+        "多模态RAG（OCR提取图片文字&nbsp;+&nbsp;视觉嵌入模型&nbsp;+&nbsp;混合检索）"
+      ],
+      "analysis": "多模态RAG处理图片文字：1)&nbsp;OCR（Tesseract/Azure&nbsp;OCR）提取图片中的文字；2)&nbsp;视觉嵌入模型（CLIP/Nomic&nbsp;Vision）生成图片的语义向量；3)&nbsp;混合存储（图片向量+OCR文字向量）；4)&nbsp;多路检索后融合。对产品手册、技术图纸等场景效果显著。"
+    },
+    {
+      "question_id": 11640285,
+      "uuid": "77784919d1844f558b4809a901b92757",
+      "type": 1,
+      "title": "以下哪种embedding模型最适合短句子查询与长文档的非对称检索？",
+      "content": "以下哪种embedding模型最适合短句子查询与长文档的非对称检索？",
+      "options": [
+        {
+          "id": 7513465,
+          "content": "对称embedding模型（query和doc用相同方式编码）"
+        },
+        {
+          "id": 7513466,
+          "content": "专为非对称检索训练的bi-encoder（如bge-large-en，支持query和passage的不同instruction）"
+        },
+        {
+          "id": 7513467,
+          "content": "Cross-encoder（reranker）模型"
+        },
+        {
+          "id": 7513469,
+          "content": "词袋（Bag-of-Words）模型"
+        }
+      ],
+      "correct_option_ids": [
+        7513466
+      ],
+      "correct_options": [
+        "专为非对称检索训练的bi-encoder（如bge-large-en，支持query和passage的不同instruction）"
+      ],
+      "analysis": "非对称检索（asymmetric&nbsp;retrieval）：短query&nbsp;vs&nbsp;长document，两者语义密度差异大。专门为此训练的bi-encoder（如bge-large-en-v1.5使用\"Represent&nbsp;this&nbsp;sentence&nbsp;for&nbsp;searching&nbsp;relevant&nbsp;passages:&nbsp;{query}\"指令）在BEIR等非对称检索基准上显著优于普通embedding。E5、GTE等模型也通过指令区分query和passage编码。"
+    },
+    {
+      "question_id": 11640297,
+      "uuid": "82d019e001664bf6acadb35b13ff7dd7",
+      "type": 1,
+      "title": "以下关于ColBERT（Late Interaction）检索模型的描述，...",
+      "content": "以下关于ColBERT（Late&nbsp;Interaction）检索模型的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513513,
+          "content": "ColBERT是一个生成式语言模型"
+        },
+        {
+          "id": 7513514,
+          "content": "ColBERT对query和document分别生成token级向量，通过MaxSim操作计算相关性，精度接近cross-encoder但速度远快"
+        },
+        {
+          "id": 7513515,
+          "content": "ColBERT只支持英文检索"
+        },
+        {
+          "id": 7513516,
+          "content": "ColBERT是BM25的神经网络改进版"
+        }
+      ],
+      "correct_option_ids": [
+        7513514
+      ],
+      "correct_options": [
+        "ColBERT对query和document分别生成token级向量，通过MaxSim操作计算相关性，精度接近cross-encoder但速度远快"
+      ],
+      "analysis": "ColBERT（Contextualized&nbsp;Late&nbsp;Interaction&nbsp;over&nbsp;BERT）：query和document分别编码为token级向量矩阵（而非单一向量）。相关性分数&nbsp;=&nbsp;Σ&nbsp;max_{d∈D}(q·d)（每个query&nbsp;token找最相似的doc&nbsp;token，求和）。精度接近cross-encoder（token级对比）但可预计算document向量（类似bi-encoder速度），是精度-效率的优秀权衡。RAGatouille库支持ColBERT的RAG集成。"
+    },
+    {
+      "question_id": 11640427,
+      "uuid": "7d47cd3e4dba4272b732f496aecd4d75",
+      "type": 1,
+      "title": "以下哪种技术在RAG的\"文档更新\"场景中，可以只重新索引变化的部分而非整个文档？",
+      "content": "以下哪种技术在RAG的\"文档更新\"场景中，可以只重新索引变化的部分而非整个文档？",
+      "options": [
+        {
+          "id": 7510814,
+          "content": "全量重新索引"
+        },
+        {
+          "id": 7510816,
+          "content": "差异化增量索引（Diff-based&nbsp;Incremental&nbsp;Indexing）"
+        },
+        {
+          "id": 7510818,
+          "content": "删除整个文档后重新添加"
+        },
+        {
+          "id": 7510820,
+          "content": "不更新，让旧索引逐渐过期"
+        }
+      ],
+      "correct_option_ids": [
+        7510816
+      ],
+      "correct_options": [
+        "差异化增量索引（Diff-based&nbsp;Incremental&nbsp;Indexing）"
+      ],
+      "analysis": "差异化增量索引：1)&nbsp;检测文档变化（基于哈希值或版本号）；2)&nbsp;只对变化的章节/段落重新分块和嵌入；3)&nbsp;删除旧的对应向量并插入新向量。相比全量重建，增量更新速度快10-100倍，适合频繁小规模更新的场景。"
+    },
+    {
+      "question_id": 11640381,
+      "uuid": "c056478f536b4df285e2a6a86ee3a357",
+      "type": 1,
+      "title": "在RAG评估中，以下哪种方法可以在没有人工标注数据的情况下评估系统质量？",
+      "content": "在RAG评估中，以下哪种方法可以在没有人工标注数据的情况下评估系统质量？",
+      "options": [
+        {
+          "id": 7511337,
+          "content": "人工逐条评审"
+        },
+        {
+          "id": 7511338,
+          "content": "使用LLM-as-Judge（LLM作为评判者）自动评估"
+        },
+        {
+          "id": 7511340,
+          "content": "随机抽样对比"
+        },
+        {
+          "id": 7511342,
+          "content": "只评估检索阶段"
+        }
+      ],
+      "correct_option_ids": [
+        7511338
+      ],
+      "correct_options": [
+        "使用LLM-as-Judge（LLM作为评判者）自动评估"
+      ],
+      "analysis": "LLM-as-Judge使用更强的模型（如GPT-4）评估RAG输出的相关性、忠实度等维度，可大规模自动化评估而无需人工标注。RAGAS、TruLens等框架都支持这种评估方式，Meta研究表明与人工评估高度相关。"
+    },
+    {
+      "question_id": 11640290,
+      "uuid": "f26ff30ec54847429ce5a01bd49c7337",
+      "type": 1,
+      "title": "在RAG评估中，\"上下文精确率\"（Context Precision）和\"...",
+      "content": "在RAG评估中，\"上下文精确率\"（Context&nbsp;Precision）和\"上下文召回率\"（Context&nbsp;Recall）分别衡量什么？",
+      "options": [
+        {
+          "id": 7513509,
+          "content": "Precision衡量检索速度，Recall衡量检索文档数量"
+        },
+        {
+          "id": 7513510,
+          "content": "Precision衡量检索结果中相关文档的比例，Recall衡量所有相关文档中被检索到的比例"
+        },
+        {
+          "id": 7513511,
+          "content": "两者都衡量生成答案的质量"
+        },
+        {
+          "id": 7513512,
+          "content": "Precision衡量query相关性，Recall衡量文档覆盖率"
+        }
+      ],
+      "correct_option_ids": [
+        7513510
+      ],
+      "correct_options": [
+        "Precision衡量检索结果中相关文档的比例，Recall衡量所有相关文档中被检索到的比例"
+      ],
+      "analysis": "Context&nbsp;Precision&nbsp;=&nbsp;相关文档数/检索文档总数（精确率），高Precision意味着检索结果\"准\"，噪声少；Context&nbsp;Recall&nbsp;=&nbsp;被检索到的相关文档数/所有相关文档总数（召回率），高Recall意味着\"全\"，关键信息不遗漏。两者往往相互制约（top-k越大Recall越高但Precision越低），需要结合具体应用场景权衡。"
+    },
+    {
+      "question_id": 11640371,
+      "uuid": "1ce617630ca443a8b71165ef3341adc4",
+      "type": 1,
+      "title": "以下关于FAISS（Facebook AI Similarity Sear...",
+      "content": "以下关于FAISS（Facebook&nbsp;AI&nbsp;Similarity&nbsp;Search）的IndexIVFFlat索引，哪项描述正确？",
+      "options": [
+        {
+          "id": 7511449,
+          "content": "是精确最近邻搜索，无近似误差"
+        },
+        {
+          "id": 7511451,
+          "content": "通过聚类将向量分组，只搜索query附近的cluster，以精度换速度"
+        },
+        {
+          "id": 7511453,
+          "content": "需要GPU才能运行"
+        },
+        {
+          "id": 7511456,
+          "content": "不支持超过1M个向量"
+        }
+      ],
+      "correct_option_ids": [
+        7511451
+      ],
+      "correct_options": [
+        "通过聚类将向量分组，只搜索query附近的cluster，以精度换速度"
+      ],
+      "analysis": "IndexIVFFlat先用K-means将向量聚成nlist个cluster，查询时只搜索最近的nprobe个cluster（而非全部）。nprobe越大精度越高但越慢。需要预先训练（调用index.train()），适合大规模近似搜索。"
+    },
+    {
+      "question_id": 11640322,
+      "uuid": "dc7239b9844f4230a30499cffb906e68",
+      "type": 1,
+      "title": "以下关于\"Semantic Chunking\"（语义分块）的实现方法，描述...",
+      "content": "以下关于\"Semantic&nbsp;Chunking\"（语义分块）的实现方法，描述正确的是？",
+      "options": [
+        {
+          "id": 7513321,
+          "content": "按照固定字符数分块"
+        },
+        {
+          "id": 7513322,
+          "content": "计算相邻句子的embedding相似度，当相似度骤降时作为分块边界，确保同一块内语义连贯"
+        },
+        {
+          "id": 7513323,
+          "content": "只按标点符号分块"
+        },
+        {
+          "id": 7513324,
+          "content": "随机选择分块边界"
+        }
+      ],
+      "correct_option_ids": [
+        7513322
+      ],
+      "correct_options": [
+        "计算相邻句子的embedding相似度，当相似度骤降时作为分块边界，确保同一块内语义连贯"
+      ],
+      "analysis": "语义分块（如LlamaIndex的SemanticSplitterNodeParser）流程：①将文档分割为句子；②计算相邻句子的embedding余弦相似度；③当相似度低于阈值（语义转换点）时作为分块边界；④合并临近句子为语义连贯的chunk。优点：避免在话题中间切割，确保每块语义完整。缺点：需要对所有句子做embedding（索引时间更长），且阈值选择敏感。适合话题多样的长文档。"
+    },
+    {
+      "question_id": 11640317,
+      "uuid": "4d84a79db5b342c8b1944d243e65b6f7",
+      "type": 1,
+      "title": "以下哪种方法可以解决RAG中\"文档版本冲突\"（同一主题存在多个版本文档，内...",
+      "content": "以下哪种方法可以解决RAG中\"文档版本冲突\"（同一主题存在多个版本文档，内容相互矛盾）问题？",
+      "options": [
+        {
+          "id": 7513357,
+          "content": "只保留最新版本的文档"
+        },
+        {
+          "id": 7513358,
+          "content": "在文档元数据中记录版本和日期，检索后由LLM判断矛盾并以最新版本为准，或在prompt中明确告知文档版本信息"
+        },
+        {
+          "id": 7513359,
+          "content": "将所有版本文档合并为一个大文档"
+        },
+        {
+          "id": 7513360,
+          "content": "随机选择一个版本"
+        }
+      ],
+      "correct_option_ids": [
+        7513358
+      ],
+      "correct_options": [
+        "在文档元数据中记录版本和日期，检索后由LLM判断矛盾并以最新版本为准，或在prompt中明确告知文档版本信息"
+      ],
+      "analysis": "文档版本冲突的处理策略：①元数据管理：为每个文档块记录创建时间、版本号、有效期；②时间过滤：检索时过滤过期文档（created_at&nbsp;&gt;&nbsp;cutoff_date）；③版本感知生成：在prompt中注入\"文档A（2024-01）和文档B（2023-06）内容不一致，请以最新版本为准\"；④冲突检测：在检索后比较召回文档的矛盾，提示用户存在冲突。这是企业知识库管理的常见工程问题。"
+    },
+    {
+      "question_id": 11640396,
+      "uuid": "e4fe52a8138f498ea4212f3a3d6842c3",
+      "type": 1,
+      "title": "以下关于Nano-GraphRAG的描述，哪项正确？",
+      "content": "以下关于Nano-GraphRAG的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511169,
+          "content": "只能处理小型文档集（&lt;1000文档）"
+        },
+        {
+          "id": 7511170,
+          "content": "是Microsoft&nbsp;GraphRAG的轻量级实现，适合本地/私有部署"
+        },
+        {
+          "id": 7511171,
+          "content": "不支持中文处理"
+        },
+        {
+          "id": 7511172,
+          "content": "需要专用图数据库"
+        }
+      ],
+      "correct_option_ids": [
+        7511170
+      ],
+      "correct_options": [
+        "是Microsoft&nbsp;GraphRAG的轻量级实现，适合本地/私有部署"
+      ],
+      "analysis": "Nano-GraphRAG是开源社区对Microsoft&nbsp;GraphRAG的精简实现，去除了对Azure依赖，支持本地LLM和私有部署，代码量更小且易于定制。适合企业私有化部署和研究场景，支持包括中文在内的多语言。"
+    },
+    {
+      "question_id": 11640436,
+      "uuid": "1b6f55dd715a4264962a4a5bbdfe4794",
+      "type": 1,
+      "title": "在以下RAG日志分析中，哪种信号最能说明检索器存在质量问题？",
+      "content": "在以下RAG日志分析中，哪种信号最能说明检索器存在质量问题？",
+      "options": [
+        {
+          "id": 7510705,
+          "content": "检索延迟偏高（&gt;500ms）"
+        },
+        {
+          "id": 7510706,
+          "content": "Faithfulness分数高但Answer&nbsp;Relevancy分数低"
+        },
+        {
+          "id": 7510707,
+          "content": "检索到的文档数量多于设定的top-k"
+        },
+        {
+          "id": 7510708,
+          "content": "LLM回答的token数量过多"
+        }
+      ],
+      "correct_option_ids": [
+        7510706
+      ],
+      "correct_options": [
+        "Faithfulness分数高但Answer&nbsp;Relevancy分数低"
+      ],
+      "analysis": "Faithfulness高说明LLM诚实地基于检索文档回答，但Answer&nbsp;Relevancy低说明答案与问题不相关——这表明检索到的文档虽然被使用了，但与问题本身不相关。根本原因是检索器召回了错误的文档（检索质量问题）。"
+    },
+    {
+      "question_id": 11640273,
+      "uuid": "8de6150fb01649ff852823473348c8e9",
+      "type": 1,
+      "title": "在RAG中，\"上下文相关性\"（Context Relevance）低的原因...",
+      "content": "在RAG中，\"上下文相关性\"（Context&nbsp;Relevance）低的原因通常是什么？",
+      "options": [
+        {
+          "id": 7513369,
+          "content": "embedding模型质量太差"
+        },
+        {
+          "id": 7513370,
+          "content": "检索到的文档与query话题相关但不包含回答问题所需的具体信息（话题相关但语义不精确）"
+        },
+        {
+          "id": 7513371,
+          "content": "向量数据库索引损坏"
+        },
+        {
+          "id": 7513372,
+          "content": "chunk_size太大导致单块内容太多"
+        }
+      ],
+      "correct_option_ids": [
+        7513370
+      ],
+      "correct_options": [
+        "检索到的文档与query话题相关但不包含回答问题所需的具体信息（话题相关但语义不精确）"
+      ],
+      "analysis": "Context&nbsp;Relevance低的典型原因：①检索方法过于关注表面词汇（BM25的局限）；②embedding模型对特定领域语义理解不足；③chunk粒度不当（太大时单块含多个话题，相关性被\"稀释\"）；④query表述与文档风格差异大。解决方案：混合检索、reranker、query改写、领域微调embedding模型等。"
+    },
+    {
+      "question_id": 11640270,
+      "uuid": "85a0783463ba4ca598bff238119be3af",
+      "type": 1,
+      "title": "父子块检索（Parent-Child Chunking）的核心优势是什么？",
+      "content": "父子块检索（Parent-Child&nbsp;Chunking）的核心优势是什么？",
+      "options": [
+        {
+          "id": 7513341,
+          "content": "减少了向量数据库的存储空间"
+        },
+        {
+          "id": 7513343,
+          "content": "小chunk用于精确检索，检索命中后返回其父块（大块），生成时获得更完整的上下文"
+        },
+        {
+          "id": 7513345,
+          "content": "父块和子块使用不同的embedding模型"
+        },
+        {
+          "id": 7513347,
+          "content": "通过层次结构加速检索速度"
+        }
+      ],
+      "correct_option_ids": [
+        7513343
+      ],
+      "correct_options": [
+        "小chunk用于精确检索，检索命中后返回其父块（大块），生成时获得更完整的上下文"
+      ],
+      "analysis": "父子块策略解决了检索精度和上下文完整性的矛盾：将文档分为小子块（如128&nbsp;tokens，用于embedding和检索，语义聚焦）和大父块（如512&nbsp;tokens，包含子块的完整上下文）。检索时用小块向量搜索（精度高），生成时返回对应的大块（信息完整）。LlamaIndex称之为\"Small-to-Big&nbsp;Retrieval\"，是RAG的实用优化技术。"
+    },
+    {
+      "question_id": 11640278,
+      "uuid": "76181dcc8d3e4ab8a3e6f6631d25865a",
+      "type": 1,
+      "title": "向量数据库Milvus和FAISS的主要区别是什么？",
+      "content": "向量数据库Milvus和FAISS的主要区别是什么？",
+      "options": [
+        {
+          "id": 7513409,
+          "content": "FAISS支持分布式部署，Milvus不支持"
+        },
+        {
+          "id": 7513410,
+          "content": "FAISS是轻量级向量搜索库（单机，无持久化），Milvus是完整的向量数据库系统（分布式、持久化、支持CRUD）"
+        },
+        {
+          "id": 7513411,
+          "content": "两者功能完全相同，只是实现语言不同"
+        },
+        {
+          "id": 7513412,
+          "content": "Milvus只支持余弦相似度，FAISS支持更多距离度量"
+        }
+      ],
+      "correct_option_ids": [
+        7513410
+      ],
+      "correct_options": [
+        "FAISS是轻量级向量搜索库（单机，无持久化），Milvus是完整的向量数据库系统（分布式、持久化、支持CRUD）"
+      ],
+      "analysis": "FAISS（Facebook&nbsp;AI）是纯向量搜索库，不提供持久化存储、数据管理或分布式能力，适合研究和嵌入式场景。Milvus是企业级向量数据库，支持分布式部署、持久化、实时插入/删除/更新、多种索引（HNSW/IVF/FLAT）、标量过滤、备份恢复等，适合生产环境。Chroma/Qdrant/Weaviate同属完整向量数据库类别。"
+    },
+    {
+      "question_id": 11640383,
+      "uuid": "fe0a5763d3cb43128391f58d3fa1ef0a",
+      "type": 1,
+      "title": "在RAG系统的去重处理中，MMR（Maximal Marginal Rel...",
+      "content": "在RAG系统的去重处理中，MMR（Maximal&nbsp;Marginal&nbsp;Relevance）算法的作用是？",
+      "options": [
+        {
+          "id": 7511317,
+          "content": "找出检索结果中的重复文档并删除"
+        },
+        {
+          "id": 7511318,
+          "content": "在相关性和多样性间取得平衡，避免返回内容重复的文档"
+        },
+        {
+          "id": 7511319,
+          "content": "对检索结果按时间排序"
+        },
+        {
+          "id": 7511320,
+          "content": "合并来自不同数据源的结果"
+        }
+      ],
+      "correct_option_ids": [
+        7511318
+      ],
+      "correct_options": [
+        "在相关性和多样性间取得平衡，避免返回内容重复的文档"
+      ],
+      "analysis": "MMR在选择下一个要返回的文档时，同时考虑与查询的相关性和与已选文档的差异性，通过参数λ控制平衡。目标是获取相关但不重复的文档集合，避免返回多个表达相同信息的文档块。"
+    },
+    {
+      "question_id": 11640414,
+      "uuid": "d1d166e69cee4b6a9d4e287520c13a1e",
+      "type": 1,
+      "title": "以下哪种方法可以在RAG中有效处理用户的\"多义词\"查询（同一词有多种含义）？",
+      "content": "以下哪种方法可以在RAG中有效处理用户的\"多义词\"查询（同一词有多种含义）？",
+      "options": [
+        {
+          "id": 7510965,
+          "content": "随机选择一种含义"
+        },
+        {
+          "id": 7510966,
+          "content": "查询澄清（通过反问或上下文消歧）+&nbsp;多含义并行检索"
+        },
+        {
+          "id": 7510967,
+          "content": "只检索最常见含义"
+        },
+        {
+          "id": 7510968,
+          "content": "使用关键词检索替代语义检索"
+        }
+      ],
+      "correct_option_ids": [
+        7510966
+      ],
+      "correct_options": [
+        "查询澄清（通过反问或上下文消歧）+&nbsp;多含义并行检索"
+      ],
+      "analysis": "多义词处理：1)&nbsp;查询澄清（\"您指的是苹果手机还是苹果公司？\"）；2)&nbsp;上下文利用（根据对话历史推断意图）；3)&nbsp;并行检索多种含义后用Reranker或LLM判断最相关结果。消歧的准确性直接影响检索相关性。"
+    },
+    {
+      "question_id": 11640358,
+      "uuid": "2025b739b3894374ae92e6b0f9ac08bf",
+      "type": 1,
+      "title": "以下关于\"Speculative RAG\"的描述，正确的是？",
+      "content": "以下关于\"Speculative&nbsp;RAG\"的描述，正确的是？",
+      "options": [
+        {
+          "id": 7511597,
+          "content": "Speculative&nbsp;RAG使用Speculative&nbsp;Decoding加速生成"
+        },
+        {
+          "id": 7511598,
+          "content": "用小型专家模型快速生成多个RAG草稿答案，再用大型通用模型选择和精化最佳答案，减少大模型的计算量"
+        },
+        {
+          "id": 7511600,
+          "content": "Speculative&nbsp;RAG不使用检索步骤"
+        },
+        {
+          "id": 7511602,
+          "content": "Speculative&nbsp;RAG只适用于代码生成"
+        }
+      ],
+      "correct_option_ids": [
+        7511598
+      ],
+      "correct_options": [
+        "用小型专家模型快速生成多个RAG草稿答案，再用大型通用模型选择和精化最佳答案，减少大模型的计算量"
+      ],
+      "analysis": "Speculative&nbsp;RAG（Google&nbsp;DeepMind,&nbsp;2024）：①用小型专家RAG生成器（7B级）对多组检索文档分别生成多个草稿答案；②大型通用LLM（70B+）从草稿中选择最佳答案并精化。优势：小模型生成快速多样，大模型只做选择（而非从零生成），大幅减少大模型的生成token数。实验表明在TriviaQA等任务上性能媲美完整大模型RAG，但延迟降低约50%。"
+    },
+    {
+      "question_id": 11640303,
+      "uuid": "3b1e01d7239044318c2e55629a7d31ff",
+      "type": 1,
+      "title": "以下哪种场景最不适合使用RAG？",
+      "content": "以下哪种场景最不适合使用RAG？",
+      "options": [
+        {
+          "id": 7513468,
+          "content": "企业内部知识库问答（文档频繁更新）"
+        },
+        {
+          "id": 7513470,
+          "content": "客服机器人（需要基于产品文档回答问题）"
+        },
+        {
+          "id": 7513471,
+          "content": "基础数学计算（如\"2+2等于几\"）"
+        },
+        {
+          "id": 7513472,
+          "content": "技术文档检索（代码示例、API文档）"
+        }
+      ],
+      "correct_option_ids": [
+        7513471
+      ],
+      "correct_options": [
+        "基础数学计算（如\"2+2等于几\"）"
+      ],
+      "analysis": "基础数学计算（加减乘除、逻辑推理等）是模型的参数化知识，不需要外部文档支撑，添加检索步骤反而增加延迟和出错风险（检索到不相关文档可能误导模型）。RAG最适合：需要最新/私有知识、答案可从文档中找到、需要信息溯源的场景。纯推理任务（数学、逻辑、代码生成）不是RAG的适用场景。"
+    },
+    {
+      "question_id": 11640340,
+      "uuid": "e126ec3ed243496582ad795442b96447",
+      "type": 1,
+      "title": "以下关于\"Chunking Overlap\"（分块重叠）的作用，描述正确的是？",
+      "content": "以下关于\"Chunking&nbsp;Overlap\"（分块重叠）的作用，描述正确的是？",
+      "options": [
+        {
+          "id": 7511737,
+          "content": "分块重叠会增加索引大小，应完全避免"
+        },
+        {
+          "id": 7511738,
+          "content": "相邻分块共享一定数量的token（如50-100&nbsp;tokens重叠），防止关键信息恰好在分块边界处被截断，提升边界区域的检索召回"
+        },
+        {
+          "id": 7511739,
+          "content": "重叠越大越好，100%重叠效果最佳"
+        },
+        {
+          "id": 7511740,
+          "content": "分块重叠只在稀疏检索中有效"
+        }
+      ],
+      "correct_option_ids": [
+        7511738
+      ],
+      "correct_options": [
+        "相邻分块共享一定数量的token（如50-100&nbsp;tokens重叠），防止关键信息恰好在分块边界处被截断，提升边界区域的检索召回"
+      ],
+      "analysis": "Chunk&nbsp;overlap（分块重叠）是防止\"边界信息丢失\"的重要技术：若关键句子恰好跨越两个chunk的边界，两个chunk都会包含这句话的一部分，单独看都不完整。加入重叠（如overlap=50&nbsp;tokens）确保每个chunk包含前后文片段，提升边界区域信息的完整性。代价：索引中存在重复内容（存储成本+1%~20%），检索可能返回重复chunk（需要去重）。通常overlap=10-20%的chunk_size是合理设置。"
+    },
+    {
+      "question_id": 11640413,
+      "uuid": "3917a52e84304c938ccc457ed67b1c70",
+      "type": 1,
+      "title": "在以下情况下，RAG系统的\"幻觉溯源\"（Hallucination Tra...",
+      "content": "在以下情况下，RAG系统的\"幻觉溯源\"（Hallucination&nbsp;Tracing）最有价值？",
+      "options": [
+        {
+          "id": 7510974,
+          "content": "用于娱乐目的的聊天机器人"
+        },
+        {
+          "id": 7510977,
+          "content": "医疗、法律等高风险领域需要严格问责的场景"
+        },
+        {
+          "id": 7510979,
+          "content": "只做内容摘要的系统"
+        },
+        {
+          "id": 7510980,
+          "content": "离线批处理系统"
+        }
+      ],
+      "correct_option_ids": [
+        7510977
+      ],
+      "correct_options": [
+        "医疗、法律等高风险领域需要严格问责的场景"
+      ],
+      "analysis": "在高风险领域（医疗诊断、法律咨询、金融建议），RAG的每个答案陈述都需要可追溯到具体来源文档的特定段落，支持人工核查。幻觉溯源通过NLI模型验证每个陈述的来源，并在输出中注明引用，是合规和问责的基础。"
+    },
+    {
+      "question_id": 11640372,
+      "uuid": "e39f7cca90fd411eb4c0be8756a17d66",
+      "type": 1,
+      "title": "在RAG中，\"Late Chunking\"（延迟分块）技术的核心思想是？",
+      "content": "在RAG中，\"Late&nbsp;Chunking\"（延迟分块）技术的核心思想是？",
+      "options": [
+        {
+          "id": 7511444,
+          "content": "在检索后对文档分块"
+        },
+        {
+          "id": 7511446,
+          "content": "先用长上下文模型编码完整文档，再对token&nbsp;embeddings按块池化，保留上下文信息"
+        },
+        {
+          "id": 7511447,
+          "content": "将分块延迟到用户查询时进行"
+        },
+        {
+          "id": 7511448,
+          "content": "动态调整分块大小"
+        }
+      ],
+      "correct_option_ids": [
+        7511446
+      ],
+      "correct_options": [
+        "先用长上下文模型编码完整文档，再对token&nbsp;embeddings按块池化，保留上下文信息"
+      ],
+      "analysis": "Late&nbsp;Chunking（Jina&nbsp;AI提出）先将完整文档输入长上下文嵌入模型获取每个token的上下文感知嵌入，再对这些token&nbsp;embeddings按分块边界进行平均池化。每个块的表示保留了全文语境，优于独立分块后编码。"
+    },
+    {
+      "question_id": 11640288,
+      "uuid": "b50af4cf3ec74c4fb0d048e6d2f32295",
+      "type": 1,
+      "title": "以下关于RAG中\"上下文窗口管理\"的挑战，描述正确的是？",
+      "content": "以下关于RAG中\"上下文窗口管理\"的挑战，描述正确的是？",
+      "options": [
+        {
+          "id": 7513493,
+          "content": "检索到越多文档（top-k越大）效果一定越好"
+        },
+        {
+          "id": 7513494,
+          "content": "检索文档过多会导致\"Lost&nbsp;in&nbsp;the&nbsp;Middle\"、超出上下文窗口限制、增加推理延迟和成本"
+        },
+        {
+          "id": 7513495,
+          "content": "所有LLM都能无限扩展上下文窗口"
+        },
+        {
+          "id": 7513496,
+          "content": "只要文档相关就应该全部放入上下文"
+        }
+      ],
+      "correct_option_ids": [
+        7513494
+      ],
+      "correct_options": [
+        "检索文档过多会导致\"Lost&nbsp;in&nbsp;the&nbsp;Middle\"、超出上下文窗口限制、增加推理延迟和成本"
+      ],
+      "analysis": "RAG中top-k不是越大越好：①LLM处理长上下文时关注度下降（Lost&nbsp;in&nbsp;the&nbsp;Middle）；②超过上下文窗口导致截断；③更多文档增加推理token数，提高成本和延迟；④不相关文档增加噪声。实践中通常检索top-3到top-10，经reranker精排后取top-3到top-5送入LLM，平衡召回率和精度。"
+    },
+    {
+      "question_id": 11640348,
+      "uuid": "732beff968b64da68fcf50cd51bb45b2",
+      "type": 1,
+      "title": "以下关于RAG中\"Citation Granularity\"（引用粒度）的...",
+      "content": "以下关于RAG中\"Citation&nbsp;Granularity\"（引用粒度）的选择，描述正确的是？",
+      "options": [
+        {
+          "id": 7511677,
+          "content": "引用粒度只有文档级别一种"
+        },
+        {
+          "id": 7511679,
+          "content": "可以在文档级（\"来源：报告A\"）、段落级（\"来源：报告A第3节\"）、句子级（\"来源：具体原文句子\"）做引用，粒度越细验证越准确但实现越复杂"
+        },
+        {
+          "id": 7511681,
+          "content": "句子级引用不可能实现"
+        },
+        {
+          "id": 7511683,
+          "content": "引用粒度越粗越好"
+        }
+      ],
+      "correct_option_ids": [
+        7511679
+      ],
+      "correct_options": [
+        "可以在文档级（\"来源：报告A\"）、段落级（\"来源：报告A第3节\"）、句子级（\"来源：具体原文句子\"）做引用，粒度越细验证越准确但实现越复杂"
+      ],
+      "analysis": "引用粒度的权衡：①文档级：实现简单，但用户难以快速定位原文（需要阅读整个文档）；②段落级：标注chunk的来源位置（文档名+页码+段落），实现适中，多数生产RAG系统采用；③句子级：最精确（直接显示支持当前声明的原文句子），需要额外的sentence&nbsp;alignment模块，适合高可信度要求场景（法律、医疗）。FactScore等工具实现了句子级引用验证。"
+    },
+    {
+      "question_id": 11640323,
+      "uuid": "75b5e401933148189486b72f9fce641e",
+      "type": 1,
+      "title": "以下关于\"Document Summary Index\"（文档摘要索引）的...",
+      "content": "以下关于\"Document&nbsp;Summary&nbsp;Index\"（文档摘要索引）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513313,
+          "content": "文档摘要索引不需要向量化"
+        },
+        {
+          "id": 7513314,
+          "content": "为每个文档生成摘要并对摘要做embedding索引，检索时先匹配摘要找到相关文档，再从原文中提取详细内容"
+        },
+        {
+          "id": 7513315,
+          "content": "文档摘要索引比chunk索引更节省空间"
+        },
+        {
+          "id": 7513316,
+          "content": "文档摘要索引只适用于短文档"
+        }
+      ],
+      "correct_option_ids": [
+        7513314
+      ],
+      "correct_options": [
+        "为每个文档生成摘要并对摘要做embedding索引，检索时先匹配摘要找到相关文档，再从原文中提取详细内容"
+      ],
+      "analysis": "Document&nbsp;Summary&nbsp;Index（LlamaIndex提出）：①用LLM为每个文档生成摘要；②对摘要做embedding并索引；③检索时query匹配摘要（文档级别粗筛）→找到相关文档后从原文检索具体内容（精确定位）。优点：避免chunk碎片化问题，摘要更全面地表达文档内容。适合问题需要跨多个段落的文档级理解场景。缺点：索引时需要LLM生成摘要，成本较高。"
+    },
+    {
+      "question_id": 11640404,
+      "uuid": "96bc918d99e04ddfb0cf30d6a3f5cd19",
+      "type": 1,
+      "title": "在RAG系统中，\"Semantic Chunking\"（语义分块）相比固定...",
+      "content": "在RAG系统中，\"Semantic&nbsp;Chunking\"（语义分块）相比固定大小分块的核心优势是？",
+      "options": [
+        {
+          "id": 7511077,
+          "content": "速度更快"
+        },
+        {
+          "id": 7511078,
+          "content": "按语义边界而非字符数分块，保持语义完整性"
+        },
+        {
+          "id": 7511079,
+          "content": "生成更少的chunk"
+        },
+        {
+          "id": 7511081,
+          "content": "只适用于英文文档"
+        }
+      ],
+      "correct_option_ids": [
+        7511078
+      ],
+      "correct_options": [
+        "按语义边界而非字符数分块，保持语义完整性"
+      ],
+      "analysis": "语义分块通过计算相邻句子的嵌入相似度，在语义突变点（相似度下降）处分块，确保每个chunk包含完整的语义单元（如同一话题的多个句子）。相比固定大小分块，语义分块减少了跨语义边界的截断问题。"
+    },
+    {
+      "question_id": 11640286,
+      "uuid": "b1f565ba5b424ec8ae1e9aa8ca83e3b4",
+      "type": 1,
+      "title": "在RAG Fusion中，同一query被改写为多个版本后分别检索，最终结...",
+      "content": "在RAG&nbsp;Fusion中，同一query被改写为多个版本后分别检索，最终结果如何融合？",
+      "options": [
+        {
+          "id": 7513473,
+          "content": "取所有版本检索结果的并集，不做排名处理"
+        },
+        {
+          "id": 7513474,
+          "content": "使用RRF（倒数排名融合）对多个检索结果列表进行融合，综合排名"
+        },
+        {
+          "id": 7513475,
+          "content": "只保留多个版本都检索到的文档（取交集）"
+        },
+        {
+          "id": 7513477,
+          "content": "随机选择一个版本的结果作为最终输出"
+        }
+      ],
+      "correct_option_ids": [
+        7513474
+      ],
+      "correct_options": [
+        "使用RRF（倒数排名融合）对多个检索结果列表进行融合，综合排名"
+      ],
+      "analysis": "RAG&nbsp;Fusion的流程：①LLM将原始query改写为k个语义等价但表述不同的版本；②每个版本独立检索top-n文档；③用RRF将k个检索结果列表融合成统一排名。RRF的倒数排名机制确保在多个列表中都高排名的文档获得最高综合得分，有效提升召回率（单一query可能遗漏的文档在其他版本中被检索到）。"
+    },
+    {
+      "question_id": 11640377,
+      "uuid": "1750bcd5995e4d438595d7ff3ce61aa9",
+      "type": 1,
+      "title": "在向量数据库选型时，Qdrant相比FAISS的核心优势是什么？",
+      "content": "在向量数据库选型时，Qdrant相比FAISS的核心优势是什么？",
+      "options": [
+        {
+          "id": 7511389,
+          "content": "向量搜索速度更快"
+        },
+        {
+          "id": 7511390,
+          "content": "支持结构化元数据过滤，适合生产环境的持久化存储和分布式部署"
+        },
+        {
+          "id": 7511391,
+          "content": "内存占用更小"
+        },
+        {
+          "id": 7511392,
+          "content": "只支持HNSW索引"
+        }
+      ],
+      "correct_option_ids": [
+        7511390
+      ],
+      "correct_options": [
+        "支持结构化元数据过滤，适合生产环境的持久化存储和分布式部署"
+      ],
+      "analysis": "FAISS是库级别工具，不支持持久化和元数据过滤，适合原型和研究。Qdrant/Milvus/Weaviate等向量数据库提供持久化存储、元数据过滤（hybrid&nbsp;filtering）、分布式扩展、REST/gRPC&nbsp;API等生产级特性。"
+    },
+    {
+      "question_id": 11640333,
+      "uuid": "6118223c74234d799383249bdeee97dc",
+      "type": 1,
+      "title": "以下关于\"Reranking with Diversity\"（多样性重排）...",
+      "content": "以下关于\"Reranking&nbsp;with&nbsp;Diversity\"（多样性重排）的作用，描述正确的是？",
+      "options": [
+        {
+          "id": 7511789,
+          "content": "多样性重排只关注检索文档与query的相关性"
+        },
+        {
+          "id": 7511790,
+          "content": "在保证相关性的同时，确保检索结果覆盖不同角度/子话题，避免返回大量内容重复的文档"
+        },
+        {
+          "id": 7511791,
+          "content": "多样性重排会降低检索精度"
+        },
+        {
+          "id": 7511792,
+          "content": "多样性重排只适用于新闻检索"
+        }
+      ],
+      "correct_option_ids": [
+        7511790
+      ],
+      "correct_options": [
+        "在保证相关性的同时，确保检索结果覆盖不同角度/子话题，避免返回大量内容重复的文档"
+      ],
+      "analysis": "MMR（Maximal&nbsp;Marginal&nbsp;Relevance）是经典的多样性检索算法：在选择下一个文档时，同时考虑与query的相关性和与已选文档的差异性：score&nbsp;=&nbsp;λ×sim(doc,&nbsp;query)&nbsp;-&nbsp;(1-λ)×max_sim(doc,&nbsp;selected)。避免返回10个几乎相同内容的文档（浪费上下文窗口）。对于宽泛问题（如\"机器学习应用\"），多样性检索能覆盖更多不同角度，生成更全面的答案。"
+    },
+    {
+      "question_id": 11640388,
+      "uuid": "2cdf0320faa64e0b8d35b9ae961ae094",
+      "type": 1,
+      "title": "以下关于Step-Back Prompting（后退提示）在RAG中的应用...",
+      "content": "以下关于Step-Back&nbsp;Prompting（后退提示）在RAG中的应用，哪项正确？",
+      "options": [
+        {
+          "id": 7511261,
+          "content": "将查询转换为更具体的子查询"
+        },
+        {
+          "id": 7511262,
+          "content": "将具体查询提升为更抽象/通用的问题以检索背景知识"
+        },
+        {
+          "id": 7511263,
+          "content": "减少RAG的检索步骤"
+        },
+        {
+          "id": 7511264,
+          "content": "优化检索结果的排序"
+        }
+      ],
+      "correct_option_ids": [
+        7511262
+      ],
+      "correct_options": [
+        "将具体查询提升为更抽象/通用的问题以检索背景知识"
+      ],
+      "analysis": "Step-Back&nbsp;Prompting将具体问题提升为更抽象的问题（如\"2023年X事件的具体原因\"→\"X领域的历史背景\"），先检索背景知识，再结合背景回答具体问题。适合需要领域背景的问题，改善检索和推理质量。"
+    },
+    {
+      "question_id": 11640399,
+      "uuid": "7b7f98f71bfd43b7b6f7f6e7f40e0337",
+      "type": 1,
+      "title": "在部署RAG系统时，以下哪种缓存策略最有效？",
+      "content": "在部署RAG系统时，以下哪种缓存策略最有效？",
+      "options": [
+        {
+          "id": 7511133,
+          "content": "缓存所有LLM的输出"
+        },
+        {
+          "id": 7511134,
+          "content": "对热门查询的向量检索结果和LLM输出进行语义缓存（相似查询复用结果）"
+        },
+        {
+          "id": 7511135,
+          "content": "只缓存嵌入向量计算结果"
+        },
+        {
+          "id": 7511136,
+          "content": "不使用缓存，保证实时性"
+        }
+      ],
+      "correct_option_ids": [
+        7511134
+      ],
+      "correct_options": [
+        "对热门查询的向量检索结果和LLM输出进行语义缓存（相似查询复用结果）"
+      ],
+      "analysis": "语义缓存（Semantic&nbsp;Cache）存储查询向量及对应回答，对新查询先检查是否有语义相似的历史查询（相似度阈值），有则直接返回缓存结果。GPTCache等工具支持这种方式，可节省70-90%的重复查询LLM调用成本。"
+    },
+    {
+      "question_id": 11640407,
+      "uuid": "e99db1d2bdda412a91e97f138b106f76",
+      "type": 1,
+      "title": "以下哪种技术允许RAG系统回答\"哪些文档讨论了主题X\"这类全局查询？",
+      "content": "以下哪种技术允许RAG系统回答\"哪些文档讨论了主题X\"这类全局查询？",
+      "options": [
+        {
+          "id": 7511042,
+          "content": "标准向量检索"
+        },
+        {
+          "id": 7511044,
+          "content": "GraphRAG的社区摘要（Community&nbsp;Summary）+&nbsp;全局检索模式"
+        },
+        {
+          "id": 7511046,
+          "content": "BM25关键词检索"
+        },
+        {
+          "id": 7511048,
+          "content": "Reranker精排"
+        }
+      ],
+      "correct_option_ids": [
+        7511044
+      ],
+      "correct_options": [
+        "GraphRAG的社区摘要（Community&nbsp;Summary）+&nbsp;全局检索模式"
+      ],
+      "analysis": "Microsoft&nbsp;GraphRAG通过提取实体关系构建知识图谱，用层次聚类识别社区（主题群），为每个社区生成摘要。全局查询模式通过Map-Reduce方式汇总多个社区摘要来回答全局性问题，这是标准向量检索无法有效处理的场景。"
+    },
+    {
+      "question_id": 11640268,
+      "uuid": "7dd83c68fa184ffea27f5b5be917bd55",
+      "type": 1,
+      "title": "Rerank模型（如BGE-Reranker）在RAG中的作用是什么？",
+      "content": "Rerank模型（如BGE-Reranker）在RAG中的作用是什么？",
+      "options": [
+        {
+          "id": 7513325,
+          "content": "替代向量检索，直接从文档库中找相关文档"
+        },
+        {
+          "id": 7513326,
+          "content": "对初步检索（top-k）的文档进行精细打分重排，提升最终top-n的质量"
+        },
+        {
+          "id": 7513327,
+          "content": "对用户query进行改写，提高检索召回率"
+        },
+        {
+          "id": 7513329,
+          "content": "将检索到的多个文档合并为单一上下文"
+        }
+      ],
+      "correct_option_ids": [
+        7513326
+      ],
+      "correct_options": [
+        "对初步检索（top-k）的文档进行精细打分重排，提升最终top-n的质量"
+      ],
+      "analysis": "向量检索（ANN）速度快但精度有限，通常检索top-50~100个候选。Reranker（cross-encoder）对query和每个候选文档进行全文对比打分（而非向量内积），精度更高但计算量大（O(n×query×doc_len)）。实际流程：ANN检索top-100（召回阶段）→Reranker精排top-5（精度阶段），兼顾效率和质量。"
+    },
+    {
+      "question_id": 11640444,
+      "uuid": "39a4bb692c6a47bca54daed5d4e888db",
+      "type": 1,
+      "title": "以下关于在RAG中使用\"Hypothetical Questions\"（假...",
+      "content": "以下关于在RAG中使用\"Hypothetical&nbsp;Questions\"（假设问题）增强索引的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7510613,
+          "content": "假设问题替代原始文档存储"
+        },
+        {
+          "id": 7510614,
+          "content": "为每个文档chunk生成多个可能的问题与原文同时存储，增加被检索命中的概率"
+        },
+        {
+          "id": 7510616,
+          "content": "假设问题只用于训练嵌入模型"
+        },
+        {
+          "id": 7510618,
+          "content": "假设问题会降低检索速度"
+        }
+      ],
+      "correct_option_ids": [
+        7510614
+      ],
+      "correct_options": [
+        "为每个文档chunk生成多个可能的问题与原文同时存储，增加被检索命中的概率"
+      ],
+      "analysis": "假设问题增强：让LLM为每个chunk生成3-5个该chunk能回答的问题，将这些问题与chunk一起索引（或在元数据中存储）。当用户查询与其中某个假设问题匹配时，命中率显著高于只匹配原始文档文本，特别对知识密集型文档有效。"
+    },
+    {
+      "question_id": 11640304,
+      "uuid": "52741a06ad2c4e71b5f5c2d612601c29",
+      "type": 1,
+      "title": "以下关于dense passage retrieval（DPR）模型的训练...",
+      "content": "以下关于dense&nbsp;passage&nbsp;retrieval（DPR）模型的训练方式，描述正确的是？",
+      "options": [
+        {
+          "id": 7513461,
+          "content": "DPR使用无监督学习，不需要标注数据"
+        },
+        {
+          "id": 7513462,
+          "content": "DPR使用对比学习：正样本（query,&nbsp;相关段落）的内积最大化，负样本（query,&nbsp;不相关段落）内积最小化"
+        },
+        {
+          "id": 7513463,
+          "content": "DPR只能对文本分类任务fine-tune"
+        },
+        {
+          "id": 7513464,
+          "content": "DPR与cross-encoder的训练方式完全相同"
+        }
+      ],
+      "correct_option_ids": [
+        7513462
+      ],
+      "correct_options": [
+        "DPR使用对比学习：正样本（query,&nbsp;相关段落）的内积最大化，负样本（query,&nbsp;不相关段落）内积最小化"
+      ],
+      "analysis": "DPR（Karpukhin&nbsp;et&nbsp;al.&nbsp;2020）训练两个独立的BERT编码器（query&nbsp;encoder和passage&nbsp;encoder），使用对比损失：最大化(query,&nbsp;positive_passage)的内积，最小化(query,&nbsp;negative_passage)的内积。负样本来源：BM25难负样本（BM25检索到但实际不相关）+&nbsp;batch内其他问题的正样本（in-batch&nbsp;negatives）。DPR开创了dense&nbsp;retrieval&nbsp;for&nbsp;QA的范式。"
+    },
+    {
+      "question_id": 11640351,
+      "uuid": "fc15c285a97e4353bcf817bdca3f3d83",
+      "type": 1,
+      "title": "以下关于\"Metadata Enrichment\"（元数据丰富化）在RAG...",
+      "content": "以下关于\"Metadata&nbsp;Enrichment\"（元数据丰富化）在RAG中的价值，描述正确的是？",
+      "options": [
+        {
+          "id": 7511657,
+          "content": "元数据只是存储信息，不影响检索效果"
+        },
+        {
+          "id": 7511658,
+          "content": "为文档块添加丰富的元数据（作者、日期、文档类型、主题标签、实体列表），支持精细化过滤检索，显著提升检索精确率"
+        },
+        {
+          "id": 7511659,
+          "content": "元数据越少越好，避免存储开销"
+        },
+        {
+          "id": 7511660,
+          "content": "元数据只对BM25检索有效"
+        }
+      ],
+      "correct_option_ids": [
+        7511658
+      ],
+      "correct_options": [
+        "为文档块添加丰富的元数据（作者、日期、文档类型、主题标签、实体列表），支持精细化过滤检索，显著提升检索精确率"
+      ],
+      "analysis": "元数据驱动的精细检索：①时间过滤（\"最近3个月的文档\"）；②类型过滤（\"只从技术规范文档中检索\"）；③作者过滤（\"A博士撰写的研究报告\"）；④实体索引（预先提取文档中的关键实体，支持实体精确匹配）。丰富的元数据将检索从\"语义相似度\"提升为\"语义+结构+时间的多维匹配\"，在需要精确过滤的场景（合规文档查询、版本化知识库）效果显著提升。"
+    },
+    {
+      "question_id": 11640347,
+      "uuid": "568f9f92bed64e2a8bbdd94688260415",
+      "type": 1,
+      "title": "以下哪种方法最适合解决RAG中\"同义词/缩写识别\"问题（如\"ML\"和\"机器...",
+      "content": "以下哪种方法最适合解决RAG中\"同义词/缩写识别\"问题（如\"ML\"和\"机器学习\"应该匹配）？",
+      "options": [
+        {
+          "id": 7511685,
+          "content": "只使用BM25精确匹配"
+        },
+        {
+          "id": 7511686,
+          "content": "使用dense&nbsp;embedding（语义检索）或在索引时对文档进行同义词扩展（query&nbsp;expansion），使语义相近的词能相互检索"
+        },
+        {
+          "id": 7511688,
+          "content": "在系统中维护手工编写的同义词词典"
+        },
+        {
+          "id": 7511690,
+          "content": "强制用户使用规范化术语"
+        }
+      ],
+      "correct_option_ids": [
+        7511686
+      ],
+      "correct_options": [
+        "使用dense&nbsp;embedding（语义检索）或在索引时对文档进行同义词扩展（query&nbsp;expansion），使语义相近的词能相互检索"
+      ],
+      "analysis": "同义词/缩写问题的解决方案：①Dense&nbsp;Embedding（根本解决）：经过大规模文本训练的embedding模型已学习\"ML\"和\"机器学习\"在相似上下文中出现，其向量空间距离近；②Query&nbsp;Expansion：用LLM生成query的同义词/缩写版本（\"ML\"→\"机器学习、Machine&nbsp;Learning、ML\"），分别检索后RRF融合；③文档索引时扩展：将文档中的缩写展开（\"ML→机器学习\"）后再embedding。手工词典维护成本高且覆盖不全。"
+    },
+    {
+      "question_id": 11640386,
+      "uuid": "e3433066770b4ffaac93b227d5c7e65f",
+      "type": 1,
+      "title": "以下哪种技术用于解决RAG中\"向量空间偏移\"问题（不同来源文档的嵌入分布不...",
+      "content": "以下哪种技术用于解决RAG中\"向量空间偏移\"问题（不同来源文档的嵌入分布不对齐）？",
+      "options": [
+        {
+          "id": 7511285,
+          "content": "增大分块大小"
+        },
+        {
+          "id": 7511286,
+          "content": "使用相同嵌入模型对所有文档重新编码，或使用支持多来源的模型"
+        },
+        {
+          "id": 7511287,
+          "content": "为不同来源使用不同的向量数据库"
+        },
+        {
+          "id": 7511288,
+          "content": "使用BM25替代向量检索"
+        }
+      ],
+      "correct_option_ids": [
+        7511286
+      ],
+      "correct_options": [
+        "使用相同嵌入模型对所有文档重新编码，或使用支持多来源的模型"
+      ],
+      "analysis": "不同嵌入模型或版本产生的向量不在同一空间，混合使用会导致检索错误。解决方案：1)&nbsp;统一使用同一模型；2)&nbsp;重新索引时统一更新；3)&nbsp;使用支持多来源的嵌入模型（如BGE-M3）。"
+    },
+    {
+      "question_id": 11640320,
+      "uuid": "32cbf56e3a0a454e9b2b4ac62c898cc0",
+      "type": 1,
+      "title": "以下关于\"Answer Extraction vs Answer Gene...",
+      "content": "以下关于\"Answer&nbsp;Extraction&nbsp;vs&nbsp;Answer&nbsp;Generation\"在RAG中的区别，描述正确的是？",
+      "options": [
+        {
+          "id": 7513335,
+          "content": "两者在技术实现上完全相同"
+        },
+        {
+          "id": 7513336,
+          "content": "抽取式（Extractive）：直接从文档中找到包含答案的片段；生成式（Generative）：基于检索文档自由生成答案。生成式更灵活但更易幻觉，抽取式更可靠但受限于文档原文"
+        },
+        {
+          "id": 7513338,
+          "content": "抽取式效果总是优于生成式"
+        },
+        {
+          "id": 7513340,
+          "content": "生成式不需要检索步骤"
+        }
+      ],
+      "correct_option_ids": [
+        7513336
+      ],
+      "correct_options": [
+        "抽取式（Extractive）：直接从文档中找到包含答案的片段；生成式（Generative）：基于检索文档自由生成答案。生成式更灵活但更易幻觉，抽取式更可靠但受限于文档原文"
+      ],
+      "analysis": "两种范式的权衡：抽取式（如传统MRC/SQuAD模型）：答案必须是文档原文的子串，高可靠性但无法整合多文档信息，答案格式受限；生成式（RAG&nbsp;+&nbsp;LLM）：可以综合多文档、改写、推理，灵活性高，但可能引入幻觉（答案偏离文档内容）。实践中企业RAG越来越多采用hybrid方式：生成答案同时提供原文引用（支持验证），兼顾灵活性和可信度。"
+    },
+    {
+      "question_id": 11640422,
+      "uuid": "24eed5d51e6844bc8f9541e3c1f760d4",
+      "type": 1,
+      "title": "以下哪种技术在RAG中被用于处理\"否定型查询\"（如\"哪些产品不支持X功能\"）？",
+      "content": "以下哪种技术在RAG中被用于处理\"否定型查询\"（如\"哪些产品不支持X功能\"）？",
+      "options": [
+        {
+          "id": 7510873,
+          "content": "标准相似度搜索"
+        },
+        {
+          "id": 7510874,
+          "content": "结合关键词过滤（否定词提取）+&nbsp;后处理验证"
+        },
+        {
+          "id": 7510875,
+          "content": "增加向量维度"
+        },
+        {
+          "id": 7510876,
+          "content": "使用更大的检索模型"
+        }
+      ],
+      "correct_option_ids": [
+        7510874
+      ],
+      "correct_options": [
+        "结合关键词过滤（否定词提取）+&nbsp;后处理验证"
+      ],
+      "analysis": "否定型查询对语义检索是挑战（\"不支持X\"的文档向量可能接近\"支持X\"的文档）。最有效的方法：1)&nbsp;提取否定词和目标属性；2)&nbsp;用LLM对检索结果逐一判断是否满足否定条件；3)&nbsp;结合布尔过滤（元数据中明确标记特性支持情况）。"
+    },
+    {
+      "question_id": 11640426,
+      "uuid": "0516582e295f4288afa7eff3b33b8345",
+      "type": 1,
+      "title": "以下关于RAG与Long Context LLM的对比，哪项描述最准确？",
+      "content": "以下关于RAG与Long&nbsp;Context&nbsp;LLM的对比，哪项描述最准确？",
+      "options": [
+        {
+          "id": 7510825,
+          "content": "Long&nbsp;Context&nbsp;LLM完全取代RAG"
+        },
+        {
+          "id": 7510826,
+          "content": "RAG在检索精度和成本控制上有优势，Long&nbsp;Context&nbsp;LLM在需要全文理解时有优势，两者互补"
+        },
+        {
+          "id": 7510827,
+          "content": "RAG总是比Long&nbsp;Context&nbsp;LLM更好"
+        },
+        {
+          "id": 7510829,
+          "content": "两者在所有场景下性能完全相同"
+        }
+      ],
+      "correct_option_ids": [
+        7510826
+      ],
+      "correct_options": [
+        "RAG在检索精度和成本控制上有优势，Long&nbsp;Context&nbsp;LLM在需要全文理解时有优势，两者互补"
+      ],
+      "analysis": "RAG的优势：精确检索相关内容（避免无关噪声）、按需知识更新（不重训）、成本低（只传相关文档）。Long&nbsp;Context的优势：可以处理超长文档的完整语义（如分析整本书的主题）、无检索失败风险。最优解通常是：用RAG检索+Long&nbsp;Context理解相结合。"
+    },
+    {
+      "question_id": 11640451,
+      "uuid": "2239c124fab24b26a2cc32fc85e9d431",
+      "type": 1,
+      "title": "综合考虑，在构建一个企业内部知识库问答系统时，以下哪种技术组合最平衡了效果...",
+      "content": "综合考虑，在构建一个企业内部知识库问答系统时，以下哪种技术组合最平衡了效果、成本和可维护性？",
+      "options": [
+        {
+          "id": 7513541,
+          "content": "纯BM25关键词检索&nbsp;+&nbsp;GPT-4"
+        },
+        {
+          "id": 7513542,
+          "content": "BGE-M3嵌入&nbsp;+&nbsp;Milvus向量库&nbsp;+&nbsp;混合检索(BM25+向量)&nbsp;+&nbsp;Reranker&nbsp;+&nbsp;本地LLM(Qwen/LLaMA)"
+        },
+        {
+          "id": 7513543,
+          "content": "只用ChatGPT直接回答，不做检索"
+        },
+        {
+          "id": 7513544,
+          "content": "GraphRAG&nbsp;+&nbsp;最大向量数据库&nbsp;+&nbsp;GPT-4"
+        }
+      ],
+      "correct_option_ids": [
+        7513542
+      ],
+      "correct_options": [
+        "BGE-M3嵌入&nbsp;+&nbsp;Milvus向量库&nbsp;+&nbsp;混合检索(BM25+向量)&nbsp;+&nbsp;Reranker&nbsp;+&nbsp;本地LLM(Qwen/LLaMA)"
+      ],
+      "analysis": "企业内部知识库最优组合：BGE-M3（高质量多语言嵌入，开源）+&nbsp;Milvus（开源可私有化部署）+&nbsp;混合检索（兼顾精确和语义）+&nbsp;Reranker精排提质+&nbsp;本地LLM（数据不出境，成本可控）。纯BM25质量差，全托管GPT-4成本高且数据安全有顾虑，GraphRAG维护成本高。"
+    }
+  ]
+}

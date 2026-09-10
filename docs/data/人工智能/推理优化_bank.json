@@ -1,0 +1,6060 @@
+{
+  "source": "nowcoder_official",
+  "group": "人工智能",
+  "name": "推理优化",
+  "tag_id": 305561,
+  "target": 190,
+  "fetched_at": "2026-07-28",
+  "total_unique": 189,
+  "complete": false,
+  "questions": [
+    {
+      "question_id": 11639721,
+      "uuid": "e76106b545854232bed3e444764582e7",
+      "type": 1,
+      "title": "以下哪项不是影响LLM推理吞吐量（throughput）的因素？",
+      "content": "以下哪项不是影响LLM推理吞吐量（throughput）的因素？",
+      "options": [
+        {
+          "id": 7512612,
+          "content": "batch&nbsp;size大小"
+        },
+        {
+          "id": 7512614,
+          "content": "KV&nbsp;Cache可用显存"
+        },
+        {
+          "id": 7512615,
+          "content": "模型权重文件的磁盘存储格式（safetensors&nbsp;vs&nbsp;pkl）"
+        },
+        {
+          "id": 7512616,
+          "content": "序列长度和解码长度"
+        }
+      ],
+      "correct_option_ids": [
+        7512615
+      ],
+      "correct_options": [
+        "模型权重文件的磁盘存储格式（safetensors&nbsp;vs&nbsp;pkl）"
+      ],
+      "analysis": "磁盘存储格式只影响模型加载时间，一旦模型加载到GPU后，推理吞吐与磁盘格式无关。影响推理吞吐的因素包括：batch&nbsp;size（越大GPU利用率越高）、KV&nbsp;Cache显存（决定最大并发序列数）、序列长度（影响attention计算量和KV&nbsp;Cache大小）、硬件内存带宽和算力等。"
+    },
+    {
+      "question_id": 11639723,
+      "uuid": "c562892c245747f699e3f98bdd1e8427",
+      "type": 1,
+      "title": "在LLM推理服务中，\"request batching with dyna...",
+      "content": "在LLM推理服务中，\"request&nbsp;batching&nbsp;with&nbsp;dynamic&nbsp;padding\"和\"packing\"的区别是？",
+      "options": [
+        {
+          "id": 7510558,
+          "content": "两者完全相同，只是名称不同"
+        },
+        {
+          "id": 7510560,
+          "content": "dynamic&nbsp;padding将batch内序列pad到最长长度（存在无效计算），packing将多个序列拼接无需padding"
+        },
+        {
+          "id": 7510562,
+          "content": "packing只适用于prefill，dynamic&nbsp;padding只适用于decode"
+        },
+        {
+          "id": 7510564,
+          "content": "packing需要修改模型架构，dynamic&nbsp;padding不需要"
+        }
+      ],
+      "correct_option_ids": [
+        7510560
+      ],
+      "correct_options": [
+        "dynamic&nbsp;padding将batch内序列pad到最长长度（存在无效计算），packing将多个序列拼接无需padding"
+      ],
+      "analysis": "dynamic&nbsp;padding：同一batch的序列pad到batch内最长长度，GPU处理pad&nbsp;token有额外计算开销（约20-40%无效计算）。packing（sequence&nbsp;packing）：将多个短序列拼接填满最大长度，用attention&nbsp;mask防止cross-contamination，无padding开销但需要处理样本边界。packing在训练中广泛使用，推理中则通过continuous&nbsp;batching避免padding问题。"
+    },
+    {
+      "question_id": 11639832,
+      "uuid": "769b701afc4344539ca8e7762af95ca9",
+      "type": 1,
+      "title": "以下代码中，哪个优化最能提升批量推理的吞吐量？```python# 方案A...",
+      "content": "以下代码中，哪个优化最能提升批量推理的吞吐量？<div>```python</div><div>#&nbsp;方案A</div><div>for&nbsp;text&nbsp;in&nbsp;texts:</div><div>output&nbsp;=&nbsp;model.generate(tokenizer(text,&nbsp;return_tensors='pt').input_ids)</div><div>#&nbsp;方案B</div><div>inputs&nbsp;=&nbsp;tokenizer(texts,&nbsp;return_tensors='pt',&nbsp;padding=True)</div><div>outputs&nbsp;=&nbsp;model.generate(**inputs)</div><div>```</div>",
+      "options": [
+        {
+          "id": 7511801,
+          "content": "方案A（逐条处理）"
+        },
+        {
+          "id": 7511802,
+          "content": "方案B（批量处理）"
+        },
+        {
+          "id": 7511803,
+          "content": "两种方案吞吐量相同"
+        },
+        {
+          "id": 7511804,
+          "content": "方案A在GPU利用率上更高"
+        }
+      ],
+      "correct_option_ids": [
+        7511802
+      ],
+      "correct_options": [
+        "方案B（批量处理）"
+      ],
+      "analysis": "批量处理（方案B）将多个输入打包为一个批次，充分利用GPU的并行计算能力（矩阵乘法的批处理效率）。逐条处理（方案A）每次只运行小量计算，GPU利用率极低，吞吐量是批量处理的N倍（N为批大小）。"
+    },
+    {
+      "question_id": 11639727,
+      "uuid": "810ff274aad5401594920e8cab78cd3a",
+      "type": 1,
+      "title": "以下关于W4A16量化（权重INT4、激活FP16）的描述，正确的是？",
+      "content": "以下关于W4A16量化（权重INT4、激活FP16）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7512685,
+          "content": "W4A16在计算时保持FP16精度，只是存储压缩"
+        },
+        {
+          "id": 7512686,
+          "content": "W4A16在矩阵乘法时权重保持INT4格式参与计算，激活为INT4"
+        },
+        {
+          "id": 7512688,
+          "content": "W4A16在计算时将INT4权重解量化回FP16再做矩阵乘法，主要节省内存带宽"
+        },
+        {
+          "id": 7512690,
+          "content": "W4A16等价于W4A4，性能完全相同"
+        }
+      ],
+      "correct_option_ids": [
+        7512688
+      ],
+      "correct_options": [
+        "W4A16在计算时将INT4权重解量化回FP16再做矩阵乘法，主要节省内存带宽"
+      ],
+      "analysis": "W4A16（如GPTQ/AWQ的标准推理方式）：权重以INT4存储（节省显存），但推理时先解量化为FP16，再与FP16激活做矩阵乘法。因此W4A16的计算精度与FP16相同，性能收益主要来自减少权重读取的内存带宽（INT4读取量=FP16的1/4），对decode阶段（memory-bound）加速明显。W4A4则激活也量化，计算精度更低但速度更快。"
+    },
+    {
+      "question_id": 11639789,
+      "uuid": "7ce6f4a787284e908171545fa459bcc3",
+      "type": 1,
+      "title": "以下哪种量化方法在量化前会对权重进行通道级别的缩放平衡（将激活值的异常值转...",
+      "content": "以下哪种量化方法在量化前会对权重进行通道级别的缩放平衡（将激活值的异常值转移到权重）？",
+      "options": [
+        {
+          "id": 7510996,
+          "content": "GPTQ"
+        },
+        {
+          "id": 7510999,
+          "content": "AWQ"
+        },
+        {
+          "id": 7511002,
+          "content": "SmoothQuant"
+        },
+        {
+          "id": 7511003,
+          "content": "GGUF"
+        }
+      ],
+      "correct_option_ids": [
+        7511002
+      ],
+      "correct_options": [
+        "SmoothQuant"
+      ],
+      "analysis": "SmoothQuant通过数学等价变换将激活中的异常值转移到权重（weights），使激活更容易量化，同时权重量化不受影响。公式为Y=(X/s)×(sW)，s为通道级缩放因子。"
+    },
+    {
+      "question_id": 11639839,
+      "uuid": "572943cf04ef4d4e93d82d465f327459",
+      "type": 1,
+      "title": "以下关于不同量化方法对特定任务的影响，哪种描述最准确？",
+      "content": "以下关于不同量化方法对特定任务的影响，哪种描述最准确？",
+      "options": [
+        {
+          "id": 7511741,
+          "content": "量化对所有任务影响均等"
+        },
+        {
+          "id": 7511742,
+          "content": "量化对数学推理、代码生成等需要精确计算的任务影响更大"
+        },
+        {
+          "id": 7511743,
+          "content": "量化只影响语言生成任务"
+        },
+        {
+          "id": 7511744,
+          "content": "量化不影响模型的知识保留"
+        }
+      ],
+      "correct_option_ids": [
+        7511742
+      ],
+      "correct_options": [
+        "量化对数学推理、代码生成等需要精确计算的任务影响更大"
+      ],
+      "analysis": "数学推理和代码生成对精确性要求高，INT4量化造成的数值误差在多步推理中累积，对这类任务的精度损失比开放式文本生成更大。对话、摘要等任务对精度容忍度较高，量化影响相对较小。选择量化精度时需考虑目标任务特性。"
+    },
+    {
+      "question_id": 11639753,
+      "uuid": "53c44c4c75a24e7fa73570561744ab24",
+      "type": 1,
+      "title": "以下哪项技术最适合在多卡推理时减少通信开销？",
+      "content": "以下哪项技术最适合在多卡推理时减少通信开销？",
+      "options": [
+        {
+          "id": 7512933,
+          "content": "增大每张卡的batch&nbsp;size"
+        },
+        {
+          "id": 7512934,
+          "content": "使用NVLink（GPU直连）代替PCIe总线进行GPU间通信，带宽提升10倍以上"
+        },
+        {
+          "id": 7512935,
+          "content": "减少模型层数"
+        },
+        {
+          "id": 7512936,
+          "content": "使用FP8量化"
+        }
+      ],
+      "correct_option_ids": [
+        7512934
+      ],
+      "correct_options": [
+        "使用NVLink（GPU直连）代替PCIe总线进行GPU间通信，带宽提升10倍以上"
+      ],
+      "analysis": "张量并行推理中，每个Transformer层需要all-reduce通信（聚合各卡的partial&nbsp;output）。通信延迟&nbsp;=&nbsp;数据量&nbsp;/&nbsp;带宽。PCIe带宽：约64&nbsp;GB/s；NVLink&nbsp;3.0（A100）：600&nbsp;GB/s；NVLink&nbsp;4.0（H100）：900&nbsp;GB/s。NVLink使多卡推理通信开销从潜在瓶颈变得可以接受。这是为什么A100/H100&nbsp;SXM版本（配NVLink）的多卡推理吞吐远优于PCIe版本。"
+    },
+    {
+      "question_id": 11639801,
+      "uuid": "7e3c526145f84bc38d1ceae5f978f4ed",
+      "type": 1,
+      "title": "在使用int4量化（如GGUF Q4_K_M）时，\"分组量化\"（Group...",
+      "content": "在使用int4量化（如GGUF&nbsp;Q4_K_M）时，\"分组量化\"（Group&nbsp;Quantization）的作用是什么？",
+      "options": [
+        {
+          "id": 7510841,
+          "content": "将模型分组存储以节省磁盘空间"
+        },
+        {
+          "id": 7510842,
+          "content": "对权重矩阵的每个小组（如128个元素）使用独立的缩放因子，提高精度"
+        },
+        {
+          "id": 7510843,
+          "content": "将多个模型打包到同一文件"
+        },
+        {
+          "id": 7510844,
+          "content": "按层对模型进行分组量化"
+        }
+      ],
+      "correct_option_ids": [
+        7510842
+      ],
+      "correct_options": [
+        "对权重矩阵的每个小组（如128个元素）使用独立的缩放因子，提高精度"
+      ],
+      "analysis": "分组量化对权重矩阵以组为单位（通常32或128个元素）计算独立的scale和zero_point，相比全局量化大幅减少量化误差，代价是少量额外元数据。这是GGUF/llama.cpp中常用的精度保持技巧。"
+    },
+    {
+      "question_id": 11639827,
+      "uuid": "6c8abb670378456ab5c9ae3360af34ad",
+      "type": 1,
+      "title": "以下哪种注意力优化技术通过将注意力矩阵分块计算来避免完整N×N矩阵的存储？",
+      "content": "以下哪种注意力优化技术通过将注意力矩阵分块计算来避免完整N×N矩阵的存储？",
+      "options": [
+        {
+          "id": 7510509,
+          "content": "GQA"
+        },
+        {
+          "id": 7510510,
+          "content": "Linear&nbsp;Attention"
+        },
+        {
+          "id": 7510511,
+          "content": "Flash&nbsp;Attention"
+        },
+        {
+          "id": 7510512,
+          "content": "Sparse&nbsp;Attention"
+        }
+      ],
+      "correct_option_ids": [
+        7510511
+      ],
+      "correct_options": [
+        "Flash&nbsp;Attention"
+      ],
+      "analysis": "Flash&nbsp;Attention通过分块（tiling）计算，在SRAM中完成softmax和矩阵乘法，避免将完整的O(N²)注意力矩阵写入HBM，将注意力内存复杂度从O(N²)降至O(N)，同时实现精确计算（非近似）。"
+    },
+    {
+      "question_id": 11639728,
+      "uuid": "10d2dd0fb2284c0099a5ba67e44d3137",
+      "type": 1,
+      "title": "以下哪种解码策略在摘要任务中通常效果最好？",
+      "content": "以下哪种解码策略在摘要任务中通常效果最好？",
+      "options": [
+        {
+          "id": 7512701,
+          "content": "temperature=2.0的高温采样"
+        },
+        {
+          "id": 7512702,
+          "content": "beam&nbsp;search（beam_size=4~8）"
+        },
+        {
+          "id": 7512703,
+          "content": "top_k=1（等价于贪心）"
+        },
+        {
+          "id": 7512704,
+          "content": "nucleus&nbsp;sampling（p=0.95）"
+        }
+      ],
+      "correct_option_ids": [
+        7512702
+      ],
+      "correct_options": [
+        "beam&nbsp;search（beam_size=4~8）"
+      ],
+      "analysis": "摘要任务需要忠实、连贯地压缩原文，对多样性要求低但对质量要求高。Beam&nbsp;Search通过维护多个候选序列选择全局较优解，在摘要、翻译等有明确参考答案的任务上效果优于贪心（容易陷入局部最优）和随机采样（引入不必要噪声）。早期NLP任务的标准评估（BLEU/ROUGE）也基于beam&nbsp;search输出。"
+    },
+    {
+      "question_id": 11639699,
+      "uuid": "cc2104c557e149f7aec61817c705dc31",
+      "type": 1,
+      "title": "Medusa加速推理的机制是什么？",
+      "content": "Medusa加速推理的机制是什么？",
+      "options": [
+        {
+          "id": 7511437,
+          "content": "使用多个小模型并行推理后投票"
+        },
+        {
+          "id": 7511438,
+          "content": "在原始模型头部添加多个并行解码头，一次预测多个未来token，并行验证后接受"
+        },
+        {
+          "id": 7511440,
+          "content": "通过知识蒸馏将大模型能力压缩到小模型"
+        },
+        {
+          "id": 7511442,
+          "content": "使用稀疏激活减少FFN的计算量"
+        }
+      ],
+      "correct_option_ids": [
+        7511438
+      ],
+      "correct_options": [
+        "在原始模型头部添加多个并行解码头，一次预测多个未来token，并行验证后接受"
+      ],
+      "analysis": "Medusa在LLM的最后一层hidden&nbsp;state上添加K个额外的\"Medusa&nbsp;heads\"（轻量MLP），每个head预测未来第i步的token。在decode时，Medusa一次预测多个候选token，然后通过tree&nbsp;attention并行验证所有候选路径，选择最长的有效前缀。相比原始推测解码不需要单独的draft模型，只需微调Medusa&nbsp;heads（约5%参数）。"
+    },
+    {
+      "question_id": 11639768,
+      "uuid": "4ac5a4f26b9a460badd5a5599b920d60",
+      "type": 1,
+      "title": "以下关于\"SGLang\"框架相比vLLM的差异化特性，描述正确的是？",
+      "content": "以下关于\"SGLang\"框架相比vLLM的差异化特性，描述正确的是？",
+      "options": [
+        {
+          "id": 7511266,
+          "content": "SGLang只支持单GPU推理"
+        },
+        {
+          "id": 7511268,
+          "content": "SGLang引入了RadixAttention（基数树KV&nbsp;Cache复用）和jump-forward&nbsp;constrained&nbsp;decoding（受限生成的确定性推理加速）"
+        },
+        {
+          "id": 7511270,
+          "content": "SGLang比vLLM更慢但更稳定"
+        },
+        {
+          "id": 7511272,
+          "content": "SGLang专门为视觉-语言模型设计"
+        }
+      ],
+      "correct_option_ids": [
+        7511268
+      ],
+      "correct_options": [
+        "SGLang引入了RadixAttention（基数树KV&nbsp;Cache复用）和jump-forward&nbsp;constrained&nbsp;decoding（受限生成的确定性推理加速）"
+      ],
+      "analysis": "SGLang（Structured&nbsp;Generation&nbsp;Language）的差异化：①RadixAttention：用基数树组织KV&nbsp;Cache，不同请求的公共前缀自动共享（比vLLM的Prefix&nbsp;Caching更通用）；②Constrained&nbsp;Generation加速：对于JSON&nbsp;Schema等约束生成，预计算确定性token（不需要LLM决定），大幅减少LLM调用次数（jump-forward&nbsp;decoding）；③多模态支持。在结构化输出场景吞吐远超vLLM。"
+    },
+    {
+      "question_id": 11639758,
+      "uuid": "49da1d00020d4a04b183984cc19959c8",
+      "type": 1,
+      "title": "以下哪种量化方法对大模型精度损失最小（在相同压缩比下）？",
+      "content": "以下哪种量化方法对大模型精度损失最小（在相同压缩比下）？",
+      "options": [
+        {
+          "id": 7512913,
+          "content": "Post-Training&nbsp;Quantization（PTQ）的round-to-nearest方法"
+        },
+        {
+          "id": 7512914,
+          "content": "Quantization-Aware&nbsp;Training（QAT）：在训练时模拟量化误差，使模型适应量化"
+        },
+        {
+          "id": 7512915,
+          "content": "随机量化（Random&nbsp;Quantization）"
+        },
+        {
+          "id": 7512916,
+          "content": "只量化偶数层，奇数层保持FP16"
+        }
+      ],
+      "correct_option_ids": [
+        7512914
+      ],
+      "correct_options": [
+        "Quantization-Aware&nbsp;Training（QAT）：在训练时模拟量化误差，使模型适应量化"
+      ],
+      "analysis": "精度损失从小到大：QAT（训练时适应）&lt;&nbsp;GPTQ/AWQ（优化PTQ）&lt;&nbsp;Round-to-Nearest&nbsp;PTQ。QAT通过在训练forward&nbsp;pass中插入假量化（fake&nbsp;quantization）操作，使模型权重自然地适应量化噪声，最终量化后精度最高。代价：需要完整的训练流程（数据、计算）。对于大模型，QAT成本极高，因此GPTQ/AWQ等高级PTQ更实用。"
+    },
+    {
+      "question_id": 11639792,
+      "uuid": "1e76745f46ae447bb624f2d157521047",
+      "type": 1,
+      "title": "在计算LLM推理延迟时，TTFT（Time to First Token）...",
+      "content": "在计算LLM推理延迟时，TTFT（Time&nbsp;to&nbsp;First&nbsp;Token）主要受哪个阶段影响？",
+      "options": [
+        {
+          "id": 7510957,
+          "content": "解码（Decode）阶段"
+        },
+        {
+          "id": 7510958,
+          "content": "预填充（Prefill）阶段"
+        },
+        {
+          "id": 7510959,
+          "content": "KV&nbsp;Cache加载时间"
+        },
+        {
+          "id": 7510960,
+          "content": "模型权重加载时间"
+        }
+      ],
+      "correct_option_ids": [
+        7510958
+      ],
+      "correct_options": [
+        "预填充（Prefill）阶段"
+      ],
+      "analysis": "TTFT（首token延迟）主要由Prefill阶段决定，该阶段处理完整的输入prompt，计算所有输入token的注意力（计算密集型）。Decode阶段决定后续token的生成速度（TPS）。"
+    },
+    {
+      "question_id": 11639689,
+      "uuid": "54161ffa63454cda898da7e569d45437",
+      "type": 1,
+      "title": "一个7B参数的Transformer模型，32层、32头、d_model=...",
+      "content": "一个7B参数的Transformer模型，32层、32头、d_model=4096、使用FP16，序列长度为2048时，KV&nbsp;Cache占用多少显存？",
+      "options": [
+        {
+          "id": 7513117,
+          "content": "约512MB"
+        },
+        {
+          "id": 7513118,
+          "content": "约1GB"
+        },
+        {
+          "id": 7513119,
+          "content": "约2GB"
+        },
+        {
+          "id": 7513120,
+          "content": "约4GB"
+        }
+      ],
+      "correct_option_ids": [
+        7513118
+      ],
+      "correct_options": [
+        "约1GB"
+      ],
+      "analysis": "KV&nbsp;Cache大小&nbsp;=&nbsp;2（K和V）×&nbsp;num_layers&nbsp;×&nbsp;seq_len&nbsp;×&nbsp;d_model&nbsp;×&nbsp;bytes_per_element&nbsp;=&nbsp;2&nbsp;×&nbsp;32&nbsp;×&nbsp;2048&nbsp;×&nbsp;4096&nbsp;×&nbsp;2bytes&nbsp;=&nbsp;1,073,741,824&nbsp;bytes&nbsp;≈&nbsp;1GB。注意d_head&nbsp;=&nbsp;d_model/num_heads不影响总计算（K和V每层总维度为d_model），因此答案为约1GB。"
+    },
+    {
+      "question_id": 11639720,
+      "uuid": "11b6854f75b946cfad19f3de155bf642",
+      "type": 1,
+      "title": "LLM推理时，流水线并行（Pipeline Parallelism）相比张...",
+      "content": "LLM推理时，流水线并行（Pipeline&nbsp;Parallelism）相比张量并行的优缺点是什么？",
+      "options": [
+        {
+          "id": 7512601,
+          "content": "流水线并行通信量更大，但实现更简单"
+        },
+        {
+          "id": 7512602,
+          "content": "流水线并行通信量小（只传递层间激活），但存在pipeline&nbsp;bubble问题（设备空闲等待）"
+        },
+        {
+          "id": 7512603,
+          "content": "流水线并行只适用于编码器模型"
+        },
+        {
+          "id": 7512604,
+          "content": "流水线并行需要比张量并行更多的GPU"
+        }
+      ],
+      "correct_option_ids": [
+        7512602
+      ],
+      "correct_options": [
+        "流水线并行通信量小（只传递层间激活），但存在pipeline&nbsp;bubble问题（设备空闲等待）"
+      ],
+      "analysis": "流水线并行将模型层分配到不同设备，层间只传递激活（通信量远小于张量并行的all-reduce）。但存在\"pipeline&nbsp;bubble\"：设备需等待前一设备完成计算才能开始，导致GPU空闲。可通过micro-batching（如GPipe）或1F1B调度（Megatron-LM）减少bubble比例。张量并行通信频繁但无bubble，两者常结合使用（3D并行）。"
+    },
+    {
+      "question_id": 11639845,
+      "uuid": "555ff9f4f70144b2b9cafb01b2a15531",
+      "type": 1,
+      "title": "在以下推理加速技术中，哪种适合在推理时动态减少模型宽度（激活神经元数量）？",
+      "content": "在以下推理加速技术中，哪种适合在推理时动态减少模型宽度（激活神经元数量）？",
+      "options": [
+        {
+          "id": 7511687,
+          "content": "量化（Quantization）"
+        },
+        {
+          "id": 7511689,
+          "content": "动态激活稀疏性（Dynamic&nbsp;Activation&nbsp;Sparsity，如MoE或ReLU稀疏激活）"
+        },
+        {
+          "id": 7511691,
+          "content": "知识蒸馏"
+        },
+        {
+          "id": 7511692,
+          "content": "模型剪枝（静态）"
+        }
+      ],
+      "correct_option_ids": [
+        7511689
+      ],
+      "correct_options": [
+        "动态激活稀疏性（Dynamic&nbsp;Activation&nbsp;Sparsity，如MoE或ReLU稀疏激活）"
+      ],
+      "analysis": "动态激活稀疏性：利用ReLU等激活函数会产生大量零值的特性（或MoE只激活部分专家），跳过对应的权重矩阵乘法计算，在保持模型大小的同时减少实际计算量。DejaVu等研究表明大模型有高达75%+的激活稀疏性。"
+    },
+    {
+      "question_id": 11639724,
+      "uuid": "e2a6958b72e84dc49d99ea872f263611",
+      "type": 1,
+      "title": "以下关于INT4推理（如llama.cpp的Q4_K_M量化）的描述，正确的是？",
+      "content": "以下关于INT4推理（如llama.cpp的Q4_K_M量化）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7512649,
+          "content": "INT4量化在所有任务上精度与FP16相当"
+        },
+        {
+          "id": 7512650,
+          "content": "INT4量化通常有0.5-1.5%的MMLU精度损失，但显存降至FP16的约25%，适合消费级GPU部署"
+        },
+        {
+          "id": 7512651,
+          "content": "INT4量化无法用于7B以上的大模型"
+        },
+        {
+          "id": 7512652,
+          "content": "INT4量化需要专用硬件支持，普通GPU无法运行"
+        }
+      ],
+      "correct_option_ids": [
+        7512650
+      ],
+      "correct_options": [
+        "INT4量化通常有0.5-1.5%的MMLU精度损失，但显存降至FP16的约25%，适合消费级GPU部署"
+      ],
+      "analysis": "INT4量化将每个权重压缩至4bit（FP16为16bit），模型大小降至约25%，7B模型约3.5-4GB，可在消费级GPU（8GB显存）运行。精度损失取决于量化方法：简单round-to-nearest损失较大，GPTQ/AWQ/GGUF的Q4_K_M等方法通过分组量化+校准，MMLU精度损失通常在1%以内，对大多数应用可接受。"
+    },
+    {
+      "question_id": 11639788,
+      "uuid": "da05e59f7ee843ccbed7e3092398d5d7",
+      "type": 1,
+      "title": "在Speculative Decoding中，如果草稿模型（Draft M...",
+      "content": "在Speculative&nbsp;Decoding中，如果草稿模型（Draft&nbsp;Model）生成了5个token，目标模型验证了前3个接受，第4个拒绝，则最终接受多少个token？",
+      "options": [
+        {
+          "id": 7511012,
+          "content": "3个"
+        },
+        {
+          "id": 7511014,
+          "content": "4个"
+        },
+        {
+          "id": 7511015,
+          "content": "5个"
+        },
+        {
+          "id": 7511016,
+          "content": "2个"
+        }
+      ],
+      "correct_option_ids": [
+        7511014
+      ],
+      "correct_options": [
+        "4个"
+      ],
+      "analysis": "推测解码在拒绝时会从修正后的分布采样一个token，所以接受前3个+从修正分布采样的第4个token=4个token。这保证了输出分布与目标模型完全一致，同时实现了加速。"
+    },
+    {
+      "question_id": 11639762,
+      "uuid": "cb9ec1d9119e46cd9ac10e6008023912",
+      "type": 1,
+      "title": "以下哪种推理优化技术最适合提升\"Time to First Token\"（...",
+      "content": "以下哪种推理优化技术最适合提升\"Time&nbsp;to&nbsp;First&nbsp;Token\"（TTFT）而非吞吐量？",
+      "options": [
+        {
+          "id": 7512897,
+          "content": "增大decode&nbsp;batch&nbsp;size"
+        },
+        {
+          "id": 7512898,
+          "content": "Continuous&nbsp;Batching"
+        },
+        {
+          "id": 7512899,
+          "content": "前缀缓存（Prefix&nbsp;Caching）和使用专用prefill服务器（Disaggregated&nbsp;Inference）"
+        },
+        {
+          "id": 7512900,
+          "content": "INT4量化"
+        }
+      ],
+      "correct_option_ids": [
+        7512899
+      ],
+      "correct_options": [
+        "前缀缓存（Prefix&nbsp;Caching）和使用专用prefill服务器（Disaggregated&nbsp;Inference）"
+      ],
+      "analysis": "TTFT优化&nbsp;vs&nbsp;吞吐优化是不同的目标：吞吐量优化（tokens/s）需要大batch；TTFT优化（首token速度）需要：①前缀缓存（相同前缀直接复用，跳过prefill）；②Disaggregated&nbsp;Inference（专门的prefill服务器，不被decode任务打断，快速完成prefill）；③Flash&nbsp;Attention加速单次prefill计算。增大batch&nbsp;size通常会增加TTFT（排队等待更多请求）。"
+    },
+    {
+      "question_id": 11639718,
+      "uuid": "9480c3c6e615414b8ef1b7f75b66582a",
+      "type": 1,
+      "title": "投机采样（Speculative Sampling）中的\"接受条件\"是基于...",
+      "content": "投机采样（Speculative&nbsp;Sampling）中的\"接受条件\"是基于什么原理设计的？",
+      "options": [
+        {
+          "id": 7512993,
+          "content": "直接接受draft&nbsp;model生成的所有token"
+        },
+        {
+          "id": 7512994,
+          "content": "基于拒绝采样：以min(1,&nbsp;p_target/p_draft)的概率接受，保证最终输出分布等于target&nbsp;model分布"
+        },
+        {
+          "id": 7512995,
+          "content": "根据draft&nbsp;model的置信度阈值接受"
+        },
+        {
+          "id": 7512996,
+          "content": "只接受target&nbsp;model和draft&nbsp;model都认为概率最高的token"
+        }
+      ],
+      "correct_option_ids": [
+        7512994
+      ],
+      "correct_options": [
+        "基于拒绝采样：以min(1,&nbsp;p_target/p_draft)的概率接受，保证最终输出分布等于target&nbsp;model分布"
+      ],
+      "analysis": "推测解码的关键是无损性：对于draft&nbsp;token&nbsp;x，以概率α&nbsp;=&nbsp;min(1,&nbsp;p_target(x)/p_draft(x))接受。若拒绝，从校正分布(p_target&nbsp;-&nbsp;p_draft)+中重新采样。这保证了最终输出的边际分布恰好等于target&nbsp;model的分布（数学上严格无损）。接受率α的期望越高，加速比越大，这要求draft&nbsp;model与target&nbsp;model分布尽量接近。"
+    },
+    {
+      "question_id": 11639754,
+      "uuid": "90d162ed55e640da84328faa9bae7926",
+      "type": 1,
+      "title": "以下关于\"Sliding Window Attention\"（滑动窗口注意...",
+      "content": "以下关于\"Sliding&nbsp;Window&nbsp;Attention\"（滑动窗口注意力，如Mistral使用）在推理上的影响，描述正确的是？",
+      "options": [
+        {
+          "id": 7512929,
+          "content": "滑动窗口注意力使每个token都能关注到全部历史"
+        },
+        {
+          "id": 7512930,
+          "content": "每个token只关注最近W个token（窗口大小），KV&nbsp;Cache大小固定为W，支持任意长序列但有信息截断"
+        },
+        {
+          "id": 7512931,
+          "content": "滑动窗口注意力比完整注意力计算量更大"
+        },
+        {
+          "id": 7512932,
+          "content": "滑动窗口注意力不需要KV&nbsp;Cache"
+        }
+      ],
+      "correct_option_ids": [
+        7512930
+      ],
+      "correct_options": [
+        "每个token只关注最近W个token（窗口大小），KV&nbsp;Cache大小固定为W，支持任意长序列但有信息截断"
+      ],
+      "analysis": "Sliding&nbsp;Window&nbsp;Attention（局部注意力）：每个token的attention范围限制在最近W个token（如Mistral的4096&nbsp;window）。推理影响：①KV&nbsp;Cache大小固定为W&nbsp;×&nbsp;num_layers&nbsp;×&nbsp;d_model（不随总序列长度增长）；②超出窗口的历史信息被丢弃（但通过Grouped&nbsp;Query&nbsp;Attention可以用更大的窗口）；③适合超长文本场景（KV&nbsp;Cache不会OOM）；④配合Rotating&nbsp;Buffer（循环覆盖旧KV）实现高效管理。"
+    },
+    {
+      "question_id": 11639835,
+      "uuid": "521ef6ecae28470ebb355d1599e81cb5",
+      "type": 1,
+      "title": "以下哪种推理服务框架专门为Google TPU优化，与Llama.cpp（...",
+      "content": "以下哪种推理服务框架专门为Google&nbsp;TPU优化，与Llama.cpp（CPU）、vLLM（GPU）类似？",
+      "options": [
+        {
+          "id": 7511777,
+          "content": "TensorRT-LLM"
+        },
+        {
+          "id": 7511778,
+          "content": "LMDeploy"
+        },
+        {
+          "id": 7511779,
+          "content": "JetStream（搭配MaxText或Jax-based实现）"
+        },
+        {
+          "id": 7511780,
+          "content": "Ollama"
+        }
+      ],
+      "correct_option_ids": [
+        7511779
+      ],
+      "correct_options": [
+        "JetStream（搭配MaxText或Jax-based实现）"
+      ],
+      "analysis": "JetStream是Google为TPU优化的LLM推理框架，配合MaxText或高性能JAX实现，专门利用TPU的矩阵乘法单元（MXU）和高带宽内存（HBM）特性。TensorRT-LLM面向NVIDIA&nbsp;GPU，LMDeploy也面向NVIDIA&nbsp;GPU。"
+    },
+    {
+      "question_id": 11639708,
+      "uuid": "3ceac0fbf39c4fee97a9d1962baebb1a",
+      "type": 1,
+      "title": "在推理服务中，TTFT（Time to First Token）和TBT（...",
+      "content": "在推理服务中，TTFT（Time&nbsp;to&nbsp;First&nbsp;Token）和TBT（Time&nbsp;Between&nbsp;Tokens）分别对应什么阶段？",
+      "options": [
+        {
+          "id": 7511556,
+          "content": "TTFT对应decode阶段，TBT对应prefill阶段"
+        },
+        {
+          "id": 7511558,
+          "content": "TTFT对应prefill阶段的延迟，TBT对应decode阶段每步的延迟"
+        },
+        {
+          "id": 7511559,
+          "content": "TTFT和TBT都对应decode阶段"
+        },
+        {
+          "id": 7511560,
+          "content": "TTFT是总延迟，TBT是平均每token延迟"
+        }
+      ],
+      "correct_option_ids": [
+        7511558
+      ],
+      "correct_options": [
+        "TTFT对应prefill阶段的延迟，TBT对应decode阶段每步的延迟"
+      ],
+      "analysis": "TTFT（首token时间）=&nbsp;prefill阶段时间，即处理完整个输入prompt后生成第一个token的时间，直接影响用户感知到的\"响应开始\"速度。TBT（token间时间）=&nbsp;每个decode步骤的时间，决定文字流出的速度。在线服务中通常要求TTFT&lt;200ms，TBT&lt;50ms以提供流畅的流式体验。"
+    },
+    {
+      "question_id": 11639855,
+      "uuid": "584c110933174cbbafac61323caf4a52",
+      "type": 1,
+      "title": "在以下情况下，哪种推理优化策略可以同时降低延迟和提高吞吐量？",
+      "content": "在以下情况下，哪种推理优化策略可以同时降低延迟和提高吞吐量？",
+      "options": [
+        {
+          "id": 7511599,
+          "content": "增大批次大小（总是同时改善两者）"
+        },
+        {
+          "id": 7511601,
+          "content": "Prefix&nbsp;Caching&nbsp;+&nbsp;Speculative&nbsp;Decoding组合使用"
+        },
+        {
+          "id": 7511603,
+          "content": "禁用KV&nbsp;Cache"
+        },
+        {
+          "id": 7511604,
+          "content": "使用CPU推理"
+        }
+      ],
+      "correct_option_ids": [
+        7511601
+      ],
+      "correct_options": [
+        "Prefix&nbsp;Caching&nbsp;+&nbsp;Speculative&nbsp;Decoding组合使用"
+      ],
+      "analysis": "Prefix&nbsp;Caching降低相同前缀请求的TTFT（不重复计算KV&nbsp;Cache），Speculative&nbsp;Decoding加速decode阶段（并行生成多token）。两者正交互补：前者优化prefill，后者优化decode，组合使用可同时改善TTFT和TPS（每秒token数）。"
+    },
+    {
+      "question_id": 11639854,
+      "uuid": "99c9e2f7a1c64198bff53b0a7b195971",
+      "type": 1,
+      "title": "以下关于LLM服务中\"资源碎片化\"（Resource Fragmentat...",
+      "content": "以下关于LLM服务中\"资源碎片化\"（Resource&nbsp;Fragmentation）问题的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511613,
+          "content": "指GPU显存被物理碎片化，无法分配大块内存"
+        },
+        {
+          "id": 7511614,
+          "content": "指多个序列在KV&nbsp;Cache中的不连续分配导致内存利用率低"
+        },
+        {
+          "id": 7511615,
+          "content": "指不同精度计算单元的资源浪费"
+        },
+        {
+          "id": 7511616,
+          "content": "指多节点推理中的负载不均衡"
+        }
+      ],
+      "correct_option_ids": [
+        7511614
+      ],
+      "correct_options": [
+        "指多个序列在KV&nbsp;Cache中的不连续分配导致内存利用率低"
+      ],
+      "analysis": "在静态KV&nbsp;Cache分配中（非PagedAttention），为每个序列预分配最大长度的连续内存，实际使用率仅40%左右，大量内存因碎片化而浪费。PagedAttention通过分页机制将KV&nbsp;Cache分为固定大小的页面，按需分配，将碎片率降至&lt;4%。"
+    },
+    {
+      "question_id": 11639803,
+      "uuid": "567b2fd096d4451f9b2ca6f99594bd49",
+      "type": 1,
+      "title": "在LLM推理中，以下哪个因素是\"内存带宽瓶颈\"而非\"计算瓶颈\"的体现？",
+      "content": "在LLM推理中，以下哪个因素是\"内存带宽瓶颈\"而非\"计算瓶颈\"的体现？",
+      "options": [
+        {
+          "id": 7510813,
+          "content": "Prefill阶段处理长prompt时GPU利用率100%"
+        },
+        {
+          "id": 7510815,
+          "content": "Decode阶段每步只生成1个token时GPU利用率很低"
+        },
+        {
+          "id": 7510817,
+          "content": "大批次推理时延迟线性增加"
+        },
+        {
+          "id": 7510819,
+          "content": "模型权重文件加载时间长"
+        }
+      ],
+      "correct_option_ids": [
+        7510815
+      ],
+      "correct_options": [
+        "Decode阶段每步只生成1个token时GPU利用率很低"
+      ],
+      "analysis": "Decode阶段每步只有1个新token，需要将全部模型权重从HBM读入SRAM（数十GB），但计算量极小（仅1个token的矩阵向量乘法），算术强度很低，是典型的内存带宽瓶颈（Memory-Bound）。"
+    },
+    {
+      "question_id": 11639731,
+      "uuid": "eafdd05978954f2b844d0ddaf21943fe",
+      "type": 1,
+      "title": "以下哪种因素会导致推测解码的加速比下降？",
+      "content": "以下哪种因素会导致推测解码的加速比下降？",
+      "options": [
+        {
+          "id": 7512981,
+          "content": "draft模型与target模型在同一家族（如Llama-7B&nbsp;draft&nbsp;+&nbsp;Llama-70B&nbsp;target）"
+        },
+        {
+          "id": 7512982,
+          "content": "输入prompt和输出内容分布多样（draft模型接受率低）"
+        },
+        {
+          "id": 7512983,
+          "content": "使用更大的k值（每次draft更多token）"
+        },
+        {
+          "id": 7512984,
+          "content": "在单一领域数据（如代码）上使用专门训练的draft模型"
+        }
+      ],
+      "correct_option_ids": [
+        7512982
+      ],
+      "correct_options": [
+        "输入prompt和输出内容分布多样（draft模型接受率低）"
+      ],
+      "analysis": "推测解码加速比&nbsp;≈&nbsp;k&nbsp;×&nbsp;α（k为draft&nbsp;token数，α为平均接受率）。当prompt多样、输出分布难以预测时，draft模型的接受率α下降，导致大量重新采样，加速比降低甚至低于1（因为额外的draft计算开销）。适合推测解码的场景：输出分布可预测（如代码补全、固定格式输出）。"
+    },
+    {
+      "question_id": 11639740,
+      "uuid": "f7f4fd4cb79f4204b6c0a819ddc395d0",
+      "type": 1,
+      "title": "以下关于\"Chunked Prefill\"和\"Disaggregated ...",
+      "content": "以下关于\"Chunked&nbsp;Prefill\"和\"Disaggregated&nbsp;Prefill\"的区别，描述正确的是？",
+      "options": [
+        {
+          "id": 7511321,
+          "content": "两者完全相同"
+        },
+        {
+          "id": 7511322,
+          "content": "Chunked&nbsp;Prefill在同一GPU上分块处理长prompt；Disaggregated&nbsp;Prefill将prefill和decode分配到不同GPU集群，彻底分离两阶段"
+        },
+        {
+          "id": 7511323,
+          "content": "Disaggregated&nbsp;Prefill只适用于单GPU"
+        },
+        {
+          "id": 7511324,
+          "content": "Chunked&nbsp;Prefill会降低吞吐量"
+        }
+      ],
+      "correct_option_ids": [
+        7511322
+      ],
+      "correct_options": [
+        "Chunked&nbsp;Prefill在同一GPU上分块处理长prompt；Disaggregated&nbsp;Prefill将prefill和decode分配到不同GPU集群，彻底分离两阶段"
+      ],
+      "analysis": "Chunked&nbsp;Prefill：在同一服务器上将长prompt分块处理，减少单次显存峰值，同时可以与decode请求交错批处理（提升GPU利用率）。Disaggregated&nbsp;Prefill（分离式推理）：prefill集群（擅长compute-bound任务）和decode集群（擅长memory-bound任务）分别优化硬件配置和批大小，通过KV&nbsp;cache迁移连接，实现各自最优性能。是大规模推理服务的前沿架构（如Splitwise、Mooncake）。"
+    },
+    {
+      "question_id": 11639828,
+      "uuid": "a093845bd2654ab99a64881869fc3bd7",
+      "type": 1,
+      "title": "在LLM服务中，以下哪项配置会最大化GPU内存利用率但可能导致OOM风险？",
+      "content": "在LLM服务中，以下哪项配置会最大化GPU内存利用率但可能导致OOM风险？",
+      "options": [
+        {
+          "id": 7510495,
+          "content": "保守的KV&nbsp;Cache分配，大量预留内存"
+        },
+        {
+          "id": 7510497,
+          "content": "PagedAttention动态分配，最大化KV&nbsp;Cache使用率"
+        },
+        {
+          "id": 7510499,
+          "content": "提前分配所有可能的最大KV&nbsp;Cache"
+        },
+        {
+          "id": 7510500,
+          "content": "只处理短序列请求"
+        }
+      ],
+      "correct_option_ids": [
+        7510497
+      ],
+      "correct_options": [
+        "PagedAttention动态分配，最大化KV&nbsp;Cache使用率"
+      ],
+      "analysis": "PagedAttention按需动态分配物理KV&nbsp;Cache块，几乎不预留内存，将内存利用率最大化至&gt;90%（传统方法浪费60-80%）。但如果并发请求突增且每个都需要大量KV&nbsp;Cache，理论上仍可能OOM。"
+    },
+    {
+      "question_id": 11639811,
+      "uuid": "7586922c68c448368567e56810fd7e93",
+      "type": 1,
+      "title": "在使用TensorRT-LLM部署模型时，以下哪项不是其性能优化手段？",
+      "content": "在使用TensorRT-LLM部署模型时，以下哪项不是其性能优化手段？",
+      "options": [
+        {
+          "id": 7510713,
+          "content": "算子融合（Kernel&nbsp;Fusion）"
+        },
+        {
+          "id": 7510714,
+          "content": "FP8量化支持"
+        },
+        {
+          "id": 7510715,
+          "content": "动态形状推理"
+        },
+        {
+          "id": 7510716,
+          "content": "自动超参数搜索"
+        }
+      ],
+      "correct_option_ids": [
+        7510716
+      ],
+      "correct_options": [
+        "自动超参数搜索"
+      ],
+      "analysis": "TensorRT-LLM的优化包括：算子融合（将多个小操作合并为一个kernel）、量化（INT8/FP8）、In-flight&nbsp;batching（连续批处理）、多GPU并行等。自动超参数搜索不是其推理优化功能。"
+    },
+    {
+      "question_id": 11639784,
+      "uuid": "3ac5036ea3604905bdfa5277dfadc31c",
+      "type": 1,
+      "title": "以下关于\"Decoding Parallelism\"（解码并行化）的描述，...",
+      "content": "以下关于\"Decoding&nbsp;Parallelism\"（解码并行化）的描述，哪种方法不可行？",
+      "options": [
+        {
+          "id": 7511061,
+          "content": "对同一请求的多个beam并行处理（Beam&nbsp;Search并行）"
+        },
+        {
+          "id": 7511062,
+          "content": "不同请求的decode步骤合并为同一batch并行（Continuous&nbsp;Batching）"
+        },
+        {
+          "id": 7511063,
+          "content": "同一请求内不同位置的token同时并行生成（位置独立并行）"
+        },
+        {
+          "id": 7511064,
+          "content": "多GPU张量并行处理同一decode步骤"
+        }
+      ],
+      "correct_option_ids": [
+        7511063
+      ],
+      "correct_options": [
+        "同一请求内不同位置的token同时并行生成（位置独立并行）"
+      ],
+      "analysis": "自回归语言模型的根本约束：每个位置的token生成依赖于所有之前位置的token（因果依赖）——token_t+1需要token_t才能生成。因此，同一序列内不同位置的token无法真正并行生成（这是自回归的本质）。推测解码（Speculative&nbsp;Decoding）和Medusa是\"近似并行\"（并行验证），但仍基于自回归模型，不是真正的位置独立并行。非自回归模型（NAR）可以并行生成，但质量通常不如自回归。"
+    },
+    {
+      "question_id": 11639771,
+      "uuid": "1ed71244e0094aada8b7e39182fb8403",
+      "type": 1,
+      "title": "以下哪种工具最适合对LLM推理服务进行性能分析（Profiling）？",
+      "content": "以下哪种工具最适合对LLM推理服务进行性能分析（Profiling）？",
+      "options": [
+        {
+          "id": 7511233,
+          "content": "Python的cProfile（CPU级别分析）"
+        },
+        {
+          "id": 7511234,
+          "content": "NVIDIA&nbsp;Nsight&nbsp;Systems（GPU级别追踪，分析kernel执行、内存传输、CPU-GPU同步）"
+        },
+        {
+          "id": 7511235,
+          "content": "Linux的top命令"
+        },
+        {
+          "id": 7511236,
+          "content": "Python的timeit模块"
+        }
+      ],
+      "correct_option_ids": [
+        7511234
+      ],
+      "correct_options": [
+        "NVIDIA&nbsp;Nsight&nbsp;Systems（GPU级别追踪，分析kernel执行、内存传输、CPU-GPU同步）"
+      ],
+      "analysis": "LLM推理性能分析需要GPU级别工具：①NVIDIA&nbsp;Nsight&nbsp;Systems：可视化GPU&nbsp;kernel执行时间线、内存传输、GPU空闲时段（识别bubble）、CPU-GPU同步点；②PyTorch&nbsp;Profiler：分析PyTorch算子级别性能，集成Kineto后端；③NVIDIA&nbsp;NCU（Nsight&nbsp;Compute）：深入单个CUDA&nbsp;kernel的硬件指标（内存带宽利用率、SM占用率）。这些工具帮助识别是compute-bound还是memory-bound，定位优化重点。"
+    },
+    {
+      "question_id": 11639777,
+      "uuid": "ac5aa2bfa3d64d57ae33691167485099",
+      "type": 1,
+      "title": "以下关于\"Lookahead Decoding\"的描述，正确的是？",
+      "content": "以下关于\"Lookahead&nbsp;Decoding\"的描述，正确的是？",
+      "options": [
+        {
+          "id": 7511150,
+          "content": "Lookahead&nbsp;Decoding与Speculative&nbsp;Decoding完全相同"
+        },
+        {
+          "id": 7511152,
+          "content": "Lookahead&nbsp;Decoding不需要draft&nbsp;model：通过Jacobi迭代并行生成多个候选token，不依赖外部模型"
+        },
+        {
+          "id": 7511155,
+          "content": "Lookahead&nbsp;Decoding只适用于确定性任务"
+        },
+        {
+          "id": 7511156,
+          "content": "Lookahead&nbsp;Decoding速度慢于标准自回归解码"
+        }
+      ],
+      "correct_option_ids": [
+        7511152
+      ],
+      "correct_options": [
+        "Lookahead&nbsp;Decoding不需要draft&nbsp;model：通过Jacobi迭代并行生成多个候选token，不依赖外部模型"
+      ],
+      "analysis": "Lookahead&nbsp;Decoding（Fu&nbsp;et&nbsp;al.&nbsp;2023）：通过Jacobi迭代思路，在每步生成时维护一个\"lookahead&nbsp;branch\"并行生成未来多个位置的候选token（n-gram&nbsp;cache），用target&nbsp;model验证。与Speculative&nbsp;Decoding的区别：不需要额外的draft&nbsp;model，直接用target&nbsp;model生成和验证。适合没有合适draft&nbsp;model的场景，但加速比通常低于有高质量draft&nbsp;model的推测解码（1.5-2x&nbsp;vs&nbsp;2-3x）。"
+    },
+    {
+      "question_id": 11639717,
+      "uuid": "1ef334ce07e04ca1b618275a11f9b42f",
+      "type": 1,
+      "title": "以下关于vLLM的PagedAttention的block大小（block...",
+      "content": "以下关于vLLM的PagedAttention的block大小（block_size）设置，描述正确的是？",
+      "options": [
+        {
+          "id": 7512997,
+          "content": "block_size越大越好，可以减少分页管理开销"
+        },
+        {
+          "id": 7512998,
+          "content": "block_size越小越好，可以减少内存浪费"
+        },
+        {
+          "id": 7512999,
+          "content": "block_size需要权衡：太小增加管理开销，太大增加内存碎片；通常设为16或32"
+        },
+        {
+          "id": 7513000,
+          "content": "block_size必须等于max_seq_len"
+        }
+      ],
+      "correct_option_ids": [
+        7512999
+      ],
+      "correct_options": [
+        "block_size需要权衡：太小增加管理开销，太大增加内存碎片；通常设为16或32"
+      ],
+      "analysis": "PagedAttention的block_size影响内存管理效率：block_size太小（如1）意味着每个token一个block，管理开销（block&nbsp;table查找、分配）极大；block_size太大（如1024）则每个序列的最后一个block大量空间浪费（内部碎片）。vLLM默认block_size=16，实验表明16-32是较优范围，在管理开销和碎片间取得平衡。"
+    },
+    {
+      "question_id": 11639779,
+      "uuid": "71f1f9235b1a40b0aed2fca6b1c0adbf",
+      "type": 1,
+      "title": "以下哪种情况会导致张量并行推理出现性能瓶颈？",
+      "content": "以下哪种情况会导致张量并行推理出现性能瓶颈？",
+      "options": [
+        {
+          "id": 7511127,
+          "content": "GPU算力不足"
+        },
+        {
+          "id": 7511129,
+          "content": "All-reduce通信成为瓶颈：当TP度数增加时通信量线性增加，跨机器（InfiniBand带宽低）时通信开销超过计算收益"
+        },
+        {
+          "id": 7511131,
+          "content": "显存不足"
+        },
+        {
+          "id": 7511132,
+          "content": "模型权重太小"
+        }
+      ],
+      "correct_option_ids": [
+        7511129
+      ],
+      "correct_options": [
+        "All-reduce通信成为瓶颈：当TP度数增加时通信量线性增加，跨机器（InfiniBand带宽低）时通信开销超过计算收益"
+      ],
+      "analysis": "张量并行的通信瓶颈：每个Transformer层2次all-reduce（attention输出和MLP输出），数据量&nbsp;=&nbsp;batch_size&nbsp;×&nbsp;seq_len&nbsp;×&nbsp;d_model&nbsp;×&nbsp;2bytes&nbsp;×&nbsp;2（reduce需要传输完整activation）。在机器内（NVLink：600-900&nbsp;GB/s），通信可以被计算掩盖（计算通信overlap）。跨机器（InfiniBand：200-400&nbsp;Gbps&nbsp;≈&nbsp;25-50&nbsp;GB/s），通信成为严重瓶颈。这就是为什么大规模推理系统使用\"机内TP&nbsp;+&nbsp;机间PP\"的3D并行策略。"
+    },
+    {
+      "question_id": 11639756,
+      "uuid": "5b3ca184597e4f5b9a484af67f54464c",
+      "type": 1,
+      "title": "以下哪种硬件加速器最适合LLM推理的decode阶段（memory-bou...",
+      "content": "以下哪种硬件加速器最适合LLM推理的decode阶段（memory-bound）？",
+      "options": [
+        {
+          "id": 7512921,
+          "content": "高算力低带宽的计算专用芯片"
+        },
+        {
+          "id": 7512922,
+          "content": "高内存带宽的设备（如具有HBM的GPU/专用AI芯片），带宽决定decode速度"
+        },
+        {
+          "id": 7512923,
+          "content": "高频率的CPU"
+        },
+        {
+          "id": 7512924,
+          "content": "大容量但低带宽的DRAM"
+        }
+      ],
+      "correct_option_ids": [
+        7512922
+      ],
+      "correct_options": [
+        "高内存带宽的设备（如具有HBM的GPU/专用AI芯片），带宽决定decode速度"
+      ],
+      "analysis": "Decode阶段瓶颈是权重读取的内存带宽（memory-bound）：每生成一个token需要读取所有权重一次。因此decode速度&nbsp;≈&nbsp;模型大小&nbsp;/&nbsp;内存带宽。A100&nbsp;HBM2e：2&nbsp;TB/s；H100&nbsp;HBM3：3.35&nbsp;TB/s；Groq的LPU（Language&nbsp;Processing&nbsp;Unit）：约80&nbsp;TB/s（接近片上SRAM速度）；Apple&nbsp;M系列统一内存：约800&nbsp;GB/s（性价比高）。高带宽是LLM推理芯片选型的核心指标。"
+    },
+    {
+      "question_id": 11639850,
+      "uuid": "78c0685da57e4013adb5feff4c162bb8",
+      "type": 1,
+      "title": "在分布式推理中，以下哪种并行方式在序列维度上切分注意力计算？",
+      "content": "在分布式推理中，以下哪种并行方式在序列维度上切分注意力计算？",
+      "options": [
+        {
+          "id": 7511645,
+          "content": "张量并行（Tensor&nbsp;Parallelism）"
+        },
+        {
+          "id": 7511646,
+          "content": "序列并行（Sequence&nbsp;Parallelism）"
+        },
+        {
+          "id": 7511647,
+          "content": "流水线并行（Pipeline&nbsp;Parallelism）"
+        },
+        {
+          "id": 7511648,
+          "content": "数据并行（Data&nbsp;Parallelism）"
+        }
+      ],
+      "correct_option_ids": [
+        7511646
+      ],
+      "correct_options": [
+        "序列并行（Sequence&nbsp;Parallelism）"
+      ],
+      "analysis": "序列并行（Sequence&nbsp;Parallelism）在序列长度维度上切分输入，每个GPU处理一段序列的计算，适合超长序列（如128K+）的注意力计算。与张量并行互补：TP在隐藏维度切分，SP在序列维度切分，两者常结合使用（如Megatron-SP）。"
+    },
+    {
+      "question_id": 11639767,
+      "uuid": "d9857009be9b4716aa2f5bfaf86be956",
+      "type": 1,
+      "title": "以下哪种场景下，\"Beam Search\"的计算成本是贪心解码的多少倍？",
+      "content": "以下哪种场景下，\"Beam&nbsp;Search\"的计算成本是贪心解码的多少倍？",
+      "options": [
+        {
+          "id": 7512877,
+          "content": "等于beam_size倍（beam_size个序列并行处理）"
+        },
+        {
+          "id": 7512878,
+          "content": "约等于beam_size倍的前向传播计算，但每步top-k选择使真实开销约为beam_size&nbsp;×&nbsp;vocab_size排序"
+        },
+        {
+          "id": 7512879,
+          "content": "没有额外开销，因为GPU并行处理"
+        },
+        {
+          "id": 7512880,
+          "content": "Beam&nbsp;Search总是比贪心快"
+        }
+      ],
+      "correct_option_ids": [
+        7512877
+      ],
+      "correct_options": [
+        "等于beam_size倍（beam_size个序列并行处理）"
+      ],
+      "analysis": "Beam&nbsp;Search维护beam_size个候选序列，每步需要对每个候选序列做完整的前向传播（计算next&nbsp;token的分布），因此计算量&nbsp;≈&nbsp;beam_size&nbsp;×&nbsp;贪心解码计算量。显存占用也≈beam_size倍（需要为每个候选序列维护KV&nbsp;Cache）。实践中beam=4需要4倍计算和显存，beam=8需要8倍，这也是大型推理服务通常不使用beam&nbsp;search的原因——延迟和成本显著增加。"
+    },
+    {
+      "question_id": 11639739,
+      "uuid": "66145d9456574a66a5010d74589eff53",
+      "type": 1,
+      "title": "以下关于\"Token Budget\"（token预算）机制在推理中的作用，...",
+      "content": "以下关于\"Token&nbsp;Budget\"（token预算）机制在推理中的作用，描述正确的是？",
+      "options": [
+        {
+          "id": 7511309,
+          "content": "Token&nbsp;Budget限制用户输入的最大长度"
+        },
+        {
+          "id": 7511310,
+          "content": "通过在prompt中告知模型剩余可用token数，引导模型在接近限制时压缩输出，避免截断"
+        },
+        {
+          "id": 7511311,
+          "content": "Token&nbsp;Budget是一种量化技术"
+        },
+        {
+          "id": 7511312,
+          "content": "Token&nbsp;Budget只对GPT系列模型有效"
+        }
+      ],
+      "correct_option_ids": [
+        7511310
+      ],
+      "correct_options": [
+        "通过在prompt中告知模型剩余可用token数，引导模型在接近限制时压缩输出，避免截断"
+      ],
+      "analysis": "Token&nbsp;Budget是推理服务中控制输出长度的技术：在prompt中加入类似\"你还有X个token可用，请简洁作答\"的提示，让模型自适应地调整输出长度。当剩余token接近0时，模型会主动总结收尾而非被截断（截断会产生不完整的回复）。这比硬截断（max_new_tokens）提供更好的用户体验，广泛用于对话系统中。"
+    },
+    {
+      "question_id": 11639842,
+      "uuid": "380ddf83a89a41d7be34867a03545e5c",
+      "type": 1,
+      "title": "以下哪种技术在多GPU推理中可以减少All-Reduce通信的等待时间？",
+      "content": "以下哪种技术在多GPU推理中可以减少All-Reduce通信的等待时间？",
+      "options": [
+        {
+          "id": 7511713,
+          "content": "增加GPU数量"
+        },
+        {
+          "id": 7511714,
+          "content": "计算-通信重叠（Computation-Communication&nbsp;Overlap）"
+        },
+        {
+          "id": 7511715,
+          "content": "使用更大的批次"
+        },
+        {
+          "id": 7511716,
+          "content": "减少模型层数"
+        }
+      ],
+      "correct_option_ids": [
+        7511714
+      ],
+      "correct_options": [
+        "计算-通信重叠（Computation-Communication&nbsp;Overlap）"
+      ],
+      "analysis": "计算-通信重叠：在等待All-Reduce完成时，同时开始下一层的计算（流水线方式），将通信时间\"隐藏\"在计算时间背后。Megatron-LM等框架通过精心设计的异步通信调度实现这一优化，可降低分布式推理延迟20-40%。"
+    },
+    {
+      "question_id": 11639836,
+      "uuid": "ba0e2189039e4244a833fc294d102e3c",
+      "type": 1,
+      "title": "以下关于Tensor Parallelism中\"All-Gather\"通信...",
+      "content": "以下关于Tensor&nbsp;Parallelism中\"All-Gather\"通信的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511769,
+          "content": "All-Gather在前向传播中收集各GPU的部分输出"
+        },
+        {
+          "id": 7511770,
+          "content": "All-Gather将切分的权重矩阵从各GPU收集重组以完成矩阵乘法"
+        },
+        {
+          "id": 7511771,
+          "content": "All-Gather只在反向传播中使用"
+        },
+        {
+          "id": 7511772,
+          "content": "All-Gather不影响推理延迟"
+        }
+      ],
+      "correct_option_ids": [
+        7511770
+      ],
+      "correct_options": [
+        "All-Gather将切分的权重矩阵从各GPU收集重组以完成矩阵乘法"
+      ],
+      "analysis": "在ZeRO-3等参数分片策略的推理中，执行矩阵乘法前需要All-Gather将各GPU持有的参数分片重组为完整权重。通信时间是TP/PP推理延迟的重要组成部分，带宽不足时All-Gather成为瓶颈。"
+    },
+    {
+      "question_id": 11639806,
+      "uuid": "672789266cbd4f509dee7cbf61a537a1",
+      "type": 1,
+      "title": "以下关于LLM推理中\"算术强度\"（Arithmetic Intensity...",
+      "content": "以下关于LLM推理中\"算术强度\"（Arithmetic&nbsp;Intensity）的计算，哪项正确？",
+      "options": [
+        {
+          "id": 7510773,
+          "content": "算术强度&nbsp;=&nbsp;模型参数量&nbsp;/&nbsp;批次大小"
+        },
+        {
+          "id": 7510774,
+          "content": "算术强度&nbsp;=&nbsp;FLOPs&nbsp;/&nbsp;内存读写字节数"
+        },
+        {
+          "id": 7510775,
+          "content": "算术强度&nbsp;=&nbsp;GPU计算能力&nbsp;/&nbsp;内存带宽"
+        },
+        {
+          "id": 7510776,
+          "content": "算术强度&nbsp;=&nbsp;序列长度&nbsp;/&nbsp;隐层维度"
+        }
+      ],
+      "correct_option_ids": [
+        7510774
+      ],
+      "correct_options": [
+        "算术强度&nbsp;=&nbsp;FLOPs&nbsp;/&nbsp;内存读写字节数"
+      ],
+      "analysis": "算术强度&nbsp;=&nbsp;计算量(FLOPs)&nbsp;/&nbsp;内存访问量(Bytes)，单位是FLOPs/Byte。当算术强度高于GPU的\"屋脊点\"（计算能力/带宽），为计算瓶颈；低于屋脊点则为内存带宽瓶颈。推理decode阶段算术强度极低。"
+    },
+    {
+      "question_id": 11639804,
+      "uuid": "6d4da5398fd1484b8dc7ae2d426dae03",
+      "type": 1,
+      "title": "以下哪种技术是vLLM支持高吞吐量的核心机制之一？",
+      "content": "以下哪种技术是vLLM支持高吞吐量的核心机制之一？",
+      "options": [
+        {
+          "id": 7510800,
+          "content": "模型量化"
+        },
+        {
+          "id": 7510802,
+          "content": "Prefix&nbsp;Caching（前缀缓存共享）"
+        },
+        {
+          "id": 7510803,
+          "content": "动态批次大小调整"
+        },
+        {
+          "id": 7510804,
+          "content": "梯度检查点"
+        }
+      ],
+      "correct_option_ids": [
+        7510802
+      ],
+      "correct_options": [
+        "Prefix&nbsp;Caching（前缀缓存共享）"
+      ],
+      "analysis": "vLLM的Prefix&nbsp;Caching允许多个请求共享相同前缀（如系统提示）的KV&nbsp;Cache，避免重复计算。结合PagedAttention，相同前缀的物理KV&nbsp;Cache块可以被多个逻辑序列引用，大幅节省内存和计算。"
+    },
+    {
+      "question_id": 11639759,
+      "uuid": "96e16e641eec45c7b7657f40a47bcf88",
+      "type": 1,
+      "title": "以下关于LLM推理中\"Logit Bias\"参数的使用，描述正确的是？",
+      "content": "以下关于LLM推理中\"Logit&nbsp;Bias\"参数的使用，描述正确的是？",
+      "options": [
+        {
+          "id": 7512909,
+          "content": "Logit&nbsp;Bias改变模型的权重，影响所有推理"
+        },
+        {
+          "id": 7512910,
+          "content": "Logit&nbsp;Bias在推理时对特定token的logit值加减偏置，可以强制包含或排除某些词汇（如屏蔽有害词）"
+        },
+        {
+          "id": 7512911,
+          "content": "Logit&nbsp;Bias只能增加token概率，不能减少"
+        },
+        {
+          "id": 7512912,
+          "content": "Logit&nbsp;Bias会使推理速度降低10倍"
+        }
+      ],
+      "correct_option_ids": [
+        7512910
+      ],
+      "correct_options": [
+        "Logit&nbsp;Bias在推理时对特定token的logit值加减偏置，可以强制包含或排除某些词汇（如屏蔽有害词）"
+      ],
+      "analysis": "Logit&nbsp;Bias（OpenAI&nbsp;API参数）：对指定token_id的最终logit值加减偏置（范围通常-100到+100）。应用：①内容安全：将有害词汇的logit设为-100（概率趋近0，强制屏蔽）；②格式控制：给特定格式token（如\"{\"）加正偏置，引导JSON输出；③语言控制：屏蔽特定语言的token强制模型用目标语言输出。计算overhead极小（在logit层加bias），几乎不影响推理速度。"
+    },
+    {
+      "question_id": 11639701,
+      "uuid": "882ac08e608c47819816a9d8a6c20642",
+      "type": 1,
+      "title": "前缀缓存（Prefix Caching）技术的应用场景是？",
+      "content": "前缀缓存（Prefix&nbsp;Caching）技术的应用场景是？",
+      "options": [
+        {
+          "id": 7511463,
+          "content": "所有推理请求都有相同前缀（如system&nbsp;prompt），缓存其KV&nbsp;Cache避免重复计算"
+        },
+        {
+          "id": 7511465,
+          "content": "缓存模型权重以加快加载速度"
+        },
+        {
+          "id": 7511467,
+          "content": "缓存tokenizer的输出减少预处理时间"
+        },
+        {
+          "id": 7511468,
+          "content": "缓存beam&nbsp;search的中间结果"
+        }
+      ],
+      "correct_option_ids": [
+        7511463
+      ],
+      "correct_options": [
+        "所有推理请求都有相同前缀（如system&nbsp;prompt），缓存其KV&nbsp;Cache避免重复计算"
+      ],
+      "analysis": "很多应用的请求共享相同的system&nbsp;prompt（如几百token的角色设定），每次请求都重新计算这部分KV&nbsp;Cache是浪费。前缀缓存（如vLLM的prefix&nbsp;caching、SGLang的RadixAttention）将共享前缀的KV&nbsp;Cache物理存储并复用，可将ttft（首token延迟）减少50-90%。"
+    },
+    {
+      "question_id": 11639705,
+      "uuid": "5ce96c09ce31446ea149fd34b43e69d8",
+      "type": 1,
+      "title": "以下哪种量化方式属于Post-Training Quantization（...",
+      "content": "以下哪种量化方式属于Post-Training&nbsp;Quantization（PTQ）而非Quantization-Aware&nbsp;Training（QAT）？",
+      "options": [
+        {
+          "id": 7511517,
+          "content": "对模型进行量化后再微调以恢复精度（QLoRA）"
+        },
+        {
+          "id": 7511518,
+          "content": "在训练过程中模拟量化误差，使模型适应量化"
+        },
+        {
+          "id": 7511519,
+          "content": "使用少量校准数据（calibration&nbsp;data）对预训练模型直接进行GPTQ/AWQ量化"
+        },
+        {
+          "id": 7511520,
+          "content": "将FP32模型训练为INT8精度模型"
+        }
+      ],
+      "correct_option_ids": [
+        7511519
+      ],
+      "correct_options": [
+        "使用少量校准数据（calibration&nbsp;data）对预训练模型直接进行GPTQ/AWQ量化"
+      ],
+      "analysis": "PTQ（训练后量化）在训练完成后对权重进行量化，GPTQ/AWQ是典型的PTQ方法，只需少量校准数据（通常512条样本），无需重训练，速度快但精度损失略大于QAT。QAT（量化感知训练）在训练时加入量化噪声，让模型适应量化，精度更高但需要完整训练流程。"
+    },
+    {
+      "question_id": 11639837,
+      "uuid": "aa259e692b0d4f1f9699bcdc608de327",
+      "type": 1,
+      "title": "以下哪种技术通过跳过某些Transformer层（Layer Skippi...",
+      "content": "以下哪种技术通过跳过某些Transformer层（Layer&nbsp;Skipping）来加速推理？",
+      "options": [
+        {
+          "id": 7511760,
+          "content": "Flash&nbsp;Attention"
+        },
+        {
+          "id": 7511762,
+          "content": "Early&nbsp;Exit（早停推理，如根据置信度决定是否继续通过更多层）"
+        },
+        {
+          "id": 7511763,
+          "content": "GQA"
+        },
+        {
+          "id": 7511764,
+          "content": "Speculative&nbsp;Decoding"
+        }
+      ],
+      "correct_option_ids": [
+        7511762
+      ],
+      "correct_options": [
+        "Early&nbsp;Exit（早停推理，如根据置信度决定是否继续通过更多层）"
+      ],
+      "analysis": "Early&nbsp;Exit（如DejaVu）在每个Transformer层后预测当前层是否足以给出答案，若置信度足够高则跳过剩余层直接输出，对简单问题大幅减少计算量。类似地，LayerSkip和Shallow&nbsp;Draft用早期层预测token用于投机解码。"
+    },
+    {
+      "question_id": 11639790,
+      "uuid": "61c72d3ac99e4b8f9b786a1b2333fe5e",
+      "type": 1,
+      "title": "在KV Cache优化中，GQA（Grouped Query Attent...",
+      "content": "在KV&nbsp;Cache优化中，GQA（Grouped&nbsp;Query&nbsp;Attention）与MHA（Multi-Head&nbsp;Attention）相比，KV&nbsp;Cache大小减少了多少？设Q头=32，KV组数=8。",
+      "options": [
+        {
+          "id": 7510981,
+          "content": "减少50%"
+        },
+        {
+          "id": 7510982,
+          "content": "减少75%"
+        },
+        {
+          "id": 7510983,
+          "content": "减少87.5%"
+        },
+        {
+          "id": 7510984,
+          "content": "减少90%"
+        }
+      ],
+      "correct_option_ids": [
+        7510982
+      ],
+      "correct_options": [
+        "减少75%"
+      ],
+      "analysis": "GQA中每个KV头对应32/8=4个Q头，KV头数从32降至8，KV&nbsp;Cache大小与KV头数成正比，因此减少(32-8)/32=75%。LLaMA-3、Mistral等模型都使用了GQA来减少推理内存占用。"
+    },
+    {
+      "question_id": 11639748,
+      "uuid": "7dec4efb104f423095623ce6f98e2308",
+      "type": 1,
+      "title": "以下关于\"Min-p Sampling\"（最小概率采样）的描述，正确的是？",
+      "content": "以下关于\"Min-p&nbsp;Sampling\"（最小概率采样）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7512953,
+          "content": "Min-p是Top-p的完全替代，效果更差"
+        },
+        {
+          "id": 7512954,
+          "content": "Min-p设定动态截止阈值：token概率&nbsp;&gt;=&nbsp;p&nbsp;×&nbsp;max_prob才被保留，相比Top-p在分布形状变化时更自适应"
+        },
+        {
+          "id": 7512955,
+          "content": "Min-p总是比Top-p产生更短的输出"
+        },
+        {
+          "id": 7512956,
+          "content": "Min-p只适用于代码生成"
+        }
+      ],
+      "correct_option_ids": [
+        7512954
+      ],
+      "correct_options": [
+        "Min-p设定动态截止阈值：token概率&nbsp;&gt;=&nbsp;p&nbsp;×&nbsp;max_prob才被保留，相比Top-p在分布形状变化时更自适应"
+      ],
+      "analysis": "Top-p的问题：固定累积概率阈值，当分布尖锐时（高确定性）可能保留不必要的低质量token；分布平坦时可能排除太多。Min-p（Nguyen&nbsp;et&nbsp;al.）使用相对阈值：token概率&nbsp;&gt;=&nbsp;min_p&nbsp;×&nbsp;P(最高概率token)&nbsp;才被保留。这意味着阈值随分布动态调整：高确定性时标准更严，低确定性时更宽松。实验表明Min-p在创意写作等任务上效果优于Top-p。"
+    },
+    {
+      "question_id": 11639858,
+      "uuid": "9ea056b501bc461990cd95f11474e67d",
+      "type": 1,
+      "title": "在以下操作中，哪个步骤是使用TensorRT-LLM推理时必须的？",
+      "content": "在以下操作中，哪个步骤是使用TensorRT-LLM推理时必须的？",
+      "options": [
+        {
+          "id": 7511561,
+          "content": "将PyTorch模型直接加载到GPU"
+        },
+        {
+          "id": 7511562,
+          "content": "使用trtllm-build命令将模型权重编译为TRT引擎"
+        },
+        {
+          "id": 7511564,
+          "content": "安装特定版本的CUDA"
+        },
+        {
+          "id": 7511566,
+          "content": "使用int4量化"
+        }
+      ],
+      "correct_option_ids": [
+        7511562
+      ],
+      "correct_options": [
+        "使用trtllm-build命令将模型权重编译为TRT引擎"
+      ],
+      "analysis": "TensorRT-LLM的工作流程必须包含：1)&nbsp;转换权重格式（convert_checkpoint）；2)&nbsp;编译引擎（trtllm-build，执行算子融合、量化等优化）；3)&nbsp;运行引擎（推理服务）。编译过程耗时较长但只需一次，编译后的引擎文件可复用。"
+    },
+    {
+      "question_id": 11639761,
+      "uuid": "239381da51124fabbabcfb3d20947627",
+      "type": 1,
+      "title": "以下关于\"Tensor Parallelism Degree\"（张量并行度...",
+      "content": "以下关于\"Tensor&nbsp;Parallelism&nbsp;Degree\"（张量并行度）的选择，描述正确的是？",
+      "options": [
+        {
+          "id": 7512901,
+          "content": "张量并行度越大越好，应该使用尽可能多的GPU"
+        },
+        {
+          "id": 7512902,
+          "content": "张量并行度应不超过模型的注意力头数（num_heads），且需要权衡通信开销和计算收益"
+        },
+        {
+          "id": 7512903,
+          "content": "张量并行度与模型大小无关"
+        },
+        {
+          "id": 7512904,
+          "content": "所有模型都应使用TP=8"
+        }
+      ],
+      "correct_option_ids": [
+        7512902
+      ],
+      "correct_options": [
+        "张量并行度应不超过模型的注意力头数（num_heads），且需要权衡通信开销和计算收益"
+      ],
+      "analysis": "张量并行度选择约束：①TP必须整除num_heads（每个GPU负责整数个头）；②TP越大通信量越大（每层两次all-reduce），当TP超过某阈值，通信开销超过并行收益；③一般原则：单台机器内（NVLink连接）可用大TP（4或8），跨机器必须使用流水线并行（网络带宽限制）；④7B模型通常TP=1或2即可，70B模型需要TP=4或8。"
+    },
+    {
+      "question_id": 11639745,
+      "uuid": "e0ed2238149f4d38959bad89e40a2a17",
+      "type": 1,
+      "title": "以下哪种情况下，增加推理时的Top-k值会提高生成质量？",
+      "content": "以下哪种情况下，增加推理时的Top-k值会提高生成质量？",
+      "options": [
+        {
+          "id": 7511385,
+          "content": "对于有唯一正确答案的任务（代码/数学），更高的k通常效果更好"
+        },
+        {
+          "id": 7511386,
+          "content": "对于创意写作和开放式对话，适当增大k增加词汇多样性，避免重复和平淡"
+        },
+        {
+          "id": 7511387,
+          "content": "k值对生成质量没有影响"
+        },
+        {
+          "id": 7511388,
+          "content": "k=1（贪心）在所有创意任务上效果最好"
+        }
+      ],
+      "correct_option_ids": [
+        7511386
+      ],
+      "correct_options": [
+        "对于创意写作和开放式对话，适当增大k增加词汇多样性，避免重复和平淡"
+      ],
+      "analysis": "Top-k过滤掉低概率token后在top-k个token中采样。k太小（如5）会导致生成保守单调；k太大（如500）引入大量低质量随机噪声。对于创意写作，k=40-100通常是较优范围，允许合理的多样性。对于精确任务（代码/数学），贪心或小k（5-10）更合适。Top-k常与Top-p（Nucleus&nbsp;Sampling）配合使用，两者互为补充。"
+    },
+    {
+      "question_id": 11639778,
+      "uuid": "bbde56d2aee34dccb231ff27745c991b",
+      "type": 1,
+      "title": "以下关于FlashAttention在decode阶段效果的描述，正确的是？",
+      "content": "以下关于FlashAttention在decode阶段效果的描述，正确的是？",
+      "options": [
+        {
+          "id": 7511137,
+          "content": "FlashAttention在decode阶段效果与prefill阶段相同"
+        },
+        {
+          "id": 7511138,
+          "content": "FlashAttention在decode阶段（batch=1,&nbsp;seqlen增长但每步计算量小）效果有限，主要收益在prefill阶段（长序列、大batch）"
+        },
+        {
+          "id": 7511140,
+          "content": "FlashAttention在decode阶段反而会降低速度"
+        },
+        {
+          "id": 7511142,
+          "content": "Flash&nbsp;Decoding与FlashAttention完全相同"
+        }
+      ],
+      "correct_option_ids": [
+        7511138
+      ],
+      "correct_options": [
+        "FlashAttention在decode阶段（batch=1,&nbsp;seqlen增长但每步计算量小）效果有限，主要收益在prefill阶段（长序列、大batch）"
+      ],
+      "analysis": "FlashAttention通过分块计算减少HBM读写，优化效果在IO密集（大矩阵、高HBM带宽需求）时最显著。Prefill：长序列大batch，attention计算量大，FlashAttention收益显著（10x+&nbsp;IO减少）。Decode：batch=1，每步attention计算量小（只计算1个新query），HBM读写量本就不大，FlashAttention收益有限。Flash&nbsp;Decoding是专门针对decode的优化（在seq_len维度并行），与FlashAttention方向不同。"
+    },
+    {
+      "question_id": 11639706,
+      "uuid": "ce7b0b4621fc4be29542a7f3e3931bbb",
+      "type": 1,
+      "title": "MoE（Mixture of Experts）模型推理时，\"expert ...",
+      "content": "MoE（Mixture&nbsp;of&nbsp;Experts）模型推理时，\"expert&nbsp;load&nbsp;imbalance\"问题指的是？",
+      "options": [
+        {
+          "id": 7511529,
+          "content": "不同专家的参数量不同导致的负载不均"
+        },
+        {
+          "id": 7511530,
+          "content": "路由器将大部分token分配给少数几个专家，其他专家空闲，GPU利用率低"
+        },
+        {
+          "id": 7511531,
+          "content": "不同GPU分配的expert数量不均匀"
+        },
+        {
+          "id": 7511532,
+          "content": "专家选择时的延迟导致推理速度降低"
+        }
+      ],
+      "correct_option_ids": [
+        7511530
+      ],
+      "correct_options": [
+        "路由器将大部分token分配给少数几个专家，其他专家空闲，GPU利用率低"
+      ],
+      "analysis": "MoE的top-k路由机制可能导致某些\"热门\"专家总是被选中（如expert&nbsp;0和expert&nbsp;1接收80%的token），而其他专家很少被激活。这导致：①热门专家计算过载；②冷门专家的显存浪费（参数存在但不用）；③GPU并行效率低下。解决方案：训练时用auxiliary&nbsp;loss鼓励负载均衡，推理时用expert&nbsp;buffering/batching。"
+    },
+    {
+      "question_id": 11639793,
+      "uuid": "ced448685e444d4ab08beba98ac4c137",
+      "type": 1,
+      "title": "以下哪种并行策略最适合单个大模型无法放入单GPU显存的情况？",
+      "content": "以下哪种并行策略最适合单个大模型无法放入单GPU显存的情况？",
+      "options": [
+        {
+          "id": 7510945,
+          "content": "数据并行（Data&nbsp;Parallelism）"
+        },
+        {
+          "id": 7510946,
+          "content": "张量并行（Tensor&nbsp;Parallelism）"
+        },
+        {
+          "id": 7510947,
+          "content": "增大batch&nbsp;size"
+        },
+        {
+          "id": 7510948,
+          "content": "使用量化"
+        }
+      ],
+      "correct_option_ids": [
+        7510946
+      ],
+      "correct_options": [
+        "张量并行（Tensor&nbsp;Parallelism）"
+      ],
+      "analysis": "张量并行将模型的单个权重矩阵切分到多个GPU上，使每个GPU只存储部分权重，适合单GPU显存不足的情况。数据并行要求每个GPU有完整模型副本，不解决显存不足问题。"
+    },
+    {
+      "question_id": 11639876,
+      "uuid": "c1c6726041e84fc6a273e68697165abd",
+      "type": 1,
+      "title": "以下哪种技术通过将推理工作负载分层（热路径/冷路径）来优化成本和性能？",
+      "content": "以下哪种技术通过将推理工作负载分层（热路径/冷路径）来优化成本和性能？",
+      "options": [
+        {
+          "id": 7511349,
+          "content": "所有请求使用相同算力"
+        },
+        {
+          "id": 7511351,
+          "content": "简单请求路由到小模型（快/便宜），复杂请求路由到大模型（慢/贵），即模型路由"
+        },
+        {
+          "id": 7511353,
+          "content": "只使用单一模型"
+        },
+        {
+          "id": 7511355,
+          "content": "所有请求使用最大模型"
+        }
+      ],
+      "correct_option_ids": [
+        7511351
+      ],
+      "correct_options": [
+        "简单请求路由到小模型（快/便宜），复杂请求路由到大模型（慢/贵），即模型路由"
+      ],
+      "analysis": "模型路由（Model&nbsp;Routing）通过分类器或规则判断查询复杂度，将简单问题（FAQ、简单事实查询）路由到小模型（7B，低延迟低成本），将复杂推理问题路由到大模型（70B+）。RouteLLM等框架实现了这种智能路由，可降低70%+的推理成本。"
+    },
+    {
+      "question_id": 11639851,
+      "uuid": "0e3d6121839e431aa1a0f6da8e9fad41",
+      "type": 1,
+      "title": "以下关于GGUF格式在本地推理中的优势，哪项描述正确？",
+      "content": "以下关于GGUF格式在本地推理中的优势，哪项描述正确？",
+      "options": [
+        {
+          "id": 7511637,
+          "content": "GGUF是专有格式，只能在llama.cpp中使用"
+        },
+        {
+          "id": 7511638,
+          "content": "GGUF支持混合量化、内置元数据、快速内存映射加载，是本地推理的通用标准"
+        },
+        {
+          "id": 7511639,
+          "content": "GGUF不支持GPU加速"
+        },
+        {
+          "id": 7511640,
+          "content": "GGUF格式的模型精度低于SafeTensors"
+        }
+      ],
+      "correct_option_ids": [
+        7511638
+      ],
+      "correct_options": [
+        "GGUF支持混合量化、内置元数据、快速内存映射加载，是本地推理的通用标准"
+      ],
+      "analysis": "GGUF（GPT-Generated&nbsp;Unified&nbsp;Format）是llama.cpp生态的标准格式：内置模型元数据（架构、超参数）、支持灵活的混合量化（不同层不同精度）、通过mmap快速加载、支持CPU和GPU混合计算（部分层卸载到GPU），已被Ollama、LM&nbsp;Studio等广泛支持。"
+    },
+    {
+      "question_id": 11639800,
+      "uuid": "19bde63c58e048a8b7af3a723b720290",
+      "type": 1,
+      "title": "以下关于Tensor Parallelism（张量并行）在前馈网络（FFN...",
+      "content": "以下关于Tensor&nbsp;Parallelism（张量并行）在前馈网络（FFN）层的切分方式，正确描述是？",
+      "options": [
+        {
+          "id": 7510853,
+          "content": "按batch维度切分"
+        },
+        {
+          "id": 7510854,
+          "content": "列切分第一个线性层，行切分第二个线性层，每个设备只需一次All-Reduce"
+        },
+        {
+          "id": 7510855,
+          "content": "完整复制每个线性层"
+        },
+        {
+          "id": 7510856,
+          "content": "按序列长度切分"
+        }
+      ],
+      "correct_option_ids": [
+        7510854
+      ],
+      "correct_options": [
+        "列切分第一个线性层，行切分第二个线性层，每个设备只需一次All-Reduce"
+      ],
+      "analysis": "Megatron-LM的张量并行对FFN：第一层按列切分（每GPU计算部分输出），第二层按行切分（每GPU有完整输入行），最后做All-Reduce汇总，每个FFN块只需一次同步，通信开销最小。"
+    },
+    {
+      "question_id": 11639825,
+      "uuid": "05624b9ef086495f9847941e240b35b1",
+      "type": 1,
+      "title": "以下关于Disaggregated Serving（分离式服务）的描述，哪...",
+      "content": "以下关于Disaggregated&nbsp;Serving（分离式服务）的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7510533,
+          "content": "将不同模型分开部署在不同服务器"
+        },
+        {
+          "id": 7510534,
+          "content": "将Prefill和Decode计算分离到不同GPU池，各自独立扩展"
+        },
+        {
+          "id": 7510535,
+          "content": "将量化和非量化模型分开服务"
+        },
+        {
+          "id": 7510536,
+          "content": "按用户分组部署不同实例"
+        }
+      ],
+      "correct_option_ids": [
+        7510534
+      ],
+      "correct_options": [
+        "将Prefill和Decode计算分离到不同GPU池，各自独立扩展"
+      ],
+      "analysis": "Prefill-Decode分离（Mooncake、DistServe等）将计算密集型Prefill和内存密集型Decode部署到不同GPU集群，可独立扩展，避免两者互相干扰。Prefill集群可用高算力GPU，Decode集群可用高带宽GPU。"
+    },
+    {
+      "question_id": 11639703,
+      "uuid": "efef1805d8144e1daba28153e42f1117",
+      "type": 1,
+      "title": "EAGLE（Extrapolation Algorithm for Gre...",
+      "content": "EAGLE（Extrapolation&nbsp;Algorithm&nbsp;for&nbsp;Greater&nbsp;Language-model&nbsp;Efficiency）相比Medusa的主要改进是？",
+      "options": [
+        {
+          "id": 7511493,
+          "content": "EAGLE使用更大的draft模型，接受率更高"
+        },
+        {
+          "id": 7511494,
+          "content": "EAGLE在draft阶段考虑了特征连续性（使用前一步的hidden&nbsp;state），生成质量更高"
+        },
+        {
+          "id": 7511495,
+          "content": "EAGLE不需要额外的微调，直接使用原始模型"
+        },
+        {
+          "id": 7511496,
+          "content": "EAGLE支持batch推理，Medusa不支持"
+        }
+      ],
+      "correct_option_ids": [
+        7511494
+      ],
+      "correct_options": [
+        "EAGLE在draft阶段考虑了特征连续性（使用前一步的hidden&nbsp;state），生成质量更高"
+      ],
+      "analysis": "Medusa的多个heads独立预测未来token，没有考虑token间的依赖关系，接受率有限。EAGLE在draft时利用了target模型前一步的hidden&nbsp;state特征（通过轻量自回归头），使draft分布更接近target模型，接受率显著高于Medusa（约3x加速&nbsp;vs&nbsp;Medusa的约2x）。EAGLE-2进一步引入动态draft树提升效率。"
+    },
+    {
+      "question_id": 11639738,
+      "uuid": "9157e3518c624f5dbfef4617ce1960c7",
+      "type": 1,
+      "title": "在LLM推理中，\"算术强度\"（Arithmetic Intensity）的...",
+      "content": "在LLM推理中，\"算术强度\"（Arithmetic&nbsp;Intensity）的含义是什么？",
+      "options": [
+        {
+          "id": 7511294,
+          "content": "模型的参数总量"
+        },
+        {
+          "id": 7511296,
+          "content": "每次内存访问对应的浮点运算次数（FLOPs/Bytes），决定计算是compute-bound还是memory-bound"
+        },
+        {
+          "id": 7511298,
+          "content": "GPU的算力（TFLOPS）"
+        },
+        {
+          "id": 7511300,
+          "content": "模型每秒处理的token数量"
+        }
+      ],
+      "correct_option_ids": [
+        7511296
+      ],
+      "correct_options": [
+        "每次内存访问对应的浮点运算次数（FLOPs/Bytes），决定计算是compute-bound还是memory-bound"
+      ],
+      "analysis": "算术强度&nbsp;=&nbsp;FLOPs&nbsp;/&nbsp;Memory&nbsp;Bytes。GPU的\"Roofline&nbsp;Model\"：当算术强度&nbsp;&lt;&nbsp;GPU的FLOPs/Bandwidth时，是memory-bound；反之是compute-bound。Decode阶段：每次读取权重（大量bytes）只做矩阵-向量乘（少量FLOPs），算术强度极低，是memory-bound。Prefill阶段：批量token并行，算术强度高，是compute-bound。这决定了不同阶段的优化方向。"
+    },
+    {
+      "question_id": 11639810,
+      "uuid": "d5fc4683ca3f445885c876a4f57b3519",
+      "type": 1,
+      "title": "以下关于Multi-Query Attention（MQA）的描述，哪项正确？",
+      "content": "以下关于Multi-Query&nbsp;Attention（MQA）的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7510725,
+          "content": "多个查询头共享同一组K和V"
+        },
+        {
+          "id": 7510726,
+          "content": "K和V与Q头数相同但参数不共享"
+        },
+        {
+          "id": 7510727,
+          "content": "只有Q头，没有K和V头"
+        },
+        {
+          "id": 7510728,
+          "content": "K、Q、V头数都减少到1"
+        }
+      ],
+      "correct_option_ids": [
+        7510725
+      ],
+      "correct_options": [
+        "多个查询头共享同一组K和V"
+      ],
+      "analysis": "MQA让所有Q头共享同一个K和V（只有1组KV），极大减少KV&nbsp;Cache大小（从H组减至1组），但可能影响表达能力。GQA是MQA和MHA的折中，使用G组KV（1&lt;G&lt;H），Llama-3等模型使用GQA=8。"
+    },
+    {
+      "question_id": 11639707,
+      "uuid": "fe0602e635a84c819dc9f43bf7df8e83",
+      "type": 1,
+      "title": "FP8推理相比FP16推理的优势体现在哪里？",
+      "content": "FP8推理相比FP16推理的优势体现在哪里？",
+      "options": [
+        {
+          "id": 7511541,
+          "content": "FP8在所有硬件上都比FP16快2倍"
+        },
+        {
+          "id": 7511542,
+          "content": "在支持FP8的GPU（如H100）上，FP8的Tensor&nbsp;Core吞吐是FP16的2倍，且内存带宽减半"
+        },
+        {
+          "id": 7511543,
+          "content": "FP8量化不会造成任何精度损失"
+        },
+        {
+          "id": 7511544,
+          "content": "FP8只适用于权重量化，不适用于激活值量化"
+        }
+      ],
+      "correct_option_ids": [
+        7511542
+      ],
+      "correct_options": [
+        "在支持FP8的GPU（如H100）上，FP8的Tensor&nbsp;Core吞吐是FP16的2倍，且内存带宽减半"
+      ],
+      "analysis": "H100&nbsp;GPU的FP8&nbsp;Tensor&nbsp;Core吞吐（约3.9&nbsp;PFLOPS）是BF16（约1.95&nbsp;PFLOPS）的2倍。同时FP8将模型大小减半，decode阶段的内存带宽消耗减半。代价是FP8表示范围有限（E4M3/E5M2两种格式），激活值需要动态缩放（per-tensor或per-channel）处理outlier，实现比INT8更复杂。"
+    },
+    {
+      "question_id": 11639697,
+      "uuid": "979cf2614c5d49559c21bb93b0e00525",
+      "type": 1,
+      "title": "以下关于Top-p（Nucleus Sampling）的描述，正确的是？",
+      "content": "以下关于Top-p（Nucleus&nbsp;Sampling）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7511413,
+          "content": "Top-p每次从概率最高的固定p个token中采样"
+        },
+        {
+          "id": 7511414,
+          "content": "Top-p动态选择累积概率超过p的最小token集合进行采样"
+        },
+        {
+          "id": 7511415,
+          "content": "Top-p等价于Temperature=p的温度采样"
+        },
+        {
+          "id": 7511416,
+          "content": "Top-p=1.0时等价于贪心解码"
+        }
+      ],
+      "correct_option_ids": [
+        7511414
+      ],
+      "correct_options": [
+        "Top-p动态选择累积概率超过p的最小token集合进行采样"
+      ],
+      "analysis": "Top-p按概率降序排列token，动态选择使累积概率≥p的最小token子集，然后在子集内重新归一化后采样。子集大小随分布形状变化：分布尖锐时子集小（保守），分布平坦时子集大（多样性）。Top-p=1.0时包含所有token（等价于完整分布采样），Top-p=0时等价于贪心。"
+    },
+    {
+      "question_id": 11639750,
+      "uuid": "a4c9fc06d9b94c4c93b6d2bb825b6786",
+      "type": 1,
+      "title": "以下关于\"Greedy Decoding vs Sampling\"在质量-...",
+      "content": "以下关于\"Greedy&nbsp;Decoding&nbsp;vs&nbsp;Sampling\"在质量-速度权衡上，描述正确的是？",
+      "options": [
+        {
+          "id": 7512945,
+          "content": "贪心解码速度比采样慢，因为需要计算所有token的概率"
+        },
+        {
+          "id": 7512946,
+          "content": "贪心和采样的单步计算量相同（都需要完整的logit计算），区别在于贪心确定性高而采样有随机性，不影响速度"
+        },
+        {
+          "id": 7512947,
+          "content": "采样每步需要额外的随机数生成，速度明显慢于贪心"
+        },
+        {
+          "id": 7512948,
+          "content": "贪心解码需要维护beam，比采样占用更多显存"
+        }
+      ],
+      "correct_option_ids": [
+        7512946
+      ],
+      "correct_options": [
+        "贪心和采样的单步计算量相同（都需要完整的logit计算），区别在于贪心确定性高而采样有随机性，不影响速度"
+      ],
+      "analysis": "贪心和采样的计算量完全相同：都需要完整的前向传播计算所有vocab&nbsp;size的logits（最耗时的部分），然后贪心取argmax，采样从分布中随机选取。两者速度差异可以忽略不计。区别在于输出质量：贪心确定性高但可能陷入局部最优，采样多样性高但可能产生质量波动。Top-k/Top-p的截断操作计算量极小，对总体速度影响&lt;1%。"
+    },
+    {
+      "question_id": 11639730,
+      "uuid": "08d15dba01df4072bd4e80d521b2a7d8",
+      "type": 1,
+      "title": "DeepSpeed的ZeRO（Zero Redundancy Optimi...",
+      "content": "DeepSpeed的ZeRO（Zero&nbsp;Redundancy&nbsp;Optimizer）技术在推理中的应用是？",
+      "options": [
+        {
+          "id": 7512985,
+          "content": "ZeRO只用于训练，推理不适用"
+        },
+        {
+          "id": 7512986,
+          "content": "ZeRO&nbsp;Inference将模型权重分片到多个GPU，使超大模型（超过单GPU显存）可以推理"
+        },
+        {
+          "id": 7512987,
+          "content": "ZeRO通过量化减少推理显存"
+        },
+        {
+          "id": 7512988,
+          "content": "ZeRO通过稀疏化减少推理计算量"
+        }
+      ],
+      "correct_option_ids": [
+        7512986
+      ],
+      "correct_options": [
+        "ZeRO&nbsp;Inference将模型权重分片到多个GPU，使超大模型（超过单GPU显存）可以推理"
+      ],
+      "analysis": "ZeRO（如ZeRO-Inference）将模型参数分片到多个GPU，每个GPU只持有1/N的参数。推理时通过all-gather临时聚合所需层的完整权重进行计算，计算完成后释放（或保留在CPU内存）。这允许在多GPU上推理超过单GPU显存限制的模型（如8×80GB&nbsp;GPU推理1T参数模型），代价是额外的通信开销。"
+    },
+    {
+      "question_id": 11639867,
+      "uuid": "57270bb012c64d8f8e52cd9872cc861a",
+      "type": 1,
+      "title": "以下关于\"量化感知\"训练（QAT）与推理时量化的实际工程权衡，哪项正确？",
+      "content": "以下关于\"量化感知\"训练（QAT）与推理时量化的实际工程权衡，哪项正确？",
+      "options": [
+        {
+          "id": 7511455,
+          "content": "QAT总是比PTQ好，应该始终使用"
+        },
+        {
+          "id": 7511458,
+          "content": "PTQ（后训练量化）无需重训，部署更快；QAT精度更高但需要数据和训练资源，适合精度敏感任务"
+        },
+        {
+          "id": 7511459,
+          "content": "两者在所有场景精度完全相同"
+        },
+        {
+          "id": 7511460,
+          "content": "PTQ必须使用校准数据，QAT不需要"
+        }
+      ],
+      "correct_option_ids": [
+        7511458
+      ],
+      "correct_options": [
+        "PTQ（后训练量化）无需重训，部署更快；QAT精度更高但需要数据和训练资源，适合精度敏感任务"
+      ],
+      "analysis": "工程权衡：PTQ（GPTQ/AWQ）不需要重新训练，几小时内完成量化，是大多数场景的首选；QAT（全量或LoRA量化微调）精度更高（对4bit以下尤其重要），但需要训练数据和GPU资源（数小时到数天），适合对精度要求极高的产品。"
+    },
+    {
+      "question_id": 11639865,
+      "uuid": "7c67823db79a451c87238b31a68f11eb",
+      "type": 1,
+      "title": "以下关于\"模型量化校准集\"大小的经验性建议，哪项正确？",
+      "content": "以下关于\"模型量化校准集\"大小的经验性建议，哪项正确？",
+      "options": [
+        {
+          "id": 7511473,
+          "content": "校准集越大越好，需要10万+样本"
+        },
+        {
+          "id": 7511474,
+          "content": "128-512个样本通常足够，过多不显著改善，但需要样本多样性"
+        },
+        {
+          "id": 7511475,
+          "content": "校准集不能超过100个样本"
+        },
+        {
+          "id": 7511476,
+          "content": "校准集大小对量化质量没有影响"
+        }
+      ],
+      "correct_option_ids": [
+        7511474
+      ],
+      "correct_options": [
+        "128-512个样本通常足够，过多不显著改善，但需要样本多样性"
+      ],
+      "analysis": "AWQ、GPTQ等后训练量化方法的校准集经验：128-512个多样化样本通常已能准确估计激活分布，再增加样本的边际收益递减。更重要的是多样性（覆盖目标任务分布），而非数量。过少(&lt;32)会导致分布估计不准确。"
+    },
+    {
+      "question_id": 11639863,
+      "uuid": "19a4be7463294e76b93b5e810fc7ca2f",
+      "type": 1,
+      "title": "在以下推理部署场景中，哪种配置最适合边缘设备（Edge Device，如树...",
+      "content": "在以下推理部署场景中，哪种配置最适合边缘设备（Edge&nbsp;Device，如树莓派、手机）？",
+      "options": [
+        {
+          "id": 7511500,
+          "content": "FP16全精度&nbsp;+&nbsp;Transformers库"
+        },
+        {
+          "id": 7511502,
+          "content": "INT4量化（GGUF/Q4_K）+&nbsp;llama.cpp&nbsp;ARM优化"
+        },
+        {
+          "id": 7511503,
+          "content": "8GPU张量并行"
+        },
+        {
+          "id": 7511504,
+          "content": "FP8量化&nbsp;+&nbsp;TensorRT"
+        }
+      ],
+      "correct_option_ids": [
+        7511502
+      ],
+      "correct_options": [
+        "INT4量化（GGUF/Q4_K）+&nbsp;llama.cpp&nbsp;ARM优化"
+      ],
+      "analysis": "边缘设备资源极度受限（通常&lt;8GB&nbsp;RAM，无独立GPU）：INT4量化大幅减少内存（7B模型从14GB→4GB）；llama.cpp针对ARM&nbsp;CPU（苹果Silicon/ARM服务器/树莓派）进行了NEON指令集优化，是边缘端推理的首选方案。"
+    },
+    {
+      "question_id": 11639833,
+      "uuid": "c0a5ac771ede4b0691901fa393239f60",
+      "type": 1,
+      "title": "在模型推理部署中，以下哪种方法可以减少模型首次推理的\"冷启动\"延迟？",
+      "content": "在模型推理部署中，以下哪种方法可以减少模型首次推理的\"冷启动\"延迟？",
+      "options": [
+        {
+          "id": 7511793,
+          "content": "增大批次大小"
+        },
+        {
+          "id": 7511794,
+          "content": "预热（Warmup）：启动后运行若干次dummy推理让CUDA&nbsp;Kernel预编译缓存"
+        },
+        {
+          "id": 7511795,
+          "content": "减小模型尺寸"
+        },
+        {
+          "id": 7511796,
+          "content": "使用CPU推理"
+        }
+      ],
+      "correct_option_ids": [
+        7511794
+      ],
+      "correct_options": [
+        "预热（Warmup）：启动后运行若干次dummy推理让CUDA&nbsp;Kernel预编译缓存"
+      ],
+      "analysis": "CUDA&nbsp;Kernel第一次运行需要JIT编译和优化，造成显著的冷启动延迟（可达数秒）。通过在服务启动时运行几次空推理（warm-up&nbsp;runs），让所有Kernel预编译缓存，后续请求可直接使用缓存的编译结果，大幅降低延迟。"
+    },
+    {
+      "question_id": 11639834,
+      "uuid": "5bd39b8d4d9940f391a94d7bdfa02b35",
+      "type": 1,
+      "title": "在LLM的推理过程中，以下哪种情况会导致\"内存带宽饱和\"（Memory B...",
+      "content": "在LLM的推理过程中，以下哪种情况会导致\"内存带宽饱和\"（Memory&nbsp;Bandwidth&nbsp;Saturation）？",
+      "options": [
+        {
+          "id": 7511785,
+          "content": "批次大小=1的单请求推理"
+        },
+        {
+          "id": 7511786,
+          "content": "极大批次的多请求并发推理"
+        },
+        {
+          "id": 7511787,
+          "content": "短序列且大批次推理"
+        },
+        {
+          "id": 7511788,
+          "content": "使用FlashAttention时"
+        }
+      ],
+      "correct_option_ids": [
+        7511786
+      ],
+      "correct_options": [
+        "极大批次的多请求并发推理"
+      ],
+      "analysis": "当批次足够大，GPU的计算单元满负荷工作，需要从HBM持续读取权重的速度超过了内存带宽上限，此时成为内存带宽瓶颈（Memory&nbsp;Bandwidth&nbsp;Bound）。单请求推理通常是Compute&nbsp;Bound，极大批次时转为Memory&nbsp;Bandwidth&nbsp;Bound。"
+    },
+    {
+      "question_id": 11639852,
+      "uuid": "fca43972d7844cb6b62ebe93d5cf6932",
+      "type": 1,
+      "title": "以下哪种模型剪枝（Pruning）方法在大模型推理中更实用？",
+      "content": "以下哪种模型剪枝（Pruning）方法在大模型推理中更实用？",
+      "options": [
+        {
+          "id": 7511629,
+          "content": "非结构化剪枝（Unstructured&nbsp;Pruning，稀疏权重）"
+        },
+        {
+          "id": 7511630,
+          "content": "结构化剪枝（Structured&nbsp;Pruning，移除整个注意力头或层）"
+        },
+        {
+          "id": 7511631,
+          "content": "随机剪枝"
+        },
+        {
+          "id": 7511632,
+          "content": "所有剪枝方法效果相同"
+        }
+      ],
+      "correct_option_ids": [
+        7511630
+      ],
+      "correct_options": [
+        "结构化剪枝（Structured&nbsp;Pruning，移除整个注意力头或层）"
+      ],
+      "analysis": "非结构化剪枝产生稀疏权重矩阵，在通用硬件上加速有限（需要特殊稀疏计算支持）。结构化剪枝（如ShortGPT的层剪枝、LLM-Pruner的注意力头剪枝）减少整体计算量，可直接在现有硬件上获得加速，是大模型实用剪枝的主流方向。"
+    },
+    {
+      "question_id": 11639797,
+      "uuid": "8d6c0ee5e2754d4aa54d68f2f79a836f",
+      "type": 1,
+      "title": "在EAGLE（Efficient Inference via Specul...",
+      "content": "在EAGLE（Efficient&nbsp;Inference&nbsp;via&nbsp;Speculative&nbsp;Sampling）中，与Medusa的主要区别是什么？",
+      "options": [
+        {
+          "id": 7510890,
+          "content": "EAGLE使用独立的小模型"
+        },
+        {
+          "id": 7510892,
+          "content": "EAGLE在特征层面（feature&nbsp;level）自回归预测，利用目标模型的隐层状态"
+        },
+        {
+          "id": 7510895,
+          "content": "EAGLE使用更多的预测头"
+        },
+        {
+          "id": 7510898,
+          "content": "EAGLE只适用于Llama模型"
+        }
+      ],
+      "correct_option_ids": [
+        7510892
+      ],
+      "correct_options": [
+        "EAGLE在特征层面（feature&nbsp;level）自回归预测，利用目标模型的隐层状态"
+      ],
+      "analysis": "EAGLE在目标模型的特征空间（而非token空间）进行自回归预测，利用目标模型最后一层的隐层状态作为输入，实现了更准确的token预测，通常比Medusa有更高的接受率。"
+    },
+    {
+      "question_id": 11639711,
+      "uuid": "530684b54d6342ceba43b5f23902bf0f",
+      "type": 1,
+      "title": "温度（Temperature）参数对生成结果的影响是？",
+      "content": "温度（Temperature）参数对生成结果的影响是？",
+      "options": [
+        {
+          "id": 7513021,
+          "content": "Temperature越高，生成越确定性，重复性越强"
+        },
+        {
+          "id": 7513022,
+          "content": "Temperature→0时等价于贪心，Temperature越高分布越平坦、多样性越大，但可能产生不连贯输出"
+        },
+        {
+          "id": 7513023,
+          "content": "Temperature只影响生成速度，不影响输出内容"
+        },
+        {
+          "id": 7513024,
+          "content": "Temperature=1.0时等价于Top-p=0.5"
+        }
+      ],
+      "correct_option_ids": [
+        7513022
+      ],
+      "correct_options": [
+        "Temperature→0时等价于贪心，Temperature越高分布越平坦、多样性越大，但可能产生不连贯输出"
+      ],
+      "analysis": "Temperature通过缩放logits实现：logits_scaled&nbsp;=&nbsp;logits&nbsp;/&nbsp;T。T→0：最高概率token趋向1，等价于贪心；T=1：原始分布；T&gt;1：分布趋于均匀，随机性增加。高Temperature适合创意写作，低Temperature适合代码/数学等需要精确输出的场景。Temperature和Top-p通常配合使用（T调整分布形状，p控制截断范围）。"
+    },
+    {
+      "question_id": 11639807,
+      "uuid": "e0082dde305d477d86ed817b395b7016",
+      "type": 1,
+      "title": "在Tensor Parallelism实现中，All-Reduce通信的时机是？",
+      "content": "在Tensor&nbsp;Parallelism实现中，All-Reduce通信的时机是？",
+      "options": [
+        {
+          "id": 7510761,
+          "content": "每个Transformer层的开始"
+        },
+        {
+          "id": 7510762,
+          "content": "注意力和FFN的最后一次线性变换后"
+        },
+        {
+          "id": 7510763,
+          "content": "每个矩阵乘法后"
+        },
+        {
+          "id": 7510764,
+          "content": "每个batch结束时"
+        }
+      ],
+      "correct_option_ids": [
+        7510762
+      ],
+      "correct_options": [
+        "注意力和FFN的最后一次线性变换后"
+      ],
+      "analysis": "在Megatron-LM的张量并行中，注意力的输出投影和FFN的第二层线性变换后执行All-Reduce，将各GPU的局部结果求和得到完整输出。这样每个子模块只需一次All-Reduce通信。"
+    },
+    {
+      "question_id": 11639823,
+      "uuid": "77e56996d6b148289405d64c5d634ccf",
+      "type": 1,
+      "title": "以下哪种技术通过提前\"推测\"多个输出token来实现并行验证，且不需要额外模型？",
+      "content": "以下哪种技术通过提前\"推测\"多个输出token来实现并行验证，且不需要额外模型？",
+      "options": [
+        {
+          "id": 7510557,
+          "content": "Medusa"
+        },
+        {
+          "id": 7510559,
+          "content": "自我推测解码（Self-Speculative&nbsp;Decoding）"
+        },
+        {
+          "id": 7510561,
+          "content": "标准beam&nbsp;search"
+        },
+        {
+          "id": 7510563,
+          "content": "Top-K采样"
+        }
+      ],
+      "correct_option_ids": [
+        7510559
+      ],
+      "correct_options": [
+        "自我推测解码（Self-Speculative&nbsp;Decoding）"
+      ],
+      "analysis": "自我推测解码（如Draft&nbsp;&&nbsp;Verify）在同一模型内使用早期层输出（draft）预测多个token，然后用完整模型并行验证，无需额外的草稿模型。LayerSkip等方法也基于类似思想，利用模型早期层的预测能力。"
+    },
+    {
+      "question_id": 11639735,
+      "uuid": "7c957c05dcc4491dacd4a6e5ed144b4f",
+      "type": 1,
+      "title": "对于同一模型，以下哪种部署配置的decode吞吐量最高？",
+      "content": "对于同一模型，以下哪种部署配置的decode吞吐量最高？",
+      "options": [
+        {
+          "id": 7512965,
+          "content": "1个A100&nbsp;80GB，batch_size=1"
+        },
+        {
+          "id": 7512966,
+          "content": "1个A100&nbsp;80GB，batch_size=32，FP16精度"
+        },
+        {
+          "id": 7512967,
+          "content": "1个A100&nbsp;80GB，batch_size=32，INT4权重量化"
+        },
+        {
+          "id": 7512968,
+          "content": "2个A100&nbsp;40GB，张量并行，batch_size=16"
+        }
+      ],
+      "correct_option_ids": [
+        7512967
+      ],
+      "correct_options": [
+        "1个A100&nbsp;80GB，batch_size=32，INT4权重量化"
+      ],
+      "analysis": "decode阶段是memory-bound，提升吞吐的核心是：①增大batch&nbsp;size（从GEMV变GEMM）；②减少权重读取带宽（量化）。C选项同时具备大batch和INT4量化（权重读取量减少75%），吞吐最高。B虽然batch_size相同但FP16带宽消耗更大。D的双GPU方案虽有更多显存但张量并行的all-reduce通信有额外开销，单任务吞吐不一定高于C。"
+    },
+    {
+      "question_id": 11639844,
+      "uuid": "f14ddfce5ea1483e8270cef2a5b0fa54",
+      "type": 1,
+      "title": "以下关于Mamba（基于状态空间模型的序列建模）的推理特点，哪项正确？",
+      "content": "以下关于Mamba（基于状态空间模型的序列建模）的推理特点，哪项正确？",
+      "options": [
+        {
+          "id": 7511696,
+          "content": "Mamba的推理复杂度为O(N²)，与Transformer相同"
+        },
+        {
+          "id": 7511698,
+          "content": "Mamba的解码阶段是O(1)状态更新，不需要KV&nbsp;Cache"
+        },
+        {
+          "id": 7511699,
+          "content": "Mamba不支持并行训练"
+        },
+        {
+          "id": 7511700,
+          "content": "Mamba的推理速度慢于同规模Transformer"
+        }
+      ],
+      "correct_option_ids": [
+        7511698
+      ],
+      "correct_options": [
+        "Mamba的解码阶段是O(1)状态更新，不需要KV&nbsp;Cache"
+      ],
+      "analysis": "Mamba（SSM）的核心优势：训练时可并行（通过并行扫描），推理时每步只需O(1)的状态更新（不需要随序列增长的KV&nbsp;Cache），内存恒定。对长序列推理，Mamba比Transformer有显著内存和速度优势。"
+    },
+    {
+      "question_id": 11639770,
+      "uuid": "e93f1241f4694f5e92d72a46c491741b",
+      "type": 1,
+      "title": "以下关于\"Multi-Query Attention\"（MQA）和GQA的...",
+      "content": "以下关于\"Multi-Query&nbsp;Attention\"（MQA）和GQA的关系，描述正确的是？",
+      "options": [
+        {
+          "id": 7511243,
+          "content": "MQA和GQA完全不同，无关联"
+        },
+        {
+          "id": 7511245,
+          "content": "MQA是GQA的特例：所有Q头共享1组K/V（GQA&nbsp;groups=1）；标准MHA是GQA&nbsp;groups=num_heads的特例"
+        },
+        {
+          "id": 7511247,
+          "content": "MQA参数量比GQA更多"
+        },
+        {
+          "id": 7511248,
+          "content": "GQA是MQA的简化版本"
+        }
+      ],
+      "correct_option_ids": [
+        7511245
+      ],
+      "correct_options": [
+        "MQA是GQA的特例：所有Q头共享1组K/V（GQA&nbsp;groups=1）；标准MHA是GQA&nbsp;groups=num_heads的特例"
+      ],
+      "analysis": "三种注意力的统一视角：①MHA（标准多头）：num_heads个Q/K/V头，GQA特例（groups=num_heads）；②GQA（分组查询）：num_kv_heads组（1&lt;groups&lt;num_heads），每组K/V被groups内的Q头共享；③MQA（多查询）：只有1组K/V，GQA特例（groups=1）。KV&nbsp;Cache大小：MHA&nbsp;&gt;&gt;&nbsp;GQA&nbsp;&gt;&gt;&nbsp;MQA。精度：MHA&nbsp;≈&nbsp;GQA&nbsp;&gt;&gt;&nbsp;MQA（MQA精度损失较大）。LLaMA-3等模型使用GQA平衡两者。"
+    },
+    {
+      "question_id": 11639786,
+      "uuid": "593bf533e78247c69f7e156c68fa0e1f",
+      "type": 1,
+      "title": "以下关于\"Inference Engine Compilation\"（推理...",
+      "content": "以下关于\"Inference&nbsp;Engine&nbsp;Compilation\"（推理引擎编译优化）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7511037,
+          "content": "编译优化只适用于CNN模型"
+        },
+        {
+          "id": 7511038,
+          "content": "TensorRT/torch.compile等编译工具通过算子融合、内存布局优化、Kernel&nbsp;Auto-tuning等技术，将LLM推理速度提升20-50%"
+        },
+        {
+          "id": 7511039,
+          "content": "编译后的模型无法进行量化"
+        },
+        {
+          "id": 7511040,
+          "content": "编译优化只对CPU有效，GPU不需要"
+        }
+      ],
+      "correct_option_ids": [
+        7511038
+      ],
+      "correct_options": [
+        "TensorRT/torch.compile等编译工具通过算子融合、内存布局优化、Kernel&nbsp;Auto-tuning等技术，将LLM推理速度提升20-50%"
+      ],
+      "analysis": "推理编译优化技术：①算子融合（Operator&nbsp;Fusion）：将多个小kernel合并为一个（如LayerNorm&nbsp;+&nbsp;Linear融合），减少内存读写和kernel&nbsp;launch开销；②Kernel&nbsp;Auto-tuning：自动搜索最优的tiling和block&nbsp;size参数；③内存布局优化：减少transpose等数据搬运。TensorRT在A100上可将LLM推理速度提升30-50%。torch.compile（PyTorch&nbsp;2.0+）提供了更易用的Python接口实现类似优化。"
+    },
+    {
+      "question_id": 11639799,
+      "uuid": "93ac63984ce545f4b1113537e45beb0c",
+      "type": 1,
+      "title": "以下关于FP8推理精度的描述，哪项正确？",
+      "content": "以下关于FP8推理精度的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7510865,
+          "content": "FP8完全等价于FP16，无任何精度损失"
+        },
+        {
+          "id": 7510866,
+          "content": "E4M3格式表示范围更大，E5M2精度更高"
+        },
+        {
+          "id": 7510867,
+          "content": "FP8在H100等新一代GPU上可获得硬件加速"
+        },
+        {
+          "id": 7510868,
+          "content": "FP8量化比INT8量化损失更大"
+        }
+      ],
+      "correct_option_ids": [
+        7510867
+      ],
+      "correct_options": [
+        "FP8在H100等新一代GPU上可获得硬件加速"
+      ],
+      "analysis": "NVIDIA&nbsp;H100引入了对FP8&nbsp;GEMM的原生硬件支持，相比FP16可获得约2倍吞吐量提升。E4M3（4位指数3位尾数）表示范围较小但精度高，适合权重；E5M2适合梯度。FP8通常优于INT8的表达能力。"
+    },
+    {
+      "question_id": 11639795,
+      "uuid": "e99c2437491e4c669aa89b9b3cb7c718",
+      "type": 1,
+      "title": "在GPTQ量化中，\"逐层量化，按Hessian重要性排序\"的核心思想是什么？",
+      "content": "在GPTQ量化中，\"逐层量化，按Hessian重要性排序\"的核心思想是什么？",
+      "options": [
+        {
+          "id": 7510917,
+          "content": "优先量化最大的权重"
+        },
+        {
+          "id": 7510919,
+          "content": "利用Hessian矩阵信息，按对输出影响最小的顺序量化权重并补偿误差"
+        },
+        {
+          "id": 7510921,
+          "content": "使用Hessian梯度更新量化参数"
+        },
+        {
+          "id": 7510923,
+          "content": "对Hessian矩阵本身进行量化"
+        }
+      ],
+      "correct_option_ids": [
+        7510919
+      ],
+      "correct_options": [
+        "利用Hessian矩阵信息，按对输出影响最小的顺序量化权重并补偿误差"
+      ],
+      "analysis": "GPTQ（基于OBQ/OBC方法）通过计算Hessian矩阵估计每个权重的重要性，按重要性最低的顺序量化，每量化一个权重后通过最优修正（使用剩余权重补偿误差），减少累积量化误差。"
+    },
+    {
+      "question_id": 11639769,
+      "uuid": "93fb5fee117440499d970c26e9c9d683",
+      "type": 1,
+      "title": "以下哪项是LLM推理时\"幻觉\"产生的计算层面原因？",
+      "content": "以下哪项是LLM推理时\"幻觉\"产生的计算层面原因？",
+      "options": [
+        {
+          "id": 7511256,
+          "content": "量化精度不足导致权重错误"
+        },
+        {
+          "id": 7511258,
+          "content": "自回归生成的局部最优：每步贪心/采样只考虑当前步概率，无法全局优化整个序列的事实一致性"
+        },
+        {
+          "id": 7511259,
+          "content": "KV&nbsp;Cache大小不足"
+        },
+        {
+          "id": 7511260,
+          "content": "GPU计算误差累积"
+        }
+      ],
+      "correct_option_ids": [
+        7511258
+      ],
+      "correct_options": [
+        "自回归生成的局部最优：每步贪心/采样只考虑当前步概率，无法全局优化整个序列的事实一致性"
+      ],
+      "analysis": "LLM幻觉的计算层面根因：自回归生成是\"序列局部最优\"：每步只最大化当前token的概率，不能回看或回退，一旦生成错误的事实性token，后续文本会倾向于与之一致（语言流畅性vs事实准确性的张力）。在推理层面，只能通过：①RAG提供外部事实约束；②Self-consistency（多次采样投票）；③Constrained&nbsp;Decoding（限制token选择范围）来部分缓解。"
+    },
+    {
+      "question_id": 11639733,
+      "uuid": "6888f489493f4e349fbac1ad3636f440",
+      "type": 1,
+      "title": "以下哪种技术能够在不修改基础模型权重的情况下，将LLM部署到消费级GPU（...",
+      "content": "以下哪种技术能够在不修改基础模型权重的情况下，将LLM部署到消费级GPU（8GB显存）上运行13B参数模型？",
+      "options": [
+        {
+          "id": 7512973,
+          "content": "仅使用CPU推理"
+        },
+        {
+          "id": 7512974,
+          "content": "4bit量化（如GGUF&nbsp;Q4_K_M格式）+&nbsp;llama.cpp的CPU-GPU混合推理"
+        },
+        {
+          "id": 7512975,
+          "content": "将模型分割成多个独立部分分别推理"
+        },
+        {
+          "id": 7512976,
+          "content": "使用更小的tokenizer减少词表大小"
+        }
+      ],
+      "correct_option_ids": [
+        7512974
+      ],
+      "correct_options": [
+        "4bit量化（如GGUF&nbsp;Q4_K_M格式）+&nbsp;llama.cpp的CPU-GPU混合推理"
+      ],
+      "analysis": "13B参数模型FP16需要约26GB显存，远超8GB。4bit量化后约6.5-7GB，可在8GB&nbsp;GPU上运行。llama.cpp的CPU-GPU混合推理（--n-gpu-layers参数）可以将部分层放在GPU，剩余层在CPU内存（RAM）中，以速度换取可运行性。这是消费级硬件运行大模型的主要方案，尽管比全GPU推理慢约3-10倍。"
+    },
+    {
+      "question_id": 11639818,
+      "uuid": "c405f9daa82c48559f0324d9832b0397",
+      "type": 1,
+      "title": "在Triton推理服务框架中，以下哪项不是其核心能力？",
+      "content": "在Triton推理服务框架中，以下哪项不是其核心能力？",
+      "options": [
+        {
+          "id": 7510621,
+          "content": "支持多模型同时部署和版本管理"
+        },
+        {
+          "id": 7510622,
+          "content": "支持动态批处理（Dynamic&nbsp;Batching）"
+        },
+        {
+          "id": 7510623,
+          "content": "模型参数的自动量化"
+        },
+        {
+          "id": 7510624,
+          "content": "提供gRPC和HTTP/REST接口"
+        }
+      ],
+      "correct_option_ids": [
+        7510623
+      ],
+      "correct_options": [
+        "模型参数的自动量化"
+      ],
+      "analysis": "Triton&nbsp;Inference&nbsp;Server专注于模型部署和服务化，提供多后端支持、动态批处理、并发模型执行、版本管理等功能。模型量化是部署前的预处理步骤，不是Triton本身的功能。"
+    },
+    {
+      "question_id": 11639791,
+      "uuid": "23113dd2e7704d4c83352167e009437d",
+      "type": 1,
+      "title": "在FlashAttention-2中，相比FlashAttention-1...",
+      "content": "在FlashAttention-2中，相比FlashAttention-1的主要改进是什么？",
+      "options": [
+        {
+          "id": 7510969,
+          "content": "减少SRAM使用量"
+        },
+        {
+          "id": 7510970,
+          "content": "改进了工作分区策略，更好地利用GPU并行性"
+        },
+        {
+          "id": 7510971,
+          "content": "支持FP8精度"
+        },
+        {
+          "id": 7510972,
+          "content": "引入了近似注意力计算"
+        }
+      ],
+      "correct_option_ids": [
+        7510970
+      ],
+      "correct_options": [
+        "改进了工作分区策略，更好地利用GPU并行性"
+      ],
+      "analysis": "FlashAttention-2通过改进序列维度的并行化（行列块分配方式），减少了non-matmul操作，更好地利用GPU的并行计算能力，在A100上比FlashAttention-1快约2倍，HBM读写次数更少。"
+    },
+    {
+      "question_id": 11639725,
+      "uuid": "84c543e976764203aeee3e8f267f68e2",
+      "type": 1,
+      "title": "以下哪种技术可以在不降低模型精度的前提下减少Attention的计算复杂度？",
+      "content": "以下哪种技术可以在不降低模型精度的前提下减少Attention的计算复杂度？",
+      "options": [
+        {
+          "id": 7512661,
+          "content": "稀疏注意力（随机mask部分attention权重）"
+        },
+        {
+          "id": 7512662,
+          "content": "MLA（Multi-head&nbsp;Latent&nbsp;Attention，如DeepSeek-V2）通过低秩KV压缩减少KV&nbsp;Cache"
+        },
+        {
+          "id": 7512663,
+          "content": "完全去除注意力机制，使用纯MLP替代"
+        },
+        {
+          "id": 7512664,
+          "content": "限制最大序列长度为256"
+        }
+      ],
+      "correct_option_ids": [
+        7512662
+      ],
+      "correct_options": [
+        "MLA（Multi-head&nbsp;Latent&nbsp;Attention，如DeepSeek-V2）通过低秩KV压缩减少KV&nbsp;Cache"
+      ],
+      "analysis": "DeepSeek-V2的MLA将K、V通过低秩投影压缩为紧凑的latent&nbsp;vector存储（KV&nbsp;Cache大小降低93.3%），推理时再解压缩。数学上等价于标准MHA（通过矩阵吸收保证精度无损），但KV&nbsp;Cache大幅减小，允许更大的batch&nbsp;size。这是在保持精度的前提下减少KV&nbsp;Cache的创新方案。"
+    },
+    {
+      "question_id": 11639853,
+      "uuid": "949f2151cf5240c986483c77b8acb404",
+      "type": 1,
+      "title": "在以下推理场景中，哪种情况最适合使用Pipeline Parallelis...",
+      "content": "在以下推理场景中，哪种情况最适合使用Pipeline&nbsp;Parallelism（流水线并行）而非Tensor&nbsp;Parallelism？",
+      "options": [
+        {
+          "id": 7511621,
+          "content": "模型必须在单个批次内快速响应（低延迟要求）"
+        },
+        {
+          "id": 7511622,
+          "content": "多节点部署，节点间网络带宽有限（跨机通信代价高）"
+        },
+        {
+          "id": 7511623,
+          "content": "需要支持超大批次"
+        },
+        {
+          "id": 7511624,
+          "content": "模型本身很小（7B以内）"
+        }
+      ],
+      "correct_option_ids": [
+        7511622
+      ],
+      "correct_options": [
+        "多节点部署，节点间网络带宽有限（跨机通信代价高）"
+      ],
+      "analysis": "PP按层切分，节点间只在层边界传输激活值（通信量相对较小）；TP需要大量All-Reduce（通信量正比于激活大小）。因此PP更适合节点间带宽受限的跨机部署（如InfiniBand不足或以太网），TP适合单机多卡的高带宽NVLink环境。"
+    },
+    {
+      "question_id": 11639817,
+      "uuid": "bb45d334a0d7414ebf04960a2c7036c7",
+      "type": 1,
+      "title": "以下哪种技术通过在注意力计算中引入\"Sink Tokens\"来支持无限长序...",
+      "content": "以下哪种技术通过在注意力计算中引入\"Sink&nbsp;Tokens\"来支持无限长序列推理？",
+      "options": [
+        {
+          "id": 7510633,
+          "content": "Flash&nbsp;Attention"
+        },
+        {
+          "id": 7510634,
+          "content": "StreamingLLM"
+        },
+        {
+          "id": 7510635,
+          "content": "LongRoPE"
+        },
+        {
+          "id": 7510636,
+          "content": "ALiBi位置编码"
+        }
+      ],
+      "correct_option_ids": [
+        7510634
+      ],
+      "correct_options": [
+        "StreamingLLM"
+      ],
+      "analysis": "StreamingLLM发现注意力权重总会集中在少量初始token（Attention&nbsp;Sinks，如BOS&nbsp;token）上。通过保留这些sink&nbsp;tokens和最近window的KV&nbsp;Cache，可以在固定内存下支持无限长序列推理，但会遗忘window外的信息。"
+    },
+    {
+      "question_id": 11639860,
+      "uuid": "5d8a2a74d84f403399adf1ee474b3424",
+      "type": 1,
+      "title": "在使用Ollama进行本地推理时，以下哪个命令可以查看当前已下载的模型列表？",
+      "content": "在使用Ollama进行本地推理时，以下哪个命令可以查看当前已下载的模型列表？",
+      "options": [
+        {
+          "id": 7511537,
+          "content": "ollama&nbsp;run&nbsp;list"
+        },
+        {
+          "id": 7511538,
+          "content": "ollama&nbsp;list"
+        },
+        {
+          "id": 7511539,
+          "content": "ollama&nbsp;show&nbsp;models"
+        },
+        {
+          "id": 7511540,
+          "content": "ollama&nbsp;ls&nbsp;-a"
+        }
+      ],
+      "correct_option_ids": [
+        7511538
+      ],
+      "correct_options": [
+        "ollama&nbsp;list"
+      ],
+      "analysis": "Ollama常用命令：`ollama&nbsp;list`列出已下载模型；`ollama&nbsp;run&nbsp;&lt;model&gt;`运行/下载并运行模型；`ollama&nbsp;pull&nbsp;&lt;model&gt;`只下载；`ollama&nbsp;rm&nbsp;&lt;model&gt;`删除；`ollama&nbsp;ps`查看当前运行中的模型。这些是Ollama的核心CLI操作。"
+    },
+    {
+      "question_id": 11639694,
+      "uuid": "5b8f49d96957411bb6989b721a02e866",
+      "type": 1,
+      "title": "AWQ（Activation-Aware Weight Quantizat...",
+      "content": "AWQ（Activation-Aware&nbsp;Weight&nbsp;Quantization）的核心思想是什么？",
+      "options": [
+        {
+          "id": 7511581,
+          "content": "对激活值而不是权重进行量化"
+        },
+        {
+          "id": 7511582,
+          "content": "根据激活值大小识别\"重要权重\"，对其进行缩放保护而非直接量化"
+        },
+        {
+          "id": 7511583,
+          "content": "使用更高精度（FP8）替代INT4量化"
+        },
+        {
+          "id": 7511584,
+          "content": "只量化FFN层，保留Attention层的精度"
+        }
+      ],
+      "correct_option_ids": [
+        7511582
+      ],
+      "correct_options": [
+        "根据激活值大小识别\"重要权重\"，对其进行缩放保护而非直接量化"
+      ],
+      "analysis": "AWQ发现：激活值中约1%的\"重要通道\"对模型性能影响极大（salient&nbsp;weights），直接INT4量化会破坏这些通道。AWQ通过搜索最优的per-channel缩放因子s，将权重乘以s（放大重要权重使其对量化误差不敏感），同时激活值除以s（保持输出等价），让量化器自然地减小这些重要权重的相对误差。"
+    },
+    {
+      "question_id": 11639802,
+      "uuid": "5246f23335d94cdb86b07e098000bb89",
+      "type": 1,
+      "title": "以下关于Pipeline Parallelism（流水线并行）中的\"bub...",
+      "content": "以下关于Pipeline&nbsp;Parallelism（流水线并行）中的\"bubble\"问题，描述正确的是？",
+      "options": [
+        {
+          "id": 7510828,
+          "content": "GPU内存中的碎片化问题"
+        },
+        {
+          "id": 7510830,
+          "content": "流水线中微批次之间的空闲时间浪费"
+        },
+        {
+          "id": 7510831,
+          "content": "梯度通信的延迟"
+        },
+        {
+          "id": 7510832,
+          "content": "量化误差累积问题"
+        }
+      ],
+      "correct_option_ids": [
+        7510830
+      ],
+      "correct_options": [
+        "流水线中微批次之间的空闲时间浪费"
+      ],
+      "analysis": "流水线并行中，由于各阶段必须等待前序阶段完成才能开始，在流水线填充（fill）和排空（drain）阶段存在GPU空闲，称为pipeline&nbsp;bubble。增加微批次数量可以减少bubble比例但不能消除。"
+    },
+    {
+      "question_id": 11639872,
+      "uuid": "d52656846dca46f79c92ffee9cacc7d4",
+      "type": 1,
+      "title": "在以下推理延迟分解中，哪个环节在Prefill阶段占主导？",
+      "content": "在以下推理延迟分解中，哪个环节在Prefill阶段占主导？",
+      "options": [
+        {
+          "id": 7511393,
+          "content": "模型权重从磁盘加载"
+        },
+        {
+          "id": 7511394,
+          "content": "Attention计算（输入token的自注意力，计算量O(N²)）"
+        },
+        {
+          "id": 7511395,
+          "content": "Token采样（Sampling）"
+        },
+        {
+          "id": 7511396,
+          "content": "词表投影（LM&nbsp;Head）"
+        }
+      ],
+      "correct_option_ids": [
+        7511394
+      ],
+      "correct_options": [
+        "Attention计算（输入token的自注意力，计算量O(N²)）"
+      ],
+      "analysis": "Prefill阶段计算密集：对所有输入token进行自注意力计算，复杂度O(N²×D)，是计算瓶颈。对短输入（&lt;100&nbsp;tokens），FFN层也是主要开销；超长输入（&gt;4K）时注意力计算占比明显上升。模型权重只在服务启动时加载一次。"
+    },
+    {
+      "question_id": 11639873,
+      "uuid": "74644bae39f0483bb149f287626a428f",
+      "type": 1,
+      "title": "以下哪种量化技术结合了权重量化和激活量化，同时使用INT8精度进行矩阵乘法？",
+      "content": "以下哪种量化技术结合了权重量化和激活量化，同时使用INT8精度进行矩阵乘法？",
+      "options": [
+        {
+          "id": 7511381,
+          "content": "W4A16（AWQ/GPTQ）"
+        },
+        {
+          "id": 7511382,
+          "content": "W8A8（SmoothQuant/LLM.int8()）"
+        },
+        {
+          "id": 7511383,
+          "content": "W4A4"
+        },
+        {
+          "id": 7511384,
+          "content": "FP4A16"
+        }
+      ],
+      "correct_option_ids": [
+        7511382
+      ],
+      "correct_options": [
+        "W8A8（SmoothQuant/LLM.int8()）"
+      ],
+      "analysis": "W8A8量化（权重INT8，激活INT8）允许使用高效的INT8&nbsp;GEMM（如NVIDIA的Tensor&nbsp;Core&nbsp;INT8指令），理论计算速度是FP16的2-4倍。SmoothQuant通过平滑激活分布使W8A8可行，LLM.int8()通过向量量化处理离群值。"
+    },
+    {
+      "question_id": 11639700,
+      "uuid": "0f074c5783564dd789bc96a2737d8337",
+      "type": 1,
+      "title": "张量并行（Tensor Parallelism）推理时，Transform...",
+      "content": "张量并行（Tensor&nbsp;Parallelism）推理时，Transformer的MLP层如何划分？",
+      "options": [
+        {
+          "id": 7511450,
+          "content": "按batch维度切分，不同GPU处理不同请求"
+        },
+        {
+          "id": 7511452,
+          "content": "第一个线性层按列切分，第二个按行切分，每GPU持有部分权重"
+        },
+        {
+          "id": 7511454,
+          "content": "将整个MLP层复制到每个GPU"
+        },
+        {
+          "id": 7511457,
+          "content": "按序列长度维度切分，不同GPU处理不同位置"
+        }
+      ],
+      "correct_option_ids": [
+        7511452
+      ],
+      "correct_options": [
+        "第一个线性层按列切分，第二个按行切分，每GPU持有部分权重"
+      ],
+      "analysis": "Megatron-LM的张量并行策略：MLP中第一个线性层（W1）按列切分（每GPU计算部分隐层），第二个线性层（W2）按行切分（每GPU负责对应行，最后all-reduce聚合）。Attention中Q、K、V矩阵按head切分（不同GPU处理不同head），输出线性层按行切分后all-reduce。每层只需一次all-reduce通信。"
+    },
+    {
+      "question_id": 11639871,
+      "uuid": "859ebc9bf17f484992d4b909a94ef279",
+      "type": 1,
+      "title": "以下哪种技术通过重用attention计算结果来加速文档级别的多轮问答？",
+      "content": "以下哪种技术通过重用attention计算结果来加速文档级别的多轮问答？",
+      "options": [
+        {
+          "id": 7511405,
+          "content": "Prefix&nbsp;Caching（缓存文档的KV&nbsp;Cache，后续问题共享）"
+        },
+        {
+          "id": 7511406,
+          "content": "减少答案长度"
+        },
+        {
+          "id": 7511407,
+          "content": "并行处理所有问题"
+        },
+        {
+          "id": 7511408,
+          "content": "使用更小的模型"
+        }
+      ],
+      "correct_option_ids": [
+        7511405
+      ],
+      "correct_options": [
+        "Prefix&nbsp;Caching（缓存文档的KV&nbsp;Cache，后续问题共享）"
+      ],
+      "analysis": "文档级多轮问答中，文档内容（作为系统提示或上下文）在每次提问时都需要计算，开销极大。Prefix&nbsp;Caching将文档的KV&nbsp;Cache缓存，后续问题只需计算新的问题部分，将重复文档处理开销降至零。"
+    },
+    {
+      "question_id": 11639843,
+      "uuid": "ea75f15209144f24b961d82313dab6d6",
+      "type": 1,
+      "title": "在推理系统设计中，以下哪种\"优先级调度\"策略最有利于保证SLA？",
+      "content": "在推理系统设计中，以下哪种\"优先级调度\"策略最有利于保证SLA？",
+      "options": [
+        {
+          "id": 7511705,
+          "content": "先进先出（FIFO）"
+        },
+        {
+          "id": 7511706,
+          "content": "最短作业优先（SJF）"
+        },
+        {
+          "id": 7511707,
+          "content": "优先级队列（高优先级请求优先）+&nbsp;抢占式调度"
+        },
+        {
+          "id": 7511708,
+          "content": "随机调度"
+        }
+      ],
+      "correct_option_ids": [
+        7511707
+      ],
+      "correct_options": [
+        "优先级队列（高优先级请求优先）+&nbsp;抢占式调度"
+      ],
+      "analysis": "生产推理系统通常需要区分优先级：交互式用户请求（高优先级，需要低延迟）vs.&nbsp;批处理任务（低优先级，允许高延迟）。优先级队列+抢占允许高优先级请求打断低优先级处理，保证SLA，而FIFO和SJF在混合负载下无法差异化服务。"
+    },
+    {
+      "question_id": 11639812,
+      "uuid": "67e01389facd45e1848bb8608888f409",
+      "type": 1,
+      "title": "在LLM推理中，以下哪种策略可以降低\"首token延迟\"（TTFT）同时不...",
+      "content": "在LLM推理中，以下哪种策略可以降低\"首token延迟\"（TTFT）同时不显著影响吞吐量？",
+      "options": [
+        {
+          "id": 7510701,
+          "content": "增大batch&nbsp;size"
+        },
+        {
+          "id": 7510702,
+          "content": "对Prefill和Decode阶段使用分离部署（Disaggregation）"
+        },
+        {
+          "id": 7510703,
+          "content": "使用更激进的量化"
+        },
+        {
+          "id": 7510704,
+          "content": "增加beam&nbsp;width"
+        }
+      ],
+      "correct_option_ids": [
+        7510702
+      ],
+      "correct_options": [
+        "对Prefill和Decode阶段使用分离部署（Disaggregation）"
+      ],
+      "analysis": "Prefill-Decode分离（如Mooncake等系统）将计算密集的预填充和内存密集的解码部署在不同实例上，预填充结果传给解码实例，避免两者互相干扰，同时降低TTFT和提高解码吞吐量。"
+    },
+    {
+      "question_id": 11639808,
+      "uuid": "6f59bedce5dc4d1d87b8183ac97897e4",
+      "type": 1,
+      "title": "以下哪种KV Cache压缩方法通过识别并驱逐\"注意力权重低\"的token...",
+      "content": "以下哪种KV&nbsp;Cache压缩方法通过识别并驱逐\"注意力权重低\"的token来实现？",
+      "options": [
+        {
+          "id": 7510748,
+          "content": "GQA"
+        },
+        {
+          "id": 7510750,
+          "content": "MQA"
+        },
+        {
+          "id": 7510751,
+          "content": "StreamingLLM/SnapKV/H2O"
+        },
+        {
+          "id": 7510752,
+          "content": "Flash&nbsp;Attention"
+        }
+      ],
+      "correct_option_ids": [
+        7510751
+      ],
+      "correct_options": [
+        "StreamingLLM/SnapKV/H2O"
+      ],
+      "analysis": "H2O（Heavy&nbsp;Hitter&nbsp;Oracle）等方法统计注意力分数，识别对当前生成重要的\"Heavy&nbsp;Hitter\"&nbsp;tokens，驱逐注意力得分低的tokens，在保持生成质量的同时将KV&nbsp;Cache大小压缩数倍。StreamingLLM则保留sink&nbsp;tokens和最近tokens。"
+    },
+    {
+      "question_id": 11639737,
+      "uuid": "bc611c6839f94a53975c1304d95f02e7",
+      "type": 1,
+      "title": "以下哪个指标最适合衡量推理服务在高负载下的性能？",
+      "content": "以下哪个指标最适合衡量推理服务在高负载下的性能？",
+      "options": [
+        {
+          "id": 7511281,
+          "content": "单请求的平均延迟（latency）"
+        },
+        {
+          "id": 7511282,
+          "content": "每秒处理的tokens数量（tokens/second&nbsp;throughput）"
+        },
+        {
+          "id": 7511283,
+          "content": "模型加载时间"
+        },
+        {
+          "id": 7511284,
+          "content": "GPU显存利用率峰值"
+        }
+      ],
+      "correct_option_ids": [
+        7511282
+      ],
+      "correct_options": [
+        "每秒处理的tokens数量（tokens/second&nbsp;throughput）"
+      ],
+      "analysis": "高负载下的系统性能应用吞吐量（throughput）衡量，即单位时间内服务所有并发请求共处理的token数。单请求延迟在低并发下有意义，但高负载时更关注系统整体处理能力。tokens/s吞吐综合反映了batch处理效率、硬件利用率和系统调度能力，是推理服务性能的核心SLA指标（通常与P99延迟一起评估）。"
+    },
+    {
+      "question_id": 11639782,
+      "uuid": "ad6011615f4f44bda338636d7514f0ed",
+      "type": 1,
+      "title": "以下关于\"Structured Pruning\"（结构化剪枝）对LLM推理...",
+      "content": "以下关于\"Structured&nbsp;Pruning\"（结构化剪枝）对LLM推理的实际影响，描述正确的是？",
+      "options": [
+        {
+          "id": 7511085,
+          "content": "删除50%的注意力头后，模型精度下降50%"
+        },
+        {
+          "id": 7511086,
+          "content": "删除不重要的注意力头/FFN神经元后，模型尺寸减小且推理速度提升，但精度有一定损失，可通过后续微调恢复"
+        },
+        {
+          "id": 7511088,
+          "content": "结构化剪枝只适用于小模型（&lt;1B）"
+        },
+        {
+          "id": 7511090,
+          "content": "剪枝后模型无法使用标准推理框架运行"
+        }
+      ],
+      "correct_option_ids": [
+        7511086
+      ],
+      "correct_options": [
+        "删除不重要的注意力头/FFN神经元后，模型尺寸减小且推理速度提升，但精度有一定损失，可通过后续微调恢复"
+      ],
+      "analysis": "结构化剪枝的实际效果：①删除20-30%的不重要注意力头：精度损失通常&lt;2%（通过微调可基本恢复）；②删除FFN中间层神经元：类似效果；③整层剪枝（删除某些Transformer层）：精度损失较大但速度提升明显。剪枝后的模型是标准密集矩阵（尺寸更小），可直接用vLLM等框架推理，无需特殊支持。LLM-Pruner、SliceGPT等工具实现了自动化结构化剪枝。"
+    },
+    {
+      "question_id": 11639794,
+      "uuid": "09fcb6bf5d734d0c8dbb0fb419381031",
+      "type": 1,
+      "title": "在INT8量化中，以下哪种映射方式会导致精度损失最小？",
+      "content": "在INT8量化中，以下哪种映射方式会导致精度损失最小？",
+      "options": [
+        {
+          "id": 7510932,
+          "content": "对称量化（Symmetric）"
+        },
+        {
+          "id": 7510933,
+          "content": "非对称量化（Asymmetric）"
+        },
+        {
+          "id": 7510935,
+          "content": "两者精度损失相同"
+        },
+        {
+          "id": 7510936,
+          "content": "取决于具体数值分布"
+        }
+      ],
+      "correct_option_ids": [
+        7510936
+      ],
+      "correct_options": [
+        "取决于具体数值分布"
+      ],
+      "analysis": "当权重/激活分布对称（均值接近0）时，对称量化通常足够；当分布有偏斜时，非对称量化（使用零点偏移）能更好地适应数据范围，减少截断误差。实际选择取决于数据分布特征。"
+    },
+    {
+      "question_id": 11639862,
+      "uuid": "40b09a32703948ea9e41aea29c606220",
+      "type": 1,
+      "title": "以下哪种推理加速方法在不改变模型精度的情况下，仍能实现显著加速？",
+      "content": "以下哪种推理加速方法在不改变模型精度的情况下，仍能实现显著加速？",
+      "options": [
+        {
+          "id": 7511513,
+          "content": "INT4量化"
+        },
+        {
+          "id": 7511514,
+          "content": "Flash&nbsp;Attention（精确等价的重新实现，只是IO感知）"
+        },
+        {
+          "id": 7511515,
+          "content": "层剪枝（移除部分层）"
+        },
+        {
+          "id": 7511516,
+          "content": "知识蒸馏（小模型替代）"
+        }
+      ],
+      "correct_option_ids": [
+        7511514
+      ],
+      "correct_options": [
+        "Flash&nbsp;Attention（精确等价的重新实现，只是IO感知）"
+      ],
+      "analysis": "Flash&nbsp;Attention是数学上完全等价于标准注意力的优化实现（分块计算，避免O(N²)内存分配），输出精度完全相同（非近似），但内存降低至O(N)，速度提升2-4倍。量化、剪枝、蒸馏都会改变模型输出（或使用更小/不同的模型）。"
+    },
+    {
+      "question_id": 11639690,
+      "uuid": "2737ba1cdd1841a0a3d0f4a9e4848160",
+      "type": 1,
+      "title": "PagedAttention（vLLM）解决了KV Cache管理的什么核...",
+      "content": "PagedAttention（vLLM）解决了KV&nbsp;Cache管理的什么核心问题？",
+      "options": [
+        {
+          "id": 7513105,
+          "content": "KV&nbsp;Cache计算速度太慢"
+        },
+        {
+          "id": 7513106,
+          "content": "KV&nbsp;Cache的内存碎片化和无法动态扩展导致的显存浪费"
+        },
+        {
+          "id": 7513107,
+          "content": "多GPU环境下KV&nbsp;Cache的同步问题"
+        },
+        {
+          "id": 7513108,
+          "content": "KV&nbsp;Cache的精度损失问题"
+        }
+      ],
+      "correct_option_ids": [
+        7513106
+      ],
+      "correct_options": [
+        "KV&nbsp;Cache的内存碎片化和无法动态扩展导致的显存浪费"
+      ],
+      "analysis": "传统KV&nbsp;Cache为每个请求预分配连续的最大长度内存（如max_seq_len），导致：①不同长度请求间大量内存碎片；②实际长度未知时的过度预分配浪费。PagedAttention借鉴OS虚拟内存分页思想，将KV&nbsp;Cache划分为固定大小的块（block），按需分配，显存利用率从约20-40%提升至90%+，支持更高并发。"
+    },
+    {
+      "question_id": 11639798,
+      "uuid": "a3ddc498cb19421f9a705bd466678ba0",
+      "type": 1,
+      "title": "在以下推理场景中，哪种情况最适合使用Prefill Chunking（分块...",
+      "content": "在以下推理场景中，哪种情况最适合使用Prefill&nbsp;Chunking（分块预填充）？",
+      "options": [
+        {
+          "id": 7510877,
+          "content": "短prompt快速响应"
+        },
+        {
+          "id": 7510879,
+          "content": "极长prompt（&gt;100K&nbsp;tokens）的首token延迟优化"
+        },
+        {
+          "id": 7510881,
+          "content": "批量短序列生成"
+        },
+        {
+          "id": 7510883,
+          "content": "多模态输入处理"
+        }
+      ],
+      "correct_option_ids": [
+        7510879
+      ],
+      "correct_options": [
+        "极长prompt（&gt;100K&nbsp;tokens）的首token延迟优化"
+      ],
+      "analysis": "对于超长prompt，一次性预填充会占用大量GPU内存并导致显存溢出。Prefill&nbsp;Chunking将长prompt分块处理，每次只处理一个chunk，用计算时间换取内存效率，适合RAG等长上下文场景。"
+    },
+    {
+      "question_id": 11639813,
+      "uuid": "c2bb96bb351e4ffb892d73070dfaff24",
+      "type": 1,
+      "title": "对7B参数模型（FP16）进行张量并行到4个GPU，每个GPU存储的模型大...",
+      "content": "对7B参数模型（FP16）进行张量并行到4个GPU，每个GPU存储的模型大小约为？",
+      "options": [
+        {
+          "id": 7510689,
+          "content": "14GB"
+        },
+        {
+          "id": 7510690,
+          "content": "7GB"
+        },
+        {
+          "id": 7510691,
+          "content": "3.5GB"
+        },
+        {
+          "id": 7510692,
+          "content": "1.75GB"
+        }
+      ],
+      "correct_option_ids": [
+        7510691
+      ],
+      "correct_options": [
+        "3.5GB"
+      ],
+      "analysis": "7B×2Bytes（FP16）=14GB总大小。张量并行将权重矩阵切分到4个GPU，每个GPU约14/4=3.5GB模型权重（实际还需额外的KV&nbsp;Cache和激活内存，但理论权重大小为3.5GB）。"
+    },
+    {
+      "question_id": 11639719,
+      "uuid": "190f80d96d1241aaa214f49daf320961",
+      "type": 1,
+      "title": "以下哪种场景下，贪心解码（Greedy Decoding）优于温度采样？",
+      "content": "以下哪种场景下，贪心解码（Greedy&nbsp;Decoding）优于温度采样？",
+      "options": [
+        {
+          "id": 7512989,
+          "content": "创意故事写作"
+        },
+        {
+          "id": 7512990,
+          "content": "代码补全和数学推理（需要确定性、最高概率的输出）"
+        },
+        {
+          "id": 7512991,
+          "content": "对话系统（需要多样性和自然性）"
+        },
+        {
+          "id": 7512992,
+          "content": "数据增强（生成多样化样本）"
+        }
+      ],
+      "correct_option_ids": [
+        7512990
+      ],
+      "correct_options": [
+        "代码补全和数学推理（需要确定性、最高概率的输出）"
+      ],
+      "analysis": "贪心解码每步选择最高概率token，输出完全确定性且是局部最优。对于代码生成、数学计算等有唯一正确答案的任务，贪心通常是最优策略（高频正确token概率最高）。对于开放式生成任务，贪心会产生重复、保守的输出，采样方法（temperature/top-p）更合适。"
+    },
+    {
+      "question_id": 11639702,
+      "uuid": "a09b010400e84ca19905c539b6993500",
+      "type": 1,
+      "title": "在INT8权重量化后，模型的推理速度提升主要来自哪方面？",
+      "content": "在INT8权重量化后，模型的推理速度提升主要来自哪方面？",
+      "options": [
+        {
+          "id": 7511477,
+          "content": "INT8的算术运算速度比FP16快4倍"
+        },
+        {
+          "id": 7511479,
+          "content": "INT8权重体积减半，减少了模型加载和权重读取的内存带宽消耗"
+        },
+        {
+          "id": 7511481,
+          "content": "INT8量化消除了推理中的矩阵乘法"
+        },
+        {
+          "id": 7511483,
+          "content": "INT8量化使KV&nbsp;Cache大小减半"
+        }
+      ],
+      "correct_option_ids": [
+        7511479
+      ],
+      "correct_options": [
+        "INT8权重体积减半，减少了模型加载和权重读取的内存带宽消耗"
+      ],
+      "analysis": "decode阶段是memory-bound的，瓶颈是权重从HBM读取的带宽。INT8权重体积是FP16的一半，相同带宽下可以读取2倍的权重，decode吞吐理论上翻倍。此外INT8&nbsp;Tensor&nbsp;Cores（如A100）的计算吞吐也更高。注意：prefill阶段计算密集，量化的带宽收益相对较小。"
+    },
+    {
+      "question_id": 11639830,
+      "uuid": "caf5a27a56e6475eae21f01ea728ec65",
+      "type": 1,
+      "title": "在使用vLLM部署时，以下哪个参数配置可以启用推测解码（Speculati...",
+      "content": "在使用vLLM部署时，以下哪个参数配置可以启用推测解码（Speculative&nbsp;Decoding）？",
+      "options": [
+        {
+          "id": 7511817,
+          "content": "--use-beam-search"
+        },
+        {
+          "id": 7511818,
+          "content": "--speculative-model&nbsp;draft_model_name&nbsp;--num-speculative-tokens&nbsp;5"
+        },
+        {
+          "id": 7511819,
+          "content": "--enable-chunked-prefill"
+        },
+        {
+          "id": 7511820,
+          "content": "--enforce-eager"
+        }
+      ],
+      "correct_option_ids": [
+        7511818
+      ],
+      "correct_options": [
+        "--speculative-model&nbsp;draft_model_name&nbsp;--num-speculative-tokens&nbsp;5"
+      ],
+      "analysis": "vLLM通过`--speculative-model`指定草稿模型，`--num-speculative-tokens`指定每次推测的token数量来启用推测解码。`--enforce-eager`是禁用CUDA&nbsp;Graph加速，`--enable-chunked-prefill`是分块预填充，与推测解码不同。"
+    },
+    {
+      "question_id": 11639861,
+      "uuid": "dd93f86e9c774f678b749b585a616f3d",
+      "type": 1,
+      "title": "以下关于\"幽灵Token\"（Phantom Tokens）问题在推理中的描...",
+      "content": "以下关于\"幽灵Token\"（Phantom&nbsp;Tokens）问题在推理中的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511525,
+          "content": "模型生成了不在词表中的token"
+        },
+        {
+          "id": 7511526,
+          "content": "某些特殊token在推理时被意外包含/排除导致行为异常"
+        },
+        {
+          "id": 7511527,
+          "content": "量化导致token&nbsp;id偏移"
+        },
+        {
+          "id": 7511528,
+          "content": "Tokenizer和模型词表不匹配"
+        }
+      ],
+      "correct_option_ids": [
+        7511526
+      ],
+      "correct_options": [
+        "某些特殊token在推理时被意外包含/排除导致行为异常"
+      ],
+      "analysis": "特殊token（如EOS、BOS、PAD）在推理时的处理不当会导致问题：过早EOS停止生成、BOS重复导致推理异常。使用`eos_token_id`、`pad_token_id`参数正确配置，并确保模板中special&nbsp;token与训练时一致，是保证推理正确性的基础。"
+    },
+    {
+      "question_id": 11639744,
+      "uuid": "7ecd9847ba2647beb05841a93757dea5",
+      "type": 1,
+      "title": "以下关于\"Batch Scheduling\"策略对推理系统的影响，描述正确的是？",
+      "content": "以下关于\"Batch&nbsp;Scheduling\"策略对推理系统的影响，描述正确的是？",
+      "options": [
+        {
+          "id": 7511369,
+          "content": "总是优先处理最长的请求可以最大化吞吐"
+        },
+        {
+          "id": 7511371,
+          "content": "Shortest-Job-First（SJF）调度可以减少平均等待时间，但长请求可能饥饿；LLM推理通常用预估输出长度进行调度"
+        },
+        {
+          "id": 7511374,
+          "content": "所有请求必须同时开始（静态batch）才能最大化GPU利用率"
+        },
+        {
+          "id": 7511376,
+          "content": "batch&nbsp;scheduling对推理性能没有影响"
+        }
+      ],
+      "correct_option_ids": [
+        7511371
+      ],
+      "correct_options": [
+        "Shortest-Job-First（SJF）调度可以减少平均等待时间，但长请求可能饥饿；LLM推理通常用预估输出长度进行调度"
+      ],
+      "analysis": "推理系统的调度优化：SJF调度（优先短请求）减少平均TTFT，但长请求可能长时间等待（饥饿）。实际系统（如vLLM）使用：①优先级队列（不同SLA的请求优先级不同）；②预估输出长度辅助调度；③Continuous&nbsp;Batching让短请求插队完成的空位；④抢占（Preemption）：高优先级请求到来时暂停低优先级请求。这些策略平衡延迟和吞吐。"
+    },
+    {
+      "question_id": 11639695,
+      "uuid": "1d2de511a347471598595be2e00c9968",
+      "type": 1,
+      "title": "Continuous Batching（连续批处理）相比Static Ba...",
+      "content": "Continuous&nbsp;Batching（连续批处理）相比Static&nbsp;Batching（静态批处理）的主要优势是？",
+      "options": [
+        {
+          "id": 7511593,
+          "content": "减少每个请求的推理延迟"
+        },
+        {
+          "id": 7511594,
+          "content": "允许不同序列长度的请求动态加入/离开batch，消除短请求等待长请求完成的问题"
+        },
+        {
+          "id": 7511595,
+          "content": "自动平衡不同GPU间的负载"
+        },
+        {
+          "id": 7511596,
+          "content": "减少KV&nbsp;Cache的显存占用"
+        }
+      ],
+      "correct_option_ids": [
+        7511594
+      ],
+      "correct_options": [
+        "允许不同序列长度的请求动态加入/离开batch，消除短请求等待长请求完成的问题"
+      ],
+      "analysis": "Static&nbsp;Batching中所有请求必须同时开始和结束（等最长序列完成），短请求完成后GPU空转等待。Continuous&nbsp;Batching（也称iteration-level&nbsp;scheduling）在每个decode步骤后动态调整batch：已完成的序列立即腾出位置给等待队列中的新请求，GPU利用率接近100%，整体吞吐量通常提升2-10倍。vLLM、TGI等框架都实现了此技术。"
+    },
+    {
+      "question_id": 11639751,
+      "uuid": "e2ff2877bb6d41b2a658d086dd52e1be",
+      "type": 1,
+      "title": "以下哪种缓存策略最适合RAG + LLM服务中的推理加速？",
+      "content": "以下哪种缓存策略最适合RAG&nbsp;+&nbsp;LLM服务中的推理加速？",
+      "options": [
+        {
+          "id": 7512941,
+          "content": "缓存所有用户请求的完整输出"
+        },
+        {
+          "id": 7512942,
+          "content": "KV&nbsp;Cache&nbsp;+&nbsp;Prefix&nbsp;Caching组合：系统prompt和检索到的文档的KV&nbsp;Cache预计算并缓存，用户特定部分实时计算"
+        },
+        {
+          "id": 7512943,
+          "content": "只缓存模型权重，不缓存KV&nbsp;Cache"
+        },
+        {
+          "id": 7512944,
+          "content": "将所有请求预处理为相同格式后统一缓存"
+        }
+      ],
+      "correct_option_ids": [
+        7512942
+      ],
+      "correct_options": [
+        "KV&nbsp;Cache&nbsp;+&nbsp;Prefix&nbsp;Caching组合：系统prompt和检索到的文档的KV&nbsp;Cache预计算并缓存，用户特定部分实时计算"
+      ],
+      "analysis": "RAG&nbsp;+&nbsp;LLM服务的缓存优化：①系统prompt&nbsp;KV&nbsp;Cache：跨所有请求共享（Prefix&nbsp;Caching）；②检索文档KV&nbsp;Cache：同一文档被多个请求引用时缓存（SGLang的RadixAttention支持）；③用户query部分实时计算（唯一部分）。这种分层缓存策略可以将大部分计算缓存复用，只有用户特定部分需要实时计算，显著降低TTFT和计算成本。"
+    },
+    {
+      "question_id": 11639732,
+      "uuid": "5f6a81867a9e4073937245552e978a1d",
+      "type": 1,
+      "title": "以下关于LLM推理中\"length penalty\"参数的作用是什么？",
+      "content": "以下关于LLM推理中\"length&nbsp;penalty\"参数的作用是什么？",
+      "options": [
+        {
+          "id": 7512977,
+          "content": "惩罚生成过长序列，强制输出简短回复"
+        },
+        {
+          "id": 7512978,
+          "content": "在beam&nbsp;search中调整不同长度候选序列的分数，避免短序列因概率乘法积累而总是得分更高"
+        },
+        {
+          "id": 7512979,
+          "content": "限制最大生成token数量"
+        },
+        {
+          "id": 7512980,
+          "content": "对生成的每个token施加固定的分数惩罚"
+        }
+      ],
+      "correct_option_ids": [
+        7512978
+      ],
+      "correct_options": [
+        "在beam&nbsp;search中调整不同长度候选序列的分数，避免短序列因概率乘法积累而总是得分更高"
+      ],
+      "analysis": "Beam&nbsp;Search的序列分数是各token对数概率之和，长序列因更多的负对数概率累积而分数更低（即使每步质量更高）。Length&nbsp;penalty通过除以len^α（α为length_penalty参数）归一化序列长度：α&gt;1鼓励长序列，α&lt;1偏向短序列，α=0无惩罚（等效于无归一化）。在翻译、摘要任务中合理设置能避免输出过短。"
+    },
+    {
+      "question_id": 11639712,
+      "uuid": "a8295b03340c45fb898fe710be2e2f29",
+      "type": 1,
+      "title": "模型剪枝（Pruning）中，结构化剪枝和非结构化剪枝的主要区别是？",
+      "content": "模型剪枝（Pruning）中，结构化剪枝和非结构化剪枝的主要区别是？",
+      "options": [
+        {
+          "id": 7513017,
+          "content": "结构化剪枝速度更慢，精度损失更大"
+        },
+        {
+          "id": 7513018,
+          "content": "非结构化剪枝删除整个神经元/注意力头，结构化剪枝删除单个权重"
+        },
+        {
+          "id": 7513019,
+          "content": "非结构化剪枝删除单个权重（产生稀疏矩阵），结构化剪枝删除整行/整列/整个头（保持密集结构）"
+        },
+        {
+          "id": 7513020,
+          "content": "结构化剪枝只适用于CNN，非结构化剪枝适用于Transformer"
+        }
+      ],
+      "correct_option_ids": [
+        7513019
+      ],
+      "correct_options": [
+        "非结构化剪枝删除单个权重（产生稀疏矩阵），结构化剪枝删除整行/整列/整个头（保持密集结构）"
+      ],
+      "analysis": "非结构化剪枝（如magnitude&nbsp;pruning）将绝对值小的权重置零，产生稀疏矩阵，但现代GPU对稀疏矩阵支持有限，实际推理加速不明显（需要专用稀疏硬件）。结构化剪枝删除整个attention头、FFN神经元或Transformer层，输出仍是密集矩阵，可以直接在标准硬件上加速。LLM剪枝实践中结构化剪枝更实用。"
+    },
+    {
+      "question_id": 11639780,
+      "uuid": "ad28898fe73a4f74823c93f15474a4c0",
+      "type": 1,
+      "title": "以下关于\"Quantization Calibration\"（量化校准）数...",
+      "content": "以下关于\"Quantization&nbsp;Calibration\"（量化校准）数据的要求，描述正确的是？",
+      "options": [
+        {
+          "id": 7511111,
+          "content": "校准数据量越多越好（&gt;100万条）"
+        },
+        {
+          "id": 7511114,
+          "content": "校准数据应该代表实际推理时的输入分布，通常512-2048条样本即可"
+        },
+        {
+          "id": 7511117,
+          "content": "校准数据必须包含标注答案"
+        },
+        {
+          "id": 7511119,
+          "content": "校准数据必须与训练数据完全相同"
+        }
+      ],
+      "correct_option_ids": [
+        7511114
+      ],
+      "correct_options": [
+        "校准数据应该代表实际推理时的输入分布，通常512-2048条样本即可"
+      ],
+      "analysis": "PTQ量化校准：用少量代表性数据（通常512条WikiText或实际业务数据）前向传播，收集激活值统计信息（均值、方差、outlier分布），用于确定量化参数（scale、zero-point）。关键：校准数据应代表推理时的输入分布（如主要是中文对话就用中文对话做校准）；数量适中（512-2048条），过多无明显提升；不需要标注。用领域内数据校准可比通用数据显著减少精度损失。"
+    },
+    {
+      "question_id": 11639796,
+      "uuid": "dbd5d5b292314c5894c6d7aed476aab2",
+      "type": 1,
+      "title": "Medusa（多头推测解码）与标准Speculative Decoding...",
+      "content": "Medusa（多头推测解码）与标准Speculative&nbsp;Decoding相比，最大区别是？",
+      "options": [
+        {
+          "id": 7510905,
+          "content": "Medusa不需要草稿模型，使用目标模型的额外预测头"
+        },
+        {
+          "id": 7510907,
+          "content": "Medusa速度更慢但精度更高"
+        },
+        {
+          "id": 7510909,
+          "content": "Medusa只能用于代码生成"
+        },
+        {
+          "id": 7510911,
+          "content": "Medusa需要更多显存"
+        }
+      ],
+      "correct_option_ids": [
+        7510905
+      ],
+      "correct_options": [
+        "Medusa不需要草稿模型，使用目标模型的额外预测头"
+      ],
+      "analysis": "Medusa在目标模型顶部添加多个额外预测头，每个头预测未来不同位置的token，通过树形注意力mask并行验证，无需独立的小草稿模型，避免了模型间的调度开销。"
+    },
+    {
+      "question_id": 11639864,
+      "uuid": "13de70f6a31343ff83835e94c0d4791c",
+      "type": 1,
+      "title": "在LLM API服务设计中，以下哪种异步处理模式最能提升请求处理效率？",
+      "content": "在LLM&nbsp;API服务设计中，以下哪种异步处理模式最能提升请求处理效率？",
+      "options": [
+        {
+          "id": 7511485,
+          "content": "同步阻塞处理每个请求"
+        },
+        {
+          "id": 7511486,
+          "content": "协程异步处理（async/await）&nbsp;+&nbsp;事件循环并发接受多个请求"
+        },
+        {
+          "id": 7511488,
+          "content": "多线程（每请求一线程）"
+        },
+        {
+          "id": 7511490,
+          "content": "仅使用请求队列不做并发处理"
+        }
+      ],
+      "correct_option_ids": [
+        7511486
+      ],
+      "correct_options": [
+        "协程异步处理（async/await）&nbsp;+&nbsp;事件循环并发接受多个请求"
+      ],
+      "analysis": "LLM推理的GPU计算已经并行，瓶颈在于Python服务层的I/O等待（网络读写、调度等）。协程异步（asyncio&nbsp;+&nbsp;uvicorn/fastapi）允许在GPU计算时同时处理新请求的IO，大幅提升并发能力，是vLLM、SGLang等框架的异步API实现基础。"
+    },
+    {
+      "question_id": 11639820,
+      "uuid": "3bea0c9b51a54c6b9b3b8816982db0ec",
+      "type": 1,
+      "title": "在推理优化中，\"Operator Fusion\"（算子融合）的核心收益是什么？",
+      "content": "在推理优化中，\"Operator&nbsp;Fusion\"（算子融合）的核心收益是什么？",
+      "options": [
+        {
+          "id": 7510596,
+          "content": "减少模型参数量"
+        },
+        {
+          "id": 7510598,
+          "content": "将多个小kernel合并为一个，减少GPU内存读写次数（提高算术强度）"
+        },
+        {
+          "id": 7510599,
+          "content": "自动并行化计算"
+        },
+        {
+          "id": 7510600,
+          "content": "降低数值精度误差"
+        }
+      ],
+      "correct_option_ids": [
+        7510598
+      ],
+      "correct_options": [
+        "将多个小kernel合并为一个，减少GPU内存读写次数（提高算术强度）"
+      ],
+      "analysis": "算子融合将LayerNorm+激活+矩阵乘法等连续小操作合并为单个kernel，数据在SRAM/寄存器中直接流转，避免多次写入和读取HBM，大幅减少内存带宽消耗，这是FlashAttention和各类推理框架的核心优化手段。"
+    },
+    {
+      "question_id": 11639848,
+      "uuid": "d73bdfe9ffc349f9a9366d40b27baae4",
+      "type": 1,
+      "title": "以下哪种情况下，Speculative Decoding的加速比最高？",
+      "content": "以下哪种情况下，Speculative&nbsp;Decoding的加速比最高？",
+      "options": [
+        {
+          "id": 7511661,
+          "content": "草稿模型与目标模型尺寸相差不大"
+        },
+        {
+          "id": 7511662,
+          "content": "草稿模型对目标分布预测准确（高接受率），且两模型共享硬件"
+        },
+        {
+          "id": 7511663,
+          "content": "目标模型较小（7B）时"
+        },
+        {
+          "id": 7511665,
+          "content": "序列生成长度很短时"
+        }
+      ],
+      "correct_option_ids": [
+        7511662
+      ],
+      "correct_options": [
+        "草稿模型对目标分布预测准确（高接受率），且两模型共享硬件"
+      ],
+      "analysis": "推测解码加速比&nbsp;≈&nbsp;每次推测的token数&nbsp;×&nbsp;接受率&nbsp;/&nbsp;(1&nbsp;+&nbsp;草稿模型额外开销)。接受率高（草稿准确）且草稿模型足够小（额外开销少）时，加速比最大可达3-5倍。草稿和目标模型尺寸差太小导致草稿开销占比高，差太大导致接受率低。"
+    },
+    {
+      "question_id": 11639821,
+      "uuid": "740e4ce2d0ec44caa70cec4e260291b7",
+      "type": 1,
+      "title": "以下关于SplitFuse（预填充和解码请求在同一批次混合）技术的描述，哪...",
+      "content": "以下关于SplitFuse（预填充和解码请求在同一批次混合）技术的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7510585,
+          "content": "只适用于短序列场景"
+        },
+        {
+          "id": 7510586,
+          "content": "将大prefill分块，与decode请求混合到同一批次，避免prefill独占GPU"
+        },
+        {
+          "id": 7510587,
+          "content": "需要特殊的模型架构支持"
+        },
+        {
+          "id": 7510588,
+          "content": "会降低解码吞吐量"
+        }
+      ],
+      "correct_option_ids": [
+        7510586
+      ],
+      "correct_options": [
+        "将大prefill分块，与decode请求混合到同一批次，避免prefill独占GPU"
+      ],
+      "analysis": "SplitFuse（DeepSpeed-FastGen提出）将长prefill请求分割成小块，与decode请求放在同一批次处理，防止大型prefill阻塞decode请求，同时保持高算术强度，改善首token延迟和整体吞吐量。"
+    },
+    {
+      "question_id": 11639781,
+      "uuid": "a1d0be57a2da462cbaf4950a6ddfd346",
+      "type": 1,
+      "title": "以下关于\"model sharding\"（模型分片）与\"model rep...",
+      "content": "以下关于\"model&nbsp;sharding\"（模型分片）与\"model&nbsp;replication\"（模型复制）的区别，描述正确的是？",
+      "options": [
+        {
+          "id": 7511097,
+          "content": "两者完全相同"
+        },
+        {
+          "id": 7511098,
+          "content": "模型分片将模型拆分到多个设备（处理单个请求需要多设备协作），用于超大模型；模型复制将完整模型复制到多个设备（每个设备独立处理请求），用于扩展吞吐"
+        },
+        {
+          "id": 7511099,
+          "content": "模型分片总是优于模型复制"
+        },
+        {
+          "id": 7511101,
+          "content": "模型复制不能扩展吞吐量"
+        }
+      ],
+      "correct_option_ids": [
+        7511098
+      ],
+      "correct_options": [
+        "模型分片将模型拆分到多个设备（处理单个请求需要多设备协作），用于超大模型；模型复制将完整模型复制到多个设备（每个设备独立处理请求），用于扩展吞吐"
+      ],
+      "analysis": "选择分片vs复制的决策：①模型分片（TP/PP）：当单设备无法容纳完整模型时必须分片；通信开销是代价；适合超大模型（70B+）。②模型复制（Data&nbsp;Parallelism&nbsp;at&nbsp;inference）：当单设备可以容纳完整模型时，通过多个副本并行处理不同请求线性扩展吞吐；无通信开销。实践中：小-中型模型（7B-13B）单卡&nbsp;+&nbsp;多副本；大型模型（70B+）多卡分片。"
+    },
+    {
+      "question_id": 11639841,
+      "uuid": "ea7dc1a2161740f48a86cfd33e45ae31",
+      "type": 1,
+      "title": "以下关于LLM推理中\"解码策略\"对输出多样性的影响，哪项描述正确？",
+      "content": "以下关于LLM推理中\"解码策略\"对输出多样性的影响，哪项描述正确？",
+      "options": [
+        {
+          "id": 7511721,
+          "content": "Greedy&nbsp;Decoding（贪婪解码）能产生最多样的输出"
+        },
+        {
+          "id": 7511722,
+          "content": "增大Temperature会增加输出随机性，但过高会导致输出质量下降"
+        },
+        {
+          "id": 7511723,
+          "content": "Top-P=1.0等价于不使用任何采样约束"
+        },
+        {
+          "id": 7511724,
+          "content": "所有解码策略在统计上是等价的"
+        }
+      ],
+      "correct_option_ids": [
+        7511722
+      ],
+      "correct_options": [
+        "增大Temperature会增加输出随机性，但过高会导致输出质量下降"
+      ],
+      "analysis": "Temperature放缩softmax分布：T→0等价于贪婪解码（确定性），T→∞使分布趋于均匀（随机性最大）。实践中T=0.7-0.9平衡质量和多样性。Top-P=1.0实际上包含所有token（与无约束采样等价但仍受Temperature影响）。"
+    },
+    {
+      "question_id": 11639870,
+      "uuid": "193bfda34cb14d8db3add5532577f265",
+      "type": 1,
+      "title": "在以下关于大规模推理集群的\"容错设计\"描述中，哪项最重要？",
+      "content": "在以下关于大规模推理集群的\"容错设计\"描述中，哪项最重要？",
+      "options": [
+        {
+          "id": 7511417,
+          "content": "使用最新的GPU型号"
+        },
+        {
+          "id": 7511418,
+          "content": "单点故障隔离：一个实例失败不影响整个服务（降级/重路由而非全局宕机）"
+        },
+        {
+          "id": 7511419,
+          "content": "所有实例使用相同配置"
+        },
+        {
+          "id": 7511420,
+          "content": "尽量减少实例数量"
+        }
+      ],
+      "correct_option_ids": [
+        7511418
+      ],
+      "correct_options": [
+        "单点故障隔离：一个实例失败不影响整个服务（降级/重路由而非全局宕机）"
+      ],
+      "analysis": "大规模集群容错的核心：1)&nbsp;单点故障检测（心跳监控）；2)&nbsp;自动重路由（失败实例的请求转给健康实例）；3)&nbsp;优雅降级（部分实例故障时降低服务能力而非完全中断）；4)&nbsp;自动替换（快速启动新实例替代失败实例）。"
+    },
+    {
+      "question_id": 11639875,
+      "uuid": "b1edae8b43624bca9a94d8eddaf56ef7",
+      "type": 1,
+      "title": "在以下情况中，哪种情况说明推理系统存在\"尾部延迟\"（Tail Latenc...",
+      "content": "在以下情况中，哪种情况说明推理系统存在\"尾部延迟\"（Tail&nbsp;Latency）问题？",
+      "options": [
+        {
+          "id": 7511361,
+          "content": "P50延迟=200ms，P99延迟=250ms（差距小）"
+        },
+        {
+          "id": 7511362,
+          "content": "P50延迟=200ms，P99延迟=3000ms（差距大）"
+        },
+        {
+          "id": 7511363,
+          "content": "所有请求延迟相同"
+        },
+        {
+          "id": 7511364,
+          "content": "平均延迟很高"
+        }
+      ],
+      "correct_option_ids": [
+        7511362
+      ],
+      "correct_options": [
+        "P50延迟=200ms，P99延迟=3000ms（差距大）"
+      ],
+      "analysis": "P99远高于P50（中位数）说明存在严重的尾部延迟：大多数请求响应较快，但有少量请求（1%）延迟极高，影响用户体验。原因可能是：请求调度不公平（某些请求长时间排队）、GC暂停、资源竞争等。需要专门优化P99而非只优化均值。"
+    },
+    {
+      "question_id": 11639691,
+      "uuid": "1573629282354bf5a5ec8d2fa0a50ef0",
+      "type": 1,
+      "title": "FlashAttention v2相比v1的主要改进是什么？",
+      "content": "FlashAttention&nbsp;v2相比v1的主要改进是什么？",
+      "options": [
+        {
+          "id": 7513093,
+          "content": "支持更长的序列长度（超过100K&nbsp;tokens）"
+        },
+        {
+          "id": 7513094,
+          "content": "改进了工作分配策略，减少了非matmul的FLOPs比例，提升了GPU利用率"
+        },
+        {
+          "id": 7513095,
+          "content": "引入了稀疏注意力机制"
+        },
+        {
+          "id": 7513096,
+          "content": "支持FP8精度计算"
+        }
+      ],
+      "correct_option_ids": [
+        7513094
+      ],
+      "correct_options": [
+        "改进了工作分配策略，减少了非matmul的FLOPs比例，提升了GPU利用率"
+      ],
+      "analysis": "FlashAttention&nbsp;v1已实现IO感知的分块计算，v2的主要改进：①减少非matmul操作（如softmax&nbsp;rescaling的循环次数），提升matmul占比；②改进并行策略（在seq_len维度并行而非batch维度），更好利用多头注意力的并行性；③在A100上实现约2倍于v1的加速，达到理论峰值FLOPS的约50-73%。"
+    },
+    {
+      "question_id": 11639773,
+      "uuid": "d7efea630d5f4f9ca2aee6887963d48c",
+      "type": 1,
+      "title": "以下关于\"Persistent KV Cache\"（持久化KV缓存）的描述...",
+      "content": "以下关于\"Persistent&nbsp;KV&nbsp;Cache\"（持久化KV缓存）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7511209,
+          "content": "KV&nbsp;Cache永远不能持久化，只存在于GPU显存中"
+        },
+        {
+          "id": 7511210,
+          "content": "将常用前缀/文档的KV&nbsp;Cache序列化存储（SSD/对象存储），跨请求或跨服务重复使用，避免重复计算"
+        },
+        {
+          "id": 7511211,
+          "content": "持久化KV&nbsp;Cache需要特殊的硬件支持"
+        },
+        {
+          "id": 7511212,
+          "content": "持久化KV&nbsp;Cache只适用于无状态服务"
+        }
+      ],
+      "correct_option_ids": [
+        7511210
+      ],
+      "correct_options": [
+        "将常用前缀/文档的KV&nbsp;Cache序列化存储（SSD/对象存储），跨请求或跨服务重复使用，避免重复计算"
+      ],
+      "analysis": "Persistent&nbsp;KV&nbsp;Cache（离线KV&nbsp;Cache）将预计算的KV&nbsp;Cache序列化到磁盘/对象存储，用于：①RAG文档预计算：将知识库文档的KV&nbsp;Cache离线计算并存储，在线服务直接加载使用（跳过prefill）；②系统提示缓存：跨请求、跨服务实例共享；③MemGPT等外部记忆系统。挑战：KV&nbsp;Cache与模型版本绑定（模型更新需要重新计算），存储成本较高（一个1M&nbsp;token文档约1GB&nbsp;KV&nbsp;Cache）。"
+    },
+    {
+      "question_id": 11639847,
+      "uuid": "041dee48841e4847a2e92b671bd811e2",
+      "type": 1,
+      "title": "以下关于LLM推理中\"Batching策略\"对延迟和吞吐量的影响，哪项描述...",
+      "content": "以下关于LLM推理中\"Batching策略\"对延迟和吞吐量的影响，哪项描述最准确？",
+      "options": [
+        {
+          "id": 7511669,
+          "content": "批次越大，延迟越低，吞吐量越高"
+        },
+        {
+          "id": 7511670,
+          "content": "批次越大，吞吐量越高，但单请求延迟随批次增大而增加"
+        },
+        {
+          "id": 7511672,
+          "content": "批次大小对延迟和吞吐量都没有影响"
+        },
+        {
+          "id": 7511674,
+          "content": "只有在使用FlashAttention时批次大小才影响性能"
+        }
+      ],
+      "correct_option_ids": [
+        7511670
+      ],
+      "correct_options": [
+        "批次越大，吞吐量越高，但单请求延迟随批次增大而增加"
+      ],
+      "analysis": "批次增大的权衡：GPU利用率提升→总体吞吐量提高；但单个请求需要等待批次填满和处理完成→延迟增加。这是经典的吞吐量-延迟权衡（Throughput-Latency&nbsp;Tradeoff），需要根据SLA要求（优先延迟还是吞吐）选择最优批次大小。"
+    },
+    {
+      "question_id": 11639747,
+      "uuid": "50831df6e6ec45d4b2968f98939cb7ba",
+      "type": 1,
+      "title": "以下关于H100 GPU相比A100在LLM推理上的主要改进，描述正确的是？",
+      "content": "以下关于H100&nbsp;GPU相比A100在LLM推理上的主要改进，描述正确的是？",
+      "options": [
+        {
+          "id": 7512957,
+          "content": "H100只是A100的重命名，性能完全相同"
+        },
+        {
+          "id": 7512958,
+          "content": "H100引入了FP8支持（算力2倍于BF16）、更大的HBM3带宽（3.35&nbsp;TB/s&nbsp;vs&nbsp;2&nbsp;TB/s）、NVLink&nbsp;4.0（更快的GPU互联）"
+        },
+        {
+          "id": 7512959,
+          "content": "H100的显存更小，不适合大模型推理"
+        },
+        {
+          "id": 7512960,
+          "content": "H100只适合训练，不适合推理"
+        }
+      ],
+      "correct_option_ids": [
+        7512958
+      ],
+      "correct_options": [
+        "H100引入了FP8支持（算力2倍于BF16）、更大的HBM3带宽（3.35&nbsp;TB/s&nbsp;vs&nbsp;2&nbsp;TB/s）、NVLink&nbsp;4.0（更快的GPU互联）"
+      ],
+      "analysis": "H100相比A100的关键改进：①FP8&nbsp;Tensor&nbsp;Core：用于量化推理，吞吐是BF16的2倍；②HBM3带宽：3.35&nbsp;TB/s（A100&nbsp;HBM2e约2&nbsp;TB/s），memory-bound场景提升约68%；③NVLink&nbsp;4.0带宽翻倍：多卡张量并行通信更快；④Transformer&nbsp;Engine：硬件级的FP8/BF16动态混合精度。这些使H100在LLM推理（特别是decode阶段）相比A100有显著提升。"
+    },
+    {
+      "question_id": 11639856,
+      "uuid": "f1b1fe1cf67f4b819d9e16ac1b31d11c",
+      "type": 1,
+      "title": "以下哪种技术通过在服务端按需部署模型不同精度的\"层级缓存\"来优化成本？",
+      "content": "以下哪种技术通过在服务端按需部署模型不同精度的\"层级缓存\"来优化成本？",
+      "options": [
+        {
+          "id": 7511585,
+          "content": "全量缓存所有请求"
+        },
+        {
+          "id": 7511586,
+          "content": "KV&nbsp;Cache量化（将KV&nbsp;Cache存储为INT8/INT4，节省HBM空间存更多请求）"
+        },
+        {
+          "id": 7511588,
+          "content": "关闭KV&nbsp;Cache"
+        },
+        {
+          "id": 7511590,
+          "content": "使用CPU内存作为KV&nbsp;Cache"
+        }
+      ],
+      "correct_option_ids": [
+        7511586
+      ],
+      "correct_options": [
+        "KV&nbsp;Cache量化（将KV&nbsp;Cache存储为INT8/INT4，节省HBM空间存更多请求）"
+      ],
+      "analysis": "KV&nbsp;Cache量化（如Kivi、KIVI等工作）将KV&nbsp;Cache从FP16量化为INT8甚至INT4存储，在同等HBM容量下可支持更多并发序列（KV&nbsp;Cache是长序列推理的主要显存消耗）。量化误差对生成质量影响有限，是高并发服务的重要优化。"
+    },
+    {
+      "question_id": 11639764,
+      "uuid": "84ff87efc1034679bb54363aab186d93",
+      "type": 1,
+      "title": "以下哪种方法可以在推理时动态调整模型的\"思考深度\"（如对简单问题快速回答，...",
+      "content": "以下哪种方法可以在推理时动态调整模型的\"思考深度\"（如对简单问题快速回答，复杂问题深度推理）？",
+      "options": [
+        {
+          "id": 7512889,
+          "content": "对所有问题统一使用CoT"
+        },
+        {
+          "id": 7512890,
+          "content": "基于问题复杂度分类路由：简单问题→小模型或无CoT，复杂问题→大模型或长CoT（如Adaptive&nbsp;Computation）"
+        },
+        {
+          "id": 7512891,
+          "content": "随机决定是否使用CoT"
+        },
+        {
+          "id": 7512892,
+          "content": "只使用最大的模型处理所有问题"
+        }
+      ],
+      "correct_option_ids": [
+        7512890
+      ],
+      "correct_options": [
+        "基于问题复杂度分类路由：简单问题→小模型或无CoT，复杂问题→大模型或长CoT（如Adaptive&nbsp;Computation）"
+      ],
+      "analysis": "Adaptive&nbsp;Computation在LLM推理中的应用：①Routing：轻量分类器判断问题难度，简单问题路由到7B模型（快速），复杂问题路由到70B模型（精准）；②Early&nbsp;Exit：在中间层检查是否已能给出可靠答案，可以提前退出减少计算；③Budget&nbsp;Forcing（DeepSeek-R1）：通过token&nbsp;budget控制思考长度。这类\"级联推理\"可以在保持高质量的同时大幅降低平均推理成本。"
+    },
+    {
+      "question_id": 11639859,
+      "uuid": "377b1826ed1945339c2dece78c85f8ce",
+      "type": 1,
+      "title": "以下关于LLM推理中\"负载均衡\"（Load Balancing）策略的描述...",
+      "content": "以下关于LLM推理中\"负载均衡\"（Load&nbsp;Balancing）策略的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511549,
+          "content": "所有请求应均匀分配给每个GPU实例"
+        },
+        {
+          "id": 7511550,
+          "content": "基于KV&nbsp;Cache使用率的亲和性路由（有相同前缀的请求路由到有缓存的实例）"
+        },
+        {
+          "id": 7511551,
+          "content": "只根据请求到达时间分配"
+        },
+        {
+          "id": 7511552,
+          "content": "总是将长序列请求分配给内存最大的GPU"
+        }
+      ],
+      "correct_option_ids": [
+        7511550
+      ],
+      "correct_options": [
+        "基于KV&nbsp;Cache使用率的亲和性路由（有相同前缀的请求路由到有缓存的实例）"
+      ],
+      "analysis": "Prefix-aware&nbsp;Load&nbsp;Balancing：将相同系统提示或对话历史的请求路由到已有对应prefix&nbsp;KV&nbsp;Cache的实例，充分利用Prefix&nbsp;Caching降低TTFT。Mooncake等系统实现了基于KV&nbsp;Cache亲和性的智能路由，可将缓存命中率提升至70%+。"
+    },
+    {
+      "question_id": 11639716,
+      "uuid": "e6acf3ded8134582a51fa7f4f1cc8303",
+      "type": 1,
+      "title": "在张量并行推理中，Attention层的all-reduce通信发生在什么时候？",
+      "content": "在张量并行推理中，Attention层的all-reduce通信发生在什么时候？",
+      "options": [
+        {
+          "id": 7513001,
+          "content": "每次forward&nbsp;pass的开始"
+        },
+        {
+          "id": 7513002,
+          "content": "输出线性层（o_proj）计算完各GPU的部分结果后，进行all-reduce聚合"
+        },
+        {
+          "id": 7513003,
+          "content": "计算softmax之前"
+        },
+        {
+          "id": 7513004,
+          "content": "KV&nbsp;Cache更新之后"
+        }
+      ],
+      "correct_option_ids": [
+        7513002
+      ],
+      "correct_options": [
+        "输出线性层（o_proj）计算完各GPU的部分结果后，进行all-reduce聚合"
+      ],
+      "analysis": "Megatron张量并行中，Attention的Q、K、V矩阵按head维度切分到各GPU，各GPU独立计算自己负责的heads的attention。输出投影W_o按行切分，各GPU计算partial&nbsp;output，通过all-reduce求和得到完整输出。每个Transformer层只需一次Attention&nbsp;all-reduce&nbsp;+&nbsp;一次MLP&nbsp;all-reduce，通信开销可接受。"
+    },
+    {
+      "question_id": 11639816,
+      "uuid": "404f608bbd224ef49df0612d9bddd06f",
+      "type": 1,
+      "title": "在计算大模型推理的内存需求时，KV Cache的大小计算公式正确的是？",
+      "content": "在计算大模型推理的内存需求时，KV&nbsp;Cache的大小计算公式正确的是？",
+      "options": [
+        {
+          "id": 7510645,
+          "content": "2&nbsp;×&nbsp;num_layers&nbsp;×&nbsp;num_heads&nbsp;×&nbsp;head_dim&nbsp;×&nbsp;seq_len&nbsp;×&nbsp;batch_size&nbsp;×&nbsp;bytes_per_element"
+        },
+        {
+          "id": 7510646,
+          "content": "num_layers&nbsp;×&nbsp;seq_len&nbsp;×&nbsp;hidden_dim&nbsp;×&nbsp;bytes_per_element"
+        },
+        {
+          "id": 7510647,
+          "content": "num_heads&nbsp;×&nbsp;seq_len&nbsp;×&nbsp;seq_len&nbsp;×&nbsp;bytes_per_element"
+        },
+        {
+          "id": 7510648,
+          "content": "2&nbsp;×&nbsp;seq_len&nbsp;×&nbsp;hidden_dim&nbsp;×&nbsp;bytes_per_element"
+        }
+      ],
+      "correct_option_ids": [
+        7510645
+      ],
+      "correct_options": [
+        "2&nbsp;×&nbsp;num_layers&nbsp;×&nbsp;num_heads&nbsp;×&nbsp;head_dim&nbsp;×&nbsp;seq_len&nbsp;×&nbsp;batch_size&nbsp;×&nbsp;bytes_per_element"
+      ],
+      "analysis": "KV&nbsp;Cache大小=2（K和V）×层数×KV头数×每头维度×序列长度×批次大小×字节数。以LLaMA-7B（FP16）为例：2×32层×32头×128维×2048序列×1批次×2字节=1GB，长序列会显著增加KV&nbsp;Cache占用。"
+    },
+    {
+      "question_id": 11639692,
+      "uuid": "0aa7ced094ed459e8f2cc26721678bc8",
+      "type": 1,
+      "title": "推测解码（Speculative Decoding）的加速原理是什么？",
+      "content": "推测解码（Speculative&nbsp;Decoding）的加速原理是什么？",
+      "options": [
+        {
+          "id": 7513081,
+          "content": "使用更小的模型替代大模型推理"
+        },
+        {
+          "id": 7513082,
+          "content": "用小draft模型快速生成多个候选token，再用大target模型并行验证接受"
+        },
+        {
+          "id": 7513083,
+          "content": "通过缓存历史推理结果避免重复计算"
+        },
+        {
+          "id": 7513085,
+          "content": "将模型分布在多GPU上并行推理"
+        }
+      ],
+      "correct_option_ids": [
+        7513082
+      ],
+      "correct_options": [
+        "用小draft模型快速生成多个候选token，再用大target模型并行验证接受"
+      ],
+      "analysis": "推测解码利用大模型验证比生成便宜得多：①小draft模型自回归生成k个候选token（O(k)步串行）；②大target模型对k个token并行验证（1步，利用teacher&nbsp;forcing）；③根据接受条件（通常是rejection&nbsp;sampling）决定接受哪些token。若draft&nbsp;model与target&nbsp;model分布接近，平均每次大模型调用可接受多个token，实现无损加速（输出分布不变）。"
+    },
+    {
+      "question_id": 11639741,
+      "uuid": "82dcf834296d4527b193d193b9309013",
+      "type": 1,
+      "title": "以下哪种技术可以在不修改模型的情况下降低long prompt的推理成本？",
+      "content": "以下哪种技术可以在不修改模型的情况下降低long&nbsp;prompt的推理成本？",
+      "options": [
+        {
+          "id": 7511333,
+          "content": "对prompt进行精简（人工压缩）"
+        },
+        {
+          "id": 7511334,
+          "content": "Prompt&nbsp;Compression（如LLMLingua）：使用小模型识别并删除prompt中的冗余token，保留语义关键token"
+        },
+        {
+          "id": 7511335,
+          "content": "将prompt分割成多个短prompt分别推理"
+        },
+        {
+          "id": 7511336,
+          "content": "对prompt进行量化"
+        }
+      ],
+      "correct_option_ids": [
+        7511334
+      ],
+      "correct_options": [
+        "Prompt&nbsp;Compression（如LLMLingua）：使用小模型识别并删除prompt中的冗余token，保留语义关键token"
+      ],
+      "analysis": "LLMLingua（微软）等Prompt&nbsp;Compression技术：用轻量级模型（如GPT-2）计算每个token的信息量（困惑度），删除信息量低的冗余token（如填充词、重复内容），压缩率通常可达2-10倍。压缩后的prompt语义保留完整，送入大模型推理，大幅降低KV&nbsp;Cache大小和推理成本。适合长系统提示、长文档摘要等场景。"
+    },
+    {
+      "question_id": 11639866,
+      "uuid": "dde2a86dbf5c47a9aef04c71859738af",
+      "type": 1,
+      "title": "在以下场景中，哪种推理配置最适合\"低延迟高吞吐\"的商业API服务（需要P9...",
+      "content": "在以下场景中，哪种推理配置最适合\"低延迟高吞吐\"的商业API服务（需要P99&lt;500ms，日活请求&gt;1M）？",
+      "options": [
+        {
+          "id": 7511461,
+          "content": "单GPU&nbsp;+&nbsp;大批次&nbsp;+&nbsp;FP16"
+        },
+        {
+          "id": 7511462,
+          "content": "多GPU张量并行&nbsp;+&nbsp;continuous&nbsp;batching&nbsp;+&nbsp;FP8&nbsp;+&nbsp;prefix&nbsp;caching"
+        },
+        {
+          "id": 7511464,
+          "content": "CPU集群&nbsp;+&nbsp;INT4"
+        },
+        {
+          "id": 7511466,
+          "content": "单GPU&nbsp;+&nbsp;贪婪解码&nbsp;+&nbsp;FP32"
+        }
+      ],
+      "correct_option_ids": [
+        7511462
+      ],
+      "correct_options": [
+        "多GPU张量并行&nbsp;+&nbsp;continuous&nbsp;batching&nbsp;+&nbsp;FP8&nbsp;+&nbsp;prefix&nbsp;caching"
+      ],
+      "analysis": "商业级API服务需要：1)&nbsp;多GPU&nbsp;TP降低单请求延迟（P99保障）；2)&nbsp;Continuous&nbsp;Batching最大化吞吐；3)&nbsp;FP8进一步加速（H100支持）；4)&nbsp;Prefix&nbsp;Caching降低系统提示重复计算开销。这是大型AI服务提供商（OpenAI、Anthropic）的典型部署架构。"
+    },
+    {
+      "question_id": 11639693,
+      "uuid": "4cbba5aedaa44e18b111b03820bd619f",
+      "type": 1,
+      "title": "GPTQ量化的核心算法思想是什么？",
+      "content": "GPTQ量化的核心算法思想是什么？",
+      "options": [
+        {
+          "id": 7513069,
+          "content": "对每个权重独立进行四舍五入量化"
+        },
+        {
+          "id": 7513072,
+          "content": "基于OBC（Optimal&nbsp;Brain&nbsp;Compression），逐层逐列量化，用Hessian矩阵补偿量化误差"
+        },
+        {
+          "id": 7513075,
+          "content": "对激活值而非权重进行量化"
+        },
+        {
+          "id": 7513078,
+          "content": "使用K-means聚类找最优量化中心点"
+        }
+      ],
+      "correct_option_ids": [
+        7513072
+      ],
+      "correct_options": [
+        "基于OBC（Optimal&nbsp;Brain&nbsp;Compression），逐层逐列量化，用Hessian矩阵补偿量化误差"
+      ],
+      "analysis": "GPTQ基于OBC框架，使用校准数据的Hessian矩阵（Fisher信息）衡量权重重要性。关键创新：量化一列权重后，用Hessian逆矩阵将误差\"补偿\"到其他未量化列，使量化后的网络输出与原网络尽量接近。相比逐元素round-to-nearest，GPTQ显著降低量化误差，可将7B模型量化到INT4几乎无精度损失。"
+    },
+    {
+      "question_id": 11639774,
+      "uuid": "18f7609623e146c29c6ed3cdc58cac6a",
+      "type": 1,
+      "title": "以下哪种推理框架对于\"批量离线推理\"（Batch Offline Infe...",
+      "content": "以下哪种推理框架对于\"批量离线推理\"（Batch&nbsp;Offline&nbsp;Inference，处理大量预定义问题）最优？",
+      "options": [
+        {
+          "id": 7511197,
+          "content": "vLLM的在线服务模式"
+        },
+        {
+          "id": 7511198,
+          "content": "vLLM的离线推理模式（LLM.generate()）或SGLang的批处理模式，可以最大化吞吐量"
+        },
+        {
+          "id": 7511199,
+          "content": "逐条调用OpenAI&nbsp;API"
+        },
+        {
+          "id": 7511200,
+          "content": "在CPU上串行处理"
+        }
+      ],
+      "correct_option_ids": [
+        7511198
+      ],
+      "correct_options": [
+        "vLLM的离线推理模式（LLM.generate()）或SGLang的批处理模式，可以最大化吞吐量"
+      ],
+      "analysis": "离线批量推理场景（如对10万条数据做标注）：使用vLLM的LLM.generate(prompts)批处理接口，可以：①自动按最优batch&nbsp;size组织请求；②利用continuous&nbsp;batching最大化GPU利用率；③不受网络延迟影响（无HTTP开销）。相比逐条API调用，本地批量推理速度通常快10-100倍，成本也大幅降低（无API费用）。"
+    },
+    {
+      "question_id": 11639809,
+      "uuid": "339b6bf8835c4c67a39dc977e5f9dc1b",
+      "type": 1,
+      "title": "在使用llama.cpp进行CPU推理时，以下哪个量化等级在质量和速度间取...",
+      "content": "在使用llama.cpp进行CPU推理时，以下哪个量化等级在质量和速度间取得最佳平衡？",
+      "options": [
+        {
+          "id": 7510733,
+          "content": "Q2_K（2-bit量化）"
+        },
+        {
+          "id": 7510734,
+          "content": "Q4_K_M（4-bit混合量化）"
+        },
+        {
+          "id": 7510736,
+          "content": "Q8_0（8-bit量化）"
+        },
+        {
+          "id": 7510738,
+          "content": "F16（半精度）"
+        }
+      ],
+      "correct_option_ids": [
+        7510734
+      ],
+      "correct_options": [
+        "Q4_K_M（4-bit混合量化）"
+      ],
+      "analysis": "Q4_K_M使用4bit分组量化，部分关键层使用更高精度，在大多数任务上与F16质量差异不大，同时内存占用约为F16的四分之一，是推荐的质量/性能均衡配置。Q2_K质量损失较明显，Q8_0内存仍较大。"
+    },
+    {
+      "question_id": 11639775,
+      "uuid": "f62c66b765ee4bc0b342540090a6c61b",
+      "type": 1,
+      "title": "以下关于\"Cross-Request Batching\"（跨请求批处理）和...",
+      "content": "以下关于\"Cross-Request&nbsp;Batching\"（跨请求批处理）和\"Within-Request&nbsp;Batching\"（请求内批处理）的区别，描述正确的是？",
+      "options": [
+        {
+          "id": 7511182,
+          "content": "两者完全相同"
+        },
+        {
+          "id": 7511185,
+          "content": "Cross-Request&nbsp;Batching将多个独立用户请求合并处理；Within-Request&nbsp;Batching如Beam&nbsp;Search在单个请求内并行处理多个候选序列"
+        },
+        {
+          "id": 7511187,
+          "content": "Within-Request&nbsp;Batching效率总是高于Cross-Request&nbsp;Batching"
+        },
+        {
+          "id": 7511188,
+          "content": "Cross-Request&nbsp;Batching只适用于prefill阶段"
+        }
+      ],
+      "correct_option_ids": [
+        7511185
+      ],
+      "correct_options": [
+        "Cross-Request&nbsp;Batching将多个独立用户请求合并处理；Within-Request&nbsp;Batching如Beam&nbsp;Search在单个请求内并行处理多个候选序列"
+      ],
+      "analysis": "两种批处理的性质不同：Cross-Request&nbsp;Batching（vLLM/TGI的核心）：将不同用户的请求合并到同一GPU&nbsp;batch，提升整体吞吐（服务端优化）。Within-Request&nbsp;Batching（Beam&nbsp;Search、Speculative&nbsp;Decoding中的draft&nbsp;verification）：单个请求内并行处理多个序列（提升单请求质量或加速）。两者可以同时使用但相互独立。"
+    },
+    {
+      "question_id": 11639846,
+      "uuid": "84c08822202e4508b570c4c11f5aad47",
+      "type": 1,
+      "title": "以下哪种工具链最常用于将PyTorch模型转换为TensorRT引擎以实现...",
+      "content": "以下哪种工具链最常用于将PyTorch模型转换为TensorRT引擎以实现推理加速？",
+      "options": [
+        {
+          "id": 7511678,
+          "content": "torch.compile()"
+        },
+        {
+          "id": 7511680,
+          "content": "torch.onnx.export()&nbsp;→&nbsp;onnxruntime&nbsp;→&nbsp;TensorRT"
+        },
+        {
+          "id": 7511682,
+          "content": "直接加载PyTorch模型到TensorRT"
+        },
+        {
+          "id": 7511684,
+          "content": "使用TorchScript"
+        }
+      ],
+      "correct_option_ids": [
+        7511680
+      ],
+      "correct_options": [
+        "torch.onnx.export()&nbsp;→&nbsp;onnxruntime&nbsp;→&nbsp;TensorRT"
+      ],
+      "analysis": "常见TensorRT部署流程：1)&nbsp;PyTorch模型导出为ONNX格式（通用中间表示）；2)&nbsp;使用TensorRT解析ONNX并优化（算子融合、精度校准）；3)&nbsp;序列化为TRT引擎文件；4)&nbsp;部署时加载TRT引擎推理。TensorRT-LLM简化了这个流程用于LLM。"
+    },
+    {
+      "question_id": 11639766,
+      "uuid": "0db83dee36d2481cb4188a6606213146",
+      "type": 1,
+      "title": "以下关于Triton（OpenAI的GPU编程语言）在LLM推理优化中的应...",
+      "content": "以下关于Triton（OpenAI的GPU编程语言）在LLM推理优化中的应用，描述正确的是？",
+      "options": [
+        {
+          "id": 7512881,
+          "content": "Triton是一个LLM框架，类似于vLLM"
+        },
+        {
+          "id": 7512882,
+          "content": "Triton是GPU内核编程语言，用于编写自定义CUDA内核（如Flash&nbsp;Attention、量化内核）而无需深入CUDA&nbsp;C++"
+        },
+        {
+          "id": 7512883,
+          "content": "Triton只能在NVIDIA&nbsp;GPU上运行"
+        },
+        {
+          "id": 7512884,
+          "content": "Triton主要用于CPU推理优化"
+        }
+      ],
+      "correct_option_ids": [
+        7512882
+      ],
+      "correct_options": [
+        "Triton是GPU内核编程语言，用于编写自定义CUDA内核（如Flash&nbsp;Attention、量化内核）而无需深入CUDA&nbsp;C++"
+      ],
+      "analysis": "Triton（不是NVIDIA&nbsp;Triton推理服务器）是OpenAI开发的Python-like&nbsp;GPU编程语言，编译到高效的CUDA代码。在LLM推理中：Flash&nbsp;Attention、Flash&nbsp;Decoding、量化内核（GPTQ的INT4矩阵乘法）、自定义融合算子（如LayerNorm&nbsp;+&nbsp;attention）都用Triton实现。相比手写CUDA&nbsp;C++，Triton开发效率更高，性能接近优化的CUDA内核，是LLM推理系统基础设施的重要工具。"
+    },
+    {
+      "question_id": 11639765,
+      "uuid": "6023e4f6d0934ccc9b5d39d45abe0fa4",
+      "type": 1,
+      "title": "以下关于\"Activation Offloading\"（激活值卸载）技术的...",
+      "content": "以下关于\"Activation&nbsp;Offloading\"（激活值卸载）技术的描述，正确的是？",
+      "options": [
+        {
+          "id": 7512885,
+          "content": "将模型权重从GPU卸载到CPU"
+        },
+        {
+          "id": 7512886,
+          "content": "将不需要立即使用的激活值从GPU显存临时卸载到CPU内存，释放显存用于更大的batch或更长序列"
+        },
+        {
+          "id": 7512887,
+          "content": "将激活值卸载到磁盘"
+        },
+        {
+          "id": 7512888,
+          "content": "Activation&nbsp;Offloading只适用于训练，不适用于推理"
+        }
+      ],
+      "correct_option_ids": [
+        7512886
+      ],
+      "correct_options": [
+        "将不需要立即使用的激活值从GPU显存临时卸载到CPU内存，释放显存用于更大的batch或更长序列"
+      ],
+      "analysis": "推理时长序列的KV&nbsp;Cache可能超出GPU显存。Activation&nbsp;Offloading（如FlexGen、DeepSpeed&nbsp;Inference）：将暂时不需要的层的KV&nbsp;Cache卸载到CPU&nbsp;DRAM（约600&nbsp;GB/s&nbsp;PCIe带宽），需要时再加载回GPU。代价：PCIe传输延迟（约几ms每层），使decode变慢。但使得单机4×A100（320GB）可以推理&gt;1T参数的模型，代价是速度降低约10-50倍（取决于卸载比例）。"
+    },
+    {
+      "question_id": 11639752,
+      "uuid": "c9f47ab57008475c8f0df55ab496ac14",
+      "type": 1,
+      "title": "以下关于在CPU上运行LLM（CPU Inference）的描述，正确的是？",
+      "content": "以下关于在CPU上运行LLM（CPU&nbsp;Inference）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7512937,
+          "content": "CPU推理与GPU推理速度相同"
+        },
+        {
+          "id": 7512938,
+          "content": "CPU推理（如llama.cpp）通过INT4/INT8量化+优化的矩阵乘法内核，使得无GPU的情况下可用，但速度约慢10-50倍"
+        },
+        {
+          "id": 7512939,
+          "content": "CPU无法运行任何LLM"
+        },
+        {
+          "id": 7512940,
+          "content": "CPU推理只适用于&lt;1B参数的模型"
+        }
+      ],
+      "correct_option_ids": [
+        7512938
+      ],
+      "correct_options": [
+        "CPU推理（如llama.cpp）通过INT4/INT8量化+优化的矩阵乘法内核，使得无GPU的情况下可用，但速度约慢10-50倍"
+      ],
+      "analysis": "llama.cpp等框架实现了高效的CPU推理：①使用GGUF格式的INT4/INT8量化（减少内存带宽需求）；②优化的CPU矩阵乘法（AVX2/AVX-512&nbsp;SIMD指令）；③支持Metal/OpenCL&nbsp;GPU卸载（部分层使用GPU加速）。7B&nbsp;Q4模型在现代CPU（如M2&nbsp;MacBook）上约5-15&nbsp;tokens/s，而A100&nbsp;GPU约150-300&nbsp;tokens/s。适合无GPU场景的离线使用。"
+    },
+    {
+      "question_id": 11639715,
+      "uuid": "d9ee28004726451d9d0868d92aebdab0",
+      "type": 1,
+      "title": "以下哪种方法可以在不修改模型权重的情况下支持更长的上下文？",
+      "content": "以下哪种方法可以在不修改模型权重的情况下支持更长的上下文？",
+      "options": [
+        {
+          "id": 7513005,
+          "content": "动态RoPE缩放（如NTK-Aware&nbsp;Scaling）配合sliding&nbsp;window&nbsp;attention"
+        },
+        {
+          "id": 7513006,
+          "content": "重新预训练模型支持长上下文"
+        },
+        {
+          "id": 7513007,
+          "content": "对模型进行长上下文SFT微调"
+        },
+        {
+          "id": 7513008,
+          "content": "增大GPU显存"
+        }
+      ],
+      "correct_option_ids": [
+        7513005
+      ],
+      "correct_options": [
+        "动态RoPE缩放（如NTK-Aware&nbsp;Scaling）配合sliding&nbsp;window&nbsp;attention"
+      ],
+      "analysis": "NTK-Aware&nbsp;Scaling通过修改RoPE的base&nbsp;frequency（将10000改为更大的值），等效地在不同频率维度上插值位置编码，使模型能够处理更长序列而不重训练。结合sliding&nbsp;window&nbsp;attention（如Mistral），可以在有限KV&nbsp;Cache下处理极长输入。这是inference-time扩展上下文的实用方案，但效果通常不如专门训练的长上下文模型。"
+    },
+    {
+      "question_id": 11639840,
+      "uuid": "e170968c073b4248a470cefb09cf5355",
+      "type": 1,
+      "title": "在vLLM中，以下哪种配置组合可以最大化长序列生成的吞吐量？",
+      "content": "在vLLM中，以下哪种配置组合可以最大化长序列生成的吞吐量？",
+      "options": [
+        {
+          "id": 7511732,
+          "content": "max_model_len=2048,&nbsp;gpu_memory_utilization=0.5"
+        },
+        {
+          "id": 7511734,
+          "content": "max_model_len=8192,&nbsp;gpu_memory_utilization=0.95,&nbsp;enable_chunked_prefill=True"
+        },
+        {
+          "id": 7511735,
+          "content": "max_model_len=128000,&nbsp;gpu_memory_utilization=0.3"
+        },
+        {
+          "id": 7511736,
+          "content": "max_model_len=4096,&nbsp;gpu_memory_utilization=0.7,&nbsp;use_beam_search=True"
+        }
+      ],
+      "correct_option_ids": [
+        7511734
+      ],
+      "correct_options": [
+        "max_model_len=8192,&nbsp;gpu_memory_utilization=0.95,&nbsp;enable_chunked_prefill=True"
+      ],
+      "analysis": "最大化长序列吞吐量：高GPU内存利用率（0.95）最大化KV&nbsp;Cache容量，chunked_prefill防止长prefill独占GPU，合理的max_model_len（8192对大多数场景足够）。过低的内存利用率浪费KV&nbsp;Cache空间，beam&nbsp;search增加计算量不提升吞吐。"
+    },
+    {
+      "question_id": 11639787,
+      "uuid": "8ceb7b427dfc4ab4a13ca94b5592d304",
+      "type": 1,
+      "title": "以下关于\"Inference Scaling\"（推理时缩放，如o1/o3模...",
+      "content": "以下关于\"Inference&nbsp;Scaling\"（推理时缩放，如o1/o3模式）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7511025,
+          "content": "推理时缩放指增大模型参数量"
+        },
+        {
+          "id": 7511026,
+          "content": "通过增加推理时的计算（更多思考步骤、更多采样次数、更长思维链），在固定模型大小下提升复杂任务性能"
+        },
+        {
+          "id": 7511027,
+          "content": "推理时缩放只适用于图像生成任务"
+        },
+        {
+          "id": 7511028,
+          "content": "推理时缩放无法提升模型性能"
+        }
+      ],
+      "correct_option_ids": [
+        7511026
+      ],
+      "correct_options": [
+        "通过增加推理时的计算（更多思考步骤、更多采样次数、更长思维链），在固定模型大小下提升复杂任务性能"
+      ],
+      "analysis": "Inference-Time&nbsp;Compute&nbsp;Scaling（OpenAI&nbsp;o1/o3、DeepSeek-R1的核心思想）：在推理时允许模型\"多想\"——通过更长的内部思维链（Extended&nbsp;Thinking）、Best-of-N采样（生成N个答案选最好）、Tree&nbsp;Search（MCTS）等方式增加推理计算量。研究表明：对于数学、代码等困难推理任务，增加推理计算比增加模型参数更高效（某些任务上8B模型+10x推理计算&nbsp;≈&nbsp;70B模型）。"
+    },
+    {
+      "question_id": 11639742,
+      "uuid": "c65480acbec84d18ae71344b3e485200",
+      "type": 1,
+      "title": "以下关于vLLM的\"预分配内存池\"（Memory Pool Pre-all...",
+      "content": "以下关于vLLM的\"预分配内存池\"（Memory&nbsp;Pool&nbsp;Pre-allocation）设计，描述正确的是？",
+      "options": [
+        {
+          "id": 7511345,
+          "content": "vLLM会将所有GPU显存分配给KV&nbsp;Cache"
+        },
+        {
+          "id": 7511346,
+          "content": "vLLM启动时预分配固定比例的GPU显存作为KV&nbsp;Cache内存池（默认90%），避免运行时动态分配的碎片和开销"
+        },
+        {
+          "id": 7511347,
+          "content": "vLLM使用CPU内存作为主要KV&nbsp;Cache存储"
+        },
+        {
+          "id": 7511348,
+          "content": "vLLM不预分配内存，按需动态分配"
+        }
+      ],
+      "correct_option_ids": [
+        7511346
+      ],
+      "correct_options": [
+        "vLLM启动时预分配固定比例的GPU显存作为KV&nbsp;Cache内存池（默认90%），避免运行时动态分配的碎片和开销"
+      ],
+      "analysis": "vLLM的gpu_memory_utilization参数（默认0.9）控制预分配比例：启动时立即分配90%的GPU显存作为KV&nbsp;Cache内存池，使用PagedAttention管理这个内存池。优点：消除运行时内存碎片、无动态分配开销、内存利用率可预测。缺点：启动后无法轻易调整（需要重启），且固定占用大量显存（其他进程无法使用）。"
+    },
+    {
+      "question_id": 11639849,
+      "uuid": "e8d99b3cad044c648c6dec0c5f4e9b7b",
+      "type": 1,
+      "title": "以下关于\"INT4 Weight-Only Quantization\"（W...",
+      "content": "以下关于\"INT4&nbsp;Weight-Only&nbsp;Quantization\"（W4A16，权重INT4激活FP16）的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511653,
+          "content": "激活值和权重都量化为INT4"
+        },
+        {
+          "id": 7511654,
+          "content": "只有权重量化为INT4，推理时临时反量化后进行FP16计算"
+        },
+        {
+          "id": 7511655,
+          "content": "可以直接用INT4进行矩阵乘法，无需反量化"
+        },
+        {
+          "id": 7511656,
+          "content": "W4A16精度等同于FP16"
+        }
+      ],
+      "correct_option_ids": [
+        7511654
+      ],
+      "correct_options": [
+        "只有权重量化为INT4，推理时临时反量化后进行FP16计算"
+      ],
+      "analysis": "W4A16（权重仅量化）：权重以INT4存储（节省显存和带宽），推理时在线反量化（dequantize）到FP16再与FP16激活值相乘。相比W4A4（权重和激活都量化），W4A16精度更高，是GPTQ/AWQ等方法的典型配置。"
+    },
+    {
+      "question_id": 11639763,
+      "uuid": "e0ba9114f86343dbab680480c7a41ced",
+      "type": 1,
+      "title": "以下关于\"投机解码\"（Speculative Decoding）中\"dra...",
+      "content": "以下关于\"投机解码\"（Speculative&nbsp;Decoding）中\"draft&nbsp;model\"选择的最佳实践，描述正确的是？",
+      "options": [
+        {
+          "id": 7512893,
+          "content": "draft&nbsp;model应该与target&nbsp;model完全相同"
+        },
+        {
+          "id": 7512894,
+          "content": "draft&nbsp;model应该是target&nbsp;model的同系列小版本（如Llama-3.1-8B作为70B的draft），或专门训练的轻量级draft"
+        },
+        {
+          "id": 7512895,
+          "content": "任何小模型都可以作为draft&nbsp;model"
+        },
+        {
+          "id": 7512896,
+          "content": "draft&nbsp;model的参数量应该超过target&nbsp;model的50%"
+        }
+      ],
+      "correct_option_ids": [
+        7512894
+      ],
+      "correct_options": [
+        "draft&nbsp;model应该是target&nbsp;model的同系列小版本（如Llama-3.1-8B作为70B的draft），或专门训练的轻量级draft"
+      ],
+      "analysis": "Draft&nbsp;model选择原则：①同系列（相同tokenizer、相似预训练数据）：分布接近，接受率高；②足够小（推理成本低）：draft&nbsp;overhead&nbsp;&lt;&nbsp;加速收益（通常draft:target参数比&lt;1:10）；③专门训练：针对target&nbsp;model的输出分布微调的draft接受率更高（如Eagle使用target&nbsp;model自身的特征）。不同tokenizer的模型不能直接做draft（token对齐问题）。"
+    },
+    {
+      "question_id": 11639822,
+      "uuid": "f79af4dbfc34440ca8dc161fb6c811b7",
+      "type": 1,
+      "title": "在以下LLM服务指标中，P99延迟（99th percentile lat...",
+      "content": "在以下LLM服务指标中，P99延迟（99th&nbsp;percentile&nbsp;latency）相比平均延迟的意义是什么？",
+      "options": [
+        {
+          "id": 7510574,
+          "content": "P99延迟总比平均延迟低"
+        },
+        {
+          "id": 7510577,
+          "content": "P99延迟反映了尾部延迟，更能衡量最差用户体验"
+        },
+        {
+          "id": 7510579,
+          "content": "P99延迟是推荐的SLA指标，通常用于计费"
+        },
+        {
+          "id": 7510580,
+          "content": "P99延迟与吞吐量成正比"
+        }
+      ],
+      "correct_option_ids": [
+        7510577
+      ],
+      "correct_options": [
+        "P99延迟反映了尾部延迟，更能衡量最差用户体验"
+      ],
+      "analysis": "P99延迟表示99%的请求在此时间内完成，反映了极端情况下的用户体验。在实际服务中，平均延迟低不代表用户体验好，P99/P99.9等尾部延迟才是SLA承诺的核心指标，运维团队重点优化P99。"
+    },
+    {
+      "question_id": 11639826,
+      "uuid": "c562b4b670c64ea2a5fbb76ee8cad600",
+      "type": 1,
+      "title": "在以下场景中，哪种情况最适合使用Speculative Decoding？",
+      "content": "在以下场景中，哪种情况最适合使用Speculative&nbsp;Decoding？",
+      "options": [
+        {
+          "id": 7510521,
+          "content": "模型权重极大（&gt;100B参数），内存紧张"
+        },
+        {
+          "id": 7510522,
+          "content": "有可用的小草稿模型（draft&nbsp;model），解码阶段是瓶颈"
+        },
+        {
+          "id": 7510523,
+          "content": "输入序列极长（&gt;32K&nbsp;tokens）"
+        },
+        {
+          "id": 7510524,
+          "content": "需要精确的概率采样结果"
+        }
+      ],
+      "correct_option_ids": [
+        7510522
+      ],
+      "correct_options": [
+        "有可用的小草稿模型（draft&nbsp;model），解码阶段是瓶颈"
+      ],
+      "analysis": "推测解码最适合解码阶段内存带宽受限的场景，需要高质量小草稿模型（接受率高）且不显著增加内存占用。当没有匹配的小模型或显存紧张时，推测解码的优势会大幅下降。"
+    },
+    {
+      "question_id": 11639726,
+      "uuid": "a37dde0300d54e41a2d2b43ca0a78289",
+      "type": 1,
+      "title": "对于decode阶段的batch推理，batch size=1和batch...",
+      "content": "对于decode阶段的batch推理，batch&nbsp;size=1和batch&nbsp;size=32的主要性能差异体现在哪里？",
+      "options": [
+        {
+          "id": 7512673,
+          "content": "batch=1的显存占用更多"
+        },
+        {
+          "id": 7512674,
+          "content": "batch=32利用矩阵-矩阵乘法（GEMM）替代矩阵-向量乘（GEMV），算术强度更高，GPU利用率更高"
+        },
+        {
+          "id": 7512675,
+          "content": "batch=1的延迟更高"
+        },
+        {
+          "id": 7512676,
+          "content": "batch=32的KV&nbsp;Cache计算量是batch=1的32倍"
+        }
+      ],
+      "correct_option_ids": [
+        7512674
+      ],
+      "correct_options": [
+        "batch=32利用矩阵-矩阵乘法（GEMM）替代矩阵-向量乘（GEMV），算术强度更高，GPU利用率更高"
+      ],
+      "analysis": "decode阶段batch=1时，权重矩阵乘以单个token的向量（GEMV），计算密度极低，GPU大量算力空闲（算术强度&nbsp;=&nbsp;FLOPs/bytes&nbsp;&lt;&lt;&nbsp;GPU的计算/带宽比）。batch=32时变为矩阵-矩阵乘（GEMM），算术强度线性提升，GPU利用率大幅提高。这是continuous&nbsp;batching提升吞吐的根本原因：通过增大batch&nbsp;size使decode阶段从memory-bound转向compute-bound。"
+    },
+    {
+      "question_id": 11639722,
+      "uuid": "e124ec248b684b53b1c87a8de09cb680",
+      "type": 1,
+      "title": "repetition_penalty参数的作用机制是？",
+      "content": "repetition_penalty参数的作用机制是？",
+      "options": [
+        {
+          "id": 7512625,
+          "content": "惩罚过于简短的回复"
+        },
+        {
+          "id": 7512626,
+          "content": "降低已出现过的token的logit值，减少重复生成"
+        },
+        {
+          "id": 7512627,
+          "content": "增加句子结束符的概率，控制输出长度"
+        },
+        {
+          "id": 7512629,
+          "content": "对低频词汇增加额外奖励"
+        }
+      ],
+      "correct_option_ids": [
+        7512626
+      ],
+      "correct_options": [
+        "降低已出现过的token的logit值，减少重复生成"
+      ],
+      "analysis": "repetition_penalty（通常&gt;1.0）会将历史中出现过的token的logit除以该值（logit&nbsp;&lt;&nbsp;0时则乘以）。penalty=1.0无效果，penalty=1.3会使出现过的token概率降低约30%。这能有效减少\"重复循环\"问题，但过大的penalty可能导致模型刻意回避必要的重复词（如冠词、常见连词），影响流畅性。"
+    },
+    {
+      "question_id": 11639757,
+      "uuid": "e2028e0991294e4aa2253274f13a28ea",
+      "type": 1,
+      "title": "以下关于\"Dynamic Sparse Attention\"（动态稀疏注意...",
+      "content": "以下关于\"Dynamic&nbsp;Sparse&nbsp;Attention\"（动态稀疏注意力）的描述，正确的是？",
+      "options": [
+        {
+          "id": 7512917,
+          "content": "动态稀疏注意力固定删除每隔1个token的attention"
+        },
+        {
+          "id": 7512918,
+          "content": "在推理时动态识别每层重要的注意力头和token，跳过不重要的计算，在精度损失极小的情况下降低计算量"
+        },
+        {
+          "id": 7512919,
+          "content": "动态稀疏注意力只适用于encoder模型"
+        },
+        {
+          "id": 7512920,
+          "content": "动态稀疏注意力与Flash&nbsp;Attention不兼容"
+        }
+      ],
+      "correct_option_ids": [
+        7512918
+      ],
+      "correct_options": [
+        "在推理时动态识别每层重要的注意力头和token，跳过不重要的计算，在精度损失极小的情况下降低计算量"
+      ],
+      "analysis": "动态稀疏注意力（如H2O、StreamingLLM的KV&nbsp;Cache剪枝）：在推理时识别并删除注意力得分低的KV&nbsp;Cache条目（\"不重要的token\"），保留重要的（如最近token、高注意力分数token），使KV&nbsp;Cache大小在超长序列中可控。H2O（Heavy&nbsp;Hitter&nbsp;Oracle）证明约80%的token在attention中几乎不重要，只保留20%的KV&nbsp;Cache可以保持约90%的精度。"
+    },
+    {
+      "question_id": 11639838,
+      "uuid": "8c48b38020c348e1a33006ad1c05ffec",
+      "type": 1,
+      "title": "在LLM推理中，以下关于CUDA Graph的描述，哪项正确？",
+      "content": "在LLM推理中，以下关于CUDA&nbsp;Graph的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511750,
+          "content": "CUDA&nbsp;Graph主要用于减少显存占用"
+        },
+        {
+          "id": 7511751,
+          "content": "CUDA&nbsp;Graph记录GPU操作序列，消除Python→CUDA的调用开销，加速固定形状的推理"
+        },
+        {
+          "id": 7511753,
+          "content": "CUDA&nbsp;Graph不兼容动态批次大小"
+        },
+        {
+          "id": 7511755,
+          "content": "CUDA&nbsp;Graph会增加首次推理延迟，但对后续推理无影响"
+        }
+      ],
+      "correct_option_ids": [
+        7511751
+      ],
+      "correct_options": [
+        "CUDA&nbsp;Graph记录GPU操作序列，消除Python→CUDA的调用开销，加速固定形状的推理"
+      ],
+      "analysis": "CUDA&nbsp;Graph将一系列GPU操作预先录制为图，之后直接提交图执行，避免了Python逐步发射CUDA&nbsp;Kernel的开销（每次调用约10-50μs）。对固定形状的解码阶段（每步shape固定）效果最好，vLLM在decode阶段默认启用。"
+    },
+    {
+      "question_id": 11639696,
+      "uuid": "6ff8dbdfd7964fd2aaf09cf0c6348b3a",
+      "type": 1,
+      "title": "在自回归推理中，prefill阶段和decode阶段的计算特点有何不同？",
+      "content": "在自回归推理中，prefill阶段和decode阶段的计算特点有何不同？",
+      "options": [
+        {
+          "id": 7511605,
+          "content": "prefill和decode都是memory-bound操作"
+        },
+        {
+          "id": 7511606,
+          "content": "prefill是compute-bound（处理所有输入token），decode是memory-bound（逐token生成，受KV&nbsp;Cache读写限制）"
+        },
+        {
+          "id": 7511607,
+          "content": "prefill是memory-bound，decode是compute-bound"
+        },
+        {
+          "id": 7511608,
+          "content": "prefill和decode都是compute-bound操作"
+        }
+      ],
+      "correct_option_ids": [
+        7511606
+      ],
+      "correct_options": [
+        "prefill是compute-bound（处理所有输入token），decode是memory-bound（逐token生成，受KV&nbsp;Cache读写限制）"
+      ],
+      "analysis": "Prefill阶段一次性处理所有输入token，可以充分利用矩阵乘法并行性，是compute-bound（受GPU算力限制）。Decode阶段每步只生成1个token，矩阵乘法退化为矩阵-向量乘，算术强度极低，瓶颈是KV&nbsp;Cache和权重的内存带宽读取（memory-bound）。这是大模型推理优化需要分别针对两阶段的原因。"
+    },
+    {
+      "question_id": 11639709,
+      "uuid": "eff61cbc1ea7435c823b6d693ba41d9b",
+      "type": 1,
+      "title": "GQA（Grouped Query Attention）解决了什么问题？",
+      "content": "GQA（Grouped&nbsp;Query&nbsp;Attention）解决了什么问题？",
+      "options": [
+        {
+          "id": 7511569,
+          "content": "减少了注意力计算的FLOPs"
+        },
+        {
+          "id": 7511570,
+          "content": "通过让多个Query头共享同一组K、V头，大幅减少KV&nbsp;Cache大小"
+        },
+        {
+          "id": 7511571,
+          "content": "支持更长的序列长度"
+        },
+        {
+          "id": 7511572,
+          "content": "提升了多头注意力的表达能力"
+        }
+      ],
+      "correct_option_ids": [
+        7511570
+      ],
+      "correct_options": [
+        "通过让多个Query头共享同一组K、V头，大幅减少KV&nbsp;Cache大小"
+      ],
+      "analysis": "标准MHA中每个Q头有对应的K、V头，KV&nbsp;Cache大小&nbsp;∝&nbsp;num_heads。GQA将num_heads个Q头分为G组，每组共享1对K、V头（G个K/V头&nbsp;vs&nbsp;num_heads个），KV&nbsp;Cache减少为原来的G/num_heads。LLaMA&nbsp;2/3、Mistral等大量模型使用GQA（如32个Q头，8个KV头），在几乎不损失精度的情况下将KV&nbsp;Cache降至1/4。"
+    },
+    {
+      "question_id": 11639698,
+      "uuid": "b202b56f2415496d852817482b8ef4fb",
+      "type": 1,
+      "title": "SmoothQuant解决了什么问题？",
+      "content": "SmoothQuant解决了什么问题？",
+      "options": [
+        {
+          "id": 7511425,
+          "content": "解决了权重量化中的outlier问题"
+        },
+        {
+          "id": 7511426,
+          "content": "解决了激活值中存在outlier导致INT8量化误差大的问题，通过数学等价变换将难度从激活值转移到权重"
+        },
+        {
+          "id": 7511427,
+          "content": "解决了KV&nbsp;Cache的内存碎片问题"
+        },
+        {
+          "id": 7511428,
+          "content": "解决了多GPU推理时的通信瓶颈"
+        }
+      ],
+      "correct_option_ids": [
+        7511426
+      ],
+      "correct_options": [
+        "解决了激活值中存在outlier导致INT8量化误差大的问题，通过数学等价变换将难度从激活值转移到权重"
+      ],
+      "analysis": "LLM激活值存在大量outlier（某些通道幅值比其他高100倍以上），直接INT8量化误差极大。SmoothQuant通过per-channel缩放：激活值除以缩放因子s，权重矩阵乘以s（数学等价），将outlier从激活值\"平滑\"到权重。权重outlier更好处理（per-channel量化即可），从而实现激活值和权重都能高精度量化。"
+    },
+    {
+      "question_id": 11639831,
+      "uuid": "abc50aeb22a8477986045392a05a3d45",
+      "type": 1,
+      "title": "以下关于GGUF量化格式中\"Q5_K_M\"的描述，哪项正确？",
+      "content": "以下关于GGUF量化格式中\"Q5_K_M\"的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511809,
+          "content": "使用5位量化，所有层均匀量化"
+        },
+        {
+          "id": 7511810,
+          "content": "使用5位为主的K-quant量化，M表示混合精度（关键层使用更高精度）"
+        },
+        {
+          "id": 7511811,
+          "content": "5表示量化组的大小"
+        },
+        {
+          "id": 7511812,
+          "content": "K表示使用了K-means聚类量化"
+        }
+      ],
+      "correct_option_ids": [
+        7511810
+      ],
+      "correct_options": [
+        "使用5位为主的K-quant量化，M表示混合精度（关键层使用更高精度）"
+      ],
+      "analysis": "GGUF的K-quant系列（Q3_K到Q8_K）使用基于块的量化，M/S/L后缀表示量化强度（M为Medium，平衡精度和大小）。K-quant比老格式（Q4_0）精度更高，对关键层（如attention&nbsp;out和FFN层）使用更高bit量化。"
+    },
+    {
+      "question_id": 11639776,
+      "uuid": "2721defcfc9e438cbe9e313611781a74",
+      "type": 1,
+      "title": "以下哪项优化对于\"Tool Calling\"（工具调用）推理场景的延迟优化...",
+      "content": "以下哪项优化对于\"Tool&nbsp;Calling\"（工具调用）推理场景的延迟优化最有效？",
+      "options": [
+        {
+          "id": 7511164,
+          "content": "对工具名称进行量化"
+        },
+        {
+          "id": 7511166,
+          "content": "使用Constrained&nbsp;Decoding（受限解码）：根据工具的JSON&nbsp;Schema强制生成符合格式的token，减少无效生成和重试"
+        },
+        {
+          "id": 7511167,
+          "content": "增加工具调用的超时时间"
+        },
+        {
+          "id": 7511168,
+          "content": "减少工具的数量"
+        }
+      ],
+      "correct_option_ids": [
+        7511166
+      ],
+      "correct_options": [
+        "使用Constrained&nbsp;Decoding（受限解码）：根据工具的JSON&nbsp;Schema强制生成符合格式的token，减少无效生成和重试"
+      ],
+      "analysis": "Function&nbsp;Calling推理的延迟优化：①Constrained&nbsp;Decoding（如Outlines、Guidance、SGLang）：根据JSON&nbsp;Schema预计算每步合法token集合，只在合法token中采样，保证一次生成即符合格式（无需重试）；②减少重试（格式错误→重新生成）；③减少tool&nbsp;schema中的冗余描述；④使用专门为tool&nbsp;calling优化的模型（如Gorilla、NexusRaven）。Constrained&nbsp;Decoding可使tool&nbsp;calling成功率接近100%。"
+    },
+    {
+      "question_id": 11639783,
+      "uuid": "addc6f52a11e4af78b23b879efbf08aa",
+      "type": 1,
+      "title": "以下关于在线推理服务的\"SLA\"（服务质量协议）指标，哪种组合最完整地描述...",
+      "content": "以下关于在线推理服务的\"SLA\"（服务质量协议）指标，哪种组合最完整地描述推理服务质量？",
+      "options": [
+        {
+          "id": 7511073,
+          "content": "只看平均延迟"
+        },
+        {
+          "id": 7511074,
+          "content": "P50/P95/P99延迟&nbsp;+&nbsp;吞吐量（tokens/s）+&nbsp;可用性（uptime）+&nbsp;错误率"
+        },
+        {
+          "id": 7511075,
+          "content": "只看最大吞吐量"
+        },
+        {
+          "id": 7511076,
+          "content": "只看GPU利用率"
+        }
+      ],
+      "correct_option_ids": [
+        7511074
+      ],
+      "correct_options": [
+        "P50/P95/P99延迟&nbsp;+&nbsp;吞吐量（tokens/s）+&nbsp;可用性（uptime）+&nbsp;错误率"
+      ],
+      "analysis": "推理服务SLA的完整指标体系：①延迟：P50（中位数）、P95、P99（长尾延迟，影响用户体验的关键）；②TTFT（首token延迟）和TBT（token间延迟）分别衡量；③吞吐量：tokens/s（服务器整体处理能力）；④可用性：99.9%/99.99%&nbsp;uptime；⑤错误率：超时、OOM等错误占比。仅看平均延迟会掩盖长尾问题（P99高意味着1%用户体验很差）。"
+    },
+    {
+      "question_id": 11639736,
+      "uuid": "a1745a12b29b4d7f99dd4c4630e25bb9",
+      "type": 1,
+      "title": "以下关于模型蒸馏中\"黑盒蒸馏\"和\"白盒蒸馏\"的区别是？",
+      "content": "以下关于模型蒸馏中\"黑盒蒸馏\"和\"白盒蒸馏\"的区别是？",
+      "options": [
+        {
+          "id": 7512961,
+          "content": "黑盒蒸馏只能用于分类任务"
+        },
+        {
+          "id": 7512962,
+          "content": "黑盒蒸馏只能访问teacher模型的输出文本，白盒蒸馏可以访问teacher的中间层表示和logits"
+        },
+        {
+          "id": 7512963,
+          "content": "白盒蒸馏需要更多训练数据"
+        },
+        {
+          "id": 7512964,
+          "content": "黑盒蒸馏速度更慢，因为需要调用API"
+        }
+      ],
+      "correct_option_ids": [
+        7512962
+      ],
+      "correct_options": [
+        "黑盒蒸馏只能访问teacher模型的输出文本，白盒蒸馏可以访问teacher的中间层表示和logits"
+      ],
+      "analysis": "黑盒蒸馏（如Alpaca、WizardLM）：只能访问teacher的文本输出，用这些输出训练student（类似SFT）。白盒蒸馏：可以访问teacher的完整logits分布（软标签）或内部特征，通过KL散度等损失更充分地传递teacher的知识。白盒蒸馏通常效果更好但需要teacher模型的完整访问权（闭源API无法实现）。"
+    },
+    {
+      "question_id": 11639857,
+      "uuid": "f3ac862686b8464c8d77b3eb6a6510c8",
+      "type": 1,
+      "title": "在以下LLM推理框架中，哪种最适合需要支持100+语言模型同时在线服务（多...",
+      "content": "在以下LLM推理框架中，哪种最适合需要支持100+语言模型同时在线服务（多租户）的场景？",
+      "options": [
+        {
+          "id": 7511573,
+          "content": "llama.cpp（单模型单用户）"
+        },
+        {
+          "id": 7511574,
+          "content": "vLLM/SGLang（高效多租户，LoRA切换&nbsp;+&nbsp;prefix&nbsp;sharing）"
+        },
+        {
+          "id": 7511575,
+          "content": "Hugging&nbsp;Face&nbsp;Transformers（标准推理库）"
+        },
+        {
+          "id": 7511577,
+          "content": "ONNX&nbsp;Runtime（通用推理引擎）"
+        }
+      ],
+      "correct_option_ids": [
+        7511574
+      ],
+      "correct_options": [
+        "vLLM/SGLang（高效多租户，LoRA切换&nbsp;+&nbsp;prefix&nbsp;sharing）"
+      ],
+      "analysis": "多租户场景需要：高并发处理（continuous&nbsp;batching）、内存高效（PagedAttention）、多适配器支持（动态LoRA切换）、前缀共享（系统提示KV&nbsp;Cache共享）。vLLM和SGLang专为此场景设计，支持lora_modules参数动态加载不同LoRA服务不同用户。"
+    },
+    {
+      "question_id": 11639805,
+      "uuid": "8670ec8554f6474e862836f10ddce3f8",
+      "type": 1,
+      "title": "在使用beam search时，以下关于beam width对推理性能的描...",
+      "content": "在使用beam&nbsp;search时，以下关于beam&nbsp;width对推理性能的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7510785,
+          "content": "beam&nbsp;width=1时等价于greedy&nbsp;search，延迟最低"
+        },
+        {
+          "id": 7510786,
+          "content": "beam&nbsp;width越大，质量一定越好且延迟不变"
+        },
+        {
+          "id": 7510787,
+          "content": "beam&nbsp;width对KV&nbsp;Cache大小没有影响"
+        },
+        {
+          "id": 7510788,
+          "content": "beam&nbsp;search不适用于自回归生成"
+        }
+      ],
+      "correct_option_ids": [
+        7510785
+      ],
+      "correct_options": [
+        "beam&nbsp;width=1时等价于greedy&nbsp;search，延迟最低"
+      ],
+      "analysis": "beam_width=1即贪婪解码，无需维护多个候选序列，延迟最低。beam_width增大时，需同时计算多个序列，KV&nbsp;Cache内存和计算量线性增加，延迟也相应增加，但不一定带来等比例的质量提升。"
+    },
+    {
+      "question_id": 11639785,
+      "uuid": "f3bccaded08242ee890dbec74daa5aeb",
+      "type": 1,
+      "title": "以下哪种开源框架最适合在边缘设备（嵌入式设备/移动端）部署小型LLM？",
+      "content": "以下哪种开源框架最适合在边缘设备（嵌入式设备/移动端）部署小型LLM？",
+      "options": [
+        {
+          "id": 7511049,
+          "content": "vLLM（面向服务器的高性能推理框架）"
+        },
+        {
+          "id": 7511050,
+          "content": "llama.cpp&nbsp;+&nbsp;GGUF格式（跨平台CPU/GPU推理，支持ARM/x86/Apple&nbsp;Silicon）"
+        },
+        {
+          "id": 7511051,
+          "content": "Megatron-LM（面向训练的分布式框架）"
+        },
+        {
+          "id": 7511052,
+          "content": "DeepSpeed&nbsp;Inference（需要CUDA环境）"
+        }
+      ],
+      "correct_option_ids": [
+        7511050
+      ],
+      "correct_options": [
+        "llama.cpp&nbsp;+&nbsp;GGUF格式（跨平台CPU/GPU推理，支持ARM/x86/Apple&nbsp;Silicon）"
+      ],
+      "analysis": "边缘设备部署需求：无CUDA、CPU/ARM处理器、内存受限。llama.cpp：纯C++实现，无框架依赖，支持x86/ARM/WASM/iOS/Android；GGUF格式支持灵活量化（Q4_K_M等），Apple&nbsp;Silicon的Metal&nbsp;GPU加速；社区活跃支持LLaMA/Phi/Gemma等主流模型。MLC-LLM也是另一个边缘部署方案（支持WebGPU/iOS/Android），与llama.cpp互补。"
+    },
+    {
+      "question_id": 11639743,
+      "uuid": "8b5bf28e57f64132b51815a22f266f34",
+      "type": 1,
+      "title": "以下关于\"Selective State Spaces\"（如Mamba）相...",
+      "content": "以下关于\"Selective&nbsp;State&nbsp;Spaces\"（如Mamba）相比Transformer在推理上的优势，描述正确的是？",
+      "options": [
+        {
+          "id": 7511357,
+          "content": "Mamba的推理精度更高"
+        },
+        {
+          "id": 7511358,
+          "content": "Mamba（SSM架构）推理时的状态大小固定（不随序列长度增长），无KV&nbsp;Cache问题，decode阶段时间复杂度O(1)"
+        },
+        {
+          "id": 7511359,
+          "content": "Mamba只适合短文本推理"
+        },
+        {
+          "id": 7511360,
+          "content": "Mamba的推理速度与Transformer相同"
+        }
+      ],
+      "correct_option_ids": [
+        7511358
+      ],
+      "correct_options": [
+        "Mamba（SSM架构）推理时的状态大小固定（不随序列长度增长），无KV&nbsp;Cache问题，decode阶段时间复杂度O(1)"
+      ],
+      "analysis": "Transformer的KV&nbsp;Cache随序列长度线性增长，decode每步需要读取越来越大的KV&nbsp;Cache（memory-bound加剧）。Mamba（SSM）维护固定大小的状态向量（hidden&nbsp;state），不依赖序列长度，decode每步的计算量和内存访问量是常数O(1)。对于超长序列（100K+&nbsp;tokens），Mamba推理显著优于Transformer，但Transformer在in-context&nbsp;learning和精确recall上仍有优势。"
+    },
+    {
+      "question_id": 11639704,
+      "uuid": "8b4e8cf889d24ed29d6a53d5c2fc5b12",
+      "type": 1,
+      "title": "使用Beam Search（束搜索）解码时，beam_size对结果的影响是？",
+      "content": "使用Beam&nbsp;Search（束搜索）解码时，beam_size对结果的影响是？",
+      "options": [
+        {
+          "id": 7511505,
+          "content": "beam_size越大，生成速度越快"
+        },
+        {
+          "id": 7511506,
+          "content": "beam_size越大，搜索空间越大，通常生成质量更高但速度更慢；beam_size=1等价于贪心"
+        },
+        {
+          "id": 7511507,
+          "content": "beam_size越大，生成文本越多样"
+        },
+        {
+          "id": 7511508,
+          "content": "beam_size只影响显存，不影响生成质量"
+        }
+      ],
+      "correct_option_ids": [
+        7511506
+      ],
+      "correct_options": [
+        "beam_size越大，搜索空间越大，通常生成质量更高但速度更慢；beam_size=1等价于贪心"
+      ],
+      "analysis": "Beam&nbsp;Search维护beam_size个候选序列，每步扩展所有候选的词表，保留最高概率的beam_size个。beam_size=1等价于贪心（总选最高概率）；beam_size越大搜索越充分，生成文本在似然意义上更优（但不一定更符合人类偏好）。代价是计算量和显存线性扩大beam_size倍，且大beam_size可能产生重复或保守的输出。"
+    },
+    {
+      "question_id": 11639688,
+      "uuid": "19ddfcda4ba14917b8b6931a3ba1e0f0",
+      "type": 1,
+      "title": "KV Cache的核心作用是什么？",
+      "content": "KV&nbsp;Cache的核心作用是什么？",
+      "options": [
+        {
+          "id": 7513129,
+          "content": "压缩模型权重，减少显存占用"
+        },
+        {
+          "id": 7513130,
+          "content": "缓存已计算的Key和Value矩阵，避免自回归推理时的重复计算"
+        },
+        {
+          "id": 7513131,
+          "content": "加速模型权重加载速度"
+        },
+        {
+          "id": 7513132,
+          "content": "减少注意力计算的精度损失"
+        }
+      ],
+      "correct_option_ids": [
+        7513130
+      ],
+      "correct_options": [
+        "缓存已计算的Key和Value矩阵，避免自回归推理时的重复计算"
+      ],
+      "analysis": "自回归生成时，每生成一个新token都需要对所有历史token重新计算K、V，时间复杂度O(n²)。KV&nbsp;Cache将前缀的K、V计算结果缓存起来，新token只需计算自身的Q、K、V并与历史K、V拼接后计算attention，将每步复杂度降至O(n)。代价是显存占用随序列长度线性增加。"
+    },
+    {
+      "question_id": 11639746,
+      "uuid": "7903c23816cd486dafeddd06773f6b2b",
+      "type": 1,
+      "title": "以下关于\"Prefix Sharing\"（前缀共享）在多用户推理服务中的优...",
+      "content": "以下关于\"Prefix&nbsp;Sharing\"（前缀共享）在多用户推理服务中的优势，描述正确的是？",
+      "options": [
+        {
+          "id": 7511398,
+          "content": "前缀共享要求所有用户使用完全相同的prompt"
+        },
+        {
+          "id": 7511399,
+          "content": "相同前缀（如system&nbsp;prompt）的KV&nbsp;Cache在多个并发请求间物理共享，节省显存和重复计算"
+        },
+        {
+          "id": 7511401,
+          "content": "前缀共享只适用于单用户场景"
+        },
+        {
+          "id": 7511403,
+          "content": "前缀共享会降低生成质量"
+        }
+      ],
+      "correct_option_ids": [
+        7511399
+      ],
+      "correct_options": [
+        "相同前缀（如system&nbsp;prompt）的KV&nbsp;Cache在多个并发请求间物理共享，节省显存和重复计算"
+      ],
+      "analysis": "在多用户并发服务中，大量请求共享相同的system&nbsp;prompt（几百到几千tokens）。前缀共享（如vLLM的Prefix&nbsp;Caching、SGLang的RadixAttention）：将共享前缀的KV&nbsp;Cache存储在内存中，多个请求直接复用，无需重新计算。显存节省&nbsp;=&nbsp;共享前缀长度&nbsp;×&nbsp;并发请求数&nbsp;×&nbsp;KV&nbsp;Cache&nbsp;per&nbsp;token。对于有长system&nbsp;prompt的应用（如RAG的文档前缀），节省效果极显著。"
+    },
+    {
+      "question_id": 11639729,
+      "uuid": "2d92697dc0a34f149ed1d4a6841334d1",
+      "type": 1,
+      "title": "以下关于LLM推理时\"prefill chunking\"（分块预填充）技术...",
+      "content": "以下关于LLM推理时\"prefill&nbsp;chunking\"（分块预填充）技术的描述，正确的是？",
+      "options": [
+        {
+          "id": 7512713,
+          "content": "将长prompt分成多个小块，分批送入模型，减少单次prefill的显存峰值"
+        },
+        {
+          "id": 7512714,
+          "content": "将prefill和decode混合在同一个batch中处理"
+        },
+        {
+          "id": 7512715,
+          "content": "将预填充的KV&nbsp;Cache存储到磁盘"
+        },
+        {
+          "id": 7512716,
+          "content": "对prefill阶段使用INT8量化，decode阶段使用FP16"
+        }
+      ],
+      "correct_option_ids": [
+        7512713
+      ],
+      "correct_options": [
+        "将长prompt分成多个小块，分批送入模型，减少单次prefill的显存峰值"
+      ],
+      "analysis": "长prompt的prefill会产生巨大的激活值显存峰值（O(n×d)），可能导致OOM。Chunked&nbsp;prefill将长prompt分成chunk_size大小的块顺序处理，每块生成对应的KV&nbsp;Cache并保留，总显存峰值降低。代价是分块引入额外的overhead（每块需要独立的attention计算），但在超长上下文场景（32K+）中是必要的工程优化。"
+    },
+    {
+      "question_id": 11639714,
+      "uuid": "3835462bdd054a9db0e324b25417e474",
+      "type": 1,
+      "title": "知识蒸馏（Knowledge Distillation）应用于LLM推理优...",
+      "content": "知识蒸馏（Knowledge&nbsp;Distillation）应用于LLM推理优化时，student模型的训练目标通常是？",
+      "options": [
+        {
+          "id": 7513009,
+          "content": "最小化与teacher模型参数的L2距离"
+        },
+        {
+          "id": 7513010,
+          "content": "最小化student输出与teacher输出的KL散度（软标签蒸馏）或学习teacher的中间层表示"
+        },
+        {
+          "id": 7513011,
+          "content": "最大化student模型在测试集上的准确率"
+        },
+        {
+          "id": 7513012,
+          "content": "最小化student模型的参数量"
+        }
+      ],
+      "correct_option_ids": [
+        7513010
+      ],
+      "correct_options": [
+        "最小化student输出与teacher输出的KL散度（软标签蒸馏）或学习teacher的中间层表示"
+      ],
+      "analysis": "LLM蒸馏中student学习teacher的\"暗知识\"（dark&nbsp;knowledge）：①输出蒸馏：最小化KL(P_teacher&nbsp;||&nbsp;P_student)，保留teacher对非最大概率token的置信度信息；②中间层蒸馏：对齐attention&nbsp;map或hidden&nbsp;states；③序列级蒸馏：用teacher生成的高质量数据训练student（如Vicuna用ChatGPT数据训练）。"
+    },
+    {
+      "question_id": 11639815,
+      "uuid": "b82991d47ee74b12b1ad759b5198210e",
+      "type": 1,
+      "title": "以下代码片段实现了什么优化技术？```pythonwith torch.i...",
+      "content": "以下代码片段实现了什么优化技术？<div>```python</div><div>with&nbsp;torch.inference_mode():</div><div>with&nbsp;torch.autocast(device_type='cuda',&nbsp;dtype=torch.float16):</div><div>output&nbsp;=&nbsp;model.generate(input_ids,&nbsp;max_new_tokens=100)</div><div>```</div>",
+      "options": [
+        {
+          "id": 7510657,
+          "content": "INT8量化推理"
+        },
+        {
+          "id": 7510659,
+          "content": "混合精度推理（自动将计算转为FP16）"
+        },
+        {
+          "id": 7510661,
+          "content": "梯度检查点"
+        },
+        {
+          "id": 7510663,
+          "content": "投机解码"
+        }
+      ],
+      "correct_option_ids": [
+        7510659
+      ],
+      "correct_options": [
+        "混合精度推理（自动将计算转为FP16）"
+      ],
+      "analysis": "`torch.autocast`实现自动混合精度（AMP），将矩阵乘法等计算密集操作转为FP16，激活函数等保留FP32，在保持精度的同时提升推理速度和减少内存占用。`inference_mode`禁用梯度计算以进一步优化。"
+    },
+    {
+      "question_id": 11639868,
+      "uuid": "f24504b49f59444b9189b8f46e49fcbc",
+      "type": 1,
+      "title": "以下哪种推理场景最受益于使用Multi-Query Attention（M...",
+      "content": "以下哪种推理场景最受益于使用Multi-Query&nbsp;Attention（MQA）而非Multi-Head&nbsp;Attention（MHA）？",
+      "options": [
+        {
+          "id": 7511439,
+          "content": "短上下文（&lt;512&nbsp;tokens）的单次推理"
+        },
+        {
+          "id": 7511441,
+          "content": "超长上下文（&gt;32K&nbsp;tokens）且批次大的高吞吐推理场景"
+        },
+        {
+          "id": 7511443,
+          "content": "训练阶段"
+        },
+        {
+          "id": 7511445,
+          "content": "使用CPU推理时"
+        }
+      ],
+      "correct_option_ids": [
+        7511441
+      ],
+      "correct_options": [
+        "超长上下文（&gt;32K&nbsp;tokens）且批次大的高吞吐推理场景"
+      ],
+      "analysis": "MQA（单组KV头）相比MHA大幅减少KV&nbsp;Cache（1/num_heads），在超长序列高并发场景下节省显存极为关键，直接决定可支持的最大序列长度和并发数量。短上下文场景KV&nbsp;Cache压力不大，MQA的优势不明显。"
+    },
+    {
+      "question_id": 11639734,
+      "uuid": "001b04ca3bd14242879b8e3d1c7a201c",
+      "type": 1,
+      "title": "以下关于KV Cache量化的描述，正确的是？",
+      "content": "以下关于KV&nbsp;Cache量化的描述，正确的是？",
+      "options": [
+        {
+          "id": 7512969,
+          "content": "KV&nbsp;Cache量化会导致模型精度急剧下降，实际中不可用"
+        },
+        {
+          "id": 7512970,
+          "content": "将KV&nbsp;Cache从FP16量化为INT8/INT4可以减少显存占用，代价是轻微精度损失，允许更大的batch&nbsp;size或更长序列"
+        },
+        {
+          "id": 7512971,
+          "content": "KV&nbsp;Cache量化只对prefill有效，对decode无效"
+        },
+        {
+          "id": 7512972,
+          "content": "KV&nbsp;Cache量化需要重新训练模型"
+        }
+      ],
+      "correct_option_ids": [
+        7512970
+      ],
+      "correct_options": [
+        "将KV&nbsp;Cache从FP16量化为INT8/INT4可以减少显存占用，代价是轻微精度损失，允许更大的batch&nbsp;size或更长序列"
+      ],
+      "analysis": "KV&nbsp;Cache通常占推理显存的40-70%（长序列场景），量化KV&nbsp;Cache可显著扩展推理容量。INT8&nbsp;KV&nbsp;Cache（如vLLM支持）将显存减半，精度损失通常&lt;0.5%&nbsp;MMLU。INT4&nbsp;KV&nbsp;Cache进一步减半，损失约1-2%。实践中，INT8&nbsp;KV&nbsp;Cache已被广泛应用于生产环境，是扩展并发能力的实用方案。"
+    },
+    {
+      "question_id": 11639814,
+      "uuid": "83e4c131bebe43059949de29dc5c8a44",
+      "type": 1,
+      "title": "在以下推理配置中，哪种设置最有利于最大化吞吐量（Throughput）而非...",
+      "content": "在以下推理配置中，哪种设置最有利于最大化吞吐量（Throughput）而非延迟（Latency）？",
+      "options": [
+        {
+          "id": 7510674,
+          "content": "batch_size=1,&nbsp;max_tokens=100"
+        },
+        {
+          "id": 7510677,
+          "content": "batch_size=32,&nbsp;max_tokens=2048"
+        },
+        {
+          "id": 7510679,
+          "content": "batch_size=1,&nbsp;max_tokens=2048"
+        },
+        {
+          "id": 7510680,
+          "content": "beam_width=4,&nbsp;batch_size=1"
+        }
+      ],
+      "correct_option_ids": [
+        7510677
+      ],
+      "correct_options": [
+        "batch_size=32,&nbsp;max_tokens=2048"
+      ],
+      "analysis": "最大化吞吐量需要大批次（batch_size=32），使GPU计算单元满负荷，提高算术强度。单请求（bs=1）是延迟优先策略，beam&nbsp;search会增加计算量但不提高有效吞吐。大批次牺牲单请求延迟换取总体吞吐量。"
+    },
+    {
+      "question_id": 11639713,
+      "uuid": "f17c48d19180457e95338d33a62f4609",
+      "type": 1,
+      "title": "在RoPE（旋转位置编码）推理外推时，长度超过训练最大长度会出现什么问题？",
+      "content": "在RoPE（旋转位置编码）推理外推时，长度超过训练最大长度会出现什么问题？",
+      "options": [
+        {
+          "id": 7513013,
+          "content": "模型直接报错无法处理"
+        },
+        {
+          "id": 7513014,
+          "content": "注意力分数的旋转频率超出训练范围，导致位置感知失效，长文本理解能力大幅下降"
+        },
+        {
+          "id": 7513015,
+          "content": "KV&nbsp;Cache溢出导致OOM"
+        },
+        {
+          "id": 7513016,
+          "content": "生成速度线性下降"
+        }
+      ],
+      "correct_option_ids": [
+        7513014
+      ],
+      "correct_options": [
+        "注意力分数的旋转频率超出训练范围，导致位置感知失效，长文本理解能力大幅下降"
+      ],
+      "analysis": "RoPE通过旋转变换编码相对位置，旋转角θ_d&nbsp;=&nbsp;position&nbsp;/&nbsp;(10000^(2d/D))。训练时最大长度为L，超过L时高频维度的旋转角超出[0,&nbsp;2π]范围内的训练分布，模型无法正确区分位置关系。解决方案：RoPE缩放（NTK-aware&nbsp;scaling、Dynamic&nbsp;NTK）、YaRN（通过调整插值策略扩展长度）等。"
+    },
+    {
+      "question_id": 11639829,
+      "uuid": "a63ca769734941a2bcf79efc73d973c8",
+      "type": 1,
+      "title": "以下关于Ring Attention的描述，哪项正确？",
+      "content": "以下关于Ring&nbsp;Attention的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7511825,
+          "content": "Ring&nbsp;Attention只适用于单GPU推理"
+        },
+        {
+          "id": 7511826,
+          "content": "Ring&nbsp;Attention通过在GPU间形成环形通信，将超长序列的注意力计算分布到多GPU"
+        },
+        {
+          "id": 7511827,
+          "content": "Ring&nbsp;Attention比Flash&nbsp;Attention计算量更大"
+        },
+        {
+          "id": 7511829,
+          "content": "Ring&nbsp;Attention只能用于推理而非训练"
+        }
+      ],
+      "correct_option_ids": [
+        7511826
+      ],
+      "correct_options": [
+        "Ring&nbsp;Attention通过在GPU间形成环形通信，将超长序列的注意力计算分布到多GPU"
+      ],
+      "analysis": "Ring&nbsp;Attention将超长序列切分到多个GPU，GPU之间形成环形通信，每个GPU计算局部注意力时异步接收相邻GPU的KV块，支持百万token级别的超长上下文训练和推理，是LongContext模型的关键技术。"
+    },
+    {
+      "question_id": 11639819,
+      "uuid": "0f4b1585809a409b9c2cd07cbcd051fb",
+      "type": 1,
+      "title": "以下关于LoRA量化后合并（QLoRA合并后解量化）的描述，哪项正确？",
+      "content": "以下关于LoRA量化后合并（QLoRA合并后解量化）的描述，哪项正确？",
+      "options": [
+        {
+          "id": 7510609,
+          "content": "合并后模型保持4bit精度"
+        },
+        {
+          "id": 7510610,
+          "content": "合并时需先将4bit基础模型解量化到高精度，再与LoRA合并"
+        },
+        {
+          "id": 7510611,
+          "content": "LoRA权重也会被量化为4bit"
+        },
+        {
+          "id": 7510612,
+          "content": "合并操作不改变模型精度"
+        }
+      ],
+      "correct_option_ids": [
+        7510610
+      ],
+      "correct_options": [
+        "合并时需先将4bit基础模型解量化到高精度，再与LoRA合并"
+      ],
+      "analysis": "QLoRA的基础模型以4bit存储，LoRA适配器以BF16存储。合并时需先将4bit权重反量化（dequantize）到BF16，然后加上LoRA的ΔW，最后得到BF16精度的合并模型（或重新量化）。"
+    },
+    {
+      "question_id": 11639772,
+      "uuid": "d75e4f84d968497990eb830f22afa938",
+      "type": 1,
+      "title": "以下关于\"Quantized KV Cache\"与\"Quantized W...",
+      "content": "以下关于\"Quantized&nbsp;KV&nbsp;Cache\"与\"Quantized&nbsp;Weights\"的区别，描述正确的是？",
+      "options": [
+        {
+          "id": 7511221,
+          "content": "两者量化完全相同，只是对象不同"
+        },
+        {
+          "id": 7511222,
+          "content": "权重量化影响所有推理（长短序列），KV&nbsp;Cache量化只影响长序列（KV&nbsp;Cache成为瓶颈时），且KV&nbsp;Cache量化对精度影响更敏感（激活值outlier更多）"
+        },
+        {
+          "id": 7511223,
+          "content": "KV&nbsp;Cache量化比权重量化更容易实现"
+        },
+        {
+          "id": 7511224,
+          "content": "权重量化不影响推理速度，KV&nbsp;Cache量化才有效"
+        }
+      ],
+      "correct_option_ids": [
+        7511222
+      ],
+      "correct_options": [
+        "权重量化影响所有推理（长短序列），KV&nbsp;Cache量化只影响长序列（KV&nbsp;Cache成为瓶颈时），且KV&nbsp;Cache量化对精度影响更敏感（激活值outlier更多）"
+      ],
+      "analysis": "权重量化（W4A16等）：减少权重读取带宽，对所有推理场景有效，离线处理，技术成熟（GPTQ/AWQ）。KV&nbsp;Cache量化：减少KV&nbsp;Cache读写带宽，对长序列decode效果最显著；但KV&nbsp;Cache中激活值的outlier比权重更多，INT8量化更容易引入精度损失，需要per-channel或per-token&nbsp;scaling，实现更复杂。两者可以组合使用（W4&nbsp;+&nbsp;KV8）。"
+    },
+    {
+      "question_id": 11639874,
+      "uuid": "3244264767a241f2ab03141258ee3956",
+      "type": 1,
+      "title": "在LLM推理中，以下哪种采样参数组合会产生最确定性（determinist...",
+      "content": "在LLM推理中，以下哪种采样参数组合会产生最确定性（deterministic）的输出？",
+      "options": [
+        {
+          "id": 7511370,
+          "content": "temperature=1.0,&nbsp;top_p=0.9"
+        },
+        {
+          "id": 7511372,
+          "content": "temperature=0,&nbsp;top_k=1（贪婪解码）"
+        },
+        {
+          "id": 7511373,
+          "content": "temperature=0.5,&nbsp;top_p=0.5"
+        },
+        {
+          "id": 7511375,
+          "content": "temperature=2.0,&nbsp;top_k=50"
+        }
+      ],
+      "correct_option_ids": [
+        7511372
+      ],
+      "correct_options": [
+        "temperature=0,&nbsp;top_k=1（贪婪解码）"
+      ],
+      "analysis": "temperature=0会使softmax退化为argmax（每次选择概率最高的token），top_k=1进一步限制只从一个候选中选择，这就是贪婪解码，是完全确定性的（相同输入总产生相同输出）。temperature越高、top_p/top_k越大，输出越随机。"
+    },
+    {
+      "question_id": 11639869,
+      "uuid": "b82f2233d75e4213bca7ddc2156d76bf",
+      "type": 1,
+      "title": "在推理优化中，\"算子融合\"（Kernel Fusion）的核心原理是什么？",
+      "content": "在推理优化中，\"算子融合\"（Kernel&nbsp;Fusion）的核心原理是什么？",
+      "options": [
+        {
+          "id": 7511429,
+          "content": "将多个模型的权重合并为一个模型"
+        },
+        {
+          "id": 7511430,
+          "content": "将多个连续的小计算操作合并为一个GPU&nbsp;Kernel，减少数据在HBM和SRAM间的往返次数"
+        },
+        {
+          "id": 7511431,
+          "content": "自动并行化所有矩阵乘法"
+        },
+        {
+          "id": 7511432,
+          "content": "减少CUDA线程数量"
+        }
+      ],
+      "correct_option_ids": [
+        7511430
+      ],
+      "correct_options": [
+        "将多个连续的小计算操作合并为一个GPU&nbsp;Kernel，减少数据在HBM和SRAM间的往返次数"
+      ],
+      "analysis": "每个独立的GPU&nbsp;Kernel都需要从HBM读取数据到SRAM计算，再写回HBM。算子融合将LayerNorm+GELU+MatMul等连续操作合并为单个Kernel，数据在SRAM中直接流转，大幅减少HBM读写次数（内存带宽是瓶颈）。FlashAttention就是极致的算子融合例子。"
+    },
+    {
+      "question_id": 11639749,
+      "uuid": "a6a91edd6fee42c7b0f7d624df5ba16a",
+      "type": 1,
+      "title": "以下哪种方法可以减少推理时的\"首token延迟\"（TTFT）？",
+      "content": "以下哪种方法可以减少推理时的\"首token延迟\"（TTFT）？",
+      "options": [
+        {
+          "id": 7512949,
+          "content": "增大decode阶段的batch&nbsp;size"
+        },
+        {
+          "id": 7512950,
+          "content": "减少输入prompt长度或使用前缀缓存复用已计算的KV&nbsp;Cache"
+        },
+        {
+          "id": 7512951,
+          "content": "使用更高的生成温度"
+        },
+        {
+          "id": 7512952,
+          "content": "增加生成的max_tokens数量"
+        }
+      ],
+      "correct_option_ids": [
+        7512950
+      ],
+      "correct_options": [
+        "减少输入prompt长度或使用前缀缓存复用已计算的KV&nbsp;Cache"
+      ],
+      "analysis": "TTFT&nbsp;=&nbsp;Prefill时间。减少TTFT的方法：①减少prompt长度（Prompt&nbsp;Compression技术）；②前缀缓存（Prefix&nbsp;Caching）：共享前缀的KV&nbsp;Cache预计算并缓存，相同前缀的请求TTFT接近0；③使用更多prefill节点（Disaggregated&nbsp;Prefill架构）；④Flash&nbsp;Attention加速prefill计算；⑤使用分布式prefill并行处理超长prompt。"
+    },
+    {
+      "question_id": 11639755,
+      "uuid": "87b989a965194af3942f8f2876ee09f8",
+      "type": 1,
+      "title": "以下关于\"Output Length Prediction\"（输出长度预测...",
+      "content": "以下关于\"Output&nbsp;Length&nbsp;Prediction\"（输出长度预测）在推理调度中的应用，描述正确的是？",
+      "options": [
+        {
+          "id": 7512925,
+          "content": "精确预测输出长度对推理调度没有帮助"
+        },
+        {
+          "id": 7512926,
+          "content": "预先估计每个请求的输出长度，有助于更好地分配KV&nbsp;Cache内存和调度批次，提升整体吞吐"
+        },
+        {
+          "id": 7512927,
+          "content": "输出长度预测会增加推理延迟"
+        },
+        {
+          "id": 7512928,
+          "content": "输出长度只能在生成完成后才知道"
+        }
+      ],
+      "correct_option_ids": [
+        7512926
+      ],
+      "correct_options": [
+        "预先估计每个请求的输出长度，有助于更好地分配KV&nbsp;Cache内存和调度批次，提升整体吞吐"
+      ],
+      "analysis": "输出长度预测的价值：①KV&nbsp;Cache预分配：提前知道输出长度可以精确预分配内存，避免过度分配（浪费）或不足（扩展开销）；②调度优化：将预计输出长度相近的请求组成batch（padding更少）；③Preemption判断：当显存不足时，优先抢占预计输出长度最长的低优先级请求。预测模型通常是轻量级分类器，基于输入特征（prompt长度、类型）快速预估。"
+    },
+    {
+      "question_id": 11639710,
+      "uuid": "0c0bee353d2f4b94aa35236ce069835c",
+      "type": 1,
+      "title": "以下关于Flash Decoding的描述，正确的是？",
+      "content": "以下关于Flash&nbsp;Decoding的描述，正确的是？",
+      "options": [
+        {
+          "id": 7513025,
+          "content": "Flash&nbsp;Decoding是FlashAttention在encode阶段的优化版本"
+        },
+        {
+          "id": 7513026,
+          "content": "Flash&nbsp;Decoding针对decode阶段的long&nbsp;context场景，通过在sequence&nbsp;length维度并行化KV&nbsp;Cache的读取来提升速度"
+        },
+        {
+          "id": 7513027,
+          "content": "Flash&nbsp;Decoding用稀疏注意力替代了完整注意力计算"
+        },
+        {
+          "id": 7513028,
+          "content": "Flash&nbsp;Decoding只适用于单请求推理，不支持batch推理"
+        }
+      ],
+      "correct_option_ids": [
+        7513026
+      ],
+      "correct_options": [
+        "Flash&nbsp;Decoding针对decode阶段的long&nbsp;context场景，通过在sequence&nbsp;length维度并行化KV&nbsp;Cache的读取来提升速度"
+      ],
+      "analysis": "标准decode时，对长序列的KV&nbsp;Cache读取是串行的（逐K/V块读取）。Flash&nbsp;Decoding将序列分割成多个块，在不同线程并行读取K、V块并计算partial&nbsp;softmax，最后合并结果。这在长上下文（如32K+&nbsp;tokens）的decode阶段显著提升GPU利用率，解决了长序列decode时GPU空转的问题。"
+    },
+    {
+      "question_id": 11639824,
+      "uuid": "5c199e2ab3184f4a8452439b6f683db9",
+      "type": 1,
+      "title": "在模型量化中，\"校准数据集\"（Calibration Dataset）的作...",
+      "content": "在模型量化中，\"校准数据集\"（Calibration&nbsp;Dataset）的作用是什么？",
+      "options": [
+        {
+          "id": 7510545,
+          "content": "用于微调量化后的模型"
+        },
+        {
+          "id": 7510546,
+          "content": "用于确定最优的量化参数（scale/zero_point），最小化量化误差"
+        },
+        {
+          "id": 7510547,
+          "content": "测试量化后模型的最终性能"
+        },
+        {
+          "id": 7510549,
+          "content": "生成量化后模型的验证集"
+        }
+      ],
+      "correct_option_ids": [
+        7510546
+      ],
+      "correct_options": [
+        "用于确定最优的量化参数（scale/zero_point），最小化量化误差"
+      ],
+      "analysis": "校准数据集（通常128-512个样本）用于收集激活分布统计信息，确定合适的量化范围和参数。AWQ、GPTQ、SmoothQuant等后训练量化方法都需要校准数据，数据质量和多样性影响量化效果。"
+    },
+    {
+      "question_id": 11639760,
+      "uuid": "04d3ad0e80f74bba8fa093351658df0c",
+      "type": 1,
+      "title": "以下哪种场景下，使用\"Prompt Caching\"（OpenAI/Ant...",
+      "content": "以下哪种场景下，使用\"Prompt&nbsp;Caching\"（OpenAI/Anthropic提供的API级前缀缓存）最有价值？",
+      "options": [
+        {
+          "id": 7512905,
+          "content": "每次请求的system&nbsp;prompt都完全不同"
+        },
+        {
+          "id": 7512906,
+          "content": "长系统提示（&gt;1000&nbsp;tokens）在多次API调用中重复使用，通过缓存减少费用和延迟"
+        },
+        {
+          "id": 7512907,
+          "content": "只对短prompt有效"
+        },
+        {
+          "id": 7512908,
+          "content": "Prompt&nbsp;Caching会降低回复质量"
+        }
+      ],
+      "correct_option_ids": [
+        7512906
+      ],
+      "correct_options": [
+        "长系统提示（&gt;1000&nbsp;tokens）在多次API调用中重复使用，通过缓存减少费用和延迟"
+      ],
+      "analysis": "Anthropic的Prompt&nbsp;Caching（Claude&nbsp;API功能）：将特定prefix标记为可缓存，首次请求时计算并存储KV&nbsp;Cache（cache_creation_input_tokens略贵），后续请求使用缓存（cache_read_input_tokens大幅打折，约90%折扣）。最适合：长系统提示（角色扮演、RAG文档）重复使用的场景。5分钟内的缓存命中可节省大量token费用，对话系统、RAG应用收益显著。"
+    }
+  ]
+}

@@ -1,0 +1,3954 @@
+{
+  "source": "nowcoder_official",
+  "group": "基础算法",
+  "name": "查找",
+  "tag_id": 589,
+  "target": 127,
+  "fetched_at": "2026-07-28",
+  "total_unique": 122,
+  "complete": false,
+  "questions": [
+    {
+      "question_id": 90831,
+      "uuid": "bf4beab9114242f689fd2b3b2c03977a",
+      "type": 1,
+      "title": "顺序查找不论在顺序线性表中还是在链式线性表中的时间复杂度为（ ）。",
+      "content": "<p>  <span>顺序查找不论在顺序线性表中还是在链式线性表中的时间复杂度为（）。</span>  </p>",
+      "options": [
+        {
+          "id": 160525,
+          "content": "O(n)"
+        },
+        {
+          "id": 160526,
+          "content": "O(n^2)"
+        },
+        {
+          "id": 160527,
+          "content": "O(n^(1/2))"
+        },
+        {
+          "id": 160528,
+          "content": "O(log(n))"
+        }
+      ],
+      "correct_option_ids": [
+        160525
+      ],
+      "correct_options": [
+        "O(n)"
+      ],
+      "analysis": "<div>  <span>顺序查找不论在顺序线性表中还是在链式线性表中的时间复杂度为O(n)。</span> </div> <div>  <span>故B、C、D错，A对。</span> </div>"
+    },
+    {
+      "question_id": 107129,
+      "uuid": "3f03d4b9768f4ac788e552cf201dbd52",
+      "type": 1,
+      "title": "<p>\n  <span>使用二分搜索算法在</span>\n  <span>1000</span>\n  <span>个有序元素表中搜索一个特定元素，在最坏情况下，搜索总共需要比较的次数为（ ）。</span>\n</p>",
+      "content": "<p>  <span>使用二分搜索算法在</span> <span>1000</span> <span>个有序元素表中搜索一个特定元素，在最坏情况下，搜索总共需要比较的次数为（ ）。</span>  </p>",
+      "options": [
+        {
+          "id": 197323,
+          "content": "10"
+        },
+        {
+          "id": 197324,
+          "content": "11"
+        },
+        {
+          "id": 197325,
+          "content": "500"
+        },
+        {
+          "id": 197326,
+          "content": "1000"
+        }
+      ],
+      "correct_option_ids": [
+        197323
+      ],
+      "correct_options": [
+        "10"
+      ],
+      "analysis": "在二分搜索算法中,每次比较都会将搜索范围缩小一半。对于1000个元素的有序表,我们可以通过计算log₂1000向上取整来得到最坏情况下的比较次数。<br><br>计算过程:<br>log₂1000 ≈ 9.97<br>向上取整得到10<br><br>所以A选项10是正确答案,这表示在最坏情况下需要10次比较就能在1000个元素中找到目标值或确定目标值不存在。<br><br>分析其他选项:<br>B(11)错误:超过了实际所需的比较次数,因为2¹⁰=1024>1000,10次比较已经足够。<br><br>C(500)错误:这是线性查找的平均情况下的比较次数,而不是二分查找。二分查找的效率远高于线性查找。<br><br>D(1000)错误:这是线性查找在最坏情况下的比较次数,而二分查找的优势就在于不需要遍历所有元素。<br><br>补充说明:二分查找每次都将搜索范围减半,其时间复杂度为O(log₂n),这也是为什么在1000个元素中最多只需要10次比较的原因。"
+    },
+    {
+      "question_id": 98677,
+      "uuid": "5c1153d3fce0498ab94a5c73ef1bb4b1",
+      "type": 1,
+      "title": "从慢至快的关系是",
+      "content": "<img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20170507/3367369_1494159937683_D18AC4D473B6FBCEFBD666644A25EF60\">",
+      "options": [
+        {
+          "id": 178880,
+          "content": "顺序 折半 哈希 分块"
+        },
+        {
+          "id": 178881,
+          "content": "顺序 分块 折半 哈希"
+        },
+        {
+          "id": 178882,
+          "content": "分块 折半 哈希 顺序"
+        },
+        {
+          "id": 178883,
+          "content": "顺序 哈希 分块 折半"
+        }
+      ],
+      "correct_option_ids": [
+        178881
+      ],
+      "correct_options": [
+        "顺序 分块 折半 哈希"
+      ],
+      "analysis": "题目考察了查找算法的基本概念和性能比较。B选项\"顺序 分块 折半 哈希\"是正确的排序,这反映了从慢到快的查找效率排序。<br><br>具体分析如下:<br>1. 顺序查找是最基本的查找方法,平均时间复杂度为O(n),效率最低<br>2. 分块查找是一种改进的顺序查找,将数据分成若干块,效率介于顺序查找和折半查找之间<br>3. 折半查找(二分查找)要求数据有序,平均时间复杂度为O(log n),效率较高<br>4. 哈希查找(散列查找)理想情况下时间复杂度为O(1),是最快的查找方法<br><br>其他选项错误分析:<br>A错误:将折半查找排在哈希查找之前,不符合效率从低到高的顺序<br>C错误:将分块查找排在最前,且顺序查找排在最后,完全打乱了效率顺序<br>D错误:将哈希查找排在分块和折半之前,不符合实际效率情况<br><br>需要注意的是,这个排序是基于平均情况下的时间复杂度进行比较。在特定场景下,由于数据特征、规模等因素的影响,实际性能可能会有所不同。"
+    },
+    {
+      "question_id": 305587,
+      "uuid": "9a86a19579274a7ea9d73140ef0444d1",
+      "type": 1,
+      "title": "下列关于排序算法的描述错误的是",
+      "content": "下列关于排序算法的描述错误的是",
+      "options": [
+        {
+          "id": 792908,
+          "content": "在待排序的记录集中，存在多个具有相同键值的记录，若经过排序，这些记录的相对次序仍然保持不变，称这种排序为稳定排序"
+        },
+        {
+          "id": 792909,
+          "content": "二叉查找树的查找效率与二叉树的树型有关，在节点太复杂时其查找效率最低"
+        },
+        {
+          "id": 792910,
+          "content": "下列排序算法中，希尔排序在某趟排序结束后不一定能选出一个元素放到其最终位置上。"
+        },
+        {
+          "id": 792911,
+          "content": "在下列排序方法中,插入排序方法可能出现这种情况:在最后一趟开始之前,所有的元素都不在其最终应在的正确位置上"
+        }
+      ],
+      "correct_option_ids": [
+        792909
+      ],
+      "correct_options": [
+        "二叉查找树的查找效率与二叉树的树型有关，在节点太复杂时其查找效率最低"
+      ],
+      "analysis": "<div>  A：正确 </div> <div>  B：二叉查找树的查找效率与二叉树的树型有关，但结点是否复杂不影响查找效率，错误 </div> <div>  C：希尔排序每一趟只能保证组内有序，元素不一定在最终位置上，正确 </div> <div>  D：最小的元素在最后一个位置时将出现这种情况，正确 </div> <div>  故选B </div>"
+    },
+    {
+      "question_id": 304692,
+      "uuid": "c65d77d3b1974053b4ba76f96d2c060e",
+      "type": 1,
+      "title": "一个线性序列（30，14，40，63，22，5），假定采用散列函数Hash...",
+      "content": "一个线性序列（30，14，40，63，22，5），假定采用散列函数Hash(key)=key%7来计算散列地址，将其散列存储在A[0~6]中，采用链地址法解决冲突。若查找每个元素的概率相同，则查找成功的平均查找长度是（      ）。",
+      "options": [
+        {
+          "id": 789350,
+          "content": "4/3"
+        },
+        {
+          "id": 789351,
+          "content": "1"
+        },
+        {
+          "id": 789352,
+          "content": "3/2"
+        },
+        {
+          "id": 789353,
+          "content": "5/3"
+        }
+      ],
+      "correct_option_ids": [
+        789350
+      ],
+      "correct_options": [
+        "4/3"
+      ],
+      "analysis": "让我们一步步分析这道散列查找的题目: 1. 首先计算每个元素的散列地址: 30 % 7 = 2 14 % 7 = 0 40 % 7 = 5 63 % 7 = 0 22 % 7 = 1 5 % 7 = 5 2. 根据链地址法处理冲突,可以得到以下散列表: A[0]: 14 → 63 A[1]: 22 A[2]: 30 A[3]: 空 A[4]: 空 A[5]: 40 → 5 A[6]: 空 3. 计算平均查找长度: - 查找14需要1次比较 - 查找63需要2次比较 - 查找22需要1次比较 - 查找30需要1次比较 - 查找40需要1次比较 - 查找5需要2次比较 4. 总次数 = 1 + 2 + 1 + 1 + 1 + 2 = 8 平均查找长度 = 8/6 = 4/3 因此A选项&quot;4/3&quot;是正确答案。 注意:在计算平均查找长度时,分母应为实际元素个数6,而不是散列表长度7。每个元素的查找次数就是该元素在链表中的位置序号。"
+    },
+    {
+      "question_id": 90978,
+      "uuid": "138108ccc2164917a91160435b4da57a",
+      "type": 1,
+      "title": "设一个顺序有序表A[1:14]中有14个元素，则采用二分法查找元素A[4]的过程中比较元素的顺序为(  )。",
+      "content": "<p>  <span>设一个顺序有序表<span>A[1:14]</span>中有<span>14</span>个元素，则采用二分法查找元素<span>A[4]</span>的过程中比较元素的顺序为<span>(  )</span>。</span>  </p>",
+      "options": [
+        {
+          "id": 160965,
+          "content": "A[1]，A[2]，A[3]，A[4]"
+        },
+        {
+          "id": 160966,
+          "content": "A[1]，A[14]，A[7]，A[4]"
+        },
+        {
+          "id": 160967,
+          "content": "A[7]，A[3]，A[5]，A[4]"
+        },
+        {
+          "id": 160968,
+          "content": "A[7]，A[5] ，A[3]，A[4]"
+        }
+      ],
+      "correct_option_ids": [
+        160967
+      ],
+      "correct_options": [
+        "A[7]，A[3]，A[5]，A[4]"
+      ],
+      "analysis": "<div>  第一次：low=1，high=14，mid=7，high=mid-1 </div> <div>  第二次：low=1，high=6，mid=3，low=mid+1 </div> <div>  第三次：low=4，high=6，mid=5，high=mid-1 </div> <div>  第四次：low=4，high=5，mid=4，查找成功 </div> <div>  故比较顺序依次为A[7]，A[3]，A[5]，A[4] </div> <div>  因此A、B、D错，C对。 </div>"
+    },
+    {
+      "question_id": 11294747,
+      "uuid": "f86f7d13edd847eca3c41018e67e8d8e",
+      "type": 1,
+      "title": "对于有序数组[1,2,3,4,5,6,7]，分别利用顺序查找和折半查找来查...",
+      "content": "对于有序数组[1,2,3,4,5,6,7]，分别利用顺序查找和折半查找来查找对应的元素，有多少元素在顺序查找情况的查找次数小于等于其在折半查找情况下的查找次数。",
+      "options": [
+        {
+          "id": 7401832,
+          "content": "1"
+        },
+        {
+          "id": 7401833,
+          "content": "2"
+        },
+        {
+          "id": 7401834,
+          "content": "3"
+        },
+        {
+          "id": 7401835,
+          "content": "4"
+        }
+      ],
+      "correct_option_ids": [
+        7401834
+      ],
+      "correct_options": [
+        "3"
+      ],
+      "analysis": "<div>  该数组的折半查找树为： </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20210719/370274_1626693030590/3D54A90840A31ACD1DB6904073C9971E\" style=\"height: auto;width: 278.4px;\"><br> </div> <div>  因此只有1,2,3满足条件，因此答案为3. </div>"
+    },
+    {
+      "question_id": 11180505,
+      "uuid": "754cac94b0a049969899ee896e090f7d",
+      "type": 1,
+      "title": "已知一个数值有序表{3, 6, 9, 12, 15, 18, 21, 24...",
+      "content": "已知<span style=\"color: rgb(36,41,47);\">一个数值有序表</span>{3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 35}，当二分查找值为31的元素时，查找失败的比较次数为（）（提示：mid = (low + high) / 2 向下取整 ）",
+      "options": [
+        {
+          "id": 7193425,
+          "content": "3"
+        },
+        {
+          "id": 7193426,
+          "content": "4"
+        },
+        {
+          "id": 7193427,
+          "content": "5"
+        },
+        {
+          "id": 7193428,
+          "content": "6"
+        }
+      ],
+      "correct_option_ids": [
+        7193426
+      ],
+      "correct_options": [
+        "4"
+      ],
+      "analysis": "<div>  <p>   在给定的有序数组 {3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 35} 中，使用二分查找算法查找值为 31 的元素。由于 31 不在数组中，查找将失败。查找过程中，每次比较目标值与中间元素（mid）的值都计入比较次数。算法使用 mid = (low + high) / 2 向下取整。  </p>  <p>   查找过程如下（索引从 0 开始）：  </p>  <ul>   <li>    <strong>初始状态</strong>：low = 0, high = 11      <li>    <strong>第1次比较</strong>：mid = (0 + 11) / 2 = 5（向下取整），元素为 18。31 &gt; 18，因此 low = mid + 1 = 6。      <li>    <strong>第2次比较</strong>：low = 6, high = 11, mid = (6 + 11) / 2 = 8（向下取整），元素为 27。31 &gt; 27，因此 low = mid + 1 = 9。      <li>    <strong>第3次比较</strong>：low = 9, high = 11, mid = (9 + 11) / 2 = 10（向下取整），元素为 33。31 &lt; 33，因此 high = mid - 1 = 9。      <li>    <strong>第4次比较</strong>：low = 9, high = 9, mid = (9 + 9) / 2 = 9（向下取整），元素为 30。31 &gt; 30，因此 low = mid + 1 = 10。      <li>    此时 low = 10, high = 9，low &gt; high，查找失败。     </ul>  <p>   查找失败时，共进行了 4 次比较（分别与索引 5、8、10、9 处的元素比较）。  </p>  <p>   对于数组大小 n = 12，二分查找的最大比较次数为 floor(log2(12)) + 1 = floor(3.58) + 1 = 4。由于 31 不在数组中，且位于 30 和 33 之间（索引 9 和 10 之间），查找过程恰好达到最大比较次数。  </p>  <p>   因此，查找失败的比较次数为 <strong>4</strong>。  </p> </div> <div>  <span><br> </span>  </div>"
+    },
+    {
+      "question_id": 2421503,
+      "uuid": "b6df83336b794471a6f448b81f3c8d53",
+      "type": 1,
+      "title": "EXCEL中有2个表格，表1种有&ldquo;天数&rdquo;&ldquo;等级&rdquo;两列数据，表2中有&ldquo;天数&rdquo;...",
+      "content": "EXCEL中有2个表格，表1种有“天数”“等级”两列数据，表2中有“天数”“资源量”两列数据，现需要将表1的“等级”根据“天数”对应到表2种，需要使用以下哪个函数（）",
+      "options": [
+        {
+          "id": 3805966,
+          "content": "if"
+        },
+        {
+          "id": 3805967,
+          "content": "match"
+        },
+        {
+          "id": 3805968,
+          "content": "vlookup"
+        },
+        {
+          "id": 3805969,
+          "content": "hlookup"
+        }
+      ],
+      "correct_option_ids": [
+        3805968
+      ],
+      "correct_options": [
+        "vlookup"
+      ],
+      "analysis": "常规excel函数操作"
+    },
+    {
+      "question_id": 160124,
+      "uuid": "5acc059b984b4d86858c77f5233d8e13",
+      "type": 1,
+      "title": "题目来源于王道论坛         下列选项中，不能构成折半查找中关键字比较序列的是      。",
+      "content": "<div>  下列选项中，不能构成折半查找中关键字比较序列的是<u> </u>。 </div> <div> </div>",
+      "options": [
+        {
+          "id": 374354,
+          "content": "500,200,450,180"
+        },
+        {
+          "id": 374355,
+          "content": "500,450,200,180"
+        },
+        {
+          "id": 374356,
+          "content": "180,500,200,450"
+        },
+        {
+          "id": 374357,
+          "content": "180,200,500,450"
+        }
+      ],
+      "correct_option_ids": [
+        374354
+      ],
+      "correct_options": [
+        "500,200,450,180"
+      ],
+      "analysis": "<p>  解析： </p> <div>  画出查找路径图，因为折半查找的判定树是一棵二叉排序树，看其是否满足二叉排序树的要求。 </div> <div>  <img alt=\"\" src=\"https://uploadfiles.nowcoder.com/images/20180504/7366756_1525402875699_7827E2278DB5E2D7D9438BFE00A5147A\">  </div> <div>  很显然，选项A的查找路径不满足<br> </div> <p>  <br> </p>"
+    },
+    {
+      "question_id": 7586,
+      "uuid": "23a2144003c1444fa2da8f758705f52c",
+      "type": 1,
+      "title": "能用二分法进行查找的是？",
+      "content": "能用二分法进行查找的是（）？",
+      "options": [
+        {
+          "id": 14742,
+          "content": "顺序存储的有序线性表"
+        },
+        {
+          "id": 14743,
+          "content": "线性链表"
+        },
+        {
+          "id": 14744,
+          "content": "二叉链表"
+        },
+        {
+          "id": 14745,
+          "content": "有序线性链表"
+        }
+      ],
+      "correct_option_ids": [
+        14742
+      ],
+      "correct_options": [
+        "顺序存储的有序线性表"
+      ],
+      "analysis": "能够进行二分查找的应为顺序存储的有序线性表，故A对，B、C、D错。"
+    },
+    {
+      "question_id": 10860352,
+      "uuid": "28da1553143e4c46aee684118655357c",
+      "type": 1,
+      "title": "&nbsp;一个数组元素为：[7，11，14，19，21，25，27，40...",
+      "content": "<div>   一个数组元素为：[7，11，14，19，21，25，27，40，55，60]，使用二分查找，找到25，需要与关键词比较几次，最后一次比较的关键字是什么 </div>",
+      "options": [
+        {
+          "id": 6390634,
+          "content": "2，25"
+        },
+        {
+          "id": 6390635,
+          "content": "3，27"
+        },
+        {
+          "id": 6390636,
+          "content": "3，25"
+        },
+        {
+          "id": 6390637,
+          "content": "4，40"
+        }
+      ],
+      "correct_option_ids": [
+        6390636
+      ],
+      "correct_options": [
+        "3，25"
+      ],
+      "analysis": "<div>  （第一次比较：选择中间元素21进行比较，25&gt;21 </div> <div>  <span>第二次比较：起始元素为25，终止元素为60，区域为[25，27，40，55，60]，中间元素为40，25&lt;40</span>  </div> <div>  <span>第三次比较：起始元素为25，终止元素为27，区域为[25，27]，中间元素为25，比较相等，找到元素）</span>  </div>"
+    },
+    {
+      "question_id": 6994,
+      "uuid": "14bf65a18cb045bdbb845606f0b6882f",
+      "type": 1,
+      "title": "对有序数组{2、11、15、19、30、32、61、72、88、90、96}进行二分查找，则成功找到15需比较多少次？",
+      "content": "对有序数组{2、11、15、19、30、32、61、72、88、90、96}进行二分查找，则成功找到15需比较（）次",
+      "options": [
+        {
+          "id": 13511,
+          "content": "3"
+        },
+        {
+          "id": 13512,
+          "content": "4"
+        },
+        {
+          "id": 13513,
+          "content": "2"
+        },
+        {
+          "id": 13514,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        13513
+      ],
+      "correct_options": [
+        "2"
+      ],
+      "analysis": "让我们通过二分查找的具体步骤来分析查找15的过程:<br><br>第1次比较:<br>中间位置是第6个元素32<br>15 < 32,所以在左半部分继续查找{2,11,15,19,30}<br><br>第2次比较:<br>中间位置是第3个元素15<br>找到目标值15,查找结束<br><br>因此总共比较了2次就找到了目标值15,所以C选项(2次)是正确答案。<br><br>分析其他选项:<br>A选项(3次)错误:实际只需2次就找到了,3次比较过多<br>B选项(4次)错误:比较次数远超实际需要的2次<br>D选项(5次)错误:在有序数组中使用二分查找,不可能需要这么多次比较<br><br>这里的关键是理解二分查找的特点:<br>1. 每次比较都会将搜索范围缩小一半<br>2. 对于有序数组来说,二分查找效率很高<br>3. 元素15在数组前半部分的位置比较靠前,所以很快就能找到<br><br>因此在这个特定的有序数组中,找到15确实只需要2次比较。"
+    },
+    {
+      "question_id": 11182762,
+      "uuid": "9963262a15ff4cfb9851650bc01bd0e1",
+      "type": 1,
+      "title": "已知一份有序的机械零部件价格表{1, 3, 5, 7, 9, 11, 13...",
+      "content": "<span style=\"color:#24292F;font-family:-apple-system, BlinkMacSystemFont, &quot;text-wrap:wrap;background-color:#F4F6F8;\"><span style=\"text-wrap:wrap;\">已知</span>一份有序的机械零部件价格表</span>{1,&nbsp;3,&nbsp;5,&nbsp;7,&nbsp;9,&nbsp;11,&nbsp;13,&nbsp;15,&nbsp;17,&nbsp;19,&nbsp;21}，当二分查找值为10的元素时，查找失败的比较次数为（）（提示：mid = (low + high) / 2 向下取整 ）",
+      "options": [
+        {
+          "id": 7198227,
+          "content": "2"
+        },
+        {
+          "id": 7198228,
+          "content": "3"
+        },
+        {
+          "id": 7198229,
+          "content": "4"
+        },
+        {
+          "id": 7198230,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        7198229
+      ],
+      "correct_options": [
+        "4"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 169290,
+      "uuid": "dd20d4d4df8641fd9ffedccee45faf9a",
+      "type": 1,
+      "title": "判断下列说法是否正确：对长度为n的有序表进行折半查找的判定树的高度为log2n（）",
+      "content": "<span>判断下列说法是否正确：</span><span>对长度为n的有序表进行折半查找的判定树的高度为</span><span>log</span><sub>2</sub><span>n（）</span>",
+      "options": [
+        {
+          "id": 401362,
+          "content": "正确"
+        },
+        {
+          "id": 401363,
+          "content": "错误"
+        }
+      ],
+      "correct_option_ids": [
+        401363
+      ],
+      "correct_options": [
+        "错误"
+      ],
+      "analysis": "对于长度为n的有序表进行折半查找时,其判定树的高度应为⌈log₂(n+1)⌉,而不是log₂n。这是因为:<br><br>1. 判定树的性质:<br>- 折半查找的判定树是一棵完全二叉树<br>- n个关键字需要n个叶子结点来存储<br>- 另外还需要增加若干个失败结点<br><br>2. 具体分析:<br>- 对于n个关键字的查找,判定树共需要n个成功结点和n+1个失败结点<br>- 总结点数为2n+1<br>- 由完全二叉树的性质可知,高度为⌈log₂(n+1)⌉<br><br>3. 举例说明:<br>当n=3时:<br>- 需要3个成功结点和4个失败结点<br>- 总结点数为7<br>- 判定树高度为3,而log₂3≈1.58<br>- 可见log₂n并不能正确表示判定树的高度<br><br>因此A选项\"log₂n\"是错误的表述,正确的高度应为⌈log₂(n+1)⌉,B选项\"错误\"是正确答案。"
+    },
+    {
+      "question_id": 11338518,
+      "uuid": "991a07d12a5e4003964a2c387f1680b7",
+      "type": 1,
+      "title": "已知一个长度为20的有序数组L，若采用折半查找来查找一个L中不存在的元素，...",
+      "content": "已知一个长度为20的有序数组L，若采用折半查找来查找一个L中不存在的元素，则关键字的比较次数最多是（）。",
+      "options": [
+        {
+          "id": 7407149,
+          "content": "5"
+        },
+        {
+          "id": 7407150,
+          "content": "7"
+        },
+        {
+          "id": 7407151,
+          "content": "8"
+        },
+        {
+          "id": 7407152,
+          "content": "10"
+        }
+      ],
+      "correct_option_ids": [
+        7407149
+      ],
+      "correct_options": [
+        "5"
+      ],
+      "analysis": "折半查找法在查找不成功时和给定值进行关键字的比较次数最多为树的高度，在本题中，n=20，故比较次数最多为5。"
+    },
+    {
+      "question_id": 52901,
+      "uuid": "b0383e205ec94d9fb6ec9d5b13a25b1f",
+      "type": 1,
+      "title": "能在O (1) 时间内访问线性表的第i个元素的结构是（）",
+      "content": "<p>  <span>能在O</span> <span>(1)</span> <span>时间内访问线性表的第i个元素的结构是（）</span>  </p>",
+      "options": [
+        {
+          "id": 69133,
+          "content": "顺序表"
+        },
+        {
+          "id": 69134,
+          "content": "单链表"
+        },
+        {
+          "id": 69135,
+          "content": "单向循环链表"
+        },
+        {
+          "id": 69136,
+          "content": "双向链表"
+        }
+      ],
+      "correct_option_ids": [
+        69133
+      ],
+      "correct_options": [
+        "顺序表"
+      ],
+      "analysis": "支持随机读取的线性表为顺序表，因此A对，B、C、D错。"
+    },
+    {
+      "question_id": 10959795,
+      "uuid": "c5ef484cd11446678f73d247e938ecd9",
+      "type": 1,
+      "title": "Linux 中，有文本文件 file.txt，想要查找出包含 \"test\"...",
+      "content": "Linux 中，有文本文件 file.txt，想要查找出包含 &quot;<span>test</span>&quot; 或 &quot;<span>taste</span>&quot; 两个单词的行并显示对应行号，下面命令正确的是（）",
+      "options": [
+        {
+          "id": 6615654,
+          "content": "grep -n 't[ae]st' file.txt"
+        },
+        {
+          "id": 6615655,
+          "content": "grep -n '^t[ae]st' file.txt"
+        },
+        {
+          "id": 6615656,
+          "content": "grep -n 't(ae)st' file.txt"
+        },
+        {
+          "id": 6615657,
+          "content": "grep -n 'taste&amp;test' file.txt"
+        }
+      ],
+      "correct_option_ids": [
+        6615654
+      ],
+      "correct_options": [
+        "grep -n 't[ae]st' file.txt"
+      ],
+      "analysis": "<p>  要查找包含 &quot;test&quot; 或 &quot;taste&quot; 的行并显示行号，正确答案是 <strong>A. grep -n 't[ae]st' file.txt</strong>。 </p> <h3>  解析： </h3> <ol>  <li>   <p>    <strong>正则表达式分析</strong>：   </p>   <ul>    <li>     t[ae]st表示：     <ul>      <li>       t：匹配字母 &quot;t&quot;            <li>       [ae]：匹配 &quot;a&quot; 或 &quot;e&quot; 中的任意一个字符            <li>       st：匹配字母 &quot;st&quot;           </ul>        <li>     因此t[ae]st可以匹配：     <ul>      <li>       test（当[ae]匹配 &quot;e&quot; 时）            <li>       tast（当[ae]匹配 &quot;a&quot; 时），而 &quot;tast&quot; 是 &quot;taste&quot; 的子串（前4个字符）           </ul>       </ul>    <li>   <p>    <strong>选项对比</strong>：   </p>   <ul>    <li>     <strong>A 正确</strong>：'t[ae]st'匹配包含 &quot;test&quot; 或 &quot;taste&quot; 的行（后者通过子串 &quot;tast&quot; 匹配）。        <li>     <strong>B 错误</strong>：'^t[ae]st'中的^表示行首，只能匹配行首为 &quot;test&quot; 或 &quot;tast&quot; 的行，无法匹配行中其他位置或 &quot;taste&quot;。        <li>     <strong>C 错误</strong>：'t(ae)st'中的括号未转义，在基础正则中匹配字面字符串 &quot;t(ae)st&quot;，无法匹配 &quot;test&quot; 或 &quot;taste&quot;。        <li>     <strong>D 错误</strong>：'taste&amp;test'匹配字面字符串 &quot;taste&amp;test&quot;，不符合要求。       </ul>    <li>   <p>    <strong>验证示例</strong>：   </p> <pre class=\"prettyprint lang-bash\"># 示例文件内容\necho -e &quot;This is a test line\\nThat has no match\\nThis tastes good&quot; &gt; file.txt\n\n# 执行命令\ngrep -n 't[ae]st' file.txt\n\n# 输出\n1:This is a test line\n3:This tastes good  # 匹配 &quot;tast&quot;（&quot;taste&quot; 的子串）</pre>   </ol>"
+    },
+    {
+      "question_id": 10824392,
+      "uuid": "39430c04653a435f93f76a154f8d7c9c",
+      "type": 1,
+      "title": "已知串S='abcaabcaabc'，采用KMP算法进行模式匹配，则得到的...",
+      "content": "已知串S='abcaabcaabc'，采用KMP算法进行模式匹配，则得到的next数组值为（）",
+      "options": [
+        {
+          "id": 6270085,
+          "content": "[0, 1,&nbsp;1,&nbsp;0,&nbsp;1,&nbsp;2,&nbsp;3,&nbsp;4,&nbsp;5,&nbsp;6,&nbsp;7]"
+        },
+        {
+          "id": 6270086,
+          "content": "[0, 1,&nbsp;1,&nbsp;1,&nbsp;2, 2, 3,&nbsp;4,&nbsp;5,&nbsp;6,&nbsp;7]"
+        },
+        {
+          "id": 6270087,
+          "content": "[0,&nbsp;1,&nbsp;2,&nbsp;0,&nbsp;1,&nbsp;2,&nbsp;3,&nbsp;4, 2,&nbsp;6,&nbsp;7]"
+        },
+        {
+          "id": 6270088,
+          "content": "[0, 1, 1, 1,&nbsp;1,&nbsp;2,&nbsp;3,&nbsp;4,&nbsp;5, 2,&nbsp;7]"
+        }
+      ],
+      "correct_option_ids": [
+        6270086
+      ],
+      "correct_options": [
+        "[0, 1,&nbsp;1,&nbsp;1,&nbsp;2, 2, 3,&nbsp;4,&nbsp;5,&nbsp;6,&nbsp;7]"
+      ],
+      "analysis": "KMP算法中next数组的计算是一个重要步骤,让我们逐步分析串S='abcaabcaabc'的next数组构建过程:<br><br>1. next[0]=0 (第一个字符的next值都是0)<br>2. next[1]=0 (a与b不匹配,置为0)<br>3. next[2]=0 (b与c不匹配,置为0)<br>4. next[3]=1 (c与a不匹配,但a与串首a匹配)<br>5. next[4]=1 (a与a匹配,取next[3]+1=2)<br>6. next[5]=2 (b与b匹配,取next[4]+1=2)<br>7. next[6]=3 (c与c匹配,取next[5]+1=3)<br>8. next[7]=4 (a与a匹配,取next[6]+1=4)<br>9. next[8]=5 (a与a匹配,取next[7]+1=5)<br>10. next[9]=6 (b与b匹配,取next[8]+1=6)<br>11. next[10]=7 (c与c匹配,取next[9]+1=7)<br><br>因此B选项[0,1,1,1,2,2,3,4,5,6,7]是正确答案。<br><br>分析其他选项错误原因：<br>A错误：[0,1,1,0,1,2,3,4,5,6,7] 在计算next[3]时出错,应该是1而不是0<br>C错误：[0,1,2,0,1,2,3,4,2,6,7] 在多处出错,特别是next[2]和next[8]的值计算有误<br>D错误：[0,1,1,1,1,2,3,4,5,2,7] 在next[5]和next[9]的计算出错<br><br>这道题目考察了对KMP算法中next数组构建过程的深入理解。next数组的每个值表示当前位置的最长相等前后缀长度。"
+    },
+    {
+      "question_id": 305023,
+      "uuid": "c0cd8b91c00e45cbb47459bc964bc719",
+      "type": 2,
+      "title": "在有序表中，关于斐波那契查找和折半查找说法错误的是（）",
+      "content": "在有序表中，关于斐波那契查找和折半查找说法错误的是（）",
+      "options": [
+        {
+          "id": 790655,
+          "content": "就平均性能而言，斐波那契查找的平均性能比折半查找差"
+        },
+        {
+          "id": 790656,
+          "content": "只有有序表中元素个数n等于某个斐波那契数时才能用斐波那契查找算法"
+        },
+        {
+          "id": 790657,
+          "content": "在最坏情况下，斐波那契查找的性能比折半查找好"
+        },
+        {
+          "id": 790658,
+          "content": "折半查找时间复杂度为O(log2n)"
+        }
+      ],
+      "correct_option_ids": [
+        790655,
+        790656,
+        790657
+      ],
+      "correct_options": [
+        "就平均性能而言，斐波那契查找的平均性能比折半查找差",
+        "只有有序表中元素个数n等于某个斐波那契数时才能用斐波那契查找算法",
+        "在最坏情况下，斐波那契查找的性能比折半查找好"
+      ],
+      "analysis": "这道题目主要考察斐波那契查找和折半查找的性能特点和基本概念。A选项错误，因为斐波那契查找的平均性能实际上比折半查找要好，而不是更差。斐波那契查找采用黄金分割的原理，其分割点选取更加合理，大约在0.618处，这使得其平均查找长度小于折半查找。<br><br>分析其他选项：<br><br>B选项正确：任意长度的有序表都可以使用斐波那契查找，不需要限制在斐波那契数。当表长不是斐波那契数时，可以通过补全的方式处理。<br><br>C选项正确：在最坏情况下，斐波那契查找的性能确实优于折半查找。这是因为斐波那契查找在分割时更倾向于将区间分成更合理的比例。<br><br>D选项正确：折半查找的时间复杂度确实是O(log2n)，这是因为每次查找都将区间分成两半，查找范围呈对数级缩小。这是折半查找的基本特征。<br><br>总的来说，斐波那契查找是一种性能优于折半查找的算法，它利用了黄金分割的原理，使得查找过程更加高效。"
+    },
+    {
+      "question_id": 69852,
+      "uuid": "9a31ea83482e4d96b930176a4211971e",
+      "type": 1,
+      "title": "# 判断正误 #\n对无序表用二分法查找比顺序查找快。",
+      "content": "<p>\n  <span>#</span>\n  <span>判断正误</span>\n  <span>#</span>\n</p>\n<p>\n  <span>对无序表用二分法查找比顺序查找快。</span>\n</p>",
+      "options": [
+        {
+          "id": 111980,
+          "content": "&radic;"
+        },
+        {
+          "id": 111981,
+          "content": "&times;"
+        }
+      ],
+      "correct_option_ids": [
+        111981
+      ],
+      "correct_options": [
+        "&times;"
+      ],
+      "analysis": "二分查找法要求数据必须是有序的,对于无序表直接使用二分查找是无效的。因为二分查找的基本原理是每次将待查找区间分成两部分,通过比较中间元素与目标值的大小来缩小查找范围。如果数据无序,这种比较就失去了意义。<br><br>对于无序表:<br>1. 只能使用顺序查找,时间复杂度为O(n)<br>2. 如果要使用二分查找,必须先对数据进行排序,排序的时间复杂度至少是O(nlogn)<br>3. 排序后再进行二分查找,总时间复杂度为O(nlogn) + O(logn) ≈ O(nlogn)<br>4. 而直接使用顺序查找只需O(n)<br><br>所以对无序表来说,直接使用顺序查找比\"先排序再二分查找\"要快得多。A选项说二分法查找比顺序查找快是错误的,因此B选项是正确答案。<br><br>这个结论告诉我们,在选择查找算法时要考虑数据的特点,不能简单地认为二分查找一定比顺序查找快。"
+    },
+    {
+      "question_id": 56137,
+      "uuid": "33ec8745068c4386b56a02a0ff2c47e6",
+      "type": 1,
+      "title": "已知 10 个元素 (54,28,16,34,,73,62,95,60,26,43) ，按照依次插入的方法生成一棵二叉排序树，查找值为 62 的结点所需比较次数为（）",
+      "content": "<p>\n  <span>已知</span>\n  <span>10</span>\n  <span>个元素</span>\n  <span>(54,28,16,34,,73,62,95,60,26,43)</span>\n  <span>，按照依次插入的方法生成一棵二叉排序树，查找值为</span>\n  <span>62</span>\n  <span>的结点所需比较次数为（）</span>\n</p>",
+      "options": [
+        {
+          "id": 76938,
+          "content": "4"
+        },
+        {
+          "id": 76939,
+          "content": "3"
+        },
+        {
+          "id": 76940,
+          "content": "2"
+        },
+        {
+          "id": 76941,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        76939
+      ],
+      "correct_options": [
+        "3"
+      ],
+      "analysis": "这道题考察二叉排序树的构建和查找过程。让我们一步步分析：<br><br>首先需要按照题目给出的序列(54,28,16,34,73,62,95,60,26,43)依次构建二叉排序树：<br>1. 54作为根节点<br>2. 28小于54，作为左子节点<br>3. 16小于54和28，作为28的左子节点<br>4. 34小于54，大于28，作为28的右子节点<br>5. 73大于54，作为右子节点<br>6. 62大于54，小于73，作为73的左子节点<br><br>要找到62这个节点的过程是：<br>1. 从根节点54开始，62>54，转向右子树<br>2. 到达73，62<73，转向左子树<br>3. 找到62，结束<br><br>因此，查找62需要进行3次比较：<br>- 与54比较<br>- 与73比较<br>- 与62本身比较<br><br>所以B选项\"3\"是正确答案。<br><br>分析其他选项：<br>A(4次比较)：错误，实际只需3次比较就能找到<br>C(2次比较)：错误，至少需要3次比较才能定位到62<br>D(5次比较)：错误，超过了实际所需的比较次数<br><br>这个结果可以通过画出完整的二叉排序树来验证，62在树的第三层，从根到它的路径确实只需要3次比较。"
+    },
+    {
+      "question_id": 10959982,
+      "uuid": "fc20dc6e19854261a78bc0b86eb90146",
+      "type": 1,
+      "title": "已知一个有序表（2, 4, 6, 8, 10, 12, 14, 16, 1...",
+      "content": "已知一个有序表（2,&nbsp;4,&nbsp;6,&nbsp;8,&nbsp;10,&nbsp;12,&nbsp;14,&nbsp;16,&nbsp;18,&nbsp;20,&nbsp;22），当二分查找值为15的元素时，查找失败的比较次数为（&nbsp;）",
+      "options": [
+        {
+          "id": 6620681,
+          "content": "3"
+        },
+        {
+          "id": 6620682,
+          "content": "4"
+        },
+        {
+          "id": 6620683,
+          "content": "5"
+        },
+        {
+          "id": 6620684,
+          "content": "6"
+        }
+      ],
+      "correct_option_ids": [
+        6620682
+      ],
+      "correct_options": [
+        "4"
+      ],
+      "analysis": "在这道二分查找的题目中,我们需要模拟查找值15的过程来计算比较次数。让我们逐步分析:<br><br>第1次比较: 中间位置为11/2=5(下标),即值12与15比较,15>12<br>第2次比较: 在右半部分(14-22)中,中间位置为(6+10)/2=8(下标),即值18与15比较,15<18<br>第3次比较: 在14,16中,中间位置为(6+7)/2=6(下标),即值14与15比较,15>14<br>第4次比较: 只剩16了,16与15比较,15<16<br><br>到此查找失败,总共进行了4次比较,所以B选项是正确答案。<br><br>分析其他选项:<br>A(3次)错误:如上分析,必须经过4次比较才能确定15不在表中<br>C(5次)错误:在第4次比较后就已经可以确定查找失败,不需要第5次比较<br>D(6次)错误:对于长度为11的有序表,二分查找的最大比较次数不会超过log₂11≈4次<br><br>这是一个典型的二分查找失败的情况,因为要查找的15不在表中,需要通过逐步缩小范围直到确定它确实不存在,共需4次比较。"
+    },
+    {
+      "question_id": 11182728,
+      "uuid": "636fbef1084f4604ad0767b9923ade93",
+      "type": 1,
+      "title": "在一次计算机科学研讨会上，研究人员正在讨论KMP算法在文本处理中的应用。作...",
+      "content": "<div>\n\t<span style=\"color:#24292F;font-family:-apple-system, BlinkMacSystemFont, &quot;white-space:pre-wrap;background-color:#F4F6F8;\">在一次计算机科学研讨会上，研究人员正在讨论KMP算法在文本处理中的应用。作为案例研究，</span><span style=\"color:#24292F;font-family:-apple-system, BlinkMacSystemFont, &quot;white-space:pre-wrap;background-color:#F4F6F8;\">他们考虑</span>在用KMP算法进行模式匹配时，若是指向模式串\"xyzxxyz\"的指针在指到第7个字符\"z\"时发生失配，则指针回溯的位置为（）\n</div>\n<div>\n\t注：字符串中字符从字符数据1号位开始存储，也即从1开始编号。<br />\n</div>",
+      "options": [
+        {
+          "id": 7197878,
+          "content": "1"
+        },
+        {
+          "id": 7197879,
+          "content": "2"
+        },
+        {
+          "id": 7197880,
+          "content": "3"
+        },
+        {
+          "id": 7197881,
+          "content": "4"
+        }
+      ],
+      "correct_option_ids": [
+        7197880
+      ],
+      "correct_options": [
+        "3"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 10960093,
+      "uuid": "f32a6bb6fa36429e8f69ec20acab1cb4",
+      "type": 1,
+      "title": "订单表order_table全部记录如下，查询连续3天下单的custome...",
+      "content": "<div>  订单表order_table全部记录如下，查询连续3天下单的customer_name，比如zhangsan在12.1、12.2号和12.3号连续3天下单过，以下不符合预期的是（）？ </div> <div> <pre class=\"prettyprint lang-cpp\">+----+----------+--------+---------+---------------+------------+\n| id | order_id | sku_id | buy_num | customer_name | buy_date   |\n+----+----------+--------+---------+---------------+------------+\n|  1 |   560001 |   1001 |       2 | zhangsan      | 2021-12-01 |\n|  2 |   560001 |   1002 |       1 | lisi          | 2021-12-01 |\n|  3 |   560002 |   1001 |       1 | zhangsan      | 2021-12-02 |\n|  4 |   560003 |   1003 |       2 | zhangsan      | 2021-12-03 |\n|  5 |   560004 |   1002 |       3 | lisi          | 2021-12-02 |\n+----+----------+--------+---------+---------------+------------+\n5 rows in set (0.00 sec)</pre> </div>",
+      "options": [
+        {
+          "id": 6621010,
+          "content": "<pre>SELECT customer_name\nFROM (\n    SELECT  \n    customer_name,\n    buy_date,\n    LEAD(buy_date,1) OVER(partition by customer_name order by buy_date) as next1_buy_date,\n    LEAD(buy_date,2) OVER(partition by customer_name order by buy_date) as next2_buy_date\n    FROM\n    order_table \n)t1\nWHERE \nTIMESTAMPDIFF(DAY,buy_date,next1_buy_date) = 1 \nand TIMESTAMPDIFF(DAY,buy_date,next2_buy_date) = 2 ;</pre>"
+        },
+        {
+          "id": 6621011,
+          "content": "<pre>SELECT customer_name\nFROM (\n    SELECT  \n    customer_name,\n    buy_date,\n    LAG(buy_date,1) OVER(partition by customer_name order by buy_date) as next1_buy_date,\n    LEAD(buy_date,1) OVER(partition by customer_name order by buy_date) as next2_buy_date\n    FROM\n    order_table \n)t1\nWHERE \nTIMESTAMPDIFF(DAY,buy_date,next1_buy_date) = -1 \nand TIMESTAMPDIFF(DAY,buy_date,next2_buy_date) = -1 ;</pre>"
+        },
+        {
+          "id": 6621013,
+          "content": "<pre>SELECT customer_name\nFROM (\n    SELECT  \n    customer_name,\n    buy_date,\n    LAG(buy_date,1) OVER(partition by customer_name order by buy_date) as next1_buy_date,\n    LAG(buy_date,2) OVER(partition by customer_name order by buy_date) as next2_buy_date\n    FROM\n    order_table \n)t1\nWHERE \nTIMESTAMPDIFF(DAY,buy_date,next1_buy_date) = -1 \nand TIMESTAMPDIFF(DAY,buy_date,next2_buy_date) = -2 ;</pre>"
+        },
+        {
+          "id": 6621015,
+          "content": "<pre>SELECT customer_name\nFROM (\n    SELECT  \n    customer_name,\n    buy_date,\n    LEAD(buy_date,1) OVER(partition by customer_name order by buy_date) as next1_buy_date,\n    LAG(buy_date,1) OVER(partition by customer_name order by buy_date) as next2_buy_date\n    FROM\n    order_table \n)t1\nWHERE \nTIMESTAMPDIFF(DAY,buy_date,next1_buy_date) = 1 \nand TIMESTAMPDIFF(DAY,buy_date,next2_buy_date) = -1 ;</pre>"
+        }
+      ],
+      "correct_option_ids": [
+        6621011
+      ],
+      "correct_options": [
+        "<pre>SELECT customer_name\nFROM (\n    SELECT  \n    customer_name,\n    buy_date,\n    LAG(buy_date,1) OVER(partition by customer_name order by buy_date) as next1_buy_date,\n    LEAD(buy_date,1) OVER(partition by customer_name order by buy_date) as next2_buy_date\n    FROM\n    order_table \n)t1\nWHERE \nTIMESTAMPDIFF(DAY,buy_date,next1_buy_date) = -1 \nand TIMESTAMPDIFF(DAY,buy_date,next2_buy_date) = -1 ;</pre>"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 97146,
+      "uuid": "bbaec5f53ef84953b18f8b38823348b0",
+      "type": 1,
+      "title": "对线性表进行二分查找，其前提条件是",
+      "content": "<p>  <span> 对线性表进行二分查找，其前提条件是？</span>  </p>",
+      "options": [
+        {
+          "id": 175004,
+          "content": "顺序表"
+        },
+        {
+          "id": 175005,
+          "content": "有序的顺序表"
+        },
+        {
+          "id": 175006,
+          "content": "链表"
+        },
+        {
+          "id": 175007,
+          "content": "有序的链表"
+        }
+      ],
+      "correct_option_ids": [
+        175005
+      ],
+      "correct_options": [
+        "有序的顺序表"
+      ],
+      "analysis": "<div>  二分查找需要有序且支持随机读。 </div> <div>  A：顺序表支持随机读但不一定有序，故A错。 </div> <div>  B：有序的顺序表有序且<span>支持随机读，故B对。</span> </div> <div>  <span>C：链表不一定有序且不支持随机读，故C错。</span> </div> <div>  <span>D：有序的链表有序但不支持随机读，故D错。</span> </div>"
+    },
+    {
+      "question_id": 11182331,
+      "uuid": "48399c79ce2c45b997dc832d0a071243",
+      "type": 1,
+      "title": "已知串S='bccabcaac'，采用KMP算法进行模式匹配，则得到的ne...",
+      "content": "已知串S='bccabcaac'，采用KMP算法进行模式匹配，则得到的next数组值为（）",
+      "options": [
+        {
+          "id": 7196677,
+          "content": "011112311"
+        },
+        {
+          "id": 7196678,
+          "content": "021221121"
+        },
+        {
+          "id": 7196679,
+          "content": "011211111"
+        },
+        {
+          "id": 7196680,
+          "content": "011121112"
+        }
+      ],
+      "correct_option_ids": [
+        7196677
+      ],
+      "correct_options": [
+        "011112311"
+      ],
+      "analysis": "<div style=\"text-wrap:wrap;\">\n\t这道题采用手工求next数组的方法。\n</div>\n<div style=\"text-wrap:wrap;\">\n\t先求串S='<span style=\"text-wrap:wrap;\">bccabcaac</span>'的部分匹配值：\n</div>\n<div style=\"text-wrap:wrap;\">\n\t'b'的前后缀都为空，最长相等前后缀长度为0。\n</div>\n<div style=\"text-wrap:wrap;\">\n\t'bc'的前缀{b}<img src=\"https://www.nowcoder.com/equation?tex=%5Ccap\" alt=\"\" />后缀{c}=<img src=\"https://www.nowcoder.com/equation?tex=%5Cphi\" alt=\"\" />，最长相等前后缀长度为0.\n</div>\n<div style=\"text-wrap:wrap;\">\n\t'bcc'的前缀{b,bc}<img src=\"https://www.nowcoder.com/equation?tex=%5Ccap\" alt=\"\" />后缀{c,cc}=<img src=\"https://www.nowcoder.com/equation?tex=%5Cphi\" alt=\"\" style=\"text-wrap:wrap;\" />，最长相等前后缀长度为0.\n</div>\n<div style=\"text-wrap:wrap;\">\n\t......\n</div>\n<div style=\"text-wrap:wrap;\">\n\t依次求出的部分匹配值如下表第三行所示，将其整体右移一位，低位用-1填充，如下表第四行所示。\n</div>\n<div style=\"text-wrap:wrap;\">\n\tPM是部分匹配值（Partial Match）\n</div>\n<div style=\"text-wrap:wrap;margin-bottom:0px !important;\">\n\t<table cellpadding=\"2\" cellspacing=\"0\" border=\"1\" bordercolor=\"#000000\">\n\t\t<tbody>\n\t\t\t<tr>\n\t\t\t\t<td>\n\t\t\t\t\t编号\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t2\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t3\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t4\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t5\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t6\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t7\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t8\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t9\n\t\t\t\t</td>\n\t\t\t</tr>\n\t\t\t<tr>\n\t\t\t\t<td>\n\t\t\t\t\tS\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tb\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tc\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tc\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\ta\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tb\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tc\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\ta\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\ta\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tc\n\t\t\t\t</td>\n\t\t\t</tr>\n\t\t\t<tr>\n\t\t\t\t<td>\n\t\t\t\t\tPM\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t2\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t</tr>\n\t\t\t<tr>\n\t\t\t\t<td>\n\t\t\t\t\tnext\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t-1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t2\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t</tr>\n\t\t</tbody>\n\t</table>\n选项中next[1]等于0，故将next数组整体加1，答案选A<br />\n</div>"
+    },
+    {
+      "question_id": 11260381,
+      "uuid": "a41ebd13d1034016b4aa4dc394b86f66",
+      "type": 2,
+      "title": "如果内存有限，无法一次性加载10亿历史单据信息进行搜索，以下哪些算法是最适合的？",
+      "content": "如果内存有限，无法一次性加载10亿历史单据信息进行搜索，以下哪些算法是最适合的？",
+      "options": [
+        {
+          "id": 7375645,
+          "content": "二分查找"
+        },
+        {
+          "id": 7375646,
+          "content": "哈希查找"
+        },
+        {
+          "id": 7375647,
+          "content": "外部排序+二分查找"
+        },
+        {
+          "id": 7375648,
+          "content": "线性搜索"
+        },
+        {
+          "id": 7375649,
+          "content": "分块查找"
+        }
+      ],
+      "correct_option_ids": [
+        7375646,
+        7375647,
+        7375649
+      ],
+      "correct_options": [
+        "哈希查找",
+        "外部排序+二分查找",
+        "分块查找"
+      ],
+      "analysis": "哈希查找：哈希查找是一种适合在内存有限情况下进行搜索的算法，通过哈希函数可以快速定位数据项。<br />\n外部排序+二分查找：当内存无法一次性加载10亿数据进行搜索时，可以使用外部排序算法将数据分块排序，然后再利用二分查找进行搜索，这样可以减少内存的占用。<br />\n分块查找：分块查找是将数据分块存储，然后对每个块进行排序，适合在内存有限但数据量大的情况下进行搜索。<br />\n这些算法都适合在内存有限但无法一次性加载10亿数据进行搜索的情况下使用。<br />"
+    },
+    {
+      "question_id": 10826676,
+      "uuid": "ebd407df91b741e9b0482d9bc4d27ba0",
+      "type": 1,
+      "title": "在一个数据表中有两列数据，分别是道具的ID和名字。此时有一位同事给你发来一...",
+      "content": "在一个数据表中有两列数据，分别是道具的ID和名字。此时有一位同事给你发来一个ID，想要知道该道具的名字，请问通过什么函数可以快速查找到相应的内容？",
+      "options": [
+        {
+          "id": 6272712,
+          "content": "SUM"
+        },
+        {
+          "id": 6272713,
+          "content": "COUNTIF"
+        },
+        {
+          "id": 6272714,
+          "content": "ROUND"
+        },
+        {
+          "id": 6272715,
+          "content": "VLOOKUP"
+        }
+      ],
+      "correct_option_ids": [
+        6272715
+      ],
+      "correct_options": [
+        "VLOOKUP"
+      ],
+      "analysis": "VLOOKUP函数是在Excel中进行表格数据查找的最常用函数之一,它可以根据指定的ID在表格中查找对应的道具名称,完全符合题目的需求。当提供一个ID时,VLOOKUP可以在第一列查找该ID,并返回同一行中指定列的值(本题中为道具名称)。<br><br>分析其他选项:<br><br>A. SUM - 这是求和函数,用于计算一组数值的总和,不具备查找功能。<br><br>B. COUNTIF - 这是条件计数函数,用于统计满足特定条件的单元格数量,不能用于查找对应值。<br><br>C. ROUND - 这是四舍五入函数,用于数值的四舍五入运算,与数据查找无关。<br><br>VLOOKUP函数的基本语法是:<br>VLOOKUP(查找值, 查找范围, 返回第几列, 匹配方式)<br>用于本题场景时:<br>- 查找值就是同事提供的道具ID<br>- 查找范围是包含ID和名称的数据表<br>- 返回第几列设为2(因为名称在第二列)<br>- 匹配方式通常设为FALSE以实现精确匹配<br><br>这正是完成题目要求的最佳选择。"
+    },
+    {
+      "question_id": 110570,
+      "uuid": "b0bbcf074f8f4befb02a738d2d77371d",
+      "type": 1,
+      "title": "若有一个顺序有序表A[1:18] 中有18个元素，现进行二分查找，则查找 A［3］的比较序列的下标依次为（ ）。",
+      "content": "<p>  <span>若有一个顺序有序表<span>A[1:18] </span>中有<span>18</span>个元素，现进行二分查找，则查找<span> A</span>［<span>3</span>］的比较序列的下标依次为（ ）。</span>  </p>",
+      "options": [
+        {
+          "id": 204921,
+          "content": "1，2，3"
+        },
+        {
+          "id": 204922,
+          "content": "9，5，2，3"
+        },
+        {
+          "id": 204923,
+          "content": "9，5，3"
+        },
+        {
+          "id": 204924,
+          "content": "9，4，2，3"
+        }
+      ],
+      "correct_option_ids": [
+        204924
+      ],
+      "correct_options": [
+        "9，4，2，3"
+      ],
+      "analysis": "<div>  第一次：low=1，high=18，mid=9，9&gt;3，high=mid-1 </div> <div>  第二次：low=1，high=8，mid=4，4&gt;3，high=mid-1 </div> <div>  第三次：low=1，high=3，mid=2，2&lt;3，low=mid+1 </div> <div>  第四次：low=3，high=3，mid=3，查找成功 </div> <div>  <span>序列的下标依次为</span>9，4，2，3 </div> <div>  A、B、C错误，D正确<br> </div>"
+    },
+    {
+      "question_id": 11182765,
+      "uuid": "aa81508e58cc409ca9df3ea3f8538f35",
+      "type": 1,
+      "title": "在主串T=”babbabbacbabbac”中，我们要寻找子串S=”bab...",
+      "content": "<span>在主串T=”babbabbacbabbac”中，我们要寻找子串S=”babbac”，为了找到这个子串，我们采用了KMP算法，请问<span>到匹配成功时为止总共</span>进行了多少次单字符的比较？</span>",
+      "options": [
+        {
+          "id": 7198207,
+          "content": "10"
+        },
+        {
+          "id": 7198208,
+          "content": "12"
+        },
+        {
+          "id": 7198209,
+          "content": "14"
+        },
+        {
+          "id": 7198210,
+          "content": "16"
+        }
+      ],
+      "correct_option_ids": [
+        7198207
+      ],
+      "correct_options": [
+        "10"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 94846,
+      "uuid": "6aaeb96480fd4eda81e10873161abbae",
+      "type": 1,
+      "title": "若在线性表中采用折半查找法查找元素，该线性表应该：",
+      "content": "<p>  <span>若在线性表中采用折半查找法查找元素，该线性表应该？</span>  </p>",
+      "options": [
+        {
+          "id": 170023,
+          "content": "元素按值有序"
+        },
+        {
+          "id": 170024,
+          "content": "采用顺序存储结构"
+        },
+        {
+          "id": 170025,
+          "content": "元素按值有序且采用顺序存储结构"
+        },
+        {
+          "id": 170026,
+          "content": "元素按值有序且采用链式存储结构"
+        }
+      ],
+      "correct_option_ids": [
+        170025
+      ],
+      "correct_options": [
+        "元素按值有序且采用顺序存储结构"
+      ],
+      "analysis": "<div>  <span>线性表需要有序且支持随机读才能二分查找，即元素按值有序且采用顺序存储结构。</span> </div> <div>  <span>故A、C、D错，B对。</span> </div>"
+    },
+    {
+      "question_id": 86415,
+      "uuid": "655102aa249a47858530529e76a19089",
+      "type": 1,
+      "title": "适用于折半查找的表的存储方式及元素排列要求为(    )",
+      "content": "<p>  <span>适用于折半查找的表的存储方式及元素排列要求为<span>(     ) </span> </span>  </p>",
+      "options": [
+        {
+          "id": 148158,
+          "content": "链接方式存储，元素无序"
+        },
+        {
+          "id": 148159,
+          "content": "链接方式存储，元素有序"
+        },
+        {
+          "id": 148160,
+          "content": "顺序方式存储，元素无序"
+        },
+        {
+          "id": 148161,
+          "content": "顺序方式存储，元素有序"
+        }
+      ],
+      "correct_option_ids": [
+        148161
+      ],
+      "correct_options": [
+        "顺序方式存储，元素有序"
+      ],
+      "analysis": "<div>  折半查找需要表能够随机读取且表内数据有序，因此应使用顺序方式存储，元素有序。 </div> <div>  A、B、C错，D对。 </div>"
+    },
+    {
+      "question_id": 52236,
+      "uuid": "1fedcb2c8d3740f2b4ed9bfadceb85a8",
+      "type": 1,
+      "title": "已知一个长度为16的顺序表L，其元素按关键字有序排列，若采用折半查找法查找一个 L中 不存在的元素，则 关键字的 比较次数最多是（）",
+      "content": "<p>  <span>已知一个长度为16的顺序表L，其元素按关键字有序排列，若采用折半查找法查找一个</span> <span>L中</span> <span>不存在的元素，则</span> <span>关键字的</span> <span>比较次数最多是（）</span>  </p>",
+      "options": [
+        {
+          "id": 67204,
+          "content": "4"
+        },
+        {
+          "id": 67205,
+          "content": "5"
+        },
+        {
+          "id": 67206,
+          "content": "6"
+        },
+        {
+          "id": 67207,
+          "content": "7"
+        }
+      ],
+      "correct_option_ids": [
+        67205
+      ],
+      "correct_options": [
+        "5"
+      ],
+      "analysis": "对于长度为16的有序顺序表使用折半查找时，查找不存在元素的最大比较次数是5次。<br><br>具体分析如下：<br>1. 长度为16的顺序表，元素个数n=16<br>2. 折半查找每次将查找区间缩小一半，直到区间为空<br>3. 对于不存在的元素，必须一直查找到区间为空才能确定元素不存在<br>4. 计算查找次数：<br>   - 第1次比较：区间长度变为8<br>   - 第2次比较：区间长度变为4  <br>   - 第3次比较：区间长度变为2<br>   - 第4次比较：区间长度变为1<br>   - 第5次比较：区间为空，确定元素不存在<br><br>所以B选项5次是正确的。<br><br>分析其他选项：<br>A选项4次不够，4次比较后区间仍有1个元素需要比较<br>C选项6次过多，5次比较已经可以确定元素不存在<br>D选项7次明显过多，对于长度16的顺序表，不可能需要7次比较<br><br>这里要注意的是，虽然折半查找成功时最多只需log₂16=4次比较，但查找失败时需要多进行一次比较才能确定元素不存在。因此最大比较次数是⌊log₂16⌋+1=5次。"
+    },
+    {
+      "question_id": 52594,
+      "uuid": "02261d222eb943d4b2db962dbc60a1bd",
+      "type": 1,
+      "title": "下列选项中，不能构成折半查找中关键字比较序列的是 （）。",
+      "content": "<p align=\"justify\" style=\"text-align: justify;\">  <span>下列选项中，不能构成折半查找中关键字比较序列的是</span> <span>（）。</span>  </p>",
+      "options": [
+        {
+          "id": 68375,
+          "content": "500,200,450,180"
+        },
+        {
+          "id": 68376,
+          "content": "500,450,200,180"
+        },
+        {
+          "id": 68377,
+          "content": "180,500,200,450"
+        },
+        {
+          "id": 68378,
+          "content": "180,200,500,450"
+        }
+      ],
+      "correct_option_ids": [
+        68375
+      ],
+      "correct_options": [
+        "500,200,450,180"
+      ],
+      "analysis": "二分查找(折半查找)的基本原理是每次将待查找区间分成两半,通过比较中间元素与目标值的大小来缩小查找范围。因此比较序列必须遵循二分查找的规律。<br><br>选项A(500,200,450,180)不可能是二分查找的比较序列,原因是:<br>1. 在二分查找中,每次比较后应该将区间缩小一半<br>2. 数字的出现顺序应该遵循二分的特点,即先取中间数比较,再取子区间的中间数<br>3. A选项中数字的出现顺序杂乱,不符合二分查找的分割特点<br><br>分析其他选项:<br>B(500,450,200,180)可以是一个有序序列[180,200,450,500]从右向左进行二分查找的比较序列<br>C(180,500,200,450)可以是在查找过程中,通过不同子区间进行二分比较得到的序列<br>D(180,200,500,450)可以是对某个有序序列进行二分查找时产生的比较序列<br><br>总的来说,二分查找的比较序列必须体现\"二分\"的特征,即每次比较都应该将待查找区间划分为大致相等的两部分。A选项中的数字序列无法体现这一特征,因此不可能是二分查找的比较序列。"
+    },
+    {
+      "question_id": 11182612,
+      "uuid": "1b85c73bfcb740c09f695c8f756d8647",
+      "type": 1,
+      "title": "给定一串整数数列，找出其中任意两个连续（或不连续）的第 i 个和第 j 个...",
+      "content": "<div>  给定一串整数数列，找出其中任意两个连续（或不连续）的第 i 个和第 j 个整数（i&gt;j），使得第 i 个数-第 j 个数的值最大，则其代码为： </div> <div> <pre class=\"prettyprint lang-c\">void solve()\n{\n    int t=a[1];\n    for(int i = 0; i &lt; n; i ++){\n        for(int j = i+1; j &lt; n; j++)\n            ____;\n        ans = a[i]-t;\n    }\n}</pre> <br> <br> </div>",
+      "options": [
+        {
+          "id": 7197513,
+          "content": "<span>t=min(a[i],a[j])</span>"
+        },
+        {
+          "id": 7197514,
+          "content": "t=min(t,a[j])"
+        },
+        {
+          "id": 7197515,
+          "content": "t=a[i]"
+        },
+        {
+          "id": 7197516,
+          "content": "t=a[j]"
+        }
+      ],
+      "correct_option_ids": [
+        7197514
+      ],
+      "correct_options": [
+        "t=min(t,a[j])"
+      ],
+      "analysis": "选 B：t = min(t, a[j])<br> <br> 解析：<br> - 目标是最大化 a[i] − a[j] 且 i &gt; j。对固定的 i，要想 a[i] − a[j] 最大，就需要 j&lt;i 的元素里最小的 a[j]。<br> - 因此在外层遍历到第 i 个元素之前，用变量 t 维护「前缀最小值」，也就是所有 j&lt;i 的 a[j] 的最小值。<br> - 代码中空白处应把 t 更新为当前考察过的元素的最小值：t = min(t, a[j])，这样在每次计算 ans = a[i] − t 时，t 就是 a[0..i-1] 的最小值，从而得到以 i 为右端点的最大差值。<br> - 其他选项：<br>   - A 取 min(a[i], a[j]) 与需要的「前缀最小」无关；<br>   - C 直接令 t=a[i] 会丢掉之前更小的值；<br>   - D 令 t=a[j] 仅覆盖，不保证最小。<br> <br>"
+    },
+    {
+      "question_id": 10298816,
+      "uuid": "d5cf304f92a6499cb04c40e88e11ebe7",
+      "type": 1,
+      "title": "数据结构中，二分法的查找主要应用于数据量较大情况下的查找，但是数据需要先排...",
+      "content": "数据结构中，二分法的查找主要应用于数据量较大情况下的查找，但是数据需要先排好顺序，在顺序表(2，5，7，10，14，15，18，23，35，41，52)中，用二分法查找12，所需的关键码比较的次数为多少（     ）？",
+      "options": [
+        {
+          "id": 4907816,
+          "content": "2"
+        },
+        {
+          "id": 4907817,
+          "content": "3"
+        },
+        {
+          "id": 4907818,
+          "content": "4"
+        },
+        {
+          "id": 4907819,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        4907818
+      ],
+      "correct_options": [
+        "4"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 53244,
+      "uuid": "81c86f39ebc949318f3efae8e0c0d2fa",
+      "type": 1,
+      "title": "采用二分查找方法查找长度为n的线性表时，每个元素的平均查找长度为（）",
+      "content": "<p>\n  <span>采用二分查找方法查找长度为n的线性表时，每个元素的平均查找长度为（） </span>\n</p>",
+      "options": [
+        {
+          "id": 69981,
+          "content": "O(n^2)"
+        },
+        {
+          "id": 69982,
+          "content": "O(nlog2n)"
+        },
+        {
+          "id": 69983,
+          "content": "O(n)"
+        },
+        {
+          "id": 69984,
+          "content": "O(log2n)"
+        }
+      ],
+      "correct_option_ids": [
+        69984
+      ],
+      "correct_options": [
+        "O(log2n)"
+      ],
+      "analysis": "二分查找是一种高效的查找算法,它的平均查找长度确实是O(log2n)。让我们详细分析原因:<br><br>二分查找的工作原理是每次将待查找区间分成两半,比较中间元素与目标值的大小关系,从而将查找范围缩小一半。这个过程会不断重复,直到找到目标元素或确定元素不存在。<br><br>为什么平均查找长度是O(log2n):<br>1. 第一次比较将n个元素分成n/2<br>2. 第二次比较将n/2个元素分成n/4<br>3. 第三次比较将n/4个元素分成n/8<br>4. 以此类推...<br><br>每次查找范围都会减半,直到范围缩小到1。这个过程恰好就是log2n次。<br><br>分析其他选项:<br>A选项O(n^2)错误:这是冒泡排序等算法的时间复杂度,远超过二分查找的复杂度。<br><br>B选项O(nlog2n)错误:这是快速排序等排序算法的时间复杂度,不是二分查找的复杂度。<br><br>C选项O(n)错误:这是顺序查找的平均时间复杂度,二分查找比顺序查找更快。<br><br>所以D选项O(log2n)是正确的,这也是二分查找如此高效的原因。"
+    },
+    {
+      "question_id": 10824312,
+      "uuid": "86623017db314c61b25818ecb09a72d3",
+      "type": 1,
+      "title": "现有一个有序表（5, 10, 15, 20, 25, 30, 35, 40...",
+      "content": "现有一个有序表（5,&nbsp;10,&nbsp;15,&nbsp;20,&nbsp;25,&nbsp;30,&nbsp;35,&nbsp;40,&nbsp;45,&nbsp;50,&nbsp;55），当二分查找值为60的元素时，它将依次与表中哪些元素比较？<div>（提示：mid&nbsp;=&nbsp;(low&nbsp;+&nbsp;high)&nbsp;/&nbsp;2&nbsp;向下取整&nbsp;）</div>",
+      "options": [
+        {
+          "id": 6270009,
+          "content": "30,45,50,55"
+        },
+        {
+          "id": 6270010,
+          "content": "40,50,<span>30,45</span>"
+        },
+        {
+          "id": 6270011,
+          "content": "30,40,<span>50,55</span>"
+        },
+        {
+          "id": 6270012,
+          "content": "25,50,30,40"
+        }
+      ],
+      "correct_option_ids": [
+        6270009
+      ],
+      "correct_options": [
+        "30,45,50,55"
+      ],
+      "analysis": "<div>\n\t<img src=\"https://uploadfiles.nowcoder.com/images/20230924/0_1695565622921/56E8C5ED1FD73D7F235E051110B24CBA\" alt=\"\" />\n</div>\n<div>\n\t比较序列：30,45,50,55\n</div>"
+    },
+    {
+      "question_id": 10822675,
+      "uuid": "fcc13b5f7adb4ccdb1f4d82c7263f1a8",
+      "type": 1,
+      "title": "a数组中a[0]至a[6]存放着7个数，依次是:-8、-3、1、7、16、...",
+      "content": "a数组中a[0]至a[6]存放着7个数，依次是:-8、-3、1、7、16、32、66，在数组中查找32，采用顺序查找和对分查找，查找的次数分别是",
+      "options": [
+        {
+          "id": 6265958,
+          "content": "6、2"
+        },
+        {
+          "id": 6265959,
+          "content": "6、3"
+        },
+        {
+          "id": 6265960,
+          "content": "2、6"
+        },
+        {
+          "id": 6265961,
+          "content": "2、3"
+        }
+      ],
+      "correct_option_ids": [
+        6265958
+      ],
+      "correct_options": [
+        "6、2"
+      ],
+      "analysis": "针对数组[-8、-3、1、7、16、32、66]查找32的情况,让我们分别分析顺序查找和对分查找的过程:<br><br>顺序查找过程:<br>从头开始逐个比较,直到找到32<br>1. 比较-8 (第1次)<br>2. 比较-3 (第2次)<br>3. 比较1 (第3次)<br>4. 比较7 (第4次)<br>5. 比较16 (第5次)<br>6. 比较32 (第6次),找到目标值<br><br>对分查找过程(要求数组有序,此数组已经有序):<br>1. 比较中间元素7 (第1次),32>7,取右半部分<br>2. 比较右半部分中间元素32 (第2次),找到目标值<br><br>因此顺序查找需要6次,对分查找需要2次,所以A选项(6、2)是正确答案。<br><br>分析其他选项:<br>B(6、3)错误:对分查找只需2次就能找到<br>C(2、6)错误:把顺序查找和对分查找的次数颠倒了<br>D(2、3)错误:顺序查找需要6次,对分查找需要2次,两个数都不对<br><br>这个例子很好地说明了对分查找在有序数组中的效率优势。"
+    },
+    {
+      "question_id": 90906,
+      "uuid": "81e624bb00104c0bb75be6ca69a31b74",
+      "type": 1,
+      "title": "设一组初始记录关键字序列为(13，18，24，35，47，50，62，83，90，115，134),则利用二分法查找关键字90需要比较的关键字个数为（ ）。",
+      "content": "<span>设一组初始记录关键字序列为<span>(13</span>，<span>18</span>，<span>24</span>，<span>35</span>，<span>47</span>，<span>50</span>，<span>62</span>，<span>83</span>，<span>90</span>，<span>115</span>，<span>134),</span>则利用二分法查找关键字<span>90</span>需要比较的关键字个数为（）。</span>",
+      "options": [
+        {
+          "id": 160737,
+          "content": "1"
+        },
+        {
+          "id": 160738,
+          "content": "2"
+        },
+        {
+          "id": 160739,
+          "content": "3"
+        },
+        {
+          "id": 160740,
+          "content": "4"
+        }
+      ],
+      "correct_option_ids": [
+        160738
+      ],
+      "correct_options": [
+        "2"
+      ],
+      "analysis": "二分查找法的核心思想是每次将待查记录所在区间缩小一半。对于有序序列，每次将中间位置的关键字与待查关键字比较，根据比较结果确定下一步在哪半区间继续查找。<br><br>具体查找过程：<br>1. 第一次：取中间位置 n/2（下标5），比较50与90，50<90，应在后半部分查找<br>2. 第二次：在后半部分取中间位置（下标8），比较90与90，找到目标值<br><br>因此总共比较了2次就找到了关键字90，所以答案选B。<br><br>分析其他选项：<br>A(1次)错误：由于序列长度为11，不可能1次就找到非端点的值<br>C(3次)错误：实际只需2次比较就已经找到<br>D(4次)错误：超过了实际所需的比较次数<br><br>二分查找的时间复杂度是O(log₂n)，对于长度为11的序列，最多需要⌈log₂11⌉=4次比较。但本题中由于90的位置比较理想，只需2次比较即可找到。"
+    },
+    {
+      "question_id": 25821,
+      "uuid": "6853e71d3b434d789e1b64c83314f8e0",
+      "type": 1,
+      "title": "使用二分法查找关键字的比较次数是？",
+      "content": "设有一组关键字序列{5,8,14,20,31,55,78,81,93,97,111}，使用二分（折半）法查找关键字93需要进行多少次比较？",
+      "options": [
+        {
+          "id": 42305,
+          "content": "2"
+        },
+        {
+          "id": 42306,
+          "content": "3"
+        },
+        {
+          "id": 42307,
+          "content": "4"
+        },
+        {
+          "id": 42308,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        42305
+      ],
+      "correct_options": [
+        "2"
+      ],
+      "analysis": "本题考察二分查找算法的基本原理和计算过程。让我们详细分析查找关键字93的过程：<br><br>1. 第一次比较：<br>中间位置 mid = (0+10)/2 = 5<br>比较 arr[5]=55 < 93，向右半部分查找<br>范围缩小到[6,10]<br><br>2. 第二次比较：<br>中间位置 mid = (6+10)/2 = 8<br>比较 arr[8]=93，找到目标值，查找结束<br><br>因此总共进行了2次比较就找到了目标值93，所以A选项(2次)是正确的。<br><br>分析其他选项错误原因：<br>B(3次)错误：实际只需2次就找到了，不需要第3次比较<br>C(4次)错误：超过了实际所需的比较次数<br>D(5次)错误：对于长度为11的有序序列，二分查找最多需要4次就能完成，不可能需要5次<br><br>需要注意的是，二分查找的时间复杂度是O(log₂n)，对于长度为11的序列，最多需要⌈log₂11⌉=4次比较就能完成查找。本题中由于93的位置比较理想，只用了2次就找到了。"
+    },
+    {
+      "question_id": 10974633,
+      "uuid": "b9e62115252a48658db4fc152b1a7454",
+      "type": 1,
+      "title": "有以下关键字序列（21,40,52,45,29,12,02,66），H（K...",
+      "content": "有以下关键字序列（21,40,52,45,29,12,02,66），H（K）=K%11。试在0~10的散裂空地址空间中，用线性探测再散列方法处理冲突，则等概率下查找成功的平均查找长度为（&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;）",
+      "options": [
+        {
+          "id": 6653466,
+          "content": "3/2"
+        },
+        {
+          "id": 6653467,
+          "content": "2/3"
+        },
+        {
+          "id": 6653468,
+          "content": "3/4"
+        },
+        {
+          "id": 6653469,
+          "content": "4/3"
+        }
+      ],
+      "correct_option_ids": [
+        6653466
+      ],
+      "correct_options": [
+        "3/2"
+      ],
+      "analysis": "这是一道考察散列表线性探测再散列方法的计算题。让我们一步步进行分析：<br><br>1. 首先需要计算每个关键字的散列地址 H(K) = K%11：<br>21%11=10<br>40%11=7<br>52%11=8<br>45%11=1<br>29%11=7<br>12%11=1<br>02%11=2<br>66%11=0<br><br>2. 按照线性探测再散列法处理冲突：<br>- 21→10<br>- 40→7<br>- 52→8<br>- 45→1<br>- 29→7→8→9<br>- 12→1→2→3<br>- 02→2→3→4<br>- 66→0<br><br>3. 计算每个元素的查找长度：<br>21需要1次比较<br>40需要1次比较<br>52需要1次比较<br>45需要1次比较<br>29需要3次比较<br>12需要3次比较<br>02需要3次比较<br>66需要1次比较<br><br>4. 计算平均查找长度：<br>ASL = (1+1+1+1+3+3+3+1)/8 = 14/8 = 7/4 = 1.75 = 3/2<br><br>因此A选项3/2是正确答案。<br><br>其他选项分析：<br>B(2/3)、C(3/4)和D(4/3)的值都小于实际计算结果1.75，不符合本题的线性探测再散列过程中的实际查找长度。这些值没有正确反映出发生冲突时需要多次比较导致的查找长度增加。"
+    },
+    {
+      "question_id": 326268,
+      "uuid": "b29024a99e174802a47f026d398a7af4",
+      "type": 1,
+      "title": "在有序表( 7, 13, 33, 87, 99, 97, 117, 123...",
+      "content": "在有序表( 7, 13, 33, 87,97,<span> 99, </span>117, 123,129,131,137)中，使用二分查找算法向上取整查找13时需要的关键字比较次数是（）",
+      "options": [
+        {
+          "id": 860199,
+          "content": "4"
+        },
+        {
+          "id": 860200,
+          "content": "3"
+        },
+        {
+          "id": 860201,
+          "content": "2"
+        },
+        {
+          "id": 860202,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        860200
+      ],
+      "correct_options": [
+        "3"
+      ],
+      "analysis": "<div>  <span>在有序</span>表中使用二分查找算法查找13的过程如下<span>：</span>  <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div>  <li>   初始列表：<span><span><span>(7,13,33,87,97,99,117,123,129,131,137</span><span><span>)</span></span></span></span>    <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div>  <li>   中间元素是99，13小于99，查找左半部分。    <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div> <span>3. 左</span>半部分：<span><span><span>(7,13,33,87,97)</span></span></span>  <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div>  <li>   中间元素是33，13小于33，查找左半部分。    <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div> <span>5. 左</span>半部分：<span><span><span>(7,13)</span></span></span>  <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div> <span>6. 中</span>间元素是1<span>3，找到目标。</span>  <div>   <div>    <div>     <div style=\"\">      <span></span>     </div>     <div style=\"\">      <span></span>     </div>    </div>   </div>  </div> <span>因此</span>，查找13需要 <span style=\"font-weight: 600;\">3</span> 次关键字比较<br> </div> <div> </div>"
+    },
+    {
+      "question_id": 11254641,
+      "uuid": "6253eea176ff41359018328e20ab68f2",
+      "type": 2,
+      "title": "在一个有序数组[1, 3, 5, 7, 9, 11, 13, 15]中，查...",
+      "content": "在一个有序数组[1,&nbsp;3,&nbsp;5,&nbsp;7,&nbsp;9,&nbsp;11,&nbsp;13,&nbsp;15]中，查找目标值9的过程可能是（）",
+      "options": [
+        {
+          "id": 7363207,
+          "content": "第一次比较中间元素7，第二次比较中间元素11，第三次找到9。"
+        },
+        {
+          "id": 7363208,
+          "content": "第一次比较中间元素7，第二次比较中间元素9，找到目标值。"
+        },
+        {
+          "id": 7363209,
+          "content": "第一次比较中间元素9，找到目标值。"
+        },
+        {
+          "id": 7363210,
+          "content": "第一次比较中间元素11，第二次比较中间元素7，第三次找到9。"
+        }
+      ],
+      "correct_option_ids": [
+        7363207,
+        7363209
+      ],
+      "correct_options": [
+        "第一次比较中间元素7，第二次比较中间元素11，第三次找到9。",
+        "第一次比较中间元素9，找到目标值。"
+      ],
+      "analysis": "- **二分查找过程**：<br />\n- 第一次比较中间元素7，9 &gt; 7，查找右半部分[9, 11, 13, 15]。<br />\n- 第二次比较中间元素11，9 &lt; 11，查找左半部分[9]。<br />\n- 第三次找到9。<br />\n- **B**：<span style=\"text-wrap-mode:wrap;\">不符合二分查找的逻辑</span>。<br />\n- **C**：第一次比较9，直接找到目标值。<br />\n- **A**：<span style=\"text-wrap-mode:wrap;\"><span style=\"text-wrap-mode:wrap;\">第一次比较中间元素7，第二次比较中间元素11，第三次找到9</span></span>。<br />\n- **D**：不符合二分查找的逻辑。<br />\n<div>\n</div>"
+    },
+    {
+      "question_id": 11269581,
+      "uuid": "9fd046f093bd4a559a649cef1afaea02",
+      "type": 1,
+      "title": "要将甲、乙、丙、丁存放在顺序表中，查找甲、乙、丙、丁的概率依次是0.3、0...",
+      "content": "要将甲、乙、丙、丁存放在顺序表中，查找甲、乙、丙、丁的概率依次是0.3、0.2、0.1、0.4，顺序查找效率最高的存放顺序是",
+      "options": [
+        {
+          "id": 7400205,
+          "content": "甲乙丙丁"
+        },
+        {
+          "id": 7400206,
+          "content": "甲丁丙乙"
+        },
+        {
+          "id": 7400207,
+          "content": "丁甲乙丙"
+        },
+        {
+          "id": 7400208,
+          "content": "丁丙乙甲"
+        }
+      ],
+      "correct_option_ids": [
+        7400207
+      ],
+      "correct_options": [
+        "丁甲乙丙"
+      ],
+      "analysis": "C<br> <br> 顺序查找期望比较次数最小化应按访问概率从大到小排列：丁(0.4) &gt; 甲(0.3) &gt; 乙(0.2) &gt; 丙(0.1)，即“丁甲乙丙”。<br>"
+    },
+    {
+      "question_id": 166209,
+      "uuid": "726f785d78634314a16deb1a46625428",
+      "type": 1,
+      "title": "下面关于查找算法的论述中哪个不是正确的？",
+      "content": "下面关于查找算法的论述中哪个不是正确的？",
+      "options": [
+        {
+          "id": 392080,
+          "content": "顺序查找需要查找表为有序表"
+        },
+        {
+          "id": 392081,
+          "content": "折半查找需要查找表为有序表"
+        },
+        {
+          "id": 392082,
+          "content": "查找表可分为静态查找表和动态查找表"
+        },
+        {
+          "id": 392083,
+          "content": "动态查找表的特点是表结构本身在查找过程中动态生成的"
+        }
+      ],
+      "correct_option_ids": [
+        392080
+      ],
+      "correct_options": [
+        "顺序查找需要查找表为有序表"
+      ],
+      "analysis": "顺序查找算法作为最基本的查找算法,并不要求查找表必须是有序的,这是它的一个重要特点和优势。它可以在任何表(有序或无序)中进行查找,虽然效率可能不如其他高级查找算法,但使用场景最为灵活。因此A选项说法不正确。<br><br>分析其他选项:<br>B正确:折半查找(二分查找)算法要求查找表必须是有序的,这是该算法能够每次将查找范围减半的前提条件。<br><br>C正确:查找表按照其性质可以分为静态查找表和动态查找表。静态查找表只做查找操作,不做插入和删除操作；而动态查找表除查找外,还可能发生插入和删除操作。<br><br>D正确:动态查找表的特点就是在查找过程中,表结构本身是动态生成的,这使得它能够支持插入、删除等操作,并保持查找效率。比如二叉排序树就是一种典型的动态查找表。"
+    },
+    {
+      "question_id": 91046,
+      "uuid": "446e780c93ad4b01b1470480eb43c023",
+      "type": 1,
+      "title": "设顺序线性表的长度为30，分成5块，每块6个元素，如果采用分块查找，则其平均查找长度为（ ）。",
+      "content": "<p style=\"margin-left: 12.6pt;text-indent: -12.6pt;\">\n  <span>设顺序线性表的长度为<span>30</span>，分成<span>5</span>块，每块<span>6</span>个元素，如果采用分块查找，则其平均查找长度为（）。</span>\n</p>",
+      "options": [
+        {
+          "id": 161182,
+          "content": "6"
+        },
+        {
+          "id": 161183,
+          "content": "11"
+        },
+        {
+          "id": 161184,
+          "content": "5"
+        },
+        {
+          "id": 161185,
+          "content": "6.5"
+        }
+      ],
+      "correct_option_ids": [
+        161185
+      ],
+      "correct_options": [
+        "6.5"
+      ],
+      "analysis": "在分块查找中，要查找一个元素需要两个步骤：第一步先查找索引表确定目标元素所在的块，第二步在确定的块内进行顺序查找。<br><br>本题中已知:<br>- 总长度为30个元素<br>- 分成5块，每块6个元素<br>- 采用分块查找<br><br>平均查找长度计算过程：<br>1. 查找索引表：由于有5块，平均需要(5+1)/2 = 3次比较<br>2. 在确定的块内查找：每块6个元素，平均需要(6+1)/2 = 3.5次比较<br>3. 总的平均查找长度 = 3 + 3.5 = 6.5次比较<br><br>因此D选项6.5是正确答案。<br><br>分析其他选项：<br>A(6)错误：没有考虑到查找过程的两个步骤，仅考虑了单个块的大小<br>B(11)错误：过大估计了查找次数，实际不需要这么多次比较<br>C(5)错误：比实际查找长度偏小，忽略了块内查找的开销<br><br>该题考查了分块查找的基本原理和平均查找长度的计算方法，要注意分块查找包含两个步骤，最终的平均查找长度应该是这两个步骤的和。"
+    },
+    {
+      "question_id": 372728,
+      "uuid": "91bd731481fa42a994a39ef28cbb6caa",
+      "type": 1,
+      "title": "假设在有序线性表A[1..30]上进行二分查找,则比较五次查找成功的结点数量为（      ）",
+      "content": "假设在有序线性表A[1..30]上进行二分查找,则比较五次查找成功的结点数量为（      ）",
+      "options": [
+        {
+          "id": 969720,
+          "content": "8"
+        },
+        {
+          "id": 969721,
+          "content": "12"
+        },
+        {
+          "id": 969722,
+          "content": "15"
+        },
+        {
+          "id": 969723,
+          "content": "16"
+        }
+      ],
+      "correct_option_ids": [
+        969722
+      ],
+      "correct_options": [
+        "15"
+      ],
+      "analysis": "二分查找的过程可以用一棵判定树来表示。对于长度为30的有序表,经过5次比较查找成功的节点数需要通过以下分析确定:<br> <br> 1. 判定树的深度与比较次数相关:<br> - 第1层有1个节点(深度0)<br> - 第2层有2个节点(深度1) <br> - 第3层有4个节点(深度2)<br> - 第4层有8个节点(深度3) <br> - 第5层有15个节点(深度4)<br> - 第6层还可能有一些节点(深度5)<br> <br> 2. 经过5次比较能查找到的节点必然在第6层,也就是深度为5的位置。通过计算可知:<br> - 在该层之前的节点数为:1+2+4+8+15=30<br> - 这些节点都需要的比较次数小于5次<br> - 而恰好需要5次比较的节点只会出现在第6层,数量为15个<br> <br> 因此C选项15是正确答案。<br> <br> 分析其他选项:<br> A(8)错误:8是第4层的节点数,小于实际值<br> B(12)错误:12不是任何层的节点数,是个错误数字<br> D(16)错误:16大于实际值,且不符合二分查找的性质<br> <br> 这个结果可以通过画出完整的二分查找判定树来验证,恰好需要5次比较才能查找成功的节点数就是15个。"
+    },
+    {
+      "question_id": 107863,
+      "uuid": "f8c3968c717c4faf9b16c31b79d6b161",
+      "type": 1,
+      "title": "<span>对线性表进行折半查找时，要求线性表必须以链式方式存储，且结点按关键字有序排列，这样的说法正确吗？</span>",
+      "content": "<span>对线性表进行折半查找时，要求线性表必须以链式方式存储，且结点按关键字有序排列，这样的说法正确吗？</span>",
+      "options": [
+        {
+          "id": 199213,
+          "content": "正确"
+        },
+        {
+          "id": 199214,
+          "content": "不正确"
+        }
+      ],
+      "correct_option_ids": [
+        199214
+      ],
+      "correct_options": [
+        "不正确"
+      ],
+      "analysis": "折半查找法(二分查找)要求线性表必须是顺序存储结构,而不是链式存储结构。因为折半查找的核心是通过计算中间位置快速定位元素,这需要能够随机访问任意位置的元素。<br><br>具体分析如下:<br><br>1. 顺序存储结构的特点:<br>- 物理存储单元连续<br>- 可以随机访问,通过首地址和偏移量直接计算任意位置<br>- 支持O(1)时间复杂度的随机访问<br>- 适合折半查找<br><br>2. 链式存储结构的特点:<br>- 物理存储单元不连续<br>- 只能顺序访问,需要通过指针逐个遍历<br>- 随机访问需要O(n)时间复杂度<br>- 不适合折半查找<br><br>3. 题目说法错误的地方:<br>- 错误地要求使用链式存储<br>- 虽然要求节点有序是对的,但存储结构搞错了<br>- 链表无法实现高效的折半查找<br><br>所以B(不正确)是正确答案。折半查找确实要求数据有序,但必须采用顺序存储结构,而不是链式存储结构。"
+    },
+    {
+      "question_id": 10974631,
+      "uuid": "3fb113fc8e4c4d4b8c81420c0f8442e5",
+      "type": 1,
+      "title": "下列有关哈希查找法，错误的是（ ）",
+      "content": "下列有关哈希查找法，错误的是（&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;）",
+      "options": [
+        {
+          "id": 6653474,
+          "content": "哈希表是一种计算式查找法"
+        },
+        {
+          "id": 6653475,
+          "content": "可以通过改进哈希函数来减少冲突"
+        },
+        {
+          "id": 6653476,
+          "content": "装填因子α越小，发生冲突的可能性越大"
+        },
+        {
+          "id": 6653477,
+          "content": "哈希表的平均查找长度与带散列元素数目n无关"
+        }
+      ],
+      "correct_option_ids": [
+        6653476
+      ],
+      "correct_options": [
+        "装填因子α越小，发生冲突的可能性越大"
+      ],
+      "analysis": "这道题主要考察哈希查找法的基本概念和特性。C选项是错误的,因为装填因子α与冲突发生的关系恰好相反 - 装填因子α越大,发生冲突的可能性才越大。装填因子α表示哈希表中已存入的记录数与哈希表长度的比值,当这个比值越大时,表示表中已经存储了较多数据,新数据插入时发生冲突的概率自然增大。<br><br>分析其他选项:<br>A正确:哈希查找法确实是一种计算式查找法,它通过哈希函数直接计算出数据存储位置,不需要比较操作。<br><br>B正确:通过优化哈希函数的设计可以使数据分布更均匀,从而减少冲突的发生。这是提高哈希表性能的重要手段。<br><br>D正确:哈希表的平均查找长度主要取决于装填因子α和处理冲突的方法,与表中元素的具体数目n没有直接关系。这是哈希查找的一个重要特点。<br><br>这体现了哈希查找法既高效又灵活的特点,通过合理设计可以实现较好的查找性能。"
+    },
+    {
+      "question_id": 107718,
+      "uuid": "c5dac94361b44bfc9b9d900e03ecdfe2",
+      "type": 1,
+      "title": "查找效率最高的二叉排序树是？",
+      "content": "<span>查找效率最高的二叉排序树是？</span><u><span><span></span><span></span></span></u>",
+      "options": [
+        {
+          "id": 198894,
+          "content": "所有结点的左子树都为空的二叉排序树"
+        },
+        {
+          "id": 198895,
+          "content": "所有结点的右子树都为空的二叉排序树"
+        },
+        {
+          "id": 198896,
+          "content": "平衡二叉树"
+        },
+        {
+          "id": 198897,
+          "content": "没有左子树的二叉排序树"
+        }
+      ],
+      "correct_option_ids": [
+        198896
+      ],
+      "correct_options": [
+        "平衡二叉树"
+      ],
+      "analysis": "<div>  在所有排序二叉树中查找效率最高的是平衡树。 </div> <div>  A、B选项：此时树呈链状，故A、B错。 </div> <div>  D选项：此时左右不平衡，故D错。 </div> <div>  答案选C。 </div>"
+    },
+    {
+      "question_id": 74204,
+      "uuid": "b7be9d2d793d482da6d47e82e3c46bc0",
+      "type": 1,
+      "title": "用二分法查找表 (a0,a1,a2,a3,……a16) ，需要比较 2 次才能找到的元素是（ ）",
+      "content": "<p>  <span>用二分法查找表</span> <span>(a0,a1,a2,a3,……a16)</span> <span>，需要比较</span> <span>2</span> <span>次才能找到的元素是（</span> <span>） </span>  </p>",
+      "options": [
+        {
+          "id": 120497,
+          "content": "a7和a16"
+        },
+        {
+          "id": 120498,
+          "content": "a11和a13"
+        },
+        {
+          "id": 120499,
+          "content": "a1和a14"
+        },
+        {
+          "id": 120500,
+          "content": "a3和a12"
+        }
+      ],
+      "correct_option_ids": [
+        120500
+      ],
+      "correct_options": [
+        "a3和a12"
+      ],
+      "analysis": "<div>  第一次：low=0，high=16，mid=8 </div> <div>  第二次有两种情况， </div> <div>  情况一：low=0，high=7，mid=3 </div> <div>  情况二：low=9，high=16，mid=12 </div> <div>  因此A、B、C错，D对。 </div>"
+    },
+    {
+      "question_id": 11262334,
+      "uuid": "a9d7f1de7fb444e19043541364a9ee0d",
+      "type": 1,
+      "title": "在长度为75的有序表中使用二分搜索法查找指定元素时，最多比较（ ）次",
+      "content": "在长度为75的有序表中使用二分搜索法查找指定元素时，最多比较（&nbsp;）次",
+      "options": [
+        {
+          "id": 7378208,
+          "content": "4"
+        },
+        {
+          "id": 7378209,
+          "content": "5"
+        },
+        {
+          "id": 7378210,
+          "content": "6"
+        },
+        {
+          "id": 7378211,
+          "content": "7"
+        }
+      ],
+      "correct_option_ids": [
+        7378211
+      ],
+      "correct_options": [
+        "7"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 44614,
+      "uuid": "1fb3b5b14603400c9f053202c5a629f4",
+      "type": 1,
+      "title": "KMP算法下，长为n的字符串中匹配长度为m的子串的复杂度为（）",
+      "content": "KMP算法下，长为n的字符串中匹配长度为m的子串的复杂度为（）",
+      "options": [
+        {
+          "id": 45526,
+          "content": "O(n)"
+        },
+        {
+          "id": 45527,
+          "content": "O(m + n)"
+        },
+        {
+          "id": 45528,
+          "content": "O(m + log(m))"
+        },
+        {
+          "id": 45529,
+          "content": "O(n + log(m))"
+        }
+      ],
+      "correct_option_ids": [
+        45527
+      ],
+      "correct_options": [
+        "O(m + n)"
+      ],
+      "analysis": "KMP算法的时间复杂度为O(M+N)是最优的，因为它需要完成两个主要步骤：<br><br>1. 预处理模式串(Pattern)，构建next数组，这个过程的时间复杂度是O(M)，其中M是模式串的长度。<br><br>2. 执行匹配过程，在主串(Text)上进行匹配，这个过程的时间复杂度是O(N)，其中N是主串的长度。<br><br>所以总的时间复杂度是这两个步骤的复杂度之和：O(M+N)。<br><br>分析其他选项：<br><br>A选项 O(N)：<br>错误，因为忽略了构建next数组所需的O(M)时间。<br><br>C选项 O(M+logM)：<br>错误，这个复杂度完全不符合KMP算法的特点。首先忽略了对主串的遍历时间O(N)，其次KMP算法中并没有涉及到对数级别的操作。<br><br>D选项 O(N+logM)：<br>错误，原因同C，KMP算法中不存在对数级别的操作，而且预处理模式串的时间复杂度是O(M)而不是O(logM)。<br><br>KMP算法正是因为通过O(M)的预处理时间，换取了线性的匹配时间，避免了朴素字符串匹配算法中的回溯，才使得整体时间复杂度优化到了O(M+N)。"
+    },
+    {
+      "question_id": 10974613,
+      "uuid": "c7e8e5e56b7344fcb97b70faf891b510",
+      "type": 1,
+      "title": "设数据库mydb中有3个表： Student(Sno,Sname,Sage...",
+      "content": "<div>  设数据库mydb中有3个表： </div> <div>  Student(Sno,Sname,Sage) </div> <div>  Course(Cno,Cname) </div> <div>  SC(Sno,Cno,Grade) </div> <div>  其中，Sno,Sname,Sage表示学生的学号、姓名、年龄，Cno、Cname表示课程的课程编号、课程名称，Grade表示成绩。 </div> <div>  查询选修了至少3门课程的学生的学生表信息，正确的SQL语句是 </div>",
+      "options": [
+        {
+          "id": 6653430,
+          "content": "select * from Student,SC\nwhere count(*) >= 3\ngroup by Sno"
+        },
+        {
+          "id": 6653431,
+          "content": "select Student.* from Student,SC\nwhere count(*) >= 3\nand Student.Sno = SC.Sno\ngroup by Sno"
+        },
+        {
+          "id": 6653432,
+          "content": "select Student.* from Student,SC\ngroup by Sno\nwhere count(*) >= 3\nand Student.Sno = SC.Sno"
+        },
+        {
+          "id": 6653433,
+          "content": "select * from Student\nwhere Sno in (\nselect Sno from SC\ngroup by Sno\nhaving count(*) >= 3)"
+        }
+      ],
+      "correct_option_ids": [
+        6653433
+      ],
+      "correct_options": [
+        "select * from Student\nwhere Sno in (\nselect Sno from SC\ngroup by Sno\nhaving count(*) >= 3)"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 86418,
+      "uuid": "a7e13d38d7e04d338b4bbde2bac20f5b",
+      "type": 1,
+      "title": "具有12个关键字的有序表，折半查找的平均查找长度（ ）",
+      "content": "<p>\n  <span>具有<span>12</span>个关键字的有序表，折半查找的平均查找长度（）</span>\n</p>",
+      "options": [
+        {
+          "id": 148170,
+          "content": "3.1"
+        },
+        {
+          "id": 148171,
+          "content": "4"
+        },
+        {
+          "id": 148172,
+          "content": "2.5"
+        },
+        {
+          "id": 148173,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        148170
+      ],
+      "correct_options": [
+        "3.1"
+      ],
+      "analysis": "在折半查找(二分查找)中,对于有序表的平均查找长度可以通过以下方式计算:<br><br>对于包含n个元素的有序表,成功查找的平均查找长度(ASL)计算公式为:<br>ASL = (1×P₁ + 2×P₂ + 3×P₃ + ... + h×Pₕ)<br>其中h是查找树的深度,Pᵢ是第i层节点数/n。<br><br>对于12个关键字:<br>- 第1层:1个节点,需要1次比较<br>- 第2层:2个节点,需要2次比较<br>- 第3层:4个节点,需要3次比较<br>- 第4层:5个节点,需要4次比较<br><br>因此ASL = (1×1 + 2×2 + 3×4 + 4×5)/12 = 3.1<br><br>所以A选项3.1是正确答案。<br><br>分析其他选项:<br>B的4偏大,不符合计算结果<br>C的2.5偏小,实际查找次数不可能这么少<br>D的5明显过大,因为二分查找的效率要远高于这个值<br><br>这也体现了二分查找的高效性,即使对于12个元素,平均只需要约3次比较就能找到目标值。"
+    },
+    {
+      "question_id": 36320,
+      "uuid": "8a36137053fe46d2bbc2ca8edb445419",
+      "type": 1,
+      "title": "已知有序序列b c d e f g q r s t,则在二分查找关键字b的过程中，先后进行比较的关键字依次是多少?()",
+      "content": "已知有序序列b c d e f g q r s t,则在二分查找关键字b的过程中，先后进行比较的关键字依次是多少?()",
+      "options": [
+        {
+          "id": 43666,
+          "content": "f d b"
+        },
+        {
+          "id": 43667,
+          "content": "f c b"
+        },
+        {
+          "id": 43668,
+          "content": "g c b"
+        },
+        {
+          "id": 43669,
+          "content": "g d b"
+        }
+      ],
+      "correct_option_ids": [
+        43667
+      ],
+      "correct_options": [
+        "f c b"
+      ],
+      "analysis": "二分查找是在有序序列中查找目标值的算法,每次将序列分成两半,比较中间值与目标值的大小来缩小查找范围。<br><br>让我们分析查找关键字b的过程:<br><br>1. 序列 b c d e f g q r s t 的中间位置是f<br>第一次比较:f与b比较,f>b,所以在左半部分查找<br><br>2. 在序列b c d e中继续查找<br>中间位置是c<br>第二次比较:c与b比较,c>b,所以在左半部分查找<br><br>3. 此时只剩下b<br>第三次比较:直接找到b<br><br>所以整个查找过程中,比较的关键字顺序是:f→c→b<br><br>因此B选项\"f c b\"是正确答案。<br><br>分析其他选项:<br>A选项\"f d b\":第二次比较不应该是d而是c<br>C选项\"g c b\":第一次比较不应该是g而是f<br>D选项\"g d b\":第一次和第二次比较都不正确<br><br>在有序序列中进行二分查找时,第一次比较一定是序列中间位置的元素f,这就排除了C、D选项。第二次比较一定是剩余左半部分的中间元素c,这就排除了A选项。"
+    },
+    {
+      "question_id": 11180508,
+      "uuid": "26ee2c280ea4472da502e51601e2cb1e",
+      "type": 1,
+      "title": "使用KMP算法在主串 \"abaabaabcabaabc\" 中搜索模式串 \"...",
+      "content": "<span>使用KMP算法在主串 \"abaabaabcabaabc\" 中搜索模式串 \"abaabc\"，到匹配成功时为止，请问在匹配过程中进行的单个字符间的比较次数是（）。</span>",
+      "options": [
+        {
+          "id": 7193393,
+          "content": "8"
+        },
+        {
+          "id": 7193394,
+          "content": "10"
+        },
+        {
+          "id": 7193395,
+          "content": "12"
+        },
+        {
+          "id": 7193396,
+          "content": "14"
+        }
+      ],
+      "correct_option_ids": [
+        7193394
+      ],
+      "correct_options": [
+        "10"
+      ],
+      "analysis": ""
+    },
+    {
+      "question_id": 5631,
+      "uuid": "af81701c525c40d29f50772df4e38edc",
+      "type": 1,
+      "title": "对一个排好序的线性表，用二分法检索表中的元素，被检索的表应当采用哪种存储表示？",
+      "content": "对一个排好序的线性表，用二分法检索表中的元素，被检索的表应当采用哪种存储表示？",
+      "options": [
+        {
+          "id": 10903,
+          "content": "顺序存储"
+        },
+        {
+          "id": 10904,
+          "content": "链接存储"
+        },
+        {
+          "id": 10905,
+          "content": "散列法存储"
+        },
+        {
+          "id": 10906,
+          "content": "存储表示不受限制"
+        }
+      ],
+      "correct_option_ids": [
+        10903
+      ],
+      "correct_options": [
+        "顺序存储"
+      ],
+      "analysis": "能用二分法进行查找的应为顺序存储的有序线性表，故A对，B、C、D错"
+    },
+    {
+      "question_id": 87623,
+      "uuid": "17c2abd5a5934441a34313a187c53dc5",
+      "type": 1,
+      "title": "折半查找法适用于 （ ）。\n  &lt;/",
+      "content": "<p>\n  <b>\n    <span>折半查找法适用于</span>\n  </b>\n  <b>\n    <span>（）。</span>\n  </b>\n</p>",
+      "options": [
+        {
+          "id": 151811,
+          "content": "有序顺序表"
+        },
+        {
+          "id": 151812,
+          "content": "有序单链表"
+        },
+        {
+          "id": 151813,
+          "content": "有序顺序表和有序单链表都可以"
+        },
+        {
+          "id": 151814,
+          "content": "无限制"
+        }
+      ],
+      "correct_option_ids": [
+        151811
+      ],
+      "correct_options": [
+        "有序顺序表"
+      ],
+      "analysis": "折半查找法(二分查找)只适用于有序顺序表,因为该算法需要通过随机访问方式直接定位到序列中间位置的元素,这要求存储结构必须支持随机访问。<br><br>分析各选项:<br>A正确:顺序表采用数组存储,支持随机访问,且要求元素有序,满足折半查找的两个基本要求。<br><br>B错误:链表是顺序存取的数据结构,不支持随机访问,要访问中间元素必须从头结点开始逐个遍历,这样就失去了折半查找的优势。<br><br>C错误:由于链表结构的限制,折半查找不适用于有序单链表,所以不能同时适用于两种结构。<br><br>D错误:折半查找对数据结构是有限制的,必须是支持随机访问且元素有序的存储结构,并不是对所有数据结构都适用。<br><br>要点总结:<br>1. 折半查找要求存储结构支持随机访问<br>2. 折半查找要求元素必须有序<br>3. 链表不支持随机访问,不适合使用折半查找"
+    },
+    {
+      "question_id": 62417,
+      "uuid": "35977841bdf84954ae7bf2a64b2deb48",
+      "type": 1,
+      "title": "在顺序表{12,15,17,20,24,30,38,43,45,51,52}中，用二分法查找关键字20需做（ ） 次关键字比较。",
+      "content": "<p>  <span>在顺序表{12,15,17,20,24,30,38,43,45,51,52}中，用二分法查找关键字20需做（ ） 次关键字比较。</span><span></span>  </p>",
+      "options": [
+        {
+          "id": 93762,
+          "content": "2"
+        },
+        {
+          "id": 93763,
+          "content": "3"
+        },
+        {
+          "id": 93764,
+          "content": "4"
+        },
+        {
+          "id": 93765,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        93763
+      ],
+      "correct_options": [
+        "3"
+      ],
+      "analysis": "<div>  第一次：low=0，high=11，mid=5，30&gt;20，high=mid-1 </div> <div>  第二次：low=0，high=4，mid=2，17&lt;20，low=mid+1 </div> <div>  第三次：low=3，high=4，mid=3，20=20，查找成功 </div> <div>  故A、C、D错，B对 </div>"
+    },
+    {
+      "question_id": 1393,
+      "uuid": "7be5338532324d9296ba9837b0479af7",
+      "type": 1,
+      "title": "广告系统为了做地理位置定向，将IPV4分割为627672个区间，并标识了地理位置信息，区间之间无重叠，用二分查找将IP地址映射到地理位置信息，请问在最坏的情况下，需要查找多少次?",
+      "content": "广告系统为了做地理位置定向，将IPV4分割为627672个区间，并标识了地理位置信息，区间之间无重叠，用二分查找将IP地址映射到地理位置信息，请问在最坏的情况下，需要查找多少次?",
+      "options": [
+        {
+          "id": 3540,
+          "content": "17"
+        },
+        {
+          "id": 3541,
+          "content": "18"
+        },
+        {
+          "id": 3542,
+          "content": "19"
+        },
+        {
+          "id": 3543,
+          "content": "20"
+        }
+      ],
+      "correct_option_ids": [
+        3543
+      ],
+      "correct_options": [
+        "20"
+      ],
+      "analysis": "这道题目考察了二分查找算法在实际应用场景中的性能分析。<br><br>要确定最坏情况下的查找次数,我们需要分析以下几点:<br><br>1. 区间总数是627672个,这些区间是有序且不重叠的<br>2. 二分查找的查找次数取决于数据规模n,符合公式:⌈log₂n⌉(向上取整)<br>3. 将627672代入计算:<br>   log₂627672 ≈ 19.26<br><br>由于要向上取整,所以最终结果是20次,因此D选项是正确答案。<br><br>分析其他选项：<br>A(17次)错误:log₂627672 > 19,显然不可能是17次<br>B(18次)错误:同上,18次也不够<br>C(19次)错误:虽然很接近,但因为19.26要向上取整,所以19次仍然不够<br><br>补充说明:<br>在二分查找中,每次查找都会将搜索范围缩小一半。最坏情况下需要一直查找到只剩一个元素为止。由于627672比2¹⁹(524288)大但小于2²⁰(1048576),所以最坏情况需要20次才能确定具体位置。"
+    },
+    {
+      "question_id": 44553,
+      "uuid": "8ee6c668671b4f76b6ce6c620d7b1467",
+      "type": 2,
+      "title": "在154个元素组成有序表进行二分法查找，可能的比较次数为",
+      "content": "在154个元素组成有序表进行二分法查找，可能的比较次数为？",
+      "options": [
+        {
+          "id": 45372,
+          "content": "10"
+        },
+        {
+          "id": 45373,
+          "content": "8"
+        },
+        {
+          "id": 45374,
+          "content": "4"
+        },
+        {
+          "id": 45375,
+          "content": "1"
+        }
+      ],
+      "correct_option_ids": [
+        45373,
+        45374,
+        45375
+      ],
+      "correct_options": [
+        "8",
+        "4",
+        "1"
+      ],
+      "analysis": "对于有序表使用二分查找时，比较次数取决于查找过程需要将区间二分的次数，直到找到目标元素或确定元素不存在。<br><br>对于154个元素的有序表，可以通过以下分析确定可能的比较次数：<br><br>1. 首先计算log2(154)≈7.27，这表示最多需要8次比较<br><br>2. 具体分析比较次数：<br>- 最多比较次数：8次（当查找的元素在最后一次比较才找到或不存在）<br>- 最少比较次数：1次（当第一次比较就找到目标元素）<br>- 中间情况：4次左右（当目标元素在中间位置附近）<br><br>因此BCD都是正确的：<br>- B(8次)：表示最大可能的比较次数<br>- C(4次)：表示中间情况的比较次数<br>- D(1次)：表示最小可能的比较次数<br><br>选项A(10次)错误的原因：<br>对于154个元素的有序表，最多只需要8次比较就能完成查找，不可能需要10次。因为2^8=256>154，所以8次比较足以覆盖所有元素。<br><br>在实际应用中，二分查找的效率取决于目标元素在表中的位置，可能出现1次、4次或最多8次比较的情况，这些都是合理的可能值。"
+    },
+    {
+      "question_id": 45208,
+      "uuid": "b78bf3e2e3d3420f9f2341ac1b7aab14",
+      "type": 1,
+      "title": "对一个含有20个元素的有序数组做二分查找，数组起始下标为1，则查找A[2]的比较序列的下标为（）",
+      "content": "对一个含有20个元素的有序数组做二分查找，数组起始下标为1，则查找A[2]的比较序列的下标为（）",
+      "options": [
+        {
+          "id": 47744,
+          "content": "9,5,4,2"
+        },
+        {
+          "id": 47745,
+          "content": "10,5,2"
+        },
+        {
+          "id": 47746,
+          "content": "9,6,2"
+        },
+        {
+          "id": 47747,
+          "content": "20,10,5,3,2"
+        }
+      ],
+      "correct_option_ids": [
+        47745
+      ],
+      "correct_options": [
+        "10,5,2"
+      ],
+      "analysis": "<div>  第一次：low=1，high=20，mid=10，high=mid-1 </div> <div>  第二次：low=1，high=9，mid=5，high=mid-1 </div> <div>  第三次：low=1，high=4，mid=2，查找成功 </div> <div>  故比较序列的下标为10，5，2，选B </div>"
+    },
+    {
+      "question_id": 11258007,
+      "uuid": "e602456c3ac44d21b32320f663e5f739",
+      "type": 1,
+      "title": "已知一个有序表（20,23,50,56,77,83,89,94,103,1...",
+      "content": "已知一个有序表（20,23,50,56,77,83,89,94,103,110），当二分查找值为23的元素时，查找成功时的比较次数为（）",
+      "options": [
+        {
+          "id": 7370114,
+          "content": "2"
+        },
+        {
+          "id": 7370115,
+          "content": "3"
+        },
+        {
+          "id": 7370116,
+          "content": "4"
+        },
+        {
+          "id": 7370117,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        7370114
+      ],
+      "correct_options": [
+        "2"
+      ],
+      "analysis": "第一次查找77，第二次查找23，找到了"
+    },
+    {
+      "question_id": 11294830,
+      "uuid": "dda7e01f39f8473a8cfcf916b337a4e2",
+      "type": 2,
+      "title": "一个有序表Q为(13, 32, 52, 73, 95, 118, 142,...",
+      "content": "一个有序表Q为(13,&nbsp;32,&nbsp;52,&nbsp;73,&nbsp;95,&nbsp;118,&nbsp;142,&nbsp;167)，若采用对每个关键字的查找概率相同的二分查找算法来查找目标值，则下列说法中正确的是（）",
+      "options": [
+        {
+          "id": 7402100,
+          "content": "查找一个Q中不存在的关键字，查找次数最多不超过4"
+        },
+        {
+          "id": 7402101,
+          "content": "查找一个Q中存在的关键字，查找次数最多是5"
+        },
+        {
+          "id": 7402102,
+          "content": "查找成功的平均查找长度为45/9"
+        },
+        {
+          "id": 7402103,
+          "content": "查找失败的平均查找长度为29/9"
+        }
+      ],
+      "correct_option_ids": [
+        7402100,
+        7402103
+      ],
+      "correct_options": [
+        "查找一个Q中不存在的关键字，查找次数最多不超过4",
+        "查找失败的平均查找长度为29/9"
+      ],
+      "analysis": "<span style=\"text-wrap:wrap;\">查找一个Q中存在的关键字，查找次数最多是4，B错误</span>"
+    },
+    {
+      "question_id": 14622,
+      "uuid": "55e57cfd4ea14f4a8975041745a7930b",
+      "type": 1,
+      "title": "顺序查找的平均时间是多少？",
+      "content": "顺序查找的平均时间是多少？",
+      "options": [
+        {
+          "id": 17458,
+          "content": "n/2"
+        },
+        {
+          "id": 17459,
+          "content": "n"
+        },
+        {
+          "id": 17460,
+          "content": "n * n"
+        },
+        {
+          "id": 17461,
+          "content": "log n"
+        }
+      ],
+      "correct_option_ids": [
+        17458
+      ],
+      "correct_options": [
+        "n/2"
+      ],
+      "analysis": "顺序查找也称为线性查找,是最基本的查找算法。其平均查找时间复杂度为n/2,所以A选项正确。<br><br>具体分析原因:<br>1. 在顺序查找中,待查找的元素可能出现在数组的任何位置<br>2. 若元素在第1个位置,需要比较1次<br>3. 若元素在最后一个位置,需要比较n次<br>4. 平均情况下,需要比较(1+2+3+...+n)/n = (n+1)/2 ≈ n/2次<br><br>其他选项分析:<br>B错误:n是最坏情况的时间复杂度,而不是平均情况<br>C错误:n*n是冒泡排序等排序算法的时间复杂度,与顺序查找无关<br>D错误:log n是二分查找的时间复杂度,不是顺序查找的时间复杂度<br><br>需要说明的是,虽然顺序查找的平均时间复杂度是O(n/2),但在大O表示法中通常省略常数项,简写为O(n)。这里题目特指平均时间而不是时间复杂度,所以是n/2。"
+    },
+    {
+      "question_id": 11183292,
+      "uuid": "b4a9f46dc88e4076a92ad8ca234645a1",
+      "type": 2,
+      "title": "已知一个有序表X(2, 5, 9, 15, 22, 30, 39, 49,...",
+      "content": "已知一个有序表X(2,&nbsp;5,&nbsp;9,&nbsp;15,&nbsp;22,&nbsp;30,&nbsp;39,&nbsp;49,&nbsp;60)，若采用二分查找算法查找目标值，对每个关键字的查找概率相同，则下列说法中正确的是（）",
+      "options": [
+        {
+          "id": 7199156,
+          "content": "查找一个X中不存在的关键字，查找次数最多是5"
+        },
+        {
+          "id": 7199157,
+          "content": "查找一个X中存在的关键字，查找次数最多不超过4"
+        },
+        {
+          "id": 7199158,
+          "content": "查找成功的平均查找长度为30/9"
+        },
+        {
+          "id": 7199159,
+          "content": "查找失败的平均查找长度为17/5"
+        }
+      ],
+      "correct_option_ids": [
+        7199157,
+        7199159
+      ],
+      "correct_options": [
+        "查找一个X中存在的关键字，查找次数最多不超过4",
+        "查找失败的平均查找长度为17/5"
+      ],
+      "analysis": "<div>\n\t<img src=\"https://uploadfiles.nowcoder.com/images/20240816/0_1723775668036/8B0BAC700B71E63759A138C4D8AB2D92\" alt=\"\" />\n</div>\n<div>\n\t查找成功的asl：<img src=\"https://www.nowcoder.com/equation?tex=(1*1%2B2*2%2B3*4%2B4*2)%2F9%3D%5Cfrac%7B25%7D%7B9%7D\" alt=\"\" />\n</div>\n<div>\n\t<img src=\"https://uploadfiles.nowcoder.com/images/20240816/0_1723776403216/EF012CB20927C5F751C5B6B59A77569F\" alt=\"\" /><br />\n</div>\n<div>\n\t<span style=\"text-wrap:wrap;\">查找失败的asl：</span><img src=\"https://www.nowcoder.com/equation?tex=(3*6%2B4*4)%2F10%3D%5Cfrac%7B34%7D%7B10%7D%3D%5Cfrac%7B17%7D%7B5%7D\" alt=\"(3*6+4*4)/10=\\frac{34}{10}\" /><br />\n</div>"
+    },
+    {
+      "question_id": 11182165,
+      "uuid": "285babfca2904cfbbc3228aa9bfbc408",
+      "type": 1,
+      "title": "已知串S='caccbacbb'，采用KMP算法进行模式匹配，则得到的ne...",
+      "content": "<span style=\"text-wrap:wrap;\">已知串S='caccbacbb'，<span style=\"color:#24292F;font-family:&quot;text-wrap:wrap;background-color:rgba(0, 0, 0, 0.05);\"><span style=\"text-wrap:wrap;\">采用KMP算法进行模式匹配，则得到的</span></span>next数组值为（）</span>",
+      "options": [
+        {
+          "id": 7196509,
+          "content": "<span>021221121</span>"
+        },
+        {
+          "id": 7196510,
+          "content": "<span>011211121</span>"
+        },
+        {
+          "id": 7196511,
+          "content": "011221121"
+        },
+        {
+          "id": 7196512,
+          "content": "<span>011221122</span>"
+        }
+      ],
+      "correct_option_ids": [
+        7196511
+      ],
+      "correct_options": [
+        "011221121"
+      ],
+      "analysis": "<div style=\"text-wrap:wrap;\">\n\t这道题采用手工求next数组的方法。\n</div>\n<div style=\"text-wrap:wrap;\">\n\t先求串S='<span style=\"text-wrap:wrap;\">caccbacbb</span>'的部分匹配值：\n</div>\n<div style=\"text-wrap:wrap;\">\n\t'c'的前后缀都为空，最长相等前后缀长度为0。\n</div>\n<div style=\"text-wrap:wrap;\">\n\t'ca'的前缀{c}<img src=\"https://www.nowcoder.com/equation?tex=%5Ccap\" alt=\"\" />后缀{a}=<img src=\"https://www.nowcoder.com/equation?tex=%5Cphi\" alt=\"\" />，最长相等前后缀长度为0.\n</div>\n<div style=\"text-wrap:wrap;\">\n\t'cac'的前缀{c,ca}<img src=\"https://www.nowcoder.com/equation?tex=%5Ccap\" alt=\"\" />后缀{c,ac}={c}，最长相等前后缀长度为1.\n</div>\n<div style=\"text-wrap:wrap;\">\n\t......\n</div>\n<div style=\"text-wrap:wrap;\">\n\t依次求出的部分匹配值如下表第三行所示，将其整体右移一位，低位用-1填充，如下表第四行所示。\n</div>\n<div style=\"text-wrap:wrap;\">\n\tPM是部分匹配值（Partial Match）\n</div>\n<div style=\"text-wrap:wrap;margin-bottom:0px !important;\">\n\t<table cellpadding=\"2\" cellspacing=\"0\" border=\"1\" bordercolor=\"#000000\">\n\t\t<tbody>\n\t\t\t<tr>\n\t\t\t\t<td>\n\t\t\t\t\t编号\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t2\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t3\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t4\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t5\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t6\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t7\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t8\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t9\n\t\t\t\t</td>\n\t\t\t</tr>\n\t\t\t<tr>\n\t\t\t\t<td>\n\t\t\t\t\tS\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tc\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\ta\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tc\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tc\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tb\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\ta\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tc\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tb\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\tb\n\t\t\t\t</td>\n\t\t\t</tr>\n\t\t\t<tr>\n\t\t\t\t<td>\n\t\t\t\t\tPM\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t</tr>\n\t\t\t<tr>\n\t\t\t\t<td>\n\t\t\t\t\tnext\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t-1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t1\n\t\t\t\t</td>\n\t\t\t\t<td>\n\t\t\t\t\t0\n\t\t\t\t</td>\n\t\t\t</tr>\n\t\t</tbody>\n\t</table>\n选项中next[1]等于0，故将next数组整体加1，答案选C\n</div>"
+    },
+    {
+      "question_id": 10959805,
+      "uuid": "68f57aee98d84c0489037c026aa4f63d",
+      "type": 1,
+      "title": "下列关于辅助索引说法错误的是（）",
+      "content": "<div>  <span>下列关于辅助索引说法错误的是（）</span>  </div>",
+      "options": [
+        {
+          "id": 6615694,
+          "content": "如果一条关系可以有不止一条包含相同搜索码值的记录，则该搜索码称为非唯一性搜索码"
+        },
+        {
+          "id": 6615695,
+          "content": "辅助索引通常是稀疏的以节省空间，并且每个搜索码值在索引中严格对应唯一一个索引项。"
+        },
+        {
+          "id": 6615696,
+          "content": "辅助索引只存储部分搜索码值，则具有中间搜索码值的记录可能存在于文件中的任何位置"
+        },
+        {
+          "id": 6615697,
+          "content": "非唯一性搜索码上的辅助索引中的指针不会直接指向记录"
+        }
+      ],
+      "correct_option_ids": [
+        6615695
+      ],
+      "correct_options": [
+        "辅助索引通常是稀疏的以节省空间，并且每个搜索码值在索引中严格对应唯一一个索引项。"
+      ],
+      "analysis": "B<br> <br> - 辅助索引一般为稠密索引（dense），不是稀疏索引；B表述错误。<br>"
+    },
+    {
+      "question_id": 74205,
+      "uuid": "208525efc47345a881d7a42289a677c9",
+      "type": 1,
+      "title": "用概率查找改进查找效率，是经过多次查找以后使得（ ）",
+      "content": "<p>  <span>用概率查找改进查找效率，是经过多次查找以后使得（</span> <span>） </span>  </p>",
+      "options": [
+        {
+          "id": 120501,
+          "content": "查找次数越少的元素查找速度越快"
+        },
+        {
+          "id": 120502,
+          "content": "查找次数越少的元素越往前存放"
+        },
+        {
+          "id": 120503,
+          "content": "查找次数越多的元素越往后存放"
+        },
+        {
+          "id": 120504,
+          "content": "查找次数越多的元素查找速度越快"
+        }
+      ],
+      "correct_option_ids": [
+        120504
+      ],
+      "correct_options": [
+        "查找次数越多的元素查找速度越快"
+      ],
+      "analysis": "<div>  A：如果使查找次数越少的元素查找速度越快，那么查找次数越多的元素查找速度就会越慢，效率下降，A错。 </div> <div>  B：查找次数越少的元素越往前存放会使得<span>查找次数越少的元素查找速度越快，<span>查找次数越多的元素查找速度越慢</span>，效率下降，B错。</span> </div> <div>  <span>C：<span>查找次数越多的元素越往后存放会使得</span><span>查找次数越少的元素查找速度越快，查找次数越多的元素查找速度越慢，效率下降，C错。</span></span> </div> <div>  <span>D：正确。</span> </div>"
+    },
+    {
+      "question_id": 10960029,
+      "uuid": "28cd18f67f614ccd8e551ccebd675218",
+      "type": 1,
+      "title": "已知一组关键字为 {21, 32, 43, 57, 61, 74, 85}...",
+      "content": "已知一组关键字为&nbsp;{21,&nbsp;32,&nbsp;43,&nbsp;57,&nbsp;61,&nbsp;74,&nbsp;85}，采用链地址法处理冲突，散列表是一个下标从0开始的长度为12的一维数组，散列函数为&nbsp;H(key)&nbsp;=&nbsp;key&nbsp;MOD&nbsp;12，则装填因子&nbsp;α&nbsp;是（）。",
+      "options": [
+        {
+          "id": 6620850,
+          "content": "7/12"
+        },
+        {
+          "id": 6620851,
+          "content": "8/12"
+        },
+        {
+          "id": 6620852,
+          "content": "7/13"
+        },
+        {
+          "id": 6620853,
+          "content": "8/13<br />"
+        }
+      ],
+      "correct_option_ids": [
+        6620850
+      ],
+      "correct_options": [
+        "7/12"
+      ],
+      "analysis": "装填因子α是指散列表中实际存储的记录数与散列表长度的比值。<br><br>计算过程：<br>1. 散列表长度为12（数组下标0-11）<br>2. 给定关键字集合{21, 32, 43, 57, 61, 74, 85}，计算每个关键字的散列地址：<br>   - H(21) = 21 mod 12 = 9<br>   - H(32) = 32 mod 12 = 8<br>   - H(43) = 43 mod 12 = 7<br>   - H(57) = 57 mod 12 = 9<br>   - H(61) = 61 mod 12 = 1<br>   - H(74) = 74 mod 12 = 2<br>   - H(85) = 85 mod 12 = 1<br>3. 关键字总数为7个，散列表长度为12<br>4. 因此装填因子α = 7/12<br><br>A选项7/12是正确答案。<br><br>分析其他选项错误原因：<br>B选项8/12错误：实际记录数是7个而不是8个<br>C选项7/13错误：散列表长度是12而不是13<br>D选项8/13错误：既用错了记录数(8)，又用错了散列表长度(13)<br><br>需要注意的是，即使有冲突发生（如21和57映射到9，61和85映射到1），装填因子的计算仍然只考虑实际的关键字个数与散列表长度的比值，与冲突的处理方法无关。"
+    },
+    {
+      "question_id": 14786,
+      "uuid": "d7bfb06c881c443195b63395fc811460",
+      "type": 1,
+      "title": "在有序表(12,24,36,48,60,72,84)中二分查找关键字72时所需进行的关键字比较次数是多少？",
+      "content": "在有序表(12,24,36,48,60,72,84)中二分查找关键字72时所需进行的关键字比较次数是多少？",
+      "options": [
+        {
+          "id": 18013,
+          "content": "1"
+        },
+        {
+          "id": 18014,
+          "content": "2"
+        },
+        {
+          "id": 18015,
+          "content": "3"
+        },
+        {
+          "id": 18016,
+          "content": "4"
+        }
+      ],
+      "correct_option_ids": [
+        18014
+      ],
+      "correct_options": [
+        "2"
+      ],
+      "analysis": "让我们通过二分查找的过程来分析这道题:<br><br>在有序表(12,24,36,48,60,72,84)中查找72:<br><br>第1次比较:<br>中间位置是第4个元素48<br>72 > 48,去右半部分查找(60,72,84)<br><br>第2次比较:<br>中间位置是第2个元素72<br>72 = 72,找到目标值,查找结束<br><br>所以总共进行了2次关键字比较,因此B选项正确。<br><br>分析其他选项:<br>A选项(1次)错误:只比较1次不可能找到72,因为第1次比较后只能确定在右半部分。<br><br>C选项(3次)错误:实际只需2次就能找到,不需要第3次比较。<br><br>D选项(4次)错误:在长度为7的有序表中进行二分查找,最多只需3次比较就能确定任何元素,不可能需要4次。这是因为每次比较都会将查找范围减半。<br><br>这道题体现了二分查找算法的特点:每次比较都将查找范围缩小一半,查找效率高。"
+    },
+    {
+      "question_id": 10861249,
+      "uuid": "97757dc96fef42df992d895df4371747",
+      "type": 2,
+      "title": "下列选项中，不能构成折半查找中关键字比较序列的是（）",
+      "content": "下列选项中，不能构成折半查找中关键字比较序列的是（）",
+      "options": [
+        {
+          "id": 6393356,
+          "content": "5,&nbsp;10,&nbsp;15,&nbsp;20,&nbsp;25"
+        },
+        {
+          "id": 6393357,
+          "content": "30,&nbsp;10,&nbsp;20,&nbsp;15,&nbsp;25"
+        },
+        {
+          "id": 6393358,
+          "content": "35,&nbsp;30,&nbsp;25,&nbsp;20,&nbsp;15"
+        },
+        {
+          "id": 6393359,
+          "content": "20,&nbsp;25,&nbsp;30,&nbsp;35,&nbsp;10"
+        }
+      ],
+      "correct_option_ids": [
+        6393357,
+        6393359
+      ],
+      "correct_options": [
+        "30,&nbsp;10,&nbsp;20,&nbsp;15,&nbsp;25",
+        "20,&nbsp;25,&nbsp;30,&nbsp;35,&nbsp;10"
+      ],
+      "analysis": "折半查找(二分查找)算法的比较序列需要满足以下特点:<br>1. 每次比较都将待查找区间分成两部分<br>2. 比较的元素应该是有序数组的中间位置元素<br>3. 序列中的元素应该按照二分查找的过程依次出现<br><br>分析每个选项:<br><br>A选项(5,10,15,20,25)是合法的比较序列:<br>可能代表在一个更大的有序数组中查找某个值的过程,每次都选择了区间中间位置的元素进行比较。<br><br>B选项(30,10,20,15,25)不是合法的比较序列:<br>- 第一次比较30不是中间元素<br>- 后续的比较顺序也不符合二分查找的过程规律<br><br>C选项(35,30,25,20,15)是合法的比较序列:<br>可以是在一个降序数组中进行二分查找的过程,每次比较都选择了中间元素。<br><br>D选项(20,25,30,35,10)不是合法的比较序列:<br>- 比较的元素不是按照二分区间选择的<br>- 序列中的元素排列既不是升序也不是降序的规律<br>- 不符合二分查找过程中应该逐步缩小查找区间的特点<br><br>所以BD选项表示的序列都不能构成合法的折半查找比较序列。"
+    },
+    {
+      "question_id": 3975,
+      "uuid": "c97bb0e9af79421bacbcd8718b9546b5",
+      "type": 1,
+      "title": "下列有关图的遍历说法中，不正确的是",
+      "content": "下列有关图的遍历说法中，不正确的是",
+      "options": [
+        {
+          "id": 8115,
+          "content": "有向图和无向图都可以进行遍历操作"
+        },
+        {
+          "id": 8116,
+          "content": "基本遍历算法两种：深度遍历和广度遍历"
+        },
+        {
+          "id": 8117,
+          "content": "图的遍历必须用递归实现"
+        },
+        {
+          "id": 8118,
+          "content": "图的遍历算法可以执行在有回路的图中"
+        }
+      ],
+      "correct_option_ids": [
+        8117
+      ],
+      "correct_options": [
+        "图的遍历必须用递归实现"
+      ],
+      "analysis": "这道题考察了图的遍历的基本概念。C选项错误,因为图的遍历算法既可以用递归方式实现,也可以用非递归(迭代)方式实现。比如在深度优先遍历(DFS)中,可以使用栈来代替递归;在广度优先遍历(BFS)中,通常使用队列来实现,都不必须依赖递归。<br><br>分析其他选项:<br><br>A正确:图的遍历算法适用于所有类型的图,包括有向图和无向图。遍历的目的是访问图中所有可达顶点,这个操作与图是否有向无关。<br><br>B正确:图的基本遍历算法确实包括深度优先遍历(DFS)和广度优先遍历(BFS)这两种。这是图论中最基础的两种遍历方式。<br><br>D正确:图的遍历算法完全可以在有回路的图中执行。在遍历过程中,通过记录已访问节点的方式,可以避免重复访问同一节点,从而正确处理有回路的情况。<br><br>需要说明的是,虽然递归是实现图遍历的一种常用方法,但它不是唯一的实现方式。选择递归还是非递归的实现方式,应该根据具体的应用场景和需求来决定。"
+    },
+    {
+      "question_id": 56295,
+      "uuid": "ee9ea5f749be4dd083ecb8c5c9f412a5",
+      "type": 2,
+      "title": "对于二分搜索法，下面描述正确的是（）",
+      "content": "<p style=\"margin-left: 0.0cm;text-indent: 0.0cm;\">\n  <span>对于二分搜索法，下面描述正确的是（）</span>\n</p>",
+      "options": [
+        {
+          "id": 77570,
+          "content": "可用于数组"
+        },
+        {
+          "id": 77571,
+          "content": "可用于单链表"
+        },
+        {
+          "id": 77572,
+          "content": "只能在已排序的数据上进行"
+        },
+        {
+          "id": 77573,
+          "content": "最坏情况下时间复杂度是O（N*LogN）"
+        }
+      ],
+      "correct_option_ids": [
+        77570,
+        77572
+      ],
+      "correct_options": [
+        "可用于数组",
+        "只能在已排序的数据上进行"
+      ],
+      "analysis": "二分搜索法是一种常用的查找算法,主要用于在有序序列中查找目标值。<br><br>选项A正确:二分搜索法可以用于数组,因为数组支持随机访问,能在O(1)时间内访问任意位置的元素,这是实现二分查找的基础条件。<br><br>选项B错误:二分搜索法不适用于单链表。因为单链表不支持随机访问,每次访问中间元素都需要从头遍历,这样就失去了二分查找的效率优势。<br><br>选项C正确:二分搜索法只能在已排序的数据集上进行。这是因为二分查找的核心思想是通过比较中间元素与目标值的大小来缩小查找范围,如果数据无序则无法正确判断目标值在左半部分还是右半部分。<br><br>选项D错误:二分搜索法的最坏时间复杂度是O(logN),而不是O(N*logN)。每次查找都会将搜索范围缩小一半,直到找到目标值或确定目标值不存在,最多需要logN次比较。O(N*logN)是一些排序算法(如快速排序、归并排序)的时间复杂度。<br><br>总结:二分搜索要求数据结构支持随机访问(如数组)且数据必须有序,其时间复杂度为O(logN),这使得它成为一种高效的查找算法。"
+    },
+    {
+      "question_id": 11254631,
+      "uuid": "cd609056bb4a4457b56821f66f6ddb8e",
+      "type": 2,
+      "title": "关于二分查找的描述正确的选项是（）",
+      "content": "<div>\n\t关于二分查找的描述正确的选项是（）\n</div>",
+      "options": [
+        {
+          "id": 7363423,
+          "content": "二分查找的比较次数与数组的大小有关"
+        },
+        {
+          "id": 7363424,
+          "content": "二分查找的比较次数与查找元素的值有关"
+        },
+        {
+          "id": 7363425,
+          "content": "二分查找的比较次数与数组是否已经排序有关"
+        },
+        {
+          "id": 7363426,
+          "content": "二分查找的比较次数与查找元素在数组中的位置有关"
+        }
+      ],
+      "correct_option_ids": [
+        7363423,
+        7363426
+      ],
+      "correct_options": [
+        "二分查找的比较次数与数组的大小有关",
+        "二分查找的比较次数与查找元素在数组中的位置有关"
+      ],
+      "analysis": "二分查找的比较次数与数组的大小和查找元素在数组中的位置有关。查找元素的值和数组是否已经排序对比较次数没有影响。"
+    },
+    {
+      "question_id": 26112,
+      "uuid": "122b3e9375c949abb634f60bfc21a7d2",
+      "type": 1,
+      "title": "有序数组1 2 3 4 5 6 7 8 9查找3的二分查找序列是:",
+      "content": "有序数组1 2 3 4 5 6 7 8 9查找3的二分查找序列是:",
+      "options": [
+        {
+          "id": 43015,
+          "content": "1-&gt;2-&gt;3"
+        },
+        {
+          "id": 43016,
+          "content": "5-&gt;2-&gt;3"
+        },
+        {
+          "id": 43017,
+          "content": "9-&gt;5-&gt;3"
+        },
+        {
+          "id": 43018,
+          "content": "5-&gt;1-&gt;4-&gt;3"
+        }
+      ],
+      "correct_option_ids": [
+        43016
+      ],
+      "correct_options": [
+        "5-&gt;2-&gt;3"
+      ],
+      "analysis": "<div>  第一次：low=1，high=9，mid=5，high=mid-1 </div> <div>  第二次：low=1，high=4，mid=2，low=mid+1 </div> <div>  第三次：low=3，high=4，mid=3，查找成功 </div> <div>  故查找序列为5，2，3，答案选B </div>"
+    },
+    {
+      "question_id": 501087,
+      "uuid": "15bebf92046c4fcea62a021c360784f4",
+      "type": 1,
+      "title": "下面关于二分查找的叙述争正确的是:   （&...",
+      "content": "下面关于二分查找的叙述争正确的是:   （        ）",
+      "options": [
+        {
+          "id": 982015,
+          "content": "表必须有序，表可以顺序方式存储，也可以链表方式存储"
+        },
+        {
+          "id": 982016,
+          "content": "表必须有序且表中数据必须是整型，实型或字符型"
+        },
+        {
+          "id": 982017,
+          "content": "表必须有序，而且只能从小到大排列"
+        },
+        {
+          "id": 982018,
+          "content": "表必须有序，且表只能以顺序方式存储"
+        },
+        {
+          "id": 982019,
+          "content": "表不需要有序，只要符合小堆和大堆的数据排列要求即可"
+        },
+        {
+          "id": 982020,
+          "content": "表不需要有序，但存储必须是顺序存储"
+        }
+      ],
+      "correct_option_ids": [
+        982018
+      ],
+      "correct_options": [
+        "表必须有序，且表只能以顺序方式存储"
+      ],
+      "analysis": "二分查找算法是一种在有序数组中查找特定元素的高效搜索算法。D选项是正确的,因为二分查找算法要求表必须是有序的,且必须采用顺序存储(数组)方式。这是因为二分查找的核心思想是通过计算中间位置,将待查找区间分成两半,这需要能够直接通过下标访问元素,只有顺序存储才能实现O(1)的随机访问。<br> <br> 分析其他选项的错误之处:<br> <br> A错误:虽然表必须有序,但不能使用链表存储。因为链表无法在O(1)时间内访问中间元素,这会导致二分查找失去其效率优势。<br> <br> B错误:表中的数据类型并不限于整型、实型或字符型,只要数据之间可以比较大小即可。例如自定义的类型,只要实现了比较接口,也可以使用二分查找。<br> <br> C错误:表可以是从小到大排列,也可以是从大到小排列,只要保证有序即可。排列顺序的方向并不影响二分查找的实现。<br> <br> E错误:二分查找必须在有序表上进行,堆的数据排列方式(父节点大于或小于子节点)并不满足二分查找的要求。<br> <br> F错误:这个选项颠倒了条件,表必须是有序的,且必须是顺序存储,两个条件缺一不可。"
+    },
+    {
+      "question_id": 90756,
+      "uuid": "550772209e9e439aac9e081593281119",
+      "type": 1,
+      "title": "设有序表中有1000个元素，则用二分查找查找元素X最多需要比较（ ）次。",
+      "content": "<p>  <span>设有序表中有<span>1000</span>个元素，则用二分查找查找元素<span>X</span>最多需要比较（）次。</span>  </p>",
+      "options": [
+        {
+          "id": 160375,
+          "content": "25"
+        },
+        {
+          "id": 160376,
+          "content": "10"
+        },
+        {
+          "id": 160377,
+          "content": "7"
+        },
+        {
+          "id": 160378,
+          "content": "1"
+        }
+      ],
+      "correct_option_ids": [
+        160376
+      ],
+      "correct_options": [
+        "10"
+      ],
+      "analysis": "<div>  有n个元素的顺序表进行二分查找，比较次数最多为<img src=\"https://www.nowcoder.com/equation?tex=%5Clfloor%20log_2n%5Crfloor%2B1\">次，代入1000，答案为10。 </div> <div>  A、C、D错，B对。 </div>"
+    },
+    {
+      "question_id": 45209,
+      "uuid": "6f7d15064c8a4697a3f1f98565f898fa",
+      "type": 1,
+      "title": "对数组A[]={4,78,3,64,32,89,43,12}进行Hash存储时，选用H(K)=K%7作为Hash函数，则Hash地址为1的元素有（）个。",
+      "content": "对数组A[]={4,78,3,64,32,89,43,12}进行Hash存储时，选用H(K)=K%7作为Hash函数，则Hash地址为1的元素有（）个。",
+      "options": [
+        {
+          "id": 47748,
+          "content": "1"
+        },
+        {
+          "id": 47749,
+          "content": "2"
+        },
+        {
+          "id": 47750,
+          "content": "3"
+        },
+        {
+          "id": 47751,
+          "content": "4"
+        }
+      ],
+      "correct_option_ids": [
+        47750
+      ],
+      "correct_options": [
+        "3"
+      ],
+      "analysis": "让我们逐步计算每个元素的Hash地址(K%7):<br><br>4%7=4<br>78%7=1<br>3%7=3  <br>64%7=1<br>32%7=4<br>89%7=5<br>43%7=1<br>12%7=5<br><br>通过计算可以看出,Hash地址为1的元素有3个,分别是78、64和43。因此C选项(3个)是正确答案。<br><br>分析其他选项:<br>A选项(1个)错误:实际计算后发现不止1个元素的Hash地址为1<br>B选项(2个)错误:实际计算后发现不是2个元素的Hash地址为1<br>D选项(4个)错误:实际计算后发现不是4个元素的Hash地址为1<br><br>这道题目主要考察Hash函数的应用。使用除留余数法(K%7)作为Hash函数时,需要将每个关键字除以7取余数,得到的余数就是该元素的Hash地址。这种情况下可能会出现多个不同的关键字映射到相同的Hash地址,这种现象称为Hash冲突或碰撞。在本题中,就出现了3个元素映射到Hash地址1的情况。"
+    },
+    {
+      "question_id": 301280,
+      "uuid": "f361a41f880f4471bbaa64a9013211b8",
+      "type": 1,
+      "title": "设查找表中有100个元素，如果用二分法查找方法查找数据元素X，则最多需要比...",
+      "content": "<p>  设查找表中有<span>100</span>个元素，如果用二分法查找方法查找数据元素<span>X</span>，则最多需要比较（ ）次就可以断定数据元素<span>X</span>是否在查找表中。 </p>",
+      "options": [
+        {
+          "id": 780962,
+          "content": "5"
+        },
+        {
+          "id": 780963,
+          "content": "6"
+        },
+        {
+          "id": 780964,
+          "content": "7"
+        },
+        {
+          "id": 780965,
+          "content": "8"
+        }
+      ],
+      "correct_option_ids": [
+        780964
+      ],
+      "correct_options": [
+        "7"
+      ],
+      "analysis": "<div>  有n个元素的有序顺序表，二分查找元素的次数上界为<img src=\"https://www.nowcoder.com/equation?tex=%5Clfloor%20logn%5Crfloor%2B1\">次，代入n=100即可得到答案为7 </div> <div>  A、B、D错误，C正确 </div>"
+    },
+    {
+      "question_id": 11338490,
+      "uuid": "13924a5b17474507a9b9d6c29032a04a",
+      "type": 1,
+      "title": "给定一个有序表[2, 10, 11, 14, 23, 54, 58, 62...",
+      "content": "给定一个有序表<span>[2, 10, 11, 14, 23, 54, 58, 62, 82, 90, 91]</span>，当二分查找值为34的元素时，查找失败所需的比较次数是多少次？ <div>  （提示：mid=(low+high)/2向下取整） </div>",
+      "options": [
+        {
+          "id": 7407090,
+          "content": "2"
+        },
+        {
+          "id": 7407092,
+          "content": "3"
+        },
+        {
+          "id": 7407094,
+          "content": "4"
+        },
+        {
+          "id": 7407096,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        7407094
+      ],
+      "correct_options": [
+        "4"
+      ],
+      "analysis": "答案：C<br> <br> 解析：用0-based下标，low=0, high=10。<br> - mid=5→54，34&lt;54→high=4（1次）<br> - mid=2→11，34&gt;11→low=3（2次）<br> - mid=3→14，34&gt;14→low=4（3次）<br> - mid=4→23，34&gt;23→low=5（4次）<br> low&gt;high 失败，共比较4次。<br> <div> </div>"
+    },
+    {
+      "question_id": 91045,
+      "uuid": "b0575c88cca44cba883ab8d98ea04fcf",
+      "type": 1,
+      "title": "设有序表中的元素为(13，18，24，35，47，50，62)，则在其中利用二分法查找值为24的元素需要经过（ ）次比较。",
+      "content": "<p>  <span>设有序表中的元素为<span>(13</span>，<span>18</span>，<span>24</span>，<span>35</span>，<span>47</span>，<span>50</span>，<span>62)</span>，则在其中利用二分法查找值为<span>24</span>的元素需要经过（）次比较。</span>  </p>",
+      "options": [
+        {
+          "id": 161178,
+          "content": "1"
+        },
+        {
+          "id": 161179,
+          "content": "2"
+        },
+        {
+          "id": 161180,
+          "content": "3"
+        },
+        {
+          "id": 161181,
+          "content": "4"
+        }
+      ],
+      "correct_option_ids": [
+        161180
+      ],
+      "correct_options": [
+        "3"
+      ],
+      "analysis": "<div>  第一次：low=0，high=6，mid=3，35&gt;24，high=mid-1； </div> <div>  第二次：low=0，high=2，mid=1，18&lt;24，low=mid+1； </div> <div>  第三次：low=2，high=2，mid=2，24==24，查找成功； </div> <div>  故需要经过三次比较。 </div> <div>  A、B、D错，C对。 </div>"
+    },
+    {
+      "question_id": 11182202,
+      "uuid": "d86f86b1e9f64195b83e3fb6bcabbe3e",
+      "type": 1,
+      "title": "下列选项中，不能构成二分搜索中关键字比较序列的是（ ） 例如：比较序列为2...",
+      "content": "<div>\n\t下列选项中，不能构成二分搜索中关键字比较序列的是（&nbsp;）\n</div>\n<div>\n\t例如：比较序列为23,1,4,3,6，第一个查找23，第二个查找1，说明目标值小于23；第三个查找到4，说明目标值大于1；然后查找到3，说明目标值小于4；最后查找到6，与‘小于4’不符，逻辑错误；所以这是一个不能构成<span style=\"text-wrap:wrap;\">二分搜索</span>比较序列的序列\n</div>",
+      "options": [
+        {
+          "id": 7196423,
+          "content": "5,7,9,11,13"
+        },
+        {
+          "id": 7196425,
+          "content": "10,8,6,9,2"
+        },
+        {
+          "id": 7196427,
+          "content": "2,4,10,7,9"
+        },
+        {
+          "id": 7196428,
+          "content": "15,13,11,9,7"
+        }
+      ],
+      "correct_option_ids": [
+        7196425
+      ],
+      "correct_options": [
+        "10,8,6,9,2"
+      ],
+      "analysis": "<span style=\"white-space:normal;\">对选项B，第一个查找10，第二个查找8，说明目标值小于10，第三数查找6，<span style=\"white-space:normal;\">说明目标值小于8，<span style=\"white-space:normal;\">第三数查找9，</span></span>与小于8不符，逻辑错误。</span>"
+    },
+    {
+      "question_id": 11183277,
+      "uuid": "8c3b2e450adc448392091279e3cb8918",
+      "type": 1,
+      "title": "在一个算法王国中，一位年轻的字符串骑士正在解锁KMP算法的谜题。已知字符串...",
+      "content": "<div>\n\t在一个算法王国中，一位年轻的字符串骑士正在解锁KMP算法的谜题。<span style=\"text-wrap:wrap;\">已知字符串S='<span style=\"text-wrap:wrap;\">uuluuululululuulppuu</span>'，模式串t='<span style=\"text-wrap:wrap;\">ululuu</span>'，</span>当第一次出现“失配”（s[i]≠t[j]）时，i=j=1。下次开始匹配时，i和j的值分别是（）\n</div>",
+      "options": [
+        {
+          "id": 7199108,
+          "content": "i=4,&nbsp;j=0"
+        },
+        {
+          "id": 7199109,
+          "content": "i=1,&nbsp;j=0"
+        },
+        {
+          "id": 7199110,
+          "content": "i=3,&nbsp;j=1"
+        },
+        {
+          "id": 7199111,
+          "content": "i=8,&nbsp;j=2"
+        }
+      ],
+      "correct_option_ids": [
+        7199109
+      ],
+      "correct_options": [
+        "i=1,&nbsp;j=0"
+      ],
+      "analysis": "主串： uuluuululululuulppuu<br />\n模式串： ululuu<br />\n匹配过程：<br />\n比较 u 和 u, i=0, j=0<br />\n匹配失败：比较 u 和 l, i=1, j=1<br />\n比较 u 和 u, i=1, j=0<br />\n比较 l 和 l, i=2, j=1<br />\n比较 u 和 u, i=3, j=2<br />\n匹配失败：比较 u 和 l, i=4, j=3<br />\n匹配失败：比较 u 和 l, i=4, j=1<br />\n比较 u 和 u, i=4, j=0<br />\n匹配失败：比较 u 和 l, i=5, j=1<br />\n比较 u 和 u, i=5, j=0<br />\n比较 l 和 l, i=6, j=1<br />\n比较 u 和 u, i=7, j=2<br />\n比较 l 和 l, i=8, j=3<br />\n比较 u 和 u, i=9, j=4<br />\n匹配失败：比较 l 和 u, i=10, j=5<br />\n比较 l 和 l, i=10, j=3<br />\n比较 u 和 u, i=11, j=4<br />\n匹配失败：比较 l 和 u, i=12, j=5<br />\n比较 l 和 l, i=12, j=3<br />\n比较 u 和 u, i=13, j=4<br />\n比较 u 和 u, i=14, j=5<br />\n模式串的next数组： [0, 0, 1, 2, 3, 1]<br />\n<div>\n</div>"
+    },
+    {
+      "question_id": 10959790,
+      "uuid": "7b401b9ac48845ab8f5ad61dca689e7a",
+      "type": 1,
+      "title": "已知一个有序表（-10, -8, -6, -4, -2, 0, 2, 4,...",
+      "content": "已知一个有序表（-10,&nbsp;-8,&nbsp;-6,&nbsp;-4,&nbsp;-2,&nbsp;0,&nbsp;2,&nbsp;4,&nbsp;6,&nbsp;8,&nbsp;10,&nbsp;12,&nbsp;14,&nbsp;16），当进行在中间值位置向下取整的二分查找值为0的元素时，查找成功的比较次数为（&nbsp;）",
+      "options": [
+        {
+          "id": 6615634,
+          "content": "1"
+        },
+        {
+          "id": 6615635,
+          "content": "2"
+        },
+        {
+          "id": 6615636,
+          "content": "3"
+        },
+        {
+          "id": 6615637,
+          "content": "4"
+        }
+      ],
+      "correct_option_ids": [
+        6615637
+      ],
+      "correct_options": [
+        "4"
+      ],
+      "analysis": "对于给定的有序表，初始查找范围为整个表，即low=0,&nbsp;high=13。第一次比较时，中间元素为2，与目标值0进行比较，由于2大于0，所以目标值在左半部分。更新查找范围为low=0,&nbsp;high=5。第二次比较时，中间元素为-6，与目标值0进行比较，由于-6小于0，所以目标值在右半部分。更新查找范围为low=3,&nbsp;high=5。第三次比较时，中间元素为-2，<span style=\"text-wrap:wrap;\">由于-2小于0，所以目标值在右半部分。<span style=\"text-wrap:wrap;\">更新查找范围为low=5,&nbsp;high=5。</span>此时low=high，mid值</span>与目标值0相等，查找成功。因此，查找成功的比较次数为4，对应选项D。"
+    },
+    {
+      "question_id": 55266,
+      "uuid": "0bd8a1270ec04701ae33f710e9f25d54",
+      "type": 1,
+      "title": "二分查找的时间复杂度（ ）",
+      "content": "二分查找的时间复杂度（ ）",
+      "options": [
+        {
+          "id": 73971,
+          "content": "O(N*log(N))"
+        },
+        {
+          "id": 73972,
+          "content": "O(N)"
+        },
+        {
+          "id": 73973,
+          "content": "O(log(N))"
+        },
+        {
+          "id": 73974,
+          "content": "O(N^2)"
+        }
+      ],
+      "correct_option_ids": [
+        73973
+      ],
+      "correct_options": [
+        "O(log(N))"
+      ],
+      "analysis": "二分查找是一种在有序数组中查找特定元素的高效算法。其时间复杂度为O(log(N))，这是因为每次查找都会将搜索范围缩小一半，直到找到目标元素或确定元素不存在。<br><br>具体分析过程：<br>1. 每次比较后，搜索范围减少一半<br>2. 对于长度为N的数组，最多需要log(N)次比较就能完成查找<br>3. 每次比较操作的时间复杂度是O(1)<br>因此总的时间复杂度就是O(log(N))<br><br>分析其他选项：<br>A、O(N*log(N))错误：这是快速排序等排序算法的时间复杂度，比二分查找的复杂度高<br>B、O(N)错误：这是线性查找的时间复杂度，二分查找比线性查找更高效<br>D、O(N^2)错误：这是冒泡排序等基础排序算法的时间复杂度，远高于二分查找的复杂度<br><br>需要注意的是，二分查找要求数组必须是有序的。如果数组本身无序，则需要先进行排序，此时总的时间复杂度会变成排序的复杂度加上二分查找的复杂度。"
+    },
+    {
+      "question_id": 14621,
+      "uuid": "4dff9e0fd05b4e79b640d0be42d0a60c",
+      "type": 2,
+      "title": "二分查找要满足顺序存储、链存储、按value有序中的哪些条件？",
+      "content": "二分查找要满足顺序存储、链存储、按value有序中的哪些条件？",
+      "options": [
+        {
+          "id": 17454,
+          "content": "顺序存储"
+        },
+        {
+          "id": 17455,
+          "content": "链存储"
+        },
+        {
+          "id": 17456,
+          "content": "按value有序"
+        },
+        {
+          "id": 17457,
+          "content": "以上答案都不正确"
+        }
+      ],
+      "correct_option_ids": [
+        17454,
+        17456
+      ],
+      "correct_options": [
+        "顺序存储",
+        "按value有序"
+      ],
+      "analysis": "二分查找算法需要满足顺序存储和按value有序这两个条件,所以正确答案是AC。<br><br>顺序存储是必需的,因为二分查找要求能够在O(1)时间内通过下标访问元素。如果是链式存储,每次查找中间元素都需要遍历链表,时间复杂度会变成O(n),失去了二分查找的优势。<br><br>按value有序也是必需的,这是二分查找算法的基础。通过比较目标值与中间元素的大小来确定下一步是查找左半部分还是右半部分,如果数据无序则无法进行这种判断。<br><br>B选项链存储是错误的,原因如上所述,链式存储结构不支持随机访问,会导致查找中间元素的时间复杂度变高,不适合二分查找。<br><br>D选项显然错误,因为AC都是二分查找必需的条件。<br><br>总的来说,二分查找算法要求数据结构同时具备顺序存储和有序这两个特性,才能实现O(logn)的查找效率。这也是为什么二分查找通常用于数组等顺序存储结构,而不适用于链表等其他数据结构。"
+    },
+    {
+      "question_id": 56074,
+      "uuid": "b485b60f5b46498691ef764c4c65d882",
+      "type": 1,
+      "title": "折半查找有序表（4,6,10,12,20,30,50,70,88,100）。若查找表中元素58，则它将依次与表中哪些元素比较大小，查找结果失败（）",
+      "content": "<p>\n  <span>折半查找有序表（<span>4,6,10,12,20,30,50,70,88,100</span>）。若查找表中元素<span>58</span>，则它将依次与表中哪些元素比较大小，查找结果失败（）</span>\n</p>",
+      "options": [
+        {
+          "id": 76738,
+          "content": "20，50"
+        },
+        {
+          "id": 76739,
+          "content": "30，88，70，50"
+        },
+        {
+          "id": 76740,
+          "content": "30，88，50"
+        },
+        {
+          "id": 76741,
+          "content": "20，70，30，50"
+        }
+      ],
+      "correct_option_ids": [
+        76741
+      ],
+      "correct_options": [
+        "20，70，30，50"
+      ],
+      "analysis": "让我们按照折半查找(二分查找)的步骤来分析查找元素58的过程：<br><br>1. 首先确定查找范围[0,9],中间位置mid=(0+9)/2=4,比较a[4]=20与58<br>   20<58,向右查找,范围变为[5,9]<br><br>2. mid=(5+9)/2=7,比较a[7]=70与58<br>   70>58,向左查找,范围变为[5,6]<br><br>3. mid=(5+6)/2=5,比较a[5]=30与58<br>   30<58,向右查找,范围变为[6,6]<br><br>4. mid=6,比较a[6]=50与58<br>   50<58,查找失败<br><br>所以查找过程中依次比较的元素是:20、70、30、50,这与D选项完全匹配。<br><br>分析其他选项的错误原因：<br>A错误：只列出了20、50两个比较元素,比较过程不完整<br>B错误：30、88、70、50的比较顺序不符合折半查找的过程<br>C错误：30、88、50的比较顺序和次数都不符合折半查找的过程<br><br>折半查找要求每次都取中间位置的元素进行比较,根据比较结果缩小查找范围的一半,直到找到目标值或确定查找失败。题目中给出的比较序列D完全符合这一过程。"
+    },
+    {
+      "question_id": 1336,
+      "uuid": "feac0627f2d040969b4181ff72bf32cd",
+      "type": 1,
+      "title": "Suppose that a Selection Sort of 80 items has completed 32 iterations of the main loop. How many items are now guaranteed to be in their final spot (never to be moved again)?",
+      "content": "Suppose that a Selection Sort of 80 items has completed 32 iterations of the main loop. How many items are now guaranteed to be in their final spot (never to be moved again)?",
+      "options": [
+        {
+          "id": 3445,
+          "content": "16"
+        },
+        {
+          "id": 3446,
+          "content": "31"
+        },
+        {
+          "id": 3447,
+          "content": "32"
+        },
+        {
+          "id": 3448,
+          "content": "39"
+        },
+        {
+          "id": 3449,
+          "content": "40"
+        }
+      ],
+      "correct_option_ids": [
+        3447
+      ],
+      "correct_options": [
+        "32"
+      ],
+      "analysis": "选择排序(Selection Sort)的每一次迭代会找到未排序部分中的最小元素,并将其放到已排序部分的末尾。每完成一次迭代,就会确定一个元素的最终位置。<br><br>在这个问题中:<br>- 一共有80个项目需要排序<br>- 已经完成了32次迭代<br>- 每次迭代会确定一个元素的最终位置<br><br>因此,完成32次迭代后,正好有32个元素被放置在了它们的最终位置上,这些元素不会再被移动。所以C选项(32)是正确答案。<br><br>分析其他选项:<br>A(16): 明显偏小,与迭代次数不对应<br>B(31): 比正确数量少1个,不准确<br>D(39): 超过了实际完成的迭代次数,不可能有这么多元素在最终位置<br>E(40): 同样超过了实际完成的迭代次数<br><br>关键点:在选择排序中,完成多少次迭代,就有多少个元素被放置在最终位置。这是一个一一对应的关系,每次迭代都会确定一个元素的最终位置。"
+    },
+    {
+      "question_id": 51631,
+      "uuid": "4ba09ce2e67d4b598a53727c3e53e536",
+      "type": 1,
+      "title": "用二分法查找长度为10的、排好序的线性表，查找不成功时，最多需要比较多少次？",
+      "content": "用二分法查找长度为10的、排好序的线性表，查找不成功时，最多需要比较多少次？",
+      "options": [
+        {
+          "id": 65673,
+          "content": "3"
+        },
+        {
+          "id": 65674,
+          "content": "4"
+        },
+        {
+          "id": 65675,
+          "content": "5"
+        },
+        {
+          "id": 65676,
+          "content": "6"
+        }
+      ],
+      "correct_option_ids": [
+        65674
+      ],
+      "correct_options": [
+        "4"
+      ],
+      "analysis": "要使用二分法在长度为10的有序线性表中进行查找,对查找不成功的情况,最多需要进行4次比较。<br><br>具体分析如下:<br>1. 对于长度为10的有序表,元素位置从1到10<br>2. 二分查找过程:<br>   - 第1次比较:取中间位置 (1+10)/2=5<br>   - 第2次比较:若在前半部分,取 (1+4)/2=2;若在后半部分,取 (6+10)/2=8<br>   - 第3次比较:若在前半部分,取 (1+1)/2=1或(3+4)/2=3;若在后半部分,取 (6+7)/2=6或(9+10)/2=9<br>   - 第4次比较:可能需要最后一次比较确定查找失败<br><br>所以B选项4次是正确答案。<br><br>分析其他选项:<br>A(3次)错误:3次比较不足以覆盖所有查找失败的情况<br>C(5次)错误:长度为10的有序表最多只需4次就能确定查找失败<br>D(6次)错误:6次比较明显过多,因为4次就足以完成查找过程<br><br>补充说明:对于长度为n的表,二分查找的比较次数不会超过⌈log₂(n+1)⌉,对于n=10,⌈log₂11⌉=4。"
+    },
+    {
+      "question_id": 10861225,
+      "uuid": "809314e7a0204d9f8f95664a6f631566",
+      "type": 2,
+      "title": "下列选项中，能构成折半查找关键字比较序列的是（）",
+      "content": "<span>下列选项中，能构成折半查找关键字比较序列的是（）</span> <div> </div>",
+      "options": [
+        {
+          "id": 6393292,
+          "content": "10, 20, 30, 40, 50"
+        },
+        {
+          "id": 6393293,
+          "content": "60, 50, 40, 30, 20"
+        },
+        {
+          "id": 6393294,
+          "content": "5, 15, 25, 35, 45"
+        },
+        {
+          "id": 6393295,
+          "content": "45, 35, 15, 25, 5"
+        }
+      ],
+      "correct_option_ids": [
+        6393292,
+        6393293,
+        6393294
+      ],
+      "correct_options": [
+        "10, 20, 30, 40, 50",
+        "60, 50, 40, 30, 20",
+        "5, 15, 25, 35, 45"
+      ],
+      "analysis": "<br>"
+    },
+    {
+      "question_id": 11285691,
+      "uuid": "b41c05c7d37742f7907367ca27ec9745",
+      "type": 1,
+      "title": "当在有序表（2,6,28,31,46,53,61,67,83,86,92）...",
+      "content": "当在有序表<span style=\"text-wrap:wrap;\">（2,6,28,31,46,53,61,67,83,86,92）</span>中进行二分查找以找到数值为31的元素时，成功查找需要进行多少次比较？（）\n<div>\n\t（提示：mid=(low+high)/2向下取整）\n</div>",
+      "options": [
+        {
+          "id": 7401632,
+          "content": "2"
+        },
+        {
+          "id": 7401633,
+          "content": "3"
+        },
+        {
+          "id": 7401634,
+          "content": "4"
+        },
+        {
+          "id": 7401635,
+          "content": "5"
+        }
+      ],
+      "correct_option_ids": [
+        7401633
+      ],
+      "correct_options": [
+        "3"
+      ],
+      "analysis": "查找31需要比较3次"
+    },
+    {
+      "question_id": 10298631,
+      "uuid": "b9749b91799f40cb9c7de6a157df46e5",
+      "type": 1,
+      "title": "对于下列关键字序列，不可能构成某二叉排序树中一条查找路径的序列是？",
+      "content": "对于下列关键字序列，不可能构成某二叉排序树中一条查找路径的序列是？",
+      "options": [
+        {
+          "id": 4907017,
+          "content": "90，17，83，24，85，71"
+        },
+        {
+          "id": 4907018,
+          "content": "90，18，89，32，86，33"
+        },
+        {
+          "id": 4907019,
+          "content": "19，87，75，27，34，36"
+        },
+        {
+          "id": 4907020,
+          "content": "10，23，69，66，31，32"
+        }
+      ],
+      "correct_option_ids": [
+        4907017
+      ],
+      "correct_options": [
+        "90，17，83，24，85，71"
+      ],
+      "analysis": "<span>二叉排序树 确定好某一侧，那么左侧都要小于根节点，右侧都要大于根节点，所以A选项90 后面为17，那么为左侧，后面所有的数字必须小于90，确实成立，但是83后面有个24，说明位于83的左侧，但是又有85，71，为81的右侧，矛盾，故A错，BCD推理都对的</span>"
+    },
+    {
+      "question_id": 90178,
+      "uuid": "25867a60e5e34576bf233dc872b21cb5",
+      "type": 1,
+      "title": "设有序顺序表中有n个数据元素，则利用二分查找法查找数据元素X的最多比较次数不超过（ ）。",
+      "content": "<p style=\"margin-left: 13.75pt;text-indent: -13.75pt;\">\n  <span>设有序顺序表中有<span>n</span>个数据元素，则利用二分查找法查找数据元素<span>X</span>的最多比较次数不超过（）。</span>\n</p>",
+      "options": [
+        {
+          "id": 158934,
+          "content": "log2n+1"
+        },
+        {
+          "id": 158935,
+          "content": "log2n-1"
+        },
+        {
+          "id": 158936,
+          "content": "log2n"
+        },
+        {
+          "id": 158937,
+          "content": "log2(n+1)"
+        }
+      ],
+      "correct_option_ids": [
+        158934
+      ],
+      "correct_options": [
+        "log2n+1"
+      ],
+      "analysis": "二分查找法的最多比较次数是⌊log₂n⌋+1，因此A选项log₂n+1是正确答案。<br><br>详细分析如下：<br>1. 二分查找每次将查找区间缩小一半，直到找到目标元素或确定元素不存在<br>2. 对于长度为n的有序表，第一次比较将区间分为两半，之后每次比较都将剩余区间再分为两半<br>3. 区间长度变化：n → n/2 → n/4 → n/8 → ... → 1<br>4. 设比较次数为k，则有：n/2^(k-1) ≥ 1<br>5. 解这个不等式：k-1 ≤ log₂n<br>6. 因此k ≤ log₂n+1<br>7. 由于k必须是整数，所以最多比较次数为⌊log₂n⌋+1<br><br>其他选项分析：<br>B选项：log₂n-1 过小，不能保证找到目标元素<br>C选项：log₂n 不够准确，实际次数需要加1<br>D选项：log₂(n+1) 虽然接近但不是准确表达式<br><br>这个公式在数据结构教学中是非常重要的基础知识点，对理解二分查找的时间复杂度有重要帮助。"
+    },
+    {
+      "question_id": 10859657,
+      "uuid": "b8ba7ba6ceaa406baadb26a00e3b2ad8",
+      "type": 1,
+      "title": "有序表中有1000个元素，则用二分查找查找元素X最多需要比较",
+      "content": "有序表中有1000个元素，则用二分查找查找元素X最多需要比较",
+      "options": [
+        {
+          "id": 6389307,
+          "content": "25"
+        },
+        {
+          "id": 6389308,
+          "content": "10"
+        },
+        {
+          "id": 6389309,
+          "content": "7"
+        },
+        {
+          "id": 6389310,
+          "content": "3"
+        }
+      ],
+      "correct_option_ids": [
+        6389308
+      ],
+      "correct_options": [
+        "10"
+      ],
+      "analysis": "在二分查找算法中,每次比较都会将查找范围缩小一半。对于包含n个元素的有序表,最多需要比较的次数为log₂n向上取整。<br><br>对于1000个元素:<br>log₂1000 ≈ 9.97<br>向上取整得到10<br><br>所以B选项10是正确答案。这意味着即使在最坏情况下,也只需要10次比较就能在1000个元素中找到目标值或确定目标值不存在。<br><br>分析其他选项:<br>A选项25过大 - 二分查找的效率远高于这个数值,25次比较已经足够在2²⁵(约3300万)个元素中查找<br>C选项7过小 - 2⁷=128,7次比较只够在128个元素中进行查找<br>D选项3更小 - 2³=8,3次比较只够在8个元素中进行查找<br><br>这道题很好地体现了二分查找的高效性 - 仅需log₂n次比较就能在n个元素中完成查找。这也是为什么二分查找在大规模有序数据查找中如此实用。"
+    },
+    {
+      "question_id": 62794,
+      "uuid": "03821d6e916c431fba0a80203e53e538",
+      "type": 1,
+      "title": "对于静态表的顺序查找法，若在表头设置监视哨，则正确的查找方式为（ ）。",
+      "content": "<p>  对于静态表的顺序查找法，若在表头设置监视哨，则正确的查找方式为（）。 </p>",
+      "options": [
+        {
+          "id": 94160,
+          "content": "从第0个元素往后查找该数据元素"
+        },
+        {
+          "id": 94161,
+          "content": "从第1个元素往后查找该数据元素"
+        },
+        {
+          "id": 94162,
+          "content": "从第n个元素往开始前查找该数据元素"
+        },
+        {
+          "id": 94163,
+          "content": "与查找顺序无关"
+        }
+      ],
+      "correct_option_ids": [
+        94162
+      ],
+      "correct_options": [
+        "从第n个元素往开始前查找该数据元素"
+      ],
+      "analysis": "在静态表的顺序查找中设置监视哨的情况下,应该从表尾(第n个元素)往前查找,所以C选项正确。<br><br>监视哨的主要作用是简化查找过程中的判断条件。当我们从后往前查找时,可以将要查找的关键字放在表头(第0个位置)作为监视哨,这样在查找过程中就不需要判断是否越界,因为即使查找不到目标元素,最终也会在监视哨处停止。<br><br>分析其他选项:<br>A错误:从第0个元素往后查找会降低监视哨的作用。因为监视哨设置在表头(第0位置),如果从前往后查找,每次比较时仍需要判断是否到达表尾,这样就失去了设置监视哨简化判断的意义。<br><br>B错误:从第1个元素往后查找同样无法发挥监视哨的作用,原因与A类似。<br><br>D错误:查找顺序是有关系的。监视哨的设计就是为了优化查找过程,必须按照特定的顺序(从后往前)才能发挥其作用。<br><br>通过从后往前查找,结合表头的监视哨,可以有效减少比较次数,提高查找效率。这是一种经典的优化策略。"
+    },
+    {
+      "question_id": 25387,
+      "uuid": "eb53e1880b374cbd845dd42724503c8a",
+      "type": 1,
+      "title": "使用KMP算法在文本串S中找模式串P是一种常见的方法。假设S=P={xyxyyxxyx}，亦即将S对自己进行匹配，匹配过程中正确的next数组是____。",
+      "content": "使用KMP算法在文本串S中找模式串P是一种常见的方法。假设S=P={xyxyyxxyx}，亦即将S对自己进行匹配，匹配过程中正确的next数组是____。",
+      "options": [
+        {
+          "id": 40615,
+          "content": "0,1,1,2,2,1,2,2,3"
+        },
+        {
+          "id": 40616,
+          "content": "0,1,2,2,3,1,2,2,3"
+        },
+        {
+          "id": 40617,
+          "content": "0,1,1,2,3,1,2,2,3"
+        },
+        {
+          "id": 40618,
+          "content": "0,1,1,2,3,1,1,2,3"
+        },
+        {
+          "id": 40619,
+          "content": "0,1,2,2,3,1,1,2,3"
+        },
+        {
+          "id": 40620,
+          "content": "0,1,2,2,2,1,1,2,3"
+        }
+      ],
+      "correct_option_ids": [
+        40617
+      ],
+      "correct_options": [
+        "0,1,1,2,3,1,2,2,3"
+      ],
+      "analysis": "要计算KMP算法中的next数组,需要对模式串P={xyxyyxxyx}逐字符进行处理。next[j]表示当第j个字符匹配失败时,应该跳转到的位置。<br><br>让我们逐步分析next数组的计算过程:<br><br>P[0]='x': next[0]=0 (第一个字符的next值总是0)<br>P[1]='y': next[1]=1 (xy无相同前后缀)<br>P[2]='x': next[2]=1 (xyx前缀x=后缀x)<br>P[3]='y': next[3]=2 (xyxy前缀xy=后缀xy)<br>P[4]='y': next[4]=3 (xyxyy前缀xy=后缀yy)<br>P[5]='x': next[5]=1 (xyxyyx只有x是相同的)<br>P[6]='x': next[6]=2 (xyxyyxx前缀x=后缀x)<br>P[7]='y': next[7]=2 (xyxyyxxy前缀xy=后缀xy)<br>P[8]='x': next[8]=3 (xyxyyxxyx前缀xyx=后缀xyx)<br><br>因此next数组应该是{0,1,1,2,3,1,2,2,3},这与选项C完全匹配。<br><br>分析其他错误选项:<br>A错误:next[4]=2与实际值3不符<br>B错误:next[2]=2与实际值1不符<br>D错误:next[6]=1与实际值2不符<br>E错误:next[2]=2与实际值1不符<br>F错误:next[2]=2与实际值1不符,且next[4]=2与实际值3不符<br><br>这里需要特别注意的是,在计算next数组时,我们需要找到最长的相同前缀和后缀,并且要确保前缀和后缀不能包含整个字符串本身。"
+    },
+    {
+      "question_id": 52595,
+      "uuid": "ce57ed6f16a8469da71047224f4a3fb5",
+      "type": 1,
+      "title": "则下次开始匹配时，i 和 j 的值分别是 （） 。",
+      "content": "<p align=\"justify\" style=\"text-align: justify;\">  <span>已知字符串S 为“abaabaabacacaabaabcc”，模式串 t 为“abaabc”。采用 KMP 算法进行匹配，第一     次出现“失配”(s[i]≠t[j])  时，i=j=5，则下次开始匹配时，i 和 j 的值分别是</span> <span>（）</span> <span>。</span>  </p>",
+      "options": [
+        {
+          "id": 68379,
+          "content": "i=1,j=0"
+        },
+        {
+          "id": 68380,
+          "content": "i=5,j=0"
+        },
+        {
+          "id": 68381,
+          "content": "i=5,j=2"
+        },
+        {
+          "id": 68382,
+          "content": "i=6,j=2"
+        }
+      ],
+      "correct_option_ids": [
+        68381
+      ],
+      "correct_options": [
+        "i=5,j=2"
+      ],
+      "analysis": "要理解这道KMP算法的题目,我们需要分析已知条件和KMP算理的匹配过程:<br><br>1. 字符串S=\"abaabaabacacaabaabcc\"<br>2. 模式串t=\"abaabc\" <br>3. 第一次失配发生在i=j=5的位置<br><br>当i=j=5时,说明前5个字符都匹配成功了(abaab),在第6个字符处失配。根据KMP算法的原理:<br><br>- 失配时,i值不需要回退,应保持在当前位置i=5<br>- j值需要根据next数组回退到适当位置<br><br>对于模式串\"abaabc\",其next数组为[-1,0,0,1,1,2],所以当j=5失配时,j应该回退到next[5]=2的位置。<br><br>因此下一轮匹配时:<br>- i保持在5(因为KMP算法的i指针不回退)<br>- j回退到2(根据next数组)<br><br>所以C选项(i=5,j=2)是正确答案。<br><br>分析其他选项:<br>A(i=1,j=0)错误:违背了KMP算法i指针不回退的基本原则<br>B(i=5,j=0)错误:j回退位置不正确,没有利用已经匹配的信息<br>D(i=6,j=2)错误:i值不应该前进,应该保持在失配位置"
+    },
+    {
+      "question_id": 7250,
+      "uuid": "12806333e1034084837e9a6e432b67e1",
+      "type": 1,
+      "title": "使用二分查找算法在一个有序序列中查找一个元素的时间复杂度为？",
+      "content": "使用二分查找算法在一个有序序列中查找一个元素的时间复杂度为（ ）",
+      "options": [
+        {
+          "id": 14010,
+          "content": "O(N)"
+        },
+        {
+          "id": 14011,
+          "content": "O(logN)"
+        },
+        {
+          "id": 14012,
+          "content": "O(N*N)"
+        },
+        {
+          "id": 14013,
+          "content": "O(N*logN)"
+        }
+      ],
+      "correct_option_ids": [
+        14011
+      ],
+      "correct_options": [
+        "O(logN)"
+      ],
+      "analysis": "<div>  <span>使用二分查找算法在一个有序序列中查找一个元素的时间复杂度为</span>O(logN) </div> <div>  故B对，A、C、D错。 </div>"
+    },
+    {
+      "question_id": 91044,
+      "uuid": "740f7991244545ac9c45dad571cd7849",
+      "type": 1,
+      "title": "设顺序表的长度为n，则顺序查找的平均比较次数为（ ）。",
+      "content": "<p style=\"margin-left: 12.6pt;text-indent: -12.6pt;\">\n  <span>设顺序表的长度为<span>n</span>，则顺序查找的平均比较次数为（）。</span>\n</p>",
+      "options": [
+        {
+          "id": 161174,
+          "content": "n"
+        },
+        {
+          "id": 161175,
+          "content": "n/2"
+        },
+        {
+          "id": 161176,
+          "content": "(n+1)/2"
+        },
+        {
+          "id": 161177,
+          "content": "(n-1)/2"
+        }
+      ],
+      "correct_option_ids": [
+        161176
+      ],
+      "correct_options": [
+        "(n+1)/2"
+      ],
+      "analysis": "在顺序表中进行顺序查找时,平均比较次数为(n+1)/2,因此C选项是正确答案。<br><br>具体分析如下:<br>1. 当查找成功时:<br>- 若要查找的元素在第1个位置,需要比较1次<br>- 若在第2个位置,需要比较2次<br>- 以此类推,若在第n个位置,需要比较n次<br>- 因此成功时的平均比较次数为(1+2+...+n)/n = (n+1)/2<br><br>2. 当查找失败时:<br>- 需要将目标元素与表中所有元素比较一遍<br>- 比较次数固定为n次<br><br>3. 如果假设查找成功和失败的概率相等(各50%),则:<br>- 平均比较次数 = 成功概率×成功时平均次数 + 失败概率×失败时次数<br>- = 0.5×(n+1)/2 + 0.5×n = (n+1)/2<br><br>分析其他选项:<br>A错误:n表示最坏情况下的比较次数,不是平均情况<br>B错误:n/2偏小,没有考虑要加1<br>D错误:(n-1)/2偏小,实际应该是(n+1)/2<br><br>因此,(n+1)/2是顺序查找的准确平均比较次数。"
+    },
+    {
+      "question_id": 25362,
+      "uuid": "dc0a96436543496d938962615e3b4436",
+      "type": 1,
+      "title": "对于输入array为：{2, 6, 8, 10, 13, 25, 36, 45, 53, 76, 88, 100, 127}， n = 13, v = 127时, 运行bsearch函数，while循环调用的次数为____。",
+      "content": "<div>  考虑以下二分查找的代码： </div>\n<div>\n  <pre class=\"prettyprint lang-cpp\">#include &lt;stdio.h&gt;\nint bsearch(int array[], int n, int v)\n{\n    int left, right, middle;\n    left = 0, right = n - 1;\n    while (left &lt;= right) {\n        middle = left + (right - left) / 2;\n        if (array[middle] &gt; v ) {\n            right = middle;\n        } else if (array[middle] &lt; v) {\n            left = middle;\n        } else {\n            return middle;\n        }\n  } \n    return -1;\n}</pre>\n</div>\n<div>  对于输入array为：{2, 6, 8, 10, 13, 25, 36, 45, 53, 76, 88, 100, 127}， n\n  = 13, v = 127时, </div>\n<div>  运行bsearch函数，while循环调用的次数为____。 </div>",
+      "options": [
+        {
+          "id": 40490,
+          "content": "1"
+        },
+        {
+          "id": 40491,
+          "content": "3"
+        },
+        {
+          "id": 40492,
+          "content": "4"
+        },
+        {
+          "id": 40493,
+          "content": "5"
+        },
+        {
+          "id": 40494,
+          "content": "6"
+        },
+        {
+          "id": 40495,
+          "content": "无数次"
+        }
+      ],
+      "correct_option_ids": [
+        40495
+      ],
+      "correct_options": [
+        "无数次"
+      ],
+      "analysis": "这道题考察了二分查找算法的一个重要实现细节。F选项(无数次)是正确答案,因为代码中存在死循环。<br><br>主要问题出在left和right的更新逻辑上:<br>1. 当array[middle] > v时,right = middle<br>2. 当array[middle] < v时,left = middle<br><br>这两行代码没有让区间真正缩小。因为middle = left + (right - left) / 2的计算结果可能等于left,此时如果array[middle] < v,left = middle就会导致left不变。同理right也可能不变。<br><br>让我们以v = 127为例来模拟:<br>- 初始状态:left = 0, right = 12<br>- 第一次:middle = 6,array[6] = 36 < 127,left = 6<br>- 第二次:middle = 9,array[9] = 76 < 127,left = 9<br>- 第三次:middle = 10,array[10] = 88 < 127,left = 10<br>- 第四次:middle = 11,array[11] = 100 < 127,left = 11<br>- 之后middle的值会在11和12之间反复,永远无法找到127<br><br>正确的实现应该是:<br>- array[middle] > v时,right = middle - 1<br>- array[middle] < v时,left = middle + 1<br><br>其他选项(1,3,4,5,6次)都不正确,因为程序会陷入死循环,永远不会终止。"
+    },
+    {
+      "question_id": 323320,
+      "uuid": "36c311e47dc1479eac70066b7e3fe0a9",
+      "type": 1,
+      "title": "下列哪个查找最快?",
+      "content": "下列哪个查找最快?",
+      "options": [
+        {
+          "id": 850920,
+          "content": "哈希表法（散列表）"
+        },
+        {
+          "id": 850921,
+          "content": "顺序查找"
+        },
+        {
+          "id": 850922,
+          "content": "二分查找"
+        },
+        {
+          "id": 850923,
+          "content": "二叉排序树查找"
+        }
+      ],
+      "correct_option_ids": [
+        850920
+      ],
+      "correct_options": [
+        "哈希表法（散列表）"
+      ],
+      "analysis": "<div>  A：哈希表查找时间复杂度O(1) </div> <div>  B：顺序查找时间复杂度O(n) </div> <div>  C：二分查找时间复杂度O(logn) </div> <div>  D：二叉排序树查找时间复杂度O(logn) </div> <div>  综合以上，选A </div> <span></span>"
+    },
+    {
+      "question_id": 57877,
+      "uuid": "9956eb8e86ab479e9b7e38d85352624f",
+      "type": 1,
+      "title": "在长度为n的有序线性表中进行二分查找，最坏情况下需要比较的次数是（  ）。",
+      "content": "在长度为n的有序线性表中进行二分查找，最坏情况下需要比较的次数是（  ）。",
+      "options": [
+        {
+          "id": 81481,
+          "content": "O(n)"
+        },
+        {
+          "id": 81482,
+          "content": "O(n^2)"
+        },
+        {
+          "id": 81483,
+          "content": "O(logn)"
+        },
+        {
+          "id": 81484,
+          "content": "O(nlogn)"
+        }
+      ],
+      "correct_option_ids": [
+        81483
+      ],
+      "correct_options": [
+        "O(logn)"
+      ],
+      "analysis": "当有序线性表为顺序存储时才能用二分法查找。可以证明的是对于长度为n的有序线性表，在最坏情况下，二分法查找只需要比较 次，而顺序查找需要比较n次。"
+    },
+    {
+      "question_id": 97671,
+      "uuid": "a8097f7e3e1c46b780ac542631b9a518",
+      "type": 1,
+      "title": "就平均查找速度而言，下列几种查找速度从慢至快的关系是_______",
+      "content": "<div>  就平均查找速度而言，下列几种查找速度从慢至快的关系是___________。<br>\n</div>",
+      "options": [
+        {
+          "id": 176050,
+          "content": "顺序 折半 哈希 分块"
+        },
+        {
+          "id": 176051,
+          "content": "顺序 分块 折半 哈希"
+        },
+        {
+          "id": 176052,
+          "content": "分块 折半 哈希 顺序"
+        },
+        {
+          "id": 176053,
+          "content": "顺序 哈希 分块 折半"
+        }
+      ],
+      "correct_option_ids": [
+        176051
+      ],
+      "correct_options": [
+        "顺序 分块 折半 哈希"
+      ],
+      "analysis": "从平均查找速度来看,B选项\"顺序 分块 折半 哈希\"的排序是正确的。这几种查找方法的时间复杂度分别是:<br><br>顺序查找:O(n),需要从头到尾遍历,平均查找长度为n/2<br>分块查找:O(n/s + s),其中s为分块数。它介于顺序查找和折半查找之间<br>折半查找:O(log2n),每次将查找范围缩小一半<br>哈希查找:O(1),理想情况下可以直接定位到目标位置<br><br>因此按照查找速度从慢到快的顺序应该是:顺序查找 < 分块查找 < 折半查找 < 哈希查找<br><br>分析其他选项错误原因:<br>A错误:将折半查找排在哈希查找之前,与实际速度不符<br>C错误:将顺序查找排在最后,而实际上顺序查找是最慢的<br>D错误:将哈希查找排在折半查找之前,且分块查找的位置不正确<br><br>需要注意的是,这里讨论的是平均查找速度。在某些特殊情况下(如哈希冲突严重时),实际性能可能会有所变化。但从平均情况看,B选项的排序是最准确的。"
+    },
+    {
+      "question_id": 305698,
+      "uuid": "975ed14ce9bc4c62b962147b08467fe6",
+      "type": 1,
+      "title": "初始化数组  int [] arr...",
+      "content": "初始化数组  int [] arr = {2，10，23，31，55，86}，使用二分查询算法查找55，需要循环执行多少次才能命中目标？",
+      "options": [
+        {
+          "id": 793351,
+          "content": "1"
+        },
+        {
+          "id": 793352,
+          "content": "2"
+        },
+        {
+          "id": 793353,
+          "content": "3"
+        },
+        {
+          "id": 793354,
+          "content": "4"
+        }
+      ],
+      "correct_option_ids": [
+        793352
+      ],
+      "correct_options": [
+        "2"
+      ],
+      "analysis": "<div>  第一次：low=0，high=5，mid=2，23&lt;55，low=mid+1 </div> <div>  第二次，low=3，high=5，mid=4，55=55，查找成功 </div> <div>  故B正确，A、C、D错误 </div>"
+    },
+    {
+      "question_id": 171326,
+      "uuid": "7474d818c609457f83a5e563237d5466",
+      "type": 1,
+      "title": "假设顺序表中包含5个关键字{a，b，c，d，e}，它们的查找概率分别为{0.25，0.3，0.2，0.1，0.15}，为了使查找成功时的平均查找长度达到最小，则顺序表中数据元素的出现顺序是（     ）",
+      "content": "假设顺序表中包含5个关键字{a，b，c，d，e}，它们的查找概率分别为<span>{0.25，0.3，0.2，0.1，0.15}，为了使查找成功时的平均查找长度达到最小，则顺序表中数据元素的出现顺序是（     ）</span>",
+      "options": [
+        {
+          "id": 406165,
+          "content": "e，d，c，b，a"
+        },
+        {
+          "id": 406166,
+          "content": "b，a，c，e，d"
+        },
+        {
+          "id": 406167,
+          "content": "b，a，d，c，e"
+        },
+        {
+          "id": 406168,
+          "content": "a，d，e，c，b"
+        }
+      ],
+      "correct_option_ids": [
+        406166
+      ],
+      "correct_options": [
+        "b，a，c，e，d"
+      ],
+      "analysis": "<div>  <span><span style=\"\">为了使顺序表查找成功时的平均查找长度（ASL）最小，</span><span style=\"font-weight: 600;vertical-align: baseline;\">应将元素按查找概率从高到低排列</span><span style=\"\">。根据题目中给定的查找概率 </span>{a:0.25, b:0.3, c:0.2, d:0.1, e:0.15}<span style=\"\">，正确的排序应为 </span><span style=\"font-weight: 600;vertical-align: baseline;\">b → a → c → e → d</span><span style=\"\">，对应选项 </span><span style=\"font-weight: 600;vertical-align: baseline;\">B</span><span style=\"\">。</span></span> </div> <div>  <span></span>  </div>"
+    },
+    {
+      "question_id": 323736,
+      "uuid": "0d487eedff6645dd91f244ec5b6880fa",
+      "type": 1,
+      "title": "设散列表的长度为10，散列函数H(n)=n mod 7，初始关键字序列为 ...",
+      "content": "设散列表的长度为10，散列函数H(n)=n mod 7，初始关键字序列为 (33，24，8，17，21，10)，用链地址法作为解决冲突的方法，平均查找长度是？",
+      "options": [
+        {
+          "id": 852469,
+          "content": "1"
+        },
+        {
+          "id": 852470,
+          "content": "1.5"
+        },
+        {
+          "id": 852471,
+          "content": "2"
+        },
+        {
+          "id": 852472,
+          "content": "2.5"
+        }
+      ],
+      "correct_option_ids": [
+        852470
+      ],
+      "correct_options": [
+        "1.5"
+      ],
+      "analysis": "<div>  33%7=5，查找长度为1， </div> <div>  <span>24%7=3，查找长度为1，</span>  </div> <div>  <span>8%7=1，查找长度为1，</span>  </div> <div>  <span>17%7=3，查找长度为2，</span>  </div> <div>  <span>21%7=0，查找长度为1，</span>  </div> <div>  <span>10%7=3，查找长度为3，</span><br> </div> <div>  平均查找长度为(1+1+1+2+1+3)/6=1.5， </div> <div>  故B正确，A、C、D错误。 </div>"
+    },
+    {
+      "question_id": 323391,
+      "uuid": "ce636615be8840a48d3dc8c9a8aee5b3",
+      "type": 1,
+      "title": "有个长度为12的无重复有序表，按折半查找法进行查找，在表内各元素等概率情况...",
+      "content": "有个长度为12的无重复有序表，按折半查找法进行查找，在表内各元素等概率情况下，查找成功所需的平均比较（三元比较）的次数为（）",
+      "options": [
+        {
+          "id": 851210,
+          "content": "35/12"
+        },
+        {
+          "id": 851211,
+          "content": "37/12"
+        },
+        {
+          "id": 851212,
+          "content": "39/12"
+        },
+        {
+          "id": 851213,
+          "content": "43/12"
+        }
+      ],
+      "correct_option_ids": [
+        851211
+      ],
+      "correct_options": [
+        "37/12"
+      ],
+      "analysis": "<div>  画出折半查找树，发现第一层有1个结点，第二层有2个结点，第三层有4个结点，第四层有5个结点， </div> <div>  因此<span>查找成功所需的平均比较次数为(1*1+2*2+3*4+4*5)/12=37/12次，</span> </div> <div>  <span>故B正确，A、C、D错误。</span> </div>"
+    },
+    {
+      "question_id": 10824695,
+      "uuid": "40e748a3df0c47acb6a1f47dde62e353",
+      "type": 1,
+      "title": "设有 98 个已排序列元素，采用二分法查找时，最大比较次数是（）",
+      "content": "<p class=\"MsoNormal\">\n\t<span style=\"font-family:宋体;\">设有</span> <span style=\"font-family:宋体;\">98 个已排序列元素，采用二分法查找时，最大比较次数是（）</span>\n</p>",
+      "options": [
+        {
+          "id": 6270484,
+          "content": "49"
+        },
+        {
+          "id": 6270485,
+          "content": "15"
+        },
+        {
+          "id": 6270486,
+          "content": "20"
+        },
+        {
+          "id": 6270487,
+          "content": "7"
+        }
+      ],
+      "correct_option_ids": [
+        6270487
+      ],
+      "correct_options": [
+        "7"
+      ],
+      "analysis": "在二分查找中,最大比较次数与元素个数N的关系可以用log₂N向上取整来计算。对于98个元素,我们来具体计算:<br><br>log₂98 ≈ 6.615<br>向上取整得到7,所以最大比较次数是7次。<br><br>因此D选项7是正确答案。<br><br>分析其他选项:<br>A选项49错误:49约等于98/2,这是线性查找的平均比较次数,而不是二分查找的最大比较次数。<br><br>B选项15错误:15远大于实际所需的最大比较次数7。二分查找每次将查找范围缩小一半,效率远高于这个数值。<br><br>C选项20错误:同样高估了所需的比较次数。对于98个元素来说,20次比较是不必要的,因为每次二分可以排除一半的查找范围。<br><br>补充说明:<br>二分查找的时间复杂度是O(log₂N),这意味着对于N个元素,最大比较次数就是log₂N向上取整。这比线性查找的O(N)要高效得多。当N=98时,log₂98向上取整正好是7。"
+    },
+    {
+      "question_id": 25988,
+      "uuid": "d5a859566bab460a8a9f56ad16800640",
+      "type": 1,
+      "title": "给定一个整数sum,从有N个有序元素的数组中寻找元素a,b,使得a+b的结果最接近sum,最快的平均时间复杂度是：",
+      "content": "给定一个整数sum,从有N个有序元素的数组中寻找元素a,b,使得a+b的结果最接近sum,最快的平均时间复杂度是：",
+      "options": [
+        {
+          "id": 42615,
+          "content": "O(n)"
+        },
+        {
+          "id": 42616,
+          "content": "O(nlogn)"
+        },
+        {
+          "id": 42617,
+          "content": "O(n^2)"
+        },
+        {
+          "id": 42618,
+          "content": "O(logn)"
+        }
+      ],
+      "correct_option_ids": [
+        42615
+      ],
+      "correct_options": [
+        "O(n)"
+      ],
+      "analysis": "本题考察在有序数组中寻找两个元素和最接近目标值的算法时间复杂度。O(n)是正确的答案，因为可以使用双指针法在线性时间内解决这个问题。<br><br>具体思路如下：<br>1. 由于数组有序，可以使用两个指针，left指向数组开头，right指向数组末尾<br>2. 计算nums[left] + nums[right]与sum的差值<br>3. 如果和大于sum，right左移；如果和小于sum，left右移<br>4. 记录过程中的最小差值对应的两个数<br>5. 当left >= right时结束搜索<br><br>分析其他选项：<br>B错误：O(nlogn)的复杂度过高，因为数组已经有序，无需再进行排序<br>C错误：O(n²)是暴力解法的复杂度，即遍历所有可能的数对，显然不是最优解<br>D错误：O(logn)的复杂度过低，因为即使使用二分查找，也需要对每个元素都进行一次查找，总体复杂度不可能低于O(n)<br><br>这种双指针解法充分利用了数组有序的特点，只需要遍历一次数组就能找到答案，因此时间复杂度为O(n)是最优解。"
+    },
+    {
+      "question_id": 86411,
+      "uuid": "5ffc11dc96234b879c6c6e47e590b5f7",
+      "type": 1,
+      "title": "对N个元素的表做顺序查找时，若查找每个元素的概率相同，则平均查找长度为(   )",
+      "content": "<p style=\"text-indent: 0.0cm;\">\n  <span>对<span>N</span>个元素的表做顺序查找时，若查找每个元素的概率相同，则平均查找长度为<span>(   ) </span>\n  </span>\n</p>",
+      "options": [
+        {
+          "id": 148144,
+          "content": "（N+1）/2"
+        },
+        {
+          "id": 148145,
+          "content": "N/2"
+        },
+        {
+          "id": 148146,
+          "content": "N"
+        },
+        {
+          "id": 148147,
+          "content": "[（1+N）*N ]/2"
+        }
+      ],
+      "correct_option_ids": [
+        148144
+      ],
+      "correct_options": [
+        "（N+1）/2"
+      ],
+      "analysis": "在顺序查找中,假设要查找的元素在表中的任意位置的概率都相等(均为1/N),那么平均查找长度就是所有可能情况的查找次数的期望值。<br><br>对于N个元素的表,查找成功时:<br>- 若目标元素在第1个位置,需要比较1次<br>- 若在第2个位置,需要比较2次<br>- 依此类推,若在第N个位置,需要比较N次<br><br>所以平均查找长度为:<br>(1 + 2 + 3 + ... + N) × (1/N) = (N × (N+1)/2) × (1/N) = (N+1)/2<br><br>因此A选项(N+1)/2是正确答案。<br><br>分析其他选项:<br>B选项N/2略小于实际值,没有考虑加1的情况<br>C选项N过大,表示总是需要查找到最后一个位置<br>D选项[（1+N）*N]/2明显偏大,这实际上是1到N的求和公式,而不是平均值<br><br>这个结论说明,在概率相等的情况下,平均查找次数约为表长度的一半略多一点。这也符合我们的直观理解,因为查找位置既可能在表的前面,也可能在表的后面。"
+    },
+    {
+      "question_id": 11285671,
+      "uuid": "4d376ea58b224e54b5447b7f2c4d7293",
+      "type": 1,
+      "title": "对于有序表[6, 26, 48, 50, 58, 66, 81, 82, ...",
+      "content": "<div>\n\t对于有序表[6,&nbsp;26,&nbsp;48,&nbsp;50,&nbsp;58,&nbsp;66,&nbsp;81,&nbsp;82,&nbsp;90,&nbsp;96,&nbsp;97]，当二分查找值为55的元素时，它将依次与表中的（）元素比较。\n</div>\n<div>\n\t（提示：mid=(low+high)/2向下取整）\n</div>",
+      "options": [
+        {
+          "id": 7401572,
+          "content": "66,48,50,58,"
+        },
+        {
+          "id": 7401573,
+          "content": "26,48,50,58,"
+        },
+        {
+          "id": 7401574,
+          "content": "81,82,90,96,"
+        },
+        {
+          "id": 7401575,
+          "content": "6,26,48,50,"
+        }
+      ],
+      "correct_option_ids": [
+        7401572
+      ],
+      "correct_options": [
+        "66,48,50,58,"
+      ],
+      "analysis": "比较第&nbsp;1&nbsp;次，猜测值&nbsp;66&nbsp;大于目标值&nbsp;55<div>比较第&nbsp;2&nbsp;次，猜测值&nbsp;48&nbsp;小于目标值&nbsp;55</div><div>比较第&nbsp;3&nbsp;次，猜测值&nbsp;50&nbsp;小于目标值&nbsp;55</div><div>比较第&nbsp;4&nbsp;次，猜测值&nbsp;58&nbsp;大于目标值&nbsp;55</div><div>未找到目标元素&nbsp;55</div>"
+    },
+    {
+      "question_id": 86416,
+      "uuid": "0b5713c76f7d4ed88553630ed841a73b",
+      "type": 1,
+      "title": "用二分（对半）查找表的元素的速度比用顺序法(    )",
+      "content": "<p>  <span>用二分（对半）查找表的元素的速度比用顺序法<span>(    )</span> </span>  </p>",
+      "options": [
+        {
+          "id": 148162,
+          "content": "必然快"
+        },
+        {
+          "id": 148163,
+          "content": "必然慢"
+        },
+        {
+          "id": 148164,
+          "content": "相等"
+        },
+        {
+          "id": 148165,
+          "content": "不能确定"
+        }
+      ],
+      "correct_option_ids": [
+        148165
+      ],
+      "correct_options": [
+        "不能确定"
+      ],
+      "analysis": "虽然平均意义下二分查找比顺序查找更快，但二分查找表的次数最多为<img src=\"https://www.nowcoder.com/equation?tex=%5Clfloor%20logn%5Crfloor%20%2B%201\">次，而顺序查找的次数最少为1次（直接就找到了），因此A、B、C错，D对。"
+    },
+    {
+      "question_id": 80621,
+      "uuid": "910012d766cb4372ab927d5b26eec498",
+      "type": 1,
+      "title": "二叉查找树的查找效率与二叉树的树型有关，在（）时其查找效率最低",
+      "content": "二叉查找树的查找效率与二叉树的树型有关，在（）时其查找效率最低",
+      "options": [
+        {
+          "id": 133136,
+          "content": "结点太多"
+        },
+        {
+          "id": 133137,
+          "content": "完全二叉树"
+        },
+        {
+          "id": 133138,
+          "content": "是单枝树"
+        },
+        {
+          "id": 133139,
+          "content": "节点太复杂"
+        }
+      ],
+      "correct_option_ids": [
+        133138
+      ],
+      "correct_options": [
+        "是单枝树"
+      ],
+      "analysis": "二叉查找树(BST)的查找效率主要取决于树的高度和平衡性。当二叉查找树为单枝树(即所有节点都只有左子树或右子树)时,查找效率最低,此时的时间复杂度退化为O(n),与顺序查找相同。<br><br>选项分析:<br>C正确:单枝树是最不平衡的情况,此时二叉查找树完全退化成了一个链表结构,失去了二叉树的查找优势,每次查找都需要从根节点遍历到目标节点,效率最低。<br><br>其他选项分析:<br>A错误:节点数量多少本身并不直接决定查找效率,关键在于树的结构是否平衡。<br>B错误:完全二叉树是一种比较理想的结构,具有良好的平衡性,查找效率较高。<br>D错误:节点的复杂程度与查找效率关系不大,查找效率主要取决于树的结构。<br><br>总的来说,二叉查找树的最优查找效率应该出现在平衡的情况下,此时时间复杂度为O(log n)。而单枝树这种极度不平衡的情况会导致最差的查找效率。"
+    },
+    {
+      "question_id": 11180545,
+      "uuid": "a6f2e25973274892a5749c6913a57f29",
+      "type": 1,
+      "title": "给定一个整数序列，包括正数和负数，则要想连续子序列的和最大，求解思路是：",
+      "content": "给定一个整数序列，包括正数和负数，则要想连续子序列的和最大，求解思路是：",
+      "options": [
+        {
+          "id": 7193409,
+          "content": "按顺序依次求和，求到最大值为止"
+        },
+        {
+          "id": 7193410,
+          "content": "先排序找到最大的单个整数，从该整数开始累加求和"
+        },
+        {
+          "id": 7193411,
+          "content": "按顺序依次累加，当和为负数则停止并从下一个数字开始重新累加"
+        },
+        {
+          "id": 7193412,
+          "content": "将所有整数全部累加到一起即为最大值"
+        }
+      ],
+      "correct_option_ids": [
+        7193411
+      ],
+      "correct_options": [
+        "按顺序依次累加，当和为负数则停止并从下一个数字开始重新累加"
+      ],
+      "analysis": "<div>\n\t使用贪心的思路，当累加和出现负数时，再加下一个数字对于总和没有任何增益，应该停止累加，并重新开始新的一次累加。\n</div>\n<div>\n\t正确答案为C。\n</div>"
+    },
+    {
+      "question_id": 61816,
+      "uuid": "670cc2c5d3be41d7889fbd55ec276332",
+      "type": 1,
+      "title": "设有序序列长度为 n ，在最坏情况下，时间复杂度为下面式子的算法是（ ）。",
+      "content": "<div>  <span>设有序序列长度为</span> <span>n</span> <span>，在最坏情况下，时间复杂度为<img alt=\"O(log_2n)\" src=\"https://www.nowcoder.com/equation?tex=O(log_2n)\">的算法是（）</span>  </div>",
+      "options": [
+        {
+          "id": 92408,
+          "content": "二分法查找"
+        },
+        {
+          "id": 92409,
+          "content": "顺序查找"
+        },
+        {
+          "id": 92410,
+          "content": "分块查找"
+        },
+        {
+          "id": 92411,
+          "content": "哈希查找"
+        }
+      ],
+      "correct_option_ids": [
+        92408
+      ],
+      "correct_options": [
+        "二分法查找"
+      ],
+      "analysis": "<span>对长度为</span> <span>n</span> <span>的线性表排序，最坏情况下时间复杂度，二分法查找为O(logn)；</span><span>顺序查找法为</span><span>O</span>(<span>n)</span><span>；分块查找时间复杂度与分块规则有关；哈希查找时间复杂度为</span><span>O(1)</span><span>，因其通过计算</span><span>HashCode</span><span>来定位元素位置。故正确答案为</span> <span>A</span> <span>选项。</span>"
+    },
+    {
+      "question_id": 52935,
+      "uuid": "11705acf4dc1476a8f2cf9f94643f3a9",
+      "type": 1,
+      "title": "在长度为n的顺序线性表中顺序查找值为x的元素时，查找成功时的平均查找长度（假定查找每个元素的概率均相等）为（）。",
+      "content": "<p align=\"justify\" style=\"text-align: justify;\">\n  <span>在长度为n的顺序线性表中顺序查找值为x的元素时，查找成功时的平均查找长度（假定查找每个元素的概率均相等）为（）。</span>\n</p>",
+      "options": [
+        {
+          "id": 69225,
+          "content": "n"
+        },
+        {
+          "id": 69226,
+          "content": "(n-1)/2"
+        },
+        {
+          "id": 69227,
+          "content": "n/2"
+        },
+        {
+          "id": 69228,
+          "content": "(n+1)/2"
+        }
+      ],
+      "correct_option_ids": [
+        69228
+      ],
+      "correct_options": [
+        "(n+1)/2"
+      ],
+      "analysis": "在顺序线性表中进行顺序查找时,平均查找长度为(n+1)/2是正确的。让我们来详细分析这个结论:<br><br>1. 首先理解什么是查找长度:<br>- 查找长度指的是需要比较的次数<br>- 在顺序查找中,从第一个元素开始依次比较直到找到目标元素<br><br>2. 分析为什么是(n+1)/2:<br>- 假设查找的元素在第1个位置,需要比较1次<br>- 假设在第2个位置,需要比较2次<br>- 依此类推,在第n个位置需要比较n次<br>- 由于每个位置的查找概率相等(均为1/n)<br>- 因此平均查找长度 = (1+2+3+...+n)/n = n(n+1)/(2n) = (n+1)/2<br><br>3. 分析其他选项的错误之处:<br>A选项n:这是最坏情况下的查找长度,即目标元素在最后一个位置<br>B选项(n-1)/2:这个公式没有考虑到第一个位置的贡献<br>C选项n/2:这个结果比实际平均值少了1/2<br><br>4. 补充说明:<br>这个公式适用于查找成功的情况,且要求表中元素是随机分布的,每个元素被查找的概率相等。对于查找失败的情况,平均查找长度会是n。<br><br>因此,(n+1)/2是顺序查找成功时的正确平均查找长度。"
+    },
+    {
+      "question_id": 11338520,
+      "uuid": "0d700b24caf5490f87ddba5b5a2dc8c9",
+      "type": 1,
+      "title": "给出一个下三角矩阵(a)和一个上三角矩阵(b)，利用压缩存储方法，将下三角...",
+      "content": "<div>  给出一个下三角矩阵(a)和一个上三角矩阵(b)，利用压缩存储方法，将<span>下三角矩阵(a)存入数组SA中，<span>上三角矩阵(b)存入数组SB中，下列选项中错误的是（）</span></span>  </div> <div>  <span><img src=\"https://www.nowcoder.com/equation?tex=a%3D%5Cleft%5B%20%5Cbegin%7Bmatrix%7D%0A%20%20%20%20%204%20%26%201%20%261%261%5C%5C%0A%20%20%20%20%203%20%26%202%261%261%20%5C%5C%0A8%20%26%202%265%261%20%5C%5C%0A7%20%26%202%261%266%20%5C%5C%0A%5Cend%7Bmatrix%7D%20%5Cright%5D\">，<img src=\"https://www.nowcoder.com/equation?tex=b%3D%5Cleft%5B%20%5Cbegin%7Bmatrix%7D%0A7%20%26%202%261%266%20%5C%5C%20%20%20%20%20%0A1%20%268%20%26%202%265%5C%5C%0A%20%20%20%20%201%261%20%263%20%26%202%5C%5C%0A%0A%201%20%261%261%264%5C%5C%0A%0A%5Cend%7Bmatrix%7D%20%5Cright%5D\"><br> </span>  </div>",
+      "options": [
+        {
+          "id": 7407125,
+          "content": "SA[10]=1"
+        },
+        {
+          "id": 7407126,
+          "content": "SA[4]=5"
+        },
+        {
+          "id": 7407127,
+          "content": "SB[3]=6"
+        },
+        {
+          "id": 7407128,
+          "content": "SB[6]=5"
+        }
+      ],
+      "correct_option_ids": [
+        7407126
+      ],
+      "correct_options": [
+        "SA[4]=5"
+      ],
+      "analysis": "<div>  考查数据结构中的数组。 </div> <div>  有些高阶矩阵中，非零的元素非常少，此时若使用二维数组将造成存储空间的浪费，这时，可只存储部分元素，从而提高存储空间的利用率。通常的做法是为多个相同值的元素只分配一个存储单元，对值为零的元素不分配存储单元。这种存储方式称为矩阵的压缩存储。<br> </div> <div>  下三角矩阵与对称矩阵类似，不同之处在于存完下三角中的元素之后，紧接着存储对角线上方的常量，因为是同一个常数，所以存一个即可。一共存储<img src=\"https://www.nowcoder.com/equation?tex=n(n%2B1)%2F2%2B1\">个元素，SA[k]与a[i][j]的对应关系为： </div> <div>  <img src=\"https://www.nowcoder.com/equation?tex=k%3D%5Cleft%5C%7B%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%5Cbegin%7Barray%7D%7B**lr**%7D%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20i(i-1)%2F2%2Bj-1%20%26i%5Cgeq%20j%20%20%5C%5C%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20n(n-1)%2F2-1%20%26i%3Cj%5C%5C%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%5Cend%7Barray%7D%20%20%0A%5Cright.\"><br> </div> <div>  因此对于A、B，SA[10]=1，<span>SA[4]=2，选项B错误</span> </div> <div>  <span>上三角矩阵与下三角矩阵类似，<span>SB[k]与b[i][j]的对应关系为：</span></span> </div> <div>  <span><img src=\"https://www.nowcoder.com/equation?tex=k%3D%5Cleft%5C%7B%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%5Cbegin%7Barray%7D%7B**lr**%7D%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20(i-1)(2n-i%2B2)%2F2%2Bj-i%20%26i%5Cleq%20j%20%20%5C%5C%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20n(n%2B1)%2F2%20%26i%3Ej%5C%5C%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%5Cend%7Barray%7D%20%20%0A%5Cright.\"><br> </span> </div> <div>  因此对于C、D，<span>SB[3]=6、<span>SB[6]=5</span></span> </div> <div>  <span><br> </span> </div>"
+    },
+    {
+      "question_id": 11142900,
+      "uuid": "94bf60ff8f724adeb88d8d0ee0070a94",
+      "type": 1,
+      "title": "设主串S='abcdefgabcad'，模式串t='abcad'，采用KM...",
+      "content": "设主串S='abcdefgabcad'，模式串t='abcad'，采用KMP算法进行模式匹配，第一次出现“失配”（S[i]≠t[j]）时，i=j=3，则下次开始匹配时，i和j的值分别是（）",
+      "options": [
+        {
+          "id": 7092624,
+          "content": "i=0,&nbsp;j=0"
+        },
+        {
+          "id": 7092625,
+          "content": "i=2,&nbsp;j=0"
+        },
+        {
+          "id": 7092626,
+          "content": "i=2,&nbsp;j=1"
+        },
+        {
+          "id": 7092627,
+          "content": "i=3,&nbsp;j=0"
+        }
+      ],
+      "correct_option_ids": [
+        7092627
+      ],
+      "correct_options": [
+        "i=3,&nbsp;j=0"
+      ],
+      "analysis": "这道题目考察KMP模式匹配算法的基本原理。根据题目给出的信息，第一次失配发生在i=j=3的位置，此时需要根据KMP算法的next数组来确定j的新位置，而i保持不变。<br><br>让我们具体分析:<br>1. 主串S='abcdefgabcad'，模式串t='abcad'<br>2. 当i=j=3时发生失配，说明前3个字符\"abc\"是匹配的<br>3. 在KMP算法中，发生失配时:<br>   - i值不回溯，保持在当前失配位置(i=3)<br>   - j值根据next数组回溯到合适位置(本例中j回到0)<br><br>所以D选项(i=3, j=0)是正确答案，因为：<br>- i保持在失配位置3不变<br>- j回溯到模式串开头(j=0)，从头开始新的匹配<br><br>分析其他选项错误原因：<br>A(i=0, j=0)错误：KMP算法的优势就在于主串指针i不需要回退<br>B(i=2, j=0)错误：i不应该回退到2<br>C(i=2, j=1)错误：既回退了i又没有完全重置j，与KMP算法原理不符<br><br>KMP算法的核心优势就是主串指针i永远不回溯，只需要移动模式串指针j，这也是为什么KMP算法比简单的暴力匹配效率要高。"
+    }
+  ]
+}

@@ -20,9 +20,13 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
+      # docs/data 为外部采集的 RAG 示例数据（题库 json/xlsx）：既含多份超 2MB 文件，
+      # 也不应被格式化钩子改写——三个改写/体积钩子对其豁免，其余规则照常
       - id: trailing-whitespace
+        exclude: ^docs/data/
         stages: [pre-commit]
       - id: end-of-file-fixer
+        exclude: ^docs/data/
         stages: [pre-commit]
       - id: check-yaml
         stages: [pre-commit]
@@ -30,6 +34,7 @@ repos:
         stages: [pre-commit]
       - id: check-added-large-files
         args: ["--maxkb=2048"]
+        exclude: ^docs/data/
         stages: [pre-commit]
 
   # 本地 Maven 质量门禁（language: system 直接复用本机 Maven，不重复下载工具链）
